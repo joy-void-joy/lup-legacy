@@ -401,7 +401,7 @@
     {
       "path": ".claude/plugins/lup/hooks/runtime/coordination/store.py",
       "category": "generated",
-      "sha256": "4acff2409884b3a7a42fd9d1debe4f891397e42a0d76ce2bc68760b75c78a65f",
+      "sha256": "d4551eb37f2cb5a281577a638feee89375354cf405d4a22687512ef618c6d882",
       "semantic_id": "hooks.lup-policy",
       "executable": false
     },
