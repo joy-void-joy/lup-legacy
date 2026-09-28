@@ -219,7 +219,7 @@
     {
       "path": ".claude/plugins/lup/commands/land.md",
       "category": "generated",
-      "sha256": "587e1bb64e11b176087b8bc8eb5efc22da55518560f6dc19f6cd9f92b4cb6680",
+      "sha256": "1797dc35844afd1c2a8f10dd85f70c2e6bfbd826438e7ea758abf3739711c9be",
       "semantic_id": "skill.land",
       "executable": false
     },

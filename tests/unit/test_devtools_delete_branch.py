@@ -571,3 +571,61 @@ def test_a_name_that_is_no_branch_anywhere_is_refused_as_such(
     err = capsys.readouterr().err
     assert "no branch by that name" in err
     assert "unmerged" not in err
+
+
+@pytest.fixture
+def carried(tmp_path: Path) -> Path:
+    """A project whose scaffold carrier `dev update` has already merged.
+
+    The shape every adopter reaches after its first update: the carrier's tip
+    is an ancestor of the integration branch, which is exactly what reads as a
+    spent branch to anything that does not know what the carrier is for.
+    """
+    work = tmp_path / "repo"
+    git = initialized_repo(work, tmp_path / "no-hooks")
+    commit_file(git, work, "file.txt", "base\n", "chore: base")
+    git("checkout", "-q", "-b", "lup-scaffold")
+    commit_file(git, work, "copied.txt", "copied\n", "chore: compile the scaffold")
+    git("checkout", "-q", "main")
+    git("merge", "-q", "--no-ff", "--no-edit", "lup-scaffold")
+    git("branch", "develop")
+    return work
+
+
+def test_the_scaffold_carrier_is_refused_even_forced(
+    carried: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Its tip is the next update's merge base, so no flag makes deleting it safe."""
+    monkeypatch.chdir(carried)
+
+    with pytest.raises(typer.Exit):
+        branches.delete_branch(
+            "lup-scaffold", dry_run=False, force=True, scaffold="lup-scaffold"
+        )
+
+    assert "lup-scaffold" in branch_names(carried)
+    assert "scaffold carrier" in capsys.readouterr().err
+
+
+def test_a_protected_branch_is_refused_even_forced(
+    carried: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The names no sweep offers to delete are no verb's to delete either."""
+    monkeypatch.chdir(carried)
+
+    with pytest.raises(typer.Exit):
+        branches.delete_branch("develop", dry_run=False, force=True)
+
+    assert "develop" in branch_names(carried)
+    assert "protected" in capsys.readouterr().err
+
+
+def test_a_merged_carrier_the_project_does_not_declare_deletes(
+    carried: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The precondition, so the refusal above cannot pass for the wrong reason."""
+    monkeypatch.chdir(carried)
+
+    branches.delete_branch("lup-scaffold", dry_run=False, force=False)
+
+    assert "lup-scaffold" not in branch_names(carried)

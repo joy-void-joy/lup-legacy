@@ -14,6 +14,7 @@ import sh
 
 from lup.devtools.dev import branches
 from lup.devtools import utils
+from tests.unit.repos import commit_file, initialized_repo
 
 
 class Recorder:
@@ -146,3 +147,48 @@ def test_the_human_table_says_the_remotes_went_unread(
     branches.survey(as_json=False)
 
     assert "were not read" in capsys.readouterr().out
+
+
+@pytest.fixture
+def carried(tmp_path: Path) -> Path:
+    """A project whose scaffold carrier `dev update` has already merged."""
+    work = tmp_path / "repo"
+    git = initialized_repo(work, tmp_path / "no-hooks")
+    commit_file(git, work, "file.txt", "base\n", "chore: base")
+    git("checkout", "-q", "-b", "lup-scaffold")
+    commit_file(git, work, "copied.txt", "copied\n", "chore: compile the scaffold")
+    git("checkout", "-q", "main")
+    git("merge", "-q", "--no-ff", "--no-edit", "lup-scaffold")
+    return work
+
+
+def surveyed_rows(capsys: pytest.CaptureFixture[str]) -> dict[str, dict[str, str]]:
+    """Each local row of a survey printed as JSON, by branch name."""
+    reported = json.loads(capsys.readouterr().out)
+    return {row["name"]: row for row in reported["branches"]}
+
+
+def test_the_scaffold_carrier_is_kept_once_its_merge_landed(
+    carried: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A merged carrier is the next update's merge base, not a spent branch."""
+    monkeypatch.chdir(carried)
+    monkeypatch.setattr(branches, "origin_auth_complaint", lambda: "no origin")
+
+    branches.survey(as_json=True, scaffold="lup-scaffold")
+
+    row = surveyed_rows(capsys)["lup-scaffold"]
+    assert row["disposition"] == "KEEP"
+    assert "scaffold carrier" in row["reason"]
+
+
+def test_an_undeclared_carrier_reads_as_the_merged_branch_it_is(
+    carried: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The precondition, so the row above cannot be kept for another reason."""
+    monkeypatch.chdir(carried)
+    monkeypatch.setattr(branches, "origin_auth_complaint", lambda: "no origin")
+
+    branches.survey(as_json=True)
+
+    assert surveyed_rows(capsys)["lup-scaffold"]["disposition"] == "DELETE"

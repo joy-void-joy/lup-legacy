@@ -674,6 +674,21 @@ forking the functions that consult this one.
 """
 
 
+def scaffold_carrier(branch: str) -> str:
+    """Why the branch a project's copied half is compiled onto is never spent.
+
+    `dev update` compiles upstream's copied half onto it and merges it from
+    there, so once an update lands the branch is an ancestor of the integration
+    branch — the exact shape of a branch whose work is done. It is not done:
+    its tip is the merge base the next update is measured from, and deleting
+    it leaves that update merging the copied half against nothing.
+    """
+    return (
+        f"scaffold carrier: `dev update` compiles the copied half onto {branch} "
+        "and its tip is the next update's merge base"
+    )
+
+
 def disposition_for(
     name: str,
     *,
@@ -1818,8 +1833,12 @@ def pr_body(
     typer.echo("\n".join(body_parts))
 
 
-def survey(as_json: bool) -> None:
-    """Collect branch, worktree, PR, and containment data."""
+def survey(as_json: bool, scaffold: str = "") -> None:
+    """Collect branch, worktree, PR, and containment data.
+
+    ``scaffold`` names the branch the project's copied half is compiled onto,
+    empty where it adopted none; its row is kept whatever containment says.
+    """
     complaint = origin_auth_complaint()
     if complaint:
         typer.echo(complaint, err=True)
@@ -1860,6 +1879,12 @@ def survey(as_json: bool) -> None:
         live_lease_branches(project_root() / ".lup" / "resolve"), branch_names
     )
 
+    def answerable(name: str) -> str:
+        """Why something outside this sweep already answers for the branch."""
+        if name == scaffold:
+            return scaffold_carrier(name)
+        return leased[name].reason() if name in leased else ""
+
     def info(b: ParsedBranch) -> BranchInfo:
         name = b["name"]
         checkout = worktrees.get(name)
@@ -1885,7 +1910,7 @@ def survey(as_json: bool) -> None:
             contained_in=contained_in,
             pr=pr_map.get(name),
             unique_commits=unique,
-            held=leased[name].reason() if name in leased else "",
+            held=answerable(name),
             related=related,
             reserved=still_at_reservation(name),
             worktree=checkout,
@@ -1932,6 +1957,7 @@ def survey(as_json: bool) -> None:
             contained_in=[integration] if contained else [],
             pr=pr_map.get(name),
             unique_commits=unique,
+            held=answerable(name),
             related=related,
         )
         return RemoteBranchInfo(
@@ -2444,12 +2470,19 @@ def plan_remote_only_deletion(
     )
 
 
-def plan_deletion(name: str, force: bool, remote: bool | None = None) -> DeletionPlan:
+def plan_deletion(
+    name: str, force: bool, remote: bool | None = None, scaffold: str = ""
+) -> DeletionPlan:
     """Evaluate every precondition a deletion depends on, changing nothing.
 
     A name resolves locally, only on origin, or nowhere, and the three are
     different deletions rather than one with steps that happen to fail:
     :func:`plan_remote_only_deletion` carries the second and the third.
+
+    A name the survey keeps whatever it holds — a protected branch, or
+    ``scaffold``, the branch the project's copied half is compiled onto — is
+    refused before any of that, and no force lifts it: the sweep that reads
+    these as spent is exactly the reader that must not be able to act on it.
 
     A dry run and the real path both read this, so what the dry run promises
     is what the real path went on to check.
@@ -2463,6 +2496,19 @@ def plan_deletion(name: str, force: bool, remote: bool | None = None) -> Deletio
     unless a caller says otherwise in so many words.
     """
     from lup.devtools.dev.worktree import branch_exists
+
+    kept = scaffold_carrier(name) if name == scaffold else ""
+    if kept or name in PROTECTED_BRANCHES:
+        return DeletionPlan(
+            branch=name,
+            actions=[
+                PlannedAction(
+                    description=f"Delete branch: {name}",
+                    verdict="refused",
+                    detail=kept or "a protected branch, which no sweep retires",
+                )
+            ],
+        )
 
     has_remote = remote_branch_exists(name)
     if not branch_exists(name):
@@ -2650,13 +2696,14 @@ def delete_branch(
     force: bool,
     remote: bool | None = None,
     preserved: str = "",
+    scaffold: str = "",
 ) -> None:
     """Delete a branch and its worktree, and origin's copy if it is spent.
 
     ``preserved`` names the ref a caller has already parked the commits at,
     for the one path — :func:`run_retirement` — that preserves them before
     deleting. Empty means nobody has, which is the case the warning below is
-    written for.
+    written for. ``scaffold`` names the carrier :func:`plan_deletion` refuses.
 
     ``name`` need not be a local branch: a name origin alone carries is what
     ``git survey`` reports under its own heading and hands a disposition, and
@@ -2667,7 +2714,7 @@ def delete_branch(
         typer.echo(f"Error: cannot delete the current branch ({name})", err=True)
         raise typer.Exit(1)
 
-    plan = plan_deletion(name, force, remote)
+    plan = plan_deletion(name, force, remote, scaffold)
 
     if dry_run:
         typer.echo(f"Would perform {len(plan.actions)} action(s):")

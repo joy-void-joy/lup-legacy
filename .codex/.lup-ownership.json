@@ -625,7 +625,7 @@
     {
       "path": ".codex/plugins/lup/skills/land/SKILL.md",
       "category": "generated",
-      "sha256": "4266499a497e10eebf8a7385dc2a4549f5ac867fc57894cbe4fd95743abc8b6a",
+      "sha256": "e940a3b3556533e757349f403767fb0bf4da3b4c277b7ca4b2d1420152ef3cb8",
       "semantic_id": "skill.land",
       "executable": false
     },

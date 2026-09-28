@@ -65,6 +65,11 @@ def create_git_app(declared: Callable[[], DevDeclarations]) -> typer.Typer:
         """
         worktree.refuse_redirected_pointers()
 
+    def scaffold_branch() -> str:
+        """The branch this project's copied half is compiled onto, if it has one."""
+        source = declared().scaffold
+        return source.branch if source is not None else ""
+
     # -- worktree commands --
 
     @worktree_app.command("create")
@@ -238,7 +243,7 @@ def create_git_app(declared: Callable[[], DevDeclarations]) -> typer.Typer:
         ] = False,
     ) -> None:
         """Full branch inventory: containment, PRs, unique commits, diff sizes."""
-        branches.survey(as_json)
+        branches.survey(as_json, scaffold=scaffold_branch())
 
     @app.command("preview")
     def preview_cmd(
@@ -304,7 +309,7 @@ def create_git_app(declared: Callable[[], DevDeclarations]) -> typer.Typer:
         Its session records are archived first, since the worktree usually holds
         the only copy; a deletion whose archive fails is refused.
         """
-        branches.delete_branch(name, dry_run, force, remote)
+        branches.delete_branch(name, dry_run, force, remote, scaffold=scaffold_branch())
 
     @app.command("retire")
     def retire_cmd(
