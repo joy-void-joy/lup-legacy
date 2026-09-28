@@ -45,7 +45,8 @@ from typing import Literal, Self, overload
 from pydantic import AnyHttpUrl, BaseModel, Field, SecretStr, model_validator
 
 from lup.harness.models import Harness, HookSet
-from lup.harness.requirements import Finding
+from lup.harness.requirements import Finding, Manifest
+from lup.launch.companions import HostCompanion, named_apart
 from lup.launch.declaration import (
     LaunchCommand,
     LaunchStep,
@@ -300,9 +301,9 @@ class Codex(
     home: Path | None = None
     """The Codex home every session runs in, named outright.
 
-    Wins over the home ``profile`` resolves to, the way an explicit directory
-    outranks a name looked up; unset, the profile's home, the one this
-    process already runs under, or a launch's home for its worktree."""
+    Wins over ``profile`` the way an explicit directory outranks a name looked
+    up; unset, the profile's home, the one this process already runs under,
+    or a launch's home for its worktree."""
 
     sandbox: SessionSandbox = NoSandbox()
     """Which wall every session opens behind; ``NoSandbox()`` is none, the policy alone.
@@ -333,6 +334,12 @@ class Codex(
     already enforces its own. Compiled into hooks the app-server asks for a
     session opened here, and into the plugin's dispatcher for a launched one."""
 
+    requirements: Manifest | None = None
+    """What the host and the container are checked for before a launch opens.
+
+    Unset, the roster the ``plugin`` harness declares, where it is one, and
+    nothing beyond the runtime's own probes where it is not."""
+
     identity: Member | None = None
     """Who each session is on the coordination roster; unset, a session opened
     here joins none, and a launched one is named after its worktree."""
@@ -348,6 +355,11 @@ class Codex(
     """How many more levels of lup-created agents a session may open, ``-1``
     for no limit; never more than this process has left to give. Unset, the
     allowance this process holds, one level spent."""
+
+    companions: list[HostCompanion] = []
+    """What is kept running on the host for as long as each session runs, each
+    handing it the environment, folders and ports that reach it; one shared by
+    several sessions is started by the first and stopped after the last."""
 
     # The app-server's own wire spellings, passed through by thread_parameters.
     approval_policy: Literal["untrusted", "on-request", "granular", "never"] | None = (
@@ -401,6 +413,7 @@ class Codex(
                 "excluded_commands, or judge those commands by the policy"
             )
         declared_policy(self.plugin, self.policy)
+        named_apart(self.companions)
         for key in self.provider_config or {}:
             if key not in {"model_provider", "model_providers"}:
                 raise ValueError(
@@ -584,17 +597,21 @@ class Codex(
 
         return check_codex(self)
 
-    def launch(self, *words: str, steps: Sequence[LaunchStep] = ()) -> int:
+    def launch(
+        self, *words: str, steps: Sequence[LaunchStep] = (), force: bool = False
+    ) -> int:
         """Prepare, check, and run Codex in the foreground, then clean up.
 
         The terminal is the session's until it ends; ``words`` reach the CLI
         after everything the declaration compiles to, and ``steps`` run around
         the whole of it — each ``before`` first, each ``after`` last, however
-        the session ended. Answers the CLI's exit status.
+        the session ended. ``force`` reinstalls a plugin whose version has not
+        moved into the home the session opens in, as :meth:`prepare` does.
+        Answers the CLI's exit status.
         """
         from lup.providers.codex.launch import launch_codex_session
 
-        return launch_codex_session(self, list(words), steps)
+        return launch_codex_session(self, list(words), steps, force)
 
     def layered(self, layers: SessionLayers) -> Self:
         """This agent with ``layers`` laid over its own, the fields set there winning."""

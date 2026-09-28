@@ -1,19 +1,26 @@
 """Named native harness composition roots over canonical declarations."""
 
+import json
+from collections.abc import Sequence
 from enum import StrEnum
 from pathlib import Path
 
+from lup.formats.banner import COMMENT_FREE, PROMPT_TEXT
+from lup.formats.markdown import MarkdownDocument, Prose
+from lup.formats.yaml import YamlDocument, YamlMap, scalars
+
 from lup.providers.claude.harness import (
+    CLAUDE_OVERLAY,
     ClaudeAgentRenderer,
     ClaudeGuidanceRenderer,
     ClaudeHookRenderer,
-    ClaudeMcpRenderer,
     ClaudePluginManifestRenderer,
     ClaudeSkillRenderer,
     ClaudeSpellings,
 )
 from lup.providers.codex.patch import patched_files
 from lup.providers.codex.harness import (
+    CODEX_OVERLAY,
     CodexAgentRenderer,
     CodexGuidanceRenderer,
     CodexHookRenderer,
@@ -31,12 +38,11 @@ from lup.harness.models import (
     Artifact,
     ArtifactTree,
     Harness,
-    Plugin,
+    Skill,
 )
 from lup.harness.validation import validated_tree
 from lup.policy.review import ReviewedFile
 from lup.policy.kernel.review import copied_paths, literal_input
-from lup.types import JsonObject
 
 
 class AdapterName(StrEnum):
@@ -145,18 +151,16 @@ def compile_claude(source: Harness) -> ArtifactTree:
     spellings = ClaudeSpellings()
     prompts = prompt_renderer(spellings)
     manifest_renderer = ClaudePluginManifestRenderer()
-    mcp_renderer = ClaudeMcpRenderer(spellings)
     guidance_renderer = ClaudeGuidanceRenderer(prompts)
     artifacts: list[Artifact] = []  # lup: ignore[empty-collection]
     for plugin in source.plugins:
         skill_renderer = ClaudeSkillRenderer(prompts, plugin)
         agent_renderer = ClaudeAgentRenderer(prompts, plugin, spellings)
-        for declaration in plugin.skills:
+        for declaration in plugin.committed_skills():
             artifacts.extend(skill_renderer.render(declaration).artifacts)
         for declaration in plugin.agents:
             artifacts.extend(agent_renderer.render(declaration).artifacts)
         artifacts.extend(manifest_renderer.render(plugin).artifacts)
-        artifacts.extend(mcp_renderer.render(plugin).artifacts)
         if plugin.hooks is not None:
             artifacts.extend(
                 ClaudeHookRenderer(plugin.name, worker_identity_of(source), spellings)
@@ -167,32 +171,6 @@ def compile_claude(source: Harness) -> ArtifactTree:
     reject_oversized_guidance(guidance)
     artifacts.extend(guidance.artifacts)
     return validated_tree(artifacts)
-
-
-def startup_deadline_settings(settings: JsonObject, plugin: Plugin) -> JsonObject:
-    """Spell the declared server deadlines where Claude Code reads one.
-
-    Codex takes a deadline per server, rendered into its own config by its
-    adapter; Claude Code reads only ``MCP_TIMEOUT`` from the settings env
-    block, in milliseconds, applied to every server it starts. One variable
-    cannot honor several declarations, so the widest declared deadline lands —
-    loosening the limit for a server that declared nothing and never
-    tightening one. A project spelling the variable itself has made the
-    judgement directly, so its own value stands over the derived one.
-    """
-    deadlines = [
-        server.startup_timeout_seconds
-        for server in plugin.mcp_servers
-        if server.startup_timeout_seconds is not None
-    ]
-    if not deadlines:
-        return settings
-    spelled = settings["env"] if "env" in settings else {}
-    environment: JsonObject = {
-        "MCP_TIMEOUT": str(round(max(deadlines) * 1000)),
-        **(spelled if isinstance(spelled, dict) else {}),
-    }
-    return {**settings, "env": environment}
 
 
 def compile_codex(source: Harness) -> ArtifactTree:
@@ -206,7 +184,7 @@ def compile_codex(source: Harness) -> ArtifactTree:
     for plugin in source.plugins:
         skill_renderer = CodexSkillRenderer(prompts, plugin.name)
         agent_renderer = CodexAgentRenderer(prompts, spellings)
-        for declaration in plugin.skills:
+        for declaration in plugin.committed_skills():
             artifacts.extend(skill_renderer.render(declaration).artifacts)
         for declaration in plugin.agents:
             artifacts.extend(agent_renderer.render(declaration).artifacts)
@@ -221,6 +199,101 @@ def compile_codex(source: Harness) -> ArtifactTree:
     reject_oversized_guidance(guidance)
     artifacts.extend(guidance.artifacts)
     return validated_tree(artifacts)
+
+
+def machine_hinted(skill: Skill, profiles: Sequence[str]) -> Skill:
+    """A machine's skill as this machine spells it: its hint naming these profiles."""
+    hint = skill.machine_hint
+    return skill.model_copy(
+        update={
+            "argument_hint": hint.spelled(profiles) if hint is not None else None,
+            "machine_hint": None,
+        }
+    )
+
+
+def claude_machine_overlay(source: Harness, profiles: Sequence[str]) -> ArtifactTree:
+    """The plugin one machine loads beside the committed one, holding its own commands.
+
+    Named as the committed plugin is, so its commands are that plugin's —
+    ``/lup:profile`` rather than a second namespace — which holds only because
+    a launch loads the committed plugin first and this one beside it, and
+    because this one carries no hooks and no command the committed one has:
+    loaded on its own over an installed ``lup``, it would stand in for the
+    whole of it. Empty where the harness declares no skill of the machine's.
+    """
+    spellings = ClaudeSpellings()
+    prompts = prompt_renderer(spellings)
+    artifacts = [
+        artifact.model_copy(
+            update={"path": CLAUDE_OVERLAY / "commands" / artifact.path.name}
+        )
+        for plugin in source.plugins
+        for skill in plugin.machine_skills()
+        for artifact in ClaudeSkillRenderer(prompts, plugin)
+        .render(machine_hinted(skill, profiles))
+        .artifacts
+    ]
+    if not artifacts:
+        return ArtifactTree(artifacts=[])
+    plugin = source.plugins[0]
+    manifest = Artifact(
+        path=CLAUDE_OVERLAY / ".claude-plugin" / "plugin.json",
+        content=json.dumps(
+            {
+                "name": plugin.name,
+                "version": plugin.version,
+                "description": f"This machine's own commands for {plugin.name}",
+            },
+            indent=2,
+            sort_keys=True,
+        ),
+        semantic_id=plugin.id,
+        banner=COMMENT_FREE.compiled_from(plugin.id),
+    )
+    return ArtifactTree(artifacts=[manifest, *artifacts])
+
+
+def codex_machine_overlay(source: Harness, profiles: Sequence[str]) -> ArtifactTree:
+    """The skills one machine offers its Codex sessions beside the installed plugin.
+
+    Project skills rather than a second plugin, because Codex reads a
+    checkout's own skills where it runs with nothing to install, and an
+    installed revision is immutable: a second plugin would be reinstalled
+    whenever a profile came or went. Each is named under the plugin's
+    namespace — ``lup:profile`` — which is the name the plugin's own skills
+    answer to. Codex's skill metadata has no argument hint, so the hint rides
+    in the description.
+    """
+    spellings = CodexSpellings()
+    prompts = prompt_renderer(spellings)
+    return ArtifactTree(
+        artifacts=[
+            Artifact.in_markdown(
+                path=CODEX_OVERLAY / f"{plugin.name}-{skill.name}" / "SKILL.md",
+                document=MarkdownDocument(
+                    frontmatter=YamlDocument(
+                        root=YamlMap(
+                            entries=scalars(
+                                {
+                                    "name": f"{plugin.name}:{skill.name}",
+                                    "description": (
+                                        f"{skill.description} {hint.spelled(profiles)}"
+                                    ),
+                                }
+                            )
+                        )
+                    ),
+                    blocks=[Prose(text=prompts.render(skill.prompt))],
+                ),
+                semantic_id=skill.id,
+                banner=PROMPT_TEXT.compiled_from(skill.prompt.declared_source()),
+            )
+            for plugin in source.plugins
+            for skill in plugin.machine_skills()
+            if (hint := skill.machine_hint) is not None
+        ]
+    )
 
 
 def patch_review(

@@ -14,38 +14,30 @@ quietly contained, or quietly not.
 """
 
 import inspect
+from collections.abc import Sequence
 from pathlib import Path
 from unittest.mock import Mock
 
 import pytest
-import sh
 import typer
 from typer.testing import CliRunner
 
-import lup.launch.container as contained
 import lup.devtools.harness.launch as launch
+import lup.launch.container as contained
 import lup.launch.declaration as declaration
-from lup.launch.declaration import LaunchSandbox
+import lup.launch.session as launch_session
+import lup.providers.claude.launch as claude_launch
+import lup.providers.codex.launch as codex_launch
 from lup.devtools.harness.app import create_harness_app
 from lup.devtools.harness.composition import NativeTargets
-from lup.harness.generate import NativeHarnessComposition
 from lup.devtools.harness.launch import launch_claude, launch_codex
-from lup.launch.session import runtime_preflight, session_argv
 from lup.harness.codescan.common import RuleSelection
+from lup.harness.generate import NativeHarnessComposition
 from lup.harness.image import ContainerClient
-from lup.harness.messaging import WakeSockets
-
-
-def composition() -> Mock:
-    """A composition carrying what both launchers read before the argv."""
-    plugin = Mock()
-    plugin.name = "lup"
-    built = Mock()
-    built.recipe.source.plugins = [plugin]
-    built.recipe.source.image.forge.sourced.return_value = ""
-    # Declined, so no launch here binds a wake socket in the machine's directory.
-    built.recipe.source.image.wake_sockets = WakeSockets(directory="")
-    return built
+from lup.launch.declaration import LaunchSandbox, LaunchStep
+from lup.providers.claude import Claude
+from lup.providers.codex import Codex
+from tests.unit.harness_launch import Caught, checkout, composition, profiles, stub_host
 
 
 def host(monkeypatch: pytest.MonkeyPatch, client: ContainerClient | None) -> None:
@@ -62,96 +54,69 @@ def unprobed(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(declaration, "detected_client", probed)
 
 
-@pytest.fixture
-def seen(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Mock:
-    """Stub everything a launch touches besides its gate, and record what reached it.
+class Opened:
+    """The sandbox each declaration a launch opened carried, and the host it ran on."""
 
-    The gate itself -- `ready_to_open`, where the default is settled -- runs
-    for real; what it would generate, sweep and measure is stubbed, and so is
-    everything after it that would reach this machine. `session_argv` is
-    recorded rather than run, so a test that needs its container branch puts
-    the real one back.
-    """
-    recorded = Mock()
-    recorded.preflight.return_value = []
-    recorded.claude_sandbox.return_value = []
-    recorded.codex_sandbox.return_value = []
-    recorded.session_argv.side_effect = lambda cli, *a, **k: [cli]
-    monkeypatch.setattr(launch, "generate_with_report", lambda *a, **k: None)
-    monkeypatch.setattr(launch, "generate_targets", lambda *a, **k: None)
-    monkeypatch.setattr(launch, "project_root", lambda: tmp_path)
-    monkeypatch.setattr(launch, "carry_claude_home", lambda *a, **k: None)
-    monkeypatch.setattr(launch, "sweep_ledgers", lambda root: 0)
-    monkeypatch.setattr(launch, "exclude_sandbox_placeholders", lambda root: [])
-    monkeypatch.setattr(launch, "runtime_preflight", recorded.preflight)
-    monkeypatch.setattr(launch, "settle_base_freshness", lambda *a, **k: None)
-    monkeypatch.setattr(launch, "non_interactive_environment", lambda _env: {})
-    monkeypatch.setattr(launch, "accessible_roots", lambda *a: [])
-    monkeypatch.setattr(launch, "granted_devices", lambda *a: [])
-    monkeypatch.setattr(launch, "start_harness_transcript", lambda *a, **k: Mock())
-    monkeypatch.setattr(launch, "claude_sandbox_arguments", recorded.claude_sandbox)
-    monkeypatch.setattr(launch, "apply_sandbox_environment", recorded.vouch)
-    monkeypatch.setattr(launch, "ClaudeTranscripts", lambda _home: Mock())
-    monkeypatch.setattr(launch, "ambient_config_home", lambda *a, **k: tmp_path)
-    monkeypatch.setattr(launch, "codex_sandbox_arguments", recorded.codex_sandbox)
-    monkeypatch.setattr(launch, "CodexWorktreeHomeStore", lambda **_: Mock())
-    monkeypatch.setattr(
-        launch,
-        "select_codex_home",
-        lambda *a: Mock(path=tmp_path / "codex-home", isolated=False),
-    )
-    monkeypatch.setattr(launch, "codex_login_preflight", lambda *a, **k: None)
-    monkeypatch.setattr(launch, "prepare_codex_plugin", lambda *a, **k: None)
-    monkeypatch.setattr(launch, "CodexTranscripts", lambda _home: Mock())
-    monkeypatch.setattr(launch, "session_argv", recorded.session_argv)
-    monkeypatch.setattr(sh, "Command", lambda _name: recorded.cli)
-    return recorded
+    def __init__(self, root: Path, caught: Caught) -> None:
+        self.root = root
+        self.caught = caught
+        self.sandboxes: list[LaunchSandbox] = []
+
+
+@pytest.fixture
+def seen(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Opened:
+    """Stub the host, and record the posture every declaration launched was given."""
+    root = checkout(tmp_path)
+    monkeypatch.setattr(claude_launch, "settle_claude_theme", lambda *_a, **_k: None)
+    opened = Opened(root, stub_host(monkeypatch, root))
+    claude_session = claude_launch.launch_claude_session
+    codex_session = codex_launch.launch_codex_session
+
+    def claude(agent: Claude, words: list[str], steps: Sequence[LaunchStep]) -> int:
+        opened.sandboxes.append(agent.sandbox.posture())
+        return claude_session(agent, words, steps)
+
+    def codex(
+        agent: Codex, words: list[str], steps: Sequence[LaunchStep], force: bool
+    ) -> int:
+        opened.sandboxes.append(agent.sandbox.posture())
+        return codex_session(agent, words, steps, force)
+
+    monkeypatch.setattr(claude_launch, "launch_claude_session", claude)
+    monkeypatch.setattr(codex_launch, "launch_codex_session", codex)
+    return opened
 
 
 def opened(
-    runtime: str, sandbox: LaunchSandbox | None = None, generate_only: bool = False
+    seen: Opened,
+    runtime: str,
+    sandbox: LaunchSandbox | None = None,
+    generate_only: bool = False,
 ) -> None:
     """Launch one runtime; ``None`` is what the command line hands on for no flag."""
+    request = launch.LaunchRequest(sandbox=sandbox)
     match runtime:
         case "claude":
-            profiles = Mock()
-            profiles.launch_home.return_value = None
             launch_claude(
-                composition(), [], profiles, None, None, generate_only, sandbox=sandbox
+                composition(seen.root, runtime), request, profiles(), generate_only
             )
         case "codex":
             launch_codex(
-                composition(),
-                [],
-                None,
-                None,
-                None,
-                generate_only,
-                False,
-                sandbox=sandbox,
+                composition(seen.root, runtime), request, None, generate_only, False
             )
         case unknown:
             raise AssertionError(f"no launcher for {unknown}")
 
 
-def opened_under(seen: Mock, runtime: str) -> LaunchSandbox:
-    """The one posture every step after the gate was handed.
+def opened_under(seen: Opened) -> LaunchSandbox:
+    """The one posture the launch declared, and whether the CLI opened in a container.
 
-    Read off three places rather than one, because a fallback is only a
-    fallback if they agree: the host roster, chosen by which side of the
-    container the session runs on; the runtime's own sandbox words; and the
+    Read off two places rather than one, because a fallback is only a
+    fallback if they agree: the declaration the harness launched, and the
     argv, which decides whether a container is opened at all.
     """
-    call = seen.session_argv.call_args
-    argv = inspect.signature(session_argv).bind(*call.args, **call.kwargs)
-    posture = argv.arguments["sandbox"]
-    words = seen.claude_sandbox if runtime == "claude" else seen.codex_sandbox
-    preflight = seen.preflight.call_args
-    roster = inspect.signature(runtime_preflight).bind(
-        *preflight.args, **preflight.kwargs
-    )
-    assert roster.arguments["contained"] is posture.contained()
-    assert words.call_args.kwargs["sandbox"] is posture
+    [posture] = seen.sandboxes
+    assert (seen.caught.argv[0] == "engine") is posture.contained()
     return posture
 
 
@@ -161,7 +126,7 @@ RUNTIMES = pytest.mark.parametrize("runtime", ["claude", "codex"])
 @RUNTIMES
 def test_a_default_launch_with_no_engine_opens_under_the_inner_sandbox(
     runtime: str,
-    seen: Mock,
+    seen: Opened,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
@@ -173,21 +138,21 @@ def test_a_default_launch_with_no_engine_opens_under_the_inner_sandbox(
     """
     host(monkeypatch, None)
 
-    opened(runtime)
+    opened(seen, runtime)
 
     said = capsys.readouterr().out
-    assert opened_under(seen, runtime) is LaunchSandbox.INNER
+    assert opened_under(seen) is LaunchSandbox.INNER
     assert said.count("No working Docker or Podman client was found") == 1
     assert "runs under the inner sandbox on the host" in said
     assert "Install Docker or Podman" in said
     assert "`--sandbox inner`" in said
-    seen.cli.assert_called_once()
+    assert seen.caught.events.count("cli") == 1
 
 
 @RUNTIMES
 def test_a_default_launch_with_an_engine_opens_in_the_container(
     runtime: str,
-    seen: Mock,
+    seen: Opened,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
@@ -196,16 +161,16 @@ def test_a_default_launch_with_an_engine_opens_in_the_container(
         monkeypatch, ContainerClient(binary="podman", client="podman", server="podman")
     )
 
-    opened(runtime)
+    opened(seen, runtime)
 
-    assert opened_under(seen, runtime) is LaunchSandbox.OUTER
+    assert opened_under(seen) is LaunchSandbox.OUTER
     assert "Docker or Podman" not in capsys.readouterr().out
 
 
 @RUNTIMES
 def test_an_explicit_outer_with_no_engine_is_refused_rather_than_degraded(
     runtime: str,
-    seen: Mock,
+    seen: Opened,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
@@ -217,15 +182,15 @@ def test_an_explicit_outer_with_no_engine_is_refused_rather_than_degraded(
     """
     unprobed(monkeypatch)
     monkeypatch.setattr(contained, "detected_client", lambda: None)
-    monkeypatch.setattr(launch, "session_argv", session_argv)
+    monkeypatch.setattr(launch_session, "contained_argv", contained.contained_argv)
 
     with pytest.raises(
         typer.BadParameter, match="Install one to launch in a container"
     ):
-        opened(runtime, sandbox=LaunchSandbox.OUTER)
+        opened(seen, runtime, sandbox=LaunchSandbox.OUTER)
 
     assert "runs under the inner sandbox" not in capsys.readouterr().out
-    seen.cli.assert_not_called()
+    assert "cli" not in seen.caught.events
 
 
 @RUNTIMES
@@ -233,32 +198,33 @@ def test_an_explicit_outer_with_no_engine_is_refused_rather_than_degraded(
 def test_an_explicit_sandbox_is_taken_as_said_without_asking_the_host(
     runtime: str,
     asked: LaunchSandbox,
-    seen: Mock,
+    seen: Opened,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     """Only a command line naming no sandbox has anything to settle."""
     unprobed(monkeypatch)
 
-    opened(runtime, sandbox=asked)
+    opened(seen, runtime, sandbox=asked)
 
-    assert opened_under(seen, runtime) is asked
+    assert opened_under(seen) is asked
     assert "Docker or Podman" not in capsys.readouterr().out
 
 
 @RUNTIMES
 def test_generating_only_settles_no_sandbox(
     runtime: str,
-    seen: Mock,
+    seen: Opened,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     """A generate-only invocation opens nothing, so it is neither probed nor warned."""
     unprobed(monkeypatch)
 
-    opened(runtime, generate_only=True)
+    opened(seen, runtime, generate_only=True)
 
-    seen.preflight.assert_not_called()
+    assert "ready" not in seen.caught.events
+    assert seen.sandboxes == []
     assert "Docker or Podman" not in capsys.readouterr().out
 
 
@@ -300,4 +266,4 @@ def test_the_command_line_tells_a_missing_flag_from_an_explicit_outer(
     assert result.exit_code == 0, result.output
     call = recorded.call_args
     bound = inspect.signature(launcher).bind(*call.args, **call.kwargs)
-    assert bound.arguments["sandbox"] is asked
+    assert bound.arguments["request"].sandbox is asked

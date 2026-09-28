@@ -30,11 +30,9 @@ from lup.coordination.identity import MEMBER_ENV, mint_member_id
 from lup.coordination.policy import COORDINATION_SERVER
 from lup.coordination.repository import RepositoryPeers
 from lup.harness.generate import NativeHarnessComposition
-from lup.harness.generation import plugin_served_tool
 from lup.providers import coordination_caller, peer_delivery
 from lup.providers.roster_prompt import DEPARTURE_SCRIPT
 from lup.types import JsonObject
-from lup_template.harness.catalog import declared_plugin
 from lup_template.harness.composition import claude_target, codex_target
 from tests.unit.repos import commit_file
 from tests.unit.test_in_process_parity import DISPATCHERS, Session, edited
@@ -43,7 +41,7 @@ from tests.unit.test_roster_prompt_hook import rendered, shipped
 SESSION = "abc123"
 
 CODEX_TOOLS = f"mcp__{COORDINATION_SERVER}__"
-CLAUDE_TOOLS = f"{plugin_served_tool(declared_plugin().name, COORDINATION_SERVER)}__"
+CLAUDE_TOOLS = f"mcp__{COORDINATION_SERVER}__"
 
 RUNTIMES = pytest.mark.parametrize(
     ("target", "tree", "tools", "decision"),

@@ -19,24 +19,6 @@ def argument_text(value: JsonValue) -> str:
     return json.dumps(value, sort_keys=True, separators=(",", ":"))
 
 
-def plugin_served_tool(plugin: str, server: str) -> str:
-    """Address one tool server a plugin brings, on a runtime that namespaces them.
-
-    A plugin's servers are scoped by the plugin that loaded them, so the bare
-    key a server is declared under matches nothing: a permission, a hook
-    matcher, or a skill's tool grant written against it never fires. One
-    spelling here because two artifacts have to agree on the name — the
-    settings that grant these tools, and the skills and agents that ask for
-    them — and a grant that stops matching its permission is invisible until
-    an agent is refused a tool its own declaration listed.
-
-    Only the namespacing runtime needs this. Codex declares each server under
-    its bare key and addresses it there, so its config and its grants already
-    agree and neither is rewritten.
-    """
-    return f"mcp__plugin_{plugin}_{server}"
-
-
 class ArtifactValidationError(ValueError):
     """Complete desired output failed validation before materialization."""
 

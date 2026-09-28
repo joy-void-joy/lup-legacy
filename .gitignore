@@ -256,6 +256,10 @@ downstream.json.local
 # Personal harness config, one per native tree; the generated siblings are committed.
 .claude/settings.local.json
 .codex/config.local.toml
+# The machine's own overlay beside each tree — `/lup:profile` naming the
+# profiles this machine keeps — rendered by every generation and launch.
+.claude/plugins/local/
+.codex/skills/
 .cache/
 refs/
 **/*.bak

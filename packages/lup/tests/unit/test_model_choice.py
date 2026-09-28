@@ -12,10 +12,10 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from lup.launch.declaration import LaunchSandbox
-from lup.providers.claude.launch import claude_sandbox_arguments
-from lup.harness.models import HookSandbox, HookSet, Plugin
-from lup.providers.claude.confinement import CLAUDE_CONFINEMENT
+from lup.providers.claude.launch import claude_arguments, claude_settings
+from lup.coordination.identity import LaunchedMember
+from lup.harness.models import HookSandbox, HookSet
+from lup.providers.claude.confinement import CLAUDE_SANDBOX_OFF
 from lup.providers.claude.model_choice import (
     claude_default_effort,
     claude_effort,
@@ -24,7 +24,7 @@ from lup.providers.claude.model_choice import (
     claude_model_name,
     listed_claude_model,
 )
-from lup.launch.declaration import InnerSandbox
+from lup.launch.declaration import InnerSandbox, OuterContainer
 from lup.providers.claude import Claude
 from lup.providers.claude.models import ClaudeModel
 from lup.providers.claude.runtime import build_claude_options
@@ -40,6 +40,9 @@ from lup.providers.codex.selection import CODEX_RUNTIME, codex_config
 from lup.providers.codex.subagents import CodexModelTiers
 from lup.providers.selection import SessionRequest
 from lup.types import CustomModel
+
+MEMBER = LaunchedMember(member_id="member-1", cli_name="work")
+
 
 SESSION = "18f5debf-499a-42bb-8856-0b39dd59943d"
 
@@ -146,30 +149,23 @@ def test_an_ultra_session_keeps_its_sandbox_in_the_same_settings() -> None:
 def test_ultra_on_the_command_line_is_one_settings_document() -> None:
     """The CLI reads one ``--settings``; a second would replace the first."""
     compiled = claude_effort("ultra")
-    plugin = Plugin(
-        id="plugin.probe",
-        name="probe",
-        description="a plugin declaring a boundary",
-        version="0.0.0",
-        marketplace="probe",
-        skills=[],
-        agents=[],
-        hooks=HookSet(id="hooks.probe", policy_ids=[], sandbox=HookSandbox()),
+    agent = Claude(
+        model="opus",
+        effort="ultra",
+        policy=HookSet(id="hooks.probe", policy_ids=[], sandbox=HookSandbox()),
+        sandbox=OuterContainer(),
     )
+    arguments = claude_arguments(agent, MEMBER, None, [])
 
     assert compiled.arguments() == ["--effort", "xhigh"]
-    arguments = claude_sandbox_arguments(
-        plugin.hooks, sandbox=LaunchSandbox.OUTER, settings=compiled.settings
-    )
-    assert arguments[0] == "--settings"
     assert arguments.count("--settings") == 1
-    assert json.loads(arguments[1]) == {
+    assert json.loads(arguments[arguments.index("--settings") + 1]) == {
         "sandbox": {"enabled": False},
         "ultracode": True,
     }
     assert (
-        claude_sandbox_arguments(plugin.hooks, sandbox=LaunchSandbox.OUTER)
-        == CLAUDE_CONFINEMENT.off
+        claude_settings(agent.model_copy(update={"effort": "xhigh"}))
+        == CLAUDE_SANDBOX_OFF
     )
 
 

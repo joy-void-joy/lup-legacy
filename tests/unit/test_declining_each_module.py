@@ -29,6 +29,7 @@ from lup.harness.dependencies import SPELLED_SKILL
 from lup.harness.modules import Composition, anchored
 from lup.workspace.paths import project_root
 from lup_template.devtools.main import cli
+from lup_template.harness.catalog import launched_tool_servers
 from lup_template.harness.composition import installer_guidance, project_content
 from lup_template.harness.content.catalog import MODULE_SPECS, composition, entries
 from lup_template.harness.content.template_claude import DOCUMENT as TEMPLATE_CLAUDE
@@ -130,9 +131,9 @@ def test_a_declined_module_leaves_nothing_of_its_own_behind(module: str) -> None
     assert {skill.name for skill in plugin.skills}.isdisjoint(
         skill.name for held in gone for skill in held.content.skills
     )
-    assert {server.name for server in plugin.mcp_servers}.isdisjoint(
-        group for held in gone for group in held.spec.tool_groups
-    )
+    assert {
+        server.name for server in launched_tool_servers(composed.withheld_tool_groups())
+    }.isdisjoint(group for held in gone for group in held.spec.tool_groups)
     assert set(composed.subapps()).isdisjoint(
         name for held in gone for name in held.spec.subapps
     )

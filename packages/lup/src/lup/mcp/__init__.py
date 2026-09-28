@@ -148,6 +148,17 @@ class ServeLaunch(BaseModel, frozen=True):
     environment: EnvVars = {}
     """The environment the server process starts with."""
 
+    startup_timeout_seconds: float | None = None
+    """How long each server it starts gets to come up before a runtime abandons it.
+
+    Declared with the launch rather than the machine, because the answer
+    belongs to how the servers start: a command that resolves its package
+    before importing anything is slow on a cold checkout and instant on a
+    warm one, while a runtime's own default is chosen for a server already
+    installed. Missing it drops the server and keeps the session, so it
+    arrives as a tool group simply absent. Unset leaves the runtime's default.
+    """
+
     def options(self) -> list[str]:
         """The options naming this launch's session, runtime and needs hook."""
         hook = self.model_dump(mode="json", include={"needs"})["needs"]
@@ -215,6 +226,15 @@ class ToolServer(
         """
         return []
 
+    def startup_timeout(self, launch: ServeLaunch) -> float | None:
+        """How long a runtime waits for this server to come up, where a launch says.
+
+        Nothing by default: a server passed through as declared starts however
+        its own transport does, which ``launch`` says nothing about.
+        """
+        del launch
+        return None
+
 
 class HostedServer(ToolServer, ABC, frozen=True):
     """A server lup builds out of one tool group, in process or in a subprocess."""
@@ -243,6 +263,10 @@ class HostedServer(ToolServer, ABC, frozen=True):
         session's recursion allowance.
         """
         return tool_server_env()
+
+    def startup_timeout(self, launch: ServeLaunch) -> float | None:
+        """The launch's deadline, since the launch is what starts this server."""
+        return launch.startup_timeout_seconds
 
     def served(self) -> "ServedServer":
         """This server as a serve command names it: its class and its fields."""

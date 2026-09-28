@@ -7,10 +7,15 @@ that established what the widening was for. Reopening is what closes that
 loop, which is why the request is one declaration and only the words differ.
 """
 
+from pathlib import Path
+
 import pytest
 import typer
 
 from lup.harness.models import Resumption
+from lup.launch.declaration import Latest, Pick, Reopen
+from lup.sessions.events import SessionId
+from tests.unit.harness_launch import checkout, composition, profiles, stub_host
 from lup.providers.claude.launch import claude_resume_arguments
 from lup.providers.codex.launch import codex_resume_arguments
 
@@ -68,43 +73,46 @@ def test_one_named_session_is_not_a_contradiction() -> None:
 
 
 def test_a_contradicted_request_never_reaches_a_runtime(
-    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Refused before generation, on both launchers.
+    """Refused as the declaration is made, on both launchers.
 
-    Ahead of ``ready_to_open`` rather than after it, because a launch that
-    cannot happen should not first rewrite the tree it was going to open.
+    Before any step of the workflow around the session, because a launch
+    that cannot happen should not first rewrite the tree it was going to open.
     """
     from lup.devtools.harness import launch
 
-    def unreachable(*_args: object, **_kwargs: object) -> bool:
-        raise AssertionError("a contradicted launch generated artifacts")
-
-    monkeypatch.setattr(launch, "ready_to_open", unreachable)
-    contradicted = Resumption(pick=True, session="abc123")
+    root = checkout(tmp_path)
+    caught = stub_host(monkeypatch, root)
+    contradicted = launch.LaunchRequest(resume=Resumption(pick=True, session="abc123"))
 
     with pytest.raises(typer.BadParameter):
         launch.launch_claude(
-            composition=None,  # type: ignore[arg-type]
-            extra_args=[],
-            profiles=None,  # type: ignore[arg-type]
-            profile=None,
-            model=None,
-            generate_only=False,
-            resume=contradicted,
+            composition(root, "claude"), contradicted, profiles(), False
         )
-
     with pytest.raises(typer.BadParameter):
         launch.launch_codex(
-            composition=None,  # type: ignore[arg-type]
-            extra_args=[],
-            codex_home=None,
-            profile=None,
-            model=None,
-            generate_only=False,
-            force_install=False,
-            resume=contradicted,
+            composition(root, "codex"), contradicted, None, False, False
         )
+    assert caught.events == []
+
+
+@pytest.mark.parametrize(
+    ("resume", "reopening"),
+    [
+        (Resumption(), None),
+        (Resumption(latest=True), Latest()),
+        (Resumption(pick=True), Pick()),
+        (Resumption(session="abc"), Reopen(session=SessionId(value="abc"))),
+    ],
+)
+def test_each_reopening_flag_is_the_declarations_resume(
+    resume: Resumption, reopening: Latest | Pick | Reopen | None
+) -> None:
+    """``--continue``, ``--resume`` and ``--session`` are one field of the declaration."""
+    from lup.devtools.harness import launch
+
+    assert launch.LaunchRequest(resume=resume).reopening() == reopening
 
 
 def test_a_relaxed_launch_says_what_it_retired_and_what_it_did_not(

@@ -540,3 +540,40 @@ def test_a_missing_cli_is_a_refusal_naming_it(tmp_path: Path) -> None:
 
     with pytest.raises(LaunchRefused, match="definitely-not-a-cli"):
         run_in_foreground(command)
+
+
+def test_a_plugin_built_elsewhere_names_what_the_harness_would_have() -> None:
+    """A built plugin carries no roster and no image; a declaration names them beside it.
+
+    Unnamed, the harness's own are read where the plugin is one, and nothing
+    beyond the runtime's own probes and lup's default image where it is not.
+    """
+    from lup.harness.image import Image
+    from lup.harness.requirements import Manifest
+    from lup.launch.declaration import declared_image, declared_requirements
+    from lup_template.harness.catalog import portable_harness
+
+    harness = portable_harness()
+    image = Image().model_copy(update={"config_home": "/elsewhere"})
+    built = Path("/plugins/built")
+
+    assert declared_requirements(harness, None) == harness.requirements
+    assert declared_requirements(built, None) == Manifest()
+    assert declared_requirements(harness, Manifest()) == Manifest()
+    assert declared_image(harness, OuterContainer()) == harness.image
+    assert declared_image(built, OuterContainer()) == Image()
+    assert declared_image(harness, OuterContainer(image=image)) == image
+    assert declared_image(harness, InnerSandbox()) == harness.image
+
+
+@pytest.mark.parametrize("wall", [OuterContainer(), InnerSandbox(), NoSandbox()])
+def test_every_wall_reaches_its_mounts_and_widens_to_more(
+    wall: OuterContainer | InnerSandbox | NoSandbox,
+) -> None:
+    """The policy reads a mount as the session's own whichever wall it opens behind."""
+    declared = Mount(path=Path("/work/other"), writable=True)
+    added = Mount(path=Path("/work/answers"))
+    mounted = wall.model_copy(update={"mounts": [declared]})
+
+    assert mounted.roots() == [declared.root()]
+    assert mounted.widened([added]).roots() == [declared.root(), added.root()]

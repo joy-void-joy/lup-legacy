@@ -311,17 +311,6 @@ class CodexSpellings(NativeSpellings):
             "https://learn.chatgpt.com/"
         )
 
-    def runtime_key(self) -> str:
-        return "codex"
-
-    def project_root(self) -> str:
-        # Codex substitutes nothing into a server command, but it reads this
-        # config only for the project the config sits in, so the launch
-        # directory is that project by construction. Naming it explicitly is
-        # what makes a server started anywhere else fail instead of resolving
-        # up the tree into a neighbouring checkout.
-        return "."
-
     def model_alias(self, tier: ModelTier) -> str | None:
         return codex_model_id(tier, CodexModelTiers())
 
@@ -357,6 +346,14 @@ class CodexSpellings(NativeSpellings):
                 return Atom(f"{root}/hooks/")
             case "guidance_template":
                 return Atom(f"{root}/TEMPLATE_AGENTS.md")
+
+
+# lup: ignore[constant-declaration] — where Codex reads a checkout's own skills,
+# the runtime's layout rather than a choice made here
+CODEX_OVERLAY = Path(".codex/skills")
+"""The skills one machine renders for itself, where Codex reads a project's own.
+
+Ignored by git, because what they hold names this machine's own profiles."""
 
 
 class CodexSkillRenderer(ArtifactRenderer[Skill]):
@@ -485,63 +482,20 @@ class CodexPluginManifestRenderer(ArtifactRenderer[Plugin]):
         )
 
 
-def codex_project_config(
-    source: Harness,
-    spellings: NativeSpellings,
-    budget: GuidanceBudget = GUIDANCE_BUDGET,
-) -> str:
-    """Render the project config: enabled features, then every tool server.
-
-    Codex keeps a project's servers in the same file as the rest of its
-    project configuration, so this is one document rather than the separate
-    artifact the other runtime reads.
+def codex_project_config(budget: GuidanceBudget = GUIDANCE_BUDGET) -> str:
+    """Render the project config: the features a session needs, and its guidance budget.
 
     The guidance ceiling generation already enforces is restated here as
     ``project_doc_max_bytes``: the runtime truncates project guidance at its
     own default, so a document that passed generation would still reach the
-    model short if the two disagreed.
-
-    ``env_vars`` is rendered here and nowhere else because only this runtime
-    needs telling. Codex starts a stdio server under a fixed base environment
-    and forwards nothing else it was not asked for, so a server whose session
-    relay or credential arrives as an environment variable gets neither
-    unless the config names it; the other runtime hands its servers the whole
-    environment and the same declaration is already satisfied there.
-
-    ``default_tools_approval_mode`` grants every declared server outright,
-    which is the same decision the other runtime's settings artifact already
-    compiles into its served-tool grants, derived from the same fact: a
-    server named in a plugin here is this project's own code, wired in
-    deliberately, so asking per call would make the declaration a suggestion.
-    Undeclared, the two runtimes disagree on it — a session opened with no
-    operator to ask holds every server it was given and can call none
-    of them, refusing each with its approval policy rather than with anything
-    naming the servers.
-
-    ``startup_timeout_sec`` is where a declared deadline lands, in this
-    runtime's own unit. It renders only when the declaration names one, so a
-    server that says nothing keeps the runtime's default instead of being
-    given this file's opinion of one.
+    model short if the two disagreed. The tool servers a session carries are
+    no part of it: a launch declares them per session.
     """
     document = tomlkit.document()
     features = tomlkit.table()
     features["hooks"] = True
     document["features"] = features
     document["project_doc_max_bytes"] = budget.ceiling
-    servers = tomlkit.table(is_super_table=True)
-    for plugin in source.plugins:
-        for server in plugin.mcp_servers:
-            entry = tomlkit.table()
-            entry["command"] = server.command
-            entry["args"] = server.command_line(spellings)
-            if server.env_vars:
-                entry["env_vars"] = server.env_vars
-            if server.startup_timeout_seconds is not None:
-                entry["startup_timeout_sec"] = server.startup_timeout_seconds
-            entry["default_tools_approval_mode"] = "approve"
-            servers[server.name] = entry
-    if servers:
-        document["mcp_servers"] = servers
     return tomlkit.dumps(document)
 
 
@@ -569,7 +523,7 @@ class CodexGuidanceRenderer(ArtifactRenderer[Harness]):
                 ),
                 Artifact.generated(
                     path=Path(".codex/config.toml"),
-                    body=codex_project_config(source, self.spellings, self.budget),
+                    body=codex_project_config(self.budget),
                     semantic_id="harness.project-config",
                     banner=GeneratedBanner(
                         source=__name__,

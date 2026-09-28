@@ -1,106 +1,46 @@
-"""A native launch naming no effort passes the model's default, as code does.
+"""A harness launch naming no effort passes the model's default, as code does.
 
 A session declared in code that names no effort thinks at ``xhigh``, clamped
 to what its model's catalog row takes. ``harness claude`` and ``harness codex``
-start the same CLIs by hand, and a launch that passed nothing would think at
-whatever the CLI's own settings happened to say instead.
+launch the same declaration, so a launch naming none thinks at the same
+default rather than at whatever the CLI's own settings happened to say. A
+named effort the model's row lacks is refused on the command line, before
+anything is generated.
 """
 
 from pathlib import Path
-from unittest.mock import Mock
 
 import pytest
-import sh
+import typer
 
 import lup.devtools.harness.launch as launch
-from lup.launch.session import LaunchOpening
+import lup.providers.claude.launch as claude_launch
 from lup.launch.declaration import LaunchSandbox
-from lup.harness.messaging import WakeSockets
+from tests.unit.harness_launch import Caught, checkout, composition, profiles, stub_host
 
 
-class Transcript:
-    """The launch-facing half of a transcript, closing without a trace."""
-
-    def __init__(self) -> None:
-        self.journal = Mock()
-
-    def close(self, *, succeeded: bool, interrupted: bool = False) -> None:
-        del succeeded, interrupted
+@pytest.fixture
+def root(tmp_path: Path) -> Path:
+    return checkout(tmp_path)
 
 
-def composition() -> Mock:
-    """A composition carrying the one plugin each launcher reads first."""
-    plugin = Mock()
-    plugin.name = "lup"
-    plugin.marketplace = "test"
-    built = Mock()
-    built.recipe.source.plugins = [plugin]
-    # Declined, so no launch here binds a wake socket in the machine's directory.
-    built.recipe.source.image.wake_sockets = WakeSockets(directory="")
-    return built
-
-
-def launched(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> list[list[str]]:
-    """Stub every launch side effect, and collect the arguments each CLI gets."""
-    seen: list[list[str]] = []
-
-    def argv(
-        name: str, arguments: list[str], *args: object, **kwargs: object
-    ) -> list[str]:
-        del args, kwargs
-        seen.append(list(arguments))
-        return [name]
-
-    monkeypatch.setattr(
-        launch,
-        "ready_to_open",
-        lambda *a, **k: LaunchOpening(sandbox=LaunchSandbox.INNER),
-    )
-    monkeypatch.setattr(launch, "project_root", lambda: tmp_path)
-    monkeypatch.setattr(launch, "ambient_config_home", lambda *a, **k: tmp_path)
-    monkeypatch.setattr(launch, "session_argv", argv)
-    monkeypatch.setattr(
-        launch,
-        "claude_sandbox_arguments",
-        lambda _plugin, sandbox=LaunchSandbox.INNER, accessible=[], settings=None, tree=None: [],
-    )
-    monkeypatch.setattr(
-        launch,
-        "codex_sandbox_arguments",
-        lambda _plugin, _environment, _args, sandbox=LaunchSandbox.INNER, accessible=[], tree=None: [],
-    )
-    monkeypatch.setattr(launch, "non_interactive_environment", lambda _env: {})
-    monkeypatch.setattr(
-        launch, "apply_sandbox_environment", lambda *args, **kwargs: None
-    )
-    monkeypatch.setattr(launch, "ClaudeTranscripts", lambda _home: Mock())
-    monkeypatch.setattr(launch, "CodexTranscripts", lambda _home: Mock())
-    monkeypatch.setattr(launch, "CodexWorktreeHomeStore", lambda **_: Mock())
-    monkeypatch.setattr(
-        launch,
-        "select_codex_home",
-        lambda *args: Mock(path=tmp_path / "home", isolated=False),
-    )
-    monkeypatch.setattr(launch, "codex_login_preflight", lambda *args: None)
-    monkeypatch.setattr(launch, "accessible_roots", lambda: [])
-    monkeypatch.setattr(
-        launch, "start_harness_transcript", lambda *args, **kwargs: Transcript()
-    )
-    monkeypatch.setattr(sh, "Command", lambda _name: lambda *args, **kwargs: None)
-    return seen
+@pytest.fixture
+def caught(root: Path, monkeypatch: pytest.MonkeyPatch) -> Caught:
+    monkeypatch.setattr(claude_launch, "settle_claude_theme", lambda *_a, **_k: None)
+    return stub_host(monkeypatch, root)
 
 
 def claude_effort(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, model: str, effort: str | None
+    root: Path, caught: Caught, model: str, effort: str | None
 ) -> list[str]:
     """What ``harness claude --model <model>`` hands the CLI as its effort."""
-    seen = launched(tmp_path, monkeypatch)
-    profiles = Mock()
-    profiles.launch_home.return_value = None
-
-    launch.launch_claude(composition(), [], profiles, None, model, False, effort=effort)
-
-    arguments = seen[0]
+    launch.launch_claude(
+        composition(root, "claude"),
+        launch.LaunchRequest(model=model, effort=effort, sandbox=LaunchSandbox.INNER),
+        profiles(),
+        False,
+    )
+    arguments = caught.argv
     return (
         arguments[arguments.index("--effort") :][:2] if "--effort" in arguments else []
     )
@@ -115,25 +55,42 @@ def claude_effort(
     ],
 )
 def test_claude_with_no_effort_flag_passes_the_models_default(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    model: str,
-    expected: list[str],
+    root: Path, caught: Caught, model: str, expected: list[str]
 ) -> None:
-    assert claude_effort(tmp_path, monkeypatch, model, None) == expected
+    assert claude_effort(root, caught, model, None) == expected
 
 
-def test_claude_passes_a_named_effort_unchanged(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+def test_claude_passes_a_named_effort_unchanged(root: Path, caught: Caught) -> None:
+    assert claude_effort(root, caught, "opus", "max") == ["--effort", "max"]
+
+
+def test_a_named_effort_the_model_lacks_is_the_command_lines_mistake(
+    root: Path, caught: Caught
 ) -> None:
-    assert claude_effort(tmp_path, monkeypatch, "opus", "max") == ["--effort", "max"]
+    with pytest.raises(typer.BadParameter, match="haiku"):
+        claude_effort(root, caught, "haiku", "max")
+    with pytest.raises(typer.BadParameter, match="not an effort"):
+        claude_effort(root, caught, "opus", "enormous")
+    assert caught.events == []
+
+
+def test_a_model_no_catalog_lists_is_passed_through_for_the_cli_to_judge(
+    root: Path, caught: Caught
+) -> None:
+    claude_effort(root, caught, "claude-opus-9-preview", None)
+
+    assert caught.argv[caught.argv.index("--model") + 1] == "claude-opus-9-preview"
 
 
 def test_codex_with_no_effort_flag_passes_the_models_default(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    root: Path, caught: Caught
 ) -> None:
-    seen = launched(tmp_path, monkeypatch)
+    launch.launch_codex(
+        composition(root, "codex"),
+        launch.LaunchRequest(model="gpt-5.5", sandbox=LaunchSandbox.INNER),
+        None,
+        False,
+        False,
+    )
 
-    launch.launch_codex(composition(), [], None, None, "gpt-5.5", False, False)
-
-    assert 'model_reasoning_effort="xhigh"' in seen[0]
+    assert 'model_reasoning_effort="xhigh"' in caught.argv

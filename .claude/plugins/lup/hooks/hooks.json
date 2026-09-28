@@ -42,7 +42,7 @@
             "type": "command"
           }
         ],
-        "matcher": "mcp__plugin_lup_coordination__.*"
+        "matcher": "mcp__coordination__.*"
       }
     ],
     "SessionEnd": [

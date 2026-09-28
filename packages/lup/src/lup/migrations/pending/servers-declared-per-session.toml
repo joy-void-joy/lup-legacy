@@ -1,0 +1,67 @@
+subjects = [
+    "Plugin.mcp_servers",
+    "McpServer",
+    "McpServer.id",
+    "McpServer.name",
+    "McpServer.description",
+    "McpServer.command",
+    "McpServer.arguments",
+    "McpServer.env_vars",
+    "McpServer.startup_timeout_seconds",
+    "McpServer.always_load",
+    "McpServer.command_line",
+    "McpWord",
+    "McpWord.spell_in",
+    "LiteralWord",
+    "LiteralWord.type",
+    "LiteralWord.text",
+    "LiteralWord.spell_in",
+    "ProjectRootWord",
+    "ProjectRootWord.type",
+    "ProjectRootWord.spell_in",
+    "RuntimeWord",
+    "RuntimeWord.type",
+    "RuntimeWord.spell_in",
+    "McpCommandWord",
+    "ClaudeMcpRenderer",
+    "ClaudeMcpRenderer.__init__",
+    "ClaudeMcpRenderer.render",
+    "startup_deadline_settings",
+    "plugin_served_tool",
+    "NativeSpellings.runtime_key",
+    "NativeSpellings.project_root",
+    "ClaudeSpellings.runtime_key",
+    "ClaudeSpellings.project_root",
+    "CodexSpellings.runtime_key",
+    "CodexSpellings.project_root",
+]
+reason = """
+a runtime reading a strict MCP roster drops a plugin's own servers, so the \
+servers a session carries are declared per session by its launch — \
+--mcp-config on Claude Code, --config mcp_servers.* on Codex, the SDK's own \
+servers for a session opened in process — and the generated plugin carries \
+skills, agents and hooks alone"""
+
+[[steps]]
+instruction = """
+Declare the servers a Plugin listed as ToolServers from lup.mcp in the agent's \
+tools.mcp — Coordination(), Ledger(...), CodeIntel(), Toolset(...), \
+Group(builder=...), or External(name=..., server=...) for a transport lup \
+does not host — and give the launch's ServeLaunch(program=..., session=..., \
+needs=..., startup_timeout_seconds=...) as tools.serve; a harness that \
+launches from a composition declares them on ProjectContent(servers=..., \
+serve=...)."""
+
+[[steps]]
+instruction = """
+Grant a server's tools by the key it is declared under, mcp__<server>, where a \
+grant or matcher named plugin_served_tool(plugin, server); \
+lup.devtools.harness.settings.project_settings(declared, plugin, servers) and \
+served_tool_grants(servers) take the servers."""
+
+[[steps]]
+instruction = """
+Read a launch's MCP_TIMEOUT from claude_server_environment(tools) and each \
+Codex server's startup_timeout_sec from codex_mcp_arguments(tools), both in \
+lup.providers.<runtime>.launch, where startup_deadline_settings rendered one \
+into the settings artifact."""

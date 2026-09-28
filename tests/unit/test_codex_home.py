@@ -6,7 +6,6 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import jwt
-import pytest
 import tomlkit
 from tomlkit.items import Table
 
@@ -42,13 +41,6 @@ enabled = true
 [marketplaces.account]
 source_type = "local"
 source = "/account"
-
-[plugins."lup@account"]
-enabled = true
-"""
-
-PROFILE_CONFIG = """\
-model_reasoning_effort = "high"
 
 [plugins."lup@account"]
 enabled = true
@@ -130,12 +122,11 @@ def test_prepare_seeds_auth_and_sanitized_personal_settings(tmp_path: Path) -> N
     auth.write_text('{"token": "secret"}\n', encoding="utf-8")
     auth.chmod(0o600)
     (account / "config.toml").write_text(ACCOUNT_CONFIG, encoding="utf-8")
-    (account / "review.config.toml").write_text(PROFILE_CONFIG, encoding="utf-8")
     worktree = tmp_path / "tree" / "dev"
     worktree.mkdir(parents=True)
     store = CodexWorktreeHomeStore(account)
 
-    scoped = store.prepare(worktree, profile="review")
+    scoped = store.prepare(worktree)
 
     assert (scoped / "auth.json").read_bytes() == auth.read_bytes()
     assert (scoped / "auth.json").stat().st_mode & 0o777 == 0o600
@@ -155,9 +146,6 @@ def test_prepare_seeds_auth_and_sanitized_personal_settings(tmp_path: Path) -> N
     state = hooks.item("state")
     assert isinstance(state, Table)
     assert "lup@account:hooks/hooks.json:pre_tool_use:0:0" in state
-    profile = tomlkit.parse((scoped / "review.config.toml").read_text(encoding="utf-8"))
-    assert profile["model_reasoning_effort"] == "high"
-    assert "plugins" not in profile
 
 
 def test_claude_daltonized_theme_uses_truecolor_palette() -> None:
@@ -696,15 +684,6 @@ def test_a_record_stating_no_expiry_is_left_to_the_runtime(tmp_path: Path) -> No
     (tmp_path / "auth.json").write_text(SEEDED_CREDENTIAL, encoding="utf-8")
 
     assert login_state(tmp_path).usable_at(datetime.now(UTC)) is True
-
-
-def test_profile_name_cannot_escape_the_scoped_home(tmp_path: Path) -> None:
-    worktree = tmp_path / "worktree"
-    worktree.mkdir()
-    store = CodexWorktreeHomeStore(account_home=tmp_path / "account")
-
-    with pytest.raises(ValueError, match="invalid Codex profile name"):
-        store.prepare(worktree, profile="../outside")
 
 
 def reported(hooks: list[dict[str, object]], **listing: object) -> CodexHookReport:

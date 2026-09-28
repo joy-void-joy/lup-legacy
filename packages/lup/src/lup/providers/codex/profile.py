@@ -1,7 +1,6 @@
-"""Move a selected configuration layer without moving a home's installed state."""
+"""Move an account's settings into another home without moving its installed state."""
 
 import asyncio
-import hashlib
 import json
 import tempfile
 from pathlib import Path
@@ -12,11 +11,7 @@ from pydantic import BaseModel, Field, TypeAdapter
 from tomlkit.exceptions import ParseError
 
 from lup.providers.codex.app_server import CodexAppServer
-from lup.providers.codex.home import (
-    SEED_RECORD,
-    profile_config_filename,
-    seeded_codex_settings,
-)
+from lup.providers.codex.home import SEED_RECORD, seeded_codex_settings
 from lup.providers.codex.harness_runtime import codex_home_lock
 from lup.types import JsonObject, JsonValue
 
@@ -58,29 +53,22 @@ class CodexConfigurationState(BaseModel, extra="ignore"):
     hooks: CodexHookSettings | None = None
 
 
-class CodexProfileSettings(BaseModel, frozen=True):
-    """A selected profile and the personal settings it inherits, without trust."""
+class CodexAccountSettings(BaseModel, frozen=True):
+    """The account's own settings, carried into a contained session's home without trust.
 
-    name: str | None
+    A home inside the container cannot be derived from the account's the way
+    a host home is, so the account's settings are read on the host and
+    installed into it as it opens: every setting the person keeps, and none
+    of what the account's own home installed or trusted.
+    """
+
     source_home: Path
     source_user_home: Path = Field(default_factory=Path.home)
     settings: JsonObject = Field(repr=False)
-    as_base: bool = False
 
     @classmethod
-    def capture(cls, home: Path, profile: str | None, as_base: bool = False) -> Self:
-        """Snapshot base and selected profile settings without exposing parse values."""
-
-        def overlay(base: JsonObject, values: JsonObject) -> JsonObject:
-            merged = dict(base)
-            for key, value in values.items():
-                previous = merged.get(key)
-                merged[key] = (
-                    overlay(previous, value)
-                    if isinstance(previous, dict) and isinstance(value, dict)
-                    else value
-                )
-            return merged
+    def capture(cls, home: Path) -> Self:
+        """Snapshot the account's settings without exposing parse values."""
 
         def read(path: Path) -> JsonObject:
             document = tomlkit.parse(path.read_text(encoding="utf-8"))
@@ -90,24 +78,16 @@ class CodexProfileSettings(BaseModel, frozen=True):
 
         try:
             base = home / "config.toml"
-            settings = overlay(
-                read(base) if base.is_file() else {},
-                read(home / profile_config_filename(profile))
-                if profile is not None
-                else {},
-            )
             snapshot = cls(
-                name=profile,
                 source_home=home.resolve(),
-                settings=settings,
-                as_base=as_base,
+                settings=read(base) if base.is_file() else {},
             )
             return snapshot.model_copy(
                 update={"settings": snapshot.personal_settings()}
             )
         except (OSError, ValueError, ParseError):
             raise ValueError(
-                "Cannot read the selected Codex profile; check its name and TOML settings."
+                "Cannot read the account's Codex settings; check its TOML."
             ) from None
 
     def personal_settings(self, enforce_policy: bool = False) -> JsonObject:
@@ -124,15 +104,6 @@ class CodexProfileSettings(BaseModel, frozen=True):
                 raise ValueError("Codex features must be a settings table")
             features["hooks"] = True
         return settings
-
-    def digest(self) -> str:
-        """Configuration identity independent of TOML table ordering."""
-        encoded = json.dumps(self.model_dump(mode="json"), sort_keys=True)
-        return hashlib.sha256(encoded.encode()).hexdigest()
-
-    def installed_name(self) -> str:
-        """An immutable profile name so simultaneous launches cannot replace it."""
-        return f"lup-{self.digest()}"
 
     async def normalized(
         self, staging: Path, enforce_policy: bool = False
@@ -190,25 +161,19 @@ class CodexProfileSettings(BaseModel, frozen=True):
         raise ValueError("Codex reported no user configuration layer")
 
     def install(self, home: Path, enforce_policy: bool = False) -> None:
-        """Materialize selected settings while preserving native installation/trust.
+        """Replace the home's settings with these, keeping what it installed and trusted.
 
-        Base placement replaces the home's settings at every launch,
-        keeping what the home installed and trusted; profile placement
-        leaves the destination base settings untouched.
+        Replaced at every launch, and merged three ways against what the last
+        launch installed, so a session still running in this home keeps a
+        setting it changed that the person did not.
         """
         try:
-            if self.name is not None:
-                profile_config_filename(self.name)
             home.mkdir(parents=True, exist_ok=True)
             with tempfile.TemporaryDirectory(
-                prefix=".lup-profile-", dir=home
+                prefix=".lup-settings-", dir=home
             ) as temporary:
                 settings = asyncio.run(self.normalized(Path(temporary), enforce_policy))
-                destination = home / (
-                    "config.toml"
-                    if self.as_base
-                    else profile_config_filename(self.installed_name())
-                )
+                destination = home / "config.toml"
                 with codex_home_lock(home):
                     existing = (
                         TypeAdapter[JsonObject](JsonObject).validate_python(
@@ -219,39 +184,32 @@ class CodexProfileSettings(BaseModel, frozen=True):
                         if destination.exists()
                         else {}
                     )
-                    if self.as_base:
-                        # Three ways, so a session still running in this
-                        # home keeps a setting it changed that the person
-                        # did not; the record is what the next launch's
-                        # merge measures from.
-                        record = home / SEED_RECORD
-                        seeded = seeded_codex_settings(
-                            destination.read_text(encoding="utf-8")
-                            if destination.exists()
-                            else None,
-                            record.read_text(encoding="utf-8")
-                            if record.is_file()
-                            else None,
-                            settings,
-                        )
-                        record.parent.mkdir(parents=True, exist_ok=True)
-                        record.write_text(json.dumps(settings), encoding="utf-8")
-                        settings = dict(seeded.settings)
-                        for key in ("marketplaces", "plugins", "projects"):
-                            if key in existing:
-                                settings[key] = existing[key]
-                        state = CodexConfigurationState.model_validate(existing)
-                        if state.hooks is not None and state.hooks.state is not None:
-                            selected_hooks = settings.setdefault("hooks", {})
-                            if not isinstance(selected_hooks, dict):
-                                raise ValueError("Codex hooks must be a settings table")
-                            selected_hooks["state"] = state.hooks.state
+                    # The record is what the next launch's merge
+                    # measures from.
+                    record = home / SEED_RECORD
+                    seeded = seeded_codex_settings(
+                        destination.read_text(encoding="utf-8")
+                        if destination.exists()
+                        else None,
+                        record.read_text(encoding="utf-8")
+                        if record.is_file()
+                        else None,
+                        settings,
+                    )
+                    record.parent.mkdir(parents=True, exist_ok=True)
+                    record.write_text(json.dumps(settings), encoding="utf-8")
+                    settings = dict(seeded.settings)
+                    for key in ("marketplaces", "plugins", "projects"):
+                        if key in existing:
+                            settings[key] = existing[key]
+                    state = CodexConfigurationState.model_validate(existing)
+                    if state.hooks is not None and state.hooks.state is not None:
+                        selected_hooks = settings.setdefault("hooks", {})
+                        if not isinstance(selected_hooks, dict):
+                            raise ValueError("Codex hooks must be a settings table")
+                        selected_hooks["state"] = state.hooks.state
                     if existing == settings and destination.exists():
                         return
-                    if destination.exists() and not self.as_base:
-                        raise ValueError(
-                            "A prepared Codex profile changed unexpectedly"
-                        )
                     prepared = Path(temporary) / "prepared.config.toml"
                     prepared.touch(mode=0o600)
                     prepared.write_text(tomlkit.dumps(settings), encoding="utf-8")
@@ -259,7 +217,7 @@ class CodexProfileSettings(BaseModel, frozen=True):
         except Exception:
             # Native configuration errors can quote arbitrary values, including secrets.
             raise ValueError(
-                "Cannot prepare the selected Codex profile; its settings were not logged. "
+                "Cannot prepare the account's Codex settings; they were not logged. "
                 "Check its TOML and use absolute, accessible paths for referenced files; "
                 "contained launches require those paths to be mounted."
             ) from None

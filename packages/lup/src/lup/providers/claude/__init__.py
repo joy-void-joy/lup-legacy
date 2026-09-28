@@ -42,7 +42,8 @@ from typing import Literal, Self, overload
 from pydantic import AnyHttpUrl, BaseModel, Field, SecretStr, model_validator
 
 from lup.harness.models import Harness, HookSet
-from lup.harness.requirements import Finding
+from lup.harness.requirements import Finding, Manifest
+from lup.launch.companions import HostCompanion, named_apart
 from lup.launch.declaration import (
     LaunchCommand,
     LaunchStep,
@@ -336,9 +337,9 @@ class Claude(
     home: Path | None = None
     """The Claude configuration home every session runs in, named outright.
 
-    Wins over the home ``profile`` resolves to, the way an explicit directory
-    outranks a name looked up; unset, the profile's home or the one this
-    process already runs under."""
+    Wins over ``profile`` the way an explicit directory outranks a name looked
+    up, and the profile then only names the account; unset, the profile's home
+    or the one this process already runs under."""
 
     endpoint: ClaudeCompatibleEndpoint | None = None
     """An Anthropic-compatible endpoint the sessions talk to instead of Anthropic's."""
@@ -368,6 +369,12 @@ class Claude(
     already enforces its own. Compiled into in-process hooks for a session
     opened here and into the plugin's dispatcher for a launched one."""
 
+    requirements: Manifest | None = None
+    """What the host and the container are checked for before a launch opens.
+
+    Unset, the roster the ``plugin`` harness declares, where it is one, and
+    nothing beyond the runtime's own probes where it is not."""
+
     identity: Member | None = None
     """Who each session is on the coordination roster; unset, a session opened
     here joins none, and a launched one is named after its worktree."""
@@ -383,6 +390,11 @@ class Claude(
     """How many more levels of lup-created agents a session may open, ``-1``
     for no limit; never more than this process has left to give. Unset, the
     allowance this process holds, one level spent."""
+
+    companions: list[HostCompanion] = []
+    """What is kept running on the host for as long as each session runs, each
+    handing it the environment, folders and ports that reach it; one shared by
+    several sessions is started by the first and stopped after the last."""
 
     hooks: LupHooksConfig | None = None
     submission_gate_resolver: SubmissionGateResolver | None = None
@@ -430,6 +442,12 @@ class Claude(
     def one_policy_judges(self) -> Self:
         """Refuse a policy that is not the one the plugin harness already enforces."""
         declared_policy(self.plugin, self.policy)
+        return self
+
+    @model_validator(mode="after")
+    def companions_are_named_apart(self) -> Self:
+        """Refuse two host companions under one name, whose state would collide."""
+        named_apart(self.companions)
         return self
 
     def enforced_policy(self) -> HookSet | None:

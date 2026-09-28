@@ -93,6 +93,8 @@ class ModuleSurface(BaseModel, frozen=True):
 
     module: str
     declares: list[str]
+    inherits: dict[str, list[str]] = {}
+    """Each class it declares that names bases, and the bases' own names."""
 
 
 class SurfaceCapture(BaseModel, frozen=True):
@@ -111,6 +113,15 @@ class SurfaceCapture(BaseModel, frozen=True):
         for surface in self.modules:
             for name in surface.declares:
                 yield Capability(identity=name, location=surface.module)
+
+    def bases(self) -> dict[str, list[str]]:
+        """Each class this capture holds, by its own name, and the bases it names."""
+        return {
+            parts[-1]: bases
+            for surface in self.modules
+            for name, bases in surface.inherits.items()
+            if (parts := name_parts(name))
+        }
 
     def homes(self) -> dict[str, list[str]]:
         """Each export identity this capture holds, and the modules declaring it."""
@@ -304,13 +315,15 @@ def surfaces(
             and parts[0] in roots
             and offers_a_surface(parts, internal)
         ):
+            symbols = [
+                symbol for symbol in defined_symbols(source.text) if symbol.reachable
+            ]
             yield ModuleSurface(
                 module=module,
-                declares=[
-                    symbol.name
-                    for symbol in defined_symbols(source.text)
-                    if symbol.reachable
-                ],
+                declares=[symbol.name for symbol in symbols],
+                inherits={
+                    symbol.name: symbol.bases for symbol in symbols if symbol.bases
+                },
             )
 
 
@@ -385,11 +398,33 @@ def compare(captured: SurfaceCapture, live: SurfaceCapture) -> Divergence:
     it.
     """
     homes = live.homes()
+    bases = live.bases()
     held = {*captured.capabilities()}
 
+    def inherited(owner: list[str], member: str, seen: list[str]) -> list[str]:
+        """Where ``owner`` reaches ``member`` through a base declaring it, if one does."""
+        for base in bases.get(owner[-1], []):
+            if base in seen:
+                continue
+            found = homes.get(f"{base}.{member}") or inherited(
+                [base], member, [*seen, base]
+            )
+            if found:
+                return found
+        return []
+
     def answers(capability: Capability) -> list[str]:
-        """Which modules the later surface declares this name in, if any."""
-        return homes.get(capability.identity, [])
+        """Which modules the later surface declares this name in, if any.
+
+        A member its class no longer declares still answers where the class
+        does and a base of it declares the member: moved up to a parent the
+        class inherits from, it is reached by the same spelling as before.
+        """
+        found = homes.get(capability.identity, [])
+        *owner, member = name_parts(capability.identity) or [""]
+        if found or not owner or ".".join(owner) not in homes:
+            return found
+        return inherited(owner, member, [])
 
     def moved_modules() -> Iterator[ModuleMove]:
         """Each captured module that lost a name, and where its names went.

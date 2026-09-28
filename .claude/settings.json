@@ -9,8 +9,7 @@
   },
   "env": {
     "CLAUDE_CODE_THISTLE_GREBE": "default",
-    "ENABLE_TOOL_SEARCH": "true",
-    "MCP_TIMEOUT": "60000"
+    "ENABLE_TOOL_SEARCH": "true"
   },
   "extraKnownMarketplaces": {
     "lup-template-repository": {
@@ -31,11 +30,11 @@
       "ExitWorktree",
       "Read(./.claude/settings.json.local*)",
       "Read(./sync.json.local)",
-      "mcp__plugin_lup_notes",
-      "mcp__plugin_lup_sandbox",
-      "mcp__plugin_lup_codeintel",
-      "mcp__plugin_lup_coordination",
-      "mcp__plugin_lup_ledger"
+      "mcp__notes",
+      "mcp__sandbox",
+      "mcp__codeintel",
+      "mcp__coordination",
+      "mcp__ledger"
     ],
     "deny": [
       "Read(./**/secrets*.local)",

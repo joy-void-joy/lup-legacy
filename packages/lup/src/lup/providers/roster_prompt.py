@@ -204,6 +204,10 @@ def hook_entry(plugin_root_env: str, guard_script: str) -> JsonObject:
     session is better off without for this prompt. An ending runs under a
     budget of its own that the same figure raises to fit.
     """
+    # lup: defer: Codex 0.158.0 clamps a SessionEnd hook's timeout to 3s and
+    # says so in hooks/list ("clamping SessionEnd hook timeout to 3s"), so on
+    # Codex the ending does not get the 10s this raises its budget to; seen as
+    # the warning the hook discovery of a Codex prepare() reports
     return {
         "type": "command",
         "command": guard_command(plugin_root_env, guard_script),

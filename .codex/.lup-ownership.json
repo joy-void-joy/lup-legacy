@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "generator_version": "0.2.0",
-  "source_digest": "4e7dc012488e14c4d6e407ea4becd7750381689f0c3e7f25f4a1a5f825f75376",
+  "source_digest": "aeb1c2f06a87b7722d02de3f83060d984f80c22ac1e47dd89073ccd16f8c27ab",
   "target_requirements": [
     "codex-cli>=0.144"
   ],
@@ -44,7 +44,7 @@
     {
       "path": ".codex/config.toml",
       "category": "generated",
-      "sha256": "67ffb76c5f78532057df7b41f0ea115c33bda996abd2e566230dfe131dda8720",
+      "sha256": "a9af24529b6abfe5e902f254ffaad4911ea636aab6720d08d493e7caa8857947",
       "semantic_id": "harness.project-config",
       "executable": false
     },
@@ -655,13 +655,6 @@
       "category": "generated",
       "sha256": "a18280cc7c16316e105183769452c3c64469209b1dc2972dbddd1a72afef38c5",
       "semantic_id": "skill.principle",
-      "executable": false
-    },
-    {
-      "path": ".codex/plugins/lup/skills/profile/SKILL.md",
-      "category": "generated",
-      "sha256": "5b83b44dc3c017cf19a173351debbc4be898ff314b6e2aaba27f8fe7a0245e57",
-      "semantic_id": "skill.profile",
       "executable": false
     },
     {

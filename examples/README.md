@@ -46,6 +46,35 @@ Both make a real model call. Their enforcement is checked without one by
 `tests/unit/test_policy_examples.py`, which drives each example's own
 session configuration through the hooks the SDK would invoke.
 
+## Launching, one field at a time
+
+Each `launch_*` module declares one field a launch adds to an agent, on
+Claude Code and Codex where both take it, and prints the command the
+declaration compiles to: what `launch()` runs in the foreground, the
+terminal handed over, after checking the host and measuring the boundary the
+way a launch does.
+
+```bash
+uv run -m examples.launch_plugin
+uv run -m examples.launch_policy
+uv run -m examples.launch_tool_servers
+uv run -m examples.launch_inner_sandbox
+uv run -m examples.launch_outer_container
+uv run -m examples.launch_identity
+uv run -m examples.launch_profile
+uv run -m examples.launch_home
+uv run -m examples.launch_recording
+uv run -m examples.launch_resume
+uv run -m examples.launch_recursion
+uv run -m examples.launch_mounts
+uv run -m examples.launch_devices
+uv run -m examples.launch_companions
+```
+
+`launch_profile` expects a profile named `work` among yours
+(`uv run lup-devtools harness profile list`), and `launch_outer_container`
+and `launch_devices` a Docker or Podman engine.
+
 Each composition declares its agent at the application boundary. The
 one-shot `ask`, the declared layers, the background scheduler, and the router
 depend only on narrow runtime contracts once the agent is declared.

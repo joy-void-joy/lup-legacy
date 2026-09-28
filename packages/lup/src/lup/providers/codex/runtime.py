@@ -30,8 +30,10 @@ from lup.providers.codex.hooks import (
 from lup.providers.codex.home import CodexWorktreeHomeStore, install_declared_policy
 from lup.providers.codex.login import CODEX_HOME, native_home
 from lup.coordination.repository import launched_member
+from lup.launch.companions import CompanionLaunch, Joined, held_around
 from lup.launch.compilation import (
     allowance_environment,
+    inherited_environment,
     kept_record,
     semantic_hooks,
 )
@@ -1151,6 +1153,7 @@ class CodexSessionOpener:
         fork_from: SessionId | None = None,
         fork_at: TurnId | None = None,
     ) -> AsyncGenerator[CodexSession]:
+        """Open one session, its host companions held for as long as it is open."""
         if (
             self.config.sandbox.posture().contained()
             and self.config.executable == CODEX_PROGRAM
@@ -1159,7 +1162,37 @@ class CodexSessionOpener:
                 "a session opened here inside the container is started as the "
                 "program that enters it; name it in executable, or launch() it"
             )
-        compiled = self.compiled()
+        declared = self.config
+        launch = CompanionLaunch(
+            root=declared.workspace(),
+            runtime="codex",
+            environment={**inherited_environment(), **declared.environment},
+        )
+        async with held_around(declared.companions, launch) as joined:
+            for notice in joined.notices:
+                logging.getLogger(__name__).info("%s", notice.text)
+            async with self.joined_session(
+                joined, resume, fork_from=fork_from, fork_at=fork_at
+            ) as session:
+                yield session
+
+    @asynccontextmanager
+    async def joined_session(
+        self,
+        joined: Joined,
+        resume: Reopening | None = None,
+        *,
+        fork_from: SessionId | None = None,
+        fork_at: TurnId | None = None,
+    ) -> AsyncGenerator[CodexSession]:
+        """Open one session reaching what its held companions hand it."""
+        declared = self.compiled()
+        compiled = declared.model_copy(
+            update={
+                "environment": {**declared.environment, **joined.environment},
+                "sandbox": declared.sandbox.widened(joined.mounts),
+            }
+        )
         approval = codex_hook_approval_policy(compiled.hooks)
         if approval == "on-request" and compiled.approval_policy in {None, "never"}:
             raise UnsupportedCapability(

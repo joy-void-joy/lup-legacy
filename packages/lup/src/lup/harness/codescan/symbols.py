@@ -25,6 +25,14 @@ class DefinedSymbol(BaseModel, frozen=True):
 
     line: int
 
+    bases: list[str] = []
+    """The classes a class definition names as its bases, each by its own name.
+
+    Empty for everything but a class. Carried because a member a class
+    stopped declaring is still the class's where a base declares it: moved up
+    to a parent every subclass shares is not gone, and only the bases say so.
+    """
+
     reachable: bool = True
     """Whether an importer can name it, or only the function holding it can.
 
@@ -73,10 +81,15 @@ def symbols_of(node: ast.AST, prefix: str, local: bool) -> list[DefinedSymbol]:
                 DefinedSymbol(name=qualified, line=line, reachable=not local),
                 *symbols_under(node, f"{qualified}.", True),
             ]
-        case ast.ClassDef(name=name, lineno=line):
+        case ast.ClassDef(name=name, lineno=line, bases=bases):
             qualified = f"{prefix}{name}"
             return [
-                DefinedSymbol(name=qualified, line=line, reachable=not local),
+                DefinedSymbol(
+                    name=qualified,
+                    line=line,
+                    reachable=not local,
+                    bases=[named for base in bases if (named := base_name(base))],
+                ),
                 *symbols_under(node, f"{qualified}.", local),
             ]
         case (
@@ -86,6 +99,21 @@ def symbols_of(node: ast.AST, prefix: str, local: bool) -> list[DefinedSymbol]:
         ) if not local:
             return [DefinedSymbol(name=f"{prefix}{name}", line=line, reachable=True)]
     return symbols_under(node, prefix, local)
+
+
+def base_name(base: ast.expr) -> str | None:
+    """The name a class statement gives one base: ``Base``, ``module.Base``, ``Base[T]``.
+
+    Its own name alone, since that is what the class is declared under
+    wherever it is imported from; a base built by an expression names none.
+    """
+    match base:
+        case ast.Name(id=name) | ast.Attribute(attr=name):
+            return name
+        case ast.Subscript(value=value):
+            return base_name(value)
+        case _:
+            return None
 
 
 def defined_symbols(source: str) -> list[DefinedSymbol]:

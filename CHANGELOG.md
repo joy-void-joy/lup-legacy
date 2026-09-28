@@ -2,6 +2,47 @@
 
 ## Unreleased
 
+### `harness claude|codex` launches the declaration its flags make
+
+The command no longer runs a launch of its own beside the library's: it
+builds a `Claude(...)` or `Codex(...)` from this repository's composition and
+its flags and calls `launch()`, so `command()` on the same declaration is
+exactly the process it runs. Each flag is a field — `--sandbox inner` an
+`InnerSandbox`, `--mount`, `--mount-ro` and `sync.json.local` registrations
+`Mount`s, `--device` the container's devices, `--continue`/`--resume`/
+`--session` `Latest()`/`Pick()`/`Reopen(...)`, `--generate-only` a
+regeneration and `prepare()` — and the repository's checkpoint, worktree
+pointers, base sync and regeneration are the launch's `steps=`.
+`harness codex --profile` now names the account, as on Claude Code; a Codex
+configuration overlay is gone, every setting one held being a `Codex(...)`
+field. `docs/harness.md` maps every flag, and `examples/launch_*.py` show
+every field on its own.
+
+### Each launch declares the tool servers its session carries
+
+Claude Code drops a plugin's own MCP servers under `--strict-mcp-config`, so
+the generated plugin carries skills, agents and hooks, and every launch
+declares its servers per session — `--mcp-config` on Claude Code,
+`--config mcp_servers.*` on Codex — from the declaration's `tools.mcp`. A
+server's tools are now named `mcp__<server>__<tool>` on Claude Code rather
+than under the plugin's scope; the settings grants and the coordination
+caller hook follow. The startup deadline moves to `ServeLaunch`.
+
+### Host companions, held around every session a declaration opens
+
+`companions=` on `Claude` and `Codex` takes services a session wants running
+on the host beside it: each is held for as long as the session is open —
+launched, printed as a command, or opened in process — and hands it
+environment, mounts and ports. `SharedProcess` is one process shared per
+checkout or per person, started by the first session, joined by the rest and
+stopped with the last lease.
+
+### `/lup:profile` names this machine's profiles
+
+The command's hint lists the profiles the machine keeps, so it is in neither
+committed tree: `harness generate` and every launch render it into a
+gitignored overlay — `.claude/plugins/local/` and `.codex/skills/`.
+
 ### A member's messages wait in its mailbox
 
 What peers say to a session waited in its "inbox". It is the session's

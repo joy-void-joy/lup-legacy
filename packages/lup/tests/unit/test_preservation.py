@@ -408,3 +408,69 @@ def test_two_modules_sharing_a_word_are_not_one_module_that_moved() -> None:
         "lup.providers.roster_prompt: RUNTIME_SOURCE, runtime_source now in "
         "lup.providers.drift_prompt; still declares GUARD_SCRIPT, prompt_hook"
     ]
+
+
+def test_a_member_moved_up_to_a_base_is_reached_as_before() -> None:
+    """A field moved to the parent every wall shares is inherited, not gone."""
+    before = capture(
+        ModuleSurface(
+            module="lup.launch.declaration",
+            declares=["Sandbox", "OuterContainer", "OuterContainer.mounts"],
+            inherits={"OuterContainer": ["Sandbox"]},
+        )
+    )
+    after = capture(
+        ModuleSurface(
+            module="lup.launch.declaration",
+            declares=["Sandbox", "Sandbox.mounts", "OuterContainer"],
+            inherits={"OuterContainer": ["Sandbox"]},
+        )
+    )
+
+    divergence = compare(before, after)
+
+    assert divergence.disappeared == []
+    assert divergence.relocated == []
+
+
+def test_a_member_its_class_and_every_base_dropped_has_disappeared() -> None:
+    before = capture(
+        ModuleSurface(
+            module="lup.launch.declaration",
+            declares=["Sandbox", "OuterContainer", "OuterContainer.mounts"],
+            inherits={"OuterContainer": ["Sandbox"]},
+        )
+    )
+    after = capture(
+        ModuleSurface(
+            module="lup.launch.declaration",
+            declares=["Sandbox", "OuterContainer"],
+            inherits={"OuterContainer": ["Sandbox"]},
+        )
+    )
+
+    assert [row.identity for row in compare(before, after).disappeared] == [
+        "OuterContainer.mounts"
+    ]
+
+
+def test_the_walk_records_the_bases_a_class_names() -> None:
+    walked = list(
+        surfaces(
+            [
+                source(
+                    "class Sandbox(BaseModel, ABC):\n    mounts: list = []\n"
+                    "class Outer(Sandbox, frozen=True):\n    pass\n"
+                    "class Typed(module.Base[int]):\n    pass\n",
+                    "lup/walls.py",
+                )
+            ],
+            {"lup"},
+        )
+    )
+
+    assert walked[0].inherits == {
+        "Sandbox": ["BaseModel", "ABC"],
+        "Outer": ["Sandbox"],
+        "Typed": ["Base"],
+    }

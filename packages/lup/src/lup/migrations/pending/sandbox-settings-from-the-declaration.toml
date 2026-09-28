@@ -1,0 +1,23 @@
+subjects = [
+    "claude_sandbox_settings",
+    "claude_sandbox_arguments",
+    "codex_sandbox_arguments",
+]
+reason = """
+a launch compiles the runtime's own sandbox from the declaration's wall, so \
+the settings document and the Codex envelope are read off Claude and Codex \
+declarations rather than assembled from a policy, a posture and roots"""
+
+[[steps]]
+instruction = """
+Call claude_settings(Claude(policy=hooks, sandbox=InnerSandbox(mounts=...)), \
+tree) from lup.providers.claude.launch for the settings document \
+claude_sandbox_settings answered, and pass it as ["--settings", \
+json.dumps(...)] where claude_sandbox_arguments did; a contained or \
+unconfined wall answers CLAUDE_SANDBOX_OFF."""
+
+[[steps]]
+instruction = """
+Call codex_envelope(hooks, environment, extra_args, sandbox=..., \
+accessible=..., tree=...) from lup.providers.codex.launch where \
+codex_sandbox_arguments was called."""

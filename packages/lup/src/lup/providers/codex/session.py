@@ -20,7 +20,7 @@ from lup.providers.codex.login import CODEX_LOGIN
 from lup.providers.codex.account import read_account
 from lup.providers.codex.install import install_codex_plugin
 from lup.providers.codex.marketplace import CodexMarketplace
-from lup.providers.codex.profile import CodexProfileSettings
+from lup.providers.codex.profile import CodexAccountSettings
 from lup.harness.image import Image
 from lup.harness.notice import Notice
 from lup.launch.refusal import LaunchRefused
@@ -43,7 +43,6 @@ def codex_login_preflight(
     command: list[str] | None = None,
     *,
     headless: bool = False,
-    profile: str | None = None,
     consent: Callable[[str], bool] = asked,
 ) -> None:
     """Refresh managed authentication through its native owner before launch.
@@ -56,16 +55,6 @@ def codex_login_preflight(
     ``consent`` is how the person is asked whether to sign in now: at this
     terminal unless the caller has its own way of asking.
     """
-    if profile is not None:
-        Notice(
-            text=(
-                f"Codex authentication for profile {profile}: not verified "
-                "before launch. The native account API cannot select named "
-                "profiles; the session will validate its selected configuration."
-            ),
-            urgency="warning",
-        ).say()
-        return
     selected = {**environment, **CODEX_LOGIN.environment(home)}
     executable, *arguments = command or ["codex"]
 
@@ -213,7 +202,7 @@ def prepare_codex_plugin(
     environment: EnvVars,
     force: bool = False,
     trusted: bool = False,
-    settings: CodexProfileSettings | None = None,
+    settings: CodexAccountSettings | None = None,
 ) -> None:
     """Prepare the home where the launch runs, through its own execution boundary."""
     if not prefix:

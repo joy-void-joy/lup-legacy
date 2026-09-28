@@ -364,18 +364,6 @@ def sync_credential(source: Path, target: Path) -> bool:
     return True
 
 
-def seed_config(source: Path, target: Path) -> bool:
-    """Seed one TOML settings file without account-wide plugin state."""
-    if target.exists() or not source.is_file():
-        return False
-    target.write_text(
-        sanitized_codex_config(source.read_text(encoding="utf-8")),
-        encoding="utf-8",
-    )
-    shutil.copymode(source, target)
-    return True
-
-
 def carried_themes(
     source: Path, destination: Path, overwrite: bool = False
 ) -> list[str]:
@@ -461,14 +449,6 @@ def login_state(home: Path) -> CodexLoginState:
     return CodexLoginState(present=True, expires_at=credential.expires_at())
 
 
-def profile_config_filename(profile: str) -> str:
-    """Render a Codex profile filename without permitting path traversal."""
-    filename = Path(f"{profile}.config.toml")
-    if filename.parent != Path("."):
-        raise ValueError(f"invalid Codex profile name {profile!r}")
-    return filename.name
-
-
 class CodexWorktreeHomeStore:
     """Derive persistent Lup-owned Codex homes from one personal account.
 
@@ -530,7 +510,7 @@ class CodexWorktreeHomeStore:
         resolved = home.expanduser().resolve()
         return resolved.parts[-len(self.scoped_dir.parts) :] == self.scoped_dir.parts
 
-    def prepare(self, worktree: Path, profile: str | None = None) -> Path:
+    def prepare(self, worktree: Path) -> Path:
         """Refresh Lup-owned files and derive the account's settings into a scoped home.
 
         Derived at every launch rather than seeded once, because a seed is
@@ -566,9 +546,6 @@ class CodexWorktreeHomeStore:
         (scoped_home / self.launched_record).write_text(
             json.dumps(personal_settings(derived)), encoding="utf-8"
         )
-        if profile is not None:
-            filename = profile_config_filename(profile)
-            seed_config(self.account_home / filename, scoped_home / filename)
         return scoped_home
 
     def publish(self, worktree: Path) -> bool:
@@ -656,7 +633,6 @@ def select_codex_home(
     explicit_home: Path | None,
     environment: EnvVars,
     worktree: Path,
-    profile: str | None = None,
     store: CodexWorktreeHomeStore | None = None,
 ) -> CodexHomeSelection:
     """Prefer explicit homes, otherwise prepare the worktree-scoped default.
@@ -673,7 +649,7 @@ def select_codex_home(
         return CodexHomeSelection(path=Path(named), isolated=False)
     active_store = store or CodexWorktreeHomeStore()
     return CodexHomeSelection(
-        path=active_store.prepare(worktree, profile),
+        path=active_store.prepare(worktree),
         isolated=True,
     )
 

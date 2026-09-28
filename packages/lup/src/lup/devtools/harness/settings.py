@@ -1,23 +1,25 @@
 """Rendering a runtime's project settings from what the harness declares.
 
 Everything here is derived rather than written down: the marketplace key, the
-enabled plugin, the tool grants, and the sandbox's network and filesystem
-boundaries all come off the ``Plugin`` and its ``HookSet``. A project supplies
-only what is genuinely its own — which official plugins it enables, which
-tools it grants outright, which reads it refuses — through :class:`Settings`.
+enabled plugin, the sandbox's network and filesystem boundaries come off the
+``Plugin`` and its ``HookSet``, and the tool grants off the servers every
+session carries. A project supplies only what is genuinely its own — which
+official plugins it enables, which tools it grants outright, which reads it
+refuses — through :class:`Settings`.
 
 The derivation is the point. A settings file written by hand beside a hook
 declaration can disagree with it, and the disagreement is invisible until a
 session is denied something the policy allows.
 """
 
+from collections.abc import Sequence
 from pathlib import PurePosixPath
 from urllib.parse import urlsplit
 
 from pydantic import BaseModel, Field
 
-from lup.harness.generation import plugin_served_tool
 from lup.harness.models import HookSet, HookUrlScope, Plugin
+from lup.mcp import ToolServer
 from lup.types import EnvVars, JsonObject, JsonValue
 
 
@@ -60,23 +62,16 @@ class Settings(BaseModel, frozen=True):
     )
 
 
-def served_tool_grants(plugin: Plugin) -> list[str]:
-    """Grant every tool the plugin's own servers serve.
+def served_tool_grants(servers: Sequence[ToolServer]) -> list[str]:
+    """Grant every tool the servers each session carries serve.
 
     A declared server is the project's own code, wired in deliberately, so
     asking per call would make the declaration a suggestion. A new group in
     the toolsets registry is granted by being declared, with nothing in the
-    settings to extend.
-
-    The scoped name is what a runtime addresses a plugin's server by; the bare
-    key it is declared under matches nothing. It is spelled by
-    :func:`~lup.harness.generation.plugin_served_tool`, which the skill and
-    agent renderers read too, so a grant and the permission that admits it
-    cannot come to name different tools.
+    settings to extend. Each is granted under the key a launch declares it
+    by, which is the one the skills and agents that ask for its tools name.
     """
-    return [
-        plugin_served_tool(plugin.name, server.name) for server in plugin.mcp_servers
-    ]
+    return [f"mcp__{server.name}" for server in servers]
 
 
 def credential_read_denials(hooks: "HookSet | None") -> list[str]:
@@ -157,8 +152,13 @@ def allowed_network_domains(hooks: HookSet) -> list[str]:
     return list(dict.fromkeys(merged))
 
 
-def project_settings(declared: Settings, plugin: Plugin | None) -> JsonObject:
+def project_settings(
+    declared: Settings, plugin: Plugin | None, servers: Sequence[ToolServer] = ()
+) -> JsonObject:
     """Render the settings artifact, deriving every block it can.
+
+    ``servers`` are the tool servers every session a launch opens carries,
+    whose tools are granted outright.
 
     The sandbox stays permissive where the semantic policy already judges
     (escapes re-enter the deny lattice) and hardens what shell readers could
@@ -187,7 +187,7 @@ def project_settings(declared: Settings, plugin: Plugin | None) -> JsonObject:
             **declared.official_plugins,
             f"{plugin.name}@{plugin.marketplace}": True,
         }
-    grants: list[JsonValue] = list(served_tool_grants(plugin)) if plugin else []
+    grants: list[JsonValue] = list(served_tool_grants(servers))
     hooks = plugin.hooks if plugin is not None else None
     settings["permissions"] = {
         "allow": [*declared.allowed, *grants],

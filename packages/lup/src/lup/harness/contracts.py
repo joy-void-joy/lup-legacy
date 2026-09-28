@@ -285,21 +285,6 @@ class NativeSpellings(SkillInvocationRenderer, ABC):  # lup: ignore[abc-capabili
         """Name this runtime's own documentation, wherever it lives."""
 
     @abstractmethod
-    def runtime_key(self) -> str:
-        """The selection key a spawned tool server uses for this runtime."""
-
-    @abstractmethod
-    def project_root(self) -> str:
-        """Spell how a process this runtime spawns names the repository root.
-
-        A tool server started from a native tree has to find the project whose
-        tools it serves, and no runtime lets it ask the same way: one
-        substitutes the root into the command it spawns, another only
-        guarantees to spawn it there. Like :meth:`model_alias` this reaches a
-        generated artifact rather than prose, so it spells a bare string.
-        """
-
-    @abstractmethod
     def model_alias(self, tier: ModelTier) -> str | None:
         """Spell one portable tier into agent metadata, or decline it.
 

@@ -9,6 +9,7 @@ beside its managing module instead (see the package docstring).
 
 import re  # lup: ignore[import-re] — prose has no parser; its shape is the rule
 from abc import ABC, abstractmethod
+from collections.abc import Sequence
 from itertools import dropwhile
 from json import dumps
 from pathlib import Path, PurePath, PurePosixPath
@@ -995,6 +996,29 @@ class BashGrant(BaseModel, frozen=True):
         return cls(prefixes=[scope.strip().removesuffix(":*") for scope in specifiers])
 
 
+class ProfileHint(BaseModel, frozen=True):
+    """An argument hint naming the profiles one machine keeps, spelled on that machine.
+
+    A skill acting on an account is invoked with a profile's name, and which
+    names answer is a fact about the machine: a hint written into a committed
+    tree would name one machine's accounts to every other, or none of them.
+    So the verbs are declared, and the names are filled in where they are
+    known.
+    """
+
+    alone: list[NativeName] = []
+    """Verbs taken with no profile."""
+
+    naming: list[NativeName] = []
+    """Verbs taking one profile's name."""
+
+    def spelled(self, profiles: Sequence[str]) -> str:
+        """The hint on a machine keeping ``profiles``, a placeholder where it keeps none."""
+        chosen = "|".join(profiles) if profiles else "name"
+        verbs = [*self.alone, *(f"{verb} <{chosen}>" for verb in self.naming)]
+        return f"[{' | '.join(verbs)}]"
+
+
 class Skill(SelectableRule, frozen=True):
     id: str
     name: NativeName
@@ -1002,6 +1026,11 @@ class Skill(SelectableRule, frozen=True):
     arguments: list[Argument] = []
     tools: list[ToolGrant] = []
     argument_hint: PortableText | None = None
+    machine_hint: ProfileHint | None = None
+    """Where set, this skill is the machine's: rendered with this hint, naming
+    the profiles the machine keeps, into a gitignored overlay every launch
+    loads — never into the committed tree."""
+
     prompt: PromptDocument
 
     def selection_id(self) -> str:
@@ -1010,6 +1039,16 @@ class Skill(SelectableRule, frozen=True):
     def given(self, taken: list[str]) -> "Skill":
         """This skill as a project that took *taken* modules reads it."""
         return self.model_copy(update={"prompt": self.prompt.given(taken)})
+
+    @model_validator(mode="after")
+    def one_hint(self) -> "Skill":
+        """Refuse a fixed hint beside the machine's, which would never be shown."""
+        if self.argument_hint is not None and self.machine_hint is not None:
+            raise ValueError(
+                f"skill {self.id!r} declares an argument_hint and a machine_hint; "
+                "the machine's is the one shown, so drop argument_hint"
+            )
+        return self
 
     @model_validator(mode="after")
     def coherent_arguments(self) -> "Skill":
@@ -1261,117 +1300,6 @@ class ContentRoster(BaseModel, frozen=True):
             skills=[skill.given(taken) for skill in self.skills],
             agents=[agent.given(taken) for agent in self.agents],
         )
-
-
-class McpWord(BaseModel, ABC, frozen=True):
-    """One word of the command line that starts an MCP server.
-
-    A server the harness offers has to be reachable from wherever the runtime
-    spawns it, and each runtime hands a spawned process a different way of
-    naming the repository it belongs to. Declaring the words as parts rather
-    than as a string keeps that difference in the adapters, the way a prompt
-    keeps every other native spelling there.
-    """
-
-    @abstractmethod
-    def spell_in(self, runtime: "NativeSpellings") -> str:
-        """Spell this word in one runtime's own vocabulary."""
-
-
-class LiteralWord(McpWord, frozen=True):
-    """One word every runtime spells identically."""
-
-    type: Literal["literal"] = "literal"
-    text: str = Field(min_length=1)
-
-    def spell_in(self, runtime: "NativeSpellings") -> str:
-        return self.text
-
-
-class ProjectRootWord(McpWord, frozen=True):
-    """The repository root, as the runtime spawning the server can name it."""
-
-    type: Literal["project_root"] = "project_root"
-
-    def spell_in(self, runtime: "NativeSpellings") -> str:
-        return runtime.project_root()
-
-
-class RuntimeWord(McpWord, frozen=True):
-    """The engine that owns the tool server, independent of ambient settings."""
-
-    type: Literal["runtime"] = "runtime"
-
-    def spell_in(self, runtime: "NativeSpellings") -> str:
-        return runtime.runtime_key()
-
-
-type McpCommandWord = Annotated[
-    LiteralWord | ProjectRootWord | RuntimeWord, Discriminator("type")
-]
-
-
-class McpServer(BaseModel, frozen=True):
-    """One tool server a native tree offers the agent that reads it.
-
-    The application owns which tools exist and how they are grouped; this
-    declares only how a runtime starts one group and what to call it, so the
-    same registry reaches an in-process session and a native harness session
-    without either learning the other's assembly.
-    """
-
-    id: str
-    name: NativeName
-    description: PortableText = Field(min_length=1, max_length=1024)
-    command: str = Field(min_length=1)
-    arguments: list[McpCommandWord] = []
-
-    env_vars: list[str] = []
-    """Environment variable names that must reach this server from the launch.
-
-    Names, never values: this is compiled into a committed tree, and a value
-    belongs to one machine and one run. Which runtimes have to be told is a
-    rendering decision, and they differ. One spawns a server as its own child
-    and hands it the whole environment, so naming a variable changes nothing
-    there. The other hands a spawned server a fixed base environment — a
-    shell's worth of HOME and PATH and no more — and forwards exactly the
-    names it was given, so a server needing a session relay, a credential or
-    a configuration home reaches none of them unless they are named here.
-    """
-
-    startup_timeout_seconds: float | None = None
-    """How long this server gets to come up before a runtime abandons it.
-
-    Declared per server because the answer belongs to the server and not to
-    the machine: a group that resolves its package before importing anything
-    is slow on a cold checkout and instant on a warm one, while a runtime's
-    own default is chosen for a server already installed. Unset leaves that
-    default in force, which is right for a server whose start costs nothing.
-
-    Both runtimes spawn under a deadline; what differs is the spelling. One
-    offers it per server and receives this number as written; the other reads
-    a single environment variable covering every server it starts, so its
-    settings artifact renders the widest declared deadline and nothing per
-    server. What makes the deadline worth declaring is the shape of missing
-    it — the server is dropped and the session keeps the rest, so it arrives
-    as a group that is simply absent rather than as an error naming a limit.
-    """
-
-    always_load: bool = False
-    """Whether this server's tools are offered from the first turn, never deferred.
-
-    A runtime that withholds tool definitions until a search asks for them
-    spends a search call each time a deferred tool is wanted. That is a fair
-    price for a server reached now and then, and the wrong one for tools a
-    session calls dozens of times. Claude Code spells this per server, as
-    `alwaysLoad`, and waits at startup for such a server's tools up to its
-    connect deadline; Codex documents no per-server loading control and no
-    deferral, so its config renders nothing for it.
-    """
-
-    def command_line(self, runtime: "NativeSpellings") -> list[str]:
-        """Spell every argument for the runtime that will spawn this server."""
-        return [argument.spell_in(runtime) for argument in self.arguments]
 
 
 class HookUrlScope(BaseModel, frozen=True):
@@ -1999,20 +1927,24 @@ class Plugin(BaseModel, frozen=True):
     description: PortableText = Field(min_length=1, max_length=1024)
     skills: list[Skill]
     agents: list[Agent]
-    mcp_servers: list[McpServer] = []
     hooks: HookSet | None = None
+
+    def committed_skills(self) -> list[Skill]:
+        """The skills every checkout's tree carries: all but the machine's own."""
+        return [skill for skill in self.skills if skill.machine_hint is None]
+
+    def machine_skills(self) -> list[Skill]:
+        """The skills each machine renders for itself, naming what it keeps."""
+        return [skill for skill in self.skills if skill.machine_hint is not None]
 
     @model_validator(mode="after")
     def unique_effective_names(self) -> "Plugin":
         skill_names = [skill.name for skill in self.skills]
         agent_names = [agent.name for agent in self.agents]
-        server_names = [server.name for server in self.mcp_servers]
         if len(skill_names) != len(dict.fromkeys(skill_names)):
             raise ValueError(f"plugin {self.id!r} has duplicate skill names")
         if len(agent_names) != len(dict.fromkeys(agent_names)):
             raise ValueError(f"plugin {self.id!r} has duplicate agent names")
-        if len(server_names) != len(dict.fromkeys(server_names)):
-            raise ValueError(f"plugin {self.id!r} has duplicate MCP server names")
         return self
 
 
@@ -2096,26 +2028,16 @@ class Harness(BaseModel, frozen=True):
         into files. Each id is what a rendered artifact carries back, so this
         is the one list both trees can be measured against — which is how a
         target that silently renders one fewer skill than another is caught
-        without either tree's own path shapes entering the comparison.
-
-        The tool servers are absent because they are not rendered as
-        artifacts: each target writes its whole server table into one shared
-        configuration file, which carries that file's own id. So a dropped
-        server is a difference in an artifact's content rather than a missing
-        artifact, and asking for one by id would report every server missing
-        from every tree.
-
-        That difference is answered where the format is known, by one test
-        per adapter reading the whole table back out of the artifact it was
-        written into. Asking it here instead would mean parsing both formats,
-        which is the runtime spelling this list exists to stay clear of.
+        without either tree's own path shapes entering the comparison. A
+        machine's own skill is absent: no committed tree renders it, each
+        machine's overlay does.
         """
         return [
             declaration_id
             for plugin in self.plugins
             for declaration_id in [
                 plugin.id,
-                *[skill.id for skill in plugin.skills],
+                *[skill.id for skill in plugin.committed_skills()],
                 *[agent.id for agent in plugin.agents],
             ]
         ]
@@ -2136,7 +2058,6 @@ class Harness(BaseModel, frozen=True):
                 plugin.id,
                 *[skill.id for skill in plugin.skills],
                 *[agent.id for agent in plugin.agents],
-                *[server.id for server in plugin.mcp_servers],
             ]
         ]
 
