@@ -200,7 +200,7 @@ def test_what_was_sent_is_outstanding_until_it_is_handed_over(
     cohort.say(actor, "stop that branch", redirect=True)
     assert cohort.outstanding(actor) == 2
 
-    delivered = cohort.inbox(actor).take()
+    delivered = cohort.mailbox(actor).take()
     assert [message.redirect for message in delivered] == [False, True]
     assert cohort.outstanding(actor) == 0
 
@@ -214,7 +214,7 @@ def test_delivery_is_recorded_against_the_actor_that_received_it(
     cohort.spawn(actor, "measure the drift")
     cohort.say(actor, "use exact arithmetic")
 
-    cohort.inbox(actor).take()
+    cohort.mailbox(actor).take()
 
     posted = [entry.event for entry in CohortJournal(tmp_path).for_actor(actor)]
     assert [event.type for event in posted] == ["message_posted"]
@@ -409,7 +409,7 @@ async def test_a_spawn_is_handed_the_hooks_that_reach_it(tmp_path: Path) -> None
     cohort.session(cohort.actor("analyst"), recipe_for(session))
 
     assert session.hooks is not None
-    assert [matcher.tag for matcher in session.hooks.pre_tool_use] == ["inbox"]
+    assert [matcher.tag for matcher in session.hooks.pre_tool_use] == ["mailbox"]
 
 
 @pytest.mark.asyncio
@@ -660,7 +660,7 @@ def test_a_peer_that_joins_is_a_member_nobody_spawned(tmp_path: Path) -> None:
     assert member.running
     assert member.task == "reading the ledger"
     assert member.liveness == "launcher"
-    assert member.delivery is Delivery.MAILBOX, "no wake declared, so mail waits"
+    assert member.delivery is Delivery.WAITING, "no wake declared, so mail waits"
 
 
 def test_a_peer_rejoining_after_a_restart_is_the_same_member(tmp_path: Path) -> None:
@@ -678,14 +678,14 @@ def test_a_peer_leaves_by_the_same_record_a_spawn_does(tmp_path: Path) -> None:
     """How a member went is one question however it arrived."""
     roster = Roster(tmp_path)
     peer = ActorRef(kind="session", id="departed")
-    roster.joined(peer, delivery=Delivery.INBOX)
+    roster.joined(peer, delivery=Delivery.HOOK)
 
     roster.finished(peer, summary="done reading")
 
     [member] = roster.live()
     assert not member.running
     assert member.summary == "done reading"
-    assert member.delivery is Delivery.INBOX, "how it was reached survives its leaving"
+    assert member.delivery is Delivery.HOOK, "how it was reached survives its leaving"
 
 
 def test_a_spawned_member_is_reachable_through_its_own_hook(tmp_path: Path) -> None:
@@ -694,5 +694,5 @@ def test_a_spawned_member_is_reachable_through_its_own_hook(tmp_path: Path) -> N
     roster.spawned(ActorRef(kind="worker", id="opened"), task="work")
 
     [member] = roster.live()
-    assert member.delivery is Delivery.INBOX
+    assert member.delivery is Delivery.HOOK
     assert member.liveness == "", "the process that spawned it is the answer"

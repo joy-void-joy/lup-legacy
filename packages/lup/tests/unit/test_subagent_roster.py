@@ -221,7 +221,7 @@ async def test_a_subagent_reaches_its_own_session_and_not_itself(
     )
 
 
-async def test_a_message_to_a_subagent_waits_in_its_own_inbox(
+async def test_a_message_to_a_subagent_waits_in_its_own_mailbox(
     tmp_path: Path, worktree: Path
 ) -> None:
     """And what a send reports outstanding is the recipient's queue, not the sender's."""
@@ -237,12 +237,14 @@ async def test_a_message_to_a_subagent_waits_in_its_own_inbox(
         )
     )
 
-    assert sent["delivery"] == "inbox"
+    assert sent["delivery"] == "hook"
     assert sent["outstanding"] == 1
     assert [message.text for message in peers.waiting(child).messages] == [
         "rebase before you commit"
     ]
-    taken = answer(await tools["coordination_inbox"].handler(by("a0cacac5", worktree)))
+    taken = answer(
+        await tools["coordination_mailbox"].handler(by("a0cacac5", worktree))
+    )
     assert taken["messages"] == ["[message by agent] rebase before you commit"]
     assert peers.waiting(SESSION).messages == []
 

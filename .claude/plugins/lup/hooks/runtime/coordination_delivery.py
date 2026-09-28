@@ -12,11 +12,11 @@ under and it is what lets this reach a session nobody opened in-process — a
 person's own native CLI, which has the plugin and no live object to close over.
 
 **A reader, never the authority.** :mod:`lup.coordination.mail` owns what a
-message means; this lists one member's inbox, hands what is there to the
-session, and deletes what it handed over. The inbox *is* the position: there
+message means; this lists one member's mailbox, hands what is there to the
+session, and deletes what it handed over. The mailbox *is* the position: there
 is no offset to commit, nothing to re-read after a crash but what was never
 handed over, and no token a reader has to recognize — a message in this
-member's inbox is this member's, and a sender that meant everyone resolved
+member's mailbox is this member's, and a sender that meant everyone resolved
 that against the roster before writing.
 
 **Mail only.** A standing notice is not delivered, so it is not here: it is
@@ -114,7 +114,7 @@ def deliver(
 ) -> HookOutput | None:
     """Take one conversation's mail and say what it should be told.
 
-    The inbox is keyed by the conversation this call is on the roster as —
+    The mailbox is keyed by the conversation this call is on the roster as —
     this session's, or *agent*'s where the call is one of its subagents' —
     spelled by the shipped fold rather than assembled here: a sender writes to
     the same key through the typed half, and a directory only one of them
@@ -129,13 +129,13 @@ def deliver(
         if agent
         else Actor(kind=MEMBER_KIND, id=member_id)
     )
-    inbox = conversation_of(reader)
-    messages = waiting(root, inbox)
+    mailbox = conversation_of(reader)
+    messages = waiting(root, mailbox)
     if not messages:
         return None
     answer = envelope(messages)
     send(answer)
-    consume(root, inbox, messages)
+    consume(root, mailbox, messages)
     return answer
 
 
@@ -152,7 +152,7 @@ def main() -> None:
     """Deliver each tool event its own conversation's mail; diagnose failures without blocking work.
 
     A subagent's event, which carries its ``agent_id``, is handed that
-    subagent's own inbox and never its session's: the session's mail waits for
+    subagent's own mailbox and never its session's: the session's mail waits for
     the session's own next call. An event naming an agent type and no id is
     not a subagent this session's roster holds a row for, and takes nothing.
     """

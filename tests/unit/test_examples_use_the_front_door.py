@@ -176,8 +176,8 @@ LAUNCH_FIELDS = {
     "outer container": FieldExample(
         example="launch_outer_container.py", call="OuterContainer"
     ),
-    "coordination identity and inbox": FieldExample(
-        example="launch_identity.py", call="Member", keyword="inboxes"
+    "coordination identity and wake socket": FieldExample(
+        example="launch_identity.py", call="Member", keyword="wake_sockets"
     ),
     "profile": FieldExample(
         example="launch_profile.py", call="Claude", keyword="profile"

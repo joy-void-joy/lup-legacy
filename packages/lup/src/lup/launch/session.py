@@ -30,7 +30,7 @@ from lup.launch.config_volume import HomeSeedPlaces
 from lup.launch.container import contained_argv
 from lup.coordination.identity import MEMBER_ENV, NAME_ENV, LaunchedMember
 from lup.coordination.repository import RepositoryPeers, launched_member
-from lup.harness.messaging import SessionInboxes, UnixSocketRefused, cleared
+from lup.harness.messaging import WakeSockets
 from lup.workspace.edition import shared_git_directory
 from lup.harness.models import HookSet
 from lup.policy.boundary import BoundaryPreflight
@@ -1017,10 +1017,10 @@ def probing(opening: list[str], *, stdin: bool = False) -> list[str]:
     ]
 
 
-def placed_inbox(
-    inboxes: SessionInboxes, root: Path, member: LaunchedMember
+def placed_wake_socket(
+    sockets: WakeSockets, root: Path, member: LaunchedMember
 ) -> str | None:
-    """Where this session binds the inbox a peer nudges it through, if anywhere.
+    """Where this session binds the wake socket a peer nudges it through, if anywhere.
 
     Named by the launcher rather than left to the runtime, whose own default
     is a directory a container does not share and a file named after a pid its
@@ -1029,32 +1029,19 @@ def placed_inbox(
     answers nothing, which is a peer that waits for its mail rather than a
     launch that fails.
 
-    Refused where something already listens there, before the runtime can say
-    so itself: its own refusal tells the reader to remove a socket that
-    belongs to a live session. This one names the session, off the roster.
-    Refused too where something is there and this process may not open a
-    socket to ask whether it listens, saying that rather than guessing.
+    Keyed by the member's id, so a file already at the path is this member's
+    own, left by an earlier run of it: it is replaced without asking, since
+    nothing else was ever keyed there. The departed members of this
+    repository are asked about while the roster is in hand -- a socket the
+    roster's departed left behind is removed where nothing answers on it,
+    which :meth:`WakeSockets.retire` settles.
     """
-    if inboxes.serve() is None:
+    if sockets.serve() is None:
         return None
-    inbox = inboxes.socket(shared_git_directory(root), member.cli_name)
-    try:
-        clear = cleared(Path(inbox))
-    except UnixSocketRefused as refused:
-        named = RepositoryPeers(root).woken_through(inbox)
-        raise LaunchRefused(
-            f"{refused}, the inbox this session would bind, where the roster "
-            f"names {', '.join(named) or 'no session'}. lup leaves an inbox it "
-            "cannot ask about alone rather than risk cutting a live session off "
-            "from its nudges: launch from a shell that may open a Unix socket, "
-            "or remove the file once no session holds it"
-        ) from refused
-    if clear:
-        return inbox
-    holders = RepositoryPeers(root).woken_through(inbox)
-    raise LaunchRefused(
-        f"{', '.join(holders) or 'a process on no roster of this repository'} "
-        f"is listening at {inbox}, the inbox this session would bind. lup "
-        "leaves a live inbox alone rather than cut that session off from its "
-        "nudges: end it, or let it finish, and launch again"
-    )
+    repository = shared_git_directory(root)
+    for row in RepositoryPeers(root).present():
+        if not row.running:
+            sockets.retire(repository, row.actor.id, row.wake.handle)
+    address = sockets.socket(repository, member.member_id)
+    Path(address).unlink(missing_ok=True)
+    return address

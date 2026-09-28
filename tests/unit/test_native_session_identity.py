@@ -12,7 +12,7 @@ import pytest
 
 from lup.coordination.identity import MEMBER_ENV
 from lup.coordination.peer_tools import RosterPulse
-from lup.coordination.relay import InboxRelay
+from lup.coordination.relay import MailboxRelay
 from lup.mcp import Coordination
 from lup.mcp.serve import context_needs, harness_session_context, serve_command
 from lup.providers.claude.identity import CLAUDE_SESSION_ENV
@@ -68,7 +68,7 @@ def test_a_native_server_joins_under_the_id_its_runtime_gave_the_process(
 
     assert isinstance(pulse, RosterPulse)
     assert pulse.member_id == "abc-123"
-    assert isinstance(relay, InboxRelay)
+    assert isinstance(relay, MailboxRelay)
     assert relay.member_id == "abc-123"
 
 
@@ -95,7 +95,7 @@ def test_the_launcher_s_id_outranks_the_runtime_s(
 
     assert isinstance(pulse, RosterPulse)
     assert pulse.member_id == "launched1"
-    assert isinstance(relay, InboxRelay)
+    assert isinstance(relay, MailboxRelay)
     assert relay.member_id == "launched1"
 
 

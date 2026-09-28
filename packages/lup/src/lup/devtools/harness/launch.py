@@ -585,8 +585,8 @@ def claude_declaration(
     """The Claude Code agent one command line launches, from this repository's composition.
 
     Its plugin is the tree the composition generates, with every other plugin
-    the checkout carries beside it; its policy, requirements, image and inbox
-    are the composition's harness's, and its servers the composition's; its
+    the checkout carries beside it; its policy, requirements, image and wake
+    socket are the composition's harness's, and its servers the composition's; its
     account is the one ``profiles`` resolves the named profile, or the
     selected one, to. What the command line got wrong is refused before the
     host is asked for its default sandbox, which ``settle`` asks for.
@@ -621,7 +621,7 @@ def claude_declaration(
             policy=plugin.hooks,
             requirements=source.requirements,
             sandbox=sandbox,
-            identity=Member(inboxes=source.image.inboxes),
+            identity=Member(wake_sockets=source.image.wake_sockets),
             record=request.recording("claude"),
             resume=request.reopening(),
             max_recursive_agent=request.allowance(),
@@ -671,7 +671,7 @@ def codex_declaration(
             policy=plugin.hooks,
             requirements=source.requirements,
             sandbox=sandbox,
-            identity=Member(inboxes=source.image.inboxes),
+            identity=Member(wake_sockets=source.image.wake_sockets),
             record=request.recording("codex"),
             resume=request.reopening(),
             max_recursive_agent=request.allowance(),

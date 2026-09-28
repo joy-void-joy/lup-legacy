@@ -2131,6 +2131,10 @@ PATH_ROLES: list[PathRoleRow] = [
         "role": "scratch",
     },
     {
+        "root": "packages/lup/src/lup/migrations/pending",
+        "role": "data",
+    },
+    {
         "root": "packages/lup/web/**/*.test.js",
         "role": "test",
     },
@@ -27049,11 +27053,11 @@ REFUSED_PATHS: list[RefusedPathRow] = [
     },
     {
         "paths": [
-            "/tmp/lup-inbox/**",
+            "/tmp/lup-wake/**",
         ],
         "exempt": [],
-        "reason": "a session's inbox socket is its wake handle, and a frame written to it starts that session's turn with text no roster records",
-        "recovery": "Reach the peer with `coordination_send` instead: it records the message where every session in this clone can read it, and wakes the peer through this inbox itself.",
+        "reason": "a session's wake socket is its wake handle, and a frame written to it starts that session's turn with text no roster records",
+        "recovery": "Reach the peer with `coordination_send` instead: it records the message where every session in this clone can read it, and wakes the peer through this socket itself.",
     },
 ]
 

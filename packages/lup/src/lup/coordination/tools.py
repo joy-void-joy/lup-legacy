@@ -108,10 +108,10 @@ class SpawnSayOutput(BaseModel):
     )
     delivery: Delivery = Field(
         description=(
-            "What carries this to the recipient. `inbox` means its own hook "
+            "What carries this to the recipient. `hook` means its own hook "
             "puts the message in front of its next tool call, so a working "
-            "recipient cannot fail to read it. `mailbox` means the message "
-            "waits in the file until the recipient next looks, and nothing "
+            "recipient cannot fail to read it. `waiting` means the message "
+            "waits in its mailbox until the recipient next looks, and nothing "
             "will wake it"
         )
     )

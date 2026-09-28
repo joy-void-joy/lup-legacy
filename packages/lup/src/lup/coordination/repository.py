@@ -8,9 +8,9 @@ it, and leaving is too.
 
 Built over the same roster, mail and journal a cohort uses, at the repository's
 own directory. That is the whole of the reuse and it is the point: a message to
-a peer and a message to a spawned worker land in the same inbox, are read by
-the same fold, and are consumed the same way, so there is one delivery path to
-get right rather than two that agree until they do not.
+a peer and a message to a spawned worker land in the same kind of mailbox, are
+read by the same fold, and are consumed the same way, so there is one delivery
+path to get right rather than two that agree until they do not.
 
 What this adds is the vocabulary a repository needs and a run does not — a
 session names itself and may rename, says what it is doing as that changes, and
@@ -250,7 +250,7 @@ class RepositoryPeers:
         member_id: str,
         worktree: Path,
         cli_name: str = "",
-        delivery: Delivery = Delivery.MAILBOX,
+        delivery: Delivery = Delivery.WAITING,
         wake: WakePath = WakePath(),
     ) -> ActorRef:
         """Put this session on the roster, and hand back the address it answers to.
@@ -274,7 +274,7 @@ class RepositoryPeers:
         makes a session look is its runtime's own arrangement and this module
         is neither runtime's. Empty is the honest default and the answer for
         anything that did not ask its adapter: a member with no wake path
-        still has its inbox, and a sender is told nothing will nudge it
+        still has its mailbox, and a sender is told nothing will nudge it
         rather than told a nudge was sent.
 
         The arrival and the naming happen under the store's roster lock, so
@@ -611,9 +611,9 @@ class RepositoryPeers:
         caller that dropped the result has lost the mail rather than deferred
         it, and the type it gets back is the one it would have peeked at.
         """
-        inbox = self.cohort.inbox(self.actor(member_id))
-        delivery = inbox.waiting()
-        inbox.commit(delivery)
+        mailbox = self.cohort.mailbox(self.actor(member_id))
+        delivery = mailbox.waiting()
+        mailbox.commit(delivery)
         return delivery
 
     def live_ids(self) -> list[str]:
@@ -627,18 +627,6 @@ class RepositoryPeers:
         return store.live_ids(
             self.root, window=self.pulse.stale_after_seconds, without=USER_KIND
         )
-
-    def woken_through(self, handle: str) -> list[str]:
-        """Every member whose declared wake path is *handle*, by what it is called.
-
-        The departed included, because the reader is one who found something
-        listening where a member said it would be: a session whose pulse has
-        lapsed while its process runs on is exactly who that is, and naming
-        it is the difference between an operator who can end it and one told
-        only that something is there.
-        """
-        rows = [row for row in self.present() if row.wake.handle == handle]
-        return [self.called(row.actor.id) or row.actor.id for row in rows]
 
     def held(self) -> list[HeldPath]:
         """Every claim a live session is holding, newest first."""

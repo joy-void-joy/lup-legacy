@@ -56,8 +56,8 @@
       "Read(//**/claude-config/.credentials.json)",
       "Read(~/.codex/auth.json)",
       "Read(//**/codex-home/auth.json)",
-      "Read(//tmp/lup-inbox/**)",
-      "Read(//tmp/lup-inbox)"
+      "Read(//tmp/lup-wake/**)",
+      "Read(//tmp/lup-wake)"
     ]
   },
   "sandbox": {

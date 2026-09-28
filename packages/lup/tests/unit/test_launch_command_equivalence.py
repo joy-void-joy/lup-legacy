@@ -158,7 +158,7 @@ def test_a_claude_launch_runs_the_cli_between_its_steps_and_cleans_up(
         cwd=root,
         plugin=root / "plugin",
         sandbox=InnerSandbox(escapable=True),
-        identity=Member(inboxes=None),
+        identity=Member(wake_sockets=None),
     )
 
     assert agent.launch("--verbose", steps=[Step(seen)]) == status
@@ -179,7 +179,7 @@ def test_a_codex_launch_runs_the_cli_between_its_steps_and_cleans_up(
         model="gpt-5.5",
         cwd=root,
         sandbox=InnerSandbox(),
-        identity=Member(inboxes=None),
+        identity=Member(wake_sockets=None),
     )
 
     assert agent.launch("--search", steps=[Step(seen)]) == 0

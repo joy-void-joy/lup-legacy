@@ -1855,7 +1855,7 @@ def run_resolve(
             built — the wake event only exists once the core does.
 
             The delivery hooks arrive in the context rather than being
-            fetched here. They are the run's own inbox for this actor, and
+            fetched here. They are the run's own mailbox for this actor, and
             opening a second reader over one message stream gave the two
             positions that each began at whatever the head was when they were
             made — so a message posted while a turn was in flight sat behind
@@ -1873,7 +1873,7 @@ def run_resolve(
                 """Put a refused escalation where a human running this will see it.
 
                 Addressed to the person rather than broadcast, so it lands in
-                the one inbox `resolve actors` prints for a human rather than
+                the one mailbox `resolve actors` prints for a human rather than
                 in every sibling worker's context.
                 """
                 core.actors.tell_user(

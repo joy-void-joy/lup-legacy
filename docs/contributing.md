@@ -334,6 +334,7 @@ Commit early, commit often, and keep commits atomic — if the message needs an
 | `chore` | Maintenance — dependencies, build config |
 | `meta` | Harness content and the trees it generates: guidance, settings, skills, hooks |
 | `data` | Generated data and outputs |
+| `release` | What `dev release` commits for a release or a candidate of one — never written by hand |
 
 
 A `data` commit of generated outputs may go straight to `dev`; code never
@@ -491,10 +492,13 @@ one without meeting in a merge.
 
 `dev release` moves the pending files into `migrations/<version>/`, fills in
 the commit each break landed in, and renders their prose into the section it
-closes. The files stay: `dev migrate pending <commit>` tells a project
-crossing several releases what each one asks of it, and
-`dev migrate check --over <base>..<head>` judges any range against every
-release's record as well as the pending one.
+closes. A release candidate (`dev release --pre`) renders them and moves
+nothing — they belong to the release — and promoting it moves only the files
+its commit held, since a break declared after the candidate is not in it. The
+files stay: `dev migrate pending <commit>` tells a project crossing several
+releases what each one asks of it, and `dev migrate check --over
+<base>..<head>` judges any range against every release's record as well as
+the pending one.
 
 ### The `# lup: ignore` escape hatch
 

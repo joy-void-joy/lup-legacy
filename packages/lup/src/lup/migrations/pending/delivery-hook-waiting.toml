@@ -1,0 +1,24 @@
+subjects = ["Delivery.INBOX", "Delivery.MAILBOX"]
+reason = """
+mail waits in a member's mailbox however it reaches the member, so the two \
+delivery modes are named for what hands it over: its own hook, or nothing \
+until it looks"""
+
+[[steps]]
+instruction = """
+Read Delivery.HOOK where you read Delivery.INBOX, and Delivery.WAITING where \
+you read Delivery.MAILBOX (lup.coordination.roster). A tool result or a \
+roster row spells them `hook` and `waiting` where it spelled `inbox` and \
+`mailbox`."""
+
+[[steps]]
+instruction = """
+With every session in this repository ended, respell the delivery each \
+member file records, from the checkout, in the coordination store and in \
+each resolver run a parked run will resume from: \
+`for root in "$(git rev-parse --git-common-dir)/lup/coordination" \
+.lup/resolve/*; do for row in "$root"/members/*.json \
+"$root"/departed/*.json; do if [ -f "$row" ]; then sed -i.bak -e \
+'s/"delivery": "inbox"/"delivery": "hook"/' -e \
+'s/"delivery": "mailbox"/"delivery": "waiting"/' "$row" && \
+rm "$row.bak"; fi; done; done`. A row left unrespelled reads as `hook`."""

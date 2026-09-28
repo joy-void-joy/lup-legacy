@@ -402,7 +402,7 @@ def test_a_repository_peer_reads_when_it_looks(tmp_path: Path) -> None:
 
     [view] = peers.listing()
 
-    assert view.member.delivery is Delivery.MAILBOX
+    assert view.member.delivery is Delivery.WAITING
     assert view.member.worktree.endswith("tree")
     assert view.member.actor.id == member
 
@@ -478,7 +478,7 @@ async def test_a_session_using_its_tools_is_on_the_roster(tmp_path: Path) -> Non
     [listed] = peers.listing()
     assert listed.member.actor.id == "abc123"
     assert listed.doing == "rewriting the guard"
-    assert listed.member.delivery == Delivery.INBOX
+    assert listed.member.delivery == Delivery.HOOK
 
 
 async def test_joining_twice_leaves_one_member(tmp_path: Path) -> None:

@@ -8,7 +8,7 @@ from pydantic import BaseModel
 from lup.coordination.mail import ActorMail
 from lup.coordination.mailbox import AnswerDoor
 from lup.coordination.refs import ActorRef
-from lup.coordination.sessions import ActorInbox, ActorRecord, ActorSession
+from lup.coordination.sessions import ActorMailbox, ActorRecord, ActorSession
 from lup.resolver.record import Journal
 from lup.sessions.capabilities import SessionEngine
 from lup.sessions.errors import ProviderTurnError, TurnFailure
@@ -120,14 +120,14 @@ class RecordingSession(SessionEngine):
 
 def mailed_session(
     tmp_path: Path,
-) -> tuple[ActorSession, ActorInbox, RecordingSession]:
-    """One worker actor holding the inbox its run would hand it."""
+) -> tuple[ActorSession, ActorMailbox, RecordingSession]:
+    """One worker actor holding the mailbox its run would hand it."""
     recording = RecordingSession()
     actor = ActorRef(kind="worker", id="a-concern")
     journal = Journal(tmp_path)
-    inbox = ActorInbox(ActorMail(tmp_path), journal, actor)
-    session = ActorSession(actor, agent_over(recording), journal, None, inbox)
-    return session, inbox, recording
+    mailbox = ActorMailbox(ActorMail(tmp_path), journal, actor)
+    session = ActorSession(actor, agent_over(recording), journal, None, mailbox)
+    return session, mailbox, recording
 
 
 def post(tmp_path: Path, text: str) -> None:
@@ -141,7 +141,7 @@ def post(tmp_path: Path, text: str) -> None:
 
 async def test_mail_heads_the_next_turn_and_is_carried_once(tmp_path: Path) -> None:
     """What a door said between turns rides in front of the prompt, once."""
-    session, inbox, recording = mailed_session(tmp_path)
+    session, mailbox, recording = mailed_session(tmp_path)
     post(tmp_path, "the sibling already renamed that")
 
     await session.turn("go", Delivered)
@@ -151,7 +151,7 @@ async def test_mail_heads_the_next_turn_and_is_carried_once(tmp_path: Path) -> N
         "[agent] the sibling already renamed that\n\ngo",
         "go on",
     ]
-    assert inbox.waiting().messages == []
+    assert mailbox.waiting().messages == []
 
 
 async def test_a_turn_that_never_happened_does_not_consume_the_message(
@@ -164,12 +164,12 @@ async def test_a_turn_that_never_happened_does_not_consume_the_message(
     that does happen rather than swallowing it on behalf of one that did
     not.
     """
-    session, inbox, _ = mailed_session(tmp_path)
+    session, mailbox, _ = mailed_session(tmp_path)
     post(tmp_path, "stop, that design was rejected")
 
-    session.collect_inbox()
+    session.collect_mailbox()
 
-    assert [message.text for message in inbox.waiting().messages] == [
+    assert [message.text for message in mailbox.waiting().messages] == [
         "stop, that design was rejected"
     ]
 

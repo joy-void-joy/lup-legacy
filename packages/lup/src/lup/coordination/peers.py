@@ -6,14 +6,14 @@
 
 A population of agents that can only talk to each other has nowhere to put
 what a person is owed. The answer everything here is arranged around is that
-the person is *in* the roster: a member with an address, an inbox, and a
+the person is *in* the roster: a member with an address, a mailbox, and a
 liveness nobody has to assert, addressed by exactly the verbs that address an
 agent.
 
 That is what makes the human channel one mechanism rather than two. A report
 to whoever is watching is a message to ``user``; a question is a message to
 ``user`` carrying a slot id, and the reply settles the slot. A console
-displaying "what has been said to you" is reading one member's inbox. None of
+displaying "what has been said to you" is reading one member's mailbox. None of
 those needs a case in the send path, which is the whole of what the roster
 buys: a person is somewhere to send to, not a branch in front of sending.
 
@@ -21,7 +21,7 @@ The peer answers for itself and is never finished, because there is nothing
 that could finish it: a person does not stop existing when a run does, and a
 roster claiming otherwise would be a roster whose only durable member expires.
 Its delivery is the mode that needs nothing running beside it — mail waits in
-the file until somebody opens a door onto it, which is the honest description
+its mailbox until somebody opens a door onto it, which is the honest description
 of how a person reads.
 """
 
@@ -71,5 +71,5 @@ def join_user(roster: Roster) -> ActorRef:
     for itself — the difference is that this one never stops answering.
     """
     peer = user_peer()
-    roster.joined(peer, task=USER_TASK, delivery=Delivery.MAILBOX)
+    roster.joined(peer, task=USER_TASK, delivery=Delivery.WAITING)
     return peer

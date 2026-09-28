@@ -74,7 +74,7 @@ def test_the_suite_cannot_reach_the_session_that_is_running_it() -> None:
     """The variables a runtime sets about a session are taken away too.
 
     Written against an incident rather than a theory. `wake()` learned to
-    reach a Claude session by writing to the inbox socket its runtime names
+    reach a Claude session by writing to the wake socket its runtime names
     in the environment, and a test calling `native_wake` without setting that
     variable read the live one — so the suite delivered its own payload into
     the session running pytest, which then reported a peer message nobody had

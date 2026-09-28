@@ -104,31 +104,33 @@ def peer_policy(
     )
 
 
-INBOX_REACHED = (
-    "a session's inbox socket is its wake handle, and a frame written to it"
+WAKE_SOCKET_REACHED = (
+    "a session's wake socket is its wake handle, and a frame written to it"
     " starts that session's turn with text no roster records"
 )
-"""Why a command connecting to a peer's inbox was stopped, in one line."""
+"""Why a command connecting to a peer's wake socket was stopped, in one line."""
 
-INBOX_RECOVERY = (
+WAKE_SOCKET_RECOVERY = (
     "Reach the peer with `coordination_send` instead: it records the message"
     " where every session in this clone can read it, and wakes the peer"
-    " through this inbox itself."
+    " through this socket itself."
 )
 """What reaches the same peer and leaves the record a raw frame does not."""
 
 
-def inbox_refusal(
-    directory: str, reason: str = INBOX_REACHED, recovery: str = INBOX_RECOVERY
+def wake_socket_refusal(
+    directory: str,
+    reason: str = WAKE_SOCKET_REACHED,
+    recovery: str = WAKE_SOCKET_RECOVERY,
 ) -> list[RefusedPaths]:
-    """The directory sessions bind their inboxes in, withheld from every command.
+    """The directory sessions bind their wake sockets in, withheld from every command.
 
-    ``directory`` is the launch's own declaration of where inboxes go, passed
-    rather than spelled here, so a project that moves it moves the refusal
-    with it. Every spelling of a connection the kernel reads names the path --
-    a socat address, `nc -U`, `curl --unix-socket`, a redirection -- so the
-    path is refused rather than each program. Empty declares no inbox
-    directory, and refuses nothing.
+    ``directory`` is the launch's own declaration of where wake sockets go,
+    passed rather than spelled here, so a project that moves it moves the
+    refusal with it. Every spelling of a connection the kernel reads names the
+    path -- a socat address, `nc -U`, `curl --unix-socket`, a redirection -- so
+    the path is refused rather than each program. Empty declares no wake
+    socket directory, and refuses nothing.
     """
     if not directory:
         return []

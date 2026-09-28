@@ -36,7 +36,7 @@ class WakeReceipts(BaseModel, frozen=True):
     message_ids: list[str] = []
 
 
-class InboxRelay(ServerCompanion, frozen=True):
+class MailboxRelay(ServerCompanion, frozen=True):
     """One stdio server's receiver, bounded by the server's own lifetime.
 
     Every instance for the same member shares a file lock and receipt. Receipt
@@ -130,7 +130,7 @@ class InboxRelay(ServerCompanion, frozen=True):
                 detail = f"{current}; check the native session binding and queue availability"
             if current and current != problem:
                 logger.warning(
-                    "Inbox relay for %s could not queue pending mail: %s. "
+                    "Mailbox relay for %s could not queue pending mail: %s. "
                     "Mail remains pending and the relay will retry.",
                     self.member_id,
                     detail,

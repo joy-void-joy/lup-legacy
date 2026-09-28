@@ -43,6 +43,49 @@ The command's hint lists the profiles the machine keeps, so it is in neither
 committed tree: `harness generate` and every launch render it into a
 gitignored overlay — `.claude/plugins/local/` and `.codex/skills/`.
 
+### A member's messages wait in its mailbox
+
+What peers say to a session waited in its "inbox". It is the session's
+mailbox, and "inbox" names nothing in lup: the `coordination_inbox` tool is
+`coordination_mailbox`, `lup-devtools coordination inbox` is
+`coordination mailbox`, and the coordination store keeps each member's
+mail under `mailbox/` rather than `inbox/`. `ActorInbox` is
+`ActorMailbox`, `create_inbox_hooks` is `create_mailbox_hooks`,
+`ActorCohort.inbox` is `ActorCohort.mailbox`, `InboxRelay` is
+`MailboxRelay`, `INBOX_DIR` is `MAILBOX_DIR`, `inbox_path` is
+`mailbox_path`, and the hook matcher that delivers mail is tagged
+`mailbox`. End every session before regenerating, and move the mail still
+waiting as the migration says.
+
+The two ways mail reaches a member were called `inbox` and `mailbox`,
+though mail waits in the member's mailbox either way. Each is named for
+what hands the message over: `hook` (`Delivery.HOOK`), where the member's
+own hook puts it in front of its next tool call, and `waiting`
+(`Delivery.WAITING`), where it waits until the member next looks and
+nothing wakes it. `coordination_send` and `spawn_say` report those
+spellings, and the member files the store keeps are respelled by the
+migration's step.
+
+### A session's wake socket is keyed by its member id
+
+The Unix socket a peer writes to so an idle Claude session takes a turn
+was named after the session's display name, which repeats by design and
+changes at a rename: a launch met the stale socket of an earlier session
+called the same, and a rename left peers holding a path to nothing. It is
+now `<dir>/<repository>-<digest>--<member id>.sock`, at most 103 bytes. A
+file at a member's own path is replaced rather than refused, and a
+departed member's socket is removed only where the roster says it left and
+nothing answers on it.
+
+It is also called what it is. This socket holds no mail, so it is the
+session's wake socket, in `/tmp/lup-wake` rather than `/tmp/lup-inbox`.
+`SessionInboxes` is `WakeSockets`,
+`placed_inbox` is `placed_wake_socket`, `Image.inboxes` and
+`Member.inboxes` are `wake_sockets`, and `inbox_refusal` is
+`wake_socket_refusal`; `cleared`, `UnixSocketRefused` and
+`RepositoryPeers.woken_through` are gone. Regenerate so the compiled
+policy withholds the new directory.
+
 ### A native subagent is a roster row of its own
 
 A session's native subagents inherited its coordination identity, so a
@@ -57,7 +100,7 @@ live while its session is.
 A new `PreToolUse` hook on each runtime, matched to the coordination
 server's tools, writes the calling conversation into the call's hidden
 `lup_caller` argument, so `describe`, `rename`, `lock`, `release` and
-`inbox` act on the calling subagent's row and `coordination_peers` lists
+`mailbox` act on the calling subagent's row and `coordination_peers` lists
 subagents beneath their session. A subagent's edits are held on its row: a
 sibling writing there is asked, its own session's claims are not. A native
 send between conversations of one session is no longer redirected, and an
@@ -152,6 +195,45 @@ retired, reused and dropped again, is a break of its own, and so is a
 project's name that a library release happened to retire too.
 `docs/contributing.md` shows a file. `MigrationRecord` reads the record where
 `DECLARED` was read, and `undeclared_breaks` takes one as `record`.
+
+### A release can go out as candidates first
+
+`dev release <level> --pre` (`/lup:release --pre`) cuts a release candidate,
+tagged `vX.Y.ZrcN`: a PEP 440 pre-release, published to the index and the
+forge as one, whose commit's manifest says `X.Y.ZrcN` — so a project pinned
+to it by git is told it holds the candidate. N counts on from the tags
+already spent on that version, and a
+later `--pre` keeps the series' level unless another one is named. The
+changelog section stays open, headed by the version the series is heading
+for and listing each candidate; work landing after a candidate gathers under
+a fresh `## Unreleased` above it until the next candidate folds it in, and
+the pending breaks stay pending until the release.
+
+A plain `dev release` while the newest tag is a candidate promotes it, with a
+release commit on a branch cut from the candidate's tag (`release-X.Y.Z`)
+that changes only the version (`X.Y.ZrcN` to `X.Y.Z`), the changelog section
+it closes, and the record of the breaks the candidate carried. Before
+anything is committed, every file it changes is checked against the
+candidate's tag; anything more is named, undone, and refused, so what ships
+is what was tested. The branch is tagged `vX.Y.Z`, lands on the release
+branch through a pull request like any release, and is merged back into the
+integration branch — which goes on taking work while a candidate soaks, and
+keeps it. Where the release branch has moved past the candidate, the command
+says so and names the two ways on — another candidate with `--pre`, or the
+release of what the integration branch holds with `--direct`.
+
+Nothing takes a candidate by accident. A project opts in by naming it:
+`dev library git --tag vX.Y.ZrcN`, or `dev library use published --version
+X.Y.ZrcN`, whose requirement naming a pre-release is what lets the installer
+take one. `dev library release` names a candidate newer than the release
+beside it and never offers it as the version to pin.
+
+The publishing workflow builds the tree a tag names as it stands, and a
+second job records each release on GitHub, marked prerelease for a
+candidate; it holds `contents: write` and not the index's identity.
+`PublishSpec` takes `tag_prefix` in place of `tags`, and
+`Changelog.released_as` takes the asks as rendered lines where `released()`
+took them.
 
 ## 0.4.0 — 2026-09-22
 
@@ -438,6 +520,7 @@ copied half above; both refusals carry the reading, and restating it as
 -   Read `BranchBase.refusal()` where you read `BranchBase.notice()`, and exit on it: it is empty wherever the base is settled, and where it is not it names both spellings of `--base` for the caller to re-run with.
     uv run lup-devtools dev py text \.notice\(
 -   Pass `branch` when you construct a `BranchBase`, which the refusal names the contested branch by, and `ahead` from `commits_ahead(current, integration)`, which is the measurement deciding whether the two bases differ at all.
+
 ## 0.3.0 — 2026-09-19
 
 Breaking reorganisation of the library's top level. Thirty-four entries became

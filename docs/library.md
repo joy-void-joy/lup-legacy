@@ -318,7 +318,7 @@ status = agent.launch("--verbose", steps=[Checkpoint()])
 | `plugin` | Claude's first plugin directory, which takes `builtin="stock"`; Codex installs the plugin its project's marketplace offers | `--plugin-dir` (Claude); installed into the launch's home (Codex). A `Harness` is compiled into the project's tree by `prepare()` |
 | `policy` | Hooks judging every call in process; unset, the plugin harness's own | The plugin's dispatcher, and the boundary the launch measures and records |
 | `tools.mcp` | Hosted in process | `--mcp-config` with `--strict-mcp-config` (Claude), `--config mcp_servers.*` (Codex): the declared roster, never the plugin's |
-| `identity` | Joins the coordination roster through the session's environment | The same, plus `--name` and the inbox socket on Claude |
+| `identity` | Joins the coordination roster through the session's environment | The same, plus `--name` and the wake socket, keyed by the member's id, on Claude |
 | `record` | The run's journal, transcript and ledger entry, kept while the session is open | The same, around the foreground CLI |
 | `resume` | `Latest()` resumes the newest session on record; `Pick()` is refused | `--continue` / `--resume` (Claude), `resume --last` / `resume` (Codex); `Reopen(session=...)` names one |
 | `max_recursive_agent` | `LUP_MAX_RECURSIVE_AGENT`, never more than this process has left | The same variable |

@@ -103,23 +103,23 @@ def test_a_member_filter_narrows_the_mail_and_not_the_roster(tmp_path: Path) -> 
 
 
 @pytest.mark.usefixtures("unix_socket")
-def test_nudging_wakes_a_peer_through_its_inbox_and_says_so_for_one_without(
+def test_nudging_wakes_a_peer_through_its_wake_socket_and_says_so_for_one_without(
     tmp_path: Path,
 ) -> None:
-    """A peer that declared an inbox is woken through it; a peer that declared
+    """A peer that declared a wake socket is woken through it; one that declared
     nothing is told so rather than skipped.
     """
     peers = RepositoryPeers(tmp_path)
     claude = mint_member_id()
-    inbox = tmp_path / "claude.sock"
+    address = tmp_path / "claude.sock"
     # Joined on the roster directly so the wake path is on the first record,
     # then named, rather than through `join`, which declares none.
     peers.cohort.roster.joined(
         member_ref(claude),
         task="working",
-        delivery=Delivery.INBOX,
+        delivery=Delivery.HOOK,
         worktree=str(tmp_path / "claude"),
-        wake=WakePath(runtime="claude", handle=str(inbox)),
+        wake=WakePath(runtime="claude", handle=str(address)),
     )
     peers.rename(claude, "claude")
     silent = mint_member_id()
@@ -134,7 +134,7 @@ def test_nudging_wakes_a_peer_through_its_inbox_and_says_so_for_one_without(
     # a single connection would fail the test on the second rather than
     # report what the watcher did.
     listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-    listener.bind(str(inbox))
+    listener.bind(str(address))
     listener.listen(8)
     listener.settimeout(0.1)
     stopping = Event()
@@ -142,7 +142,7 @@ def test_nudging_wakes_a_peer_through_its_inbox_and_says_so_for_one_without(
     delivered: list[str] = []
 
     def serve_until_stopped() -> None:
-        """Accept, read each connection to its end, then close — as an inbox does.
+        """Accept, read each connection to its end, then close — as a wake socket does.
 
         Reading before closing is what keeps this out of a race with the
         nudge's own write. An accepted connection closed unread makes that
@@ -176,7 +176,7 @@ def test_nudging_wakes_a_peer_through_its_inbox_and_says_so_for_one_without(
     # Waited for rather than assumed: the connection sits in the backlog until
     # something accepts it, so stopping the thread on the way past would leave
     # whether anything was read up to which thread ran next.
-    reached_the_inbox = arrived.wait(timeout=5)
+    reached_the_socket = arrived.wait(timeout=5)
     stopping.set()
     serving.join(timeout=5)
     listener.close()
@@ -187,7 +187,7 @@ def test_nudging_wakes_a_peer_through_its_inbox_and_says_so_for_one_without(
     # One nudge per look, so one frame, and it carries the peer's own user
     # turn — which is what makes an idle session take a turn rather than
     # merely record something.
-    assert reached_the_inbox
+    assert reached_the_socket
     [frame] = [json.loads(line) for line in delivered]
     assert frame["type"] == "user"
     assert "look" in frame["message"]["content"]
@@ -211,7 +211,7 @@ def test_a_nudge_carries_every_fresh_message_rather_than_the_newest(
 
     Two messages posted between looks are equally new to a peer that has read
     neither. Handing over the last would leave the first readable only to
-    somebody who thought to fold their inbox — which is the habit an idle peer
+    somebody who thought to fold their mailbox — which is the habit an idle peer
     does not have and the whole reason it is being nudged.
     """
     peers = RepositoryPeers(tmp_path)
@@ -225,4 +225,4 @@ def test_a_nudge_carries_every_fresh_message_rather_than_the_newest(
 
     assert "the first thing" in carried
     assert "the second thing" in carried
-    assert "coordination_inbox" in carried
+    assert "coordination_mailbox" in carried

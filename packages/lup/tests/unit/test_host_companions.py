@@ -307,13 +307,13 @@ def test_a_command_carries_what_its_companions_hand_it_and_lets_them_go(
     claude = Claude(
         cwd=stubbed,
         sandbox=InnerSandbox(escapable=True),
-        identity=Member(inboxes=None),
+        identity=Member(wake_sockets=None),
         companions=[companion],
     ).command()
     codex = Codex(
         cwd=stubbed,
         sandbox=InnerSandbox(),
-        identity=Member(inboxes=None),
+        identity=Member(wake_sockets=None),
         companions=[companion],
     ).command()
     settings = json.loads(claude.argv[claude.argv.index("--settings") + 1])
@@ -347,7 +347,7 @@ def test_a_contained_session_is_handed_its_companions_variables_by_name(
     Claude(
         cwd=stubbed,
         sandbox=OuterContainer(),
-        identity=Member(inboxes=None),
+        identity=Member(wake_sockets=None),
         companions=[
             Fixed(name="inbox", given=Contribution(environment={"INBOX_URL": "x"}))
         ],

@@ -71,7 +71,7 @@ def run_cohort(mailbox: QuestionMailbox, run_id: str) -> ActorCohort:
     another terminal and the orchestrator reach one record rather than two.
 
     Built here rather than at each door, because a cohort left to build its
-    own would open a second inbox beside the one every door writes, and a
+    own would open a second ``ActorMail`` beside the one every door writes, and a
     journal on the path the run's own already holds.
     """
     return ActorCohort(

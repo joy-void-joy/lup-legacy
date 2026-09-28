@@ -307,7 +307,7 @@ owns the subject, then regenerate.
 - /lup:rebase — Clean up commit history on the feature branch and open/update a PR
 - /lup:refactor — Rewrite a file or folder from scratch while respecting coding conventions
 - /lup:refactor-tools — Audit SDK agent tools and subagents — find gaps, overlaps, and refactoring opportunities
-- /lup:release — Cut a release: settle the level, close the changelog, tag it
+- /lup:release — Cut a release or a candidate of one: settle the level, close the changelog, tag it — or promote the candidate that held
 - /lup:report — Write the report of everything left to implement, rewritten whole under tmp/, after a long session or after implementing a plan
 - /lup:resolve — Resolve inline feedback through isolated work
 - /lup:resolve-reviewer — Review one resolver concern against its acceptance criteria
@@ -613,7 +613,7 @@ hook trust with the native hooks surface after generation.
 `lup-devtools harness claude|codex` launches a declaration. Each flag is a
 field of the `Claude(...)` or `Codex(...)` it builds from this repository's
 composition — the generated plugin and every plugin the checkout keeps beside
-it, the harness's policy, requirements, image and inbox, the tool servers
+it, the harness's policy, requirements, image and wake socket, the tool servers
 every session carries — and `launch()` does what a program's launch does:
 readies the home, checks the host, measures the boundary, compiles the argv
 and runs the CLI in the foreground. What stays with the command is this

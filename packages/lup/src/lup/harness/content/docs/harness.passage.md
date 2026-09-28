@@ -567,7 +567,7 @@ hook trust with the native hooks surface after generation.
 `lup-devtools harness claude|codex` launches a declaration. Each flag is a
 field of the `Claude(...)` or `Codex(...)` it builds from this repository's
 composition — the generated plugin and every plugin the checkout keeps beside
-it, the harness's policy, requirements, image and inbox, the tool servers
+it, the harness's policy, requirements, image and wake socket, the tool servers
 every session carries — and `launch()` does what a program's launch does:
 readies the home, checks the host, measures the boundary, compiles the argv
 and runs the CLI in the foreground. What stays with the command is this

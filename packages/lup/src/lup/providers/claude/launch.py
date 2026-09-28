@@ -41,7 +41,7 @@ from lup.launch.session import (
     LaunchOpening,
     cleared_on_the_way_in,
     personal_config,
-    placed_inbox,
+    placed_wake_socket,
     runtime_preflight,
     session_argv,
     start_harness_transcript,
@@ -415,7 +415,7 @@ def refuse_in_process_fields(agent: "Claude") -> None:
 def claude_arguments(
     config: "Claude",
     member: LaunchedMember,
-    inbox: str | None,
+    wake_socket: str | None,
     words: list[str],
     tree: Path | None = None,
 ) -> list[str]:
@@ -496,7 +496,7 @@ def claude_arguments(
         # named their own session still wins.
         "--name",
         member.cli_name,
-        *(["--messaging-socket-path", inbox] if inbox is not None else []),
+        *(["--messaging-socket-path", wake_socket] if wake_socket is not None else []),
         *words,
     ]
 
@@ -607,8 +607,8 @@ def claude_opening(
 ) -> LaunchCommand:
     """Compile a launched declaration into the process that opens its session.
 
-    Settles what the argv depends on the way a launch does: the inbox is
-    placed, the inner sandbox exercised before it is vouched for, the
+    Settles what the argv depends on the way a launch does: the wake socket
+    is placed, the inner sandbox exercised before it is vouched for, the
     boundary measured and recorded, and an outer container's image and
     egress made ready, since the argv names them. ``joined`` is what the
     host companions held around the session hand it: their variables join
@@ -621,10 +621,12 @@ def claude_opening(
     )
     root = claude_root(launched)
     member = launched_member(root, config.identity.name if config.identity else None)
-    inboxes = config.identity.inboxes if config.identity is not None else None
-    inbox = placed_inbox(inboxes, root, member) if inboxes is not None else None
+    sockets = config.identity.wake_sockets if config.identity is not None else None
+    wake_socket = (
+        placed_wake_socket(sockets, root, member) if sockets is not None else None
+    )
     arguments = claude_arguments(
-        config, member, inbox, words, worktrees_directory(root)
+        config, member, wake_socket, words, worktrees_directory(root)
     )
     environment = {
         **claude_server_environment(config.tools),

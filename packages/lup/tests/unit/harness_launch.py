@@ -24,7 +24,7 @@ from lup.harness.generate import MachineOverlay, NativeHarnessComposition
 from lup.providers.claude.harness import CLAUDE_OVERLAY
 from lup.providers.codex.harness import CODEX_OVERLAY
 from lup.providers.harness import claude_machine_overlay, codex_machine_overlay
-from lup.harness.messaging import SessionInboxes
+from lup.harness.messaging import WakeSockets
 from lup.harness.models import Harness
 from lup.observability.audit import TraceJournal
 from lup.providers.codex.home import CodexHomeSelection
@@ -59,14 +59,14 @@ class Transcript:
 
 
 def harness() -> Harness:
-    """This repository's harness, its inbox declined so nothing binds a socket."""
+    """This repository's harness, its wake socket declined so nothing binds one."""
     from lup_template.harness.catalog import portable_harness
 
     declared = portable_harness()
     return declared.model_copy(
         update={
             "image": declared.image.model_copy(
-                update={"inboxes": SessionInboxes(directory="")}
+                update={"wake_sockets": WakeSockets(directory="")}
             )
         }
     )

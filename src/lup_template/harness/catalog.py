@@ -57,7 +57,7 @@ from lup.devtools.project import DevProject
 from lup.harness.contracts import NativeSpellings
 from lup.harness.enforcement import declared_role_rows
 from lup.policy.boundary import depends_on
-from lup.coordination.policy import inbox_refusal, peer_policy
+from lup.coordination.policy import peer_policy, wake_socket_refusal
 from lup.policy.refused_tools import RefusedTool
 from lup.workspace.paths import (
     declared_project_root,
@@ -412,12 +412,13 @@ workspace is the library's, installed first because `dev check` rebuilds the
 bundles it compares against what is committed."""
 
 
-PUBLISH = PublishSpec(package=DISTRIBUTION)
+PUBLISH = PublishSpec(package=DISTRIBUTION, tag_prefix=declared_release().tag_prefix)
 """What a release tag publishes here: the library, not the scaffold.
 
 The workspace root is `lup-template`, which nobody installs — so the member
 is named, and `uv build` is told which of the two distributions in this
-repository is the one that ships."""
+repository is the one that ships. The tag it publishes on is the one the
+release writes, read from that declaration rather than spelled twice."""
 
 
 NATIVE_RUNTIMES: list[NativeSpellings] = [ClaudeSpellings(), CodexSpellings()]
@@ -816,6 +817,15 @@ def portable_harness(
                 HookPathRole(
                     root=Path("packages/lup/src/lup/web/bundles"), role="scratch"
                 ),
+                # A pending migration is a declaration a break's own commit
+                # writes, one TOML file each: data read by `dev migrate` and
+                # the release, not source a whole-file or size gate reviews
+                # for how it reads. Data rather than scratch, because it is
+                # the only copy of what an adopter is told to do. Pending
+                # only: a released record is `dev release`'s to write.
+                HookPathRole(
+                    root=Path("packages/lup/src/lup/migrations/pending"), role="data"
+                ),
                 # What each suite the gate runs collects is a test by
                 # derivation rather than by a second table: bun collects
                 # `*.test.ts` beside its source, where no directory root
@@ -848,8 +858,8 @@ def portable_harness(
             # runtimes this project runs on, each spelled by its own login
             # declaration: a session reads neither its own token nor the
             # other runtime's. And the directory this image binds session
-            # inboxes in, read off the image rather than spelled, so a peer
-            # is reached through the roster rather than a raw frame.
+            # wake sockets in, read off the image rather than spelled, so a
+            # peer is reached through the roster rather than a raw frame.
             #
             # The one declaration every reader is refused by: the shell's
             # words on both runtimes, and on Claude the `Read` deny rules the
@@ -866,7 +876,7 @@ def portable_harness(
                         *CODEX_LOGIN.withheld_logins(),
                     ]
                 ),
-                *inbox_refusal(agent_image().inboxes.directory),
+                *wake_socket_refusal(agent_image().wake_sockets.directory),
             ],
             # Which checker answers for an edit is this project's toolchain,
             # not the library's, and it is named rather than located: the
