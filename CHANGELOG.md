@@ -146,15 +146,17 @@ a fresh `## Unreleased` above it until the next candidate folds it in, and
 the pending breaks stay pending until the release.
 
 A plain `dev release` while the newest tag is a candidate promotes it, with a
-release commit on top of it that changes only the version (`X.Y.ZrcN` to
-`X.Y.Z`), the changelog section it closes, and the record of the breaks the
-candidate carried. Before anything is committed, every file it changes is
-checked against the candidate's tag; anything more is named, undone, and
-refused, so what ships is what was tested. Where the release branch has moved
-past the candidate, or the integration branch changed anything since it but
-the changelog, the command says so and names the two ways on — another
-candidate with `--pre`, or the release of what the integration branch holds
-with `--direct`.
+release commit on a branch cut from the candidate's tag (`release-X.Y.Z`)
+that changes only the version (`X.Y.ZrcN` to `X.Y.Z`), the changelog section
+it closes, and the record of the breaks the candidate carried. Before
+anything is committed, every file it changes is checked against the
+candidate's tag; anything more is named, undone, and refused, so what ships
+is what was tested. The branch is tagged `vX.Y.Z`, lands on the release
+branch through a pull request like any release, and is merged back into the
+integration branch — which goes on taking work while a candidate soaks, and
+keeps it. Where the release branch has moved past the candidate, the command
+says so and names the two ways on — another candidate with `--pre`, or the
+release of what the integration branch holds with `--direct`.
 
 Nothing takes a candidate by accident. A project opts in by naming it:
 `dev library git --tag vX.Y.ZrcN`, or `dev library use published --version
