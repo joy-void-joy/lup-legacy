@@ -112,6 +112,38 @@ project's name that a library release happened to retire too.
 `docs/contributing.md` shows a file. `MigrationRecord` reads the record where
 `DECLARED` was read, and `undeclared_breaks` takes one as `record`.
 
+### A release can go out as candidates first
+
+`dev release <level> --pre` (`/lup:release --pre`) cuts a release candidate,
+tagged `vX.Y.ZrcN`: a PEP 440 pre-release, published to the index and the
+forge as one. N counts on from the tags already spent on that version, and a
+later `--pre` keeps the series' level unless another one is named. The
+changelog section stays open, headed by the version the series is heading
+for and listing each candidate; work landing after a candidate gathers under
+a fresh `## Unreleased` above it until the next candidate folds it in, and
+the pending breaks stay pending until the release.
+
+A plain `dev release` while the newest tag is a candidate promotes it: where
+the release branch holds exactly what the candidate shipped, the same commit
+is tagged `vX.Y.Z`, nothing rebuilt, and the section closes with only the
+breaks that commit carried as the release's record. Where the branch has
+moved, the command says so and names the two ways on — another candidate
+with `--pre`, or the release of what the integration branch holds with
+`--direct`.
+
+Nothing takes a candidate by accident. A project opts in by naming it:
+`dev library git --tag vX.Y.ZrcN`, or `dev library use published --version
+X.Y.ZrcN`, whose requirement naming a pre-release is what lets the installer
+take one. `dev library release` names a candidate newer than the release
+beside it and never offers it as the version to pin.
+
+The publishing workflow takes the version it builds from the tag, since a
+candidate and its promotion are one commit under two tags, and a second job
+records each release on GitHub, marked prerelease for a candidate; it holds
+`contents: write` and not the index's identity. `PublishSpec` takes
+`tag_prefix` in place of `tags`, and `Changelog.released_as` takes the asks as
+rendered lines where `released()` took them.
+
 ## 0.4.0 — 2026-09-22
 
 ### Native execution carries no reusable approval authority
@@ -397,6 +429,7 @@ copied half above; both refusals carry the reading, and restating it as
 -   Read `BranchBase.refusal()` where you read `BranchBase.notice()`, and exit on it: it is empty wherever the base is settled, and where it is not it names both spellings of `--base` for the caller to re-run with.
     uv run lup-devtools dev py text \.notice\(
 -   Pass `branch` when you construct a `BranchBase`, which the refusal names the contested branch by, and `ahead` from `commits_ahead(current, integration)`, which is the measurement deciding whether the two bases differ at all.
+
 ## 0.3.0 — 2026-09-19
 
 Breaking reorganisation of the library's top level. Thirty-four entries became

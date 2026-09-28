@@ -1493,13 +1493,31 @@ def create_dev_app(
     @app.command("release")
     def release_cmd(
         level: Annotated[
-            str,
-            typer.Argument(help="Which part of the version moves: patch, minor, major"),
-        ],
+            str | None,
+            typer.Argument(
+                help="Which part of the version moves: patch, minor, major. "
+                "Left out, an open series of candidates keeps its own"
+            ),
+        ] = None,
+        pre: Annotated[
+            bool,
+            typer.Option(
+                "--pre",
+                help="Cut a release candidate, vX.Y.ZrcN, published as a pre-release",
+            ),
+        ] = False,
+        direct: Annotated[
+            bool,
+            typer.Option(
+                "--direct",
+                help="Release what this branch holds rather than promote the "
+                "open candidate",
+            ),
+        ] = False,
         dry_run: DryRun = False,
         as_json: Annotated[bool, typer.Option("--json", help="Emit JSON")] = False,
     ) -> None:
-        """Cut a release: close the changelog, move the version, tag it.
+        """Cut a release or a candidate of one, or promote the newest candidate.
 
         One transaction over the files a release touches, because four prose
         steps in a skill are three steps that never run. What stays outside
@@ -1507,25 +1525,28 @@ def create_dev_app(
         entries under `## Unreleased` say — and everything downstream of
         those is arithmetic, carried out the same way each time.
 
+        With `--pre` the release goes out first as a candidate. A plain
+        release while the newest tag is a candidate promotes it: that same
+        commit, tagged as the release, where the release branch still holds
+        exactly what the candidate shipped. Where the branch has moved, this
+        says so and names both ways on — another candidate, or `--direct`.
+
         Refused on a dirty tree and on an undeclared break, in that order. The
         first because a release commit should hold the release and not
         whatever somebody left lying about; the second because the gate exists
         to stop a break shipping with no instruction, and a release is the
-        moment it would ship.
+        moment it would ship. A promotion is not: it ships a commit already
+        cut, and what landed since stays out of it.
         """
         from lup.devtools.dev.release import (
-            ReleasePlan,
-            is_level,
-            next_version,
-            published_version,
-            release_subject,
-            released,
-            with_version,
+            PendingBreaks,
+            ReleaseRefused,
+            ReleaseRequest,
+            carry_out,
+            read_state,
+            requested_level,
         )
 
-        if not is_level(level):
-            typer.echo(f"{level} is not patch, minor or major", err=True)
-            raise typer.Exit(1)
         # Only where something is about to be written. A dry run is what
         # somebody asks *while* the tree is dirty, to see what a release would
         # do before deciding what to do with the rest of it.
@@ -1541,10 +1562,24 @@ def create_dev_app(
         spec = declarations.release
         root = project_root()
         record = migrations.MigrationRecord()
+        pending = record.pending()
+        log = Changelog.read(root / spec.changelog)
+        try:
+            plan = read_state(spec, root, record.pending_directory()).planned(
+                ReleaseRequest(level=requested_level(level), pre=pre, direct=direct),
+                dt.date.today(),
+                log,
+                PendingBreaks(lines=migrations.rendered(pending), count=len(pending)),
+                spec,
+            )
+        except ReleaseRefused as refused:
+            typer.echo(str(refused), err=True)
+            raise typer.Exit(1) from refused
+
         base = migrations.gate_base(get_integration_branch())
         undeclared = (
             migrations.undeclared_breaks(declarations.project, base, record)
-            if base
+            if base and plan.kind != "promotion"
             else []
         )
         if undeclared:
@@ -1557,24 +1592,6 @@ def create_dev_app(
             )
             raise typer.Exit(1)
 
-        manifest = root / spec.version_file
-        changelog_path = root / spec.changelog
-        previous = published_version(manifest)
-        version = next_version(previous, level)
-        today = dt.date.today()
-        pending = record.pending()
-        folded = migrations.rendered(pending)
-        log = Changelog.read(changelog_path)
-        plan = ReleasePlan(
-            previous=previous,
-            version=version,
-            date=today,
-            tag=f"{spec.tag_prefix}{version}",
-            migrations=folded,
-            breaks=len(pending),
-            entries=bool(log.unreleased),
-        )
-
         if dry_run:
             if as_json:
                 output_json(plan)
@@ -1583,20 +1600,22 @@ def create_dev_app(
                     typer.echo(f"would release: {line}")
             return
 
-        changelog_path.write_text(released(log, version, today, folded).render())
-        manifest.write_text(with_version(manifest.read_text(), version))
-        record.release(version, root)
-
-        # The version is a source a generated artifact compiles from, so
-        # writing it leaves the trees that embed it behind — and the commit
-        # guard refuses exactly that, which is how a release came to be the
-        # one commit this repository could not make. Regenerating here is
-        # what the guard is asking for, and everything it writes belongs in
-        # the same commit as the bump that caused it.
-        update_mod.regenerated(root, lambda line: typer.echo(line, err=True))
-        git.add("-A")
-        git.commit("-m", release_subject(previous, version))
-        git.tag("-a", plan.tag, "-m", f"{spec.version_file} {version}")
+        # The version and the record are sources a generated artifact
+        # compiles from, so writing them leaves the trees that embed them
+        # behind — and the commit guard refuses exactly that, which is how a
+        # release came to be the one commit this repository could not make.
+        # Regenerating is what the guard is asking for, and everything it
+        # writes belongs in the same commit as the release that caused it.
+        carry_out(
+            plan,
+            spec,
+            root,
+            log,
+            record,
+            regenerate=lambda: update_mod.regenerated(
+                root, lambda line: typer.echo(line, err=True)
+            ),
+        )
 
         if as_json:
             output_json(plan)

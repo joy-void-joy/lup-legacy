@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "generator_version": "0.2.0",
-  "source_digest": "a9845589b2f4ededf415bf89d24ba424231f50faee526c6fd2e6ea32985372e7",
+  "source_digest": "d476f289368283a6cf418a68c03dc00d528d4f826c9a9237032f2b089c5ab60b",
   "target_requirements": [
     "claude-code"
   ],
@@ -37,7 +37,7 @@
     {
       "path": ".claude/plugins/lup/TEMPLATE_CLAUDE.md",
       "category": "generated",
-      "sha256": "5cfd72a9a9f8091cc0e0e9e835d6112a5b2b03e21c5a05ed2d5c205c892e3523",
+      "sha256": "ee9faaab6ae7418b38c8bd6c356d676522ad616b804360f55f0c09341ffefa69",
       "semantic_id": "harness.template-guidance",
       "executable": false
     },
@@ -107,7 +107,7 @@
     {
       "path": ".claude/plugins/lup/commands/commit.md",
       "category": "generated",
-      "sha256": "3883d316615273057d40e60058d65b4f91f7228fff8775f92cb3aeb1dfe415d8",
+      "sha256": "c577a154512e8ef7c2453f95d7c9d329336940ff10e1febffb479acc177a42ae",
       "semantic_id": "skill.commit",
       "executable": false
     },
@@ -212,14 +212,14 @@
     {
       "path": ".claude/plugins/lup/commands/init.md",
       "category": "generated",
-      "sha256": "4d8c60058dd4dc8c196b22a0a914788b43ffcea82b26fa1053d92c2c561bb3d8",
+      "sha256": "f755973b3abb2f3d0e64b61658bf143cb1431eb5e0c53cc70d478e4933a41204",
       "semantic_id": "skill.init",
       "executable": false
     },
     {
       "path": ".claude/plugins/lup/commands/install.md",
       "category": "generated",
-      "sha256": "f302ce6bfdd36236c853360585801e545b7d00930a779b7b0153ad870128af6c",
+      "sha256": "59249ef729ac02b417b3f418b3c413fc868edf2aa78e5dea8dc80a008bbd7611",
       "semantic_id": "skill.install",
       "executable": false
     },
@@ -289,7 +289,7 @@
     {
       "path": ".claude/plugins/lup/commands/release.md",
       "category": "generated",
-      "sha256": "4a31da492773092e4f166333ad762eee121011be44ae0fe50d7799ce3061653e",
+      "sha256": "660cac10441794aea981b925282fbd0cc3b92eb18782bdc9a272ca43db58e254",
       "semantic_id": "skill.release",
       "executable": false
     },
@@ -758,7 +758,7 @@
     {
       "path": "docs/contributing.md",
       "category": "generated",
-      "sha256": "62ff485f0726f159b7e2d047439e92b58e3a824a3e332dcd831a5c634088d67b",
+      "sha256": "f1335c0a970c2ce12fcd8764df9da3b46cc59b474349580e9e3b97dd625ee8f8",
       "semantic_id": "docs.contributing",
       "executable": false
     },
@@ -793,7 +793,7 @@
     {
       "path": "docs/harness.md",
       "category": "generated",
-      "sha256": "6b5581af36ca43801846c93bf11ba2ae4cc115516583f17a44cd426d251c01e7",
+      "sha256": "a12b5a3b5efc956a87dac446a9ddc0e4a4c7c3ac8b7b05b1aeab9012f9d354eb",
       "semantic_id": "docs.harness",
       "executable": false
     },

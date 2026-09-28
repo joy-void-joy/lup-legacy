@@ -17,6 +17,13 @@ Neither half of a heading is judged here: ``parse_semver`` decides what counts
 as a version and ``date.fromisoformat`` decides what counts as a date, so the
 only thing this module does to the line is find where one ends and the other
 begins.
+
+A document has at most two open sections, above every release. ``##
+Unreleased`` gathers what has landed and shipped nowhere. Beneath it, while
+release candidates are being cut, a section is headed by the version they are
+heading for and lists each candidate cut toward it: what landed after the
+last candidate is not in it, so it opens a fresh ``## Unreleased`` above, and
+the next candidate — or the release — folds that in.
 """
 
 import datetime as dt
@@ -25,6 +32,7 @@ from itertools import dropwhile
 from pathlib import Path
 
 from markdown_it import MarkdownIt
+from packaging.version import Version
 from pydantic import BaseModel
 
 from lup.workspace.history import parse_semver
@@ -57,6 +65,33 @@ def release_heading(version: str, date: dt.date) -> str:
     return f"## {version} — {date.isoformat()}"
 
 
+# lup: ignore[constant-declaration] — a word in a heading grammar this module
+# writes and reads back, not a judgement another implementer would make
+CANDIDATE = "candidate"
+"""What a section's heading closes on where a release's closes on its date.
+
+The last word, as a release's date is, so one reading of a heading tells the
+two apart: a version followed by this word is the section release candidates
+are being cut toward — open, and not yet any release.
+"""
+
+
+def candidate_heading(target: str) -> str:
+    """The line the section a series of candidates is heading for is found by."""
+    return f"## {target} — {CANDIDATE}"
+
+
+# lup: ignore[constant-declaration] — the opening of a line this module writes
+# and reads back, part of the same grammar as the heading above it
+CANDIDATES = "Candidates:"
+"""What opens the line listing every candidate a section went out as."""
+
+# lup: ignore[constant-declaration] — the sub-heading a release writes and a
+# later candidate finds again to replace, one grammar with its two readers
+ASKS = "What this release asks of a caller"
+"""The sub-heading a section gathers what its breaks ask of a caller under."""
+
+
 class ReleaseNote(BaseModel, frozen=True):
     """One release, as the fields a bump states rather than as markdown.
 
@@ -79,6 +114,36 @@ class ReleaseNote(BaseModel, frozen=True):
         """This release as the markdown a changelog carries it in."""
         details = "".join(f"- {detail}\n" for detail in self.details)
         return f"{self.heading()}\n\n{self.summary}\n{details}\n"
+
+
+class HeadingWords(BaseModel, frozen=True):
+    """A section heading's two ends: the version it opens on, the word it closes on.
+
+    Both headings a release writes are this shape and differ only in the last
+    word — a date for a release, :data:`CANDIDATE` for the section candidates
+    are cut toward — so the line is split once, here, and each reading judges
+    only its own word.
+    """
+
+    version: str
+    last: str
+
+    @classmethod
+    def read(cls, content: str) -> "HeadingWords | None":
+        """A heading's own text as its two ends, or None where it opens on no version.
+
+        The ``v`` is optional and the last word may be parenthesised, which is
+        how a hand-written heading usually spells a date.
+        """
+        # lup: ignore[string-split] — the heading is one line of a grammar this
+        # module writes and reads; the split only finds where the version ends
+        # and the rest begins, and parse_semver judges the version
+        name, _, remainder = content.strip().partition(" ")
+        version = name.removeprefix("v")
+        words = remainder.split()
+        if parse_semver(version) is None or not words:
+            return None
+        return cls(version=version, last=words[-1].removeprefix("(").removesuffix(")"))
 
 
 class ReleaseHeading(BaseModel, frozen=True):
@@ -105,20 +170,65 @@ class ReleaseHeading(BaseModel, frozen=True):
         it. Whatever introduces the date, it is the last word on the line, so
         that is what is read and `date.fromisoformat` remains its only judge.
         """
-        # lup: ignore[string-split] — the heading is one line of a grammar this
-        # module writes and reads; the split only finds where the version ends
-        # and the date begins, and parse_semver and fromisoformat judge both
-        name, _, remainder = content.strip().partition(" ")
-        version = name.removeprefix("v")
-        words = remainder.split()
-        stamp = words[-1].removeprefix("(").removesuffix(")") if words else ""
-        if parse_semver(version) is None:
+        words = HeadingWords.read(content)
+        if words is None:
             return None
         try:
-            date = dt.date.fromisoformat(stamp)
+            date = dt.date.fromisoformat(words.last)
         except ValueError:
             return None
-        return cls(line=line, version=version, date=date)
+        return cls(line=line, version=words.version, date=date)
+
+
+class CandidateHeading(BaseModel, frozen=True):
+    """Where the section candidates are being cut toward begins, and its version."""
+
+    line: int
+    target: str
+
+    @classmethod
+    def read(cls, line: int, content: str) -> "CandidateHeading | None":
+        """One heading's own text as the candidates' section, or None where it is not.
+
+        The inverse of :func:`candidate_heading`, read as widely as a release
+        heading is: whatever introduces :data:`CANDIDATE`, it is the last word.
+        """
+        words = HeadingWords.read(content)
+        if words is None or words.last.casefold() != CANDIDATE:
+            return None
+        return cls(line=line, target=words.version)
+
+
+class Candidate(BaseModel, frozen=True):
+    """One pre-release cut toward a version: which, and when."""
+
+    version: str
+    date: dt.date
+
+    def spelled(self) -> str:
+        """This candidate as its section's list names it."""
+        return f"{self.version} ({self.date.isoformat()})"
+
+    @classmethod
+    def read(cls, spelled: str) -> "Candidate":
+        """One entry of that list, refused where it is not one the list writes.
+
+        Refused rather than skipped: the list is what says which candidates
+        went out, and one dropped from it is a published version the record
+        forgets.
+        """
+        # lup: ignore[string-split] — one entry of a list this module writes
+        # and reads; `Version` and `fromisoformat` judge the two halves
+        version, _, stamp = spelled.strip().partition(" ")
+        try:
+            Version(version)
+            date = dt.date.fromisoformat(stamp.removeprefix("(").removesuffix(")"))
+        except ValueError as error:
+            raise ValueError(
+                f"{CANDIDATES} lists {spelled.strip()!r}, which is not a "
+                "candidate and the date it went out"
+            ) from error
+        return cls(version=version, date=date)
 
 
 class ReleaseSection(BaseModel, frozen=True):
@@ -129,14 +239,98 @@ class ReleaseSection(BaseModel, frozen=True):
     text: str
 
 
+class CandidateSection(BaseModel, frozen=True):
+    """The section release candidates are being cut toward, while it is open.
+
+    Headed by the version the series is heading for rather than by any one
+    candidate, because the candidates are drafts of one release and a reader
+    wants the release: what it holds, and which pre-releases it went out as
+    first. The list stays when the section closes, as that history.
+    """
+
+    target: str
+    candidates: list[Candidate] = []
+    body: str = ""
+    """Everything beneath the list of candidates, as it was written."""
+
+    @classmethod
+    def read(cls, target: str, text: str) -> "CandidateSection":
+        """The section's text, heading included, as its version, list and entries.
+
+        The list is the section's first paragraph where that paragraph opens
+        with :data:`CANDIDATES`; anything else there is an entry, and the
+        section lists no candidate yet.
+        """
+        lines = text.splitlines(keepends=True)[1:]
+        tokens = parser.parse("".join(lines))
+        match tokens:
+            case [opening, inline, *_] if (
+                opening.type == "paragraph_open"
+                and opening.map is not None
+                and inline.content.startswith(CANDIDATES)
+            ):
+                listed = inline.content.removeprefix(CANDIDATES).strip()
+                return cls(
+                    target=target,
+                    candidates=[
+                        Candidate.read(entry)
+                        # lup: ignore[string-split] — the list this module
+                        # writes, one candidate between each pair of commas
+                        for entry in listed.removesuffix(".").split(",")
+                    ],
+                    body=entries_beneath(lines[opening.map[1] :]),
+                )
+            case _:
+                return cls(target=target, body=entries_beneath(lines))
+
+    def listed(self) -> str:
+        """The paragraph naming every candidate, or nothing where none was cut."""
+        if not self.candidates:
+            return ""
+        named = ", ".join(candidate.spelled() for candidate in self.candidates)
+        return f"{CANDIDATES} {named}.\n\n"
+
+    def render(self) -> str:
+        """This section as the markdown the document carries it in, still open."""
+        return f"{candidate_heading(self.target)}\n\n{self.listed()}{self.body}"
+
+    def folded(self, entries: str, asks: list[str]) -> "CandidateSection":
+        """This section with more entries in it, and its asks rendered from ``asks``.
+
+        New entries go after the ones already here. The asks are replaced
+        whole rather than added to: a release renders them from every break
+        still pending, and a candidate cut before this one rendered part of
+        that same list, so appending would say it twice.
+        """
+        block = "".join(f"- {line}\n" for line in asks)
+        return self.model_copy(
+            update={
+                "body": stacked(
+                    without_asks(self.body),
+                    entries,
+                    f"### {ASKS}\n\n{block}" if asks else "",
+                )
+            }
+        )
+
+    def closed(self, version: str, date: dt.date) -> ReleaseSection:
+        """This section as the release ``version``, dated, its list kept."""
+        return ReleaseSection(
+            version=version,
+            date=date,
+            text=f"{release_heading(version, date)}\n\n{self.listed()}{self.body}",
+        )
+
+
 # lup: ignore[constant-declaration] — the heading Keep a Changelog names, which
 # is a convention outside this repository rather than a choice made here
 UNRELEASED = "Unreleased"
 """The heading a changelog gathers the next release's entries under.
 
 Not a version, so :class:`ReleaseHeading` reads it as prose and it stays with
-the preamble, which is the right answer for every reader but the one closing
-it. That reader is :meth:`Changelog.released_as`.
+the preamble, which is the right answer for every reader but the ones closing
+it: a release, which names the entries, and a candidate, which folds them into
+the section it is cut toward.
 """
 
 
@@ -154,49 +348,113 @@ class Changelog(BaseModel, frozen=True):
     document nobody is releasing round-trips unchanged.
     """
 
+    candidate: CandidateSection | None = None
+    """The section release candidates are being cut toward, where one is open.
+
+    Beneath ``unreleased`` and above every release. What lands after a
+    candidate is not in it, so it gathers under a fresh ``## Unreleased``
+    above until the next candidate or the release folds it in, and the two
+    stay apart exactly as long as the work in each has shipped differently.
+    """
+
     sections: list[ReleaseSection] = []
 
     @classmethod
     def parse(cls, text: str) -> "Changelog":
-        """Read a document into its preamble, its open section, and the releases."""
+        """Read a document into its preamble, its open sections, and the releases.
+
+        Each open section runs to the next heading that opens one, or to the
+        first release. One standing below the first release is not open,
+        whatever it says: it is part of the release above it.
+        """
         lines = text.splitlines(keepends=True)
         headings = release_headings(text)
-        opening = unreleased_heading(text)
         first = headings[0].line if headings else len(lines)
-        if opening is None or opening > first:
-            return cls(
-                preamble="".join(lines[:first]),
-                sections=list(sectioned(lines, headings)),
-            )
+        opening = unreleased_heading(text)
+        cutting = candidate_section_heading(text)
+        marks = sorted(
+            line
+            for line in (opening, cutting.line if cutting is not None else None)
+            if line is not None and line < first
+        )
+        bounds = [*marks, first]
+
+        def span(start: int) -> str:
+            return "".join(lines[start : bounds[bounds.index(start) + 1]])
+
         return cls(
-            preamble="".join(lines[:opening]),
-            unreleased="".join(lines[opening:first]),
+            preamble="".join(lines[: bounds[0]]),
+            unreleased=(
+                span(opening) if opening is not None and opening in marks else ""
+            ),
+            candidate=(
+                CandidateSection.read(cutting.target, span(cutting.line))
+                if cutting is not None and cutting.line in marks
+                else None
+            ),
             sections=list(sectioned(lines, headings)),
         )
 
-    def released_as(
-        self, version: str, date: dt.date, additions: str = ""
-    ) -> "Changelog":
-        """This document with its open section closed as ``version``.
+    def released_as(self, version: str, date: dt.date, asks: list[str]) -> "Changelog":
+        """This document with its open work closed as ``version``.
 
         The entries stay as their authors wrote them and the heading above
         them is replaced, because that is what a release is: the same list,
-        named. ``additions`` is folded in beneath them for what only the
-        release knows -- the migrations pending at the moment it is cut.
+        named. Where candidates were cut toward it, their section is what
+        closes, with everything under ``## Unreleased`` folded in — the
+        release is cut from here, not from the last candidate. ``asks`` is
+        what only the release knows: what the breaks it carries ask of a
+        caller.
 
         A document with nothing open gets an empty section rather than a
         refusal, so a release that happens to carry no entries still records
         that it happened, on the date it happened.
         """
-        body = without_heading(self.unreleased)
-        text = f"{release_heading(version, date)}\n\n{body}{additions}"
+        closing = self.candidate or CandidateSection(target=version)
+        closed = closing.folded(without_heading(self.unreleased), asks)
         return self.model_copy(
             update={
                 "unreleased": "",
-                "sections": [
-                    ReleaseSection(version=version, date=date, text=text),
-                    *self.sections,
-                ],
+                "candidate": None,
+                "sections": [closed.closed(version, date), *self.sections],
+            }
+        )
+
+    def with_candidate(
+        self, target: str, candidate: Candidate, asks: list[str]
+    ) -> "Changelog":
+        """This document with ``candidate`` cut toward ``target``, its section left open.
+
+        What stands under ``## Unreleased`` is folded in, because the
+        candidate is cut from here and carries it. A section whose series was
+        re-levelled is retitled rather than replaced, and keeps every
+        candidate it lists: each of them was published.
+        """
+        opened = self.candidate or CandidateSection(target=target)
+        folded = opened.folded(without_heading(self.unreleased), asks)
+        return self.model_copy(
+            update={
+                "unreleased": "",
+                "candidate": folded.model_copy(
+                    update={
+                        "target": target,
+                        "candidates": [*opened.candidates, candidate],
+                    }
+                ),
+            }
+        )
+
+    def promoted(self, version: str, date: dt.date) -> "Changelog":
+        """This document with the candidates' section closed as ``version``, as it stood.
+
+        Nothing under ``## Unreleased`` is folded in: a promotion releases the
+        candidate's own commit, and what landed after it is not in that.
+        """
+        closing = self.candidate or CandidateSection(target=version)
+        return self.model_copy(
+            update={
+                "candidate": None,
+                "sections": [closing.closed(version, date), *self.sections],
             }
         )
 
@@ -237,12 +495,14 @@ class Changelog(BaseModel, frozen=True):
     def render(self) -> str:
         """The whole document, ready to write back.
 
-        The open section sits where it was read, above every release and below
-        the preamble, so a document nobody is releasing comes back unchanged.
+        The open sections sit where they were read, above every release and
+        below the preamble, so a document nobody is releasing comes back
+        unchanged.
         """
         return (
             self.preamble
             + self.unreleased
+            + (self.candidate.render() if self.candidate is not None else "")
             + "".join(section.text for section in self.sections)
         )
 
@@ -290,18 +550,80 @@ def unreleased_heading(text: str) -> int | None:
     )
 
 
+def candidate_section_heading(text: str) -> CandidateHeading | None:
+    """Where the section candidates are being cut toward starts, or ``None``."""
+    return next(
+        (
+            found
+            for heading in second_level_headings(text)
+            if (found := CandidateHeading.read(heading.line, heading.content))
+            is not None
+        ),
+        None,
+    )
+
+
+def blank(line: str) -> bool:
+    """Whether a line holds nothing a reader would see."""
+    return not line.strip()
+
+
+def entries_beneath(lines: list[str]) -> str:
+    """Those lines as a section's entries, the blank lines above the first dropped.
+
+    The blank line that separated them from whatever stood above goes with
+    that, so whatever is written above them next supplies its own and the
+    spacing does not depend on how somebody happened to type it.
+    """
+    entries = "".join(dropwhile(blank, lines))
+    return entries if not entries or entries.endswith("\n") else f"{entries}\n"
+
+
 def without_heading(block: str) -> str:
     """A section's entries, with the heading line above them dropped.
 
     What a release keeps when it renames the section: the entries are their
-    authors', and the heading is the release's to replace. The blank line that
-    separated the two goes with the heading rather than with the entries, so
-    the replacement supplies its own and the spacing does not depend on how
-    whoever opened the section happened to type it.
+    authors', and the heading is the release's to replace.
     """
-    lines = block.splitlines(keepends=True)
-    entries = "".join(dropwhile(lambda line: not line.strip(), lines[1:]))
-    return entries if not entries or entries.endswith("\n") else f"{entries}\n"
+    return entries_beneath(block.splitlines(keepends=True)[1:])
+
+
+def without_asks(body: str) -> str:
+    """A section's entries without the asks a release rendered into it.
+
+    The block runs from its sub-heading to the next heading at its level or
+    above, found through the parser like every other boundary here, so an
+    entry written after it survives and a fenced example inside one is not
+    mistaken for either end.
+    """
+    lines = body.splitlines(keepends=True)
+    tokens = parser.parse(body)
+    starts = [
+        DocumentHeading(line=token.map[0], content=tokens[index + 1].content.strip())
+        for index, token in enumerate(tokens)
+        if token.type == "heading_open"
+        and token.tag in ("h1", "h2", "h3")
+        and token.map is not None
+    ]
+    begins = next((start.line for start in starts if start.content == ASKS), None)
+    if begins is None:
+        return body
+    ends = next((start.line for start in starts if start.line > begins), len(lines))
+    return "".join([*lines[:begins], *lines[ends:]])
+
+
+def stacked(*blocks: str) -> str:
+    """Blocks of markdown one after another, each followed by one blank line.
+
+    What keeps the end of one section off the heading of the next: a list
+    that ended the text it was written into ran straight into whatever
+    heading was rendered after it.
+    """
+    trimmed = [
+        list(reversed(list(dropwhile(blank, reversed(list(dropwhile(blank, lines)))))))
+        for lines in (block.splitlines() for block in blocks)
+    ]
+    return "".join("\n".join(lines) + "\n\n" for lines in trimmed if lines)
 
 
 def sectioned(

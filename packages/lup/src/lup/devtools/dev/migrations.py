@@ -34,6 +34,7 @@ diligent one.
 """
 
 import tomllib
+from collections.abc import Collection
 from pathlib import Path
 
 import sh
@@ -261,8 +262,14 @@ class MigrationRecord(BaseModel, frozen=True):
             *self.pending(),
         ]
 
-    def release(self, version: str, repository: Path) -> list[Migration]:
-        """Move every pending declaration into ``version``, stamped with its commit.
+    def release(
+        self, version: str, repository: Path, carried: Collection[str] | None = None
+    ) -> list[Migration]:
+        """Move the pending declarations into ``version``, stamped with their commit.
+
+        Every one of them, or only the files ``carried`` names: a promotion
+        releases a candidate's commit, and a break declared since it is
+        pending too but not in what is released.
 
         The commit is the one that added the file, read off ``repository``'s
         history — the commit the break landed in, since the gate refused the
@@ -271,8 +278,14 @@ class MigrationRecord(BaseModel, frozen=True):
         what its author wrote reads the same after the release as before.
         """
         destination = self.root / version
-        destination.mkdir(parents=True, exist_ok=True)
-        for path in self.files(self.pending_directory()):
+        moving = [
+            path
+            for path in self.files(self.pending_directory())
+            if carried is None or path.name in carried
+        ]
+        if moving:
+            destination.mkdir(parents=True, exist_ok=True)
+        for path in moving:
             document = tomlkit.parse(path.read_text(encoding="utf-8"))
             if not Migration.read(path).commit:
                 document["commit"] = git.out(

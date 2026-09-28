@@ -189,6 +189,27 @@ def test_a_release_moves_what_is_pending_into_its_version(tmp_path: Path) -> Non
     assert unapplied(record.declared(), broke, root) == []
 
 
+def test_a_release_can_keep_only_what_it_carried(tmp_path: Path) -> None:
+    """A promotion releases a candidate's commit, not what was declared since.
+
+    The break declared after the candidate is pending in the checkout too,
+    and moving it would record it against a release whose commit never held
+    it — and no directory is left behind for a release that carried nothing.
+    """
+    root = repository(tmp_path / "upstream")
+    record = MigrationRecord(root=root / "migrations")
+    declare(record.pending_directory(), "early", "gone_early")
+    declare(record.pending_directory(), "late", "gone_late")
+    committed(root, "two breaks")
+
+    record.release("0.2.0", root, carried=["early.toml"])
+    record.release("0.3.0", root, carried=[])
+
+    assert [m.subjects for m in record.released("0.2.0")] == [["gone_early"]]
+    assert [m.subjects for m in record.pending()] == [["gone_late"]]
+    assert record.releases() == ["0.2.0"]
+
+
 def test_releases_are_read_in_version_order_and_pending_last(tmp_path: Path) -> None:
     """Oldest first, as an update crossing several of them applies them."""
     record = MigrationRecord(root=tmp_path)

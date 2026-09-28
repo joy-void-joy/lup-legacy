@@ -21,7 +21,10 @@ exists at all, and which:
 
 It reports the released version, or that none is published yet, and prints the
 command that declares what it found — so the release number is read from the
-index rather than guessed at.
+index rather than guessed at. A release candidate newer than the release is
+named beside it and never offered in its place: a candidate is taken on
+purpose, by naming it (`--version X.Y.ZrcN`, or `dev library git --tag
+vX.Y.ZrcN`), and only when the user asks to try one.
 
 The other half is a judgement about what this project is to lup, and the
 look-up does not make it. Ask the user which of these describes them:

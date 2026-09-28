@@ -424,12 +424,13 @@ workspace is the library's, installed first because `dev check` rebuilds the
 bundles it compares against what is committed."""
 
 
-PUBLISH = PublishSpec(package=DISTRIBUTION)
+PUBLISH = PublishSpec(package=DISTRIBUTION, tag_prefix=declared_release().tag_prefix)
 """What a release tag publishes here: the library, not the scaffold.
 
 The workspace root is `lup-template`, which nobody installs — so the member
 is named, and `uv build` is told which of the two distributions in this
-repository is the one that ships."""
+repository is the one that ships. The tag it publishes on is the one the
+release writes, read from that declaration rather than spelled twice."""
 
 
 NATIVE_RUNTIMES: list[NativeSpellings] = [ClaudeSpellings(), CodexSpellings()]

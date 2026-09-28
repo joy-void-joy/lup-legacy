@@ -51,6 +51,7 @@ import typer
 from pydantic import BaseModel, Field, ValidationError
 from importlib.metadata import version as installed_version
 from packaging.requirements import Requirement
+from packaging.version import InvalidVersion, Version
 
 from lup.workspace.paths import manifest_table, project_root
 from lup.execution.shell import git
@@ -643,10 +644,44 @@ class ReleaseIndexInfo(BaseModel):
     version: str
 
 
+class ReleaseIndexFile(BaseModel):
+    """The one field of a published file this reads."""
+
+    yanked: bool = False
+
+
 class ReleaseIndexDocument(BaseModel):
     """A package index's answer about one distribution."""
 
     info: ReleaseIndexInfo
+    releases: dict[str, list[ReleaseIndexFile]] = {}
+    """Every version the index holds, with its files.
+
+    Absent from an index that answers only with its latest, and read as that
+    one version then.
+    """
+
+    def probed(self) -> "ReleaseProbe":
+        """The newest release this holds, and any candidate newer than it.
+
+        Told apart by the version itself, which PEP 440 marks a pre-release —
+        not by which one the index calls latest, since an index holding only
+        candidates calls one of them that. A version whose every file was
+        yanked is withdrawn and is neither.
+        """
+        held = [
+            Version(version)
+            for version, files in self.releases.items()
+            if any(not file.yanked for file in files)
+        ] or [Version(self.info.version)]
+        release = max((v for v in held if not v.is_prerelease), default=None)
+        newer = [
+            v for v in held if v.is_prerelease and (release is None or v > release)
+        ]
+        return ReleaseProbe(
+            version=str(release) if release is not None else "",
+            candidate=str(max(newer)) if newer else "",
+        )
 
 
 class ReleaseProbe(BaseModel, frozen=True):
@@ -657,6 +692,11 @@ class ReleaseProbe(BaseModel, frozen=True):
     reading it that way pins a project to a repository ref on the strength of
     a dropped connection.
 
+    A release candidate is none of the three. It is published, and offered
+    as the version to pin it would be taken by every project asking, which is
+    what publishing it as a pre-release is for preventing — so it is named
+    beside the answer, with the command that takes it on purpose.
+
     What this does not decide is the acquisition mode. Only one half of that
     is a fact — whether a release exists at all — and the other half is what
     the project is to the library: one that works on lup, dogfooding a branch
@@ -665,6 +705,9 @@ class ReleaseProbe(BaseModel, frozen=True):
     """
 
     version: str = ""
+    candidate: str = ""
+    """The newest pre-release newer than ``version``, where the index holds one."""
+
     unreachable: str = ""
 
     def describe(self) -> list[str]:
@@ -675,14 +718,25 @@ class ReleaseProbe(BaseModel, frozen=True):
                 "A probe that did not land settles nothing. Retry, or declare "
                 "the mode this project already knows it wants.",
             ]
+        offered = (
+            [
+                f"candidate: {self.candidate} — a pre-release, taken only by "
+                f"naming it: dev library use {LibraryMode.PUBLISHED} "
+                f"--version {self.candidate}"
+            ]
+            if self.candidate
+            else []
+        )
         if not self.version:
             return [
                 "no release published yet",
                 f"dev library {LibraryMode.GIT} --branch <branch>",
+                *offered,
             ]
         return [
             f"released: {self.version}",
             f"dev library use {LibraryMode.PUBLISHED} --version {self.version}",
+            *offered,
             f"`{LibraryMode.GIT}` stays a live choice: a project that works on "
             "lup as well as with it runs the branch it is improving rather "
             "than the last release cut from it.",
@@ -707,10 +761,9 @@ def probe_release(
     if response.status_code != httpx.codes.OK:
         return ReleaseProbe(unreachable=f"{url} answered {response.status_code}")
     try:
-        document = ReleaseIndexDocument.model_validate_json(response.content)
-    except ValidationError:
+        return ReleaseIndexDocument.model_validate_json(response.content).probed()
+    except (ValidationError, InvalidVersion):
         return ReleaseProbe(unreachable=f"{url} answered a document it could not read")
-    return ReleaseProbe(version=document.info.version)
 
 
 def library_release() -> None:

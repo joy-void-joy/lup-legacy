@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "generator_version": "0.2.0",
-  "source_digest": "a9845589b2f4ededf415bf89d24ba424231f50faee526c6fd2e6ea32985372e7",
+  "source_digest": "d476f289368283a6cf418a68c03dc00d528d4f826c9a9237032f2b089c5ab60b",
   "target_requirements": [
     "codex-cli>=0.144"
   ],
@@ -58,7 +58,7 @@
     {
       "path": ".codex/plugins/lup/TEMPLATE_AGENTS.md",
       "category": "generated",
-      "sha256": "2cad27468e772a50288d63d8a97a013f5b0959e23d8dbee9614d89611ae1d341",
+      "sha256": "1d82fba3c1216ff9efb7bd815672ff95f462aa8f84edcd16472694d46964046c",
       "semantic_id": "harness.template-guidance",
       "executable": false
     },
@@ -506,7 +506,7 @@
     {
       "path": ".codex/plugins/lup/skills/commit/SKILL.md",
       "category": "generated",
-      "sha256": "2d90608b2b13b9abb1328ca8fdf575d9d57b4cfbf6fe2fd396d2d3c33d5ff717",
+      "sha256": "122fbd7984aad3f079415247e09304a4e7d3cc6dc267466c7fac8bec9d6d0f8d",
       "semantic_id": "skill.commit",
       "executable": false
     },
@@ -611,14 +611,14 @@
     {
       "path": ".codex/plugins/lup/skills/init/SKILL.md",
       "category": "generated",
-      "sha256": "02a1dfd994286b541429a5c27e5a45c44bf6d3daf396d1d2e9f7931b9ce445b9",
+      "sha256": "75b8cebf5668386d071289cc4d202a62bb11eb20aa5b8f37e69af02402e41d96",
       "semantic_id": "skill.init",
       "executable": false
     },
     {
       "path": ".codex/plugins/lup/skills/install/SKILL.md",
       "category": "generated",
-      "sha256": "26226e4fa6c19a6e650ba42f1e9362c7a5e475e54ab98913d42ea2a6eb1a3f78",
+      "sha256": "bde330c82cdbad89ee57b658dab822e1e3138a1d516d963b397ed71284860a1a",
       "semantic_id": "skill.install",
       "executable": false
     },
@@ -688,7 +688,7 @@
     {
       "path": ".codex/plugins/lup/skills/release/SKILL.md",
       "category": "generated",
-      "sha256": "e9c0a467f614c3e9472099eb42b90611a4acbef42ac06106a59a9362bc1ed4e5",
+      "sha256": "72ccac4f40cd94ad9b35911aaf6d6217cdf6a100a8bacc99d9bbb83ae0c5b7fb",
       "semantic_id": "skill.release",
       "executable": false
     },
