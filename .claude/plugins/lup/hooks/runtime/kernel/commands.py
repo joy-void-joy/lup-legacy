@@ -1900,7 +1900,12 @@ def decide_gh_api_words(
     expect_method = False
 
     def writing(unread: str) -> KernelDecision:
-        """The body's question where one was sent, else the unread word's."""
+        """The body's question where one was sent, else the unread word's.
+
+        The unread word could be a method or a body as well as anything
+        else, so what it stands for reaches the remote: a container holds
+        none of that, and settles none of it.
+        """
         if body:
             return KernelDecision(
                 "ask",
@@ -1909,7 +1914,7 @@ def decide_gh_api_words(
                 rule="shell:gh.api",
                 evaluator="gh-api-screen",
             )
-        return unjudged(unread)
+        return unjudged(unread).revised(unread=True, reach="host_later")
 
     for word in words[2:]:
         if expect_value:
@@ -1925,6 +1930,18 @@ def decide_gh_api_words(
         if word.startswith("--method="):
             method = word.partition("=")[2]
             continue
+        # gh reads a short flag's value where it is attached, `=` or not, so
+        # `-XDELETE` and `-X=DELETE` are the method `-X DELETE` spells apart.
+        shorthand, attached = word[:2], word[2:].removeprefix("=")
+        if word.startswith("-") and not word.startswith("--") and attached:
+            if shorthand == "-X":
+                method = attached
+                continue
+            if shorthand in GH_API_BODY_FLAGS:
+                body = True
+                continue
+            if shorthand in GH_API_VALUE_FLAGS:
+                continue
         if word in GH_API_BODY_FLAGS or word.partition("=")[0] in GH_API_BODY_FLAGS:
             body = True
             expect_value = word in GH_API_BODY_FLAGS

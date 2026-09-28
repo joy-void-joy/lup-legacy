@@ -428,7 +428,11 @@ one written there without `=` takes the next word as its value, so `gh -t
 status api -X DELETE` is `gh api` rather than the `gh status` it spells. A
 flag before gh's subcommand, or before the operation of a subcommand that
 has operations, is refused rather than modelled; the same command with its
-flags after the operation is judged by its row.
+flags after the operation is judged by its row. A short flag's value is read
+where gh reads it, attached as well as apart, so `-XDELETE` and `-X=DELETE`
+are the method `-X DELETE` is; an option the screen does not read could be a
+method or a body, so it is refused on every posture, a measured container
+included, since what it could send lands on the remote.
 
 Quoting is kept past the parse. A `$` inside single quotes, or escaped as
 `\$`, is a dollar sign rather than an expansion, so `rg '$x' src`, `git config

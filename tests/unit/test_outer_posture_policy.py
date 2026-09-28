@@ -127,6 +127,26 @@ GUARDED = [
         "uv run lup-devtools dev seams --disown README.md", "ask", id="seams-disown"
     ),
     pytest.param("uv run lup-devtools dev seams --keep dict-get", "allow", id="keep"),
+    # gh's flag grammar takes a short flag's value attached, so these are
+    # the remote branch deletion `-X DELETE` spells apart.
+    pytest.param(
+        "gh api -XDELETE repos/{owner}/{repo}/git/refs/heads/x",
+        "ask",
+        id="gh-api-attached-method",
+    ),
+    pytest.param(
+        "gh api -X=DELETE repos/{owner}/{repo}/git/refs/heads/x",
+        "ask",
+        id="gh-api-attached-equals",
+    ),
+    pytest.param("gh api -XGET repos/{owner}/{repo}", "allow", id="gh-api-read"),
+    # An option gh api's screen cannot read could be a method or a body, and
+    # either lands on the remote whatever holds the process.
+    pytest.param(
+        "gh api -iXDELETE repos/{owner}/{repo}/git/refs/heads/x",
+        "deny",
+        id="gh-api-unread-cluster",
+    ),
     pytest.param(
         "install -m644 README.md .lup/preflight/n.json", "ask", id="install-ledger"
     ),
