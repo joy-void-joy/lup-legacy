@@ -429,10 +429,17 @@ def parallel_arguments(workers: int) -> list[str]:
     Fewer than two workers spells serial, so the count descends into running
     the same tests behind a single interpreter rather than needing a second
     way of saying nothing.
+
+    Scheduled by work stealing rather than xdist's default, because a suite
+    costs its busiest worker. The default hands each worker its share up
+    front, and a share holding a module of git-driving tests left one worker
+    running for a minute after the rest were idle — measured, the library
+    suite's busiest worker at 1.7 to 2.8 times the median, where stealing
+    held it to 1.1 to 1.3, and the template suite's from 1.2 to 1.05.
     """
     if workers < 2 or find_spec("xdist") is None:
         return []
-    return ["-n", str(workers)]
+    return ["-n", str(workers), "--dist", "worksteal"]
 
 
 def ignored_arguments(excluded_roots: list[str]) -> list[str]:
