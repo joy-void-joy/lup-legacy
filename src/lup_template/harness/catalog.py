@@ -830,6 +830,15 @@ def portable_harness(
                 HookPathRole(
                     root=Path("packages/lup/src/lup/web/bundles"), role="scratch"
                 ),
+                # A pending migration is a declaration a break's own commit
+                # writes, one TOML file each: data read by `dev migrate` and
+                # the release, not source a whole-file or size gate reviews
+                # for how it reads. Data rather than scratch, because it is
+                # the only copy of what an adopter is told to do. Pending
+                # only: a released record is `dev release`'s to write.
+                HookPathRole(
+                    root=Path("packages/lup/src/lup/migrations/pending"), role="data"
+                ),
                 # What each suite the gate runs collects is a test by
                 # derivation rather than by a second table: bun collects
                 # `*.test.ts` beside its source, where no directory root
