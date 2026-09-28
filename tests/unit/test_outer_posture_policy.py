@@ -348,6 +348,37 @@ def test_a_question_whose_harm_reaches_past_the_container_keeps_it(
     assert set(previewed(command, checkout, monkeypatch).values()) == {host}
 
 
+REVIEW_QUEUE_WRITES = [
+    pytest.param("echo '{}' >> .lup/questions.jsonl", id="append-relay"),
+    pytest.param("tee -a .lup/questions.jsonl < README.md", id="tee-relay"),
+    pytest.param("cp README.md .lup/questions.jsonl", id="copy-over-relay"),
+    pytest.param("touch .lup/review-claims/fresh", id="claim-created"),
+    pytest.param("rm .lup/review-claims/spent", id="claim-retired"),
+    pytest.param("mkdir -p .lup/review-stage-claims/spent/next", id="stage-claimed"),
+]
+"""A session writing the review queue its hooks keep, by every route a file takes.
+
+The Codex hook releases a parked call for an approved row whose principal is
+neither the session nor its requester, and spends a claim file to release it
+once. A session free to append that row, or to retire the claim, answers its
+own question."""
+
+
+@pytest.mark.parametrize("command", REVIEW_QUEUE_WRITES)
+def test_a_session_writing_its_own_review_queue_is_asked_on_every_posture(
+    runtime: Runtime, checkout: Path, monkeypatch: pytest.MonkeyPatch, command: str
+) -> None:
+    lup = checkout / ".lup"
+    (lup / "questions.jsonl").write_text("{}\n", encoding="utf-8")
+    (lup / "review-claims").mkdir()
+    (lup / "review-claims" / "spent").write_text("{}", encoding="utf-8")
+    (lup / "review-stage-claims" / "spent").mkdir(parents=True)
+    postures: tuple[Posture, ...] = ("none", "inner", "outer")
+
+    assert {met(runtime, posture, command, checkout) for posture in postures} == {"ask"}
+    assert set(previewed(command, checkout, monkeypatch).values()) == {"ask"}
+
+
 def test_a_target_the_host_lent_from_outside_the_checkout_keeps_the_question(
     runtime: Runtime, checkout: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

@@ -367,6 +367,27 @@ PATH_RULES: list[PathRuleRow] = [
     },
     {
         "kind": "subtree",
+        "value": ".lup/questions.jsonl",
+        "reason": "protected path requires approval",
+        "recovery": "",
+        "allow_autonomous": False,
+    },
+    {
+        "kind": "subtree",
+        "value": ".lup/review-claims",
+        "reason": "protected path requires approval",
+        "recovery": "",
+        "allow_autonomous": False,
+    },
+    {
+        "kind": "subtree",
+        "value": ".lup/review-stage-claims",
+        "reason": "protected path requires approval",
+        "recovery": "",
+        "allow_autonomous": False,
+    },
+    {
+        "kind": "subtree",
         "value": "packages/lup/src/lup/policy",
         "reason": "protected path requires approval",
         "recovery": "",

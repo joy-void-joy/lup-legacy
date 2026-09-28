@@ -953,9 +953,9 @@ file without a question because it reviews its own. Protected roots,
 temporary paths, human-owned files like `README.md`, marker changes, and
 anti-pattern violations retain their guardrails in every mode. A protected
 root is where a session's own boundary is declared — its settings, its
-launch registry, its measured preflight, the policy — so an edit there asks
-a person whoever is making it, including an identity trusted to review its
-own work.
+launch registry, its measured preflight, its review queue, the policy — so an
+edit there asks a person whoever is making it, including an identity trusted
+to review its own work.
 
 A few of those guardrails open only for a gate a human granted — creating a
 devtools module, adding an anti-pattern suppression. What a lease holds is
@@ -1005,8 +1005,14 @@ indicated checkout, then `uv run lup-devtools dev questions answer <id>
 --as operator` or `uv run lup-devtools dev questions reject <id> --as
 operator` outside the agent session. Queue answer operations are declared
 `operator_only` in the shell vocabulary; an escalation cannot grant the
-requester authority to answer itself. Nested command paths are declared
-with `ShellOperationRule.parents`, and the deepest matching path decides.
+requester authority to answer itself. The file those verbs write is guarded
+the same way: `.lup/questions.jsonl`, and the claims under `.lup/review-claims`
+and `.lup/review-stage-claims` that spend an answer once, are protected roots.
+The hooks write them from their own process, so a session's own write — a row
+appended, a copy over the file, a claim retired — asks, because an approved
+row naming any other principal is what releases the retry. Nested command
+paths are declared with `ShellOperationRule.parents`, and the deepest matching
+path decides.
 
 Approval releases one exact retry in the same session and directory.
 The hook re-runs policy, compares the payload, captured file preimages,
