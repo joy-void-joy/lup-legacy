@@ -1,0 +1,27 @@
+subjects = [
+    "create_client",
+    "ProviderRoute",
+    "ProviderRoute.provider",
+    "ProviderRoute.matcher",
+    "PROVIDER_ROUTES",
+    "provider_for",
+]
+reason = """
+routing a model id to its provider served only create_client, whose common \
+arguments could never carry either provider's typed options; choosing Claude \
+or Codex is that routing, and holds them all"""
+commit = "eca60905d6e5e77d9e365f97345bd7553abe719f"
+
+[[steps]]
+instruction = """
+Name the provider by the agent you declare: create_client(model, \
+system_prompt=..., cwd=...) is Claude(model=..., system_prompt=..., cwd=...) \
+or Codex(...) with the same arguments. Its base_url and api_key are \
+endpoint=ClaudeCompatibleEndpoint(base_url=..., api_key=...) from \
+lup.providers.claude, or CodexCompatibleEndpoint from lup.providers.codex."""
+
+[[steps]]
+instruction = """
+Ask catalog_provider(model) in lup.providers.routing where code needs which \
+runtime's catalog lists a name; an id neither catalog lists is \
+CustomModel(id=...) on whichever agent serves it."""

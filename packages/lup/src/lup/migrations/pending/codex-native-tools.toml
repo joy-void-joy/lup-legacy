@@ -1,0 +1,22 @@
+subjects = [
+    "CodexNativeTools",
+    "CodexNativeTools.shell",
+    "CodexNativeTools.web",
+    "CodexNativeTools.write",
+    "CodexNativeTools.images",
+    "CodexNativeTools.all_tools",
+    "CodexNativeTools.compile",
+    "CodexNativeTools.configuration",
+    "CodexNativeTools.arguments",
+    "CodexNativeTools.model_catalog",
+]
+reason = """
+the controls holding a Codex session to its built-in grant are named for what \
+they control rather than for where the tools come from"""
+commit = "c3ad68aa3514608c3d18a6968b310637adcf2190"
+
+[[steps]]
+instruction = """
+Import CodexBuiltins from lup.providers.codex.builtins where CodexNativeTools \
+came from lup.providers.codex.native_tools: every field and method keeps its \
+name, and compile takes a builtin preset or a list of CodexBuiltinTool names."""

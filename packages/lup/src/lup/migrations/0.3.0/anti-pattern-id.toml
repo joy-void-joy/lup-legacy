@@ -1,0 +1,24 @@
+subjects = [
+    "AntiPattern.id",
+    "AntiPattern.examples",
+    "AntiPattern.message",
+    "AntiPattern.refinement",
+    "AntiPattern.strength",
+    "AntiPattern.examples_bound_the_rule",
+    "STRUCTURAL_RULES",
+    "anti_pattern_rules",
+]
+reason = """
+every rule is one declaration: what every rule states moved to the `Rule` \
+base that `AntiPattern`, `ProjectRule` and `CompositionRule` share, and the \
+reference derives every card from the set instead of keeping the structural \
+ones by hand"""
+commit = "571311dac058cf7136238ea4c6a18de89cdb9a2f"
+
+[[steps]]
+instruction = """
+A caller constructing or reading an `AntiPattern` changes nothing: the fields \
+are inherited. One that read `STRUCTURAL_RULES` or `anti_pattern_rules()` \
+reads `all_rules()`, which derives every card. A project declaring a rule the \
+sweep decides declares a `ProjectRule` from `lup.harness.codescan.project` \
+beside its audit and adds it to its set's `project` list."""

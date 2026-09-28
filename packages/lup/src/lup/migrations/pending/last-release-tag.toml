@@ -1,0 +1,13 @@
+subjects = ["last_release_tag"]
+reason = """
+the migrations gate measures from the release commit rather than the release \
+tag, because a tag is pushed last on purpose and the gate was blind for \
+exactly the window a release is under review"""
+commit = "d3f52fcaef01e8e107015c7193c8d3643c74d983"
+
+[[steps]]
+instruction = """
+Call last_release_commit() from lup.devtools.dev.migrations, which answers \
+with the commit `dev release` wrote rather than the tag it then created. A \
+caller that wanted the tag itself reads it with `git describe --tags \
+--abbrev=0`."""

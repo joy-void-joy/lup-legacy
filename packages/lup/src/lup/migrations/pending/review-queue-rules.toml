@@ -1,0 +1,16 @@
+subjects = ["review_queue_rules"]
+reason = """
+the verbs of lup's own toolchain that a person answers now include every \
+write that widens what a later launch reaches -- `sync setup`, `sync remote`, \
+`sync grant`, `dev init upstream`, `dev library git --url` and a launcher's \
+`--mount`, `--mount-ro` and `--device` ask as an edit of the registry does -- \
+so the table is named for the toolchain rather than for the review queue"""
+commit = "2cf7e4efa31f2ea85b152c1df51cd041f29c88ad"
+
+[[steps]]
+instruction = """
+Import devtools_rules from lup.policy.vocabulary where review_queue_rules was \
+imported: it returns the review-queue verbs it did, with the widening writers \
+beside them. A rule refusing the bare `lup-devtools` spelling keeps only its \
+operator-only operations and states its route as each sub-app's reason, as \
+the template's lup_devtools_rule does."""

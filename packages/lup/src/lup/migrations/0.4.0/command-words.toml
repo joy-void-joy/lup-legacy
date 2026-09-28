@@ -1,0 +1,13 @@
+subjects = ["command_words"]
+reason = """
+lup.policy.rules.command_words passed its argument to the kernel's own \
+command_words and returned the result, so one reading of a command line had \
+two spellings and the rules module renamed the kernel's on import to make \
+room for its copy"""
+commit = "34a597d9905f3ecbc60815ba25465df279165761"
+
+[[steps]]
+instruction = """
+Import command_words from lup.policy.kernel.words, which is where every other \
+caller already reads it and where the behaviour has always lived. Nothing \
+about what it returns changes."""

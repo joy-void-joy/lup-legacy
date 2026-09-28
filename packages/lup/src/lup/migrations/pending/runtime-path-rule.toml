@@ -1,0 +1,12 @@
+subjects = ["runtime_path_rule"]
+reason = """
+a declared protected root compiles through one function both enforcement \
+paths read, lup.policy.rules.protected_root_rule, rather than a second copy \
+in the bundle a test held equal to the first; no protected root releases an \
+autonomous identity any more"""
+commit = "9b190cc8a3d307d26e405247b84d6874402d198e"
+
+[[steps]]
+instruction = """
+Call path_rule_row(protected_root_rule(root)) from lup.policy.rules where \
+runtime_path_rule(root) was called; runtime_path_rules keeps its signature."""

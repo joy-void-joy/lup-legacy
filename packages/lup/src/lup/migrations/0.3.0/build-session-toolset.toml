@@ -1,0 +1,29 @@
+subjects = ["build_session_toolset", "tool_group_names", "ServerGroup"]
+reason = """
+assembling a session's tool groups was the same work in every project built \
+on lup and went stale in each of them separately; what a project decides is \
+which groups it carries, so the assembly is the library's and the list is the \
+project's"""
+commit = "e1aa3da35"
+
+[[steps]]
+instruction = """
+Replace the copied `build_session_toolset` with a list of `ToolGroup`s: name \
+`coordination_group()`, `ledger_group(...)`, `sandbox_group()`, \
+`codeintel_group()` and `realtime_group()` from `lup.tools.toolsets` rather \
+than rebuilding them, and write a builder for each group of your own. A \
+builder that has nothing to build for a session returns nothing, which \
+replaces every `if` that asked whether the session had a sandbox or an \
+identity."""
+
+[[steps]]
+instruction = """
+`tool_group_names(realtime=...)` is derived now: `served_names(groups, \
+needs)` for one session, `startup_names(groups)` for the servers a runtime \
+starts when a session opens."""
+
+[[steps]]
+instruction = """
+A `--server` option typed as the `ServerGroup` literal takes a plain string \
+and is checked against the declared names, since a project's groups are its \
+own."""

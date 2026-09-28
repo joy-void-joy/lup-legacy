@@ -1,0 +1,29 @@
+subjects = [
+    "NativeHomeScope",
+    "NativeHomeScope.key",
+    "NativeHomeScope.volume_name",
+    "CodexProfileSettings.state_scope",
+    "state_volume_name",
+    "superseded_volume_name",
+    "superseded_volume_notice",
+    "existing_volumes",
+    "ProviderLogin",
+]
+reason = """
+a contained session's config home was one volume both runtimes wrote into, \
+plus one per Codex settings digest; it is one volume per repository and \
+runtime, named by the runtime's login declaration, with settings seeded at \
+every launch rather than partitioned by volume, and the old volumes split \
+once"""
+commit = "457a1f9221466418f2b5753444919862deea290e"
+
+[[steps]]
+instruction = """
+Give every ProviderLogin a state_volume word (and, to have an old shared \
+volume split, the home_entries it keeps). Call state_volume_name(root, login) \
+in place of state_volume_name(root, scope), drop state_scope= from \
+contained_argv and session_argv, and read existing_volumes from \
+lup.devtools.harness.config_volume. The superseded per-worktree notice is \
+gone: split_config_volumes copies those volumes and records them as \
+superseded, and sweep_superseded removes them once the person's days have \
+passed."""

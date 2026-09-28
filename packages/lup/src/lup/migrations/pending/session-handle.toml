@@ -1,0 +1,42 @@
+subjects = [
+    "SessionHandle",
+    "SessionHandle.session",
+    "SessionHandle.fork",
+    "TurnHandle",
+    "TurnHandle.turn",
+    "TurnHandle.events",
+    "TurnHandle.interrupt",
+    "TurnHandle.steer",
+    "turn_request",
+    "Session.start",
+    "Turn.result",
+]
+reason = """
+a session and a turn are each one object carrying every capability its \
+provider has, rather than a handle of optional capabilities around an engine \
+a caller started with a request built by hand"""
+commit = "eca60905d6e5e77d9e365f97345bd7553abe719f"
+
+[[steps]]
+instruction = """
+Ask the session: handle.session.start(turn_request(prompt, Output)) is \
+session.ask(prompt, Output), where session is what agent.open() yields. The \
+Turn it returns starts when first awaited or iterated."""
+
+[[steps]]
+instruction = """
+Use the turn itself: await turn.turn.result() is await turn; turn.events and \
+turn.interrupt are the methods turn.events(), turn.live() and await \
+turn.interrupt(); turn.steer is await turn.steer(input), on a CodexTurn only."""
+
+[[steps]]
+instruction = """
+Fork from the session: handle.fork(at) is session.fork(at=turn_id), an async \
+context manager yielding the branch as a session of the same provider."""
+
+[[steps]]
+instruction = """
+Implement an engine against SessionEngine and TurnEngine in \
+lup.sessions.capabilities, whose start and result are Session.start and \
+Turn.result under the engine's names; the public Turn and Conversation are \
+the surface over them."""

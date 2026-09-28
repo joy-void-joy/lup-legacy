@@ -1,0 +1,24 @@
+subjects = [
+    "RepositoryPeers.heard",
+    "RepositoryPeers.standing",
+    "RepositoryPeers.touches",
+    "RepositoryPeers.vacant",
+]
+reason = """
+what a repository's peers answer is read from the files rather than from a \
+record beside them, so the methods that reconciled the two have nothing to \
+reconcile"""
+commit = "1e56496618db07576be351386786e1a32f93e43c"
+
+[[steps]]
+instruction = """
+Read `RosterMember.heard` for `RepositoryPeers.heard`, which the fold fills \
+from the member file's own stat. `standing()` is gone, because there is no \
+reading of the record apart from the pulse; `present()` is the one answer, \
+and `lapsed()` is what a sweep would retire."""
+
+[[steps]]
+instruction = """
+Use `RepositoryPeers.touched`/`lock`/`release`/`held` for what `.touches` \
+gave, and drop `.vacant()`: a claim over a path that has gone stops standing \
+at the read, so nothing collects them to end."""

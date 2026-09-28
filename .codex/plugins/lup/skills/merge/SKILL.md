@@ -250,7 +250,7 @@ Classify each conflict hunk against the branch scopes:
 
 #### Auto-resolve (no user input needed)
 
-- **Non-overlapping additions** — Both sides add different content. **Combine both.** Where a file's every hunk is both sides inserting at one place — two entries prepended to one declared list, the shape a migrations table or a changelog conflicts in — `.venv/bin/lup-devtools git conflict union <file>` rebuilds it from the three index stages with both insertions kept, ours first unless `--theirs-first`, and stages it. It refuses, leaving the file as git left it, where both sides changed the same lines.
+- **Non-overlapping additions** — Both sides add different content. **Combine both.** Where a file's every hunk is both sides inserting at one place — two entries prepended to one declared list, the shape a changelog or a registry conflicts in — `.venv/bin/lup-devtools git conflict union <file>` rebuilds it from the three index stages with both insertions kept, ours first unless `--theirs-first`, and stages it. It refuses, leaving the file as git left it, where both sides changed the same lines.
 - **Clear superset** — One side is a strict superset. Take the superset.
 - **Whitespace / formatting only** — Take either side consistently.
 - **Identical intent** — Same change, trivially different wording. Take either.

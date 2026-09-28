@@ -1,0 +1,14 @@
+subjects = ["NativeCapabilityEvidence"]
+reason = """
+each runtime's composer moved into its adapter \
+(lup.providers.claude.composition, lup.providers.codex.composition) and types \
+its own readiness evidence, so the union naming both runtimes' evidence had \
+nothing left to name"""
+commit = "02a8a5366eabb6073c4d4911033f3c3d0169a7d1"
+
+[[steps]]
+instruction = """
+Type a readiness probe's evidence as the runtime's own \
+CapabilityEvidence[ClaudeCliEvidence] or \
+CapabilityEvidence[CodexCliEvidence], or as the neutral CapabilityReport \
+where either will do."""

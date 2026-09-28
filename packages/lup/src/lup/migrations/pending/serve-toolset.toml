@@ -1,0 +1,13 @@
+subjects = ["serve_toolset", "SessionToolset.served", "SessionToolset.beside"]
+reason = """
+a server is served by its own declaration, one per process, so the loop that \
+served a group or a default set of them by name has nothing left to choose"""
+commit = "c3ad68aa3514608c3d18a6968b310637adcf2190"
+
+[[steps]]
+instruction = """
+Declare each group as a server from lup.mcp — a project's own as \
+Group(builder) — and start it with ServeLaunch(...).command(server), which \
+runs python -m lup.mcp.serve (or a composed CLI's `tools serve`) for that one \
+server; what a project adds to the session goes in a needs hook named by \
+ServeLaunch(needs=...)."""

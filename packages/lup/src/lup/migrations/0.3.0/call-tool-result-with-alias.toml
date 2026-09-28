@@ -1,0 +1,14 @@
+subjects = ["CallToolResultWithAlias", "CallToolResultWithAlias.is_error"]
+reason = """
+in-process MCP servers are built on the mcp 2.x server API, whose result \
+already answers to `is_error`; the subclass existed only to alias `isError` \
+onto the snake-case spelling an SDK query runner looked for, and it has \
+nothing left to translate"""
+commit = "05c5b945e"
+
+[[steps]]
+instruction = """
+Drop the subclass and let the server's own result stand. A caller that built \
+one to get the alias reads `is_error` off the response envelope instead -- \
+which is what a `@lup_tool` handler's failure already crosses as, and what \
+`mcp_response(text, is_error=True)` sets."""

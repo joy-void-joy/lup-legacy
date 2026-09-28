@@ -1,0 +1,19 @@
+subjects = [
+    "WorkflowSpec.body",
+    "WorkflowSpec.install_step",
+    "PublishSpec.body",
+]
+reason = """
+a generated workflow is a declared document rather than a formatted string: \
+the steps are `WorkflowStep` declarations and the file is a `YamlDocument`, \
+which is emitted and parsed back before it is written, so a runner label or a \
+command carrying a colon can no longer end the mapping it lands in"""
+commit = "6c7b929965042ea2efcc1799b936081403232d1b"
+
+[[steps]]
+instruction = """
+Read the YAML off `spec.document().text()` where `spec.body()` was read, or \
+take the whole artifact from `spec.artifact()` as the generator does. A \
+project that appended its own step by formatting text around `body()` \
+declares a `WorkflowStep` instead and overrides `steps()`; `install_step` is \
+`install_steps()`, which answers with a list rather than a block of YAML."""

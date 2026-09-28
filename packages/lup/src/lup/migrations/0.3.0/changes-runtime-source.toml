@@ -1,0 +1,28 @@
+subjects = [
+    "changes_runtime_source",
+    "prompt_command",
+    "prompt_entry",
+    "prompt_artifacts",
+]
+reason = """
+the roster's prompt hook became one guard serving the arriving and the \
+departing event alike, so none of these names a thing that is only about the \
+prompt any more, and each has to be told which script and which runtime \
+module it is building for"""
+commit = "a329d017d"
+
+[[steps]]
+instruction = """
+Call `runtime_source(module)` for `changes_runtime_source()`, \
+`guard_command(plugin_root_env, guard_script)` for \
+`prompt_command(plugin_root_env)`, and `hook_entry(plugin_root_env, \
+guard_script)` for `prompt_entry(plugin_root_env)`. The added argument is \
+which guard the entry points at, and a caller that had one hook passes the \
+script it was already generating."""
+
+[[steps]]
+instruction = """
+Call `roster_artifacts` for `prompt_artifacts`. It keeps `plugin_root`, \
+`semantic_id` and `event` and adds `guard_script`, `runtime_module`, \
+`source_file` and `origin` -- what the one prompt guard used to hold as its \
+own constants, passed now that two events render it."""

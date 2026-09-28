@@ -1,0 +1,37 @@
+subjects = ["sync.json", "ProjectEntry.url", "ProjectEntry.mount"]
+reason = """
+a tracked registration declares what the project needs -- which repository a \
+name means, whether the project can work without it, and what a session may \
+reach of it -- while the machine's file answers where it is and which \
+transport gets there. The scaffold's `lup` entry is required and mounted, \
+because the workflows that fix a defect upstream and derive a relocation map \
+over its history cannot start without that checkout"""
+commit = "174137900abb952210d5042ae0777f86d631c251"
+
+[[steps]]
+instruction = """
+Say where lup is on this machine, once: `sync remote lup <url>` for the URL \
+this machine fetches it from, or `sync setup lup /path/to/repo` for a \
+checkout it already has. `sync fetch` then materializes it, and a launch \
+materializes what it also mounts. Until one of them is done, `sync status` \
+names the requirement and exits nonzero rather than reporting `not cloned` in \
+a column."""
+command = ["uv", "run", "lup-devtools", "sync", "status"]
+
+[[steps]]
+instruction = """
+Move a machine-specific clone URL out of a local `url` override and into \
+`remote`, which is what a transport is now called: `sync remote <name> \
+<url>`. A tracked `url` is the repository's identity, compared on the host \
+and path it names, so an ssh clone of an https registration is one repository \
+and no longer a refusal; two repositories under one name still are, and the \
+refusal names the file and the edit."""
+
+[[steps]]
+instruction = """
+Declare a repository the project cannot work without on the tracked entry, \
+with `\"required\": true`, and the mode a session may open it at beside it. \
+Both keys stay written or absent, never defaulted; a tracked mount binds \
+nothing until this machine says where the project is. A repository registered \
+at this checkout's own origin, and a committed requirement read inside the \
+template scaffold, are owed by nobody here."""
