@@ -21,7 +21,6 @@ from lup.providers.harness import (
     codex_prompt_renderer,
     compile_claude,
     compile_codex,
-    startup_deadline_settings,
 )
 from lup.formats.banner import (
     COMMENT_FREE,
@@ -431,11 +430,7 @@ def claude_generation_recipe(
         *verbatim,
         Artifact(
             path=Path(".claude/settings.json"),
-            content=json.dumps(
-                startup_deadline_settings(content.settings, source.plugins[0]),
-                indent=2,
-                sort_keys=True,
-            ),
+            content=json.dumps(content.settings, indent=2, sort_keys=True),
             semantic_id="harness.project-settings",
             banner=COMMENT_FREE.compiled_from(content.settings_source),
         ),

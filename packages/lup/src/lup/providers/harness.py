@@ -7,7 +7,6 @@ from lup.providers.claude.harness import (
     ClaudeAgentRenderer,
     ClaudeGuidanceRenderer,
     ClaudeHookRenderer,
-    ClaudeMcpRenderer,
     ClaudePluginManifestRenderer,
     ClaudeSkillRenderer,
     ClaudeSpellings,
@@ -31,12 +30,10 @@ from lup.harness.models import (
     Artifact,
     ArtifactTree,
     Harness,
-    Plugin,
 )
 from lup.harness.validation import validated_tree
 from lup.policy.review import ReviewedFile
 from lup.policy.kernel.review import copied_paths, literal_input
-from lup.types import JsonObject
 
 
 class AdapterName(StrEnum):
@@ -145,7 +142,6 @@ def compile_claude(source: Harness) -> ArtifactTree:
     spellings = ClaudeSpellings()
     prompts = prompt_renderer(spellings)
     manifest_renderer = ClaudePluginManifestRenderer()
-    mcp_renderer = ClaudeMcpRenderer(spellings)
     guidance_renderer = ClaudeGuidanceRenderer(prompts)
     artifacts: list[Artifact] = []  # lup: ignore[empty-collection]
     for plugin in source.plugins:
@@ -156,7 +152,6 @@ def compile_claude(source: Harness) -> ArtifactTree:
         for declaration in plugin.agents:
             artifacts.extend(agent_renderer.render(declaration).artifacts)
         artifacts.extend(manifest_renderer.render(plugin).artifacts)
-        artifacts.extend(mcp_renderer.render(plugin).artifacts)
         if plugin.hooks is not None:
             artifacts.extend(
                 ClaudeHookRenderer(plugin.name, worker_identity_of(source), spellings)
@@ -167,32 +162,6 @@ def compile_claude(source: Harness) -> ArtifactTree:
     reject_oversized_guidance(guidance)
     artifacts.extend(guidance.artifacts)
     return validated_tree(artifacts)
-
-
-def startup_deadline_settings(settings: JsonObject, plugin: Plugin) -> JsonObject:
-    """Spell the declared server deadlines where Claude Code reads one.
-
-    Codex takes a deadline per server, rendered into its own config by its
-    adapter; Claude Code reads only ``MCP_TIMEOUT`` from the settings env
-    block, in milliseconds, applied to every server it starts. One variable
-    cannot honor several declarations, so the widest declared deadline lands —
-    loosening the limit for a server that declared nothing and never
-    tightening one. A project spelling the variable itself has made the
-    judgement directly, so its own value stands over the derived one.
-    """
-    deadlines = [
-        server.startup_timeout_seconds
-        for server in plugin.mcp_servers
-        if server.startup_timeout_seconds is not None
-    ]
-    if not deadlines:
-        return settings
-    spelled = settings["env"] if "env" in settings else {}
-    environment: JsonObject = {
-        "MCP_TIMEOUT": str(round(max(deadlines) * 1000)),
-        **(spelled if isinstance(spelled, dict) else {}),
-    }
-    return {**settings, "env": environment}
 
 
 def compile_codex(source: Harness) -> ArtifactTree:

@@ -25,11 +25,7 @@ from lup.harness.models import (
     HookSandbox,
     HookSet,
     HookUrlScope,
-    LiteralWord,
-    McpServer,
     Plugin,
-    ProjectRootWord,
-    RuntimeWord,
     ResolveSpec,
     SkillInvocation,
 )
@@ -60,7 +56,6 @@ from lup.devtools.dev.workflow import FrontendSpec, PublishSpec, WorkflowSpec
 from lup.devtools.project import DevProject
 from lup.harness.contracts import NativeSpellings
 from lup.harness.enforcement import declared_role_rows
-from lup.harness.environment import tool_server_env
 from lup.policy.boundary import depends_on
 from lup.coordination.policy import inbox_refusal, peer_policy
 from lup.policy.refused_tools import RefusedTool
@@ -274,13 +269,26 @@ def launched_tool_servers(
     ]
 
 
-def launched_serve(root: Path) -> ServeLaunch:
+def launched_serve(root: Path, startup_deadline_seconds: float = 60.0) -> ServeLaunch:
     """How a launched session starts those servers: this project's CLI, in its environment.
 
     Through ``uv run --directory`` naming the checkout, so a server started
     inside a container or from another directory still resolves this
     project's environment; under :data:`HARNESS_SESSION`, the session every
     group's process of one worktree shares; with this project's needs hook.
+    Each server asks for what the launcher exported for it: whichever group
+    it serves, it is one process of the launched session, so it answers to
+    that session's roster identity and spends that session's recursion
+    allowance.
+
+    The deadline is sized to a cold first boot rather than a warm one. Every
+    server here starts through ``uv run``, which on a checkout without an
+    environment resolves, downloads, and builds one before the process can
+    speak — while its siblings, spawned in the same instant, block on the
+    same environment lock. A runtime default chosen for an installed server
+    (Codex gives ten seconds) drops the losers of that race, and what the
+    session sees is two tool groups simply missing on the boot that built
+    the environment and present on every boot after.
     """
     return ServeLaunch(
         program=[
@@ -294,70 +302,8 @@ def launched_serve(root: Path) -> ServeLaunch:
         ],
         session=HARNESS_SESSION,
         needs=session_needs,
+        startup_timeout_seconds=startup_deadline_seconds,
     )
-
-
-def agent_tool_servers(
-    withheld: list[str] = WITHHELD_TOOL_GROUPS, startup_deadline_seconds: float = 60.0
-) -> list[McpServer]:
-    """Offer this project's own agent tools to whichever runtime is reading.
-
-    The servers come from the same declaration the in-process and subprocess
-    backends assemble from, so a group added there reaches a native session
-    too rather than only the ones this program launches itself. Each entry
-    carries its server as the serve command validates it back, so what a
-    runtime starts is the declaration rather than a name looked up in a list
-    beside it. Realtime is the relay mode of a persistent run and belongs to
-    no interactive session, so its group is not among them. *withheld* are the
-    groups a declined module owns, which no plugin starts a server for.
-
-    The deadline is sized to a cold first boot rather than a warm one. Every
-    server here starts through ``uv run``, which on a checkout without an
-    environment resolves, downloads, and builds one before the process can
-    speak — while its siblings, spawned in the same instant, block on the
-    same environment lock. A runtime default chosen for an installed server
-    (Codex gives ten seconds) drops the losers of that race, and what the
-    session sees is two tool groups simply missing on the boot that built
-    the environment and present on every boot after.
-
-    Every server asks for what the launcher exported for it: whichever group
-    it serves, it is one process of the launched session, so it answers to
-    that session's roster identity and spends that session's recursion
-    allowance.
-    """
-    launch = ServeLaunch(session=HARNESS_SESSION, needs=session_needs)
-    started = startup_names(declared_tool_groups())
-    return [
-        McpServer(
-            id=f"mcp.{server.name}",
-            name=server.name,
-            description=f"Agent tools in the {server.name} group, served over stdio",
-            command="uv",
-            arguments=[
-                LiteralWord(text="run"),
-                LiteralWord(text="--directory"),
-                ProjectRootWord(),
-                LiteralWord(text="lup-devtools"),
-                LiteralWord(text="tools"),
-                LiteralWord(text="serve"),
-                LiteralWord(text="--runtime"),
-                RuntimeWord(),
-                *(
-                    LiteralWord(text=word)
-                    for word in [*launch.options(), *server.served().arguments()]
-                ),
-            ],
-            env_vars=tool_server_env(),
-            startup_timeout_seconds=startup_deadline_seconds,
-        )
-        # What a runtime starts when a session opens, read off the same
-        # declaration the session's own assembly reads — and declared rather
-        # than built, since this list is rendered into a native tree and one
-        # that depended on what the generating machine had installed would
-        # make two checkouts' plugins differ.
-        for server in declared_tool_servers()
-        if server.name in started and server.name not in withheld
-    ]
 
 
 def declared_plugin() -> Plugin:
@@ -701,7 +647,6 @@ def portable_harness(
         ),
         skills=content.skills,
         agents=content.agents,
-        mcp_servers=agent_tool_servers(composed.withheld_tool_groups()),
         hooks=HookSet(
             id="hooks.lup-policy",
             policy_ids=["fetch", "shell", "edit", "unknown-tool"],

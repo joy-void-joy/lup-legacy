@@ -70,6 +70,7 @@ from lup.providers.user_config import UserConfigFile
 from lup.observability.audit import TraceJournal
 from lup.sandbox.rail import AccessibleRoot, host_run, in_repository
 from lup.sessions.layers import SessionLayers
+from lup.mcp import ServeLaunch
 from lup.tools.mcp import (
     LupMcpServerConfig,
     McpServerEntry,
@@ -329,6 +330,34 @@ def claude_server(entry: McpServerEntry, always_load: bool) -> ClaudeServer:
             return ClaudeStdioServer(**entry, **loading)
 
 
+def claude_launched_serve(tools: "ClaudeTools") -> ServeLaunch:
+    """How a launched Claude Code starts the servers lup hosts, as this runtime's own."""
+    return (
+        tools.serve
+        if tools.serve.runtime is not None
+        else tools.serve.model_copy(update={"runtime": "claude"})
+    )
+
+
+def claude_server_environment(tools: "ClaudeTools") -> EnvVars:
+    """What a launched Claude Code is told about the servers it starts.
+
+    Claude Code reads one ``MCP_TIMEOUT``, in milliseconds, for every server
+    it starts, so the widest deadline the servers declare is the one given:
+    it loosens the limit for a server that declared none and never tightens
+    one. Nothing where no server declares a deadline.
+    """
+    serve = claude_launched_serve(tools)
+    deadlines = [
+        deadline
+        for server in tools.mcp
+        if (deadline := server.startup_timeout(serve)) is not None
+    ]
+    if not deadlines:
+        return {}
+    return {"MCP_TIMEOUT": str(round(max(deadlines) * 1000))}
+
+
 def claude_mcp_arguments(tools: "ClaudeTools") -> list[str]:
     """The declared servers as a launched CLI starts them, and no others.
 
@@ -336,11 +365,7 @@ def claude_mcp_arguments(tools: "ClaudeTools") -> list[str]:
     declaration's roster is the session's whole one, as it is for a session
     opened here.
     """
-    serve = (
-        tools.serve
-        if tools.serve.runtime is not None
-        else tools.serve.model_copy(update={"runtime": "claude"})
-    )
+    serve = claude_launched_serve(tools)
     servers = {
         server.name: claude_server(server.launched(serve), server.always_load)
         for server in tools.mcp
@@ -597,9 +622,12 @@ def claude_opening(
     arguments = claude_arguments(
         config, member, inbox, words, worktrees_directory(root)
     )
-    environment = inherited_environment()
-    environment.update(config.environment)
-    environment.update(joined.environment)
+    environment = {
+        **claude_server_environment(config.tools),
+        **inherited_environment(),
+        **config.environment,
+        **joined.environment,
+    }
     environment.update(allowance_environment(config.max_recursive_agent, environment))
     opening.banner.add(joined.notices)
     posture = config.sandbox.posture()

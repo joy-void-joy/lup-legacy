@@ -38,7 +38,6 @@ from lup.providers.harness import (
     compile_claude,
     compile_codex,
     guidance_artifacts,
-    startup_deadline_settings,
 )
 from lup.devtools.dev.check import (
     budget_reports,
@@ -153,11 +152,18 @@ from lup_template.devtools.agent.serve import collect_tools_by_server
 from lup.devtools.dev.rules import rule_reference_artifact
 from lup_template.harness.catalog import (
     HARNESS_SESSION,
+    launched_serve,
+    launched_tool_servers,
     portable_harness,
 )
 from lup_template.harness.content.docs.catalog import documents
 from lup_template.harness.content.catalog import GUIDANCE as COMPOSED_GUIDANCE
 from lup_template.harness.content.settings import project_settings
+from lup.mcp import ServeLaunch, ToolServer
+from lup.providers.claude import ClaudeTools
+from lup.providers.claude.launch import claude_mcp_arguments, claude_server_environment
+from lup.providers.codex import CodexTools
+from lup.providers.codex.launch import codex_mcp_arguments
 import lup.providers.codex.launch as codex_launch
 from lup.launch.declaration import InnerSandbox, Mount
 from lup.providers.claude import Claude
@@ -3181,18 +3187,19 @@ def test_project_settings_derive_sandbox_from_hook_declaration() -> None:
 
 
 def test_a_declared_tool_server_is_granted_rather_than_asked_about() -> None:
-    """A server the harness wires in is this project's own code.
+    """A server every session carries is this project's own code.
 
-    The grant names each server by the scoped name a runtime addresses a
-    plugin's server by; the bare key it is declared under matches nothing.
+    The grant names each server by the key a launch declares it under.
     """
-    plugin = portable_harness().plugins[0]
-    permissions = project_settings(plugin)["permissions"]
+    servers = launched_tool_servers()
+    permissions = project_settings(portable_harness().plugins[0], servers)[
+        "permissions"
+    ]
     assert isinstance(permissions, dict)
     allowed = permissions["allow"]
     assert isinstance(allowed, list)
-    for server in plugin.mcp_servers:
-        assert f"mcp__plugin_{plugin.name}_{server.name}" in allowed
+    for server in servers:
+        assert f"mcp__{server.name}" in allowed
     assert "WebSearch" in allowed
 
 
@@ -3451,162 +3458,109 @@ def test_codex_sandbox_arguments_defer_to_a_caller_envelope() -> None:
 
 
 def test_declared_tool_servers_are_the_registry_the_backends_assemble() -> None:
-    """A group added to the toolsets registry reaches a native session too."""
-    servers = portable_harness().plugins[0].mcp_servers
+    """A group added to the toolsets registry reaches a launched session too."""
+    servers = launched_tool_servers()
     assert [server.name for server in servers] == startup_names(declared_tool_groups())
 
 
-def test_each_runtime_spells_the_project_root_a_tool_server_starts_from() -> None:
-    """Neither tree may leave the root to whatever directory a launch had."""
-    server = portable_harness().plugins[0].mcp_servers[0]
-    assert "${CLAUDE_PROJECT_DIR}" in server.command_line(ClaudeSpellings())
-    assert "." in server.command_line(CodexSpellings())
+def launched_claude_servers(
+    servers: list[ToolServer], serve: ServeLaunch
+) -> dict[str, Any]:
+    """The ``--mcp-config`` a launched Claude Code starts these servers from."""
+    words = claude_mcp_arguments(ClaudeTools(mcp=servers, serve=serve))
+    return json.loads(words[words.index("--mcp-config") + 1])["mcpServers"]
 
 
-def test_every_native_tool_server_selects_its_own_engine() -> None:
-    for server in portable_harness().plugins[0].mcp_servers:
-        for spellings in (ClaudeSpellings(), CodexSpellings()):
-            arguments = server.command_line(spellings)
-            assert (
-                arguments[arguments.index("--runtime") + 1] == spellings.runtime_key()
-            )
+def launched_codex_servers(
+    servers: list[ToolServer], serve: ServeLaunch
+) -> dict[str, dict[str, Any]]:
+    """The ``mcp_servers`` tables a launched Codex starts these servers from."""
+    words = codex_mcp_arguments(CodexTools(mcp=servers, serve=serve))
+    tables: dict[str, dict[str, Any]] = {}
+    for word in words[1::2]:
+        key, _, value = word.partition("=")  # lup: ignore[string-split]
+        _, name, field = key.split(".", 2)  # lup: ignore[string-split]
+        tables.setdefault(name, {})[field] = json.loads(value)
+    return tables
 
 
-def test_claude_tree_offers_the_tool_servers_as_a_plugin_configuration() -> None:
-    """The scope that follows the plugin, so enabling it is what starts them."""
-    tree = compile_claude(portable_harness())
-    declaration = next(
-        artifact
-        for artifact in tree.artifacts
-        if artifact.path == Path(".claude/plugins/lup/.mcp.json")
-    )
-    servers = json.loads(declaration.content)["mcpServers"]
-    assert sorted(servers) == sorted(startup_names(declared_tool_groups()))
-    assert servers["notes"]["command"] == "uv"
-    assert "${CLAUDE_PROJECT_DIR}" in servers["notes"]["args"]
+def test_every_launched_server_starts_in_this_checkout_for_its_own_engine(
+    tmp_path: Path,
+) -> None:
+    """Neither runtime may leave the root to whatever directory a launch had."""
+    serve = launched_serve(tmp_path)
+    claude = launched_claude_servers(launched_tool_servers(), serve)
+    codex = launched_codex_servers(launched_tool_servers(), serve)
+
+    for runtime, servers in (("claude", claude), ("codex", codex)):
+        for server in servers.values():
+            arguments = server["args"]
+            assert server["command"] == "uv"
+            assert arguments[arguments.index("--directory") + 1] == str(tmp_path)
+            assert arguments[arguments.index("--runtime") + 1] == runtime
 
 
-def test_codex_tree_offers_the_tool_servers_in_its_project_config() -> None:
-    """Codex keeps a project's servers beside the rest of its project config."""
-    tree = compile_codex(portable_harness())
-    config = next(
-        artifact
-        for artifact in tree.artifacts
-        if artifact.path == Path(".codex/config.toml")
-    )
-    parsed = tomllib.loads(config.content)
-    assert parsed["features"]["hooks"] is True
-    assert sorted(parsed["mcp_servers"]) == sorted(
-        startup_names(declared_tool_groups())
-    )
-    assert parsed["mcp_servers"]["notes"]["command"] == "uv"
+def test_neither_tree_carries_the_servers_a_launch_declares() -> None:
+    """A strict roster drops a plugin's servers, so the tree carries none."""
+    claude = compile_claude(portable_harness())
+    codex = tomllib.loads(codex_project_config())
+
+    assert not any(artifact.path.name == ".mcp.json" for artifact in claude.artifacts)
+    assert "mcp_servers" not in codex
+    assert codex["features"]["hooks"] is True
 
 
-def relaying_harness(names: list[str]) -> Harness:
-    """The example harness with every server asking for exactly *names*."""
-    source = portable_harness()
-    plugin = source.plugins[0]
-    return source.model_copy(
-        update={
-            "plugins": [
-                plugin.model_copy(
-                    update={
-                        "mcp_servers": [
-                            server.model_copy(update={"env_vars": names})
-                            for server in plugin.mcp_servers
-                        ]
-                    }
-                )
-            ]
-        }
-    )
-
-
-def test_only_the_runtime_that_forwards_nothing_is_told_what_to_forward() -> None:
+def test_only_the_runtime_that_forwards_nothing_is_told_what_to_forward(
+    tmp_path: Path,
+) -> None:
     """A name is asked for exactly where a server would otherwise never see it.
 
     One runtime hands a server it spawns the whole environment, so its
     declaration has nothing to say about any of it. The other hands one a
-    fixed base and forwards only what it was asked for, so a relay this list
-    omits is a relay that never arrives — and a tool that binds to nothing
-    serves an empty surface rather than failing.
+    fixed base and forwards only what it was asked for, so the roster
+    identity and recursion allowance the launcher exported reach a server
+    only where it names them — without them the coordination server joins
+    the roster under no id and a nested agent spends no allowance.
     """
-    relayed = relaying_harness(["LUP_SESSION_DIR"])
-    parsed = tomllib.loads(codex_project_config(relayed, CodexSpellings()))
-    assert parsed["mcp_servers"]["notes"]["env_vars"] == ["LUP_SESSION_DIR"]
-    declaration = next(
-        artifact
-        for artifact in compile_claude(relayed).artifacts
-        if artifact.path == Path(".claude/plugins/lup/.mcp.json")
-    )
-    assert "env_vars" not in json.loads(declaration.content)["mcpServers"]["notes"]
+    serve = launched_serve(tmp_path)
+    claude = launched_claude_servers(launched_tool_servers(), serve)
+    codex = launched_codex_servers(launched_tool_servers(), serve)
+
+    assert {name: server.get("env_vars") for name, server in codex.items()} == {
+        name: tool_server_env() for name in startup_names(declared_tool_groups())
+    }
+    assert not any("env_vars" in server for server in claude.values())
 
 
-def test_a_server_naming_no_environment_renders_no_key_at_all() -> None:
-    """An absent key leaves the runtime's own default, not an empty allowlist."""
-    parsed = tomllib.loads(codex_project_config(relaying_harness([]), CodexSpellings()))
-    assert "env_vars" not in parsed["mcp_servers"]["notes"]
-
-
-def test_every_tool_server_asks_for_what_its_launcher_exported() -> None:
-    """A Codex session's tool servers answer to the session they belong to.
-
-    Codex starts each with a fixed base environment, so the member id, the
-    name and the recursion allowance the launcher exported reach a server
-    only where it names them. Without them the coordination server joins the
-    roster under no id and the session is on it nowhere, and a nested agent
-    opened by any group's tools spends no allowance at all.
-    """
-    parsed = tomllib.loads(codex_project_config(portable_harness(), CodexSpellings()))
-    assert {
-        name: server.get("env_vars") for name, server in parsed["mcp_servers"].items()
-    } == {name: tool_server_env() for name in startup_names(declared_tool_groups())}
-
-
-def rendered_servers(harness: Harness) -> tuple[JsonObject, JsonObject]:
-    """Each runtime's rendering of the ``notes`` server, Claude's first."""
-    declaration = next(
-        artifact
-        for artifact in compile_claude(harness).artifacts
-        if artifact.path == Path(".claude/plugins/lup/.mcp.json")
-    )
-    claude = json.loads(declaration.content)["mcpServers"]["notes"]
-    codex = tomllib.loads(codex_project_config(harness, CodexSpellings()))
-    return claude, codex["mcp_servers"]["notes"]
-
-
-def test_an_always_loaded_server_is_exempt_only_where_tools_are_deferred() -> None:
+def test_an_always_loaded_server_is_exempt_only_where_tools_are_deferred(
+    tmp_path: Path,
+) -> None:
     """A server called dozens of times a session should not cost a search each time.
 
     Claude Code withholds MCP tool definitions until a search asks for them
     and exempts a server declaring ``alwaysLoad``. Codex documents no such
-    control, so its config gains no key it would not read; and a server that
+    control, so its tables gain no key it would not read; and a server that
     declares nothing keeps each runtime's own loading.
     """
-    source = portable_harness()
-    plugin = source.plugins[0]
-    loaded = source.model_copy(
-        update={
-            "plugins": [
-                plugin.model_copy(
-                    update={
-                        "mcp_servers": [
-                            server.model_copy(update={"always_load": True})
-                            for server in plugin.mcp_servers
-                        ]
-                    }
-                )
-            ]
-        }
+    serve = launched_serve(tmp_path)
+    loaded = [
+        server.model_copy(update={"always_load": True})
+        for server in launched_tool_servers()
+    ]
+
+    assert launched_claude_servers(loaded, serve)["notes"]["alwaysLoad"] is True
+    assert (
+        "alwaysLoad"
+        not in launched_claude_servers(launched_tool_servers(), serve)["notes"]
     )
-    claude, codex = rendered_servers(loaded)
-    default_claude, default_codex = rendered_servers(source)
-    assert claude["alwaysLoad"] is True
-    assert "alwaysLoad" not in default_claude
-    assert codex == default_codex
+    codex = launched_codex_servers(loaded, serve)
+    unloaded = launched_codex_servers(launched_tool_servers(), serve)
+    assert {name: sorted(table) for name, table in codex.items()} == {
+        name: sorted(table) for name, table in unloaded.items()
+    }
 
 
-def test_both_runtimes_grant_the_declared_servers_the_same_way() -> None:
+def test_both_runtimes_grant_the_declared_servers_the_same_way(tmp_path: Path) -> None:
     """Serving a tool and being allowed to call it are different claims.
 
     A session with no operator to ask holds every server it was given and
@@ -3615,17 +3569,24 @@ def test_both_runtimes_grant_the_declared_servers_the_same_way() -> None:
     not to use its instruments. The grant is derived from the declaration on
     both runtimes so neither can be the one that forgot.
     """
-    source = portable_harness()
-    parsed = tomllib.loads(codex_project_config(source, CodexSpellings()))
+    servers = launched_tool_servers()
+    codex = launched_codex_servers(servers, launched_serve(tmp_path))
     approved = {
         name
-        for name, entry in parsed["mcp_servers"].items()
-        if entry["default_tools_approval_mode"] == "approve"
+        for name, table in codex.items()
+        if table["default_tools_approval_mode"] == "approve"
     }
-    plugin = source.plugins[0]
-    declared = {server.name for server in plugin.mcp_servers}
+    declared = {server.name for server in servers}
+    permissions = project_settings(portable_harness().plugins[0], servers)[
+        "permissions"
+    ]
+    assert isinstance(permissions, dict)
+
+    allowed = permissions["allow"]
+    assert isinstance(allowed, list)
+
     assert approved == declared
-    assert len(set(served_tool_grants(plugin))) == len(declared)
+    assert all(f"mcp__{name}" in allowed for name in declared)
 
 
 def harness_granting_its_own_servers() -> Harness:
@@ -3639,7 +3600,7 @@ def harness_granting_its_own_servers() -> Harness:
     """
     source = portable_harness()
     plugin = source.plugins[0]
-    wanted = [f"mcp__{server.name}" for server in plugin.mcp_servers]
+    wanted = [f"mcp__{server.name}" for server in launched_tool_servers()]
     return source.model_copy(
         update={
             "plugins": [
@@ -3664,16 +3625,13 @@ def test_a_grant_in_a_command_names_the_tool_its_permission_admits() -> None:
     """The two halves of one grant, rendered into two artifacts.
 
     A skill's `allowed-tools` and the settings permission that admits it are
-    written by different renderers and have to name the same tool. They did
-    not: the settings scoped the plugin's servers and the command frontmatter
-    carried the bare key, which this runtime answers to under neither name —
-    so a pass granted its instruments in its own declaration opened without
-    them, and nothing failed to say so.
+    written by different renderers and have to name the same tool: each
+    names the server by the key a launch declares it under, so a pass granted
+    its instruments in its own declaration opens with them.
     """
     source = harness_granting_its_own_servers()
-    plugin = source.plugins[0]
-    admitted = set(served_tool_grants(plugin))
-    assert admitted, "the harness declares no tool servers to grant"
+    admitted = set(served_tool_grants(launched_tool_servers()))
+    assert admitted, "the project declares no tool servers to grant"
 
     rendered = {
         artifact.path.as_posix(): artifact.content
@@ -3701,78 +3659,42 @@ def test_a_grant_in_a_command_names_the_tool_its_permission_admits() -> None:
                     )
 
 
-def test_a_declared_startup_deadline_reaches_the_runtime_that_waits_on_one() -> None:
+def test_a_declared_startup_deadline_reaches_the_runtime_that_waits_on_one(
+    tmp_path: Path,
+) -> None:
     """A group resolving its package before it imports anything starts slowly.
 
     The runtime's own default is set for a server already installed, and
     missing it drops that one server while the session keeps the rest — so
     the symptom is a group simply absent from a session that otherwise
-    works, which reads as flakiness rather than as a configured limit.
+    works, which reads as flakiness rather than as a configured limit. Codex
+    takes it per server; Claude Code reads one ``MCP_TIMEOUT``, in
+    milliseconds, for every server it starts.
     """
-    parsed = tomllib.loads(codex_project_config(portable_harness(), CodexSpellings()))
+    serve = launched_serve(tmp_path)
+    codex = launched_codex_servers(launched_tool_servers(), serve)
+
     for name in ("notes", "codeintel", "sandbox"):
-        assert parsed["mcp_servers"][name]["startup_timeout_sec"] == 60.0
+        assert codex[name]["startup_timeout_sec"] == 60.0
+    assert claude_server_environment(
+        ClaudeTools(mcp=launched_tool_servers(), serve=serve)
+    ) == {"MCP_TIMEOUT": "60000"}
 
 
-def undeadlined_harness() -> Harness:
-    """The declared harness with every server's deadline stripped."""
-    source = portable_harness()
-    plugin = source.plugins[0]
-    return source.model_copy(
-        update={
-            "plugins": [
-                plugin.model_copy(
-                    update={
-                        "mcp_servers": [
-                            server.model_copy(update={"startup_timeout_seconds": None})
-                            for server in plugin.mcp_servers
-                        ]
-                    }
-                )
-            ]
-        }
-    )
-
-
-def test_a_server_naming_no_deadline_keeps_the_runtimes_own() -> None:
+def test_a_launch_naming_no_deadline_keeps_the_runtimes_own(tmp_path: Path) -> None:
     """Declaring nothing leaves the default, rather than this file's opinion."""
-    parsed = tomllib.loads(
-        codex_project_config(undeadlined_harness(), CodexSpellings())
+    serve = launched_serve(tmp_path).model_copy(
+        update={"startup_timeout_seconds": None}
     )
-    assert "startup_timeout_sec" not in parsed["mcp_servers"]["notes"]
 
-
-def test_the_widest_declared_deadline_lands_in_the_settings_env() -> None:
-    """The runtime without a per-server spelling reads one global variable.
-
-    ``MCP_TIMEOUT`` is milliseconds and covers every server the session
-    starts, so the adapter renders the widest declared deadline — under the
-    project's own env block, since a repository spelling the variable itself
-    has made the judgement directly.
-    """
-    plugin = portable_harness().plugins[0]
-    settings = startup_deadline_settings(project_settings(plugin), plugin)
-    env = settings["env"]
-    assert isinstance(env, dict)
-    assert env["MCP_TIMEOUT"] == "60000"
-    assert env["CLAUDE_CODE_THISTLE_GREBE"] == "default"
-
-
-def test_a_project_spelling_the_timeout_itself_outranks_the_derivation() -> None:
-    plugin = portable_harness().plugins[0]
-    spelled = startup_deadline_settings({"env": {"MCP_TIMEOUT": "5000"}}, plugin)
-    env = spelled["env"]
-    assert isinstance(env, dict)
-    assert env["MCP_TIMEOUT"] == "5000"
-
-
-def test_no_declared_deadline_leaves_the_settings_env_alone() -> None:
-    """Stripped declarations render no opinion into the runtime's env."""
-    plugin = undeadlined_harness().plugins[0]
-    settings = startup_deadline_settings(project_settings(plugin), plugin)
-    env = settings["env"]
-    assert isinstance(env, dict)
-    assert "MCP_TIMEOUT" not in env
+    assert (
+        "startup_timeout_sec"
+        not in launched_codex_servers(launched_tool_servers(), serve)["notes"]
+    )
+    assert (
+        claude_server_environment(ClaudeTools(mcp=launched_tool_servers(), serve=serve))
+        == {}
+    )
 
 
 def test_a_named_session_is_what_makes_a_native_server_serve_real_tools() -> None:

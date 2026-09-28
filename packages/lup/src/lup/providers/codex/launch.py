@@ -385,13 +385,22 @@ def codex_launched(agent: "Codex") -> "Codex":
 def codex_mcp_arguments(tools: "CodexTools") -> list[str]:
     """The declared servers as a launched CLI starts them, one ``--config`` table each.
 
-    Declared per session over whatever the home or the plugin carries under
-    the same names, so the declaration's roster is what the session serves.
+    Declared per session over whatever the home carries under the same
+    names, so the declaration's roster is what the session serves.
 
     A server reading what the launcher exported names it in ``env_vars``,
     because Codex starts a stdio server under a fixed base environment and
     forwards nothing else: without it, a coordination server joins the roster
-    under no id, and a nested agent its tools open spends no allowance.
+    under no id, and a nested agent its tools open spends no allowance. A
+    deadline the launch declares lands as ``startup_timeout_sec``, per
+    server, in this runtime's own unit.
+
+    ``default_tools_approval_mode`` grants every declared server outright,
+    the decision the other runtime's settings compile into their served-tool
+    grants: a server declared here is the declarer's own code, wired in
+    deliberately, so asking per call would make the declaration a
+    suggestion — and a session with no operator to ask would hold every
+    server it was given and call none of them.
     """
     serve = (
         tools.serve
@@ -409,9 +418,17 @@ def codex_mcp_arguments(tools: "CodexTools") -> list[str]:
         for server in tools.mcp
         if (named := server.launcher_variables())
     ]
+    deadlines = [
+        (server.name, "startup_timeout_sec", deadline)
+        for server in tools.mcp
+        if (deadline := server.startup_timeout(serve)) is not None
+    ]
+    approved = [
+        (server.name, "default_tools_approval_mode", "approve") for server in tools.mcp
+    ]
     return [
         argument
-        for name, key, value in [*launched, *forwarded]
+        for name, key, value in [*launched, *forwarded, *deadlines, *approved]
         for argument in ("--config", f"mcp_servers.{name}.{key}={json.dumps(value)}")
     ]
 

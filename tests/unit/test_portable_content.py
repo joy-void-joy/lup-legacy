@@ -20,7 +20,7 @@ from lup.harness.contracts import NativeSpellings
 from lup.policy.kernel.decision import SANDBOX_ESCALATION_RECIPE
 from lup.harness.models import PromptDocument, TextPart
 from lup.harness.prompts import SPAWNED_SESSION_LOSES_SHELL
-from lup_template.harness.catalog import portable_harness
+from lup_template.harness.catalog import launched_tool_servers, portable_harness
 
 RUNTIMES: list[NativeSpellings] = [ClaudeSpellings(), CodexSpellings()]
 
@@ -178,55 +178,23 @@ def test_a_grant_claude_cannot_honor_never_reaches_the_rendered_tree() -> None:
         ], identifier
 
 
-def test_a_grant_naming_the_plugins_own_server_is_scoped_to_the_plugin() -> None:
-    """The bare key is the one name this runtime does not answer to.
+def test_a_grant_naming_a_server_keeps_the_key_it_is_declared_under() -> None:
+    """A launch declares every server under its own key, so a grant spells it so.
 
-    A plugin's servers are namespaced by the plugin that brought them, so a
-    grant left as `mcp__notes` matches no tool at all — and matching nothing
-    is invisible: the skill opens, its instruments are absent, and the
-    declaration that listed them reads as though they were there.
+    A grant rewritten to any other name would match no tool at all — and
+    matching nothing is invisible: the skill opens, its instruments are
+    absent, and the declaration that listed them reads as though they were
+    there.
     """
-    plugin = portable_harness().plugins[0]
-    served = [server.name for server in plugin.mcp_servers]
-    assert served, "the harness declares no tool servers to scope"
+    served = [f"mcp__{server.name}" for server in launched_tool_servers()]
+    assert served, "the project declares no tool servers to grant"
 
-    granted = claude_granted_tools([f"mcp__{served[0]}", "Read"], plugin)
-
-    assert granted == [f"mcp__plugin_{plugin.name}_{served[0]}", "Read"]
-
-
-def test_a_server_the_plugin_does_not_bring_keeps_the_key_it_is_declared_under() -> (
-    None
-):
-    """Only the plugin's own servers are namespaced; a project's are not."""
-    plugin = portable_harness().plugins[0]
-    outside = "mcp__something-the-project-registered-itself"
-
-    assert claude_granted_tools([outside], plugin) == [outside]
-    assert claude_granted_tools([outside]) == [outside]
-
-
-def test_no_grant_survives_naming_a_served_key_the_runtime_ignores() -> None:
-    """Every declaration in the tree, each granting every server it could.
-
-    A grant either names one of the plugin's servers, and is scoped, or names
-    a server registered outside it, and is left alone. What must not survive
-    is the third case: a bare key that happens to be one the plugin serves.
-    """
-    plugin = portable_harness().plugins[0]
-    served = {server.name for server in plugin.mcp_servers}
-    assert served, "the harness declares no tool servers to scope"
-    wanted = [f"mcp__{name}" for name in sorted(served)]
-
-    for declaration in [*plugin.skills, *plugin.agents]:
-        granted = claude_granted_tools([*declaration.tools, *wanted], plugin)
-        assert len(granted) >= len(wanted), declaration.id
-        for tool in granted:
-            bare = tool.removeprefix("mcp__").partition("__")[0]
-            assert bare not in served, (
-                f"{declaration.id} grants {tool}, which this runtime "
-                f"addresses as mcp__plugin_{plugin.name}_{bare}"
-            )
+    for declaration in [
+        *portable_harness().plugins[0].skills,
+        *portable_harness().plugins[0].agents,
+    ]:
+        granted = claude_granted_tools([*declaration.tools, *served])
+        assert granted[len(granted) - len(served) :] == served, declaration.id
 
 
 # The composition rule carries its snippets like every other rule, so the

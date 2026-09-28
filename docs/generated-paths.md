@@ -8,14 +8,13 @@ A source spelled as a dotted module is a module to open. One spelled as an ident
 
 The repository-wide artifacts written outside every runtime tree — the rule and command references, this page, and the CI workflow — belong to no recipe and are described in [harness.md](harness.md) instead.
 
-## `claude` — 127 artifacts
+## `claude` — 126 artifacts
 
 | Generated path | Compiled from |
 | --- | --- |
 | `.claude/CLAUDE.md` | lup_template.harness.content.guidance |
 | `.claude/plugins/.claude-plugin/marketplace.json` | plugin.lup |
 | `.claude/plugins/lup/.claude-plugin/plugin.json` | plugin.lup |
-| `.claude/plugins/lup/.mcp.json` | plugin.lup |
 | `.claude/plugins/lup/TEMPLATE_CLAUDE.md` | lup_template.harness.content.template_claude |
 | `.claude/plugins/lup/agents/tdd-implementer.md` | lup.harness.content.agents.tdd_implementer |
 | `.claude/plugins/lup/agents/trace-explorer.md` | lup.harness.content.agents.trace_explorer |

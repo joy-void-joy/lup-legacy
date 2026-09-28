@@ -67,13 +67,14 @@ def project_content(
     harness = portable_harness(root=root, composed=composed)
     if rules is not None:
         harness = harness.holding(rules)
+    servers = launched_tool_servers(composed.withheld_tool_groups())
     return ProjectContent(
         harness=harness,
         documents=documents(root, composed),
         assets=[CONTENT_ROOT / "assets" / "file_suggest.sh"],
-        settings=project_settings(harness.plugins[0]),
+        settings=project_settings(harness.plugins[0], servers),
         settings_source=settings_module.__name__,
-        servers=launched_tool_servers(composed.withheld_tool_groups()),
+        servers=servers,
         serve=launched_serve(root),
     )
 
