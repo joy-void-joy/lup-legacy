@@ -2131,6 +2131,10 @@ PATH_ROLES: list[PathRoleRow] = [
         "role": "scratch",
     },
     {
+        "root": "packages/lup/src/lup/migrations/pending",
+        "role": "data",
+    },
+    {
         "root": "packages/lup/web/**/*.test.js",
         "role": "test",
     },
