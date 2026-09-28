@@ -1,0 +1,18 @@
+subjects = ["released"]
+reason = """
+a release can go out as candidates first, so what it writes into the \
+changelog depends on what it is — a candidate, a release, or a promotion — \
+and the changelog closes its own open sections rather than taking a \
+pre-rendered block of asks from a helper"""
+
+[[steps]]
+instruction = """
+Call log.released_as(version, date, asks) where you called \
+released(log, version, date, migrations): the asks are the rendered lines \
+themselves, and the changelog writes their heading."""
+
+[[steps]]
+instruction = """
+Pass released_as its asks where you passed additions=: the third argument is \
+now the list of rendered lines, and required, where it was a markdown string \
+defaulting to none."""

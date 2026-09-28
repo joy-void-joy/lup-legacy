@@ -14,7 +14,6 @@ from lup.devtools.changelog import Changelog, ReleaseNote, release_heading
 from lup.devtools.dev.release import (
     is_level,
     next_version,
-    released,
     with_version,
 )
 
@@ -59,7 +58,7 @@ def test_moving_a_version_leaves_the_rest_of_the_manifest_alone() -> None:
 
 def test_closing_the_open_section_renames_it_and_keeps_its_entries() -> None:
     log = Changelog.parse("# Changelog\n\n## Unreleased\n\n- something landed\n")
-    closed = released(log, "0.3.0", DAY, migrations=[])
+    closed = log.released_as("0.3.0", DAY, [])
     rendered = closed.render()
 
     assert "## 0.3.0 — 2026-09-19" in rendered
@@ -71,7 +70,7 @@ def test_closing_the_open_section_renames_it_and_keeps_its_entries() -> None:
 def test_pending_migrations_are_folded_in_under_their_own_heading() -> None:
     """What a reader has to act on is not mixed in with what changed."""
     log = Changelog.parse("# Changelog\n\n## Unreleased\n\n- something landed\n")
-    closed = released(log, "0.3.0", DAY, migrations=["call this instead"])
+    closed = log.released_as("0.3.0", DAY, ["call this instead"])
     rendered = closed.render()
 
     assert "### What this release asks of a caller" in rendered
@@ -116,8 +115,8 @@ def test_one_writer_spells_every_heading() -> None:
     happened to write it.
     """
     note = ReleaseNote(version="0.3.0", date=DAY, summary="s")
-    closed = released(
-        Changelog.parse("# C\n\n## Unreleased\n\n- e\n"), "0.3.0", DAY, migrations=[]
+    closed = Changelog.parse("# C\n\n## Unreleased\n\n- e\n").released_as(
+        "0.3.0", DAY, []
     )
 
     assert note.heading() == release_heading("0.3.0", DAY)
