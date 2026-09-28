@@ -1,0 +1,61 @@
+subjects = [
+    "Claim.digest",
+    "Claim.vacant",
+    "PathContested",
+    "PathContested.digest",
+    "PathContested.rivals",
+    "PathContested.type",
+    "PathTouched",
+    "PathTouched.digest",
+    "PathTouched.type",
+    "PathVacated",
+    "PathVacated.prefix",
+    "PathVacated.type",
+    "PrefixLocked",
+    "PrefixLocked.type",
+    "PrefixReleased",
+    "PrefixReleased.type",
+    "TOUCH_ADAPTER",
+    "TouchEntry",
+    "TouchRecord",
+    "TouchRecord.actor",
+    "TouchRecord.at",
+    "TouchRecord.path",
+    "Touches",
+    "Touches.__init__",
+    "Touches.claims",
+    "Touches.contested",
+    "Touches.covering",
+    "Touches.held",
+    "Touches.locked",
+    "Touches.record",
+    "Touches.released",
+    "Touches.touched",
+    "Touches.vacated",
+]
+reason = """
+a claim is evidence rather than an assertion: it records the modification \
+time of the path it was taken over, so a reader settles it with a stat \
+instead of waiting for a record to retire it, and a contest is derived from \
+two members' files rather than guessed at by whichever of them wrote"""
+commit = "1e56496618db07576be351386786e1a32f93e43c"
+
+[[steps]]
+instruction = """
+Call `RepositoryPeers.touched(member_id, *paths)` for `Touches.touched`, \
+`.lock`/`.release` for `Touches.locked`/`.released`, and \
+`.held()`/`.holding()` for `Touches.held`/`.covering`. Each writes the claim \
+onto that member's own file under its own lock; there is no `Touches` to open \
+and no record to append."""
+
+[[steps]]
+instruction = """
+Nothing records a contest: `Touches.contested` and `PathContested` are gone, \
+and a reader derives it from two live members claiming one path. A caller \
+that named rivals records its own claim and lets the reader meet the other."""
+
+[[steps]]
+instruction = """
+Nothing ends a claim either: `Touches.vacated`, `PathVacated`, `Claim.vacant` \
+and `Claim.digest` are gone, because a path that is no longer there — or that \
+somebody has written since — answers for itself at the read."""

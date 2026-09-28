@@ -71,7 +71,9 @@ where = ["src"]
 # A passage is prose beside the module declaring it, so every package ships
 # its Markdown: a wheel without it holds declarations and no words.
 "*" = ["*.md"]
-lup = ["py.typed"]
+# The migration record is read from the installed library by an updating
+# project, so every release's declarations and the pending ones ship with it.
+lup = ["py.typed", "migrations/*/*.toml"]
 "lup.providers.claude" = ["assets/*.py"]
 "lup.providers.codex" = ["assets/*.py"]
 "lup.policy" = ["assets/*.py"]

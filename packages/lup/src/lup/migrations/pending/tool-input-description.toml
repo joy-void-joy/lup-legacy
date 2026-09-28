@@ -1,0 +1,11 @@
+subjects = ["ToolInput.description", "ToolInput.subagent_type"]
+reason = """
+the stop hook names only shell work a subagent's own run started, so it reads \
+no spawn arguments"""
+commit = "f88bb2bb767384f4dbed995844e3a9d42bc7a44c"
+
+[[steps]]
+instruction = """
+Nothing reads these fields of the cleanup hook's tool input. A hook that \
+needs a spawn's description or type reads them from the payload its runtime \
+hands it before the call, as lup.policy.kernel.spawns is handed them."""

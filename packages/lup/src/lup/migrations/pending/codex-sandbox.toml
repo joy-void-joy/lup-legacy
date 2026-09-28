@@ -1,0 +1,10 @@
+subjects = ["Codex.sandbox"]
+reason = """
+Codex's sandbox field is the declaration's wall now, the same type Claude's \
+is, so Codex's own mode word moved to the name its config.toml gives it"""
+commit = "f53e27a11b8bdcd67312d9bd4c544fb40931875e"
+
+[[steps]]
+instruction = """
+Rename Codex(sandbox='read-only'|'workspace-write'|'danger-full-access') to \
+Codex(sandbox_mode=...)."""

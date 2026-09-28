@@ -1,0 +1,14 @@
+subjects = ["Runtime.contained"]
+reason = """
+`contained` named the configuration home a workspace's sessions are pointed \
+at, while everywhere else in this library it names a container — and a \
+session can now ask for one. The method takes the word for what it does, \
+`homed`, and the boundary keeps the other"""
+commit = "0ce9bb60723477c4f09db0955b6ef6c977b5e798"
+
+[[steps]]
+instruction = """
+Call `Runtime.homed(request)` where you called `Runtime.contained(request)`; \
+nothing else about it moved. A caller reaching it through \
+`Runtime.session_factory` was never naming it and has nothing to change."""
+command = ["uv", "run", "lup-devtools", "dev", "py", "text", "\\.contained\\("]

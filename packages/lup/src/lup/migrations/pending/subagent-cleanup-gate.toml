@@ -1,0 +1,10 @@
+subjects = ["SubagentCleanup.gate", "SubagentCleanup.record"]
+reason = """
+a delegated agent is told the scoped check and the test runner it owes, and \
+leaves the full gate to whoever lands its work"""
+commit = "f88bb2bb767384f4dbed995844e3a9d42bc7a44c"
+
+[[steps]]
+instruction = """
+Spell your project's scoped check in `SubagentCleanup.scoped` and its test \
+runner in `SubagentCleanup.tests` where `gate` and `record` were set."""

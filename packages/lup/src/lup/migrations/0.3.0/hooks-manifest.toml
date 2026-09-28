@@ -1,0 +1,38 @@
+subjects = [
+    "HOOKS_MANIFEST",
+    "CodexHookEvent",
+    "CODEX_HOOK_EVENTS",
+    "declared_hook_records",
+    "untrusted_hooks",
+]
+reason = """
+which hooks a Codex home would run is the runtime's verdict over its own \
+records and the plugin cache those records name, so it is asked rather than \
+reconstructed — the hand-kept event table knew three events while the \
+generated manifest declares five, and the one call that decides whether a \
+session carries the policy raised on the two it had never heard of"""
+commit = "03ec9fd322798e9220c25cafca9aa873cf915c09"
+
+[[steps]]
+instruction = """
+Ask the home instead of naming its records. `read_hooks(home, cwd)` in \
+`lup.providers.codex.trust` returns a `CodexHookReport`, and each `CodexHook` \
+in it carries the `key` the record is kept under, its `current_hash`, \
+`trust_status` and `is_managed` — so nothing composes a record name from \
+`HOOKS_MANIFEST` and `CODEX_HOOK_EVENTS`, and no table has to be kept level \
+with the manifest."""
+
+[[steps]]
+instruction = """
+Replace `untrusted_hooks(home, marketplace)` with `policy_hooks_skipped(home, \
+project, marketplace)` from `lup.providers.codex.home`, which answers the \
+same question for the working directory a session opens on. It returns the \
+`CodexHook`s themselves rather than record names, and covers a hook whose \
+recorded digest has gone stale — the `modified` verdict a table of names \
+could not see, and the one a regenerated plugin meets constantly."""
+
+[[steps]]
+instruction = """
+`CodexHookEvent` named the three events the table knew. Nothing narrows an \
+event any more: `CodexHook.event_name` is whatever the runtime reports, so an \
+event added to the manifest needs no change here."""

@@ -1,0 +1,16 @@
+subjects = ["rewritten_files"]
+reason = """
+one function had two names on the two sides of the boundary it answers \
+across, and the row type beside it said `File` where the field it fills says \
+`documents` — what a rewrite leaves behind is the document, the file being \
+the path it lands at"""
+commit = "4ab3f9768750b4bcafbaeef2118f8e4d18ee33bd"
+
+[[steps]]
+instruction = """
+Call `rewritten_documents` where `rewritten_files` was called; the arguments \
+and the reading are unchanged. `RewrittenFileRow` is `RewrittenDocumentRow` \
+and `UnreadFileRow` is `UnproducedDocumentRow`, whose field on \
+`RewriteReading` is `unproduced` rather than `unread` — the word `unread` \
+stays with the shell write nobody read the content of, which is a different \
+question."""

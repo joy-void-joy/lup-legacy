@@ -1399,13 +1399,8 @@ def create_dev_app(
 
     # -- what a range asks of a project built on this one --
 
-    def surfaces_over(spelled: str) -> preservation.Divergence:
-        """The two surfaces a ``base..head`` argument names, compared.
-
-        A head is optional and its absence means the working tree, which is
-        what a gate asks about: uncommitted work is exactly where a capability
-        goes missing before anybody notices.
-        """
+    def span_over(spelled: str) -> preservation.Span:
+        """The two ends a ``base..head`` argument names, the head optional."""
         # git's own range grammar, taken as given rather than invented here.
         base, separator, head = spelled.partition("..")  # lup: ignore[string-split]
         if not separator or not base:
@@ -1413,13 +1408,7 @@ def create_dev_app(
                 f"expected <base>..<head>, or <base>.. for the working tree; "
                 f"got {spelled!r}"
             )
-        project = declared().project
-        return preservation.compare(
-            preservation.surface_at(base, project),
-            preservation.surface_at(head, project)
-            if head
-            else preservation.surface_now(project),
-        )
+        return preservation.Span(base=base, head=head)
 
     @migrate_app.command("map")
     def migrate_map_cmd(
@@ -1438,7 +1427,7 @@ def create_dev_app(
         what cannot be spelled as a pair is spelled out instead, name by
         name, for a reader to judge and repoint by hand.
         """
-        divergence = surfaces_over(over)
+        divergence = span_over(over).divergence(declared().project)
         moves = divergence.module_moves()
         unmapped = divergence.unmapped_modules()
         if not moves and not unmapped:
@@ -1475,11 +1464,13 @@ def create_dev_app(
         """What a project standing at that commit still owes, beyond the map.
 
         The declared residue: a signature that gained parameters, a refusal
-        that split. A project already past the commit that made the break has
-        applied it, and is told nothing.
+        that split. Read from every release's record and the pending window,
+        so a project crossing several releases hears each one's; a project
+        already past the commit that made a break has applied it, and is told
+        nothing.
         """
         owed = migrations.unapplied(
-            migrations.DECLARED, revision, repository or Path.cwd()
+            migrations.MigrationRecord().declared(), revision, repository or Path.cwd()
         )
         if as_json:
             output_json(
@@ -1520,7 +1511,6 @@ def create_dev_app(
         """
         from lup.devtools.dev.release import (
             ReleasePlan,
-            cleared_declarations,
             is_level,
             next_version,
             published_version,
@@ -1546,16 +1536,19 @@ def create_dev_app(
         declarations = declared()
         spec = declarations.release
         root = project_root()
+        record = migrations.MigrationRecord()
         base = migrations.gate_base(get_integration_branch())
         undeclared = (
-            migrations.undeclared_breaks(declarations.project, base) if base else []
+            migrations.undeclared_breaks(declarations.project, base, record)
+            if base
+            else []
         )
         if undeclared:
             for capability in undeclared:
                 typer.echo(f"undeclared break: {capability.spelled()}", err=True)
             typer.echo(
-                "a release cannot carry a break with nothing to read — declare "
-                "each in `lup.devtools.dev.migrations.DECLARED`",
+                "a release cannot carry a break with nothing to read — "
+                f"{record.instruction(root)}",
                 err=True,
             )
             raise typer.Exit(1)
@@ -1565,15 +1558,16 @@ def create_dev_app(
         previous = published_version(manifest)
         version = next_version(previous, level)
         today = dt.date.today()
-        pending = migrations.rendered(migrations.DECLARED)
+        pending = record.pending()
+        folded = migrations.rendered(pending)
         log = Changelog.read(changelog_path)
         plan = ReleasePlan(
             previous=previous,
             version=version,
             date=today,
             tag=f"{spec.tag_prefix}{version}",
-            migrations=pending,
-            breaks=len(migrations.DECLARED),
+            migrations=folded,
+            breaks=len(pending),
             entries=bool(log.unreleased),
         )
 
@@ -1585,10 +1579,9 @@ def create_dev_app(
                     typer.echo(f"would release: {line}")
             return
 
-        declared_source = Path(migrations.__file__)
-        changelog_path.write_text(released(log, version, today, pending).render())
+        changelog_path.write_text(released(log, version, today, folded).render())
         manifest.write_text(with_version(manifest.read_text(), version))
-        declared_source.write_text(cleared_declarations(declared_source.read_text()))
+        record.release(version, root)
 
         # The version is a source a generated artifact compiles from, so
         # writing it leaves the trees that embed it behind — and the commit
@@ -1621,20 +1614,28 @@ def create_dev_app(
         A name declared nowhere any more is a break an adopter meets as an
         import that stopped resolving. One that moved is not, because the map
         is derived — so what fails here is the difference: something gone, and
-        nothing in this repository saying what to do about it.
+        nothing in this repository saying what to do about it. Every release's
+        record is read beside the pending window, so a range spanning a
+        release hears what that release declared.
         """
         from lup.devtools.dev.branches import detect_base_branch
 
         # The branch's own base rather than a branch named here: what this
         # change took away is measured against where it started, and creation
         # recorded that where topology can no longer recover it.
-        divergence = surfaces_over(over or f"{detect_base_branch().merge_base}..")
-        unnamed = migrations.unnamed(divergence.disappeared, migrations.DECLARED)
+        span = span_over(over or f"{detect_base_branch().merge_base}..")
+        divergence = span.divergence(declared().project)
+        record = migrations.MigrationRecord()
+        unnamed = migrations.unnamed_since(
+            divergence.disappeared, record.declared(), span.base
+        )
         if as_json:
             output_json(divergence)
         else:
             for capability in unnamed:
                 typer.echo(f"gone, undeclared: {capability.spelled()}", err=True)
+            if unnamed:
+                typer.echo(f"  {record.instruction(project_root())}", err=True)
             typer.echo(
                 f"{len(divergence.relocated)} moved, {len(divergence.arrived)} "
                 f"arrived, {len(divergence.disappeared)} gone "

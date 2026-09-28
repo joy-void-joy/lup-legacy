@@ -1,0 +1,54 @@
+subjects = [
+    "CodexSessionConfig",
+    "CodexSessionConfig.model",
+    "CodexSessionConfig.model_tiers",
+    "CodexSessionConfig.developer_instructions",
+    "CodexSessionConfig.cwd",
+    "CodexSessionConfig.policy_root",
+    "CodexSessionConfig.executable",
+    "CodexSessionConfig.containment",
+    "CodexSessionConfig.named_profile",
+    "CodexSessionConfig.model_provider",
+    "CodexSessionConfig.provider_config",
+    "CodexSessionConfig.sandbox",
+    "CodexSessionConfig.approval_policy",
+    "CodexSessionConfig.hooks",
+    "CodexSessionConfig.effort",
+    "CodexSessionConfig.paired_effort",
+    "CodexSessionConfig.environment",
+    "CodexSessionConfig.submission_gate_resolver",
+    "CodexSessionConfig.correction",
+    "CodexSessionConfig.continuation",
+    "CodexSessionConfig.mcp_servers",
+    "CodexSessionConfig.writable_roots",
+    "CodexSessionConfig.delegated_tools",
+    "CodexSessionConfig.native_tools",
+    "CodexSessionConfig.application_tools",
+    "CodexSessionConfig.companions",
+    "CodexSessionConfig.reject_unanswerable_approvals",
+    "CodexSessionConfig.validated_for_app_server",
+    "CodexSessionConfig.model_selection",
+    "CodexSessionConfig.model_id",
+    "CodexSessionConfig.the_model_takes_its_effort",
+    "CodexSessionConfig.native_capabilities",
+]
+reason = """
+the declaration and the agent it opened were two objects saying one thing; \
+Codex is both, so every field and validator of the config lives on it, its \
+standing instructions under the name Claude gives them"""
+commit = "eca60905d6e5e77d9e365f97345bd7553abe719f"
+
+[[steps]]
+instruction = """
+Construct Codex(...), from lup or lup.providers.codex, wherever \
+CodexSessionConfig(...) was built: developer_instructions=... is \
+system_prompt=..., paired_effort is gone, and every other field, validator \
+and method keeps its name and type."""
+
+[[steps]]
+instruction = """
+Pass effort=... where paired_effort=... was passed: an unset effort is the \
+model's default, xhigh where its catalog row takes it and the row's highest \
+rung below xhigh otherwise, sent beside a named model and alone over an \
+inherited one, so no session inherits its home's effort any more; \
+resolved_effort() answers which rung is sent."""

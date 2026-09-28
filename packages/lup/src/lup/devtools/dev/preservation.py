@@ -439,3 +439,22 @@ def compare(captured: SurfaceCapture, live: SurfaceCapture) -> Divergence:
         ],
         moves=list(moved_modules()),
     )
+
+
+class Span(BaseModel, frozen=True):
+    """The two ends a divergence is read between, as git's ``base..head`` names them."""
+
+    base: str
+    head: str = ""
+    """The later end, or empty for the working tree.
+
+    The working tree is what a gate asks about: uncommitted work is exactly
+    where a capability goes missing before anybody notices.
+    """
+
+    def divergence(self, project: DevProject) -> Divergence:
+        """The surfaces at both ends, compared."""
+        return compare(
+            surface_at(self.base, project),
+            surface_at(self.head, project) if self.head else surface_now(project),
+        )

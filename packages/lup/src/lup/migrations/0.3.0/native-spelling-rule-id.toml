@@ -1,0 +1,21 @@
+subjects = [
+    "NATIVE_SPELLING_RULE_ID",
+    "KERNEL_IMPORT_RULE_ID",
+    "LIBRARY_DEFAULT_RULE_ID",
+    "CONSTANT_DECLARATION_RULE_ID",
+]
+reason = """
+the boundary scanner's rule ids are one enumeration: several audits share \
+that module, and a constant apiece said the same thing as many times as there \
+were suppression comments naming it, so `RuleId` says it once"""
+commit = "cf72246a2"
+
+[[steps]]
+instruction = """
+Read the id off `RuleId` instead: `RuleId.NATIVE_SPELLING`, \
+`RuleId.KERNEL_IMPORTS`, `RuleId.LIBRARY_DEFAULT` and \
+`RuleId.CONSTANT_DECLARATION`, all from `lup.harness.codescan.boundaries`. \
+Note the plural in the second, whose constant was singular. Each carries the \
+same string it always did and the type is a `StrEnum`, so a comparison \
+against a rule id read from anywhere else -- a directive, a deny message, the \
+generated reference -- holds without being converted."""

@@ -1,0 +1,12 @@
+subjects = ["SpawnNames.misspelled"]
+reason = """
+a spawn whose name falls outside the shape is normalized and sent out rather \
+than refused, so no refusal wording remains to declare"""
+commit = "f88bb2bb767384f4dbed995844e3a9d42bc7a44c"
+
+[[steps]]
+instruction = """
+Drop the field from a SpawnNames override. The first character of \
+`punctuation` is what joins the words of a normalized name; `reason` and \
+`recovery` still word the one refusal left, a spawn with nothing to read a \
+name from."""

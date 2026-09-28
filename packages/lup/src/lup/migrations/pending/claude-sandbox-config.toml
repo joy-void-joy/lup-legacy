@@ -1,0 +1,40 @@
+subjects = [
+    "ClaudeSandboxConfig",
+    "ClaudeSandboxConfig.enabled",
+    "ClaudeSandboxConfig.auto_allow_bash_if_sandboxed",
+    "ClaudeSandboxConfig.allow_unsandboxed_commands",
+    "ClaudeSandboxConfig.excluded_commands",
+    "ClaudeSandboxConfig.posture",
+    "SessionContainment",
+    "CLAUDE_CONTAINMENT",
+    "CODEX_CONTAINMENT",
+    "codex_sandbox",
+    "Codex.containment",
+    "SessionRequest.containment",
+]
+reason = """
+one declaration now says which wall a session opens behind for both of its \
+compilations — a session opened in process and one launched at a terminal — \
+so the wall is one typed field on Claude, Codex and SessionRequest alike, \
+OuterContainer, InnerSandbox or NoSandbox, rather than a Claude-only settings \
+object, a Codex containment word and a request's third spelling of the same \
+thing"""
+commit = "f53e27a11b8bdcd67312d9bd4c544fb40931875e"
+
+[[steps]]
+instruction = """
+Declare sandbox=InnerSandbox() where ClaudeSandboxConfig() was, from \
+lup.launch.declaration: allow_unsandboxed_commands is \
+InnerSandbox(escapable=...), excluded_commands keeps its name, and \
+enabled=False inside a container is sandbox=OuterContainer(). \
+ClaudeSandboxConfig(...).posture() is the wall's own .enforcement()."""
+
+[[steps]]
+instruction = """
+Replace containment='outer'|'inner'|'none' on Codex and SessionRequest with \
+sandbox=OuterContainer()|InnerSandbox()|NoSandbox(); a session opened in \
+process inside the container still names the program entering it, as \
+executable= or contained_program=. Codex's own mode word moves to \
+sandbox_mode=, which the wall narrows; codex_sandbox(request) is \
+codex_sandbox_mode(config.sandbox, config.sandbox_mode) in \
+lup.providers.codex.launch, beside CODEX_SANDBOX_WIDTH."""
