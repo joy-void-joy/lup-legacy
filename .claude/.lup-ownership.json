@@ -289,7 +289,7 @@
     {
       "path": ".claude/plugins/lup/commands/release.md",
       "category": "generated",
-      "sha256": "660cac10441794aea981b925282fbd0cc3b92eb18782bdc9a272ca43db58e254",
+      "sha256": "80b0f2165403406b94c037f958ee1bb2df819991a67e4246f454091bfe15bf1e",
       "semantic_id": "skill.release",
       "executable": false
     },
