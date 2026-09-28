@@ -452,6 +452,27 @@ Read rather than mirrored, as the protected-path table below is: a copy kept
 by hand judges a vocabulary the generated runtime does not carry the moment
 the catalog gains a row."""
 
+MIGRATION_DECLARATION = (
+    'subjects = ["Runtime.contained"]\n'
+    'reason = "the method takes the word for what it does"\n'
+    "\n"
+    "[[steps]]\n"
+    'instruction = "Call `Runtime.homed(request)` where you called it."\n'
+)
+"""One break as a pending migration file declares it."""
+
+MIGRATION_STEPS = (
+    "\n"
+    "[[steps]]\n"
+    'instruction = "Regenerate the harness."\n'
+    'command = ["uv", "run", "lup-devtools", "harness", "generate", "all"]\n'
+    "\n"
+    "[[steps]]\n"
+    'instruction = "Update the project to the commit it now resolves."\n'
+    'command = ["uv", "run", "lup-devtools", "dev", "update"]\n'
+)
+"""Steps enough to pass the size gate a production file would meet."""
+
 FIXTURE_PATH_RULES = declared_path_rules(declared_hook_set())
 """The protected-path table this repository declares.
 
@@ -2463,6 +2484,46 @@ EDIT_POLICY_CASES = [
         before=None,
         after="# what is left",
         effect="allow",
+        path_exists=False,
+    ),
+    # A pending migration is data a break's own commit declares, so it is
+    # written whole, and rewritten at length, without the gates that review
+    # how source reads.
+    EditDecisionCase(
+        path="packages/lup/src/lup/migrations/pending/example-break.toml",
+        before=None,
+        after=MIGRATION_DECLARATION,
+        effect="allow",
+        path_exists=False,
+    ),
+    EditDecisionCase(
+        path="packages/lup/src/lup/migrations/pending/example-break.toml",
+        before=MIGRATION_DECLARATION,
+        after=MIGRATION_DECLARATION + MIGRATION_STEPS,
+        effect="allow",
+    ),
+    # Data still carries review feedback: a note added there is a question
+    # somebody owes an answer to, as it is anywhere outside scratch.
+    EditDecisionCase(
+        path="packages/lup/src/lup/migrations/pending/example-break.toml",
+        before=MIGRATION_DECLARATION,
+        after="# lup: is this the right subject?\n" + MIGRATION_DECLARATION,
+        effect="ask",
+    ),
+    # Pending only: a released record is `dev release`'s to write, and a file
+    # named like one anywhere else is production like its neighbours.
+    EditDecisionCase(
+        path="packages/lup/src/lup/migrations/0.4.0/example-break.toml",
+        before=None,
+        after=MIGRATION_DECLARATION,
+        effect="ask",
+        path_exists=False,
+    ),
+    EditDecisionCase(
+        path="src/migrations/pending/example-break.toml",
+        before=None,
+        after=MIGRATION_DECLARATION,
+        effect="ask",
         path_exists=False,
     ),
     # An edited path is literal: no shell ever expands it, so a `$` in one is
