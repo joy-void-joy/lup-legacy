@@ -16,6 +16,7 @@ from pathlib import Path
 from pydantic import BaseModel
 
 from lup.devtools.dev.git_guards import CHECK_COMMAND, DRIFT_COMMAND
+from lup.devtools.dev.release import CANDIDATE_SEGMENT
 from lup.formats.banner import GeneratedBanner
 from lup.harness.materialization import write_generated_file
 from lup.formats.banner import REGENERATE_COMMAND
@@ -65,6 +66,9 @@ class WorkflowStep(BaseModel, frozen=True):
     settings: dict[str, ScalarValue] = {}
     """What the action is configured with, written as the `with:` it reads."""
 
+    env: dict[str, ScalarValue] = {}
+    """What the step's process is given, written as the `env:` it reads."""
+
     run: str = ""
     working_directory: str = ""
 
@@ -73,10 +77,12 @@ class WorkflowStep(BaseModel, frozen=True):
         configured = [
             YamlEntry(key="with", value=YamlMap(entries=scalars(self.settings)))
         ]
+        environment = [YamlEntry(key="env", value=YamlMap(entries=scalars(self.env)))]
         return YamlMap(
             entries=[
                 *scalars({"name": self.name, "uses": self.uses}),
                 *(configured if self.settings else []),
+                *(environment if self.env else []),
                 *scalars(
                     {"run": self.run, "working-directory": self.working_directory}
                 ),
@@ -273,6 +279,12 @@ class PublishSpec(BaseModel, frozen=True):
     publisher the index has been told to trust — so the secret that would
     otherwise sit in the repository does not exist to leak, and a fork running
     this workflow cannot publish because the trust names this repository.
+
+    What is published is then recorded as the forge's own release, by a
+    second job holding the one grant that takes and not the identity the
+    index trusts. A release candidate goes out marked a pre-release in both
+    places: the index reads it so from the version itself, and the forge is
+    told.
     """
 
     package: str = ""
@@ -293,11 +305,17 @@ class PublishSpec(BaseModel, frozen=True):
     costs a line and gives it somewhere to put the pause later.
     """
 
-    tags: str = "v*"
-    """Which pushed tags publish, as the forge matches them."""
+    tag_prefix: str = "v"
+    """What a release tag puts before its version: `ReleaseSpec.tag_prefix`.
+
+    A pushed tag carrying it publishes, and what follows it is the version
+    built. A candidate and the release it is promoted to are one commit under
+    two tags, so the version cannot come from the manifest alone — the tag is
+    what says which of the two is being published.
+    """
 
     runner: str = RUNNER_IMAGE
-    """The label the job asks for."""
+    """The label the jobs ask for."""
 
     def steps(self) -> list[WorkflowStep]:
         """Every step of the publishing job, in the order the runner takes them."""
@@ -305,11 +323,63 @@ class PublishSpec(BaseModel, frozen=True):
         return [
             WorkflowStep(uses="actions/checkout@v4"),
             WorkflowStep(uses="astral-sh/setup-uv@v6", settings={"enable-cache": True}),
+            WorkflowStep(
+                name="Take the version the tag names",
+                run=f'uv version --frozen{member} "${{GITHUB_REF_NAME#{self.tag_prefix}}}"',
+            ),
             WorkflowStep(name="Build the distribution", run=f"uv build{member}"),
             WorkflowStep(
                 name="Publish to PyPI", uses="pypa/gh-action-pypi-publish@release/v1"
             ),
         ]
+
+    def recorded(self) -> list[WorkflowStep]:
+        """The step that records what was published as the forge's own release.
+
+        A candidate's is marked a pre-release there, as the index marks its
+        version one: the version after the prefix holds a letter only where
+        it carries a pre-release segment, and the only one a release cuts is
+        :data:`CANDIDATE_SEGMENT`.
+        """
+        candidate = f"contains(github.ref_name, '{CANDIDATE_SEGMENT}')"
+        return [
+            WorkflowStep(
+                name="Record the release on GitHub",
+                env={"GH_TOKEN": "${{ github.token }}"},
+                run='gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY"'
+                f" --verify-tag --generate-notes --prerelease=${{{{ {candidate} }}}}",
+            )
+        ]
+
+    def job(
+        self,
+        steps: list[WorkflowStep],
+        grants: dict[str, ScalarValue],
+        why: str,
+        needs: str = "",
+        environment: str = "",
+    ) -> YamlMap:
+        """One job of the workflow: what it waits on, what it may do, its steps."""
+        return YamlMap(
+            entries=[
+                *scalars(
+                    {
+                        "needs": needs,
+                        "runs-on": self.runner,
+                        "environment": environment,
+                    }
+                ),
+                YamlEntry(
+                    key="permissions",
+                    comment=why,
+                    value=YamlMap(entries=scalars(grants)),
+                ),
+                YamlEntry(
+                    key="steps",
+                    value=YamlList(items=[step.node() for step in steps]),
+                ),
+            ]
+        )
 
     def document(self) -> YamlDocument:
         """The publishing workflow as the document these choices compile to."""
@@ -328,7 +398,9 @@ class PublishSpec(BaseModel, frozen=True):
                                         entries=[
                                             YamlEntry(
                                                 key="tags",
-                                                value=YamlFlow(items=[self.tags]),
+                                                value=YamlFlow(
+                                                    items=[f"{self.tag_prefix}*"]
+                                                ),
                                             )
                                         ]
                                     ),
@@ -343,41 +415,33 @@ class PublishSpec(BaseModel, frozen=True):
                             entries=[
                                 YamlEntry(
                                     key="publish",
-                                    value=YamlMap(
-                                        entries=[
-                                            *scalars(
-                                                {
-                                                    "runs-on": self.runner,
-                                                    "environment": self.environment,
-                                                }
-                                            ),
-                                            YamlEntry(
-                                                key="permissions",
-                                                comment=(
-                                                    "What stands in for a stored"
-                                                    " token: the forge mints an"
-                                                    " identity for this\nrun, and the"
-                                                    " index trusts it for this"
-                                                    " repository and this workflow."
-                                                ),
-                                                value=YamlMap(
-                                                    entries=scalars(
-                                                        {"id-token": "write"}
-                                                    )
-                                                ),
-                                            ),
-                                            YamlEntry(
-                                                key="steps",
-                                                value=YamlList(
-                                                    items=[
-                                                        step.node()
-                                                        for step in self.steps()
-                                                    ]
-                                                ),
-                                            ),
-                                        ]
+                                    value=self.job(
+                                        self.steps(),
+                                        {"id-token": "write"},
+                                        why=(
+                                            "What stands in for a stored token:"
+                                            " the forge mints an identity for"
+                                            " this\nrun, and the index trusts it"
+                                            " for this repository and this"
+                                            " workflow."
+                                        ),
+                                        environment=self.environment,
                                     ),
-                                )
+                                ),
+                                YamlEntry(
+                                    key="release",
+                                    spaced=True,
+                                    value=self.job(
+                                        self.recorded(),
+                                        {"contents": "write"},
+                                        why=(
+                                            "Writing the forge's release is all"
+                                            " this job does, and it holds no\n"
+                                            "identity the index would trust."
+                                        ),
+                                        needs="publish",
+                                    ),
+                                ),
                             ]
                         ),
                     ),

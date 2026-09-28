@@ -1,0 +1,12 @@
+subjects = ["PublishSpec.tags"]
+reason = """
+the publishing workflow takes the version it builds from the tag, so it has \
+to know what the tag puts before the version rather than only which tags \
+match; the trigger is derived from that prefix"""
+
+[[steps]]
+instruction = """
+Pass PublishSpec(tag_prefix=...) where you passed tags=: `tags="release-*"` is \
+`tag_prefix="release-"`, the same prefix your ReleaseSpec.tag_prefix writes. \
+A tags= left in place is ignored rather than refused, and the workflow then \
+publishes on `v*`."""

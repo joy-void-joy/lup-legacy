@@ -20,7 +20,22 @@ jobs:
       - uses: astral-sh/setup-uv@v6
         with:
           enable-cache: true
+      - name: Take the version the tag names
+        run: uv version --frozen --package lup-agents "${GITHUB_REF_NAME#v}"
       - name: Build the distribution
         run: uv build --package lup-agents
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
+
+  release:
+    needs: publish
+    runs-on: ubuntu-24.04
+    # Writing the forge's release is all this job does, and it holds no
+    # identity the index would trust.
+    permissions:
+      contents: write
+    steps:
+      - name: Record the release on GitHub
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --verify-tag --generate-notes --prerelease=${{ contains(github.ref_name, 'rc') }}
