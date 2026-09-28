@@ -1,0 +1,11 @@
+subjects = ["environment_directory"]
+reason = """
+a contained session's project environments outlived their worktrees with \
+nothing saying whose they were; each is claimed when made and swept once its \
+checkout is gone, by a module of their own"""
+commit = "1d9f303559b68c48d61d329cc8cf01469a68d056"
+
+[[steps]]
+instruction = """
+Import environment_directory from lup.devtools.harness.environments rather \
+than lup.devtools.harness.contained."""

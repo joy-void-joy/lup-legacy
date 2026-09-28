@@ -1,0 +1,60 @@
+subjects = [
+    "Claude.coding_harness_preset",
+    "Claude.native_tools",
+    "Claude.tool_servers",
+    "Claude.servers",
+    "Claude.enforce_native_authority",
+    "TOOLS_SERVER",
+    "claude_native_tools",
+    "Codex.native_tools",
+    "Codex.mcp_servers",
+    "Codex.application_tools",
+    "Codex.companions",
+    "Codex.applications",
+    "Codex.native_capabilities",
+    "SessionRequest.native_tools",
+    "SessionRequest.tool_servers",
+    "NativeToolGroup",
+    "NativeToolGroup.READ",
+    "NativeToolGroup.WEB",
+    "NativeToolGroup.WRITE",
+    "NativeToolGroup.SHELL",
+    "NativeToolGroup.ALL",
+    "NativeTools",
+    "native_grants",
+]
+reason = """
+what a session may call was four fields per provider — a roster of built-ins, \
+a list of hosted tools, a map of servers, and a preset flag for the prompt \
+that goes with the built-ins — so one agent declared its tools in a different \
+place for each provider; one typed tools field holds all of it, and its \
+default is the web alone rather than every built-in"""
+commit = "c3ad68aa3514608c3d18a6968b310637adcf2190"
+
+[[steps]]
+instruction = """
+Declare tools=ClaudeTools(builtin=..., mcp=[...]) on Claude and \
+tools=CodexTools(builtin=..., mcp=[...]) on Codex, both from their provider \
+module, or tools=SessionTools(builtin=..., mcp=[...]) on a SessionRequest. \
+builtin is 'stock' (every built-in; on Claude also Claude Code's coding \
+system prompt, which is what coding_harness_preset=True sent), 'web' (fetch \
+and search: the default), 'none', or an exact list of ClaudeBuiltinTool / \
+CodexBuiltinTool names."""
+
+[[steps]]
+instruction = """
+Spell a NativeToolGroup as its names: on Claude READ is Read, Glob, Grep, \
+WebFetch, WebSearch; WEB is 'web'; WRITE is Write, Edit, NotebookEdit; SHELL \
+is Bash, TaskOutput, TaskStop; ALL is 'stock'. On Codex SHELL is Bash, WEB is \
+WebSearch, WRITE is apply_patch, ALL is 'stock'. A session that declared no \
+grant had no built-in (on Claude with Claude Code's system prompt) and now \
+has fetch and search: say builtin='none' to keep none."""
+
+[[steps]]
+instruction = """
+Move servers into mcp=[...] as objects from lup.mcp: tools=[...] of @lup_tool \
+handlers is Toolset([...], name=...), a tool_servers or mcp_servers entry is \
+External(name=..., server=<its stdio, sse or http transport>), and lup's own \
+groups are Coordination(), Ledger(...), CodeIntel() and Sandbox(). \
+application_tools and companions are what a hosted server compiles to, and \
+Codex.builtins() answers what native_capabilities() did."""

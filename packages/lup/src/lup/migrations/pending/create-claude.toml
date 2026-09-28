@@ -1,0 +1,35 @@
+subjects = [
+    "create_claude",
+    "create_codex",
+    "CONSTRUCTORS",
+    "Client",
+    "Client.__init__",
+    "Client.open",
+    "Client.query",
+]
+reason = """
+a provider's declaration is its agent: Claude and Codex open sessions and ask \
+turns themselves, so a constructor function building a Client around a \
+config, and a Client holding nothing but that opener, stood between a caller \
+and the one object doing the work"""
+commit = "eca60905d6e5e77d9e365f97345bd7553abe719f"
+
+[[steps]]
+instruction = """
+Declare the agent directly: create_claude(ClaudeSessionConfig(model=..., \
+...)) is Claude(model=..., ...), and create_codex(CodexSessionConfig(...)) is \
+Codex(...), both importable from lup."""
+
+[[steps]]
+instruction = """
+Ask where you queried: await client.query(prompt, Output) is await \
+agent.ask(prompt, Output), and client.open(resume) is agent.open(resume=...), \
+yielding a ClaudeSession or CodexSession. Code naming no provider annotates \
+Agent from lup, and a hand-built Client(opener) implements that protocol's \
+open, ask, sessions and layered instead."""
+
+[[steps]]
+instruction = """
+Read lup.LAZY_EXPORTS where lup.CONSTRUCTORS was read: it maps Claude and \
+Codex, among every name the package root resolves on first access, to the \
+modules defining them."""

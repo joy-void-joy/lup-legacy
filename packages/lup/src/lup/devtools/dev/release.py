@@ -1,24 +1,23 @@
 """Cutting a release: closing the changelog, moving the version, tagging it.
 
-A release here is one transaction over four files, and the argument for
-compiling it rather than writing it down is what prose costs. Carried in a
+A release here is one transaction over the files it touches, and the argument
+for compiling it rather than writing it down is what prose costs. Carried in a
 skill — fold the pending migrations into the changelog, close the section,
-move the version, empty the declarations — the steps make a list that runs
-only as well as whoever is reading it that day. Measured in this repository,
-three of the four had never run at all.
+move the version, move the migrations into the release — the steps make a list
+that runs only as well as whoever is reading it that day. Measured in this
+repository, three of the four had never run at all.
 
 What stays a judgement stays outside: which level the release is, and what the
 entries under ``## Unreleased`` should say. Both are decided by somebody
 reading the range, and neither is derivable. Everything downstream of them is
 arithmetic on files, which is what this is.
 
-The declarations are emptied because they have shipped. `rendered` folds their
-prose into the section being closed, so the instruction an adopter reads is in
-the release that carries the break rather than in a list that grows forever;
-:mod:`lup.devtools.dev.migrations` opens by saying so. Emptying is a rewrite of
-one assignment, found through the syntax tree rather than by matching text,
-because the list is hundreds of lines of prose that contains every bracket it
-would take to confuse a scanner.
+The pending migrations move into the release's own directory because they
+have shipped. `rendered` folds their prose into the section being closed, so
+the instruction an adopter reads is in the release that carries the break,
+and the files stay as that release's record, stamped with the commit each
+break landed in, so an update crossing several releases reads every one of
+them as data; :mod:`lup.devtools.dev.migrations` opens by saying so.
 
 Which files a release touches is declared, not assumed. This repository
 publishes one distribution out of ``packages/lup`` and keeps two other version
@@ -27,7 +26,6 @@ version that names a trace directory — so a command that went looking for "the
 version" would have found three and been wrong about two.
 """
 
-import ast
 import datetime as dt
 from pathlib import Path
 from typing import Literal, TypeGuard, get_args
@@ -134,7 +132,8 @@ class ReleasePlan(BaseModel, frozen=True):
                 if self.entries
                 else "the changelog has no open section — the release records only itself"
             ),
-            f"folding in what {self.breaks} declared break(s) ask of a caller",
+            f"folding in what {self.breaks} pending break(s) ask of a caller, "
+            f"and keeping them as {self.version}'s record",
         ]
 
 
@@ -180,62 +179,6 @@ def with_version(text: str, version: str) -> str:
         raise KeyError("no [project] table to move a version in")
     project["version"] = version
     return tomlkit.dumps(document)
-
-
-def declares_the_list(node: ast.stmt) -> bool:
-    """Whether this statement is the ``DECLARED`` assignment, either spelling.
-
-    ``DECLARED = [...]`` is an ``Assign`` and ``DECLARED: list[Migration] =
-    [...]`` an ``AnnAssign``, which are different nodes carrying the same
-    declaration — and the emptied form this module writes is the annotated
-    one, so a reader that knew only the bare shape could not find its own
-    output.
-    """
-    if isinstance(node, ast.AnnAssign):
-        return isinstance(node.target, ast.Name) and node.target.id == "DECLARED"
-    return isinstance(node, ast.Assign) and any(
-        isinstance(target, ast.Name) and target.id == "DECLARED"
-        for target in node.targets
-    )
-
-
-def cleared_declarations(text: str) -> str:
-    """That module's text with its ``DECLARED`` list emptied.
-
-    The assignment is found through the syntax tree and replaced by its line
-    span, because the list holds hundreds of lines of English containing every
-    bracket, quote and comment marker it would take to mislead a scanner —
-    and because a module that stopped parsing is the one failure this cannot
-    leave behind.
-
-    Everything else in the file stays, the docstring above the list included:
-    what is emptied is the window of breaks not yet in a release, and the
-    module explaining what such a window is for outlives every release.
-
-    Both assignment forms are read, because this writes the annotated one and
-    a reader that took only the bare form could not find what it had just
-    produced. The first release after one that emptied the list crashed on
-    its own output — every release is the one that annotates it, so the
-    failure arrives exactly once and always at the next release.
-    """
-    tree = ast.parse(text)
-    spans = [
-        node
-        for node in tree.body
-        if declares_the_list(node) and node.end_lineno is not None
-    ]
-    if not spans:
-        raise KeyError("no DECLARED assignment to empty")
-    found = spans[0]
-    lines = text.splitlines(keepends=True)
-    assert found.end_lineno is not None
-    return "".join(
-        [
-            *lines[: found.lineno - 1],
-            "DECLARED: list[Migration] = []\n",
-            *lines[found.end_lineno :],
-        ]
-    )
 
 
 def released(
