@@ -84,6 +84,7 @@ from lup.policy.kernel.shell import (
     shell_context,
     shell_posture_targets,
 )
+from lup.policy.kernel.withheld import withheld_edit
 from lup.policy.edit_rules import EditRule, erase_edit_rules
 from lup.policy.imports import ImportBoundary
 from lup.policy.refused_paths import RefusedPaths
@@ -775,8 +776,12 @@ class EditPolicy(DecisionPolicy[EditBatch]):
         import_boundaries: list[ImportBoundary] | None = None,
         peer_policy: PeerPolicyRow | None = None,
         rules: RuleSet | None = None,
+        refused_paths: list[RefusedPaths] | None = None,
     ) -> None:
         self.acceptance_guard = acceptance_guard
+        # The key and login files every command's words are refused, which a
+        # file tool writing one names as surely as `cp` would.
+        self.refused_paths = [paths.erased() for paths in refused_paths or []]
         self.path_roles = path_roles or []
         self.grants = LeaseGrants() if grants is None else grants
         self.protected = list(protected)
@@ -830,6 +835,9 @@ class EditPolicy(DecisionPolicy[EditBatch]):
         # Resolved before any gate reads a role, as the dispatchers resolve it,
         # so an edit through a link meets the gates of the file it lands on.
         path = str((root / change.path).resolve())
+        withheld = withheld_edit(path, self.refused_paths)
+        if withheld is not None:
+            return pydantic_decision(withheld)
         try:
             response = routed_edit_response(
                 path,

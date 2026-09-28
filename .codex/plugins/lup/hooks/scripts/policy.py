@@ -83,6 +83,7 @@ from kernel.words import INTERPRETERS
 from kernel.roles import displaced_targets
 from kernel.shell import decide_shell, sandbox_excluded, shell_posture_targets
 from kernel.tools import decide_tool
+from kernel.withheld import withheld_edit
 from policy_data import (
     ACCEPTANCE_GUARD,
     ALLOWANCE_GRANTS_ENV,
@@ -3604,6 +3605,11 @@ def edit_decision(
 ) -> KernelDecision:
     """Route an edit to its authorized owner while retaining the caller's boundary."""
     path = str(((cwd or Path.cwd()) / path_text).resolve())
+    # Before any owner is asked: a key or a login is this session's to be
+    # kept from, whichever repository's policy the rest of the edit answers to.
+    withheld = withheld_edit(path, REFUSED_PATHS)
+    if withheld is not None:
+        return withheld
     try:
         response = routed_edit_response(
             path,

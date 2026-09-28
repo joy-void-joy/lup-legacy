@@ -486,7 +486,11 @@ A glob reaches what it could expand to, except a dot-named file an unspelled
 dot skips, and a run of names that is all glob reaches a home's file only
 where the word spells the home: `~/.*` is refused, `ls -d .*` in the checkout
 is not. `exempt` passes a word only when all it could name is exempt:
-`~/.ssh/*.pub` reads, `~/.ssh/*` does not.
+`~/.ssh/*.pub` reads, `~/.ssh/*` does not. The file tools meet the same
+declaration at the path they resolve, before any destination policy is
+consulted: an `Edit`, a `Write` or an `apply_patch` of a withheld path is
+refused on both runtimes, since authoring a login file is naming it as surely
+as `cp` is, and what a command may name — the exemptions — an edit may write.
 
 The library's default is `credential_files()`: everything in `~/.ssh` but
 the public keys, `known_hosts`, `config` and `authorized_keys`, `~/.gnupg`,

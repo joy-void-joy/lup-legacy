@@ -158,6 +158,23 @@ def named_paths(word: str) -> list[str]:
     return list(dict.fromkeys([word, *tails, *heads]))
 
 
+def withheld_edit(path: str, rows: list[RefusedPathRow]) -> KernelDecision | None:
+    """The refusal a file tool earns for writing a withheld path, or nothing.
+
+    The declaration every command's words are read against, read at the path
+    a file tool resolved: an edit naming a key or a login names it as surely
+    as `cp` would, and one authoring a login file a session could not read is
+    planting one no command was allowed to. The exemptions are the reading's
+    too, so what a command may name an edit may write.
+    """
+    row = withheld_row(path, rows)
+    if row is None:
+        return None
+    return KernelDecision(
+        "deny", f"{path}: {row['reason']}", cause="deliberate", recovery=row["recovery"]
+    )
+
+
 def withheld_path(
     word: str, directory: str | None, checkout_root: str, rows: list[RefusedPathRow]
 ) -> KernelDecision | None:
