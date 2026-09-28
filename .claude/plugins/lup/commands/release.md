@@ -16,11 +16,13 @@ pre-release, which an installer passes over unless asked for it or unless
 nothing else is published — so the projects willing to try it do, before
 everyone takes it by default. A candidate's commit carries its own version,
 so a project pinned to one is told it holds one. What a candidate turns up is
-fixed on the integration branch as usual, and the next candidate carries it.
-When one holds, a plain release **promotes** it: one commit on top that
+fixed on the integration branch as usual, and the next candidate carries it;
+other work goes on landing there too. When one holds, a plain release
+**promotes** it: one commit on a branch cut from the candidate's tag that
 changes nothing but the version, the changelog and the record of the breaks
 it carried — checked against the candidate's tag before it is made, so what
-ships is what was tested.
+ships is what was tested — landed like any release and merged back into the
+integration branch.
 
 ## Input
 
@@ -46,13 +48,14 @@ The plan's `kind` says what the run would do:
   version once. The section stays open, headed by the target and listing
   every candidate, and the pending breaks stay pending: they belong to the
   release.
-- `promotion` — commit the release on top of the newest candidate's `commit`:
-  the version moved, its section closed, and the breaks that commit carried
-  kept as the release's record. Every file the promotion changes is checked
-  against the candidate's tag before anything is committed, and anything but
-  the changelog, those breaks, or a line differing only in the version is
-  refused and undone. `since` counts the commits landed after the candidate,
-  which may only have touched the changelog.
+- `promotion` — commit the release on `branch`, cut from the newest
+  candidate's `commit`: the version moved, its section closed, and the breaks
+  that commit carried kept as the release's record. Every file the promotion
+  changes is checked against the candidate's tag before anything is
+  committed, and anything but the changelog, those breaks, or a line
+  differing only in the version is refused and undone. The release is tagged
+  there and merged back into the integration branch, whose `since` commits
+  landed after the candidate stay out of it and are kept.
 
 It also reports the date, whether anything is open, and what the pending
 breaks ask of a caller. Each is one file under the library's
@@ -71,12 +74,9 @@ it, so fetch before reading the plan.
 
 **Where the release branch moved** since the newest candidate, a plain
 release refuses, and says how many commits the branch holds that the
-candidate does not. It refuses too where the integration branch changed
-anything since the candidate but the changelog, and names the files: a
-promotion committed there would ship them untested. Which way on is right
-depends on what moved, so show it —
-`git log --oneline <candidate-tag>..origin/<release-branch>`, or
-`git diff --stat <candidate-tag>` for this branch — and Ask the user with the AskUserQuestion tool, offering concrete options plus a free-text choice: whether to cut another candidate or release what the integration branch holds now
+candidate does not. Which way on is right depends on what moved, so show it —
+`git log --oneline <candidate-tag>..origin/<release-branch>` — and
+Ask the user with the AskUserQuestion tool, offering concrete options plus a free-text choice: whether to cut another candidate or release what the integration branch holds now
 
 `--pre` cuts another candidate from what the integration branch holds;
 `--direct` releases it as the version itself, with no candidate first.
@@ -157,15 +157,16 @@ promotion is not held to the break gate: it ships what its candidate shipped.
 
 ### 6. Land it, then push the tag
 
-A release, candidate or promotion commit is on the integration branch and has
-to reach the release branch the way everything else does — through a pull request,
-with its checks green. **Push the branch first and the tag second**, and
-never the tag alone: a tag pointing at a commit no branch contains is a
-release nobody can find their way back to.
+A release or candidate commit is on the integration branch, and a promotion's
+is on the plan's `branch`, cut from the candidate. Either has to reach the
+release branch the way everything else does — through a pull request, with
+its checks green. **Push the branch first and the tag second**, and never the
+tag alone: a tag pointing at a commit no branch contains is a release nobody
+can find their way back to.
 
 ```bash
-git push origin <integration-branch>
-uv run lup-devtools git pr status --branch <integration-branch> --json
+git push origin <integration-branch-or-promotion-branch>
+uv run lup-devtools git pr status --branch <that-branch> --json
 ```
 
 Merge through whichever route the repository settled on, then:
@@ -174,10 +175,16 @@ Merge through whichever route the repository settled on, then:
 git push origin <tag>
 ```
 
+A promotion has already been merged back into the integration branch, which
+now carries the closed section and the moved record beside the work that
+landed while the candidate soaked; push it too. Where merging it back
+conflicted in more than the changelog, the command said so and left the
+merge to be done by hand — the release is tagged either way.
+
 **Pushing the tag is what publishes.** The workflow builds the tree the tag
 names as it stands — its manifest already says the version — and a
-candidate's goes to the index and the forge marked as a pre-release. Where a publishing workflow is armed, that push is the
-irreversible step — an index accepts a version once, and a release pushed
+candidate's goes to the index and the forge marked as a pre-release. Where a
+publishing workflow is armed, that push is the irreversible step — an index accepts a version once, and a release pushed
 wrong is withdrawn rather than replaced. Request explicit user approval
 before pushing the tag. Reason: it is the act that publishes.
 
@@ -202,8 +209,9 @@ requirement naming a pre-release is what lets the installer take one.
 - **No claimed-resolved note ships unverified** — the pass runs on every
   release and candidate, and a claim it cannot confirm is restored rather
   than carried
-- **A promotion changes only the version** — checked against the candidate
-  before it is committed; where either branch moved, the way on is asked,
+- **A promotion changes only the version** — cut from the candidate and
+  checked against it before it is committed, so the integration branch never
+  has to stand still; where the release branch moved, the way on is asked,
   not chosen
 - **Branch before tag**, and the tag last of all
 - **A declared break with no instruction stops the release** — that is the

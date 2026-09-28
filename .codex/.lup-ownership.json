@@ -688,7 +688,7 @@
     {
       "path": ".codex/plugins/lup/skills/release/SKILL.md",
       "category": "generated",
-      "sha256": "85327f1807a391bfa7cd1b59e39c624a428de3bdd4b6545e8d020b40bc1862a6",
+      "sha256": "a9c29c1012b3ed0da6871cd985b77a8d244ea5cf70b9412576ffd81ce045b4af",
       "semantic_id": "skill.release",
       "executable": false
     },
