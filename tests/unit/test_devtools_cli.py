@@ -12,7 +12,7 @@ print its MergeResult even when the tree-dir lookup raises ``typer.Exit``.
 """
 
 import json
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from pathlib import Path
 from unittest.mock import Mock
 
@@ -119,12 +119,28 @@ def test_all_container_requirements_select_each_runtimes_default_home(
     ]
 
 
+@pytest.fixture(scope="module")
+def cli_main() -> Callable[..., object]:
+    """The whole command tree as click runs it, built once for the help sweep.
+
+    `CliRunner.invoke` builds the tree from the typer app again on every call,
+    a fifth of a second each over every path below, and building it is not
+    what the sweep asks about: whether each path's help renders is.
+    """
+    return typer.main.get_command(app).main
+
+
 @pytest.mark.parametrize(
     "path", COMMAND_PATHS, ids=[" ".join(p) or "(root)" for p in COMMAND_PATHS]
 )
-def test_help_succeeds_for_every_command(path: tuple[str, ...]) -> None:
-    result = runner.invoke(app, [*path, "--help"])
-    assert result.exit_code == 0, result.output
+def test_help_succeeds_for_every_command(
+    path: tuple[str, ...],
+    cli_main: Callable[..., object],
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    with pytest.raises(SystemExit) as exited:
+        cli_main([*path, "--help"], prog_name="lup-devtools")
+    assert exited.value.code == 0, capsys.readouterr().out
 
 
 READONLY_COMMANDS: list[list[str]] = [
