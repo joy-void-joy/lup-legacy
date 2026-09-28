@@ -237,6 +237,13 @@ COMMIT_TYPES = models.GuidanceSection(
                     ),
                 ],
                 [CodeCell(text="data"), PlainCell(text="Generated data and outputs")],
+                [
+                    CodeCell(text="release"),
+                    PlainCell(
+                        text="What `dev release` commits for a release or a"
+                        " candidate of one — never written by hand"
+                    ),
+                ],
             ],
         ),
         models.TextPart(text="\n"),

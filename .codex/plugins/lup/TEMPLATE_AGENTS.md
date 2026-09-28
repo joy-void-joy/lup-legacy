@@ -355,6 +355,7 @@ This project uses **git worktrees** (not regular branches) to develop multiple f
 | `chore` | Maintenance — dependencies, build config |
 | `meta` | Harness content and the trees it generates: guidance, settings, skills, hooks |
 | `data` | Generated data and outputs |
+| `release` | What `dev release` commits for a release or a candidate of one — never written by hand |
 
 **Examples:**
 
