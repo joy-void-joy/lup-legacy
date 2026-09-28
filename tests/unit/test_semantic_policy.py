@@ -1359,6 +1359,15 @@ SHELL_POLICY_CASES = [
     DecisionCase(input="cp /etc/hosts tmp/hosts", effect="allow"),
     DecisionCase(input="cp tmp/a src/b.py", effect="ask"),
     DecisionCase(input="mv src/a.py tmp/a.py", effect="ask"),
+    # `install` is a copy with modes attached: its last operand is written
+    # and the rest are read, so it is judged by the copy's own readings, and
+    # a flag the copy grammar does not read widens to every operand.
+    DecisionCase(input="install -D tmp/a tmp/b", effect="allow"),
+    DecisionCase(input="install src/a.py tmp/a.py", effect="allow"),
+    DecisionCase(input="install tmp/a src/b.py", effect="ask"),
+    DecisionCase(input="install -m644 tmp/a .lup/preflight/n.json", effect="ask"),
+    DecisionCase(input="install -d .claude/fresh", effect="ask"),
+    DecisionCase(input="install -Dv tmp/a .codex/plugins/lup/b", effect="deny"),
     DecisionCase(input="rm /home/u/.claude/plugins/lup/x", effect="deny"),
     DecisionCase(input="echo x > /srv/tree/dev/.codex/plugins/lup/y", effect="deny"),
     DecisionCase(input="rm .codex/config.local.toml", effect="ask"),

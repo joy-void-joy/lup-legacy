@@ -60,6 +60,65 @@ def test_launch_authority_writes_remain_protected(path: str) -> None:
 @pytest.mark.parametrize(
     "command",
     [
+        "install -m644 tmp/x .lup/preflight/n.json",
+        "install -D -m 0644 tmp/x .lup/preflight/n.json",
+        "install -t .lup/policy-snapshots tmp/x",
+        "install -d .lup/preflight/fresh",
+        "install tmp/x tmp/y .lup/preflight",
+    ],
+)
+def test_installing_onto_launch_authority_is_a_copy_onto_it(
+    command: str, tmp_path: Path
+) -> None:
+    """`install` copies its sources to its last operand, as `cp` does.
+
+    Unclassified, it deferred to whatever boundary the session ran behind,
+    and a boundary that mounts the checkout writable confines nothing here.
+    """
+    hooks = declared_hook_set()
+    policy = ShellPolicy(
+        hooks.resolved_shell_rules(),
+        path_rules=declared_path_rules(hooks),
+        runner_targets=list(hooks.runner_targets),
+        sandbox_active=True,
+    )
+
+    decision = policy.decide(ShellCommand(command=command, cwd=tmp_path))
+
+    assert decision.effect == "ask"
+    assert "protected path requires approval" in decision.reason
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "rsync tmp/x .lup/preflight/n.json",
+        "rsync -a tmp/ .lup/policy-snapshots/",
+        "rsync -a --delete tmp/ .claude/",
+        "scp tmp/x .lup/preflight/n.json",
+        "scp -r tmp/ .claude/",
+    ],
+)
+def test_a_sync_onto_a_protected_root_asks_for_the_root(
+    command: str, tmp_path: Path
+) -> None:
+    """A local destination is a write there, whatever else the verb can reach."""
+    hooks = declared_hook_set()
+    policy = ShellPolicy(
+        hooks.resolved_shell_rules(),
+        path_rules=declared_path_rules(hooks),
+        runner_targets=list(hooks.runner_targets),
+    )
+
+    decision = policy.decide(ShellCommand(command=command, cwd=tmp_path))
+
+    assert decision.effect == "ask"
+    assert "protected path requires approval" in decision.reason
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
         "git rm README.md",
         "git --no-pager rm README.md",
         "git -P rm README.md",

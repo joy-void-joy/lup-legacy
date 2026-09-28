@@ -268,11 +268,18 @@ tree the host lent keeps the question there.
 Placing a file on a protected path is asked the same way, whether or not
 anything stood there: a path created is written as surely as one replaced,
 and no capture answers whose it is. Every path a command writes — a `cp`,
-`mv` or `ln` destination, a `touch`, a `dd of=`, an archive's target — asks
-when a protected rule matches it; a source `mv` takes away is read as a
-delete is, and a source landing under a directory destination is read at
-the name it lands at, so `cp -r /tmp/.claude .` asks though no word spells
-`.claude`. Reading a protected file, or copying one out, stays ordinary.
+`install`, `mv` or `ln` destination, a `touch`, a `dd of=`, an archive's
+target — asks when a protected rule matches it; a source `mv` takes away is
+read as a delete is, and a source landing under a directory destination is
+read at the name it lands at, so `cp -r /tmp/.claude .` asks though no word
+spells `.claude`. Reading a protected file, or copying one out, stays
+ordinary. `lup.policy.kernel.words.PATH_VERBS` declares each of these verbs
+once: the flags that leave its operands meaning what they read, which of
+them it writes, and whether an empty destination is created from the rest.
+`rsync` and `scp` are read from the same table and ask anyway, since they can
+reach another machine, so no scratch grant reaches them; what the table
+gives them is the reason — a local destination under a protected root asks
+as that root, not as a remote sync.
 
 **And it is written down**, which is what makes the relaxation honest rather
 than merely quieter. The lattice asks about everything unjudged for an

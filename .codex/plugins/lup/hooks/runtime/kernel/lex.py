@@ -45,7 +45,7 @@ from .syntax import (
     word_text,
 )
 from .words import (
-    SCRATCH_VERB_FLAGS,
+    PATH_VERBS,
     carried_setting,
     effective_command,
     flag_write_targets,
@@ -1565,7 +1565,7 @@ def verb_path_words(words: list[str], rows: list[ShellRuleRow]) -> list[PathWord
     rewritten = sed_rewrite_words(words)
     if rewritten is not None:
         return rewritten
-    if posixpath.basename(words[0]) not in SCRATCH_VERB_FLAGS:
+    if posixpath.basename(words[0]) not in PATH_VERBS:
         return []
     return path_verb_operands(words)["named"]
 
@@ -1582,7 +1582,9 @@ def written_verb_words(words: list[str], rows: list[ShellRuleRow]) -> list[PathW
     """
     named = verb_path_words(words, rows)
     executable = posixpath.basename(words[0]) if words else ""
-    if executable not in ("cp", "ln") or len(named) < 2:
+    if executable not in PATH_VERBS or len(named) < 2:
+        return named
+    if PATH_VERBS[executable]["lands"] != "last":
         return named
     return named[-1:] if path_verb_operands(words)["inert"] else named
 

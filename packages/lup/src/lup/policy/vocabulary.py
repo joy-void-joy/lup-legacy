@@ -237,6 +237,11 @@ def judged_ask_rules(
             checkpoint="boundary_wide",
         ),
         JudgedCommand(
+            name="install",
+            reason="installing over files requires approval",
+            checkpoint="boundary_wide",
+        ),
+        JudgedCommand(
             name="chmod",
             reason="changing permissions requires approval",
             reach="container",

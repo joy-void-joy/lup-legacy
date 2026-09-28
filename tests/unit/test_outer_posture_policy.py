@@ -112,6 +112,9 @@ GUARDED = [
     pytest.param("cat .env.local", "deny", id="env-local-read"),
     pytest.param("grep KEY .env.production.local", "deny", id="env-mode-local-read"),
     pytest.param("sudo ls", "ask", id="sudo"),
+    pytest.param(
+        "install -m644 README.md .lup/preflight/n.json", "ask", id="install-ledger"
+    ),
     pytest.param("ssh host.example ls", "ask", id="ssh"),
     pytest.param("export GH_TOKEN=x", "deny", id="export-token"),
     pytest.param("ss -K", "ask", id="ss-kill"),
