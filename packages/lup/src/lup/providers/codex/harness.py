@@ -348,6 +348,14 @@ class CodexSpellings(NativeSpellings):
                 return Atom(f"{root}/TEMPLATE_AGENTS.md")
 
 
+# lup: ignore[constant-declaration] — where Codex reads a checkout's own skills,
+# the runtime's layout rather than a choice made here
+CODEX_OVERLAY = Path(".codex/skills")
+"""The skills one machine renders for itself, where Codex reads a project's own.
+
+Ignored by git, because what they hold names this machine's own profiles."""
+
+
 class CodexSkillRenderer(ArtifactRenderer[Skill]):
     """Render one portable declaration as a same-named Codex skill."""
 

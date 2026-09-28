@@ -51,6 +51,7 @@ from lup.providers.claude.config_home import (
     selected_config_home,
 )
 from lup.providers.claude.confinement import CLAUDE_SANDBOX_OFF
+from lup.providers.claude.harness import CLAUDE_OVERLAY
 from lup.providers.claude.harness_runtime import (
     ClaudeCliEvidence,
     claude_capability_probes,
@@ -132,6 +133,9 @@ def companion_plugin_directories(root: Path, generated: str) -> list[Path]:
     registered that name last, the same hazard `lease_plugin_dir` documents.
     A directory carrying `.claude-plugin/plugin.json` is a plugin by its own
     declaration, which is why nothing here needs to be written down twice.
+    The machine's own overlay is left out: a launch names it explicitly, after
+    the generated plugin and ahead of these, since it is rendered on the way
+    in and may not be there yet when the launch is declared.
 
     Sorted, so what a launch names does not depend on directory order.
     """
@@ -141,7 +145,7 @@ def companion_plugin_directories(root: Path, generated: str) -> list[Path]:
     return sorted(
         directory
         for directory in plugins.iterdir()
-        if directory.name != generated
+        if directory.name not in (generated, CLAUDE_OVERLAY.name)
         and (directory / ".claude-plugin" / "plugin.json").is_file()
     )
 

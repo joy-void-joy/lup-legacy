@@ -1316,7 +1316,7 @@ def test_both_native_trees_compile_deterministically() -> None:
 
     assert claude == compile_claude(harness)
     assert codex == compile_codex(harness)
-    declared_skills = len(harness.plugins[0].skills)
+    declared_skills = len(harness.plugins[0].committed_skills())
     assert (
         len([item for item in claude.artifacts if "/commands/" in item.path.as_posix()])
         == declared_skills

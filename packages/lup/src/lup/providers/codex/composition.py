@@ -1,10 +1,15 @@
 """Codex's composition: a project's content, compiled into the tree it opens."""
 
 from collections.abc import Sequence
+from functools import partial
 from pathlib import Path
+
+from lup.providers.harness import codex_machine_overlay
+from lup.providers.codex.harness import CODEX_OVERLAY
 
 from lup.harness.evidence import WireContract
 from lup.harness.generate import (
+    MachineOverlay,
     NativeComposer,
     NativeHarnessComposition,
     ProjectContent,
@@ -37,6 +42,11 @@ class CodexComposer(NativeComposer):
             recipe=codex_generation_recipe(root, content, guidance),
             servers=content.servers,
             serve=content.serve,
+            overlay=MachineOverlay(
+                directory=CODEX_OVERLAY,
+                render=partial(codex_machine_overlay, content.harness),
+                loaded=False,
+            ),
             readiness=readiness,
             invocation_renderer=CodexSpellings(),
             login=CODEX_LOGIN,

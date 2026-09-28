@@ -827,6 +827,8 @@ local one of the same name. The first profile added where nothing is selected
 yet becomes the selection, in the place it was added; one added beside a
 selection leaves it standing.
 
+`/lup:profile` is the machine's own: its hint names the profiles this machine keeps, which no committed file may, so it is in neither tree. `harness generate` and every launch render it from the registry into a gitignored overlay beside each tree — `.claude/plugins/local/`, which a Claude launch loads after the committed plugin, and `.codex/skills/`, which Codex reads where it stands — rewritten whole each time, so a profile added since is named at the next launch and one removed is gone.
+
 `harness claude --profile` and `harness codex --profile` select one for a
 single launch, and `profile=NAME` on a `Claude` or `Codex` declaration opens
 every session as it, all resolved local first. A declaration naming no profile stays on its process's account

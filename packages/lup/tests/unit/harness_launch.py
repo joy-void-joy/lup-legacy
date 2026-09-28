@@ -8,6 +8,7 @@ session runs nowhere. The CLI is caught rather than run. So what a test
 compares is the compilation and the order things happen in, not the machine.
 """
 
+from functools import partial
 from pathlib import Path
 from unittest.mock import Mock
 
@@ -19,7 +20,10 @@ import lup.launch.session as launch_session
 import lup.providers.claude.launch as claude_launch
 import lup.providers.codex.launch as codex_launch
 from lup.coordination.identity import LaunchedMember
-from lup.harness.generate import NativeHarnessComposition
+from lup.harness.generate import MachineOverlay, NativeHarnessComposition
+from lup.providers.claude.harness import CLAUDE_OVERLAY
+from lup.providers.codex.harness import CODEX_OVERLAY
+from lup.providers.harness import claude_machine_overlay, codex_machine_overlay
 from lup.harness.messaging import SessionInboxes
 from lup.harness.models import Harness
 from lup.observability.audit import TraceJournal
@@ -80,6 +84,18 @@ def composition(root: Path, label: str) -> NativeHarnessComposition:
     built.servers = launched_tool_servers()
     built.serve = launched_serve(root)
     built.clipboard_transport = "commands" if label == "claude" else "x11"
+    built.overlay = (
+        MachineOverlay(
+            directory=CLAUDE_OVERLAY,
+            render=partial(claude_machine_overlay, built.recipe.source),
+            loaded=True,
+        )
+        if label == "claude"
+        else MachineOverlay(
+            directory=CODEX_OVERLAY,
+            render=partial(codex_machine_overlay, built.recipe.source),
+        )
+    )
     return built
 
 

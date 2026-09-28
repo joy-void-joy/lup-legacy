@@ -128,6 +128,25 @@ class GenerationRecipe(BaseModel, frozen=True, arbitrary_types_allowed=True):
     target_requirements: list[str]
 
 
+class MachineOverlay(BaseModel, frozen=True, arbitrary_types_allowed=True):
+    """What one runtime renders per machine beside its committed tree, and where.
+
+    Its directory is the overlay's alone: rewritten whole each time it is
+    rendered, ignored by git, and in no ownership manifest, because what it
+    holds names this machine's own facts, which no committed file may.
+    """
+
+    directory: Path
+    """Where it is written, relative to the project root."""
+
+    render: Callable[[Sequence[str]], ArtifactTree]
+    """The overlay for a machine keeping these profiles."""
+
+    loaded: bool = False
+    """Whether a launch names the directory to its runtime, which otherwise
+    reads it where it stands."""
+
+
 type RuntimeReadiness = Callable[[], Sequence[CapabilityReport]]
 """How a composition asks its runtime whether it is actually installed."""
 
@@ -151,6 +170,9 @@ class NativeHarnessComposition(BaseModel, frozen=True, arbitrary_types_allowed=T
 
     serve: ServeLaunch = ServeLaunch()
     """How that session starts the servers lup hosts."""
+
+    overlay: MachineOverlay | None = None
+    """What this runtime renders per machine beside the tree, where it renders any."""
 
     wire_contracts: list[WireContract] = []
     """Reply shapes this runtime's adapter reads fields off by name.

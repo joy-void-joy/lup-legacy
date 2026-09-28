@@ -781,6 +781,7 @@ local one of the same name. The first profile added where nothing is selected
 yet becomes the selection, in the place it was added; one added beside a
 selection leaves it standing.
 
+{{ machine_profile }}
 `harness claude --profile` and `harness codex --profile` select one for a
 single launch, and `profile=NAME` on a `Claude` or `Codex` declaration opens
 every session as it, all resolved local first. A declaration naming no profile stays on its process's account

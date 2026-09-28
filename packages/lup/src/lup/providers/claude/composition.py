@@ -1,9 +1,14 @@
 """Claude Code's composition: a project's content, compiled into the tree it opens."""
 
 from collections.abc import Sequence
+from functools import partial
 from pathlib import Path
 
+from lup.providers.harness import claude_machine_overlay
+from lup.providers.claude.harness import CLAUDE_OVERLAY
+
 from lup.harness.generate import (
+    MachineOverlay,
     NativeComposer,
     NativeHarnessComposition,
     ProjectContent,
@@ -36,6 +41,11 @@ class ClaudeComposer(NativeComposer):
             recipe=claude_generation_recipe(root, content, guidance),
             servers=content.servers,
             serve=content.serve,
+            overlay=MachineOverlay(
+                directory=CLAUDE_OVERLAY,
+                render=partial(claude_machine_overlay, content.harness),
+                loaded=True,
+            ),
             readiness=readiness,
             invocation_renderer=ClaudeSpellings(),
             login=CLAUDE_LOGIN,

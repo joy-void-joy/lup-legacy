@@ -79,7 +79,12 @@ def document(
                 module=__name__,
                 name="artifact-parity",
                 values={
-                    "len_skills": models.counted(len(skills)),
+                    "len_skills": models.counted(
+                        len([skill for skill in skills if skill.machine_hint is None])
+                    ),
+                    "len_machine": models.counted(
+                        len([skill for skill in skills if skill.machine_hint])
+                    ),
                     "len_agents": models.counted(len(agents)),
                 },
             ),

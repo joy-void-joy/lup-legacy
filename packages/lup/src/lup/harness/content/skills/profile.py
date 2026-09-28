@@ -13,7 +13,7 @@ SKILL = models.Skill(
             required=False,
         ),
     ],
-    argument_hint="[list | use <name> | switch <name>]",
+    machine_hint=models.ProfileHint(alone=["list"], naming=["use", "switch"]),
     tools=[
         "Bash(uv run lup-devtools:*)",
         "Read",

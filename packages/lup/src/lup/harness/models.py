@@ -9,6 +9,7 @@ beside its managing module instead (see the package docstring).
 
 import re  # lup: ignore[import-re] — prose has no parser; its shape is the rule
 from abc import ABC, abstractmethod
+from collections.abc import Sequence
 from itertools import dropwhile
 from json import dumps
 from pathlib import Path, PurePath, PurePosixPath
@@ -995,6 +996,29 @@ class BashGrant(BaseModel, frozen=True):
         return cls(prefixes=[scope.strip().removesuffix(":*") for scope in specifiers])
 
 
+class ProfileHint(BaseModel, frozen=True):
+    """An argument hint naming the profiles one machine keeps, spelled on that machine.
+
+    A skill acting on an account is invoked with a profile's name, and which
+    names answer is a fact about the machine: a hint written into a committed
+    tree would name one machine's accounts to every other, or none of them.
+    So the verbs are declared, and the names are filled in where they are
+    known.
+    """
+
+    alone: list[NativeName] = []
+    """Verbs taken with no profile."""
+
+    naming: list[NativeName] = []
+    """Verbs taking one profile's name."""
+
+    def spelled(self, profiles: Sequence[str]) -> str:
+        """The hint on a machine keeping ``profiles``, a placeholder where it keeps none."""
+        chosen = "|".join(profiles) if profiles else "name"
+        verbs = [*self.alone, *(f"{verb} <{chosen}>" for verb in self.naming)]
+        return f"[{' | '.join(verbs)}]"
+
+
 class Skill(SelectableRule, frozen=True):
     id: str
     name: NativeName
@@ -1002,6 +1026,11 @@ class Skill(SelectableRule, frozen=True):
     arguments: list[Argument] = []
     tools: list[ToolGrant] = []
     argument_hint: PortableText | None = None
+    machine_hint: ProfileHint | None = None
+    """Where set, this skill is the machine's: rendered with this hint, naming
+    the profiles the machine keeps, into a gitignored overlay every launch
+    loads — never into the committed tree."""
+
     prompt: PromptDocument
 
     def selection_id(self) -> str:
@@ -1010,6 +1039,16 @@ class Skill(SelectableRule, frozen=True):
     def given(self, taken: list[str]) -> "Skill":
         """This skill as a project that took *taken* modules reads it."""
         return self.model_copy(update={"prompt": self.prompt.given(taken)})
+
+    @model_validator(mode="after")
+    def one_hint(self) -> "Skill":
+        """Refuse a fixed hint beside the machine's, which would never be shown."""
+        if self.argument_hint is not None and self.machine_hint is not None:
+            raise ValueError(
+                f"skill {self.id!r} declares an argument_hint and a machine_hint; "
+                "the machine's is the one shown, so drop argument_hint"
+            )
+        return self
 
     @model_validator(mode="after")
     def coherent_arguments(self) -> "Skill":
@@ -1890,6 +1929,14 @@ class Plugin(BaseModel, frozen=True):
     agents: list[Agent]
     hooks: HookSet | None = None
 
+    def committed_skills(self) -> list[Skill]:
+        """The skills every checkout's tree carries: all but the machine's own."""
+        return [skill for skill in self.skills if skill.machine_hint is None]
+
+    def machine_skills(self) -> list[Skill]:
+        """The skills each machine renders for itself, naming what it keeps."""
+        return [skill for skill in self.skills if skill.machine_hint is not None]
+
     @model_validator(mode="after")
     def unique_effective_names(self) -> "Plugin":
         skill_names = [skill.name for skill in self.skills]
@@ -1981,26 +2028,16 @@ class Harness(BaseModel, frozen=True):
         into files. Each id is what a rendered artifact carries back, so this
         is the one list both trees can be measured against — which is how a
         target that silently renders one fewer skill than another is caught
-        without either tree's own path shapes entering the comparison.
-
-        The tool servers are absent because they are not rendered as
-        artifacts: each target writes its whole server table into one shared
-        configuration file, which carries that file's own id. So a dropped
-        server is a difference in an artifact's content rather than a missing
-        artifact, and asking for one by id would report every server missing
-        from every tree.
-
-        That difference is answered where the format is known, by one test
-        per adapter reading the whole table back out of the artifact it was
-        written into. Asking it here instead would mean parsing both formats,
-        which is the runtime spelling this list exists to stay clear of.
+        without either tree's own path shapes entering the comparison. A
+        machine's own skill is absent: no committed tree renders it, each
+        machine's overlay does.
         """
         return [
             declaration_id
             for plugin in self.plugins
             for declaration_id in [
                 plugin.id,
-                *[skill.id for skill in plugin.skills],
+                *[skill.id for skill in plugin.committed_skills()],
                 *[agent.id for agent in plugin.agents],
             ]
         ]

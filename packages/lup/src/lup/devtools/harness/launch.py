@@ -563,6 +563,19 @@ def declared[T](build: Callable[[], T]) -> T:
         ) from refusal
 
 
+def machine_overlay(composition: NativeHarnessComposition) -> list[Path]:
+    """This machine's overlay, where the runtime is told of it and it holds any skill.
+
+    Named whether or not it is on disk yet: the regeneration a launch runs
+    before its session renders it.
+    """
+    overlay = composition.overlay
+    plugin = composition.recipe.source.plugins[0]
+    if overlay is None or not overlay.loaded or not plugin.machine_skills():
+        return []
+    return [composition.recipe.root / overlay.directory]
+
+
 def claude_declaration(
     composition: NativeHarnessComposition,
     request: LaunchRequest,
@@ -601,7 +614,10 @@ def claude_declaration(
                 builtin="stock", mcp=composition.servers, serve=composition.serve
             ),
             plugin=root / ".claude" / "plugins" / plugin.name,
-            plugin_dirs=companion_plugin_directories(root, plugin.name),
+            plugin_dirs=[
+                *machine_overlay(composition),
+                *companion_plugin_directories(root, plugin.name),
+            ],
             policy=plugin.hooks,
             requirements=source.requirements,
             sandbox=sandbox,

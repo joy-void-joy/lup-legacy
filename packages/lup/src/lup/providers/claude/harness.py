@@ -343,6 +343,16 @@ again needs one edit here rather than one per declaration.
 """
 
 
+# lup: ignore[constant-declaration] — where Claude Code's overlay plugin sits, a
+# layout this adapter owns and every checkout ignores
+CLAUDE_OVERLAY = Path(".claude/plugins/local")
+"""The plugin one machine renders for itself, beside the committed one.
+
+Inside ``.claude/plugins`` so a launch finds it where it finds every plugin a
+checkout keeps, and ignored by git, because what it holds names this
+machine's own profiles."""
+
+
 def claude_granted_tools(tools: Sequence[str]) -> list[str]:
     """Keep only the grants this runtime can honor.
 
