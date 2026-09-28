@@ -32,18 +32,7 @@ from lup.coordination.identity import (
 from lup.coordination.repository import RepositoryPeers
 from lup.coordination.wake import WakePath
 from lup.harness.messaging import SessionInboxes
-
-
-def composition() -> Mock:
-    """A composition carrying the one plugin each launcher reads first."""
-    plugin = Mock()
-    plugin.name = "lup"
-    plugin.marketplace = "test"
-    built = Mock()
-    built.recipe.source.plugins = [plugin]
-    # Declined, so no launch here binds an inbox on the machine's directory.
-    built.recipe.source.image.inboxes = SessionInboxes(directory="")
-    return built
+from tests.unit.harness_launch import composition, harness, profiles, stub_host
 
 
 @pytest.fixture
@@ -51,18 +40,17 @@ def uncontained(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """Everything an uncontained `session_argv` reaches that is not its subject."""
     monkeypatch.setattr(launch_session, "settle_boundary", lambda *a, **k: None)
     monkeypatch.setattr(launch_session, "say_opening", lambda *a, **k: None)
-    monkeypatch.setattr(launch, "carry_claude_home", lambda *a, **k: None)
 
 
 def opened(environment: dict[str, str], tmp_path: Path) -> list[str]:
     """Build the argv for one uncontained session against this environment."""
-    built = composition()
+    built = harness()
     return launch_session.session_argv(
         "claude",
         ["--model", "opus"],
         tmp_path,
-        built.recipe.source.image,
-        built.recipe.source.requirements,
+        built.image,
+        built.requirements,
         Mock(),
         tmp_path,
         Mock(),
@@ -195,39 +183,22 @@ def launched(
     captured: list[list[str]],
     extra: list[str],
 ) -> None:
-    """Run `launch_claude` far enough to read the argv it built, and no further."""
-    import sh
+    """`harness claude` in ``worktree``, the host stubbed and the identity minted for real."""
+    import lup.coordination.repository as repository
+    import lup.providers.claude.launch as claude_launch
 
-    profiles = Mock()
-    profiles.launch_home.return_value = None
-    monkeypatch.setattr(
-        launch, "ready_to_open", lambda *a, **k: launch_session.LaunchOpening()
-    )
-    monkeypatch.setattr(launch, "project_root", lambda: worktree)
-    monkeypatch.setattr(launch, "carry_claude_home", lambda *a, **k: None)
-    monkeypatch.setattr(launch, "ambient_config_home", lambda *a, **k: worktree)
-    monkeypatch.setattr(
-        launch,
-        "session_argv",
-        lambda name, arguments, *a, **k: captured.append(arguments) or [name],
-    )
-    monkeypatch.setattr(
-        launch,
-        "claude_sandbox_arguments",
-        lambda _plugin, sandbox=LaunchSandbox.INNER, accessible=[], settings=None, tree=None: [],
-    )
-    monkeypatch.setattr(launch, "non_interactive_environment", lambda _env: {})
-    monkeypatch.setattr(
-        launch, "apply_sandbox_environment", lambda *args, **kwargs: None
-    )
-    monkeypatch.setattr(launch, "ClaudeTranscripts", lambda _home: Mock())
-    monkeypatch.setattr(launch, "accessible_roots", lambda *a: [])
-    monkeypatch.setattr(
-        launch, "start_harness_transcript", lambda *args, **kwargs: Mock()
-    )
-    monkeypatch.setattr(sh, "Command", lambda _name: lambda *args, **kwargs: None)
+    caught = stub_host(monkeypatch, worktree)
+    for module in (launch_session, claude_launch):
+        monkeypatch.setattr(module, "launched_member", repository.launched_member)
+    monkeypatch.setattr(claude_launch, "settle_claude_theme", lambda *_a, **_k: None)
 
-    launch.launch_claude(composition(), extra, profiles, None, None, False)
+    launch.launch_claude(
+        composition(worktree, "claude"),
+        launch.LaunchRequest(words=extra, sandbox=LaunchSandbox.INNER),
+        profiles(),
+        False,
+    )
+    captured.append(caught.argv)
 
 
 @pytest.mark.usefixtures("unix_socket")

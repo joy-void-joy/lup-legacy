@@ -12,13 +12,15 @@ import tomlkit
 from typer.testing import CliRunner
 
 import lup.devtools.harness.launch as launch
-from lup.launch.session import LaunchOpening
 from lup.providers.codex.session import prepare_codex_plugin
 from lup.launch.declaration import LaunchSandbox
 import lup.providers.codex.install as installation
 from lup.providers.codex.account import read_account
 from lup.providers.codex.home import CodexHomeSelection
 from lup.providers.codex.profile import CodexProfileSettings
+
+capture = CodexProfileSettings.capture
+"""The real capture, restored over the host stub for the tests that read it."""
 
 
 def source_home(root: Path) -> Path:
@@ -201,59 +203,46 @@ def test_contained_base_is_the_native_account_configuration(
     assert state.account is None
 
 
-@pytest.mark.parametrize("profile", [None, "review"])
 @pytest.mark.parametrize("sandbox", list(LaunchSandbox))
-def test_launcher_selects_the_same_settings_for_preparation_auth_and_session(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    profile: str | None,
-    sandbox: LaunchSandbox,
+def test_a_launch_carries_the_accounts_settings_into_a_container_alone(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, sandbox: LaunchSandbox
 ) -> None:
+    """A contained session's home starts from the account's whole configuration.
+
+    The home prepared inside the container is handed the account's settings
+    as its base; a session on the host runs in a home that already holds
+    them, so none are carried.
+    """
+    import lup.providers.codex.launch as codex_launch
+    from tests.unit.harness_launch import checkout, composition, stub_host
+
     source = source_home(tmp_path)
-    composition = Mock()
-    composition.recipe.source.plugins = [Mock(hooks=None)]
+    root = checkout(tmp_path)
+    stub_host(monkeypatch, root)
     monkeypatch.setattr(
-        launch,
-        "ready_to_open",
-        Mock(return_value=LaunchOpening(sandbox=sandbox)),
-    )
-    monkeypatch.setattr(launch, "project_root", lambda: tmp_path)
-    monkeypatch.setattr(launch, "non_interactive_environment", lambda environment: {})
-    monkeypatch.setattr(launch, "codex_sandbox_arguments", Mock(return_value=[]))
-    monkeypatch.setattr(
-        launch,
+        codex_launch,
         "select_codex_home",
         Mock(return_value=CodexHomeSelection(path=source, isolated=False)),
     )
-    monkeypatch.setattr(launch, "start_harness_transcript", Mock())
-    monkeypatch.setattr(sh, "Command", Mock())
-    opening = Mock(return_value=["codex"])
-    monkeypatch.setattr(launch, "session_argv", opening)
+    monkeypatch.setattr(CodexProfileSettings, "capture", classmethod(capture.__func__))
     prepare = Mock()
-    authenticate = Mock()
-    monkeypatch.setattr(launch, "prepare_codex_plugin", prepare)
-    monkeypatch.setattr(launch, "codex_login_preflight", authenticate)
+    monkeypatch.setattr(codex_launch, "prepare_codex_plugin", prepare)
+    monkeypatch.setattr(codex_launch, "settled_codex_seed", Mock(return_value={}))
 
     launch.launch_codex(
-        composition, [], source, profile, None, False, False, sandbox=sandbox
+        composition(root, "codex"),
+        launch.LaunchRequest(sandbox=sandbox),
+        source,
+        False,
+        False,
     )
 
-    call = opening.call_args
-    native_home = Path("/cfg") if sandbox.contained() else source
-    call.kwargs["prepare"]([], native_home)
-    call.kwargs["authenticate"](["codex"], native_home, False)
     snapshot = prepare.call_args.kwargs["settings"]
     if sandbox.contained():
         assert snapshot.as_base
-        assert snapshot.settings["model"] == ("gpt-6-astra" if profile else "gpt-5.5")
-        assert "--profile" not in call.args[1]
-        assert authenticate.call_args.kwargs["profile"] is None
+        assert snapshot.settings["model"] == "gpt-5.5"
     else:
-        assert authenticate.call_args.kwargs["profile"] == profile
-        if profile:
-            assert call.args[1] == ["--profile", snapshot.installed_name()]
-        else:
-            assert snapshot is None
+        assert snapshot is None
 
 
 def test_missing_or_malformed_profile_does_not_expose_setting_values(

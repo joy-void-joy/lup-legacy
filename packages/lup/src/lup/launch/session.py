@@ -77,8 +77,10 @@ from lup.harness.image import Image
 from lup.launch.preflight import (
     LaunchSentinels,
     ROOT_VARIABLE,
+    exclude_sandbox_placeholders,
     record_preflight,
     retire_mount_table,
+    sweep_ledgers,
 )
 
 
@@ -320,6 +322,32 @@ def start_harness_transcript(
     )
 
 
+def cleared_on_the_way_in(root: Path) -> None:
+    """Clear what earlier launches left in the checkout, before this one reads it.
+
+    Measurements a killed launch never took away are swept here rather than
+    only on the way out, because the launch that crashed is exactly the one
+    that did not get to tidy up after itself. The runtime sandbox's own
+    leavings are taken out of `git status` before a session reads it, said
+    only when something was added, because a line repeated on every launch
+    is read on none. Then the host is checked, and that stretch is named
+    before it starts, since a launch spends it silent when everything is
+    current and a line naming the wait is what tells a slow one from a
+    stopped one.
+    """
+    sweep_ledgers(root)
+    excluded = exclude_sandbox_placeholders(root)
+    if excluded:
+        Notice(
+            text=(
+                f"excluded {len(excluded)} sandbox placeholder file(s) from git "
+                f"status: {', '.join(excluded)}"
+            ),
+            urgency="detail",
+        ).say()
+    Notice(text="checking the host", urgency="progress").say()
+
+
 def runtime_preflight(
     label: str,
     readiness: RuntimeReadiness,
@@ -328,7 +356,6 @@ def runtime_preflight(
     sentinels: LaunchSentinels,
     opening: LaunchOpening,
     contained: bool = True,
-    standing: StandingGrants = StandingGrants(),
 ) -> list[Finding]:
     """Verify each claimed native requirement immediately before launch.
 
@@ -347,9 +374,7 @@ def runtime_preflight(
     the launch stops on.
 
     ``label`` names the runtime in what is said, ``readiness`` probes it, and
-    ``requirements`` is the manifest the host roster exercises. ``standing``
-    is what this machine grants every session, asked by the host roster so
-    each granted device is proved before a session gets it.
+    ``requirements`` is the manifest the host roster exercises.
     """
     target = label
     evidence = readiness()
@@ -373,7 +398,6 @@ def runtime_preflight(
         sentinels=sentinels,
         in_passing=True,
         contained=contained,
-        standing=standing,
     )
 
 
@@ -758,7 +782,6 @@ def session_argv(
     member: LaunchedMember | None = None,
     prepare: Callable[[list[str], Path], None] | None = None,
     home_seed: HomeSeedPlaces | None = None,
-    standing: StandingGrants = StandingGrants(),
     clipboard: ClipboardTransport = "commands",
     forwarded: Sequence[str] = (),
 ) -> list[str]:
@@ -788,10 +811,11 @@ def session_argv(
     session's answer -- a boundary belonging to a session that has already
     ended.
 
-    ``standing`` is what the caller's machine grants every session it
-    launches, asked here rather than handed in resolved: only here is the
-    posture known, and what the registry says as it resolves belongs in
-    this opening's banner.
+    ``mounts`` and ``devices`` are every folder and device the session is
+    granted, resolved once by the caller: resolving a registration can clone
+    it, so a second resolution would be a second trip to the forge, and a
+    boundary compiled against one set of roots beside mounts built from
+    another.
 
     ``forwarded`` names what else of ``environment`` a contained session is
     handed -- what the host companions held around it export -- carried by
@@ -821,17 +845,7 @@ def session_argv(
     environment.update((member or launched_member(root)).environment())
     environment[POLICY_ROOT_ENV] = str(root)
 
-    # Settled once and handed to everything that needs it. Resolving a
-    # registration can clone it, so a second resolution would be a second
-    # trip to the forge -- and, where the two disagreed, a boundary compiled
-    # against one set of roots and mounts built from another. The ad-hoc
-    # mounts the caller named lead the list: they were asked for on this
-    # command line, so they belong to this launch even where no registry does.
-    def told(said: str) -> None:
-        """Route the registry's own progress into the banner rather than past it."""
-        banner.add([Notice(text=said, urgency="boundary")])
-
-    accessible = [*mounts, *standing.roots(told)]
+    accessible = list(mounts)
     if not sandbox.contained():
         # A host posture holds the host's devices already, so a flag asking
         # for one describes a container this launch does not open. Said
@@ -905,9 +919,7 @@ def session_argv(
         banner=banner,
         sentinels=sentinels,
         accessible=accessible,
-        # This launch's flags lead and the machine's standing grants follow,
-        # settled here beside the roots for the same reason they are.
-        devices=[*devices, *standing.devices(told)],
+        devices=devices,
         home_seed=home_seed,
     )
     # Verified on the way in, rather than asserted. This is §6's whole point

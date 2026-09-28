@@ -17,7 +17,7 @@ from lup.harness.generate import (
     claude_generation_recipe,
     generate,
 )
-from lup.harness.models import CapabilityEvidence, Harness, HookSet, Resumption
+from lup.harness.models import CapabilityEvidence, Harness, Resumption
 from lup.harness.requirements import Finding
 from lup.harness.toolchain import bubblewrap_requirement, socat_requirement
 from lup.launch.boundary import apply_sandbox_environment
@@ -26,7 +26,6 @@ from lup.launch.compilation import allowance_environment, inherited_environment
 from lup.launch.config_volume import HomeSeedPlaces
 from lup.launch.declaration import (
     LaunchCommand,
-    LaunchSandbox,
     LaunchStep,
     Member,
     Recording,
@@ -36,10 +35,11 @@ from lup.launch.declaration import (
     resumption,
 )
 from lup.launch.foreground import between_steps, run_in_foreground
-from lup.launch.preflight import LaunchSentinels, release_ledger, sweep_ledgers
+from lup.launch.preflight import LaunchSentinels, release_ledger
 from lup.launch.refusal import LaunchRefused
 from lup.launch.session import (
     LaunchOpening,
+    cleared_on_the_way_in,
     personal_config,
     placed_inbox,
     runtime_preflight,
@@ -98,91 +98,6 @@ def claude_resume_arguments(resume: Resumption) -> list[str]:
     return ["--continue"] if resume.latest else []
 
 
-def claude_sandbox_settings(
-    hooks: HookSet | None,
-    sandbox: LaunchSandbox = LaunchSandbox.INNER,
-    accessible: list[AccessibleRoot] = [],
-    settings: JsonObject | None = None,
-    tree: Path | None = None,
-) -> JsonObject:
-    """What this launch means the Claude sandbox to be, as one settings document.
-
-    ``settings`` is whatever else this launch compiles into that document —
-    an effort's ultracode switch — merged in here because the CLI reads one
-    ``--settings`` flag, and a second would be read in place of the first.
-
-    Establishing the inner sandbox, that is a widening: Claude roots writes at
-    the working directory just as Codex does, so a second checkout is
-    read-only to every command a session runs — and running the toolchain over
-    one is ordinary work, which is why the symptom arrives as pytest failing
-    to write a cache and `ruff format` refusing to save. Neither error names a
-    sandbox. ``tree`` is the directory holding this checkout's sibling
-    worktrees, and ``None`` where the checkout has none, which leaves the
-    sandbox as the project's own settings declare it.
-
-    The declared roots widen it the same way and for the same reason they
-    reach the container's mount table: a project registered as reachable is
-    one this session is meant to write, and a boundary that admitted it in
-    one posture and refused it in the other would make where the session runs
-    the thing that decides what it can do.
-
-    For the same reason the container's read-only binds reach it too, as
-    ``denyWrite``: each declared repository's shared `config` and `hooks/`,
-    read off the lease that makes those binds. A mounted bare clone admits
-    its git directory whole, and those two name what the host runs at the
-    next git command there -- the documented rule is that a deny holds inside
-    a wider allow, and Claude's own protection of `.git/hooks` and
-    `.git/config` covers only the working directory.
-
-    The path is this machine's, so it is resolved at launch and passed as
-    settings rather than declared: an artifact carrying an absolute path
-    would be drift in every other checkout. The declared writable paths ride
-    along rather than being left to the generated file, because the two
-    surfaces document this key differently — arrays that merge across
-    scopes, values that override per session — and a list carrying both is
-    the same list under either reading.
-
-    Contained -- or with no sandbox chosen at all -- it is an *off* switch,
-    and the artifact still says ``enabled: true`` because that is the right
-    answer for the inner-sandbox launch the same file serves. The switch
-    itself is spelled by
-    :data:`~lup.providers.claude.confinement.CLAUDE_CONFINEMENT` rather than
-    here, so the image-side probe that asks whether a session can open at all
-    opens the same one this does -- spelled twice, the probe verifies a
-    session nobody launches, and refuses for the absence of a confinement no
-    launch has ever asked for.
-
-    What the vendor documents in place of the nested sandbox travels with
-    that spelling. The measured half belongs here, beside the launcher
-    making the choice: in an unprivileged container bubblewrap cannot mount a
-    fresh ``/proc`` -- ``Can't mount proc on /newroot/proc: Operation not
-    permitted`` -- so the inner sandbox does not start, and the packages
-    installed to keep it quiet bought silence rather than a boundary.
-
-    What is lost is narrower than it looks. The credential read denials name
-    paths this container never mounts; the human-owned write denials are
-    still surfaced as approvals by the semantic policy; ``excludedCommands``
-    was already inert here, because the container never agreed to leave any
-    command alone. The domain allowlist is not a wall either -- it
-    pre-approves rather than refuses, and ``strictAllowlist`` has no effect
-    from a repository's own settings — and what does refuse is the egress
-    proxy, which is untouched by this.
-    """
-    carried = settings or {}
-
-    def document(sandboxed: JsonObject) -> JsonObject:
-        return {**sandboxed, **carried}
-
-    if hooks is None or hooks.sandbox is None:
-        return document({})
-    if sandbox is not LaunchSandbox.INNER:
-        return document(CLAUDE_SANDBOX_OFF)
-    if tree is None and not any(item.writable for item in accessible):
-        return document({})
-    filesystem = claude_filesystem(hooks.sandbox.writable_paths, accessible, tree)
-    return document({"sandbox": {"filesystem": filesystem}})
-
-
 def claude_filesystem(
     writable_paths: list[str], accessible: list[AccessibleRoot], tree: Path | None
 ) -> JsonObject:
@@ -204,18 +119,6 @@ def claude_filesystem(
         for path in host_run(item.path)
     ]
     return {"allowWrite": allowed, **({"denyWrite": held} if held else {})}
-
-
-def claude_sandbox_arguments(
-    hooks: HookSet | None,
-    sandbox: LaunchSandbox = LaunchSandbox.INNER,
-    accessible: list[AccessibleRoot] = [],
-    settings: JsonObject | None = None,
-    tree: Path | None = None,
-) -> list[str]:
-    """The ``--settings`` flag carrying :func:`claude_sandbox_settings`, or nothing."""
-    merged = claude_sandbox_settings(hooks, sandbox, accessible, settings, tree)
-    return ["--settings", json.dumps(merged)] if merged else []
 
 
 def companion_plugin_directories(root: Path, generated: str) -> list[Path]:
@@ -243,11 +146,14 @@ def companion_plugin_directories(root: Path, generated: str) -> list[Path]:
 
 
 def claude_account_environment(agent: "Claude") -> EnvVars:
-    """The account a session runs as: its profile's home, or the home named outright."""
-    account = profile_environment(CLAUDE_LOGIN, agent.profile)
-    if agent.home is None:
-        return account
-    return {**account, **CLAUDE_LOGIN.environment(agent.home)}
+    """The account a session runs as: the home named outright, or its profile's.
+
+    A home named outright is the account's own, found by whoever named it,
+    so the profile beside it only names that account and is not looked up.
+    """
+    if agent.home is not None:
+        return CLAUDE_LOGIN.environment(agent.home)
+    return profile_environment(CLAUDE_LOGIN, agent.profile)
 
 
 def claude_plugin_directory(agent: "Claude", root: Path) -> Path | None:
@@ -275,7 +181,7 @@ def compiled_claude(agent: "Claude") -> "Claude":
     outright, becomes the account home the session runs under, and a
     declared plugin becomes the first plugin directory it loads.
     """
-    personal = UserConfigFile().load()
+    personal = personal_config(UserConfigFile())
     model = (
         agent.model
         if agent.model is not None or agent.endpoint is not None
@@ -305,13 +211,30 @@ def claude_settings(agent: "Claude", tree: Path | None = None) -> JsonObject:
     """The one settings document both outputs carry: the declared wall, and the effort's switches.
 
     A session opened here reads it as the SDK's ``settings`` and a launched
-    one as ``--settings``, so neither inherits a sandbox from wherever it
-    happens to start. An inner sandbox is enabled with the policy's own
-    exclusions and write paths, widened to the declared mounts and to
-    ``tree``, the directory holding this checkout's sibling worktrees; an
-    escape is refused unless the sandbox is declared escapable, which is the
-    CLI's own default and so is said only to refuse. The container and no
-    sandbox at all both stand Claude Code's own sandbox down.
+    one as ``--settings`` — one document, because the CLI reads one flag and
+    a second would be read in place of the first — so neither inherits a
+    sandbox from wherever it happens to start. An inner sandbox is enabled
+    with the policy's own exclusions and write paths; an escape is refused
+    unless the sandbox is declared escapable, which is the CLI's own default
+    and so is said only to refuse.
+
+    Enabled, it is widened. Claude roots writes at the working directory, so
+    a second checkout is read-only to every command a session runs — and
+    running the toolchain over one is ordinary work, which is why the symptom
+    arrives as pytest failing to write a cache and `ruff format` refusing to
+    save, neither naming a sandbox. ``tree`` is the directory holding this
+    checkout's sibling worktrees, resolved at launch rather than declared,
+    because an artifact carrying an absolute path would be drift in every
+    other checkout. The declared mounts widen it the same way and for the
+    same reason they reach the container's mount table: a folder the session
+    is meant to write is writable whichever wall it opens behind.
+
+    The container and no sandbox at all both stand Claude Code's own sandbox
+    down, spelled by :data:`~lup.providers.claude.confinement.CLAUDE_SANDBOX_OFF`
+    so the image-side probe asking whether a session can open at all opens
+    the same one. Measured: in an unprivileged container bubblewrap cannot
+    mount a fresh ``/proc``, so the inner sandbox does not start there, and
+    what refuses is the egress proxy.
     """
     chosen = agent.resolved_effort()
     carried = claude_effort(chosen).settings if chosen is not None else {}
@@ -757,11 +680,14 @@ def launch_claude_session(
     the boundary it was measured behind is released however it ended.
     """
     launched = claude_launched(agent)
+    # Compiled once before any step runs, so a declaration the person's lup
+    # config cannot answer is refused before a step has done anything.
+    compiled_claude(launched)
 
     def session() -> int:
         root = claude_root(launched)
         prepare_claude(launched)
-        sweep_ledgers(root)
+        cleared_on_the_way_in(root)
         sentinels = LaunchSentinels()
         opening = claude_checked(launched, sentinels)
         config = compiled_claude(launched)

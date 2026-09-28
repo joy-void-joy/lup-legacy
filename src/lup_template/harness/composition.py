@@ -32,6 +32,8 @@ from lup_template.harness.catalog import (
     PUBLISH,
     WORKFLOW,
     declared_hook_set,
+    launched_serve,
+    launched_tool_servers,
     portable_harness,
 )
 from lup_template.harness.content.catalog import COMPOSITION
@@ -71,6 +73,8 @@ def project_content(
         assets=[CONTENT_ROOT / "assets" / "file_suggest.sh"],
         settings=project_settings(harness.plugins[0]),
         settings_source=settings_module.__name__,
+        servers=launched_tool_servers(composed.withheld_tool_groups()),
+        serve=launched_serve(root),
     )
 
 

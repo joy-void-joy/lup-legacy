@@ -301,9 +301,9 @@ class Codex(
     home: Path | None = None
     """The Codex home every session runs in, named outright.
 
-    Wins over the home ``profile`` resolves to, the way an explicit directory
-    outranks a name looked up; unset, the profile's home, the one this
-    process already runs under, or a launch's home for its worktree."""
+    Wins over ``profile`` the way an explicit directory outranks a name looked
+    up; unset, the profile's home, the one this process already runs under,
+    or a launch's home for its worktree."""
 
     sandbox: SessionSandbox = NoSandbox()
     """Which wall every session opens behind; ``NoSandbox()`` is none, the policy alone.
@@ -597,17 +597,21 @@ class Codex(
 
         return check_codex(self)
 
-    def launch(self, *words: str, steps: Sequence[LaunchStep] = ()) -> int:
+    def launch(
+        self, *words: str, steps: Sequence[LaunchStep] = (), force: bool = False
+    ) -> int:
         """Prepare, check, and run Codex in the foreground, then clean up.
 
         The terminal is the session's until it ends; ``words`` reach the CLI
         after everything the declaration compiles to, and ``steps`` run around
         the whole of it — each ``before`` first, each ``after`` last, however
-        the session ended. Answers the CLI's exit status.
+        the session ended. ``force`` reinstalls a plugin whose version has not
+        moved into the home the session opens in, as :meth:`prepare` does.
+        Answers the CLI's exit status.
         """
         from lup.providers.codex.launch import launch_codex_session
 
-        return launch_codex_session(self, list(words), steps)
+        return launch_codex_session(self, list(words), steps, force)
 
     def layered(self, layers: SessionLayers) -> Self:
         """This agent with ``layers`` laid over its own, the fields set there winning."""

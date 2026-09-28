@@ -43,6 +43,7 @@ from lup.harness.models import (
     Harness,
     PromptDocument,
 )
+from lup.mcp import ServeLaunch, ToolServer
 from lup.types import JsonObject
 from lup.workspace.paths import declared_project_root
 from lup.harness.ownership import (
@@ -94,6 +95,17 @@ class ProjectContent(BaseModel, frozen=True):
     settings: JsonObject = {}
     """Native settings for the runtime that reads a settings file."""
 
+    servers: list[ToolServer] = []
+    """The tool servers every session this project launches carries.
+
+    Declared per session by the launch rather than carried in the tree it
+    compiles: a runtime reading a strict roster drops a plugin's own, so the
+    session's command line is the one place a server reaches it from.
+    """
+
+    serve: ServeLaunch = ServeLaunch()
+    """How a launched session starts the servers lup hosts, for this project."""
+
     settings_source: str = ""
     """The module declaring those settings, and where a reader edits them.
 
@@ -135,6 +147,12 @@ class NativeHarnessComposition(BaseModel, frozen=True, arbitrary_types_allowed=T
     login: ProviderLogin
     default_config_home: Path
     clipboard_transport: ClipboardTransport = "commands"
+    servers: list[ToolServer] = []
+    """The tool servers a session launched on this composition carries."""
+
+    serve: ServeLaunch = ServeLaunch()
+    """How that session starts the servers lup hosts."""
+
     wire_contracts: list[WireContract] = []
     """Reply shapes this runtime's adapter reads fields off by name.
 

@@ -21,8 +21,10 @@ import pytest
 import lup.providers.codex.launch as codex_launch
 from lup.launch.boundary import apply_sandbox_environment
 from lup.launch.declaration import LaunchSandbox
-from lup.providers.claude.launch import claude_sandbox_arguments
-from lup.providers.codex.launch import codex_sandbox_arguments
+from lup.launch.declaration import NoSandbox, OuterContainer
+from lup.providers.claude import Claude
+from lup.providers.claude.launch import claude_settings
+from lup.providers.codex.launch import codex_envelope
 from lup.harness.image import ContainerClient, Image, detected_client
 from lup.harness.models import HookSandbox, HookSet
 from lup.harness.requirements import LostCapability, Requirement, Run
@@ -32,7 +34,7 @@ from lup.harness.toolchain import (
     codex_envelope_requirement,
     socat_requirement,
 )
-from lup.providers.claude.confinement import CLAUDE_CONFINEMENT
+from lup.providers.claude.confinement import CLAUDE_CONFINEMENT, CLAUDE_SANDBOX_OFF
 from lup.providers.codex.confinement import CODEX_CONFINEMENT
 from lup.types import EnvVars
 
@@ -139,10 +141,11 @@ def test_a_contained_claude_session_turns_its_own_sandbox_off() -> None:
     right answer for the uncontained launch the same file serves. Which one
     this launch is, is the launch's to say.
     """
-    arguments = claude_sandbox_arguments(confining_hooks(), sandbox=LaunchSandbox.OUTER)
+    document = claude_settings(
+        Claude(policy=confining_hooks(), sandbox=OuterContainer())
+    )
 
-    assert arguments[0] == "--settings"
-    assert '"enabled": false' in arguments[1]
+    assert document == {"sandbox": {"enabled": False}}
 
 
 def test_a_contained_codex_session_keeps_the_route_to_its_proxy() -> None:
@@ -156,7 +159,7 @@ def test_a_contained_codex_session_keeps_the_route_to_its_proxy() -> None:
     """
     environment: EnvVars = {}
 
-    arguments = codex_sandbox_arguments(
+    arguments = codex_envelope(
         confining_hooks(), environment, [], sandbox=LaunchSandbox.OUTER
     )
 
@@ -177,12 +180,12 @@ def test_a_launch_choosing_no_sandbox_stands_both_walls_down_and_vouches_nothing
     """
     environment: EnvVars = {}
 
-    claude = claude_sandbox_arguments(confining_hooks(), sandbox=LaunchSandbox.NONE)
-    codex = codex_sandbox_arguments(
+    claude = claude_settings(Claude(policy=confining_hooks(), sandbox=NoSandbox()))
+    codex = codex_envelope(
         confining_hooks(), environment, [], sandbox=LaunchSandbox.NONE
     )
 
-    assert claude == CLAUDE_CONFINEMENT.off
+    assert claude == CLAUDE_SANDBOX_OFF
     assert codex == CODEX_CONFINEMENT.off
     assert "LUP_SANDBOX_ACTIVE" not in environment
 
@@ -209,7 +212,7 @@ def test_neither_runtime_vouches_for_a_boundary_it_did_not_exercise(
         ),
     )
 
-    arguments = codex_sandbox_arguments(
+    arguments = codex_envelope(
         confining_hooks(), environment, [], sandbox=LaunchSandbox.INNER
     )
 
@@ -235,9 +238,7 @@ def test_an_envelope_that_answers_is_vouched_for(
         ),
     )
 
-    codex_sandbox_arguments(
-        confining_hooks(), environment, [], sandbox=LaunchSandbox.INNER
-    )
+    codex_envelope(confining_hooks(), environment, [], sandbox=LaunchSandbox.INNER)
 
     assert environment["LUP_SANDBOX_ACTIVE"] == "1"
 
@@ -366,13 +367,11 @@ def test_each_runtime_stands_down_by_one_declaration_rather_than_two() -> None:
     environment: EnvVars = {}
 
     assert (
-        claude_sandbox_arguments(confining_hooks(), sandbox=LaunchSandbox.OUTER)
-        == CLAUDE_CONFINEMENT.off
+        claude_settings(Claude(policy=confining_hooks(), sandbox=OuterContainer()))
+        == CLAUDE_SANDBOX_OFF
     )
     assert (
-        codex_sandbox_arguments(
-            confining_hooks(), environment, [], sandbox=LaunchSandbox.OUTER
-        )
+        codex_envelope(confining_hooks(), environment, [], sandbox=LaunchSandbox.OUTER)
         == CODEX_CONFINEMENT.off
     )
 

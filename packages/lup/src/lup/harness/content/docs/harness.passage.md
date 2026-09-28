@@ -564,18 +564,35 @@ plugin is never mistaken for the cache. Personal trust state, credentials,
 active run state, and cache contents are never generated or committed. Review
 hook trust with the native hooks surface after generation.
 
-`lup-devtools harness claude|codex` composes its session from the library:
-the gates a launch clears, the boundary it measures and records, the
-container it opens in and the argv on either side of it live in
-`lup.launch.session` and `lup.launch.container`, and each runtime's own
-spelling of the same launch in `lup.providers.claude.launch` and
-`lup.providers.codex.launch`. What stays with the command is this
-repository's workflow around a session — regenerating every tree, syncing
-the base, checkpoints, the launch modes — and the mapping from its flags to
-the launch. A program launches a declared agent through the same
-composition with `Claude(...).launch()` or `Codex(...).launch()`, and
-`command()` prints the process either would start; `docs/library.md`
+`lup-devtools harness claude|codex` launches a declaration. Each flag is a
+field of the `Claude(...)` or `Codex(...)` it builds from this repository's
+composition — the generated plugin and every plugin the checkout keeps beside
+it, the harness's policy, requirements, image and inbox, the tool servers
+every session carries — and `launch()` does what a program's launch does:
+readies the home, checks the host, measures the boundary, compiles the argv
+and runs the CLI in the foreground. What stays with the command is this
+repository's workflow around a session, handed to that launch as its
+`steps=` — the checkpoint outermost, then the worktree pointers verified,
+the base brought level, and every tree regenerated — and the mapping from
+its flags and launch modes to the declaration. `command()` on the same
+declaration prints the process the command runs; `docs/library.md`
 describes the declaration.
+
+| Flag | Field |
+|---|---|
+| `--model`, `--effort` | `model=` (a name the catalog does not list goes through as `CustomModel`), `effort=` |
+| `--profile` (both), `--codex-home` | `profile=`, and `home=` — the profile's resolved home on Claude, the named home on Codex |
+| `--sandbox outer\|inner\|none` | `OuterContainer(image=..., mounts=..., devices=...)`, `InnerSandbox(escapable=True)` on Claude and `InnerSandbox()` on Codex, `NoSandbox()`; unnamed, outer where Docker or Podman answers and inner with a warning where neither does |
+| `--mount`, `--mount-ro`, `sync.json.local` | `Mount(path, writable=...)` on the sandbox, the command line's first |
+| `--device`, `sync.json.local` grants | `devices=` on `OuterContainer`; said and not granted on the host |
+| `--continue` / `--resume` / `--session ID` | `resume=Latest()` / `Pick()` / `Reopen(session=...)` |
+| `--max-recursive-agent` | `max_recursive_agent=`, a mode's default where it names none |
+| `--transcribe-session`, a mode's record | `record=Recording(transcript=..., root=..., mode=..., ledger=...)` |
+| `--generate-only` | every tree regenerated, then `prepare()` — the home a host session opens against |
+| `--force-install` (Codex) | `prepare(force=True)`, and `launch(force=True)` |
+| `--ignore-antipatterns` | the plugin compiled with every rule retired |
+| a launch mode | its targets compile the plugin; its model, words, record root and allowance are fields; what it opens around the run is a host companion |
+| passthrough words | `launch(*words)`, after everything the declaration compiles to |
 
 ### Opening a session the anti-pattern gate leaves alone
 
@@ -585,8 +602,8 @@ were never written for.
 
 It reaches the gate rather than the command line, which is the only thing that
 would make it work. The anti-pattern table is projected into each plugin's
-hermetic edit policy at generation time, and `ready_to_open` regenerates before
-it opens — so the flag compiles the tree the session actually runs against.
+hermetic edit policy at generation time, and a launch regenerates every tree
+before it opens — so the flag compiles the tree the session actually runs against.
 What it sets is `RuleSelection` with every id retired, spelled as the ids
 rather than as a flag meaning "all of them", because the selection is
 subtractive and a rule added later should be one the selection has visibly not
@@ -764,9 +781,9 @@ local one of the same name. The first profile added where nothing is selected
 yet becomes the selection, in the place it was added; one added beside a
 selection leaves it standing.
 
-`harness claude --profile` selects one for a single launch, and `profile=NAME`
-on a `Claude` or `Codex` declaration opens every session as it, both resolved
-local first. A declaration naming no profile stays on its process's account
+`harness claude --profile` and `harness codex --profile` select one for a
+single launch, and `profile=NAME` on a `Claude` or `Codex` declaration opens
+every session as it, all resolved local first. A declaration naming no profile stays on its process's account
 rather than taking the recorded one, for the reason above. A name nothing
 answers to is refused with the roster that would have answered, at the
 launcher, the command tree and the declaration alike, and `usage claude` and

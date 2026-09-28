@@ -69,7 +69,7 @@ from lup.workspace.paths import (
     project_root,
     read_project_name,
 )
-from lup.mcp import ServeLaunch
+from lup.mcp import ServeLaunch, ToolServer
 from lup.tools.toolsets import startup_names
 from lup_template.agent.toolsets import (
     declared_tool_groups,
@@ -253,6 +253,48 @@ session's notes go and is no identity: what the roster knows a session by is
 the launcher's id, or the id its runtime gave the process, which
 :mod:`lup.providers.identity` asks the adapter for — never this word, which
 every session of one worktree would share."""
+
+
+def launched_tool_servers(
+    withheld: list[str] = WITHHELD_TOOL_GROUPS,
+) -> list[ToolServer]:
+    """The servers every session this project launches carries.
+
+    Read off the same declaration the in-process and subprocess backends
+    assemble from, so a group added there reaches a launched session too.
+    Realtime is the relay mode of a persistent run and belongs to no
+    interactive session, so its group is not among them; *withheld* are the
+    groups a declined module owns.
+    """
+    started = startup_names(declared_tool_groups())
+    return [
+        server
+        for server in declared_tool_servers()
+        if server.name in started and server.name not in withheld
+    ]
+
+
+def launched_serve(root: Path) -> ServeLaunch:
+    """How a launched session starts those servers: this project's CLI, in its environment.
+
+    Through ``uv run --directory`` naming the checkout, so a server started
+    inside a container or from another directory still resolves this
+    project's environment; under :data:`HARNESS_SESSION`, the session every
+    group's process of one worktree shares; with this project's needs hook.
+    """
+    return ServeLaunch(
+        program=[
+            "uv",
+            "run",
+            "--directory",
+            str(root),
+            "lup-devtools",
+            "tools",
+            "serve",
+        ],
+        session=HARNESS_SESSION,
+        needs=session_needs,
+    )
 
 
 def agent_tool_servers(

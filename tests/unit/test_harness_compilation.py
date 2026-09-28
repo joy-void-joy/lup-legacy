@@ -9,7 +9,7 @@ import sys
 import tomllib
 from collections.abc import Callable
 from pathlib import Path
-from typing import Literal, get_args
+from typing import Any, Literal, get_args
 
 import pytest
 import sh
@@ -158,13 +158,11 @@ from lup_template.harness.catalog import (
 from lup_template.harness.content.docs.catalog import documents
 from lup_template.harness.content.catalog import GUIDANCE as COMPOSED_GUIDANCE
 from lup_template.harness.content.settings import project_settings
-from lup.devtools.harness import launch
 import lup.providers.codex.launch as codex_launch
-from lup.providers.claude.launch import (
-    claude_sandbox_arguments,
-    companion_plugin_directories,
-)
-from lup.providers.codex.launch import codex_sandbox_arguments
+from lup.launch.declaration import InnerSandbox, Mount
+from lup.providers.claude import Claude
+from lup.providers.claude.launch import claude_settings, companion_plugin_directories
+from lup.providers.codex.launch import codex_envelope
 from lup.policy.kernel.shell import sandbox_excluded
 from lup_template.harness.content.template_claude import (
     DOCUMENT as TEMPLATE_CLAUDE,
@@ -187,6 +185,11 @@ from lup.harness.generate import (
 
 GUIDANCE = COMPOSED_GUIDANCE
 """The guidance this repository actually ships, module selection included."""
+
+
+def settings_read(agent: Claude, tree: Path) -> dict[str, Any]:
+    """The settings document a launch of ``agent`` carries, read back as a CLI reads it."""
+    return json.loads(json.dumps(claude_settings(agent, tree)))
 
 
 class ClaudeHookDecision(BaseModel, frozen=True):
@@ -3264,8 +3267,9 @@ def test_claude_sandbox_widens_the_writable_set_to_sibling_worktrees(
     """
     plugin = portable_harness().plugins[0]
     assert plugin.hooks is not None and plugin.hooks.sandbox is not None
-    arguments = claude_sandbox_arguments(plugin.hooks, tree=tmp_path)
-    widened = json.loads(arguments[arguments.index("--settings") + 1])
+    widened = settings_read(
+        Claude(policy=plugin.hooks, sandbox=InnerSandbox()), tmp_path
+    )
 
     assert widened["sandbox"]["filesystem"]["allowWrite"] == [
         *plugin.hooks.sandbox.writable_paths,
@@ -3288,13 +3292,16 @@ def test_a_launch_mount_widens_the_inner_sandbox_where_it_asked_to_write(
     writable = tmp_path / "notes"
     read_only = tmp_path / "reference"
 
-    arguments = claude_sandbox_arguments(
-        plugin.hooks,
-        accessible=launch.declared_mounts([writable], [read_only]),
-        tree=tmp_path,
+    widened = settings_read(
+        Claude(
+            policy=plugin.hooks,
+            sandbox=InnerSandbox(
+                mounts=[Mount(path=writable, writable=True), Mount(path=read_only)]
+            ),
+        ),
+        tmp_path,
     )
 
-    widened = json.loads(arguments[arguments.index("--settings") + 1])
     allowed = widened["sandbox"]["filesystem"]["allowWrite"]
     assert str(writable) in allowed
     assert str(read_only) not in allowed
@@ -3372,7 +3379,7 @@ def test_codex_sandbox_arguments_establish_the_envelope(
         codex_launch, "codex_envelope_requirement", lambda: envelope_that(True)
     )
     environment: EnvVars = {}
-    arguments = codex_sandbox_arguments(
+    arguments = codex_envelope(
         portable_harness().plugins[0].hooks, environment, ["--model", "gpt-5.2"]
     )
     assert arguments[:2] == ["--sandbox", "workspace-write"]
@@ -3394,9 +3401,7 @@ def test_a_failed_probe_leaves_the_deny_lattice_standing(
         codex_launch, "codex_envelope_requirement", lambda: envelope_that(False)
     )
     environment: EnvVars = {}
-    arguments = codex_sandbox_arguments(
-        portable_harness().plugins[0].hooks, environment, []
-    )
+    arguments = codex_envelope(portable_harness().plugins[0].hooks, environment, [])
 
     assert arguments[:2] == ["--sandbox", "workspace-write"]
     assert "LUP_SANDBOX_ACTIVE" not in environment
@@ -3407,7 +3412,7 @@ def test_codex_sandbox_widens_the_root_to_sibling_worktrees(
 ) -> None:
     """Codex roots writes at the launch cwd; the prescribed worktree is outside."""
     environment: EnvVars = {}
-    arguments = codex_sandbox_arguments(
+    arguments = codex_envelope(
         portable_harness().plugins[0].hooks, environment, [], tree=tmp_path
     )
     roots = arguments[arguments.index("-c") + 1]
@@ -3420,9 +3425,7 @@ def test_codex_sandbox_omits_the_root_outside_a_tree_layout() -> None:
     """A plain clone has no tree/ to widen to, so the envelope stands alone."""
     environment: EnvVars = {}
 
-    assert codex_sandbox_arguments(
-        portable_harness().plugins[0].hooks, environment, []
-    ) == [
+    assert codex_envelope(portable_harness().plugins[0].hooks, environment, []) == [
         "--sandbox",
         "workspace-write",
     ]
@@ -3441,9 +3444,7 @@ def test_codex_sandbox_arguments_defer_to_a_caller_envelope() -> None:
     ]
     for extra_args in caller_forms:
         assert (
-            codex_sandbox_arguments(
-                portable_harness().plugins[0].hooks, environment, extra_args
-            )
+            codex_envelope(portable_harness().plugins[0].hooks, environment, extra_args)
             == []
         )
     assert "LUP_SANDBOX_ACTIVE" not in environment

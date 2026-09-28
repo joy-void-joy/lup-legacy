@@ -568,7 +568,11 @@ def create_harness_app(
             ] = None,
             generate_only: Annotated[
                 bool,
-                typer.Option("--generate-only", help="Generate without launching"),
+                typer.Option(
+                    "--generate-only",
+                    help="Generate every tree and ready the home a host session "
+                    "opens against, without launching",
+                ),
             ] = False,
             continue_latest: Annotated[
                 bool,
@@ -650,35 +654,33 @@ def create_harness_app(
             ] = False,
         ) -> None:
             selection = launch.extract_launch_mode(modes, ctx.args)
-            allowance = (
-                selection.mode.recursive_agent_limit(max_recursive_agent)
-                if selection.mode is not None
-                else -1
-                if max_recursive_agent is None
-                else max_recursive_agent
+            request = launch.LaunchRequest(
+                words=selection.arguments,
+                model=model,
+                effort=effort,
+                profile=profile,
+                resume=Resumption(latest=continue_latest, pick=resume, session=session),
+                sandbox=sandbox,
+                mounts=mount,
+                read_only=mount_ro,
+                devices=device,
+                max_recursive_agent=max_recursive_agent,
+                transcribe_session=transcribe_session,
+                relaxed=ignore_antipatterns,
+                mode=selection.mode,
+                recorder=recorder_for("claude"),
             )
+            allowance = request.allowance()
             launch.launch_claude(
                 selected_target(
                     selection.mode, "claude", allowance, ignore_antipatterns
                 ),
-                selection.arguments,
+                request,
                 directory,
-                profile,
-                model,
                 generate_only,
-                selection.mode,
-                Resumption(latest=continue_latest, pick=resume, session=session),
-                ignore_antipatterns,
-                sandbox,
                 checkpoint=checkpoint,
-                max_recursive_agent=allowance,
-                transcribe_session=transcribe_session,
                 companions=companion_targets(selection.mode, "claude", allowance),
                 repository_writers=repository_writers,
-                mounts=launch.declared_mounts(mount, mount_ro),
-                devices=launch.declared_devices(device),
-                recorder=recorder_for("claude"),
-                effort=effort,
             )
 
     codex_target = targets.builder("codex")
@@ -725,7 +727,13 @@ def create_harness_app(
             ] = None,
             profile: Annotated[
                 str | None,
-                typer.Option("--profile", "-p", help="Codex named config overlay"),
+                typer.Option(
+                    "--profile",
+                    "-p",
+                    help="Account profile under ~/.config/lup/profiles, the "
+                    "worktree's Codex home derived from its; default: the one "
+                    "config.toml selects",
+                ),
             ] = None,
             model: Annotated[
                 str | None,
@@ -734,7 +742,7 @@ def create_harness_app(
                     "-m",
                     help="Native model override; default: the tier in "
                     "~/.config/lup/config.toml, strongest unless it names "
-                    "another, except under --profile",
+                    "another",
                 ),
             ] = None,
             effort: Annotated[
@@ -744,13 +752,16 @@ def create_harness_app(
                     help="Reasoning effort: low, medium, high, xhigh, max, or "
                     "ultra; refused where the model's catalog row lacks it. "
                     "Default: the effort in ~/.config/lup/config.toml, else "
-                    "xhigh, stepped down to a rung the row takes; a "
-                    "--profile with no --model keeps the profile's own",
+                    "xhigh, stepped down to a rung the row takes",
                 ),
             ] = None,
             generate_only: Annotated[
                 bool,
-                typer.Option("--generate-only", help="Generate without launching"),
+                typer.Option(
+                    "--generate-only",
+                    help="Generate every tree and ready the home a host session "
+                    "opens against, without launching",
+                ),
             ] = False,
             force_install: Annotated[
                 bool,
@@ -839,36 +850,34 @@ def create_harness_app(
             ] = False,
         ) -> None:
             selection = launch.extract_launch_mode(modes, ctx.args)
-            allowance = (
-                selection.mode.recursive_agent_limit(max_recursive_agent)
-                if selection.mode is not None
-                else -1
-                if max_recursive_agent is None
-                else max_recursive_agent
+            request = launch.LaunchRequest(
+                words=selection.arguments,
+                model=model,
+                effort=effort,
+                profile=profile,
+                resume=Resumption(latest=continue_latest, pick=resume, session=session),
+                sandbox=sandbox,
+                mounts=mount,
+                read_only=mount_ro,
+                devices=device,
+                max_recursive_agent=max_recursive_agent,
+                transcribe_session=transcribe_session,
+                relaxed=ignore_antipatterns,
+                mode=selection.mode,
+                recorder=recorder_for("codex"),
             )
+            allowance = request.allowance()
             launch.launch_codex(
                 selected_target(
                     selection.mode, "codex", allowance, ignore_antipatterns
                 ),
-                selection.arguments,
+                request,
                 codex_home,
-                profile,
-                model,
                 generate_only,
                 force_install,
-                selection.mode,
-                Resumption(latest=continue_latest, pick=resume, session=session),
-                ignore_antipatterns,
-                sandbox,
                 checkpoint=checkpoint,
-                max_recursive_agent=allowance,
-                transcribe_session=transcribe_session,
                 companions=companion_targets(selection.mode, "codex", allowance),
                 repository_writers=repository_writers,
-                mounts=launch.declared_mounts(mount, mount_ro),
-                devices=launch.declared_devices(device),
-                recorder=recorder_for("codex"),
-                effort=effort,
             )
 
     return app

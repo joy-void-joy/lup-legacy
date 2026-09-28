@@ -30,10 +30,11 @@ from lup.launch.declaration import (
     resumption,
 )
 from lup.launch.foreground import between_steps, run_in_foreground
-from lup.launch.preflight import LaunchSentinels, release_ledger, sweep_ledgers
+from lup.launch.preflight import LaunchSentinels, release_ledger
 from lup.launch.refusal import LaunchRefused
 from lup.launch.session import (
     LaunchOpening,
+    cleared_on_the_way_in,
     personal_config,
     runtime_preflight,
     session_argv,
@@ -106,20 +107,21 @@ def codex_resume_arguments(resume: Resumption) -> list[str]:
     return ["resume", "--last"] if resume.latest else []
 
 
-def codex_sandbox_arguments(
+def codex_envelope(
     hooks: HookSet | None,
     environment: EnvVars,
     extra_args: list[str],
     sandbox: LaunchSandbox = LaunchSandbox.INNER,
     accessible: list[AccessibleRoot] = [],
     tree: Path | None = None,
+    mode: "CodexSandbox | None" = None,
 ) -> list[str]:
     """Compose the interactive Codex envelope that LUP_SANDBOX_ACTIVE vouches for.
 
     Establishing the inner sandbox, the launcher builds the boundary it
     announces: an explicit workspace-write sandbox on the Codex command line,
-    mirroring how the Claude settings artifact compiles the same declaration
-    into an OS wall. Path-level write and credential denials have no Codex
+    mirroring how the Claude settings compile the same declaration into an
+    OS wall. Path-level write and credential denials have no Codex
     equivalent, and neither does taking one command out of the envelope, so
     the envelope is the declaration's strict subset (network stays off). The
     dispatcher still reads the exclusions, judging those commands as though
@@ -134,40 +136,16 @@ def codex_sandbox_arguments(
     :data:`~lup.providers.codex.confinement.CODEX_CONFINEMENT` rather than
     here -- which carries why, and is where the image-side probe reads the
     same words rather than inventing its own. This is the counterpart of
-    Claude's off switch, and it is what "every runtime, in the same change"
-    means for a posture: one concept, each runtime's own word for it.
-
+    Claude's off switch: one concept, each runtime's own word for it.
     Choosing no sandbox at all spells the same off switch on the host, and
     the notice says which wall holds instead: none, so the deny lattice
     stays standing and every unjudged command keeps its escalation recipe.
+    LUP_SANDBOX_ACTIVE stays unset in both, because neither session relies on
+    it -- the kernel reads the containment out of what the launch measured.
 
-    LUP_SANDBOX_ACTIVE stays unset in both of those, because neither session
-    relies on it -- the kernel reads the containment out of what the launch
-    measured, and a boundary that was observed is a boundary whether this
-    flag vouched for it or not, while a session with no boundary wants the
-    lattice the flag would relax.
-    """
-    if hooks is None or hooks.sandbox is None:
-        return []
-    return codex_envelope(hooks, environment, extra_args, sandbox, accessible, tree)
-
-
-def codex_envelope(
-    hooks: HookSet | None,
-    environment: EnvVars,
-    extra_args: list[str],
-    sandbox: LaunchSandbox = LaunchSandbox.INNER,
-    accessible: list[AccessibleRoot] = [],
-    tree: Path | None = None,
-    mode: "CodexSandbox | None" = None,
-) -> list[str]:
-    """The Codex envelope for one posture, whether or not a policy declares a sandbox.
-
-    What :func:`codex_sandbox_arguments` composes once a policy declares a
-    sandbox, and what a declaration naming its sandbox outright compiles to
-    either way. ``mode`` is a mode the declaration names beside its wall:
-    it narrows the inner envelope and replaces the container's and the
-    host's off switch, as :func:`codex_sandbox_mode` reconciles the two.
+    ``mode`` is a mode the declaration names beside its wall: it narrows the
+    inner envelope and replaces the container's and the host's off switch,
+    as :func:`codex_sandbox_mode` reconciles the two.
     """
     overrides = [
         word
@@ -335,11 +313,14 @@ def codex_sandbox_mode(
 
 
 def codex_account_environment(agent: "Codex") -> EnvVars:
-    """The account a session runs as: its profile's home, or the home named outright."""
-    account = profile_environment(CODEX_LOGIN, agent.profile)
-    if agent.home is None:
-        return account
-    return {**account, **CODEX_LOGIN.environment(agent.home)}
+    """The account a session runs as: the home named outright, or its profile's.
+
+    A home named outright is the account's own, found by whoever named it,
+    so the profile beside it only names that account and is not looked up.
+    """
+    if agent.home is not None:
+        return CODEX_LOGIN.environment(agent.home)
+    return profile_environment(CODEX_LOGIN, agent.profile)
 
 
 def compiled_codex(agent: "Codex") -> "Codex":
@@ -356,7 +337,7 @@ def compiled_codex(agent: "Codex") -> "Codex":
     is each output's own: its home itself for a session opened here, and a
     home derived from it for the worktree a launch opens in.
     """
-    personal = UserConfigFile().load()
+    personal = personal_config(UserConfigFile())
     served = (
         agent.endpoint is not None
         or agent.model_provider is not None
@@ -804,6 +785,9 @@ def launch_codex_session(
     measured behind is released however it ended.
     """
     launched = codex_launched(agent)
+    # Compiled once before any step runs, so a declaration the person's lup
+    # config cannot answer is refused before a step has done anything.
+    compiled_codex(launched)
 
     def session() -> int:
         root = codex_root(launched)
@@ -811,7 +795,7 @@ def launch_codex_session(
             generate(
                 codex_generation_recipe(root, ProjectContent(harness=launched.plugin))
             )
-        sweep_ledgers(root)
+        cleared_on_the_way_in(root)
         sentinels = LaunchSentinels()
         opening = codex_checked(launched, sentinels)
         config = compiled_codex(launched)

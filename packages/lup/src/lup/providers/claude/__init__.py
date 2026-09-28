@@ -337,9 +337,9 @@ class Claude(
     home: Path | None = None
     """The Claude configuration home every session runs in, named outright.
 
-    Wins over the home ``profile`` resolves to, the way an explicit directory
-    outranks a name looked up; unset, the profile's home or the one this
-    process already runs under."""
+    Wins over ``profile`` the way an explicit directory outranks a name looked
+    up, and the profile then only names the account; unset, the profile's home
+    or the one this process already runs under."""
 
     endpoint: ClaudeCompatibleEndpoint | None = None
     """An Anthropic-compatible endpoint the sessions talk to instead of Anthropic's."""

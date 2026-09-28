@@ -1,0 +1,24 @@
+subjects = ["declared_mounts", "ready_to_open"]
+reason = """
+`harness claude|codex` launches a Claude or Codex declaration built from its \
+flags, so the gate before a session and the argv behind it are the \
+library's launch, and the repository's own workflow around it — a \
+checkpoint, the worktree pointers, the base, every tree regenerated — runs \
+as that launch's lifecycle steps"""
+
+[[steps]]
+instruction = """
+Call launch_claude(composition, LaunchRequest(...), profiles, generate_only, \
+checkpoint=..., companions=..., repository_writers=...) and \
+launch_codex(composition, LaunchRequest(...), codex_home, generate_only, \
+force_install, ...) from lup.devtools.harness.launch: every flag the \
+command line took is a LaunchRequest field, and claude_declaration / \
+codex_declaration answer the declaration a request makes."""
+
+[[steps]]
+instruction = """
+Where ready_to_open ran the workflow before a session, pass \
+workflow_steps(runtime, TreesGenerated(...), checkpoint) as the launch's \
+steps=; where declared_mounts(writable, read_only) built roots, declare \
+[Mount(path=path, writable=True) for path in writable] and \
+[Mount(path=path) for path in read_only] on the sandbox."""

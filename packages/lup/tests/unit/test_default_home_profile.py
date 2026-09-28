@@ -26,7 +26,6 @@ from pydantic import ValidationError
 from typer.testing import CliRunner
 
 import lup.devtools.harness.launch as launch
-from lup.launch.session import LaunchOpening
 from lup.launch.declaration import LaunchSandbox
 import lup.providers.claude.usage.reader as claude_usage
 from lup.devtools.harness.composition import NativeTargets
@@ -35,13 +34,13 @@ from lup.devtools.harness.profile_app import create_profile_app
 from lup.devtools.resolve.app import create_resolve_app
 from lup.devtools.setup import create_setup_app
 from lup.providers.claude.config import ClaudeProfileRegistry, ClaudeProfileSelection
-from lup.harness.messaging import SessionInboxes
 from lup.providers.claude.login import CLAUDE_CONFIG_DIR, CLAUDE_LOGIN
 from lup.providers.codex.login import CODEX_LOGIN
 from lup.providers.login import ProviderLogin
 from lup.providers.profile_tree import profile_directory
 from lup.providers.profiles import DefaultHomeProfile, ProfileDirectory
 from lup.providers.user_config import UserConfigFile
+from tests.unit.harness_launch import checkout, composition, stub_host
 
 DEFAULT_HOME = CLAUDE_LOGIN.ambient_home
 
@@ -326,27 +325,18 @@ def test_the_setup_wizard_refuses_adding_the_default_home(
 def test_a_launch_refuses_a_stored_default_home_as_a_bad_parameter(
     registered: ProfileDirectory, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Run ``launch_claude`` as far as the profile it exports, and no further."""
-    plugin = Mock()
-    plugin.name = "lup"
-    composition = Mock()
-    composition.recipe.source.plugins = [plugin]
-    composition.recipe.source.image.inboxes = SessionInboxes(directory="")
-    monkeypatch.setattr(launch, "ready_to_open", lambda *a, **k: LaunchOpening())
-    monkeypatch.setattr(launch, "project_root", lambda: tmp_path)
-    monkeypatch.setattr(
-        launch,
-        "claude_sandbox_arguments",
-        lambda _plugin, sandbox=LaunchSandbox.INNER, accessible=[], settings=None, tree=None: [],
-    )
-    monkeypatch.setattr(launch, "non_interactive_environment", lambda _env: {})
-    monkeypatch.setattr(launch, "apply_sandbox_environment", lambda *a, **k: None)
-    monkeypatch.setattr(launch, "accessible_roots", lambda *a: [])
-    session = Mock(side_effect=AssertionError("a refused profile opened a session"))
-    monkeypatch.setattr(launch, "start_harness_transcript", session)
+    """Refused as the declaration is made, before anything around the session runs."""
+    root = checkout(tmp_path)
+    caught = stub_host(monkeypatch, root)
 
     with pytest.raises(typer.BadParameter, match="profile remove main"):
-        launch.launch_claude(composition, [], registered, None, None, False)
+        launch.launch_claude(
+            composition(root, "claude"),
+            launch.LaunchRequest(sandbox=LaunchSandbox.INNER),
+            registered,
+            False,
+        )
+    assert caught.events == []
 
 
 def test_a_resolver_run_refuses_a_stored_default_home_before_it_starts(

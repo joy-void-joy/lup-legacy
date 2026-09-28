@@ -34,6 +34,8 @@ class ClaudeComposer(NativeComposer):
 
         return NativeHarnessComposition(
             recipe=claude_generation_recipe(root, content, guidance),
+            servers=content.servers,
+            serve=content.serve,
             readiness=readiness,
             invocation_renderer=ClaudeSpellings(),
             login=CLAUDE_LOGIN,

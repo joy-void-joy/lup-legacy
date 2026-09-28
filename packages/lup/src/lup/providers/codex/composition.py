@@ -35,6 +35,8 @@ class CodexComposer(NativeComposer):
 
         return NativeHarnessComposition(
             recipe=codex_generation_recipe(root, content, guidance),
+            servers=content.servers,
+            serve=content.serve,
             readiness=readiness,
             invocation_renderer=CodexSpellings(),
             login=CODEX_LOGIN,

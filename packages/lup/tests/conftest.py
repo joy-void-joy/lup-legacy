@@ -14,12 +14,13 @@ from pathlib import Path
 
 import pytest
 
-import lup.devtools.harness.launch as launch
+import lup.providers.claude.launch as claude_launch
 import lup.providers.profile_tree as profile_tree
 from lup.devtools.gitguard import TEST_IDENTITY, GuardVerdict, RepositoryWatch
 from lup.harness.environment import launcher_decided_names
 from lup.providers.claude.config_home import ClaudeConfigHome, selected_config_home
 from lup.providers.claude.login import CLAUDE_CONFIG_DIR
+from lup.providers.codex.login import CODEX_HOME
 from lup.providers.identity import RUNTIME_DECIDED_ENV
 from lup.types import EnvVars
 
@@ -110,13 +111,16 @@ def checkout_profiles_withheld(
 def personal_claude_account_withheld(
     tmp_path_factory: pytest.TempPathFactory,
 ) -> Iterator[None]:
-    """Keep every launch under test out of the developer's own Claude account.
+    """Keep every launch under test out of the developer's own accounts.
 
     A host launch settles its theme into the account it runs as, and a launch
     naming no profile runs as the operator's default home — fixed when the
-    login is imported, so no ``HOME`` a test sets moves it. The home a launch
-    reads when none is named is bound to an empty directory for the whole
-    suite; one a test names outright is still the one it named.
+    login is imported, so no ``HOME`` a test sets moves it — or as whatever
+    home this process's environment names, which inside a session is that
+    session's own. So the homes this suite's environment names are taken
+    away, and the home a launch reads when none is named is bound to an
+    empty directory for the whole suite; one a test names outright is still
+    the one it named.
     """
     account = tmp_path_factory.mktemp("claude-account")
 
@@ -128,7 +132,9 @@ def personal_claude_account_withheld(
         )
 
     with pytest.MonkeyPatch.context() as patched:
-        patched.setattr(launch, "selected_config_home", withheld)
+        patched.delenv(CLAUDE_CONFIG_DIR, raising=False)
+        patched.delenv(CODEX_HOME, raising=False)
+        patched.setattr(claude_launch, "selected_config_home", withheld)
         yield
 
 
