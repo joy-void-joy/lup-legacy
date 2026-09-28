@@ -1,9 +1,10 @@
 """A native subagent's own roster row, carried by the hooks both runtimes run.
 
-The tool server one session's conversations share cannot tell them apart, and
-the hook payload can: both runtimes put the subagent's ``agent_id`` on every
-tool event fired inside it (measured on Claude Code 2.1.283 and Codex 0.155.1)
-and leave it off the session's own. So what makes a subagent a row of its own
+A tool server cannot tell one session's conversations apart — they share it
+on Claude Code, and on Codex each subagent's copy starts under the session's
+environment — and the hook payload can: both runtimes put the subagent's
+``agent_id`` on every tool event fired inside it (measured on Claude Code
+2.1.283 and Codex 0.155.1 and 0.158.0) and leave it off the session's own. So what makes a subagent a row of its own
 is carried by generated hooks — a caller hook stamping it into each
 coordination call, the departure hook ending the row when the subagent stops,
 the delivery hook handing it its own mail, and the permission dispatcher
@@ -57,7 +58,8 @@ Claude Code applies a PreToolUse ``updatedInput`` carrying no decision, and the
 coordination tools keep whatever permission the project gave them — measured
 on 2.1.283, where the rewrite reached the tool server even for a key the
 tool's schema forbids. Codex applies one only beside ``permissionDecision:
-"allow"``: its 0.158.0 output parser refuses the rewrite otherwise.
+"allow"`` — measured on 0.158.0, where the same rewrite with no decision was
+dropped and the call ran as the model wrote it.
 """
 
 
@@ -124,6 +126,19 @@ def repository(tmp_path: Path) -> tuple[Path, RepositoryPeers]:
     return work, peers
 
 
+def rollout_head(thread: str, agent_path: str) -> str:
+    """The first line of a Codex rollout, as far as a spawn's name is read from it.
+
+    Measured on 0.158.0: a subagent's rollout opens with its ``session_meta``,
+    whose ``id`` is the ``agent_id`` its events carry and whose ``agent_path``
+    is ``/root/<task_name>`` under the name the spawn went out with.
+    """
+    spawn = {"parent_thread_id": "01a0e915", "depth": 1, "agent_path": agent_path}
+    meta = {"id": thread, "agent_path": agent_path, "agent_nickname": "Popper"}
+    source = {"source": {"subagent": {"thread_spawn": spawn}}}
+    return json.dumps({"type": "session_meta", "payload": {**meta, **source}}) + "\n"
+
+
 def ran(guard: Path, cwd: Path, payload: JsonObject) -> str:
     """One rendered guard, run as the runtime runs it for this session."""
     return str(
@@ -169,6 +184,7 @@ def test_the_rendered_caller_hook_stamps_the_calling_subagent(
     spawned = transcript.with_suffix("") / "subagents" / "agent-a0cacac5.meta.json"
     spawned.parent.mkdir(parents=True)
     spawned.write_text(json.dumps({"name": "builder"}), encoding="utf-8")
+    transcript.write_text(rollout_head("a0cacac5", "/root/builder"), encoding="utf-8")
     payload: JsonObject = {
         "hook_event_name": "PreToolUse",
         "session_id": "native",
@@ -192,13 +208,50 @@ def test_the_rendered_caller_hook_stamps_the_calling_subagent(
     assert caller["agent_type"] == "general-purpose"
     assert caller["cwd"] == str(work)
     assert answer.get("permissionDecision") == decision
-    # What the spawn was called is read where this runtime records it, and
-    # Codex records it nowhere a subagent's event reaches.
-    assert caller.get("name", "") == ("builder" if tree == ".claude" else "")
+    # What the spawn was called is read where each runtime records it: Claude
+    # Code beside the session's transcript, Codex atop the subagent's own.
+    assert caller.get("name", "") == "builder"
 
     root = {key: value for key, value in payload.items() if not key.startswith("agent")}
     stamped = json.loads(ran(guard, work, root))["hookSpecificOutput"]
     assert stamped["updatedInput"][store.CALLER_FIELD]["agent_id"] == ""
+
+
+@pytest.mark.parametrize(
+    ("head", "named"),
+    [
+        pytest.param(rollout_head("a0cacac5", "/root/builder"), "builder", id="own"),
+        pytest.param(
+            rollout_head("a0cacac5", "/root/lead/builder"), "builder", id="nested"
+        ),
+        # The session's rollout, as SubagentStop's transcript_path names it.
+        pytest.param(rollout_head("01a0e915", "/root/builder"), "", id="another"),
+        pytest.param("", "", id="empty"),
+        pytest.param("not json\n", "", id="unreadable"),
+    ],
+)
+def test_a_codex_subagent_is_named_from_its_own_rollout_alone(
+    tmp_path: Path, head: str, named: str
+) -> None:
+    guard = plugin_hooks(codex_target, ".codex", tmp_path / "plugin")
+    work = tmp_path / "work"
+    work.mkdir()
+    rollout = tmp_path / "rollout-a0cacac5.jsonl"
+    rollout.write_text(head + '{"type": "response_item"}\n', encoding="utf-8")
+    payload: JsonObject = {
+        "hook_event_name": "PreToolUse",
+        "transcript_path": str(rollout),
+        "cwd": str(work),
+        "tool_name": f"{CODEX_TOOLS}coordination_describe",
+        "tool_input": {"description": "building the CLI"},
+        "agent_id": "a0cacac5",
+        "agent_type": "default",
+    }
+
+    answer = ran(guard / coordination_caller.GUARD_SCRIPT, work, payload)
+
+    caller = json.loads(answer)["hookSpecificOutput"]["updatedInput"]
+    assert caller[store.CALLER_FIELD].get("name", "") == named
 
 
 @RUNTIMES

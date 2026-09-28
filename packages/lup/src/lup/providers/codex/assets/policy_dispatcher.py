@@ -228,8 +228,8 @@ def dispatch(payload, permission_request=False):
             tool_input["command"], session_directory, autonomous, caller
         )
     if name == "collaborationspawn_agent":
-        # Measured on 0.155.1: the spawn carries `task_name` and `message`,
-        # and the hook names the tool this way. It carries no description to
+        # Measured on 0.155.1 and 0.158.0: the spawn carries `task_name` and
+        # `message`, and the hook names the tool this way. No description to
         # read a name out of, so a spawn with no task name is refused where
         # Claude's half would name it, and one misspelled goes out normalized.
         return spawn_decision(
@@ -255,10 +255,11 @@ def named_input(payload):
     """The spawn's arguments under the name it goes out with, or ``None`` to send it as written.
 
     The one call this half rewrites. Codex takes `updatedInput` only beside
-    `permissionDecision: "allow"` — its hook documentation says so, and the
-    0.158.0 binary reports "PreToolUse hook returned updatedInput without
-    permissionDecision:allow" for any other shape — while a function tool's
-    rewrite replaces its whole arguments object. A spawn raises no approval
+    `permissionDecision: "allow"`, replacing a tool's whole arguments object —
+    its hook documentation says so, and 0.158.0 measured it: a spawn the model
+    named `probe-child`, rewritten to `hooked_child` this way, went out as
+    `/root/hooked_child`, while an MCP call's rewrite with no decision was
+    dropped and the call ran as written. A spawn raises no approval
     of its own there, so the allow that carries the name settles nothing the
     deferral it spells would have left to anybody.
     """

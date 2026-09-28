@@ -136,7 +136,7 @@ renumbers every identifier in them.
 SUBAGENT_SESSION_OUTLIVES_THREAD = UpstreamReport(
     slug="subagent-session-outlives-thread",
     component="Codex",
-    version="0.155.1",
+    version="0.158.0",
     repository="openai/codex",
     title=(
         "A subagent's unified-exec session outlives its thread, and rollout "
@@ -146,90 +146,134 @@ SUBAGENT_SESSION_OUTLIVES_THREAD = UpstreamReport(
     # back to the people who chose them; a report that paraphrased them would
     # be unverifiable by the person receiving it
     body=r"""**What happens.** A PTY session a subagent opened with `exec_command`
-keeps running after that subagent's thread has ended, and at the end of the
-parent session `codex` prints:
+keeps running after that subagent's turn has completed and its report has
+been delivered, until the parent session ends. Then the session is torn down,
+its completion is recorded against the subagent's thread, and `codex` prints:
 
 ```
 ERROR codex_core::session: failed to record rollout items: thread <id> not found
 ```
 
 The id is the subagent's `agent_id`, as `SubagentStart` and `SubagentStop`
-spell it. Something is still producing rollout items addressed to a thread
-that no longer exists.
+spell it.
 
-**Reproduced twice**, in two independently written probe kits, on 0.155.1,
-model `gpt-6-astra`, `permission_mode: bypassPermissions`, launched
-non-interactively with `codex exec`. Offsets below are from each session's
-own hook record.
+**Reproduced three times on 0.158.0**, model `gpt-6-luna` at `low` reasoning
+effort, `permission_mode: bypassPermissions`, launched non-interactively with
+`codex exec --dangerously-bypass-approvals-and-sandbox`. Every hook event was
+registered to a recorder that appends the payload, the wall clock it arrived
+at, and the live processes carrying the probe's command, read from `/proc` at
+that moment. The same line appeared twice on 0.155.1 with `gpt-6-astra`.
+Offsets below are seconds from the launch of `codex exec`; the probe's working
+directory is shortened to `…`.
 
-**Run A** — session `01a0babf-84f5-7d63-83bb-9e8e61401a4a`, subagent
-`01a0babf-9ef4-75a2-91e7-38bf459e89c9`:
+**Run A** — session `01a0e942-a71b-78d0-81c2-a81041053e57`, subagent
+`01a0e942-ca47-7041-bc93-049f17af9c28`:
 
 | offset | event | what |
 | --- | --- | --- |
-| +1152.18s | `PreToolUse` (subagent) | `sleep 494`, **no `&`**, `tool_use_id` prefixed `exec-` |
-| +1157.77s | `SubagentStop` | the subagent reports |
-| +1157.95s | `PostToolUse` (parent) | `collaborationwait_agent` → `{"message":"Wait completed.","timed_out":false}` |
-| +1186.00s | `PostToolUse` (parent) | `ps` → `3767521      33 sleep 494` |
-| +1190.13s | `Stop` | session ends |
+| +12.17s | `PreToolUse` (subagent) | `Bash` `sleep 517`, **no `&`**, `tool_use_id` `exec-faf422d7-9004-4974-84b6-225593e7e0e0` |
+| +14.67s | `SubagentStop` | the subagent reports `ARMED`; `sleep 517` alive as pid 1777597 |
+| +14.71s | `PostToolUse` (parent) | `collaborationwait_agent` → `{"message":"Wait completed.","timed_out":false}` |
+| +41.12s | `PostToolUse` (parent) | `ps` → `1777597      28 sleep 517` |
+| +47.35s | `Stop` | session ends; pid 1777597 still alive, 35.17s old |
 
-`etimes` is 33 and `1186.00 − 1152.18 = 33.8`, so this is one process alive
-continuously, seen **28.2 seconds after the subagent reported**. The command
-carries no `&`, so it is not an orphan reparented to init: the PTY holds it,
-and the PTY outlived the thread that opened it. The call also returned in 5.6
-seconds for a 494-second command, so it handed back a session rather than
-blocking.
+The subagent's call, as its rollout records it, went out through the
+code-mode host as `tools.exec_command({cmd:"sleep 517", yield_time_ms:1000,
+tty:true, max_output_tokens:100})` and came back after one second holding a
+session rather than an exit:
+
+```
+{"chunk_id":"429927","wall_time_seconds":1.003066467,"session_id":58407,"original_token_count":0,"output":""}
+```
+
+`etimes` is 28 and `41.12 − 12.17 = 28.95`, so this is one process alive
+continuously, seen **26.5 seconds after the subagent reported** and still
+alive 32.7 seconds after it, at `Stop`. The command carries no `&`, so it is
+not an orphan reparented to init: the PTY holds it.
 
 Immediately after `Stop`, on the terminal:
 
 ```
-2026-09-19T17:39:18.950689Z ERROR codex_core::session: failed to record rollout items: thread 01a0babf-9ef4-75a2-91e7-38bf459e89c9 not found
+2026-09-28T18:25:01.844403Z ERROR codex_core::session: failed to record rollout items: thread 01a0e942-ca47-7041-bc93-049f17af9c28 not found
 ```
 
-**Run B** — subagent `01a0bacb-ffb1-7361-bd6b-09353dce0fbc`, a kit written to
-force output onto the session *after* the report:
+The subagent's rollout, whose last line had been its own `task_complete` at
+`18:24:29.151Z`, gained one more line **2.4 ms before** that error: the
+session's end, `status: failed`, `exit_code: -1`, under the `process_id` the
+call had been handed as its `session_id`:
+
+```
+{"timestamp":"2026-09-28T18:25:01.842Z","ordinal":25,"type":"event_msg","payload":{"type":"item_completed","thread_id":"01a0e942-ca47-7041-bc93-049f17af9c28","turn_id":"01a0e942-ca66-7903-929a-b0daf5411116","item":{"type":"CommandExecution","id":"exec-faf422d7-9004-4974-84b6-225593e7e0e0","process_id":"58407","command":["/bin/bash","-lc","sleep 517"],"cwd":"file:///…","parsed_cmd":[{"type":"unknown","cmd":"sleep 517"}],"source":"unified_exec_startup","status":"failed","stdout":"","stderr":"","aggregated_output":"","exit_code":-1,"duration":{"secs":35,"nanos":28863081},"formatted_output":""},"started_at_ms":1790619866813,"completed_at_ms":1790619901842}}
+```
+
+**Run B** — session `01a0e945-8271-77f2-b02f-d4580ee98bcb`, subagent
+`01a0e945-ac51-77a3-9b23-9a5fd3c80624`, written to force output onto the
+session *after* the report:
 
 | offset | event | what |
 | --- | --- | --- |
-| +12.2s | `PreToolUse` (subagent) | `tail -f …/wake.txt` on an empty file, no `&` |
-| +15.17s | `SubagentStop` | the subagent reports |
-| +29.52s | `PreToolUse` (parent) | `date +%s >> …/wake.txt` — output forced, 14.4s after the stop |
-| +65.21s | `PostToolUse` (parent) | `ps` → `1060999      53 tail -f …/wake.txt` |
-| +73.64s | `Stop` | session ends |
+| +15.05s | `PreToolUse` (subagent) | `tail -f …/wake.txt` on an empty file, no `&`; handed `session_id` 69981 |
+| +17.83s | `SubagentStop` | the subagent reports `ARMED` |
+| +33.93s | `PreToolUse` (parent) | `date +%s >> …/wake.txt` — output forced, 16.1s after the stop |
+| +73.20s | `PostToolUse` (parent) | `ps` → `1899775      58 tail -f …/wake.txt` |
+| +78.72s | `Stop` | session ends; pid 1899775 still alive, 63.64s old |
 
-The PTY survived **50 seconds past the subagent's stop**, 35 of them after
-output was forced onto it. Same line at `Stop`:
+The session survived **60.9 seconds past the subagent's stop**, 44.8 of them
+after output was forced onto it. That output was recorded nowhere as it
+arrived: it surfaces only in the teardown line, 3.3 ms before the same error.
 
 ```
-2026-09-19T17:53:15.188815Z ERROR codex_core::session: failed to record rollout items: thread 01a0bacb-ffb1-7361-bd6b-09353dce0fbc not found
+{"timestamp":"2026-09-28T18:28:40.242Z","ordinal":25,"type":"event_msg","payload":{"type":"item_completed","thread_id":"01a0e945-ac51-77a3-9b23-9a5fd3c80624","turn_id":"01a0e945-aca6-78f0-a778-be159f9eb698","item":{"type":"CommandExecution","id":"exec-3d4e68e7-565d-462d-9855-19374ec3a392","process_id":"69981","command":["/bin/bash","-lc","tail -f …/wake.txt"],"cwd":"file:///…","parsed_cmd":[{"type":"unknown","cmd":"tail -f …/wake.txt"}],"source":"unified_exec_startup","status":"failed","stdout":"1790620075\r\n","stderr":"","aggregated_output":"1790620075\r\n","exit_code":-1,"duration":{"secs":63,"nanos":505134667},"formatted_output":"1790620075\r\n"},"started_at_ms":1790620056737,"completed_at_ms":1790620120242}}
 ```
 
-**Why the surviving session looks like the producer.** In both runs it is the
-only thing still attached to the subagent's thread when the error fires, and
-the id in the error is that run's subagent in each case. We have not read the
-subagent rollout files themselves, so that is as far as the evidence goes:
-reproducible, twice, with one candidate.
+```
+2026-09-28T18:28:40.245288Z ERROR codex_core::session: failed to record rollout items: thread 01a0e945-ac51-77a3-9b23-9a5fd3c80624 not found
+```
+
+**Run C** repeats A — session `01a0e947-cad0-7f73-a6c4-48f8957d7191`,
+subagent `01a0e947-f0bb-7752-98fa-99a14793c18a`, `session_id` 35920, `ps` →
+`1976138      29 sleep 517`, alive 33.21s old at `Stop`. Teardown line at
+`18:30:38.016Z`, `exit_code: -1`, then:
+
+```
+2026-09-28T18:30:38.017592Z ERROR codex_core::session: failed to record rollout items: thread 01a0e947-f0bb-7752-98fa-99a14793c18a not found
+```
+
+In all three runs nothing carrying the command was left once `codex exec`
+returned, so the leak is bounded by the parent session.
+
+**Why the teardown looks like the producer.** In every run the error follows
+the leaked session's own `item_completed` by 1.6 to 3.3 ms and names the
+thread that item carries, and nothing else is written to that thread after
+its `task_complete`. The line does reach the rollout file, so which write the
+error reports failing — a second one, or one addressed through a registry the
+subagent has already left — cannot be told from outside.
 
 **Possibly two defects rather than one.**
 
-1. A subagent's unified-exec sessions are not closed when its thread ends.
+1. A subagent's unified-exec sessions are not closed when its turn
+   completes; they live until the parent session ends and are killed then.
    `exec_command` describes itself as "Runs a command in a PTY, returning
    output or a session ID for ongoing interaction" and `write_stdin` as
-   "Writes characters to an existing unified exec session"; neither is scoped
-   to a thread's lifetime, and no tool closes a session outright.
-2. Output from such a session is still routed to the ended thread's rollout,
-   where it fails with the error above rather than being dropped or re-homed.
+   "Writes characters to an existing unified exec session and returns recent
+   output"; neither is scoped to a thread's lifetime, and no tool closes a
+   session outright.
+2. That teardown is still addressed to the ended thread, where recording
+   fails with the error above rather than being dropped or re-homed.
 
 **What it costs a caller.** Every session in which a subagent left a PTY open
 ends with what reads as an internal failure in an otherwise successful run. It
-does not resume the subagent — measured separately: twelve hook records follow
-the single `SubagentStop` in run B and none carries the subagent's `agent_id`.
+does not resume the subagent: twelve hook records follow the single
+`SubagentStop` in run B and none carries the subagent's `agent_id`, and the
+output forced onto the session reaches nobody until the teardown line carries
+it.
 
-**What would help you chase it.** The two subagent rollouts, at the
-`agent_transcript_path` each `SubagentStop` carried. They sit in the
-operator's home directory and are attached by whoever files this.""",
+**What would help you chase it.** The three subagent rollouts, at the
+`agent_transcript_path` each `SubagentStop` carried; the teardown line quoted
+above is each one's last. They sit in the operator's home directory and are
+attached by whoever files this.""",
 )
-"""The leaked PTY and the rollout error that follows it, measured twice.
+"""The leaked PTY and the rollout error that follows it, reproduced three times.
 
 Filed as one report because the second is the only visible symptom of the
 first: the session that outlives its thread is measured directly, and the

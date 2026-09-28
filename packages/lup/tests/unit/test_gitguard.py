@@ -2,8 +2,10 @@
 
 from pathlib import Path
 
+import pytest
 import sh
 
+import lup.devtools.gitguard as gitguard
 from lup.devtools.dev.git_guards import (
     DECLARED_GUARDS,
     DRIFT_COMMAND,
@@ -413,6 +415,85 @@ def test_a_watch_lays_a_change_at_the_door_of_the_test_that_saw_it(
         in verdict.failure
     )
     assert watch.after("tests/test_one.py::test_third") == GuardVerdict()
+
+
+def storing_every_way(tmp_path: Path) -> sh.Command:
+    """A checkout holding a ref each way git stores one: loose, and packed.
+
+    Two commits, so a ref can move to the other one: `side` is loose at the
+    first, and `packed` sits in the packed list at the first.
+    """
+    git = guarded_repository(tmp_path)
+    git("branch", "packed")
+    git("pack-refs", "--all")
+    git("branch", "side")
+    git("commit", "--allow-empty", "-m", "two")
+    return git
+
+
+@pytest.mark.parametrize(
+    ("write", "moved"),
+    [
+        pytest.param(("branch", "escaped"), "refs/heads/escaped: created", id="create"),
+        pytest.param(
+            ("update-ref", "refs/heads/side", "main"),
+            "refs/heads/side: ",
+            id="move-loose",
+        ),
+        pytest.param(
+            ("update-ref", "refs/heads/packed", "main"),
+            "refs/heads/packed: ",
+            id="move-packed",
+        ),
+        pytest.param(
+            ("branch", "-D", "packed"), "refs/heads/packed: deleted", id="delete-packed"
+        ),
+        pytest.param(
+            ("branch", "-D", "side"), "refs/heads/side: deleted", id="delete-loose"
+        ),
+        pytest.param(
+            ("config", "core.hooksPath", "/x"),
+            "config core.hooksPath: created",
+            id="config",
+        ),
+    ],
+)
+def test_a_watch_reading_files_first_still_catches_every_write(
+    tmp_path: Path, write: tuple[str, ...], moved: str
+) -> None:
+    """The cheap reading has to notice whatever the full one would report.
+
+    A ref moved in place is the case a size or a timestamp could miss: the
+    file keeps its length, and two writes a few milliseconds apart can share
+    a timestamp. Git renames a new file over the old one, so it is the inode
+    that tells them apart.
+    """
+    git = storing_every_way(tmp_path)
+    watch = RepositoryWatch.armed(tmp_path, worker="gw1")
+    git(*write)
+
+    assert moved in watch.after("tests/test_one.py::test_writing").failure
+
+
+def test_a_quiet_window_asks_git_nothing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A test that wrote nothing costs no process, snapshots beside it included.
+
+    The snapshot namespace is written in front of every command an agent is
+    allowed, so a watch that went to git for those would go on every test of
+    an agent-run suite, which is the cost the file reading exists to spare.
+    """
+    git = storing_every_way(tmp_path)
+    watch = RepositoryWatch.armed(tmp_path, worker="gw1")
+
+    def unasked(root: Path, namespace: str = "") -> dict[str, str]:
+        raise AssertionError(f"the state of {root} was read")
+
+    monkeypatch.setattr(gitguard, "repository_state", unasked)
+    git("update-ref", f"{undo_namespace()}/20260928T170000000000-25ed70890b45", "HEAD")
+
+    assert watch.after("tests/test_one.py::test_quiet") == GuardVerdict()
 
 
 def test_the_report_names_the_reading_the_refs_cannot_rule_out() -> None:

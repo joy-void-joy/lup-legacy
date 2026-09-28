@@ -87,8 +87,9 @@ class Called(BaseModel):
     Stamped by the caller hook each runtime fires before a coordination tool
     runs, never by the agent: the field is left out of the schema the agent is
     shown, and the hook overwrites whatever arrives in it with its own
-    payload's answer. One tool server serves every conversation of a session,
-    so without it a subagent's call is indistinguishable from the session's —
+    payload's answer. No tool server's environment tells a session's
+    conversations apart — every one of them shares the session's — so without
+    it a subagent's call is indistinguishable from the session's —
     which is how a subagent's description came to replace its orchestrator's.
 
     Empty is the session's own conversation, and is also what a call no hook
@@ -209,7 +210,8 @@ def create_peer_tools(
     unspellable.
 
     Which conversation of the session called is the one thing a call carries,
-    because one tool server serves them all and nothing else tells them apart.
+    because every server serving them starts under the session's environment
+    and nothing else tells them apart.
     It reaches only rows beneath this session: a subagent's row is keyed under
     the session it runs in, so no spelling of a caller names somebody else's.
     """
@@ -318,7 +320,8 @@ def create_peer_tools(
         "session's name defaults to its worktree's, numbered where another "
         "session in the same one got there first, and that is usually "
         "enough — rename when a name would tell peers more than the checkout "
-        "does. A subagent starts unnamed, reached by its id.\n\n"
+        "does. A subagent starts under the name its spawn gave it, and its id "
+        "reaches it whatever it is called.\n\n"
         "A name another live row answers to is refused. The name you had goes "
         "on reaching you until some other row takes it. Returns {name}.",
         name="coordination_rename",

@@ -82,14 +82,17 @@ beside every name. That is what settles two rows a reader cannot tell apart by
 name, and every verb taking an id — a console's `--id`, a lock, a handoff —
 reaches a subagent's row by it as readily as a session's.
 
-**A native subagent is a row of its own**, beneath its session's. The session
-and its subagents share one tool server, so which of them made a coordination
-call is carried by the call: a hook both runtimes fire before a coordination
+**A native subagent is a row of its own**, beneath its session's. Nothing a
+tool server starts with tells a session's conversations apart — on Claude Code
+they share one, and on Codex each subagent's calls reach a copy started under
+the session's environment — so which of them made a coordination call is
+carried by the call: a hook both runtimes fire before a coordination
 tool runs writes the calling subagent's id into it, read off the runtime's own
 payload, and the verbs act on that subagent's row — its description, its
 name, its locks, its inbox — and leave the session's alone. The row is keyed
 by the runtime's subagent id under the session's, named what the spawn called
-it where the runtime records that (numbered like any default name), and live
+it — which Claude Code records beside the session's transcript and Codex atop
+the subagent's own rollout — numbered like any default name, and live
 while its session is: it ends when the subagent stops, forwarding whatever it
 never read to its session, and with its session in any case. A subagent
 reaches the session that dispatched it at that session's address. What a

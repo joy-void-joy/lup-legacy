@@ -5,8 +5,10 @@
 # a caller free to ship a guard that reaches nothing.
 """What a plugin ships so a coordination call says which conversation made it.
 
-One tool server serves every conversation of a session, and a call arriving
-there carries no caller; each runtime's hook payload does. So a hook matched
+No tool server's environment tells a session's conversations apart — Claude
+Code serves them all from one, and Codex starts a subagent's copy under the
+session's own environment — and a call arriving there carries no caller; each
+runtime's hook payload does. So a hook matched
 to the coordination tools alone writes the caller into the call's arguments
 before it goes out, and the server acts on that conversation's own roster row.
 

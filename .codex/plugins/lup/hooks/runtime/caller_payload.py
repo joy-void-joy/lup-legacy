@@ -3,31 +3,36 @@
 Shipped verbatim into the plugin's ``hooks/runtime/``, where the caller hook's
 generated entry runs it and the compiled permission dispatcher imports it. It
 holds only what Codex spells for itself: the ``PreToolUse`` event, the
-payload's keys, and the output envelope. What a caller is and how it rides in
-a call are the store's.
+payload's keys, where the runtime keeps what a spawn was called, and the
+output envelope. What a caller is and how it rides in a call are the store's.
 
-One tool server serves every conversation of a session, so a coordination
-call arriving there says nothing about who made it. The payload does:
-measured on 0.155.1 in user-run sessions, with the payloads kept as fixtures,
-a subagent's tool events carry its ``agent_id`` — its own thread's id — and
+A coordination call arriving at a tool server says nothing about who made it.
+Measured on 0.158.0 with a probe server logging every request: a subagent's
+calls reach a server process of its own, which the same Codex process starts
+at the subagent's first tool call under the session's own environment and
+leaves running after the subagent stops — so no server's environment names
+its caller. The payload does: measured on 0.155.1 and again on 0.158.0, a
+subagent's tool events carry its ``agent_id`` — its own thread's id — and
 ``agent_type`` beside the session's ``session_id``, and the parent's carry
-neither. The 0.158.0 source builds both from the thread spawn that started
-the subagent (``core/src/hook_runtime.rs``), and nothing else about it.
+neither.
 
-How Codex applies the rewrite is read out of that source rather than measured,
-because a contained session reaches no Codex login and the live probe is the
-operator's to run. ``hooks/src/engine/output_parser.rs`` refuses an
-``updatedInput`` without ``permissionDecision: "allow"`` and a bare ``"allow"``
-without an ``updatedInput``, so the two travel together;
-``hooks/src/events/pre_tool_use.rs`` takes the latest rewrite of the matching
-hooks; and ``core/src/tools/handlers/mcp.rs`` rebuilds an MCP call's arguments
-whole from it. The ``allow`` settles nothing else: the coordination servers
-are declared with their tools approved already.
+How Codex applies the rewrite, measured on 0.158.0: an ``updatedInput``
+beside ``permissionDecision: "allow"`` reached the server as the call's whole
+arguments, from the session and from a subagent alike, even for a tool whose
+schema sets ``additionalProperties: false``; the same rewrite with no decision
+was dropped, and the call ran as the model wrote it with nothing in the exec
+stream, its stderr or the rollout saying so. So the two travel together. The
+``allow`` settles nothing else: the coordination servers are declared with
+their tools approved already.
 
-What the spawn called the subagent is in no payload here — ``task_name`` is on
-the spawning call, and its recorded response is a path-like handle
-(``/root/<task_name>``) rather than the ``agent_id`` a subagent's events carry
-— so the name stays blank and the row is reached by its id.
+What the spawn called the subagent is in no payload, but it heads the
+subagent's own rollout, which every event fired inside it names as
+``transcript_path``. Measured on 0.158.0: the rollout's first line is a
+``session_meta`` whose ``id`` is the subagent's ``agent_id`` and whose
+``agent_path`` is ``/root/<task_name>`` — the name the spawn went out with,
+after whatever its own ``PreToolUse`` hook rewrote. The name is that path's
+last part. An opening naming another thread — the session's rollout, which
+``SubagentStop`` hands as ``transcript_path`` — names nobody.
 
 Every failure is silence: a call left unstamped acts as the session, which is
 what every call did before there was anything to stamp.
@@ -35,6 +40,7 @@ what every call did before there was anything to stamp.
 
 import json
 import sys
+from pathlib import PurePosixPath
 from typing import Literal, TypedDict
 
 from coordination.store import Caller, called_by, text
@@ -46,9 +52,24 @@ class Payload(TypedDict, total=False):
 
     hook_event_name: str
     tool_input: dict[str, WireValue]
+    transcript_path: str
     agent_id: str
     agent_type: str
     cwd: str
+
+
+class Thread(TypedDict, total=False):
+    """What a rollout's opening says about its thread, as far as this reads."""
+
+    id: str
+    agent_path: str
+
+
+class Opening(TypedDict, total=False):
+    """A rollout's first line, a ``session_meta`` record naming its thread."""
+
+    type: str
+    payload: Thread
 
 
 class Rewritten(TypedDict):
@@ -63,12 +84,31 @@ class Rewrite(TypedDict):
     hookSpecificOutput: Rewritten
 
 
+def spawned_name(transcript: str, agent: str) -> str:
+    """What the spawn called this subagent, blank where its own rollout does not say."""
+    if not transcript or not agent:
+        return ""
+    try:
+        with open(transcript, encoding="utf-8") as rollout:
+            opening: Opening = json.loads(rollout.readline())
+    except (OSError, ValueError):
+        return ""
+    if not isinstance(opening, dict) or opening.get("type") != "session_meta":
+        return ""
+    thread = opening.get("payload")
+    if not isinstance(thread, dict) or text(thread.get("id")) != agent:
+        return ""
+    return PurePosixPath(text(thread.get("agent_path"))).name
+
+
 def caller_of(payload: Payload) -> Caller:
     """The conversation one tool event came from, blank for the session's own."""
+    agent = text(payload.get("agent_id"))
     return Caller(
-        agent_id=text(payload.get("agent_id")),
+        agent_id=agent,
         agent_type=text(payload.get("agent_type")),
         cwd=text(payload.get("cwd")),
+        name=spawned_name(text(payload.get("transcript_path")), agent),
     )
 
 

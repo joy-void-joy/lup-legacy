@@ -72,7 +72,7 @@
     {
       "path": ".codex/plugins/lup/hooks/runtime/caller_payload.py",
       "category": "generated",
-      "sha256": "376cb08540f49da3a137ce2783ace5e3a6208613427f12c14c6f3a0b8220f113",
+      "sha256": "e721ef9250daa2dde796abebadffc26897ba7a210135b9ccb12a4a315b51bc4e",
       "semantic_id": "hooks.lup-policy",
       "executable": false
     },
@@ -443,7 +443,7 @@
     {
       "path": ".codex/plugins/lup/hooks/scripts/policy.py",
       "category": "generated",
-      "sha256": "6ab22c65f28c939fb6ee9eac9d5ba8aed6d531357a975dcb1a2513251dddf57e",
+      "sha256": "252750310a90cd8af5c05662d8143ce6750abc8caa111dea3023434f63aa19fd",
       "semantic_id": "hooks.lup-policy",
       "executable": true
     },
