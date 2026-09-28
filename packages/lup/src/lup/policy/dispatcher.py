@@ -98,6 +98,8 @@ DISPATCHER_STDLIB = (
     "subprocess",
     "datetime",
     "hashlib",
+    "time",
+    "signal",
     "csv",
     "fcntl",
     "shlex",
@@ -136,6 +138,20 @@ second, so two snapshots taken in the same second tie — and a tie means the
 listing hands back the older of the two at exactly the moment somebody is
 reaching for the newer one. Nothing already pinned here can produce a
 sub-second stamp.
+
+``time`` earns its place the same way. A runtime lets a call through once
+its policy hook runs past its timeout, so everything a verdict waits on
+shares one deadline the hook sets as it starts and every step it starts reads
+back: a duration, which only a monotonic clock measures -- ``datetime`` reads
+the wall clock, which a machine may set back or forward in the middle of a
+hook.
+
+``signal`` earns its place the same way. Not every wait is a process a
+timeout can be handed to: a file lock another writer holds, a read that
+never returns, the classifier on an input it spends too long on. An alarm is
+the one thing that interrupts any of them, so a hook still waiting past its
+deadline raises where it is and refuses, rather than answering nothing and
+leaving the runtime to let the call through.
 
 ``csv`` earns its place the same way. Asking Git which paths a patch would
 touch answers in its tab-separated report, and this repository's own

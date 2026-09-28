@@ -30,8 +30,11 @@ import policy_data as declared_policy
 from policy_data import AUTO_ESCAPE_PREFIXES
 from policy_data import AGENT_IDENTITY_ENV, AUTONOMOUS_AGENT_IDENTITIES
 from policy_data import DIAGNOSTICS_COMMAND, REPAIR_COMMAND
+from policy_data import HOOK_DEADLINE_SECONDS
 import csv
 import fcntl
+import signal
+import time
 from datetime import UTC, datetime, timedelta
 
 # lup: ignore[subprocess] — `sh` is third-party and this half is compiled into a bare script that has no virtual environment to resolve it from
@@ -318,6 +321,79 @@ def destination_policy_binding(path_text: str, root: Path | None) -> str:
     return ""
 
 
+def opened_deadline(seconds: float, grace: float = 2.0) -> str:
+    """Give this hook, and every process it starts, one deadline: returns the one before.
+
+    Each runtime lets a call through once its policy hook runs past its
+    timeout, so a hook that is still waiting when that comes has answered
+    nothing, and nothing is the one answer a gate may not give. Everything a
+    verdict may wait on -- a language server, a destination's evaluator, Git,
+    `sed` -- shares the deadline set here, where the hook starts, and asks
+    :func:`hook_seconds_left` rather than spending a timeout of its own; one
+    cut short reads as the failure it already answers, so the verdict is
+    reached in time.
+
+    What no step bounds -- a file lock another writer holds, a read that
+    never returns, the classifier itself -- is bounded by an alarm ``grace``
+    seconds past the deadline. It raises where the hook is, and the
+    dispatcher answers that as it answers every call it could not judge: it
+    refuses. The grace is what separates the two: a step cut short at the
+    deadline still has time to become the verdict it reads as.
+
+    Kept in the environment, on the monotonic clock every process on the
+    machine shares, so a process this hook starts inherits the deadline and
+    never extends it: one already set by a parent stands where it is sooner.
+    """
+    environ = os.environ  # lup: ignore[os-environ]
+    previous = environ["LUP_HOOK_DEADLINE"] if "LUP_HOOK_DEADLINE" in environ else ""
+    deadline = time.monotonic() + seconds
+    try:
+        inherited = float(previous) if previous else deadline
+    except ValueError:
+        inherited = deadline
+    held = min(deadline, inherited)
+    environ["LUP_HOOK_DEADLINE"] = repr(held)
+
+    # A RuntimeError rather than a TimeoutError, which is an OSError: steps on
+    # the way to a verdict answer an OSError as the failure it reads as and
+    # carry on, and an alarm one of them swallowed would leave the hook
+    # running with nothing left to stop it. Nothing before the dispatcher
+    # catches this one, so it reaches the refusal of a call it could not judge.
+    def overran(_number, _frame):
+        signal.signal(signal.SIGALRM, signal.SIG_IGN)
+        raise RuntimeError("this hook reached its deadline before a verdict")
+
+    signal.signal(signal.SIGALRM, overran)
+    signal.setitimer(signal.ITIMER_REAL, max(held - time.monotonic(), 0.0) + grace)
+    return previous
+
+
+def closed_deadline(previous: str) -> None:
+    """Disarm :func:`opened_deadline`'s alarm and put back the deadline it replaced."""
+    signal.setitimer(signal.ITIMER_REAL, 0)
+    signal.signal(signal.SIGALRM, signal.SIG_DFL)
+    environ = os.environ  # lup: ignore[os-environ]
+    if previous:
+        environ["LUP_HOOK_DEADLINE"] = previous
+        return
+    environ.pop("LUP_HOOK_DEADLINE", None)
+
+
+def hook_seconds_left(ceiling: float) -> float:
+    """How long a step may still take: ``ceiling``, or less where the hook's deadline is nearer.
+
+    Outside a hook no deadline is set and the step keeps its own ceiling.
+    """
+    environ = os.environ  # lup: ignore[os-environ]
+    if "LUP_HOOK_DEADLINE" not in environ:
+        return ceiling
+    try:
+        deadline = float(environ["LUP_HOOK_DEADLINE"])
+    except ValueError:
+        return ceiling
+    return max(0.0, min(ceiling, deadline - time.monotonic()))
+
+
 def destination_evaluation(binding: str, request: str, timeout: float = 15) -> str:
     """Run accepted bytes in isolation; return only the evaluator's protocol reply."""
     row = json.loads(binding)
@@ -326,6 +402,11 @@ def destination_evaluation(binding: str, request: str, timeout: float = 15) -> s
     snapshot = Path(row["snapshot"])
     if policy_snapshot_digest(snapshot) != row["digest"]:
         raise ValueError("accepted destination policy snapshot changed")
+    allowed = hook_seconds_left(timeout)
+    if allowed <= 0:
+        raise ValueError(
+            "this hook has no time left to run the destination's accepted policy"
+        )
     result = subprocess.run(
         [
             sys.executable,
@@ -339,7 +420,7 @@ def destination_evaluation(binding: str, request: str, timeout: float = 15) -> s
         input=request,
         text=True,
         capture_output=True,
-        timeout=timeout,
+        timeout=allowed,
         check=False,
     )
     if result.returncode != 0:
@@ -1341,13 +1422,25 @@ def shared_git_directory(path_text: str) -> str:
     root = worktree_root(path_text)
     if not root:
         return ""
-    result = subprocess.run(
-        ["git", "-C", root, "rev-parse", "--path-format=absolute", "--git-common-dir"],
-        capture_output=True,
-        text=True,
-        timeout=5,
-        check=False,
-    )
+    try:
+        result = subprocess.run(
+            [
+                "git",
+                "-C",
+                root,
+                "rev-parse",
+                "--path-format=absolute",
+                "--git-common-dir",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=hook_seconds_left(5),
+            check=False,
+        )
+    except subprocess.TimeoutExpired:
+        # Git not answering in the time this hook has left reads as Git
+        # failing, which every caller already answers.
+        return ""
     return str(Path(result.stdout.strip()).resolve()) if result.returncode == 0 else ""
 
 
@@ -1811,7 +1904,7 @@ def file_diagnostics(
             text=True,
             cwd=root,
             env={**environ, "PATH": searched},
-            timeout=timeout_seconds,
+            timeout=hook_seconds_left(timeout_seconds),
             check=False,
         )
         reported = json.loads(finished.stdout)["generalDiagnostics"]
@@ -1873,7 +1966,7 @@ def repaired_directives(
             capture_output=True,
             text=True,
             cwd=root,
-            timeout=timeout_seconds,
+            timeout=hook_seconds_left(timeout_seconds),
             check=False,
         )
         reported = json.loads(finished.stdout)["repaired"]
@@ -1915,13 +2008,15 @@ def resolved_refutations(
     own name resolve against it and against nothing else.
 
     None where no answer was had — no declared resolver, none installed, a
-    crash, a timeout, output that will not decode — and it has to stay
-    distinct from an empty refutation. Empty means a checker looked and
-    refuted nothing, which is evidence; None means nothing looked, which is
-    the gate's cue to ask rather than refuse. Collapsing the two would turn
-    every unresolvable session into a wall of confident denials.
+    crash, a timeout, output that will not decode, or no time left before the
+    hook's deadline for one to answer in — and it has to stay distinct from an
+    empty refutation. Empty means a checker looked and refuted nothing, which
+    is evidence; None means nothing looked, which is the gate's cue to ask
+    rather than refuse. Collapsing the two would turn every unresolvable
+    session into a wall of confident denials.
     """
-    if not command:
+    allowed = hook_seconds_left(timeout_seconds)
+    if not command or allowed < 1.0:
         return None
     root = worktree_root(path_text)
     if not root:
@@ -1936,7 +2031,7 @@ def resolved_refutations(
             text=True,
             input=proposed,
             cwd=root,
-            timeout=timeout_seconds,
+            timeout=allowed,
             check=False,
         )
         reported = json.loads(finished.stdout)
@@ -2010,12 +2105,15 @@ def git_answers(
     # supplies, not an enumerable one this signature could name
     overrides: dict[str, str] | None = None,
     input_text: str | None = None,
+    timeout_seconds: float = 25.0,
 ) -> list[str] | None:
     """One Git invocation's lines, or None when Git cannot answer.
 
-    Git missing, the path outside a repository, a malformed pathspec, and a
-    non-zero exit all collapse to None, so a caller reading this as evidence
-    that something is safe to destroy treats an unanswerable question as a no.
+    Git missing, the path outside a repository, a malformed pathspec, a
+    non-zero exit, and no answer inside ``timeout_seconds`` or the hook's
+    deadline, whichever is nearer, all collapse to None, so a caller reading
+    this as evidence that something is safe to destroy treats an unanswerable
+    question as a no.
 
     ``overrides`` are merged over the inherited environment rather than
     replacing it, because a replacement drops ``PATH`` and ``HOME`` and the
@@ -2034,8 +2132,11 @@ def git_answers(
             check=False,
             input=input_text,
             env={**environ, **overrides} if overrides else None,
+            # Bounded by what the hook has left: an answer that does not come
+            # in time is the unanswerable question this already reads as no.
+            timeout=hook_seconds_left(timeout_seconds),
         )
-    except OSError:
+    except (OSError, subprocess.TimeoutExpired):
         return None
     return finished.stdout.splitlines() if finished.returncode == 0 else None
 
@@ -2271,7 +2372,7 @@ def text_at(root: Path, target: str) -> str | None:
 
 
 def rewritten_text(
-    scripts: list[str], target: str, root: Path
+    scripts: list[str], target: str, root: Path, timeout_seconds: float = 25.0
 ) -> dict[Literal["text", "cause"], str | None]:
     """What one file would hold after these scripts, without touching the file.
 
@@ -2312,10 +2413,11 @@ def rewritten_text(
             capture_output=True,
             text=True,
             check=False,
+            timeout=hook_seconds_left(timeout_seconds),
         )
     except UnicodeDecodeError:
         return {"text": None, "cause": "unreadable"}
-    except (OSError, ValueError):
+    except (OSError, ValueError, subprocess.TimeoutExpired):
         return {"text": None, "cause": "refused"}
     if finished.returncode:
         return {"text": None, "cause": "refused"}
@@ -4146,6 +4248,11 @@ def observe(payload):
 
 
 def main():
+    # What each runtime gives this hook before it lets the call through,
+    # less what starting Python and writing the verdict take: every step a
+    # verdict waits on shares it, and anything still waiting past it is
+    # refused rather than left for the runtime to wave through.
+    previous = opened_deadline(HOOK_DEADLINE_SECONDS)
     payload = {}
     permission_request = False
     review_notice = False
@@ -4220,6 +4327,8 @@ def main():
         if not permission_request:
             sys.stderr.write(decision.addressed())
             raise SystemExit(2) from error
+    finally:
+        closed_deadline(previous)
     if permission_request and decision.effect != "defer":
         allowed = decision.effect == "allow"
         json.dump(

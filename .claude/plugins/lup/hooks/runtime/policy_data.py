@@ -29204,3 +29204,5 @@ REPAIR_COMMAND: list[str] = [
     "--fix",
     "--json",
 ]
+
+HOOK_DEADLINE_SECONDS = 25.0

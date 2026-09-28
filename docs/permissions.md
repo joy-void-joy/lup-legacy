@@ -1245,6 +1245,21 @@ generated files, settle or abort that merge before regenerating; do not repair
 the generated dispatcher by hand. Recovery instructions live in the guard,
 so the native runtime does not echo them with every diagnostic.
 
+A runtime lets a call through once its policy hook runs past its timeout —
+Claude Code continues through its own permission flow, Codex records the
+hook as failed and runs the tool — so a hook still waiting then has answered
+nothing. `HookSet.policy_timeout` is declared once: the hooks file each
+runtime reads carries it, and the dispatcher opens one deadline five seconds
+short of it as it starts. The language server an anti-pattern rule consults,
+a destination's accepted evaluator, and every Git and `sed` call take what is
+left rather than a timeout of their own, and one cut short reads as the
+failure it already answers — no checker looked, so the gate asks; Git could
+not say, so no capture is claimed. What nothing can hand a timeout to — a
+review-queue lock another writer holds, a read that never returns, the
+classifier itself — is stopped by an alarm two seconds past the deadline,
+and the dispatcher refuses the call as one it could not judge. A process the
+hook starts inherits the deadline and cannot extend it.
+
 Plugin hooks receive a writable data directory: `PLUGIN_DATA` under Codex and
 `CLAUDE_PLUGIN_DATA` under Claude Code. Each dispatcher appends
 `hook-events.jsonl` there as it runs: a `started` record after input parsing,

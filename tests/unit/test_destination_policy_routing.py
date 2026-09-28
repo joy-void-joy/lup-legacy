@@ -5,6 +5,7 @@ import os
 import shutil
 import shlex
 import sys
+import time
 from pathlib import Path
 from subprocess import TimeoutExpired
 
@@ -534,6 +535,20 @@ def test_evaluator_timeout_is_bounded_and_routed_as_unavailable(
             "modify",
             origin,
         )
+
+
+def test_no_destination_evaluator_starts_once_the_hook_has_no_time_left(
+    repositories: tuple[Path, Path],
+    runtime: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Past the hook's deadline the accepted policy is not run, and the refusal says why."""
+    origin, owner = repositories
+    binding = authorize(origin, owner, runtime, monkeypatch)
+    monkeypatch.setenv("LUP_HOOK_DEADLINE", repr(time.monotonic() - 1.0))
+
+    with pytest.raises(ValueError, match="no time left"):
+        policy_host.destination_evaluation(binding.model_dump_json(), "{}")
 
 
 def test_a_destination_grant_without_measured_write_authority_cannot_run(

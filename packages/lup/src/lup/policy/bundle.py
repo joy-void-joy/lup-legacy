@@ -604,6 +604,8 @@ def render_policy_data(
     unscoped_fetch: UnjudgedAmbient | None = None,
     refused_paths: list[RefusedPaths] | None = None,
     secret_variables: list[str] | None = None,
+    hook_timeout: int = 30,
+    verdict_reserve: float = 5.0,
 ) -> str:
     """Render one plugin's canonical policy rows without executable logic.
 
@@ -614,6 +616,12 @@ def render_policy_data(
     ``unscoped_fetch`` ships as declared, ``None`` included: an unset
     declaration is answered at runtime by the posture the launch measured,
     which no compiled constant could know.
+
+    ``hook_timeout`` is what the runtime gives the policy hook, the same value
+    its hooks file declares, and the hook's deadline is derived from it rather
+    than restated beside it: that timeout less ``verdict_reserve``, the time
+    starting the interpreter and writing the verdict take, so everything the
+    verdict waits on has ended while the runtime is still listening.
     """
     body = "\n\n".join(
         [
@@ -674,6 +682,7 @@ def render_policy_data(
             "RESOLUTION_COMMAND: list[str] = "
             + string_rows_literal(resolution_command),
             "REPAIR_COMMAND: list[str] = " + string_rows_literal(repair_command),
+            "HOOK_DEADLINE_SECONDS = " + json.dumps(hook_timeout - verdict_reserve),
         ]
     )
     return (
