@@ -1001,6 +1001,28 @@ def devtools_rules() -> list[ShellSubcommandRule]:
                         "part still outstanding."
                     ),
                 ),
+                # The seams it widens are protected edit roots: which scan
+                # rules this project holds itself to, and which files are the
+                # human's rather than the agent's. Writing either through the
+                # command is the edit by another spelling, so it asks as the
+                # edit does. `--keep` and `--own` only narrow, and bare it reads.
+                ShellOperationRule(
+                    name="seams",
+                    ask_flags=["--retire", "--retire-all", "--disown"],
+                    flag_effects=[
+                        declare("writes_path", scope="protected", write="overwrite")
+                    ],
+                    reason=(
+                        "`--retire` and `--retire-all` stop the scan rules this "
+                        "project holds itself to, and `--disown` hands a "
+                        "human-owned file to the agent"
+                    ),
+                    recovery=(
+                        "`dev seams` alone prints every seam and where it is "
+                        "written; where nobody can approve the change, report "
+                        "the command for the user to run."
+                    ),
+                ),
                 # Files a GitHub issue on whichever tracker owns the component,
                 # the act `gh issue create` asks about. `--issue N` corrects a
                 # report already filed, which a follow-up restores the way an

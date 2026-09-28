@@ -953,7 +953,9 @@ root is where a session's own boundary is declared — its settings, its
 launch registry, its measured preflight, its review queue, the policy, and
 the selection of which scan and shell rules apply — so an edit there asks a
 person whoever is making it, including an identity trusted to review its own
-work.
+work. A command writing one asks the same: `dev seams --retire`,
+`--retire-all` and `--disown` rewrite the rule selection and the human-owned
+files, while `--keep` and `--own` only narrow and `dev seams` alone reads.
 
 A few of those guardrails open only for a gate a human granted — creating a
 devtools module, adding an anti-pattern suppression. What a lease holds is

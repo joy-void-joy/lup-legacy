@@ -119,6 +119,14 @@ GUARDED = [
     pytest.param("nsenter -t 1 -m id", "ask", id="nsenter"),
     pytest.param("capsh --print", "allow", id="capsh-report"),
     pytest.param(
+        "uv run lup-devtools dev seams --retire dict-get", "ask", id="seams-retire"
+    ),
+    pytest.param("uv run lup-devtools dev seams --retire-all", "ask", id="seams-all"),
+    pytest.param(
+        "uv run lup-devtools dev seams --disown README.md", "ask", id="seams-disown"
+    ),
+    pytest.param("uv run lup-devtools dev seams --keep dict-get", "allow", id="keep"),
+    pytest.param(
         "install -m644 README.md .lup/preflight/n.json", "ask", id="install-ledger"
     ),
     pytest.param("ssh host.example ls", "ask", id="ssh"),
