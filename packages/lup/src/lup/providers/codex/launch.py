@@ -14,6 +14,7 @@ from lup.harness.notice import Notice
 from lup.harness.requirements import Finding
 from lup.harness.toolchain import codex_envelope_requirement
 from lup.launch.boundary import apply_sandbox_environment
+from lup.launch.companions import CompanionLaunch, Joined, held_companions
 from lup.launch.compilation import allowance_environment, inherited_environment
 from lup.launch.declaration import (
     InnerSandbox,
@@ -38,6 +39,7 @@ from lup.launch.session import (
     session_argv,
     start_harness_transcript,
 )
+from lup.observability.audit import TraceJournal
 from lup.providers.codex.confinement import CODEX_CONFINEMENT
 from lup.providers.codex.harness_runtime import (
     CodexCliEvidence,
@@ -656,6 +658,7 @@ def codex_opening(
     state: CodexLaunchState,
     force: bool = False,
     transcript: Path | None = None,
+    joined: Joined = Joined(),
 ) -> LaunchCommand:
     """Compile a launched declaration into the process that opens its session.
 
@@ -663,17 +666,24 @@ def codex_opening(
     exercised before it is vouched for, the home prepared and the login
     refreshed through the boundary the session runs behind, the boundary
     measured and recorded, and an outer container's image and egress made
-    ready, since the argv names them.
+    ready, since the argv names them. ``joined`` is what the host companions
+    held around the session hand it: their variables join its environment
+    and their folders its sandbox's.
     """
     launched = codex_launched(agent)
-    config = compiled_codex(launched)
+    compiled = compiled_codex(launched)
+    config = compiled.model_copy(
+        update={"sandbox": compiled.sandbox.widened(joined.mounts)}
+    )
     root = codex_root(launched)
     posture = config.sandbox.posture()
     policy = config.enforced_policy()
     member = launched_member(root, config.identity.name if config.identity else None)
     environment = inherited_environment()
     environment.update(config.environment)
+    environment.update(joined.environment)
     environment.update(allowance_environment(config.max_recursive_agent, environment))
+    opening.banner.add(joined.notices)
     accessible = [
         *config.sandbox.roots(),
         *[AccessibleRoot(path=path) for path in config.writable_roots],
@@ -735,8 +745,21 @@ def codex_opening(
         # Codex reads the clipboard through the X11 selection a container can
         # bridge, as its composition declares.
         clipboard="x11",
+        forwarded=list(joined.environment),
     )
     return LaunchCommand(argv=argv, env=environment, cwd=root)
+
+
+def codex_companions(
+    agent: "Codex", root: Path, journal: TraceJournal | None
+) -> CompanionLaunch:
+    """The session its host companions are held for, as a launch of ``agent`` opens it."""
+    return CompanionLaunch(
+        root=root,
+        runtime="codex",
+        environment={**inherited_environment(), **compiled_codex(agent).environment},
+        journal=journal,
+    )
 
 
 def codex_command(agent: "Codex", words: list[str]) -> LaunchCommand:
@@ -744,7 +767,8 @@ def codex_command(agent: "Codex", words: list[str]) -> LaunchCommand:
 
     Preparing the home and refreshing the login are part of what the argv
     depends on, so they happen here as they would for a launch; the boundary
-    a launch records is released again once the command is known.
+    a launch records is released again once the command is known, and so are
+    the host companions held to learn what they contribute.
     """
     launched = codex_launched(agent)
     root = codex_root(launched)
@@ -753,9 +777,18 @@ def codex_command(agent: "Codex", words: list[str]) -> LaunchCommand:
     environment = {**inherited_environment(), **compiled_codex(launched).environment}
     home = codex_launch_home(launched, environment, root)
     try:
-        return codex_opening(
-            launched, words, sentinels, opening, home, CodexLaunchState()
-        )
+        with held_companions(
+            launched.companions, codex_companions(launched, root, None)
+        ) as joined:
+            return codex_opening(
+                launched,
+                words,
+                sentinels,
+                opening,
+                home,
+                CodexLaunchState(),
+                joined=joined,
+            )
     finally:
         release_ledger(root, sentinels.nonce)
 
@@ -810,17 +843,22 @@ def launch_codex_session(
         interrupted = False
         contained = launched.sandbox.posture().contained()
         try:
-            command = codex_opening(
-                launched,
-                words,
-                sentinels,
-                opening,
-                home,
-                state,
-                force,
-                transcript.journal.path,
-            )
-            status = run_in_foreground(command)
+            with held_companions(
+                launched.companions,
+                codex_companions(launched, root, transcript.journal),
+            ) as joined:
+                command = codex_opening(
+                    launched,
+                    words,
+                    sentinels,
+                    opening,
+                    home,
+                    state,
+                    force,
+                    transcript.journal.path,
+                    joined,
+                )
+                status = run_in_foreground(command)
             succeeded = status == 0
             return status
         except KeyboardInterrupt:

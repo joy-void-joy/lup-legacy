@@ -43,6 +43,7 @@ from pydantic import AnyHttpUrl, BaseModel, Field, SecretStr, model_validator
 
 from lup.harness.models import Harness, HookSet
 from lup.harness.requirements import Finding, Manifest
+from lup.launch.companions import HostCompanion, named_apart
 from lup.launch.declaration import (
     LaunchCommand,
     LaunchStep,
@@ -390,6 +391,11 @@ class Claude(
     for no limit; never more than this process has left to give. Unset, the
     allowance this process holds, one level spent."""
 
+    companions: list[HostCompanion] = []
+    """What is kept running on the host for as long as each session runs, each
+    handing it the environment, folders and ports that reach it; one shared by
+    several sessions is started by the first and stopped after the last."""
+
     hooks: LupHooksConfig | None = None
     submission_gate_resolver: SubmissionGateResolver | None = None
     subagents: list[SubagentSpec] = []
@@ -436,6 +442,12 @@ class Claude(
     def one_policy_judges(self) -> Self:
         """Refuse a policy that is not the one the plugin harness already enforces."""
         declared_policy(self.plugin, self.policy)
+        return self
+
+    @model_validator(mode="after")
+    def companions_are_named_apart(self) -> Self:
+        """Refuse two host companions under one name, whose state would collide."""
+        named_apart(self.companions)
         return self
 
     def enforced_policy(self) -> HookSet | None:

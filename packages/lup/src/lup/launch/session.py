@@ -760,6 +760,7 @@ def session_argv(
     home_seed: HomeSeedPlaces | None = None,
     standing: StandingGrants = StandingGrants(),
     clipboard: ClipboardTransport = "commands",
+    forwarded: Sequence[str] = (),
 ) -> list[str]:
     """The argv that opens a session, inside the declared container or on the host.
 
@@ -791,6 +792,10 @@ def session_argv(
     launches, asked here rather than handed in resolved: only here is the
     posture known, and what the registry says as it resolves belongs in
     this opening's banner.
+
+    ``forwarded`` names what else of ``environment`` a contained session is
+    handed -- what the host companions held around it export -- carried by
+    name into its container, as the launch's own variables are.
 
     What it reads of the declaration arrives piece by piece -- the checkout
     it opens in, the image and its manifest, the policy, the clipboard's way
@@ -895,6 +900,7 @@ def session_argv(
             MEMBER_ENV,
             NAME_ENV,
             POLICY_ROOT_ENV,
+            *forwarded,
         ],
         banner=banner,
         sentinels=sentinels,

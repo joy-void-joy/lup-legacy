@@ -29,6 +29,7 @@ import lup.providers.codex.launch as codex_launch
 from lup.coordination.identity import LaunchedMember
 from lup.harness.messaging import SessionInboxes
 from lup.harness.models import Harness, Resumption
+from lup.observability.audit import TraceJournal
 from lup.launch.declaration import (
     InnerSandbox,
     LaunchSandbox,
@@ -53,7 +54,7 @@ class Transcript:
     """The launch-facing half of a transcript, closing without a trace."""
 
     def __init__(self) -> None:
-        self.journal = Mock(path=None)
+        self.journal = Mock(spec=TraceJournal, path=None)
 
     def close(self, *, succeeded: bool, interrupted: bool = False) -> None:
         del succeeded, interrupted

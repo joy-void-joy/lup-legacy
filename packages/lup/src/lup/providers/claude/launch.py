@@ -21,6 +21,7 @@ from lup.harness.models import CapabilityEvidence, Harness, HookSet, Resumption
 from lup.harness.requirements import Finding
 from lup.harness.toolchain import bubblewrap_requirement, socat_requirement
 from lup.launch.boundary import apply_sandbox_environment
+from lup.launch.companions import CompanionLaunch, Joined, held_companions
 from lup.launch.compilation import allowance_environment, inherited_environment
 from lup.launch.config_volume import HomeSeedPlaces
 from lup.launch.declaration import (
@@ -66,6 +67,7 @@ from lup.providers.claude.theme import settle_claude_theme
 from lup.providers.claude.transcripts import ClaudeTranscripts
 from lup.providers.profile_tree import profile_environment
 from lup.providers.user_config import UserConfigFile
+from lup.observability.audit import TraceJournal
 from lup.sandbox.rail import AccessibleRoot, host_run, in_repository
 from lup.sessions.layers import SessionLayers
 from lup.tools.mcp import (
@@ -649,16 +651,22 @@ def claude_opening(
     opening: LaunchOpening,
     transcript: Path | None = None,
     home_seed: HomeSeedPlaces | None = None,
+    joined: Joined = Joined(),
 ) -> LaunchCommand:
     """Compile a launched declaration into the process that opens its session.
 
     Settles what the argv depends on the way a launch does: the inbox is
     placed, the inner sandbox exercised before it is vouched for, the
     boundary measured and recorded, and an outer container's image and
-    egress made ready, since the argv names them.
+    egress made ready, since the argv names them. ``joined`` is what the
+    host companions held around the session hand it: their variables join
+    its environment and their folders its sandbox's.
     """
     launched = claude_launched(agent)
-    config = compiled_claude(launched)
+    compiled = compiled_claude(launched)
+    config = compiled.model_copy(
+        update={"sandbox": compiled.sandbox.widened(joined.mounts)}
+    )
     root = claude_root(launched)
     member = launched_member(root, config.identity.name if config.identity else None)
     inboxes = config.identity.inboxes if config.identity is not None else None
@@ -668,7 +676,9 @@ def claude_opening(
     )
     environment = inherited_environment()
     environment.update(config.environment)
+    environment.update(joined.environment)
     environment.update(allowance_environment(config.max_recursive_agent, environment))
+    opening.banner.add(joined.notices)
     posture = config.sandbox.posture()
     policy = config.enforced_policy()
     apply_sandbox_environment(
@@ -699,22 +709,41 @@ def claude_opening(
         # Claude Code reads the clipboard through commands a container can
         # carry, as its composition declares.
         clipboard="commands",
+        forwarded=list(joined.environment),
     )
     return LaunchCommand(argv=argv, env=environment, cwd=root)
+
+
+def claude_companions(
+    agent: "Claude", root: Path, journal: TraceJournal | None
+) -> CompanionLaunch:
+    """The session its host companions are held for, as a launch of ``agent`` opens it."""
+    return CompanionLaunch(
+        root=root,
+        runtime="claude",
+        environment={**inherited_environment(), **compiled_claude(agent).environment},
+        journal=journal,
+    )
 
 
 def claude_command(agent: "Claude", words: list[str]) -> LaunchCommand:
     """The process a launch of ``agent`` runs, compiled and settled but not run.
 
     The boundary a launch records is released again once the command is
-    known, since no session opens behind it here.
+    known, since no session opens behind it here, and so are the host
+    companions held to learn what they contribute.
     """
+    launched = claude_launched(agent)
+    root = claude_root(launched)
     sentinels = LaunchSentinels()
     opening = claude_checked(agent, sentinels)
     try:
-        return claude_opening(agent, words, sentinels, opening)
+        with held_companions(
+            launched.companions, claude_companions(launched, root, None)
+        ) as joined:
+            return claude_opening(agent, words, sentinels, opening, joined=joined)
     finally:
-        release_ledger(claude_root(claude_launched(agent)), sentinels.nonce)
+        release_ledger(root, sentinels.nonce)
 
 
 def launch_claude_session(
@@ -783,11 +812,21 @@ def launch_claude_session(
         interrupted = False
         applied = False
         try:
-            command = claude_opening(
-                launched, words, sentinels, opening, transcript.journal.path, places
-            )
-            applied = places is not None
-            status = run_in_foreground(command)
+            with held_companions(
+                launched.companions,
+                claude_companions(launched, root, transcript.journal),
+            ) as joined:
+                command = claude_opening(
+                    launched,
+                    words,
+                    sentinels,
+                    opening,
+                    transcript.journal.path,
+                    places,
+                    joined,
+                )
+                applied = places is not None
+                status = run_in_foreground(command)
             succeeded = status == 0
             return status
         except KeyboardInterrupt:

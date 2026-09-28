@@ -46,6 +46,7 @@ from pydantic import AnyHttpUrl, BaseModel, Field, SecretStr, model_validator
 
 from lup.harness.models import Harness, HookSet
 from lup.harness.requirements import Finding, Manifest
+from lup.launch.companions import HostCompanion, named_apart
 from lup.launch.declaration import (
     LaunchCommand,
     LaunchStep,
@@ -355,6 +356,11 @@ class Codex(
     for no limit; never more than this process has left to give. Unset, the
     allowance this process holds, one level spent."""
 
+    companions: list[HostCompanion] = []
+    """What is kept running on the host for as long as each session runs, each
+    handing it the environment, folders and ports that reach it; one shared by
+    several sessions is started by the first and stopped after the last."""
+
     # The app-server's own wire spellings, passed through by thread_parameters.
     approval_policy: Literal["untrusted", "on-request", "granular", "never"] | None = (
         None
@@ -407,6 +413,7 @@ class Codex(
                 "excluded_commands, or judge those commands by the policy"
             )
         declared_policy(self.plugin, self.policy)
+        named_apart(self.companions)
         for key in self.provider_config or {}:
             if key not in {"model_provider", "model_providers"}:
                 raise ValueError(

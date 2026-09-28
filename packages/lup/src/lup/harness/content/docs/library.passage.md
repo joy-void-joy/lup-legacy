@@ -321,6 +321,7 @@ status = agent.launch("--verbose", steps=[Checkpoint()])
 | `resume` | `Latest()` resumes the newest session on record; `Pick()` is refused | `--continue` / `--resume` (Claude), `resume --last` / `resume` (Codex); `Reopen(session=...)` names one |
 | `max_recursive_agent` | `LUP_MAX_RECURSIVE_AGENT`, never more than this process has left | The same variable |
 | `profile`, `home` | The account's configuration home | Claude: the same home; Codex: a home derived from the account's for the worktree |
+| `companions` | Held while the session is open, their variables in its environment and their folders among its sandbox's mounts | Held around the foreground CLI, their variables carried into a container by name; `command()` holds them long enough to learn what they hand it |
 
 What a launch does not say it assumes, and a session opened here does not:
 an unset `sandbox` is the verified container wherever Docker or Podman answers
@@ -331,6 +332,18 @@ on the roster; an unset record is the run's transcript. `launched()` answers
 the declaration with those filled in. What only a program driving turns can
 honour — in-process `hooks`, a submission gate, `layers`, `max_turns` — a
 launch refuses in the field's own words rather than dropping.
+
+`companions` are what a session wants running on the host beside it and
+outside every wall it has: a service answering the operator, a preview
+server, a watcher. Each is a `HostCompanion` from `lup.launch.companions`,
+held around every session the declaration opens and handing it the
+environment, mounts and ports that reach it. Most are one process shared by
+many sessions — a `SharedProcess`, per checkout or per person: the first
+session to hold it starts it on its preferred ports or the next free ones,
+later sessions join it, a replacement is started where it stopped answering
+or its declaration changed, and it is stopped once the last lease goes, a
+lease whose launcher died counting as gone. Its state and output live under
+lup's own state directory, never in a checkout.
 
 `steps` are the repository's own workflow around a launch — a checkpoint, a
 base-freshness sync, a companion tree regenerated — each a `LaunchStep` with
