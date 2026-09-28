@@ -44,6 +44,7 @@ from host import (
     existing_write_targets,
     foreign_repository,
     granted_allowances,
+    ignored_write_targets,
     managed_script_roots,
     outside_this_project,
     this_checkout_path,
@@ -336,7 +337,16 @@ def bash_decision(
             if any(host in command for host in ("localhost", "127.", "::1"))
             else []
         ),
-        recovered=bool(reference),
+        # A snapshot proves a capture only of what it took, and it takes
+        # nothing Git ignores: one ignored target leaves the loss uncaptured.
+        recovered=bool(reference)
+        and not ignored_write_targets(
+            [
+                *shell_write_targets(command),
+                *shell_written_targets(command, SHELL_RULES),
+            ],
+            cwd,
+        ),
     )
     # The gates an edit is judged by, over the writes this command carries the
     # content of. Joined here rather than inside the classifier because they

@@ -2430,6 +2430,30 @@ def recoverable_write_targets(
     ]
 
 
+def ignored_write_targets(targets: list[str], root: Path | None = None) -> list[str]:
+    """Report which targets Git ignores, which no undo snapshot holds.
+
+    The snapshot takes what `git add -A` would, so an ignored path -- or one
+    under an ignored directory -- is outside every capture this session has.
+    A loss there is one nothing restores, and "captured and restorable" said
+    of it is a sentence about a file no snapshot has ever seen. Git answers
+    for the ignore rules it applies rather than a second reading of them
+    here; a path Git tracks is never ignored, whatever a pattern says.
+
+    Asked one path at a time, because Git refuses the whole question when one
+    path in it lies outside the repository -- and a path out there is no
+    capture's to hold anyway, which the write's own scope already says. A path
+    Git cannot answer for is not reported, which leaves the capture's own
+    evidence to decide: a checkout Git cannot read took no snapshot either.
+    """
+    where = Path.cwd() if root is None else root
+    return [
+        target
+        for target in targets
+        if git_answers(["check-ignore", "-q", "--", target], where) is not None
+    ]
+
+
 def committed_text(path_text: str, root: Path | None = None) -> str | None:
     """What the last commit holds at this path, or None where Git cannot say.
 
@@ -3174,7 +3198,16 @@ def bash_decision(
             if any(host in command for host in ("localhost", "127.", "::1"))
             else []
         ),
-        recovered=bool(reference),
+        # A snapshot proves a capture only of what it took, and it takes
+        # nothing Git ignores: one ignored target leaves the loss uncaptured.
+        recovered=bool(reference)
+        and not ignored_write_targets(
+            [
+                *shell_write_targets(command),
+                *shell_written_targets(command, SHELL_RULES),
+            ],
+            cwd,
+        ),
     )
     # The gates an edit is judged by, over the writes this command carries the
     # content of. Joined here rather than inside the classifier because they

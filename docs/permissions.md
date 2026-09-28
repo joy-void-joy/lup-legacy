@@ -248,7 +248,11 @@ coverage, restoration, metadata, completion and post-state are the guarantee
 — so the row reads *measured* evidence and distinguishes three answers:
 nothing required, capture proven, and capture attempted and short. The third
 keeps the question and says which it was, because "nobody captured this" and
-"the capture did not work" are different things to tell somebody.
+"the capture did not work" are different things to tell somebody. Coverage is
+read per path: the snapshot takes what `git add -A` would, so a target Git
+ignores — `.lup/`, a gitignored cache nobody declared scratch — is one no
+capture holds, and a command removing or replacing one keeps its question
+however many snapshots exist.
 
 It discharges local loss and nothing travelling beside it. An operation that
 also rewrites a production file, touches a protected path, reads a credential

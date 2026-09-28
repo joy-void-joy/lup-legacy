@@ -417,6 +417,48 @@ def test_a_session_writing_its_own_review_queue_is_asked_on_every_posture(
     assert set(previewed(command, checkout, monkeypatch).values()) == {"ask"}
 
 
+@pytest.mark.parametrize(
+    ("command", "captured"),
+    [
+        pytest.param("rm -rf state", False, id="ignored-directory"),
+        pytest.param("rm state/run.json", False, id="ignored-file"),
+        pytest.param("mv state/run.json tmp/run.json", False, id="ignored-moved-away"),
+        pytest.param("rm notes.txt", True, id="untracked-file"),
+    ],
+)
+def test_a_capture_claims_only_what_it_holds(
+    runtime: Runtime,
+    checkout: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    command: str,
+    captured: bool,
+) -> None:
+    """The undo snapshot takes what Git would take, and Git ignores `state/`.
+
+    So a loss there is one no capture holds, and "captured and restorable" is
+    a sentence about a file no snapshot has ever seen. An untracked file Git
+    does not ignore is taken, and its loss stays settled.
+    """
+    (checkout / ".gitignore").write_text("state/\n", encoding="utf-8")
+    (checkout / "state").mkdir()
+    (checkout / "state" / "run.json").write_text("{}\n", encoding="utf-8")
+    (checkout / "notes.txt").write_text("draft\n", encoding="utf-8")
+    postures: tuple[Posture, ...] = ("none", "inner", "outer")
+    expected = "allow" if captured else "ask"
+    # Codex parks a question with the preimage of every file it names, and a
+    # directory has none to hold, so it refuses the call it cannot park.
+    parked = (
+        "deny"
+        if runtime == "codex" and expected == "ask" and command.startswith("rm -rf")
+        else expected
+    )
+
+    assert {met(runtime, posture, command, checkout) for posture in postures} == {
+        parked
+    }
+    assert set(previewed(command, checkout, monkeypatch).values()) == {expected}
+
+
 def test_a_target_the_host_lent_from_outside_the_checkout_keeps_the_question(
     runtime: Runtime, checkout: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

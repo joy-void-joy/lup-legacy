@@ -34,6 +34,7 @@ from lup.policy.assets.host import (
     empty_directory_targets,
     foreign_repository,
     host_held_ports,
+    ignored_write_targets,
     measured_boundary,
     measured_landings,
     outside_this_project,
@@ -519,7 +520,16 @@ class ShellPolicy(DecisionPolicy[ShellCommand]):
                 allowances=[] if edits is None else edits.grants.granted(),
                 escapable=self.escapable,
                 unjudged_ambient=self.unjudged_ambient,
-                recovered=self.recovered,
+                # The capture this session holds takes nothing Git ignores, so
+                # one ignored target leaves the loss uncaptured.
+                recovered=self.recovered
+                and not ignored_write_targets(
+                    [
+                        *shell_write_targets(event.command),
+                        *shell_written_targets(event.command, self.rules),
+                    ],
+                    root,
+                ),
                 contained=self.contained,
                 # The same root the write readings above resolve against, so
                 # an absolute path inside the checkout reaches the declared
