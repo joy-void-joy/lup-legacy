@@ -1,0 +1,10 @@
+subjects = ["CLAUDE_CONFIG_DIR"]
+reason = """
+the Claude configuration-home declaration belongs to its login adapter"""
+commit = "da46c6bb283385f65ba2f30946d06647b758bc14"
+
+[[steps]]
+instruction = """
+Import CLAUDE_CONFIG_DIR from lup.providers.claude.login instead of the \
+former lup.adapters.claude.config module. When building a launch environment, \
+prefer CLAUDE_LOGIN.environment(config_home) from the same module."""

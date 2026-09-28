@@ -1,0 +1,20 @@
+subjects = [
+    "AntiPatternSet",
+    "AntiPatternSet.python",
+    "AntiPatternSet.typescript",
+    "AntiPatternSet.for_suffix",
+    "AntiPatternSet.selected",
+    "antipattern_set_for",
+]
+reason = """
+the set holds every rule a project is judged by — the line rules, the project \
+rules the sweep runs, and the composition rule generation runs — so it is \
+named for what it holds"""
+commit = "571311dac058cf7136238ea4c6a18de89cdb9a2f"
+
+[[steps]]
+instruction = """
+Import `RuleSet` from `lup.harness.codescan.antipatterns` where \
+`AntiPatternSet` was imported, and `rule_set_for` where `antipattern_set_for` \
+was; the fields and methods keep their names, and `project` and `composition` \
+stand beside `python` and `typescript`."""

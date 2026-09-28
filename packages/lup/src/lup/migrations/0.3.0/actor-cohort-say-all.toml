@@ -1,0 +1,48 @@
+subjects = [
+    "ActorCohort.say_all",
+    "ActorDelivery.through",
+    "ActorMessage.run_id",
+    "DELIVERY_DIR",
+    "EVERYONE",
+    "MESSAGE_FILE",
+    "QuestionMailbox.delivered",
+    "QuestionMailbox.send",
+    "QuestionMailbox.waiting",
+]
+reason = """
+mail is one file per message in one member's inbox, consumed by deletion, and \
+the token meaning everyone is resolved by the sender rather than matched by \
+every reader — which is what forced a delivery position per member, and what \
+made a redirect stop workers spawned after the stop"""
+commit = "1e56496618db07576be351386786e1a32f93e43c"
+
+[[steps]]
+instruction = """
+Call `ActorMail.send(to, text, door=..., sender=..., in_reply_to=..., \
+redirect=...)` with the member rather than building an `ActorMessage`: \
+resolving what an operator typed is the roster's, through \
+`ActorCohort.post(address, ...)` or `RepositoryPeers.send(address, ...)`. \
+`ActorMessage` keeps every field but `run_id`, which is `sender`."""
+
+[[steps]]
+instruction = """
+Commit a delivery with the delivery: `ActorMail.delivered(actor, delivery)` \
+deletes exactly the files it was handed, so `ActorDelivery.through` and every \
+offset beside it are gone, and a message posted between the read and the \
+commit is no longer consumed unseen."""
+
+[[steps]]
+instruction = """
+Say what you mean by everyone. `ActorCohort.notify(text)` posts a standing \
+notice — state, read at the head of every turn, reaching members spawned \
+afterwards — and also sends it to whoever is live; \
+`ActorCohort.redirect_all(text)` stops whoever is working and nobody else. \
+`EVERYONE` is gone from the store, so nothing matches it at read."""
+
+[[steps]]
+instruction = """
+Reach a member's inbox through the cohort rather than the question mailbox: \
+`QuestionMailbox.send`, `.waiting` and `.delivered` are gone, because \
+addressing needs a roster the mailbox does not hold. `run_cohort(mailbox, \
+run_id)` from `lup.resolver.mailbox` builds the cohort over that run's own \
+mail and journal."""

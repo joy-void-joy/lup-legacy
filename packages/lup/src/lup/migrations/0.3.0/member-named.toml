@@ -1,0 +1,35 @@
+subjects = [
+    "MemberNamed",
+    "MemberNamed.at",
+    "MemberNamed.cli_name",
+    "MemberNamed.id",
+    "MemberNames",
+    "MemberNames.__init__",
+    "MemberNames.called",
+    "MemberNames.current",
+    "MemberNames.latest",
+    "MemberNames.named",
+    "MemberNames.rename",
+    "MemberNames.resolve",
+    "NAME_ADAPTER",
+]
+reason = """
+a name is on the member that answers to it, with the names it answered to \
+before beside it, because the two were only ever read together and a separate \
+log made a rename an event about a member rather than the member changing"""
+commit = "1e56496618db07576be351386786e1a32f93e43c"
+
+[[steps]]
+instruction = """
+Call `RepositoryPeers.rename(member_id, cli_name)` for `MemberNames.rename`, \
+`.called(member_id)` for `.current`, `.answering(cli_name)` for `.resolve`, \
+and `.names_taken(except_id)` for `.called` — which now answers with the \
+names live sessions hold, keyed by name. `store.naming(root)` is every claim \
+any member ever made on a name, oldest first, for a caller that wants the \
+history `MemberNames.named` gave."""
+
+[[steps]]
+instruction = """
+A rename takes the store's `ROSTER_LOCK`, because a name is the one decision \
+made against every other member's file. A caller writing one itself takes \
+that lock around reading what is taken and writing what it chose."""

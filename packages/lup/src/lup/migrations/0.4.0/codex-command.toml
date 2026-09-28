@@ -1,0 +1,12 @@
+subjects = ["CODEX_COMMAND"]
+reason = """
+Codex queue delivery must select the target's verified home and execution \
+scope."""
+commit = "ef235a0fc4633525a76f3c8ae2672e1a4cc51829"
+
+[[steps]]
+instruction = """
+Call wake(WakePath(...), message) rather than the raw CODEX_COMMAND. Retain \
+the native arrival hook's home and scope when persisting a wake path. queued \
+now takes that WakePath, not a thread string; missing or foreign scope leaves \
+durable mail pending."""

@@ -1,0 +1,114 @@
+subjects = [
+    "Finished",
+    "Finished.actor",
+    "Finished.at",
+    "Finished.error",
+    "Finished.summary",
+    "Finished.type",
+    "HEARTBEATS_DIR",
+    "Held.digest",
+    "Look.conversation",
+    "NAMES_FILE",
+    "NameRecord",
+    "NameRecord.at",
+    "NameRecord.cli_name",
+    "NameRecord.id",
+    "Named.id",
+    "RESETS_DIR",
+    "ROSTER_FILE",
+    "RosterRecord",
+    "RosterRecord.actor",
+    "RosterRecord.at",
+    "RosterRecord.delivery",
+    "RosterRecord.description",
+    "RosterRecord.error",
+    "RosterRecord.liveness",
+    "RosterRecord.summary",
+    "RosterRecord.task",
+    "RosterRecord.type",
+    "RosterRecord.wake",
+    "RosterRecord.worktree",
+    "TOUCHES_FILE",
+    "TouchRecord",
+    "TouchRecord.actor",
+    "TouchRecord.at",
+    "TouchRecord.digest",
+    "TouchRecord.path",
+    "TouchRecord.prefix",
+    "TouchRecord.rivals",
+    "TouchRecord.type",
+    "Touched",
+    "Touched.actor",
+    "Touched.at",
+    "Touched.digest",
+    "Touched.path",
+    "Touched.rivals",
+    "Touched.type",
+    "appended",
+    "applied",
+    "arrival",
+    "beat_path",
+    "claims",
+    "heard",
+    "heard_at",
+    "name_holders",
+    "named",
+    "narrowed",
+    "reset",
+    "reset_at",
+    "reset_path",
+    "stamp",
+    "stamped_at",
+    "touch_prefix",
+    "touched_claim",
+    "vacant",
+]
+reason = """
+the coordination store is one file per member and every relation between \
+members is derived at the read, so the four append-only logs and the stamp \
+directories beside them are gone: presence is the member file's modification \
+time, a claim is settled against the path it names, a contest is two live \
+members' files meeting, and a name is on the member that answers to it"""
+commit = "1e56496618db07576be351386786e1a32f93e43c"
+
+[[steps]]
+instruction = """
+Read the store through `lup.coordination.bare.store`: `present(root)` for who \
+is here, `held(root, live)` for what they hold, `called(root)` and \
+`naming(root)` for what each is called, `member_of(root, id)` for one. \
+Nothing folds a record any more, so `appended`, `applied`, `arrival`, \
+`heard`, `named`, `narrowed` and the record types they folded \
+(`RosterRecord`, `NameRecord`, `TouchRecord`, `Finished`, `Touched`) have no \
+replacement and need none."""
+
+[[steps]]
+instruction = """
+Write through the typed verbs, never a record: \
+`Roster.joined`/`describes`/`finished`/`beat` for a member, and \
+`store.revised(root, id, revise)` for a bare writer that must read before it \
+writes. A member file is revised under its own lock, so a caller appending to \
+a shared log now revises one member's file instead."""
+
+[[steps]]
+instruction = """
+Presence is the file's modification time. `beat(root, id)` touches it and \
+creates nothing, so `heard_at`, `beat_path`, `stamp`, `stamped_at` and \
+`HEARTBEATS_DIR` are gone; read `heard` off the member instead, which \
+`present` fills in from the stat it already takes."""
+
+[[steps]]
+instruction = """
+A rewind clears the member's own `description` and records the conversation \
+it now belongs to, in one revision, so `reset`, `reset_at`, `reset_path` and \
+`RESETS_DIR` are gone and so is `Look.conversation` — which conversation a \
+row describes is on the row. The prompt fold does it; a caller doing it \
+itself writes `conversation` and an empty `description` through \
+`store.revised`."""
+
+[[steps]]
+instruction = """
+A claim carries the modification time of the path it was taken over rather \
+than a digest of it, so `Held.digest` and `claims(root)` are gone: \
+`standing(claim)` asks the filesystem, and `held(root, live)` reports only \
+what still holds. `vacant`, `touch_prefix` and `touched_claim` have no \
+replacement — there is nothing to vacate and no record to build."""

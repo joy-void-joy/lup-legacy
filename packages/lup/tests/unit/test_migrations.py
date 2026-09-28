@@ -116,6 +116,7 @@ def test_every_declaration_this_library_holds_says_what_a_caller_does_about_it()
     """
     record = MigrationRecord()
 
+    assert record.releases(), "a release's migrations stay in the record"
     for migration in record.declared():
         assert migration.subjects
         assert migration.steps, f"{migration.subjects} declares no step to take"

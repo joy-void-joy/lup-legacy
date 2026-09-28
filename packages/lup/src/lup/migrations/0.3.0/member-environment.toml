@@ -1,0 +1,13 @@
+subjects = ["member_environment"]
+reason = """
+a launcher mints a session's name beside its id, numbered against the live \
+sessions of the repository so two sessions in one worktree are reachable \
+apart, and exports the two together"""
+commit = "deb8e4c9832e99b9165e17e6e3c60dcdf71bfcf3"
+
+[[steps]]
+instruction = """
+Where `member_environment(member_id)` was exported, call \
+`launched_member(root)` from `lup.coordination.repository` and export its \
+`.environment()`; a caller holding an id and a name of its own builds a \
+`LaunchedMember` and exports that."""
