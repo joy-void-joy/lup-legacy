@@ -10,6 +10,7 @@ four commits after it was added.
 
 import ast
 from collections.abc import Iterator
+from functools import cache
 from itertools import groupby
 from pathlib import Path
 
@@ -37,13 +38,21 @@ different revision — which is the stronger claim the roster wanted anyway.
 """
 
 
-def imported_modules(source: Path) -> Iterator[str]:
-    """Every absolute module one source file imports, at any depth.
+@cache
+def imported_modules(text: str) -> tuple[str, ...]:
+    """Every absolute module one source file's text imports, at any depth.
 
     A deferred import inside a function is still a dependency of the entry
     holding it, so the walk does not stop at module scope.
+
+    Held per text: every composition renders this page, each render counts
+    four placements over the same few hundred modules, and parsing and
+    walking them again each time was a fifth of what composing a tree cost.
+    Keyed by the text rather than the path, so a module that changes is read
+    again rather than answered from before.
     """
-    for node in ast.walk(ast.parse(source.read_text(encoding="utf-8"))):
+
+    def named(node: ast.AST) -> Iterator[str]:
         match node:
             case ast.ImportFrom(module=str(name), level=0):
                 yield name
@@ -51,6 +60,8 @@ def imported_modules(source: Path) -> Iterator[str]:
                 yield from (alias.name for alias in aliases)
             case _:
                 pass
+
+    return tuple(name for node in ast.walk(ast.parse(text)) for name in named(node))
 
 
 class RosterEntry(BaseModel, frozen=True):
@@ -231,7 +242,7 @@ class Roster(BaseModel, frozen=True):
         counts = {
             source: sum(
                 1
-                for name in imported_modules(source)
+                for name in imported_modules(source.read_text(encoding="utf-8"))
                 if name == prefix or name.startswith(f"{prefix}.")
             )
             for source in sources
