@@ -342,11 +342,12 @@ kernel, against the lockfile and the runner targets. The rest of uv is the
 vocabulary's `uv_rules`, walked from the command as spelled so the verb is
 found past uv's global options, before it or between its words:
 `uv pip`, `uv tool` and `uvx` install into an environment the lockfile does
-not describe or fetch and run a package nobody declared, so they ask with
-the dependency effect at every placement, and `uv publish` asks as the
+not describe or fetch and run a package nobody declared, and `uv python`
+fetches an interpreter build or pins which one runs the project, so they ask
+with the dependency effect at every placement, and `uv publish` asks as the
 external mutation an upload is. Their listing verbs (`uv pip list`, `show`,
-`freeze`, `check`, `tree`; `uv tool list`, `dir`) read, and a verb neither
-names falls to the question. A global option uv does not document leaves
+`freeze`, `check`, `tree`; `uv tool list`, `dir`; `uv python list`, `find`,
+`dir`) read, and a verb none names falls to the question. A global option uv does not document leaves
 the verb unread, and is refused; `uv --version` and `uv -V` name no verb and
 change nothing, so they read. The tool `uvx` or `uv tool run` runs is the
 first operand past their own options, read by the grammar `uvx --help`

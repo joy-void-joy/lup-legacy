@@ -140,6 +140,10 @@ GUARDED = [
         id="gh-api-attached-equals",
     ),
     pytest.param("gh api -XGET repos/{owner}/{repo}", "allow", id="gh-api-read"),
+    # An interpreter build arrives from an index and runs everything after it.
+    pytest.param("uv python install 3.13", "ask", id="uv-python-install"),
+    pytest.param("uv python pin 3.13", "ask", id="uv-python-pin"),
+    pytest.param("uv python list", "allow", id="uv-python-list"),
     # An option gh api's screen cannot read could be a method or a body, and
     # either lands on the remote whatever holds the process.
     pytest.param(

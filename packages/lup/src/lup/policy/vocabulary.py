@@ -668,6 +668,7 @@ def uv_rules(
     global_values: Sequence[str] = UV_GLOBAL_VALUE_OPTIONS,
     pip_reads: Sequence[str] = ("list", "show", "freeze", "check", "tree"),
     tool_reads: Sequence[str] = ("list", "dir"),
+    python_reads: Sequence[str] = ("list", "find", "dir"),
 ) -> list[ShellCommandRule]:
     """The uv routes that bring in or send out a package this project never declared.
 
@@ -676,10 +677,12 @@ def uv_rules(
     is the rest of the surface, found past uv's global options the way every
     subcommand-gated command is: `uv pip` and `uv tool` install into an
     environment the lockfile does not describe, `uvx` fetches and runs a
-    package nobody declared, and `uv publish` uploads one. Each asks wherever
-    it runs, because what it weighs is trust in the package rather than where
-    its files land. Their read-only verbs list what is already installed, and
-    a verb this table does not name falls to the question.
+    package nobody declared, `uv python` fetches an interpreter build or pins
+    which one runs everything after it, and `uv publish` uploads a package.
+    Each asks wherever it runs, because what it weighs is trust in what
+    arrives rather than where its files land. Their read-only verbs list what
+    is already installed, and a verb this table does not name falls to the
+    question.
     """
     installs = [declare("installs_dependency", scope="python package")]
     reads = [declare("reads_environment", scope="python environment")]
@@ -713,6 +716,20 @@ def uv_rules(
                     operations=[
                         ShellOperationRule(name=verb, effects=reads)
                         for verb in tool_reads
+                    ],
+                ),
+                ShellSubcommandRule(
+                    name="python",
+                    effects=[
+                        declare("installs_dependency", scope="python interpreter")
+                    ],
+                    reason="uv python fetches an interpreter build, or pins which"
+                    " one runs this project",
+                    recovery="`uv python list` and `uv python find` show what is"
+                    " installed and which one runs.",
+                    operations=[
+                        ShellOperationRule(name=verb, effects=reads)
+                        for verb in python_reads
                     ],
                 ),
                 ShellSubcommandRule(
