@@ -27,7 +27,7 @@ import lup.launch.session as launch_session
 import lup.providers.claude.launch as claude_launch
 import lup.providers.codex.launch as codex_launch
 from lup.coordination.identity import LaunchedMember
-from lup.harness.messaging import SessionInboxes
+from lup.harness.messaging import WakeSockets
 from lup.harness.models import Harness, Resumption
 from lup.launch.declaration import (
     InnerSandbox,
@@ -68,14 +68,14 @@ class Launched:
 
 
 def harness() -> Harness:
-    """This repository's harness, its inbox declined so nothing binds a socket."""
+    """This repository's harness, its wake socket declined so nothing binds one."""
     from lup_template.harness.catalog import portable_harness
 
     declared = portable_harness()
     return declared.model_copy(
         update={
             "image": declared.image.model_copy(
-                update={"inboxes": SessionInboxes(directory="")}
+                update={"wake_sockets": WakeSockets(directory="")}
             )
         }
     )
@@ -245,7 +245,7 @@ def test_claude_command_is_what_the_launcher_runs(
         plugin=harness(),
         sandbox=sandbox,
         resume=reopening,
-        identity=Member(inboxes=None),
+        identity=Member(wake_sockets=None),
     )
     command = agent.command("--verbose")
 
@@ -284,7 +284,7 @@ def test_codex_command_is_what_the_launcher_runs(
         plugin=harness(),
         sandbox=sandbox,
         resume=reopening,
-        identity=Member(inboxes=None),
+        identity=Member(wake_sockets=None),
     )
     command = agent.command("--search")
 
@@ -358,7 +358,7 @@ def test_a_claude_launch_runs_the_cli_between_its_steps_and_cleans_up(
         cwd=root,
         plugin=root / "plugin",
         sandbox=InnerSandbox(escapable=True),
-        identity=Member(inboxes=None),
+        identity=Member(wake_sockets=None),
     )
 
     assert agent.launch("--verbose", steps=[Step(seen)]) == status
@@ -381,7 +381,7 @@ def test_a_codex_launch_runs_the_cli_between_its_steps_and_cleans_up(
         model="gpt-5.5",
         cwd=root,
         sandbox=InnerSandbox(),
-        identity=Member(inboxes=None),
+        identity=Member(wake_sockets=None),
     )
 
     assert agent.launch("--search", steps=[Step(seen)]) == 0

@@ -18,7 +18,7 @@ from pydantic import BaseModel, Field
 
 from lup.harness.devices import Device
 from lup.harness.image import detected_client
-from lup.harness.messaging import SessionInboxes
+from lup.harness.messaging import WakeSockets
 from lup.harness.models import Harness, HookSet, Resumption
 from lup.harness.notice import Notice
 from lup.observability.sessions import SessionRecorder
@@ -300,9 +300,10 @@ class Member(BaseModel, frozen=True, extra="forbid"):
     """What the roster calls this session; unset, the worktree's name, numbered
     past any live session already answering to it."""
 
-    inboxes: SessionInboxes | None = SessionInboxes()
-    """Where this session binds the inbox a peer nudges it through; ``None``
-    binds none, and the session reads its mail at its next tool call instead."""
+    wake_sockets: WakeSockets | None = WakeSockets()
+    """Where this session binds the wake socket a peer nudges it through, keyed
+    by its id; ``None`` binds none, and the session reads its mail at its next
+    tool call instead."""
 
 
 class Recording(BaseModel, frozen=True, extra="forbid", arbitrary_types_allowed=True):

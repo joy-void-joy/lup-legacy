@@ -35,7 +35,7 @@ from lup.devtools.harness.profile_app import create_profile_app
 from lup.devtools.resolve.app import create_resolve_app
 from lup.devtools.setup import create_setup_app
 from lup.providers.claude.config import ClaudeProfileRegistry, ClaudeProfileSelection
-from lup.harness.messaging import SessionInboxes
+from lup.harness.messaging import WakeSockets
 from lup.providers.claude.login import CLAUDE_CONFIG_DIR, CLAUDE_LOGIN
 from lup.providers.codex.login import CODEX_LOGIN
 from lup.providers.login import ProviderLogin
@@ -331,7 +331,7 @@ def test_a_launch_refuses_a_stored_default_home_as_a_bad_parameter(
     plugin.name = "lup"
     composition = Mock()
     composition.recipe.source.plugins = [plugin]
-    composition.recipe.source.image.inboxes = SessionInboxes(directory="")
+    composition.recipe.source.image.wake_sockets = WakeSockets(directory="")
     monkeypatch.setattr(launch, "ready_to_open", lambda *a, **k: LaunchOpening())
     monkeypatch.setattr(launch, "project_root", lambda: tmp_path)
     monkeypatch.setattr(

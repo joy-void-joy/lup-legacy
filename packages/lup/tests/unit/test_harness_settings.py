@@ -51,7 +51,7 @@ def test_every_withheld_path_is_denied_to_the_file_tools_too() -> None:
                 paths=["~/.ssh/**", "~/.netrc", "/proc/*/environ"],
                 also=["**/profile-home/auth.json"],
             ),
-            RefusedPaths(paths=["/tmp/inbox/**"], reason="a", recovery="b"),
+            RefusedPaths(paths=["/tmp/lup-wake/**"], reason="a", recovery="b"),
         ],
     )
 
@@ -61,8 +61,8 @@ def test_every_withheld_path_is_denied_to_the_file_tools_too() -> None:
         "Read(~/.netrc)",
         "Read(//proc/*/environ)",
         "Read(//**/profile-home/auth.json)",
-        "Read(//tmp/inbox/**)",
-        "Read(//tmp/inbox)",
+        "Read(//tmp/lup-wake/**)",
+        "Read(//tmp/lup-wake)",
     ]
 
 

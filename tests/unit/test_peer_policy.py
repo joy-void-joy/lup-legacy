@@ -19,7 +19,7 @@ from lup.channels.models import utc_now
 from lup.coordination.bare import store
 from lup.coordination.identity import mint_member_id
 from lup.coordination.meeting import coordination_root
-from lup.coordination.policy import inbox_refusal, peer_policy
+from lup.coordination.policy import peer_policy, wake_socket_refusal
 from lup.coordination.repository import RepositoryPeers
 from lup.coordination.roster import Delivery
 from lup.policy.kernel.peers import (
@@ -265,9 +265,9 @@ def test_an_empty_roster_attaches_nothing() -> None:
     assert peer_listing_context([], DECLARED) == ""
 
 
-def test_the_inbox_directory_is_withheld_where_the_image_binds_it() -> None:
+def test_the_wake_socket_directory_is_withheld_where_the_image_binds_it() -> None:
     """The refusal follows the declaration, and an empty one refuses nothing."""
-    refused = inbox_refusal("/run/sessions")
+    refused = wake_socket_refusal("/run/sessions")
     assert [paths.paths for paths in refused] == [["/run/sessions/**"]]
     assert "coordination_send" in refused[0].recovery
-    assert inbox_refusal("") == []
+    assert wake_socket_refusal("") == []

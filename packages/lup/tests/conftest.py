@@ -6,7 +6,9 @@ the library ships.
 """
 
 import os
+import shutil
 import socket
+import tempfile
 import warnings
 from collections.abc import Iterator
 from functools import cache
@@ -18,6 +20,7 @@ import lup.devtools.harness.launch as launch
 import lup.providers.profile_tree as profile_tree
 from lup.devtools.gitguard import TEST_IDENTITY, GuardVerdict, RepositoryWatch
 from lup.harness.environment import launcher_decided_names
+from lup.harness.messaging import WakeSockets
 from lup.providers.claude.config_home import ClaudeConfigHome, selected_config_home
 from lup.providers.claude.login import CLAUDE_CONFIG_DIR
 from lup.providers.identity import RUNTIME_DECIDED_ENV
@@ -202,6 +205,19 @@ def unix_socket() -> None:
             f"this process may not open a Unix socket ({refused}); delivery "
             "through one cannot be measured here"
         )
+
+
+@pytest.fixture
+def wake_sockets() -> Iterator[WakeSockets]:
+    """Wake sockets placed in a directory short enough to key a whole member id.
+
+    Beside ``/tmp`` rather than under pytest's own temporary path, whose depth
+    leaves too few of a Unix socket address's bytes for a repository, a digest
+    and an id -- which the placement refuses rather than cuts.
+    """
+    directory = Path(tempfile.mkdtemp(prefix="lupw", dir="/tmp"))
+    yield WakeSockets(directory=str(directory))
+    shutil.rmtree(directory, ignore_errors=True)
 
 
 @pytest.fixture

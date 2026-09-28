@@ -721,7 +721,7 @@ MOUNTINFO = "\n".join(
         "2 1 0:2 /volumes/cache/_data /cache/uv rw - ext4 /dev/sda1 rw",
         "3 1 0:3 / /proc rw - proc proc rw",
         "4 1 0:4 /home/u/My\\040Project /work/My\\040Project rw - ext4 /dev/sda1 rw",
-        "5 1 0:5 /lup-inbox /tmp/lup-inbox rw - tmpfs tmpfs rw",
+        "5 1 0:5 /lup-wake /tmp/lup-wake rw - tmpfs tmpfs rw",
     ]
 )
 
@@ -730,7 +730,7 @@ def test_a_bind_is_lent_and_a_whole_filesystem_is_the_containers() -> None:
     assert lent_mount_points(MOUNTINFO) == [
         "/cache/uv",
         "/work/My Project",
-        "/tmp/lup-inbox",
+        "/tmp/lup-wake",
     ]
 
 
