@@ -351,9 +351,14 @@ lup's own state directory, never in a checkout.
 base-freshness sync, a companion tree regenerated — each a `LaunchStep` with
 `before()` and `after(succeeded)`. They nest as `with` blocks do: every
 `before` in the order given, the session, then every `after` in reverse, run
-however the session ended. `Codex.prepare(force=True)` reinstalls a plugin
-whose version has not moved; Claude loads its plugin from the directory at each
-start, so its `prepare()` takes no such flag.
+however the session ended. `Codex.prepare(force=True)` and
+`Codex.launch(force=True)` reinstall a plugin whose version has not moved;
+Claude loads its plugin from the directory at each start, so it takes no such
+flag. `lup-devtools harness claude|codex` is one such caller: it builds the
+declaration from its flags and this repository's composition and launches
+it, its own workflow the steps around the session — `docs/harness.md` maps
+each flag to its field, and `examples/launch_*.py` show every field on its
+own.
 
 ## Layering
 
