@@ -35,7 +35,7 @@ git add <path>
 git commit -m "refactor: snapshot before rewrite of <path>"
 ```
 
-This commit serves as the backup — `git diff HEAD~1` shows exactly what changed, and `git checkout HEAD~1 -- <path>` restores the original.
+This commit serves as the backup — `git diff HEAD~1` shows exactly what changed, and `git restore --source=HEAD~1 -- <path>` restores the original.
 
 ### 3. Understand the original
 
@@ -98,7 +98,7 @@ Show the user:
 
 - What was refactored
 - How to compare: `git diff HEAD~1 -- <path>`
-- How to revert: `git checkout HEAD~1 -- <path>`
+- How to revert: `git restore --source=HEAD~1 -- <path>`
 - Key improvements made
 - Any issues found during verification
 

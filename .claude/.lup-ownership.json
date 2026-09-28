@@ -282,7 +282,7 @@
     {
       "path": ".claude/plugins/lup/commands/refactor.md",
       "category": "generated",
-      "sha256": "942f0b4beb9a9a20008ad9a7b23bbbf8a40fba083eb61c498f8f515113c77299",
+      "sha256": "e47c71e3959c09e7ffd4538b00774917a8d0125c3c2672dcf15a0b4eb06b0ae8",
       "semantic_id": "skill.refactor",
       "executable": false
     },
@@ -457,7 +457,7 @@
     {
       "path": ".claude/plugins/lup/hooks/runtime/kernel/commands.py",
       "category": "generated",
-      "sha256": "ebfe7e793397ddd8eda9222ebd8d7439e4c1e0a8be5b5199d2b3ddcc7d9a053c",
+      "sha256": "58f64133745e69d3dd004855744e885d267c78da85d081b9fbaae39addb028ca",
       "semantic_id": "hooks.lup-policy",
       "executable": false
     },
@@ -583,7 +583,7 @@
     {
       "path": ".claude/plugins/lup/hooks/runtime/kernel/shell.py",
       "category": "generated",
-      "sha256": "709e37a6ffca6b9bde53ac52edfe4903e9d6c3b43d04db0875a925234a9221cd",
+      "sha256": "13303cef1a8b80ac7eab60671a38a662dc89a504c04ad4bca472c30e4ddb4ce7",
       "semantic_id": "hooks.lup-policy",
       "executable": false
     },
@@ -814,7 +814,7 @@
     {
       "path": "docs/permissions.md",
       "category": "generated",
-      "sha256": "29f20a0fb8f938372991f6da6e2c44c8588dcbf5989752f3874f2b415dadaab1",
+      "sha256": "2c7b3cbecfaa4a8d65e84c8bc4336fdd5b58aed718e97b858b5c2db4a4a45940",
       "semantic_id": "docs.permissions",
       "executable": false
     },

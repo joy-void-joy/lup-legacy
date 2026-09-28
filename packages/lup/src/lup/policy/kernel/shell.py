@@ -686,8 +686,13 @@ def decide_segment_words(
             == "unrecoverable"
             for operand in verb_path_words(words, context["rows"])
         )
+        # A refusal of the form stands wherever its paths are: only the grant
+        # rests on this checkout's history.
+        checkout = git_checkout_pathspec(words, context["rows"])
+        if checkout is not None and checkout.effect == "deny":
+            return checkout
         recognized = (
-            (git_checkout_pathspec(words) if held else None)
+            (checkout if held else None)
             or (git_restore_source(words) if held else None)
             or git_restore_unchanged(
                 words, context["recoverable_targets"], context["path_rules"]

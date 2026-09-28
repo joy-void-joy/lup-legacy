@@ -1534,16 +1534,25 @@ SHELL_POLICY_CASES = [
     DecisionCase(input="git push --delete origin feat", effect="ask"),
     DecisionCase(input="git checkout -- file", effect="deny"),
     # Ref-sourced pathspec restores name their content's commit; the shell
-    # option builtin is shell-local. Both anchor history-rebuild batches.
+    # option builtin is shell-local. Both anchor history-rebuild batches, and
+    # this project spells the restore with `git restore --source`: its table
+    # redirects `checkout`, so the checkout spelling is refused however its
+    # paths are written, and the refusal names the restore.
     DecisionCase(input="set -e", effect="allow"),
     DecisionCase(input="set -euo pipefail", effect="allow"),
-    DecisionCase(input="git checkout 81619e7 -- packages/x.py", effect="allow"),
-    DecisionCase(input="git checkout main -- f g", effect="allow"),
+    DecisionCase(input="git restore --source=81619e7 -- packages/x.py", effect="allow"),
+    DecisionCase(input="git checkout 81619e7 -- packages/x.py", effect="deny"),
+    DecisionCase(input="git checkout main -- f g", effect="deny"),
+    DecisionCase(input="git checkout main -- .", effect="deny"),
     DecisionCase(input="git checkout $ref -- f", effect="deny"),
     DecisionCase(input="git checkout -b topic", effect="deny"),
     DecisionCase(
-        input="set -e; git checkout 81619e7 -- x.py; git commit -m x",
+        input="set -e; git restore --source=81619e7 -- x.py; git commit -m x",
         effect="allow",
+    ),
+    DecisionCase(
+        input="set -e; git checkout 81619e7 -- x.py; git commit -m x",
+        effect="deny",
     ),
     DecisionCase(input="git config core.pager=x", effect="ask"),
     # Read verbs pin git config to its query action. Among writes, the key

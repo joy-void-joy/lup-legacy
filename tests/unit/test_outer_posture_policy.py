@@ -544,6 +544,35 @@ def test_git_moved_into_a_lent_tree_keeps_the_question_there(
 
 
 @pytest.mark.parametrize(
+    "spelled",
+    [
+        pytest.param("git checkout HEAD -- .", id="dot"),
+        pytest.param("git checkout HEAD -- ./README.md", id="dot-relative"),
+        pytest.param("git checkout HEAD -- README.md", id="relative"),
+        pytest.param("git checkout HEAD -- {checkout}", id="absolute-root"),
+        pytest.param("git checkout HEAD -- {checkout}/README.md", id="absolute"),
+    ],
+)
+def test_a_checkout_from_a_ref_is_refused_however_its_path_is_spelled(
+    runtime: Runtime, checkout: Path, monkeypatch: pytest.MonkeyPatch, spelled: str
+) -> None:
+    """This project checks out through `git switch` and `git restore`.
+
+    A path spelled from the checkout was granted as a restore from a ref while
+    the same path spelled absolutely was refused, so which answer a session
+    met turned on how the operand was written. Refused whatever the spelling,
+    and pointed at the `git restore --source` that does the same.
+    """
+    command = spelled.format(checkout=checkout)
+    postures: tuple[Posture, ...] = ("none", "inner", "outer")
+
+    assert {met(runtime, posture, command, checkout) for posture in postures} == {
+        "deny"
+    }
+    assert set(previewed(command, checkout, monkeypatch).values()) == {"deny"}
+
+
+@pytest.mark.parametrize(
     ("command", "standing"),
     [
         pytest.param("git --work-tree=. reset --hard", "git reset --hard", id="reset"),

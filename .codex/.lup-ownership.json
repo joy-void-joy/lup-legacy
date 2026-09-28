@@ -191,7 +191,7 @@
     {
       "path": ".codex/plugins/lup/hooks/runtime/kernel/commands.py",
       "category": "generated",
-      "sha256": "ebfe7e793397ddd8eda9222ebd8d7439e4c1e0a8be5b5199d2b3ddcc7d9a053c",
+      "sha256": "58f64133745e69d3dd004855744e885d267c78da85d081b9fbaae39addb028ca",
       "semantic_id": "hooks.lup-policy",
       "executable": false
     },
@@ -317,7 +317,7 @@
     {
       "path": ".codex/plugins/lup/hooks/runtime/kernel/shell.py",
       "category": "generated",
-      "sha256": "709e37a6ffca6b9bde53ac52edfe4903e9d6c3b43d04db0875a925234a9221cd",
+      "sha256": "13303cef1a8b80ac7eab60671a38a662dc89a504c04ad4bca472c30e4ddb4ce7",
       "semantic_id": "hooks.lup-policy",
       "executable": false
     },
@@ -660,7 +660,7 @@
     {
       "path": ".codex/plugins/lup/skills/refactor/SKILL.md",
       "category": "generated",
-      "sha256": "307c7b0460570f46e3ed7439df780b33506dffbcb6934f87d8ae105b79f2deff",
+      "sha256": "c93ac026d87b65f5a88f72715d7830d2f64d2767a7fc86a5958c7bcec3e8c1a0",
       "semantic_id": "skill.refactor",
       "executable": false
     },

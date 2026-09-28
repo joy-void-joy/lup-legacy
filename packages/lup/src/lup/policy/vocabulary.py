@@ -1463,8 +1463,10 @@ def git_rule(
     discards work. On, it denies and names ``switch`` and ``restore``
     instead, which suits a project that has settled on the newer verbs. The
     ref-sourced ``checkout <ref> -- <path>`` form is recognized by the kernel
-    ahead of this row either way, because committed content stays
-    recoverable.
+    ahead of this row: granted where ``checkout`` asks, because committed
+    content stays recoverable, and refused where it is redirected, naming the
+    ``git restore --source`` that does the same -- however its paths are
+    spelled.
 
     ``sandbox`` is where git runs, stated once here and inherited by every
     subcommand. The default is ``ambient``, because what git needs is not the

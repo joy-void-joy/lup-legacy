@@ -267,7 +267,10 @@ file stays where git stands, and a tree that holds where git stands — `.`,
 grant resting on this checkout's history — a checkout or restore from a
 named ref — holds only for paths this checkout answers for, so a placed path
 elsewhere meets the row's question and the write scope's reading of where
-it lands. And where git works in a tree outside the checkout, by
+it lands. A project that redirects `checkout` to the newer verbs grants no
+checkout at all: `git checkout <ref> -- <path>` is refused however the path
+is spelled — `.`, `./x`, `x` or absolute — and the refusal names the `git
+restore --source=<ref> -- <path>` that does the same. And where git works in a tree outside the checkout, by
 `--work-tree` or `-C`, a loss a capture would have settled keeps its
 question, because the capture is of this checkout: `git -C ../other reset
 --hard` and `git --work-tree=/srv/wt reset --hard` ask where `git reset
