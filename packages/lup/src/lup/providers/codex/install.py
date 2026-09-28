@@ -14,7 +14,7 @@ from lup.providers.codex.home import (
     trust_project,
 )
 from lup.providers.codex.marketplace import CodexMarketplace
-from lup.providers.codex.profile import CodexProfileSettings
+from lup.providers.codex.profile import CodexAccountSettings
 from lup.providers.codex.theme import claude_daltonized_theme
 
 
@@ -56,7 +56,7 @@ def prepare(
     """Prepare one native home from the installed library's implementation."""
     if settings_stdin:
         try:
-            CodexProfileSettings.model_validate_json(sys.stdin.read()).install(
+            CodexAccountSettings.model_validate_json(sys.stdin.read()).install(
                 home, enforce_policy=CodexMarketplace.declared(root) is not None
             )
         except (ValidationError, ValueError):

@@ -28,7 +28,7 @@ from lup.harness.messaging import SessionInboxes
 from lup.harness.models import Harness
 from lup.observability.audit import TraceJournal
 from lup.providers.codex.home import CodexHomeSelection
-from lup.providers.codex.profile import CodexProfileSettings
+from lup.providers.codex.profile import CodexAccountSettings
 from lup.sessions.recursion import MAX_RECURSIVE_AGENT_ENV
 from lup.types import EnvVars
 
@@ -166,7 +166,7 @@ def stub_host(monkeypatch: pytest.MonkeyPatch, root: Path) -> Caught:
     )
     monkeypatch.setattr(codex_launch, "carry_codex_home", lambda *_a, **_k: None)
     monkeypatch.setattr(
-        CodexProfileSettings, "capture", classmethod(lambda cls, *_a, **_k: None)
+        CodexAccountSettings, "capture", classmethod(lambda cls, *_a, **_k: None)
     )
     monkeypatch.setattr(
         launch, "refuse_redirected_pointers", lambda: caught.events.append("pointers")

@@ -57,7 +57,7 @@ from lup.providers.codex.model_choice import (
     codex_default_effort,
     codex_effort_arguments,
 )
-from lup.providers.codex.profile import CodexProfileSettings
+from lup.providers.codex.profile import CodexAccountSettings
 from lup.providers.codex.session import (
     carry_codex_home,
     codex_login_preflight,
@@ -558,7 +558,7 @@ class CodexLaunchHome(BaseModel, frozen=True, arbitrary_types_allowed=True):
 
     store: CodexWorktreeHomeStore
     selection: CodexHomeSelection
-    settings: CodexProfileSettings | None = None
+    settings: CodexAccountSettings | None = None
     """The person's settings, carried into a container's home at its start."""
 
 
@@ -583,13 +583,9 @@ def codex_launch_home(
         editor=personal.editor,
         settings=personal.codex.settings,
     )
-    selection = select_codex_home(agent.home, environment, root, None, store)
+    selection = select_codex_home(agent.home, environment, root, store)
     contained = agent.sandbox.posture().contained()
-    settings = (
-        CodexProfileSettings.capture(selection.path, None, as_base=True)
-        if contained
-        else None
-    )
+    settings = CodexAccountSettings.capture(selection.path) if contained else None
     return CodexLaunchHome(store=store, selection=selection, settings=settings)
 
 
