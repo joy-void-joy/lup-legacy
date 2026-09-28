@@ -20,8 +20,8 @@ break landed in, so an update crossing several releases reads every one of
 them as data; :mod:`lup.devtools.dev.migrations` opens by saying so.
 
 A release can go out first as candidates — ``vX.Y.ZrcN``, pre-releases in
-PEP 440's own spelling, which an installer takes only when asked — and then be
-promoted. The level is settled once, by the first candidate, and each later
+PEP 440's own spelling, which an installer passes over unless asked for one or
+unless nothing else is published — and then be promoted. The level is settled once, by the first candidate, and each later
 one counts on from the tags already spent on its version, since an index
 accepts a version once. Promotion is a second tag on the candidate's own
 commit, taken only while the release branch holds exactly what that
