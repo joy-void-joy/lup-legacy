@@ -7,9 +7,10 @@ from pathlib import Path
 
 import sh
 import typer
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 import lup.devtools.dev.records as records
+from lup.coordination.identity import session_member_id
 from lup.coordination.repository import RepositoryPeers
 from lup.devtools.dev.git_guards import (
     DECLARED_GUARDS,
@@ -658,6 +659,95 @@ class RestoredWorkspace(SetupStep, frozen=True):
         return False
 
 
+class WorktreeHold(BaseModel, frozen=True):
+    """The session a checkout was created by, written into git's lock on it.
+
+    The session that runs `git worktree create` is rarely standing in what it
+    creates: it was launched in another checkout and writes into the new one
+    by absolute path, so the roster never names it as that checkout's user.
+    Once its work is committed the checkout reads as clean and spent, and a
+    lander removed it while the session was still writing there.
+
+    So creation locks the checkout with this as the reason. A lock is where
+    every removal here already looks, and a plain `git worktree remove` meets
+    it too. It names a session rather than deciding anything: whether that
+    session is still live is the roster's to say, so the hold ends when the
+    session leaves and nobody has to remember to release it.
+    """
+
+    session: str
+    """The roster id of the session that created the checkout."""
+
+    called: str = ""
+    """What that session was called then, for a reader of `git worktree list`."""
+
+    @classmethod
+    def read(cls, reason: str) -> "WorktreeHold | None":
+        """The hold a lock reason spells, or nothing where somebody else locked it."""
+        try:
+            return cls.model_validate_json(reason)
+        except ValidationError:
+            return None
+
+    def live(self, peers: RepositoryPeers) -> bool:
+        """Whether the session this names is still working, by the roster."""
+        return self.session in peers.live_ids()
+
+
+def lock_reason(path: Path) -> str | None:
+    """Why this checkout is locked, empty where no reason was given, None if not."""
+    from lup.devtools.dev.branches import locked_worktrees
+
+    return next(
+        (
+            reason
+            for locked, reason in locked_worktrees().items()
+            if Path(locked).resolve() == path.resolve()
+        ),
+        None,
+    )
+
+
+def hold_on(path: Path) -> WorktreeHold | None:
+    """The hold a session's creation left on this checkout, if one did."""
+    reason = lock_reason(path)
+    return WorktreeHold.read(reason) if reason is not None else None
+
+
+class HeldForSession(SetupStep, frozen=True):
+    """The creating session's hold on its checkout, taken at creation.
+
+    Never taken from a live session holding it already, or from a lock that
+    is not a session's hold: re-attaching a worktree somebody else is using
+    does not make it the re-attacher's. A hold whose session has left is
+    taken over, since it is nobody's any more.
+    """
+
+    worktree: Path
+    session: str
+    called: str = ""
+
+    def label(self) -> str:
+        return f"the hold for session {self.called or self.session}"
+
+    def satisfied(self) -> bool:
+        held = hold_on(self.worktree)
+        return held is not None and held.session == self.session
+
+    def run(self) -> None:
+        reason = lock_reason(self.worktree)
+        if reason is not None:
+            held = WorktreeHold.read(reason)
+            if held is None or held.live(RepositoryPeers(self.worktree)):
+                return
+            git("worktree", "unlock", str(self.worktree))
+        hold = WorktreeHold(session=self.session, called=self.called)
+        git("worktree", "lock", "--reason", hold.model_dump_json(), str(self.worktree))
+
+    def required(self) -> bool:
+        return False
+
+
 def finish(steps: Sequence[SetupStep]) -> Iterator[SetupStep]:
     """Run each step given, yielding the ones still unfinished afterwards.
 
@@ -833,9 +923,13 @@ def create(
 
     if not resuming:
         register_worktree(name, worktree_path, base.cut_from())
+    session = session_member_id()
 
     def setup() -> Iterator[SetupStep]:
         """Everything that has to hold before this worktree can be used."""
+        if session:
+            called = RepositoryPeers(current_dir).called(session)
+            yield HeldForSession(worktree=worktree_path, session=session, called=called)
         yield MergeDriver(blocked=registration_blocked)
         if not reflog_blocked:
             yield LoggedRefUpdates()
@@ -960,14 +1054,37 @@ def list_worktrees() -> None:
 
 
 def live_worktree_owners(path: Path) -> list[str]:
-    """Live launched sessions using a checkout, including one that is clean."""
-    return [
-        member.cli_name or member.actor.label()
-        for member in RepositoryPeers(path).present()
-        if member.running
-        and member.worktree
-        and Path(member.worktree).resolve() == path.resolve()
-    ]
+    """Live sessions using a checkout, including one that is clean.
+
+    Two ways to be one: launched in it, or holding it since creating it from
+    somewhere else. The second is not asked of the session asking, whose own
+    hold is on a checkout it is free to remove.
+    """
+    running = [member for member in RepositoryPeers(path).present() if member.running]
+    held = hold_on(path)
+    return list(
+        dict.fromkeys(
+            member.cli_name or member.actor.label()
+            for member in running
+            if (member.worktree and Path(member.worktree).resolve() == path.resolve())
+            or (
+                held is not None
+                and member.actor.id == held.session
+                and held.session != session_member_id()
+            )
+        )
+    )
+
+
+def drop_the_hold(path: Path) -> None:
+    """Unlock a checkout whose lock is a session hold nobody else answers for.
+
+    Called once :func:`refuse_live_worktree_removal` has passed, so a hold
+    still standing here is spent or the remover's own, and git would
+    otherwise refuse the removal over a lock nobody is answering for.
+    """
+    if hold_on(path) is not None:
+        git("worktree", "unlock", str(path))
 
 
 def refuse_live_worktree_removal(path: Path) -> None:
@@ -1017,6 +1134,7 @@ def remove(name: str, force: bool) -> None:
 
     try:
         refuse_live_worktree_removal(path)
+        drop_the_hold(path)
         args = ["worktree", "remove", str(path)]
         if force:
             args.append("--force")

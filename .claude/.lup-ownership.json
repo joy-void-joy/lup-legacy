@@ -219,7 +219,7 @@
     {
       "path": ".claude/plugins/lup/commands/land.md",
       "category": "generated",
-      "sha256": "1797dc35844afd1c2a8f10dd85f70c2e6bfbd826438e7ea758abf3739711c9be",
+      "sha256": "08bf80b05829c1ba638e34e79b996163a6dd80dfab8cd68592b92ef24e1a87ca",
       "semantic_id": "skill.land",
       "executable": false
     },
@@ -744,7 +744,7 @@
     {
       "path": "docs/contributing.md",
       "category": "generated",
-      "sha256": "f1335c0a970c2ce12fcd8764df9da3b46cc59b474349580e9e3b97dd625ee8f8",
+      "sha256": "658ef4a3b69b8f8e63c8285c087b712418e88531517c024f7db2b01b72ddd3a1",
       "semantic_id": "docs.contributing",
       "executable": false
     },

@@ -2154,11 +2154,15 @@ def locked_worktrees() -> dict[str, str]:  # lup: ignore[dict-str-payload]
     directory out from under a process still writing there.
 
     The reason is whatever the locker passed, empty when they passed none.
+    Read NUL-separated, because that is the form git prints it in unquoted: a
+    reason carrying a quote comes back C-quoted otherwise, and the hold a
+    session's `git worktree create` writes is JSON.
     """
     locked: dict[str, str] = {}  # lup: ignore[dict-str-payload, empty-collection]
     current_path = ""
 
-    for line in git.lines("worktree", "list", "--porcelain"):
+    listed = git.out("worktree", "list", "--porcelain", "-z")
+    for line in listed.split("\x00"):  # lup: ignore[string-split] — NUL records
         match line.split(maxsplit=1):
             case ["worktree", path]:
                 current_path = path
@@ -2227,8 +2231,13 @@ def outgrew_upstream(name: str) -> bool:
 
 
 def plan_worktree_step(path: str, stranded: bool, force: bool) -> PlannedAction:
-    """Judge the worktree removal — the one irreversible step."""
-    from lup.devtools.dev.worktree import live_worktree_owners
+    """Judge the worktree removal — the one irreversible step.
+
+    A lock that is a session's hold, and not a live one, is no refusal: the
+    session that took it has left or is the one asking, and the removal
+    drops it first.
+    """
+    from lup.devtools.dev.worktree import hold_on, live_worktree_owners
 
     if stranded:
         return PlannedAction(
@@ -2244,7 +2253,7 @@ def plan_worktree_step(path: str, stranded: bool, force: bool) -> PlannedAction:
             detail=f"live sessions {', '.join(owners)} use this checkout; wait for their departure",
         )
     lock = locked_worktrees().get(path)
-    if lock is not None:
+    if lock is not None and hold_on(Path(path)) is None:
         return PlannedAction(
             description=description,
             verdict="refused",
@@ -2608,6 +2617,7 @@ def worktree_left_as_mount_point(path: str) -> bool:
 def run_deletion(plan: DeletionPlan, force: bool) -> None:
     """Carry out a plan whose preflight passed, reporting what actually ran."""
     from lup.devtools.dev.worktree import (
+        drop_the_hold,
         refuse_live_worktree_removal,
         said_environment_removed,
     )
@@ -2615,8 +2625,11 @@ def run_deletion(plan: DeletionPlan, force: bool) -> None:
     completed: list[str] = []
 
     match plan:
-        case DeletionPlan(stranded=True):
+        case DeletionPlan(stranded=True, worktree=str() as worktree):
             try:
+                # A hold would keep the entry through the prune, and the
+                # checkout it held is already gone.
+                drop_the_hold(Path(worktree))
                 git("worktree", "prune")
                 typer.echo(f"Pruned stranded worktree: {plan.worktree}")
                 completed.append("pruned worktree")
@@ -2627,6 +2640,7 @@ def run_deletion(plan: DeletionPlan, force: bool) -> None:
         case DeletionPlan(worktree=str() as worktree):
             refuse_live_worktree_removal(Path(worktree))
             try:
+                drop_the_hold(Path(worktree))
                 git("worktree", "remove", *(["--force"] if force else []), worktree)
                 typer.echo(f"Removed worktree: {worktree}")
                 completed.append("removed worktree")
