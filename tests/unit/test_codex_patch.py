@@ -6,7 +6,6 @@ per-file decisions it enables, and the path resolution that keeps
 repo-relative rules matching inside a sibling worktree.
 """
 
-import importlib.util
 import io
 import json
 import sys
@@ -18,6 +17,7 @@ import pytest
 
 from lup.providers.codex.patch import patched_files, patched_paths
 from lup.types import JsonObject
+from tests.unit.bundled import bundled
 
 GREETING = 'def greet():\n    return "hi"\n'
 
@@ -169,12 +169,10 @@ def test_an_envelope_the_parser_cannot_vouch_for_raises(
 
 
 def bundled_dispatcher() -> ModuleType:
-    path = Path.cwd() / ".codex/plugins/lup/hooks/scripts/policy.py"
-    spec = importlib.util.spec_from_file_location("bundled_codex_policy", path)
-    assert spec is not None and spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
+    return bundled(
+        "bundled_codex_policy",
+        Path.cwd() / ".codex/plugins/lup/hooks/scripts/policy.py",
+    )
 
 
 def worktree(root: Path) -> Path:
