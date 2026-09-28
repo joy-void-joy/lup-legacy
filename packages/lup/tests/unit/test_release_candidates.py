@@ -3,11 +3,11 @@
 A candidate is a release published as a pre-release — ``vX.Y.ZrcN`` — so a
 project can take it on purpose before everybody takes it by default. What is
 pinned here is the arithmetic that decides which candidate comes next, and the
-two questions a promotion asks: whether the release branch still holds exactly
-what the candidate shipped, and whether this branch changed anything since
-but the changelog. Where both hold, the release is one commit on top that
-changes only the version; where either does not, the command says so and
-names both ways on rather than choosing between them.
+one question a promotion asks: whether the release branch still holds exactly
+what the candidate shipped. Where it does, the release is one commit on a
+branch cut from the candidate that changes only the version; where it does
+not, the command says so and names both ways on rather than choosing between
+them.
 """
 
 import datetime as dt
@@ -48,9 +48,7 @@ def planned(
     return state.planned(request, DAY, log, pending, SPEC)
 
 
-def held(
-    carried: list[str] | None = None, since: int = 0, changed: list[str] | None = None
-) -> Landing:
+def held(carried: list[str] | None = None, since: int = 0) -> Landing:
     """A release branch standing exactly where the newest candidate put it."""
     return Landing(
         commit="c" * 40,
@@ -58,7 +56,6 @@ def held(
         held=True,
         carried=carried or [],
         since=since,
-        changed=changed or [],
     )
 
 
@@ -164,12 +161,12 @@ def test_each_version_names_its_own_level() -> None:
 
 
 def test_an_unmoved_release_branch_promotes_the_candidate_as_it_is() -> None:
-    """Changelog entries landed since are prose; the release is the candidate."""
+    """Whatever this branch did since, the release is cut from the candidate."""
     plan = planned(
         ReleaseState(
             manifest="0.5.0rc2",
             tagged=["0.4.0", "0.5.0rc1", "0.5.0rc2"],
-            landing=held(carried=["taken.toml"], changed=["CHANGELOG.md"]),
+            landing=held(carried=["taken.toml"], since=7),
         ),
         ReleaseRequest(),
     )
@@ -177,28 +174,10 @@ def test_an_unmoved_release_branch_promotes_the_candidate_as_it_is() -> None:
     assert plan.kind == "promotion"
     assert (plan.previous, plan.version, plan.tag) == ("0.5.0rc2", "0.5.0", "v0.5.0")
     assert plan.commit == "c" * 40
+    assert plan.branch == "release-0.5.0"
     assert plan.candidates == ["0.5.0rc1", "0.5.0rc2"]
     assert plan.carried == ["taken.toml"]
     assert plan.breaks == 1
-
-
-def test_anything_but_the_changelog_changed_since_the_candidate_refuses() -> None:
-    """Promoting from here would ship what the candidate never tested."""
-    with pytest.raises(ReleaseRefused) as refused:
-        planned(
-            ReleaseState(
-                manifest="0.5.0rc1",
-                tagged=["0.4.0", "0.5.0rc1"],
-                landing=held(changed=["CHANGELOG.md", "src/thing.py"]),
-            ),
-            ReleaseRequest(),
-        )
-
-    said = str(refused.value)
-    assert "src/thing.py" in said
-    assert "CHANGELOG.md" not in said
-    assert "--pre" in said
-    assert "--direct" in said
 
 
 def test_a_candidate_manifest_with_no_candidate_tag_is_refused() -> None:
@@ -329,13 +308,14 @@ def test_a_promotion_plan_names_what_it_is_checked_against() -> None:
         ReleaseState(
             manifest="0.5.0rc2",
             tagged=["0.4.0", "0.5.0rc1", "0.5.0rc2"],
-            landing=held(carried=["taken.toml"], since=4, changed=["CHANGELOG.md"]),
+            landing=held(carried=["taken.toml"], since=4),
         ),
         ReleaseRequest(),
     ).spelled()
     said = "\n".join(spelled)
 
     assert "0.5.0rc2 → 0.5.0, tagged v0.5.0" in said
+    assert "release-0.5.0" in said
     assert "changes only the version" in said
     assert f"({short_sha('c' * 40)})" in said
     assert "0.5.0rc1, 0.5.0rc2" in said

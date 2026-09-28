@@ -2,12 +2,13 @@
 
 The promise a promotion makes is that what ships is what was tested. The
 candidate's commit is tagged with its own version, and the release is one
-commit on top of it that changes nothing but the version, the changelog
-section it closes, and the record of the breaks it carried — which is
-checked against the candidate's tag before anything is tagged. These drive
-the whole cycle — cut on the integration branch, land on the release branch,
-promote — and read the result back from git rather than from anything the
-release reported.
+commit on a branch cut from that tag, changing nothing but the version, the
+changelog section it closes, and the record of the breaks it carried —
+checked against the candidate's tag before anything is tagged. The
+integration branch goes on moving meanwhile, and gets the release back by a
+merge. These drive the whole cycle — cut on the integration branch, land on
+the release branch, promote — and read the result back from git rather than
+from anything the release reported.
 """
 
 import datetime as dt
@@ -137,17 +138,37 @@ def test_a_candidate_carries_its_own_version_and_moves_no_pending_break(
     assert record_of(project).releases() == []
 
 
-def test_promotion_is_a_commit_that_changes_only_the_version(project: Path) -> None:
-    """Version, changelog, record: nothing the candidate did not ship."""
+def keep_working(root: Path) -> None:
+    """Land what the integration branch goes on doing while a candidate soaks.
+
+    Code, a break declared with it, and a changelog entry standing directly
+    above the candidates' section — the line a promotion rewrites.
+    """
+    (root / "thing.py").write_text("answer = 42\n", encoding="utf-8")
+    declare(record_of(root).pending_directory(), "later", "gone_after_rc1")
+    committed(root, "feat: work after the candidate")
+    open_an_entry(root, "after rc1")
+
+
+def test_promotion_is_a_commit_on_the_candidate_that_changes_only_the_version(
+    project: Path,
+) -> None:
+    """Version, changelog, record: nothing the candidate did not ship.
+
+    The integration branch kept moving while the candidate soaked, and none of
+    it is in the release: the promotion is cut from the candidate's tag.
+    """
     cut(project, ReleaseRequest(level="minor", pre=True))
     land(project)
-    open_an_entry(project, "after rc1")
+    keep_working(project)
 
     plan = cut(project, ReleaseRequest())
 
     assert plan.kind == "promotion"
-    assert commit_of(project, "v0.5.0") == commit_of(project, "HEAD")
-    assert subject_of(project, "HEAD") == "release: 0.5.0rc1 → 0.5.0"
+    assert plan.branch == "release-0.5.0"
+    assert commit_of(project, "v0.5.0") == commit_of(project, "release-0.5.0")
+    assert commit_of(project, "v0.5.0^") == commit_of(project, "v0.5.0rc1")
+    assert subject_of(project, "v0.5.0") == "release: 0.5.0rc1 → 0.5.0"
     assert 'version = "0.5.0"' in manifest_at(project, "v0.5.0")
     assert set(
         git.lines(
@@ -165,28 +186,40 @@ def test_promotion_is_a_commit_that_changes_only_the_version(project: Path) -> N
         "migrations/pending/taken.toml",
         "migrations/0.5.0/taken.toml",
     }
+    released = Changelog.parse(
+        git.out("-C", str(project), "show", "v0.5.0:CHANGELOG.md")
+    )
+    assert released.candidate is None
+    assert released.sections[0].text.startswith(release_heading("0.5.0", DAY))
+    assert "after rc1" not in released.render()
+
+
+def test_the_release_merged_back_keeps_what_the_branch_did_since(
+    project: Path,
+) -> None:
+    """The closed section and the record come back; the newer work stays."""
+    cut(project, ReleaseRequest(level="minor", pre=True))
+    land(project)
+    keep_working(project)
+    before = commit_of(project, "HEAD")
+
+    cut(project, ReleaseRequest())
+
+    assert git.out("-C", str(project), "branch", "--show-current") == "dev"
+    assert git.lines("-C", str(project), "rev-list", "--parents", "-n", "1", "HEAD")[
+        0
+    ].endswith(f"{before} {commit_of(project, 'v0.5.0')}")
+    assert (project / "thing.py").read_text() == "answer = 42\n"
+    assert 'version = "0.5.0"' in (project / "pyproject.toml").read_text()
     closed = Changelog.read(project / "CHANGELOG.md")
     assert closed.candidate is None
     assert closed.sections[0].text.startswith(release_heading("0.5.0", DAY))
-    assert "- a feature" in closed.sections[0].text
     assert "- after rc1" in closed.unreleased
     assert [m.subjects for m in record_of(project).released("0.5.0")] == [
         ["gone_before_rc1"]
     ]
-
-
-def test_code_landed_since_the_candidate_refuses_promotion(project: Path) -> None:
-    """Promoting from here would ship what the candidate never tested."""
-    cut(project, ReleaseRequest(level="minor", pre=True))
-    land(project)
-    (project / "thing.py").write_text("answer = 42\n", encoding="utf-8")
-    committed(project, "fix: what rc1 got wrong")
-
-    with pytest.raises(ReleaseRefused, match="thing.py") as refused:
-        cut(project, ReleaseRequest())
-
-    assert "--pre" in str(refused.value)
-    assert "v0.5.0" not in git.lines("-C", str(project), "tag", "--list")
+    assert [m.subjects for m in record_of(project).pending()] == [["gone_after_rc1"]]
+    assert git.out("-C", str(project), "status", "--porcelain") == ""
 
 
 def test_the_promotion_commit_is_checked_before_it_is_made(project: Path) -> None:
@@ -198,8 +231,23 @@ def test_the_promotion_commit_is_checked_before_it_is_made(project: Path) -> Non
     with pytest.raises(ReleaseRefused, match="thing.py"):
         cut(project, ReleaseRequest(), regenerate=("thing.py", "answer = 42\n"))
 
+    assert git.out("-C", str(project), "branch", "--show-current") == "dev"
     assert commit_of(project, "HEAD") == head
     assert git.out("-C", str(project), "status", "--porcelain") == ""
+    assert "release-0.5.0" not in git.out("-C", str(project), "branch", "--list")
+    assert "v0.5.0" not in git.lines("-C", str(project), "tag", "--list")
+
+
+def test_a_promotion_branch_already_standing_is_not_overwritten(project: Path) -> None:
+    """A promotion started before is finished or deleted, never cut over."""
+    cut(project, ReleaseRequest(level="minor", pre=True))
+    land(project)
+    git("-C", str(project), "branch", "release-0.5.0", "v0.5.0rc1")
+
+    with pytest.raises(ReleaseRefused, match="release-0.5.0 already exists"):
+        cut(project, ReleaseRequest())
+
+    assert git.out("-C", str(project), "branch", "--show-current") == "dev"
     assert "v0.5.0" not in git.lines("-C", str(project), "tag", "--list")
 
 

@@ -1527,12 +1527,13 @@ def create_dev_app(
 
         With `--pre` the release goes out first as a candidate, its manifest
         carrying the candidate's version. A plain release while the newest
-        tag is a candidate promotes it: one commit changing only the version,
-        the changelog and the record, checked against the candidate before it
-        is made, where the release branch still holds exactly what the
-        candidate shipped and this branch changed nothing since but the
-        changelog. Where either moved, this says so and names both ways on —
-        another candidate, or `--direct`.
+        tag is a candidate promotes it: one commit on a branch cut from the
+        candidate, changing only the version, the changelog and the record,
+        checked against the candidate before it is made, tagged, and merged
+        back into this branch — which goes on moving while a candidate
+        soaks. It is taken where the release branch still holds exactly what
+        the candidate shipped; where that moved, this says so and names both
+        ways on — another candidate, or `--direct`.
 
         Refused on a dirty tree and on an undeclared break, in that order. The
         first because a release commit should hold the release and not
@@ -1609,22 +1610,31 @@ def create_dev_app(
         # release came to be the one commit this repository could not make.
         # Regenerating is what the guard is asking for, and everything it
         # writes belongs in the same commit as the release that caused it.
-        carry_out(
-            plan,
-            spec,
-            root,
-            log,
-            record,
-            regenerate=lambda: update_mod.regenerated(
-                root, lambda line: typer.echo(line, err=True)
-            ),
-        )
+        try:
+            carry_out(
+                plan,
+                spec,
+                root,
+                log,
+                record,
+                regenerate=lambda: update_mod.regenerated(
+                    root, lambda line: typer.echo(line, err=True)
+                ),
+            )
+        except ReleaseRefused as refused:
+            typer.echo(str(refused), err=True)
+            raise typer.Exit(1) from refused
 
         if as_json:
             output_json(plan)
         else:
             for line in plan.spelled():
                 typer.echo(f"released: {line}")
+            if plan.branch:
+                typer.echo(
+                    f"{plan.branch} lands on {spec.branch} through a pull request, "
+                    "like any release"
+                )
             typer.echo(f"tagged {plan.tag} — pushing the tag is what publishes")
 
     @migrate_app.command("check")
