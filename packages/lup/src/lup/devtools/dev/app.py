@@ -1627,7 +1627,7 @@ def create_dev_app(
         divergence = span.divergence(declared().project)
         record = migrations.MigrationRecord()
         unnamed = migrations.unnamed_between(
-            divergence.disappeared, record.declared(), span.base, span.head or "HEAD"
+            divergence.disappeared, record.declared(), span.base, span.head
         )
         if as_json:
             output_json(divergence)

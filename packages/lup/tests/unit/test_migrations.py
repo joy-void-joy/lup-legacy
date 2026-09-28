@@ -383,3 +383,30 @@ def test_a_migration_that_landed_in_another_history_speaks_for_nothing_here(
     owed = undeclared_breaks(DevProject(package="app"), base, record)
 
     assert [capability.identity for capability in owed] == ["stop"]
+
+
+def test_a_merge_in_progress_hears_what_the_merged_branch_declared(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The working tree holds commits HEAD does not have yet, while a merge runs.
+
+    Judged against the working tree, a stamped migration lands wherever this
+    checkout holds its commit and the base does not: the gate run to check a
+    merge before committing it reads the merged branch's record, and that
+    record's commits are in the merge head rather than in HEAD.
+    """
+    root = tmp_path / "project"
+    base = vendoring_checkout(root)
+    monkeypatch.chdir(root)
+    record = MigrationRecord(root=root / "migrations")
+    git("switch", "--quiet", "-c", "side")
+    (root / "src/app/core.py").write_text("def run() -> None: ...\n", encoding="utf-8")
+    declare(record.pending_directory(), "stop", "stop")
+    committed(root, "stop goes, and says so")
+    record.release("0.2.0", root)
+    committed(root, "release: 0.1.0 → 0.2.0")
+    git("switch", "--quiet", "main")
+
+    git("merge", "--quiet", "--no-commit", "--no-ff", "side")
+
+    assert undeclared_breaks(DevProject(package="app"), base, record) == []

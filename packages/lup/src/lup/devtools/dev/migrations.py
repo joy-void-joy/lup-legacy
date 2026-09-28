@@ -155,19 +155,32 @@ class Migration(BaseModel, frozen=True, extra="forbid"):
             return False
         return True
 
-    def landed_between(self, base: str, head: str, root: Path = Path()) -> bool:
+    def landed_between(self, base: str, head: str = "", root: Path = Path()) -> bool:
         """Whether this break landed after ``base`` and by ``head``.
 
         What lets it speak for a name that went over that range. A pending
         declaration names no commit and lands in every range it is read in,
         since it is newer than any commit. A stamped one lands only where its
-        commit is in ``head``'s history and not yet in ``base``'s — so one a
+        commit is not yet in ``base``'s history and is in ``head``'s — so one a
         base already carried speaks for nothing that base still had, and one
         from a history this checkout does not hold speaks for nothing here.
+
+        An empty ``head`` is the working tree, whose history is every commit
+        this checkout holds rather than HEAD's alone: while a merge runs, the
+        tree carries the merged branch's record, stamped with commits only the
+        merge head has.
         """
-        return not self.commit or (
-            self.applied_at(head, root) and not self.applied_at(base, root)
-        )
+        if not self.commit:
+            return True
+        if self.applied_at(base, root):
+            return False
+        if head:
+            return self.applied_at(head, root)
+        try:
+            git("-C", str(root), "cat-file", "-e", f"{self.commit}^{{commit}}")
+        except sh.ErrorReturnCode:
+            return False
+        return True
 
     def spelled(self) -> list[str]:
         """This migration as an update reports it: the reason, then the steps."""
@@ -325,7 +338,7 @@ def unnamed_between(
     disappeared: list[Capability],
     declared: list[Migration],
     base: str,
-    head: str = "HEAD",
+    head: str = "",
     root: Path = Path(),
 ) -> list[Capability]:
     """:func:`unnamed`, heard only from migrations that landed over the range.
@@ -336,7 +349,7 @@ def unnamed_between(
     spoke for a name gone before the range began, and one from another
     history — the library's record, read in a project built on it — spoke
     for a name of that history's. Either way a name gone here is a break of
-    its own. ``head`` is the working tree's commit unless the range names one.
+    its own. ``head`` is empty for the working tree, as a span spells it.
 
     Ancestry is asked only of the migrations naming something that went,
     which is the few rather than the record.
