@@ -4,9 +4,10 @@ A candidate is a release published as a pre-release — ``vX.Y.ZrcN`` — so a
 project can take it on purpose before everybody takes it by default. What is
 pinned here is the arithmetic that decides which candidate comes next, and the
 one question a promotion asks: whether the release branch still holds exactly
-what the candidate shipped. Where it does, the final version is the same
-commit under a second tag; where it does not, the command says so and names
-both ways on rather than choosing between them.
+what the candidate shipped. Where it does, the release is one commit on a
+branch cut from the candidate that changes only the version; where it does
+not, the command says so and names both ways on rather than choosing between
+them.
 """
 
 import datetime as dt
@@ -24,6 +25,7 @@ from lup.devtools.dev.release import (
     ReleaseState,
     candidate_version,
     level_of,
+    version_only,
 )
 from lup.devtools.utils import short_sha
 
@@ -159,12 +161,12 @@ def test_each_version_names_its_own_level() -> None:
 
 
 def test_an_unmoved_release_branch_promotes_the_candidate_as_it_is() -> None:
-    """Same commit, second tag: nothing is rebuilt, so nothing can differ."""
+    """Whatever this branch did since, the release is cut from the candidate."""
     plan = planned(
         ReleaseState(
-            manifest="0.5.0",
+            manifest="0.5.0rc2",
             tagged=["0.4.0", "0.5.0rc1", "0.5.0rc2"],
-            landing=held(carried=["taken.toml"]),
+            landing=held(carried=["taken.toml"], since=7),
         ),
         ReleaseRequest(),
     )
@@ -172,9 +174,31 @@ def test_an_unmoved_release_branch_promotes_the_candidate_as_it_is() -> None:
     assert plan.kind == "promotion"
     assert (plan.previous, plan.version, plan.tag) == ("0.5.0rc2", "0.5.0", "v0.5.0")
     assert plan.commit == "c" * 40
+    assert plan.branch == "release-0.5.0"
     assert plan.candidates == ["0.5.0rc1", "0.5.0rc2"]
     assert plan.carried == ["taken.toml"]
     assert plan.breaks == 1
+
+
+def test_a_candidate_manifest_with_no_candidate_tag_is_refused() -> None:
+    """The version to count from is a candidate whose tag this clone lacks."""
+    with pytest.raises(ReleaseRefused, match="tag"):
+        planned(
+            ReleaseState(manifest="0.5.0rc1", tagged=["0.4.0"]),
+            ReleaseRequest(level="minor"),
+        )
+
+
+def test_a_file_differing_only_in_the_version_is_the_version() -> None:
+    before = 'name = "thing"\nversion = "0.5.0rc2"\n'
+
+    assert version_only(
+        before, 'name = "thing"\nversion = "0.5.0"\n', "0.5.0rc2", "0.5.0"
+    )
+    assert not version_only(
+        before, 'name = "other"\nversion = "0.5.0"\n', "0.5.0rc2", "0.5.0"
+    )
+    assert not version_only(before, f"{before}extra = 1\n", "0.5.0rc2", "0.5.0")
 
 
 def test_a_moved_release_branch_asks_rather_than_promotes() -> None:
@@ -279,10 +303,10 @@ def test_a_candidate_plan_says_what_it_publishes_and_what_stays_open() -> None:
     assert "stay pending until 0.5.0 is released" in said
 
 
-def test_a_promotion_plan_names_the_commit_and_rebuilds_nothing() -> None:
+def test_a_promotion_plan_names_what_it_is_checked_against() -> None:
     spelled = planned(
         ReleaseState(
-            manifest="0.5.0",
+            manifest="0.5.0rc2",
             tagged=["0.4.0", "0.5.0rc1", "0.5.0rc2"],
             landing=held(carried=["taken.toml"], since=4),
         ),
@@ -291,7 +315,8 @@ def test_a_promotion_plan_names_the_commit_and_rebuilds_nothing() -> None:
     said = "\n".join(spelled)
 
     assert "0.5.0rc2 → 0.5.0, tagged v0.5.0" in said
-    assert "nothing rebuilt" in said
+    assert "release-0.5.0" in said
+    assert "changes only the version" in said
     assert f"({short_sha('c' * 40)})" in said
     assert "0.5.0rc1, 0.5.0rc2" in said
     assert "4 commit(s)" in said

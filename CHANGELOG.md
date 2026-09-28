@@ -136,20 +136,27 @@ project's name that a library release happened to retire too.
 
 `dev release <level> --pre` (`/lup:release --pre`) cuts a release candidate,
 tagged `vX.Y.ZrcN`: a PEP 440 pre-release, published to the index and the
-forge as one. N counts on from the tags already spent on that version, and a
+forge as one, whose commit's manifest says `X.Y.ZrcN` — so a project pinned
+to it by git is told it holds the candidate. N counts on from the tags
+already spent on that version, and a
 later `--pre` keeps the series' level unless another one is named. The
 changelog section stays open, headed by the version the series is heading
 for and listing each candidate; work landing after a candidate gathers under
 a fresh `## Unreleased` above it until the next candidate folds it in, and
 the pending breaks stay pending until the release.
 
-A plain `dev release` while the newest tag is a candidate promotes it: where
-the release branch holds exactly what the candidate shipped, the same commit
-is tagged `vX.Y.Z`, nothing rebuilt, and the section closes with only the
-breaks that commit carried as the release's record. Where the branch has
-moved, the command says so and names the two ways on — another candidate
-with `--pre`, or the release of what the integration branch holds with
-`--direct`.
+A plain `dev release` while the newest tag is a candidate promotes it, with a
+release commit on a branch cut from the candidate's tag (`release-X.Y.Z`)
+that changes only the version (`X.Y.ZrcN` to `X.Y.Z`), the changelog section
+it closes, and the record of the breaks the candidate carried. Before
+anything is committed, every file it changes is checked against the
+candidate's tag; anything more is named, undone, and refused, so what ships
+is what was tested. The branch is tagged `vX.Y.Z`, lands on the release
+branch through a pull request like any release, and is merged back into the
+integration branch — which goes on taking work while a candidate soaks, and
+keeps it. Where the release branch has moved past the candidate, the command
+says so and names the two ways on — another candidate with `--pre`, or the
+release of what the integration branch holds with `--direct`.
 
 Nothing takes a candidate by accident. A project opts in by naming it:
 `dev library git --tag vX.Y.ZrcN`, or `dev library use published --version
@@ -157,12 +164,12 @@ X.Y.ZrcN`, whose requirement naming a pre-release is what lets the installer
 take one. `dev library release` names a candidate newer than the release
 beside it and never offers it as the version to pin.
 
-The publishing workflow takes the version it builds from the tag, since a
-candidate and its promotion are one commit under two tags, and a second job
-records each release on GitHub, marked prerelease for a candidate; it holds
-`contents: write` and not the index's identity. `PublishSpec` takes
-`tag_prefix` in place of `tags`, and `Changelog.released_as` takes the asks as
-rendered lines where `released()` took them.
+The publishing workflow builds the tree a tag names as it stands, and a
+second job records each release on GitHub, marked prerelease for a
+candidate; it holds `contents: write` and not the index's identity.
+`PublishSpec` takes `tag_prefix` in place of `tags`, and
+`Changelog.released_as` takes the asks as rendered lines where `released()`
+took them.
 
 ## 0.4.0 — 2026-09-22
 
