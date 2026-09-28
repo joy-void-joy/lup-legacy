@@ -400,8 +400,9 @@ def create_dev_app(
                 "--changed",
                 help="Run ruff and pyright over the Python files changed since "
                 "the merge base with --since (default: this branch's recorded "
-                "base), naming what else changed and every gate left unrun — "
-                "the loop while a change is moving, not the bar a commit passes",
+                "base), and the declared-migrations row from that base, naming "
+                "what else changed and every gate left unrun — the loop while a "
+                "change is moving, not the bar a commit passes",
             ),
         ] = False,
         base: Annotated[
@@ -423,6 +424,7 @@ def create_dev_app(
                 declarations.project,
                 check.change_base(since, get_integration_branch()),
                 declarations.test_roots,
+                declarations.spread,
                 fix=fix,
             )
             return

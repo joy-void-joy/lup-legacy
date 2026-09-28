@@ -921,6 +921,59 @@ def branch_record_reports(pending: list[str]) -> list[CheckReport]:
     ]
 
 
+def migration_reports(
+    project: DevProject, spread: Spread | None, base: str | None
+) -> list[CheckReport]:
+    """What this checkout owes the projects built on it, judged from ``base``.
+
+    Asked only where one of those exists, because what makes a vanished name
+    a broken import is somebody holding it. Gating rather than advisory — the
+    commit that takes a capability is the one place that knows why, and a
+    break landing without that leaves an adopter an unresolvable import and
+    nothing to read. The whole gate and the narrowed one both ask it, each
+    from its own base: removing a public name is a mistake a change makes
+    in one file, and a narrowed run that skipped this row let two of them
+    through to the whole gate.
+
+    No base at all is said rather than exited: a checkout with nothing to
+    read from is a fact about the clone, and a report that names it is what
+    lets somebody fetch one.
+    """
+    match (spread, base):
+        case (None, _):
+            return []
+        case (_, None):
+            return [
+                CheckReport(
+                    name="declared migrations",
+                    counted=False,
+                    lines=[
+                        "declared migrations: skipped — no base to judge from "
+                        "(advisory)",
+                        "  fetch the integration branch or `main` so a merge base "
+                        "exists",
+                    ],
+                )
+            ]
+        case (_, str(judged)):
+            owed = undeclared_breaks(project, judged)
+            return [
+                CheckReport(
+                    name="declared migrations",
+                    passed=not owed,
+                    lines=[
+                        f"declared migrations: FAIL ({len(owed)} gone with nothing "
+                        "to read)",
+                        *(f"  {capability.spelled()}" for capability in owed),
+                        "  declare each in `lup.devtools.dev.migrations.DECLARED`, "
+                        "with what a caller does about it",
+                    ]
+                    if owed
+                    else ["declared migrations: ok"],
+                )
+            ]
+
+
 def changed_paths(since: str) -> list[str]:
     """Every tracked path this tree changed since a ref, as posix strings.
 
@@ -1379,52 +1432,17 @@ def scan_reports(
 
         # The other direction on the same subject: that row is what this
         # checkout owes its upstream, and this is what it owes the projects
-        # built on it. Asked only where one of those exists, because what
-        # makes a vanished name a broken import is somebody holding it.
-        # Gating rather than advisory — the commit that takes a capability is
-        # the one place that knows why, and a break landing without that leaves
-        # an adopter an unresolvable import and nothing to read.
-        # A caller's own `--base` stands in for detection here and nowhere
-        # else: this is the one check that judges against a base at all, so an
-        # override that reached further would be claiming to scope checks it
-        # has nothing to do with.
-        base = (
+        # built on it. A caller's own `--base` stands in for detection here
+        # and nowhere else: this is the one check that judges against a base
+        # at all, so an override that reached further would be claiming to
+        # scope checks it has nothing to do with.
+        yield from migration_reports(
+            project,
+            spread,
             (migration_base or gate_base(get_integration_branch()))
             if spread is not None
-            else None
+            else None,
         )
-        owed = undeclared_breaks(project, base) if base is not None else []
-        match (spread, base):
-            case (None, _):
-                pass
-            case (_, None):
-                # Said rather than exited: a checkout with no base to read from
-                # is a fact about the clone, and a report that names it is what
-                # lets somebody fetch one.
-                yield CheckReport(
-                    name="declared migrations",
-                    counted=False,
-                    lines=[
-                        "declared migrations: skipped — no base to judge from "
-                        "(advisory)",
-                        "  fetch the integration branch or `main` so a merge base "
-                        "exists",
-                    ],
-                )
-            case _:
-                yield CheckReport(
-                    name="declared migrations",
-                    passed=not owed,
-                    lines=[
-                        f"declared migrations: FAIL ({len(owed)} gone with nothing "
-                        "to read)",
-                        *(f"  {capability.spelled()}" for capability in owed),
-                        "  declare each in `lup.devtools.dev.migrations.DECLARED`, "
-                        "with what a caller does about it",
-                    ]
-                    if owed
-                    else ["declared migrations: ok"],
-                )
 
         # Beside parity because both ask whether the roster arrived whole, one
         # turn further out: parity reads a declaration against the trees, and
@@ -1682,6 +1700,7 @@ def run_changed(
     project: DevProject,
     base: ChangeBase,
     test_roots: list[TestRoot],
+    spread: Spread | None = None,
     fix: bool = False,
 ) -> None:
     """Check the files this tree changed, and say plainly what went unchecked.
@@ -1694,6 +1713,14 @@ def run_changed(
     reported rather than about what was understood. ``base`` is where the
     change starts, which :func:`change_base` answers.
 
+    **The declared-migrations row runs too**, from the same base, wherever
+    ``spread`` says projects are built on this one (:func:`migration_reports`).
+    It is scoped by nature — what this branch took away since it left its
+    base — and a public name removed is a one-file mistake, which the loop is
+    the place to catch rather than the whole gate. It runs whether or not any
+    Python file survives, because deleting a module is the removal it exists
+    to see.
+
     **Tests are not narrowed, and not run.** Which tests reach a change is a
     question about the import graph, and this repository reaches modules
     through `importlib` in places no static reading sees — so a narrowed suite
@@ -1704,43 +1731,47 @@ def run_changed(
     names; `dev check` stays the bar a commit passes.
 
     **No gate slot is held**, where `dev check` over its suites and `dev test`
-    each hold one. This opens no suite, and its three tools over a handful of
-    files finish in seconds. Admitted, it would queue the loop's quick half
-    behind runs of minutes, and every run opening beside it would take a
-    narrower share for the whole of its own length — a share is fixed when a
-    run opens — to make room for a check long since finished.
+    each hold one. This opens no suite, and its tools over a handful of files
+    finish in seconds. Admitted, it would queue the loop's quick half behind
+    runs of minutes, and every run opening beside it would take a narrower
+    share for the whole of its own length — a share is fixed when a run opens
+    — to make room for a check long since finished.
     """
     started = perf_counter()
     scope = changed_scope(base.commit)
     excluded_roots = non_code_roots(project)
     typer.echo(f"Changes since {base.reached} ({base.commit}).\n")
+    tools: list[Callable[[], CheckReport]] = (
+        [
+            partial(ruff_format_check, fix, excluded_roots, scope.checked),
+            partial(ruff_lint_check, fix, excluded_roots, scope.checked),
+            partial(pyright_check, excluded_roots, scope.checked),
+        ]
+        if scope.checked
+        else []
+    )
+    with ThreadPoolExecutor(max_workers=len(tools) + 1) as pool:
+        running = [pool.submit(tool) for tool in tools]
+        migrated = migration_reports(project, spread, base.commit)
+        reports = [*(job.result() for job in running), *migrated]
+
     if not scope.checked:
-        typer.echo("No Python file changed, so no scoped check ran.")
-        for line in unrun_lines(scope, test_roots):
-            typer.echo(line)
-        return
-
-    tools: list[Callable[[], CheckReport]] = [
-        partial(ruff_format_check, fix, excluded_roots, scope.checked),
-        partial(ruff_lint_check, fix, excluded_roots, scope.checked),
-        partial(pyright_check, excluded_roots, scope.checked),
-    ]
-    with ThreadPoolExecutor(max_workers=len(tools)) as pool:
-        reports = [job.result() for job in [pool.submit(tool) for tool in tools]]
-
+        typer.echo("No Python file changed, so neither ruff nor pyright ran.")
     for report in reports:
         for line in report.lines:
             typer.echo(line)
 
-    passed = sum(1 for report in reports if report.passed)
-    typer.echo(
-        f"\n{passed}/{len(reports)} checks passed over {len(scope.checked)} "
-        f"changed Python file(s){spent(reports, started)}"
-    )
+    counted = [report for report in reports if report.counted]
+    passed = sum(1 for report in counted if report.passed)
+    if counted:
+        typer.echo(
+            f"\n{passed}/{len(counted)} checks passed over {len(scope.checked)} "
+            f"changed Python file(s){spent(reports, started)}"
+        )
     for line in unrun_lines(scope, test_roots):
         typer.echo(line)
 
-    failed = [report.name for report in reports if not report.passed]
+    failed = [report.name for report in counted if not report.passed]
     if failed:
         typer.echo(f"Failed: {', '.join(failed)}")
         raise typer.Exit(1)

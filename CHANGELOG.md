@@ -11,7 +11,9 @@ Markdown and CSS reported nothing at all. It now reads from the merge base
 with the base the branch records (or with `--since <ref>`), answers for
 uncommitted work on the integration branch itself, lists every changed file
 no scoped check read, and names the test suites and whole-tree sweeps it
-left to `dev check`.
+left to `dev check`. It also runs the declared-migrations row from that same
+base: two public names removed without a migration had reached the whole
+gate because the narrowed run never asked.
 
 ### Claude asks natively; only Codex parks a review
 

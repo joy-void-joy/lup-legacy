@@ -43,10 +43,11 @@ base with your branch's recorded base (or with `--since <ref>`), in seconds —
 those are the two checks a scope narrows *exactly*, because each answers about
 the files it is handed and Pyright resolves their imports itself. The merge
 base rather than the base's tip, so a branch answers for its own commits and
-not for what the base took since the cut. It runs **no tests** and no
-whole-tree sweep, and every run names them, beside each changed file it did
-not read. `dev test` runs the test files you name, in the suite that installs
-each.
+not for what the base took since the cut. It also runs the declared-migrations
+row from that base, since a public name removed without a migration is a
+one-file mistake. It runs **no tests** and no other whole-tree sweep, and every
+run names them, beside each changed file it did not read. `dev test` runs the
+test files you name, in the suite that installs each.
 
 Which tests reach a change is deliberately left to you. It is a question about
 the import graph, and modules reached through `importlib` are invisible to any

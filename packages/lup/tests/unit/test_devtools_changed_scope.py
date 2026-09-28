@@ -26,7 +26,9 @@ from lup.devtools.dev.check import (
     change_base,
     changed_scope,
 )
+from lup.devtools.dev.reach import Spread
 from lup.devtools.project import DevProject
+from tests.unit.test_devtools_check_ledger import quiet
 
 
 @pytest.fixture
@@ -178,10 +180,46 @@ def test_a_change_no_scoped_check_reads_says_so_and_names_every_gate_left(
     )
     printed = capsys.readouterr().out.splitlines()
 
-    assert "No Python file changed, so no scoped check ran." in printed
+    assert "No Python file changed, so neither ruff nor pyright ran." in printed
+    assert not any("checks passed" in line for line in printed)
     assert "Unread: 1 changed file(s) no scoped check reads:" in printed
     assert "  prose.md" in printed
     assert any(
         line.startswith("Not run: the test suites (pytest, pytest (lib)) and ")
         for line in printed
     )
+
+
+def test_a_public_name_the_branch_removed_fails_the_narrowed_run(
+    repo: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The migrations row runs from the same base the scope is read from.
+
+    A public name removed with no migration is a one-file mistake, and a
+    narrowed run that skipped this row let it reach the whole gate. Ruff and
+    Pyright are stubbed: what they say about the file is not the question.
+    """
+    git = sh.Command("git").bake("-C", str(repo), _tty_out=False)
+    (repo / "src/app").mkdir(parents=True)
+    (repo / "src/app/mod.py").write_text(
+        "def kept() -> None: ...\n\n\ndef gone() -> None: ...\n", encoding="utf-8"
+    )
+    git("add", "-A")
+    git("commit", "-m", "surface")
+    git("switch", "-c", "topic")
+    git("config", "branch.topic.lup-base", "main")
+    (repo / "src/app/mod.py").write_text("def kept() -> None: ...\n", encoding="utf-8")
+    for tool in ("ruff_format_check", "ruff_lint_check", "pyright_check"):
+        monkeypatch.setattr(check, tool, quiet(tool))
+
+    with pytest.raises(typer.Exit):
+        check.run_changed(
+            DevProject(package="app"),
+            change_base(None, "main"),
+            [],
+            Spread(library=["src/app"], copied=[], generated=[]),
+        )
+    printed = capsys.readouterr().out.splitlines()
+
+    assert "declared migrations: FAIL (1 gone with nothing to read)" in printed
+    assert printed[-1] == "Failed: declared migrations"
