@@ -18,7 +18,7 @@ a caller blocked inside a call is a caller that cannot make another, so a
 population of awaited spawns has steering tools that can never fire.
 
 What the cohort does not leave to its callers is the wiring. An agent is
-addressable only if the inbox hook is in the options its session was opened
+addressable only if the mailbox hook is in the options its session was opened
 with, so a caller assembling that itself has a way to produce an agent nobody
 can reach by forgetting one step. Callers pass a recipe and the cohort hands it
 the hooks.
@@ -53,11 +53,11 @@ from lup.coordination.roster import Delivery, Roster, RosterMember
 from lup.coordination.sessions import (
     RECORD_ADAPTER,
     ActorEvent,
-    ActorInbox,
+    ActorMailbox,
     ActorJournal,
     ActorRecord,
     ActorSession,
-    create_inbox_hooks,
+    create_mailbox_hooks,
 )
 from lup.channels.models import Door, publish_atomic, utc_now
 from lup.policy.hooks import LupHooksConfig
@@ -252,7 +252,7 @@ class ActorCohort:
         # attempt and not a new agent: a worker's second round is the session
         # that took its first, and keying by the label held two of them.
         self.sessions: dict[str, ActorSession] = {}
-        self.inboxes: dict[str, ActorInbox] = {}
+        self.mailboxes: dict[str, ActorMailbox] = {}
         self.running: dict[str, asyncio.Task[None]] = {}
         # The cap belongs to the population rather than to each caller that
         # fans out over it. An agent still waiting on it has been recorded
@@ -282,7 +282,7 @@ class ActorCohort:
     def path(self, actor: ActorRef) -> Path:
         return self.root / SESSION_DIR / f"{actor.conversation()}.json"
 
-    def inbox(self, actor: ActorRef) -> ActorInbox:
+    def mailbox(self, actor: ActorRef) -> ActorMailbox:
         """This conversation's mail, kept current with the round it is on.
 
         One object per conversation rather than one per caller, because the
@@ -290,10 +290,10 @@ class ActorCohort:
         one are two views of one stream. Handing each its own left them with
         two positions over it, and a message could sit behind both.
         """
-        held = self.inboxes.get(actor.conversation())
+        held = self.mailboxes.get(actor.conversation())
         if held is None:
-            held = ActorInbox(self.mail, self.journal, actor)
-            self.inboxes[actor.conversation()] = held
+            held = ActorMailbox(self.mail, self.journal, actor)
+            self.mailboxes[actor.conversation()] = held
         held.actor = actor
         return held
 
@@ -311,20 +311,20 @@ class ActorCohort:
     def session(self, actor: ActorRef, recipe: ActorRecipe) -> ActorSession:
         """This actor's session, resumed from its record the first time.
 
-        The recipe is handed this actor's inbox hooks, so what it opens is
+        The recipe is handed this actor's mailbox hooks, so what it opens is
         reachable mid-turn without the caller having arranged anything.
         """
         held = self.sessions.get(actor.conversation())
         if held is not None:
             held.actor = actor
             return held
-        inbox = self.inbox(actor)
+        mailbox = self.mailbox(actor)
         opened = ActorSession(
             actor,
-            recipe(actor, create_inbox_hooks(inbox)),
+            recipe(actor, create_mailbox_hooks(mailbox)),
             self.journal,
             self.persisted(actor),
-            inbox,
+            mailbox,
         )
         self.sessions[actor.conversation()] = opened
         return opened
@@ -350,7 +350,7 @@ class ActorCohort:
         if held is None:
             return
         self.save(actor, held)
-        self.inbox(actor).record_outstanding()
+        self.mailbox(actor).record_outstanding()
         await held.close()
 
     def save(self, actor: ActorRef, held: ActorSession | None = None) -> None:
@@ -458,7 +458,7 @@ class ActorCohort:
     ) -> None:
         """Say something to the person this cohort answers to.
 
-        A roster member with an inbox and no session, which is what makes
+        A roster member with a mailbox and no session, which is what makes
         contact symmetric: an agent volunteering something uses the verb that
         steers it, and what it says lands somewhere a person can read rather
         than nowhere.
@@ -476,9 +476,9 @@ class ActorCohort:
         """Write one message to whatever address a caller already holds.
 
         The one place a message is built, so a door with a raw address string
-        and a caller with a ref reach one member's inbox the same way — and
-        the one place the address is resolved, because an inbox belongs to a
-        member and a spelling that reaches nobody has no inbox to go in.
+        and a caller with a ref reach one member's mailbox the same way — and
+        the one place the address is resolved, because a mailbox belongs to a
+        member and a spelling that reaches nobody has no mailbox to go in.
 
         Says whether it landed. A door that was told "sent" for an address the
         population never heard of is a door that goes on believing somebody

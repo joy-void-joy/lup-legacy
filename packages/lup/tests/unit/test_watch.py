@@ -211,7 +211,7 @@ def test_a_nudge_carries_every_fresh_message_rather_than_the_newest(
 
     Two messages posted between looks are equally new to a peer that has read
     neither. Handing over the last would leave the first readable only to
-    somebody who thought to fold their inbox — which is the habit an idle peer
+    somebody who thought to fold their mailbox — which is the habit an idle peer
     does not have and the whole reason it is being nudged.
     """
     peers = RepositoryPeers(tmp_path)
@@ -225,4 +225,4 @@ def test_a_nudge_carries_every_fresh_message_rather_than_the_newest(
 
     assert "the first thing" in carried
     assert "the second thing" in carried
-    assert "coordination_inbox" in carried
+    assert "coordination_mailbox" in carried

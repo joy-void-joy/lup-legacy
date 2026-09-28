@@ -7,91 +7,91 @@ import pytest
 
 from lup.coordination.mail import ActorMail
 from lup.coordination.refs import ActorRef
-from lup.coordination.sessions import ActorInbox, create_inbox_hooks
+from lup.coordination.sessions import ActorMailbox, create_mailbox_hooks
 from lup.providers.codex.hooks import COMMAND_APPROVAL, CodexApprovalResponder
 from lup.resolver.record import Journal
 from lup.policy.hooks import LupHookInput, LupHookMatcher, LupHookOutput, LupHooksConfig
 
 
 @pytest.fixture
-def inbox(tmp_path: Path) -> ActorInbox:
+def mailbox(tmp_path: Path) -> ActorMailbox:
     actor = ActorRef(kind="worker", id="delivery")
-    return ActorInbox(ActorMail(tmp_path), Journal(tmp_path), actor)
+    return ActorMailbox(ActorMail(tmp_path), Journal(tmp_path), actor)
 
 
 @pytest.mark.parametrize("redirect", [False, True])
 async def test_a_native_receipt_delivers_each_kind_of_actor_mail_once(
-    inbox: ActorInbox, redirect: bool
+    mailbox: ActorMailbox, redirect: bool
 ) -> None:
-    inbox.mail.send(inbox.actor, "use the repaired tree", redirect=redirect)
+    mailbox.mail.send(mailbox.actor, "use the repaired tree", redirect=redirect)
     delivered: list[str] = []
 
     async def receive(text: str) -> None:
-        assert len(inbox.waiting().messages) == 1
+        assert len(mailbox.waiting().messages) == 1
         delivered.append(text)
 
     responder = CodexApprovalResponder(
-        hooks=create_inbox_hooks(inbox), deliver_context=receive
+        hooks=create_mailbox_hooks(mailbox), deliver_context=receive
     )
     decision = await responder.decide(COMMAND_APPROVAL, {"command": "git status"})
-    assert decision == "decline"  # Inbox delivery never grants an approval.
+    assert decision == "decline"  # Mailbox delivery never grants an approval.
     assert len(delivered) == 1
     assert "use the repaired tree" in delivered[0]
-    assert inbox.waiting().messages == []
+    assert mailbox.waiting().messages == []
     await responder.deliver_pending()
     assert len(delivered) == 1
 
 
 async def test_context_without_a_native_transport_stays_pending(
-    inbox: ActorInbox,
+    mailbox: ActorMailbox,
 ) -> None:
-    inbox.mail.send(inbox.actor, "still needed")
-    responder = CodexApprovalResponder(hooks=create_inbox_hooks(inbox))
+    mailbox.mail.send(mailbox.actor, "still needed")
+    responder = CodexApprovalResponder(hooks=create_mailbox_hooks(mailbox))
     decision = await responder.decide(COMMAND_APPROVAL, {"command": "git status"})
     assert decision == "decline"
-    assert [message.text for message in inbox.waiting().messages] == ["still needed"]
-    assert not Journal(inbox.mail.root).read()
+    assert [message.text for message in mailbox.waiting().messages] == ["still needed"]
+    assert not Journal(mailbox.mail.root).read()
 
 
 async def test_a_rejected_native_delivery_leaves_no_false_receipt(
-    inbox: ActorInbox,
+    mailbox: ActorMailbox,
 ) -> None:
-    inbox.mail.send(inbox.actor, "retry this delivery")
+    mailbox.mail.send(mailbox.actor, "retry this delivery")
 
     async def refused(_text: str) -> None:
         raise RuntimeError("turn already completed")
 
     responder = CodexApprovalResponder(
-        hooks=create_inbox_hooks(inbox), deliver_context=refused
+        hooks=create_mailbox_hooks(mailbox), deliver_context=refused
     )
     decision = await responder.decide(COMMAND_APPROVAL, {"command": "git status"})
     assert decision == "decline"
-    assert len(inbox.waiting().messages) == 1
-    assert not Journal(inbox.mail.root).read()
+    assert len(mailbox.waiting().messages) == 1
+    assert not Journal(mailbox.mail.root).read()
 
 
 async def test_activity_that_needs_no_approval_still_delivers_mail(
-    inbox: ActorInbox,
+    mailbox: ActorMailbox,
 ) -> None:
-    inbox.mail.send(inbox.actor, "late review evidence")
+    mailbox.mail.send(mailbox.actor, "late review evidence")
     received: list[str] = []
 
     async def receive(text: str) -> None:
         received.append(text)
 
     responder = CodexApprovalResponder(
-        hooks=create_inbox_hooks(inbox), deliver_context=receive
+        hooks=create_mailbox_hooks(mailbox), deliver_context=receive
     )
     await responder.deliver_pending()
     assert len(received) == 1
     assert "late review evidence" in received[0]
-    assert inbox.waiting().messages == []
+    assert mailbox.waiting().messages == []
 
 
 async def test_an_approval_and_activity_share_one_delivery(
-    inbox: ActorInbox,
+    mailbox: ActorMailbox,
 ) -> None:
-    inbox.mail.send(inbox.actor, "one delivery")
+    mailbox.mail.send(mailbox.actor, "one delivery")
     entered = asyncio.Event()
     release = asyncio.Event()
     received: list[str] = []
@@ -102,7 +102,7 @@ async def test_an_approval_and_activity_share_one_delivery(
         await release.wait()
 
     responder = CodexApprovalResponder(
-        hooks=create_inbox_hooks(inbox), deliver_context=receive
+        hooks=create_mailbox_hooks(mailbox), deliver_context=receive
     )
     approval = asyncio.create_task(
         responder.decide(COMMAND_APPROVAL, {"command": "git status"})
@@ -112,13 +112,13 @@ async def test_an_approval_and_activity_share_one_delivery(
     release.set()
     await asyncio.gather(approval, activity)
     assert len(received) == 1
-    assert inbox.waiting().messages == []
+    assert mailbox.waiting().messages == []
 
 
 async def test_canceling_delivery_keeps_mail_for_the_next_turn(
-    inbox: ActorInbox,
+    mailbox: ActorMailbox,
 ) -> None:
-    inbox.mail.send(inbox.actor, "survive cancellation")
+    mailbox.mail.send(mailbox.actor, "survive cancellation")
     entered = asyncio.Event()
     suspended = asyncio.Event()
 
@@ -127,15 +127,15 @@ async def test_canceling_delivery_keeps_mail_for_the_next_turn(
         await suspended.wait()
 
     responder = CodexApprovalResponder(
-        hooks=create_inbox_hooks(inbox), deliver_context=receive
+        hooks=create_mailbox_hooks(mailbox), deliver_context=receive
     )
     pending = asyncio.create_task(responder.deliver_pending())
     await entered.wait()
     pending.cancel()
     with pytest.raises(asyncio.CancelledError):
         await pending
-    assert len(inbox.waiting().messages) == 1
-    assert not Journal(inbox.mail.root).read()
+    assert len(mailbox.waiting().messages) == 1
+    assert not Journal(mailbox.mail.root).read()
 
 
 @pytest.mark.parametrize("matcher", [None, "", "*", "^item/commandExecution/"])

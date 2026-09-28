@@ -86,7 +86,7 @@ def test_a_process_that_opened_nothing_reaches_the_person(tmp_path: Path) -> Non
 
     Supplying the human's address to a console as a constructor argument
     leaves a caller attaching to a directory some other process wrote free to
-    spell it differently — or not at all — and read one inbox while the run
+    spell it differently — or not at all — and read one mailbox while the run
     writes another. The directory answers instead.
     """
     ActorCohort(tmp_path).tell_user("the environment is broken")

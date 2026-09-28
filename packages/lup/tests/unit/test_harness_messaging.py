@@ -124,8 +124,8 @@ def test_a_member_s_socket_is_keyed_by_its_id() -> None:
 def test_the_default_directory_is_named_for_the_wake() -> None:
     """The socket is what wakes a session, and the directory says so.
 
-    "Inbox" is the review inbox's word: a session's mail is read off the
-    coordination store, and nothing in this directory holds any of it.
+    A session's mail waits in its mailbox in the coordination store, and
+    nothing in this directory holds any of it.
     """
     assert WakeSockets().directory == "/tmp/lup-wake"
 

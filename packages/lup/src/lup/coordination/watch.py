@@ -79,7 +79,7 @@ class Redescribed(WatchEvent, frozen=True):
 
 
 class Mailed(WatchEvent, frozen=True):
-    """A message reached a member's inbox and has not been consumed."""
+    """A message reached a member's mailbox and has not been consumed."""
 
     text: str
     door: str
@@ -114,7 +114,7 @@ def nudge_text(fresh: list[ActorMessage]) -> str:
     Every one of them, not the newest. A watcher looks on a clock and two
     messages posted between looks are equally new to a peer that has read
     neither; handing over the last would leave the first readable only to
-    somebody who thought to fold their inbox, which is the habit the nudge
+    somebody who thought to fold their mailbox, which is the habit the nudge
     exists because idle peers do not have.
 
     The record is named at the end rather than the beginning: it is what the
@@ -130,7 +130,7 @@ def nudge_text(fresh: list[ActorMessage]) -> str:
             *[f"from {message.door} —\n{message.text}" for message in fresh],
             (
                 "This is a nudge on top of the record, not instead of it —"
-                " `coordination_inbox` holds these and anything since."
+                " `coordination_mailbox` holds these and anything since."
             ),
         ]
     )

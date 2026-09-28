@@ -79,14 +79,14 @@ def codex_hook_approval_policy(
 
     An exact native method names the boundary its callback agrees to observe.
     A wildcard or a portable tool name instead asks for coverage this channel
-    cannot provide. Inbox observers are a separate tagged delivery contract;
+    cannot provide. Mailbox observers are a separate tagged delivery contract;
     their neutral output never grants approval.
     """
     approvals = [] if hooks is None else hooks.pre_tool_use
     declared = {*APPROVAL_METHODS, "|".join(APPROVAL_METHODS)}
     policy: Literal["never", "on-request"] = "never"
     for matcher in approvals:
-        if matcher.tag == "inbox" and matcher.matcher in {None, "", "*"}:
+        if matcher.tag == "mailbox" and matcher.matcher in {None, "", "*"}:
             continue
         if matcher.matcher not in declared:
             raise UnsupportedCapability(
@@ -250,7 +250,7 @@ class CodexApprovalResponder(BaseModel, frozen=True, arbitrary_types_allowed=Tru
             outputs = [
                 await matcher.hook(LupHookInput(event="PreToolUse"))
                 for matcher in self.hooks.pre_tool_use
-                if matcher.tag == "inbox" and matcher.matcher in {None, "", "*"}
+                if matcher.tag == "mailbox" and matcher.matcher in {None, "", "*"}
             ]
             await self.deliver(outputs)
 
@@ -269,7 +269,7 @@ class CodexApprovalResponder(BaseModel, frozen=True, arbitrary_types_allowed=Tru
 
         The approval reply carries only a decision. Context and refusal
         reasons reach the active turn through its steering transport, and
-        durable inbox receipts advance only once that transport accepts them.
+        durable mailbox receipts advance only once that transport accepts them.
         """
         if not self.handles(method):
             return DECLINE
@@ -301,7 +301,7 @@ class CodexApprovalResponder(BaseModel, frozen=True, arbitrary_types_allowed=Tru
             logger.info("declining %s: %s", method, "\n".join(told))
         delivered = await self.deliver(outputs)
         authorized = any(
-            output.decision == "allow" and matcher.tag != "inbox"
+            output.decision == "allow" and matcher.tag != "mailbox"
             for matcher, output in zip(matchers, outputs, strict=True)
         )
         return DECLINE if refused or not delivered or not authorized else ACCEPT

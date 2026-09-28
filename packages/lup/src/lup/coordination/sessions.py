@@ -143,7 +143,7 @@ async def record_turn(
         logger.debug("%s stopped recording a failed turn", actor.label(), exc_info=True)
 
 
-class ActorInbox:
+class ActorMailbox:
     """One conversation's mail, delivered once by whichever path reaches it.
 
     Two paths put a message in front of an actor — the hook that interrupts
@@ -154,7 +154,7 @@ class ActorInbox:
     was in flight was already behind both of them, and the run reported it
     sent.
 
-    One inbox per conversation, holding the round it is on, is what lets the
+    One mailbox per conversation, holding the round it is on, is what lets the
     hook record a delivery against the actor that actually received it while
     the position it commits is the one the next turn resumes from.
     """
@@ -221,7 +221,7 @@ class ActorInbox:
             )
 
 
-def create_inbox_hooks(inbox: ActorInbox) -> LupHooksConfig:
+def create_mailbox_hooks(mailbox: ActorMailbox) -> LupHooksConfig:
     """Put anything said to this actor in front of it, mid-turn.
 
     Non-cooperative by construction. The actor calls any tool at all and the
@@ -238,7 +238,7 @@ def create_inbox_hooks(inbox: ActorInbox) -> LupHooksConfig:
     submission never arrives, and the actor is answering a refused tool call
     either way.
 
-    The inbox is the actor's own rather than one opened here, so what this
+    The mailbox is the actor's own rather than one opened here, so what this
     delivers the next turn does not deliver again, and what it delivers is
     recorded. Built from a target of its own, it matched the bare id while
     the console printed and accepted ``worker:some-concern#1`` — so a
@@ -246,13 +246,13 @@ def create_inbox_hooks(inbox: ActorInbox) -> LupHooksConfig:
     """
 
     async def deliver(_input: LupHookInput) -> LupHookOutput:
-        delivery = inbox.waiting()
+        delivery = mailbox.waiting()
         arrived = delivery.messages
         if not arrived:
             return LupHookOutput()
 
         def received() -> None:
-            inbox.commit(delivery)
+            mailbox.commit(delivery)
 
         # Only the adapter can acknowledge that the context reached its
         # native transport. Until then the next turn must still see this mail.
@@ -270,7 +270,7 @@ def create_inbox_hooks(inbox: ActorInbox) -> LupHooksConfig:
             )
         return LupHookOutput(additional_context=delivered, delivery_receipt=received)
 
-    return LupHooksConfig(pre_tool_use=[LupHookMatcher(hook=deliver, tag="inbox")])
+    return LupHooksConfig(pre_tool_use=[LupHookMatcher(hook=deliver, tag="mailbox")])
 
 
 class ActorSession:
@@ -282,12 +282,12 @@ class ActorSession:
         agent: Agent,
         journal: ActorJournal,
         record: ActorRecord | None = None,
-        inbox: ActorInbox | None = None,
+        mailbox: ActorMailbox | None = None,
     ) -> None:
         self.actor = actor
         self.agent = agent
         self.journal = journal
-        self.inbox = inbox
+        self.mailbox = mailbox
         self.record = record or ActorRecord(actor=actor)
         self.stack = AsyncExitStack()
         self.conversation: Conversation | None = None
@@ -333,7 +333,7 @@ class ActorSession:
         loss recorded rather than passed off as continuity.
         """
         self.check_schema(output)
-        self.collect_inbox()
+        self.collect_mailbox()
         delivered = self.with_pending(prompt)
         seen = TurnSeen()
         try:
@@ -366,7 +366,7 @@ class ActorSession:
         )
         return result
 
-    def collect_inbox(self) -> None:
+    def collect_mailbox(self) -> None:
         """Take anything a door said to this actor since its last turn.
 
         Between turns there is nothing to append to, so a message waits here
@@ -383,9 +383,9 @@ class ActorSession:
         party that needed it, while the journal recorded the distinction
         faithfully for everyone who did not.
         """
-        if self.inbox is None:
+        if self.mailbox is None:
             return
-        collected = self.inbox.waiting()
+        collected = self.mailbox.waiting()
         if not collected.messages:
             return
         self.collected = collected
@@ -411,9 +411,9 @@ class ActorSession:
         read which notice, is per-member bookkeeping that a replay, a resume
         or a second reader each get wrong differently.
         """
-        if self.inbox is None:
+        if self.mailbox is None:
             return []
-        found = self.inbox.standing()
+        found = self.mailbox.standing()
         if not found:
             return []
         lines = "\n".join(
@@ -438,8 +438,8 @@ class ActorSession:
             return prompt
         delivered = "\n\n".join([*standing, *self.pending, prompt])
         self.pending.clear()
-        if self.inbox is not None and self.collected is not None:
-            self.inbox.commit(self.collected)
+        if self.mailbox is not None and self.collected is not None:
+            self.mailbox.commit(self.collected)
             self.collected = None
         return delivered
 

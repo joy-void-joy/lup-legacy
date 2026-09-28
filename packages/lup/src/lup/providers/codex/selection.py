@@ -15,7 +15,7 @@ dynamic-tool channel is thread-scoped and therefore carries application tools
 alone; changing those still requires a fresh session.
 
 Portable PostToolUse and Stop hooks run on native lifecycle events. Tagged
-inbox observers also deliver on native activity without changing approvals.
+mailbox observers also deliver on native activity without changing approvals.
 Other PreToolUse hooks must explicitly name one of the native approval
 methods, or the exact joined methods in
 :data:`lup.providers.codex.hooks.APPROVAL_METHODS`; only those

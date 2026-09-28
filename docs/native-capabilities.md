@@ -79,14 +79,14 @@ part of probing.
   Host CLI named-profile account checks remain explicitly unavailable because
   `account/read` cannot select a profile. SDK named profiles are refused before
   startup; use the intended configured home or explicit supported settings.
-- Owned stdio coordination servers relay pending Codex inbox messages through
+- Owned stdio coordination servers relay pending Codex mailbox messages through
   their own hook-bound home and execution scope. Acceptance receipts survive
   restart without consuming mail; failed queues retry, concurrent relays share
   a lock, and shutdown joins the bounded queue attempt. In-process registrations
   have no companion lifecycle and provide no relay. Tests use fake native queues;
   authenticated idle-turn startup remains unmeasured. Delivery is at least once:
   a crash after acceptance, a direct sender or an external watcher can repeat a
-  wake, and a delivery hook can read the inbox before a queued nudge arrives.
+  wake, and a delivery hook can read the mailbox before a queued nudge arrives.
 
 ## Explicit release gaps
 

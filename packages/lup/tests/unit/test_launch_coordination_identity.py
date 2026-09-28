@@ -108,7 +108,7 @@ def test_two_launches_are_two_members(tmp_path: Path) -> None:
     """Two sessions in one worktree are two peers, which is the case the id holds.
 
     The worktree names them and does not identify them: a derived id would
-    make these one member, and one of them would read the other's inbox.
+    make these one member, and one of them would read the other's mailbox.
     """
     first: dict[str, str] = {}
     second: dict[str, str] = {}

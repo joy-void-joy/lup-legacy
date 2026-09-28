@@ -74,7 +74,7 @@ async def test_supported_direct_hooks_reach_setup_without_changing_approvals(
     hooks.pre_tool_use = (
         [LupHookMatcher(matcher=APPROVAL_METHODS[0], hook=observe)]
         if approval
-        else [LupHookMatcher(hook=observe, tag="inbox")]
+        else [LupHookMatcher(hook=observe, tag="mailbox")]
     )
     config = Codex(
         cwd=tmp_path, hooks=hooks, approval_policy="on-request" if approval else "never"
@@ -100,11 +100,11 @@ def test_lifecycle_observers_do_not_request_native_approvals(tmp_path: Path) -> 
 
 
 @pytest.mark.parametrize("matcher", [None, "", "*"])
-def test_inbox_delivery_does_not_authorize_tools(
+def test_mailbox_delivery_does_not_authorize_tools(
     tmp_path: Path, matcher: str | None
 ) -> None:
     hooks = LupHooksConfig(
-        pre_tool_use=[LupHookMatcher(matcher=matcher, hook=observe, tag="inbox")]
+        pre_tool_use=[LupHookMatcher(matcher=matcher, hook=observe, tag="mailbox")]
     )
     config = codex_config(SessionRequest(cwd=tmp_path, hooks=hooks))
     assert config.hooks is hooks

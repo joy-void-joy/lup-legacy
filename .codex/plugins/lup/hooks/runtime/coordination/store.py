@@ -86,7 +86,7 @@ asks is almost always "who is here", and a flag would make answering it a
 listing that opens every file ever written.
 """
 
-INBOX_DIR = "inbox"
+MAILBOX_DIR = "mailbox"
 NOTICES_DIR = "notices"
 """What is waiting for one member, and what is true for all of them.
 

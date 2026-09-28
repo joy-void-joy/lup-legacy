@@ -262,7 +262,7 @@ def create_supervisor(
         """Say something to one actor, or stop all of them, without deciding.
 
         A message settles nothing, so this can never park a run — which is
-        the whole reason messages ride an inbox and decisions ride slots. A
+        the whole reason messages ride a member's mailbox and decisions ride slots. A
         redirect settles nothing either: it refuses one tool call and states
         why, which retargets the actor without ending the turn it is in.
 

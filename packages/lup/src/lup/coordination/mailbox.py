@@ -1,20 +1,21 @@
 # lup: ignore[constant-declaration]
-# The constants here name the mailbox's own on-disk layout, which a writer and
-# a reader in different processes must agree on to find each other's files at
-# all — an identity of this format rather than a choice a caller can make.
+# The constants here name the question mailbox's own on-disk layout, which a
+# writer and a reader in different processes must agree on to find each other's
+# files at all — an identity of this format rather than a choice a caller can
+# make.
 """The persisted question mailbox every answer door writes through.
 
 A question is a :class:`~lup.channels.slot.Slot`: declared once by whoever
 asks, offered to by any door, and settled exactly once. Messages ride an
 :class:`~lup.coordination.mail.ActorMail` instead, held here and reached
-through directly, so the run parks on a slot and never on an inbox.
+through directly, so the run parks on a slot and never on a member's mailbox.
 
 Reached rather than delegated to, because addressing one costs something this
 layer does not hold: a message goes to a member, and turning what a door typed
 into a member is the roster's. That resolution belongs to the population that
 has one, so every sender goes through
-:class:`~lup.coordination.cohort.ActorCohort` and a door holding this mailbox
-has no second route to somebody's inbox.
+:class:`~lup.coordination.cohort.ActorCohort` and a door holding this question
+mailbox has no second route to a member's mailbox.
 
 Doors write ``offered``, which is correctable — a mistyped free-text answer
 can be replaced right up until it counts, and an offer may arrive before its

@@ -200,7 +200,7 @@ def test_what_was_sent_is_outstanding_until_it_is_handed_over(
     cohort.say(actor, "stop that branch", redirect=True)
     assert cohort.outstanding(actor) == 2
 
-    delivered = cohort.inbox(actor).take()
+    delivered = cohort.mailbox(actor).take()
     assert [message.redirect for message in delivered] == [False, True]
     assert cohort.outstanding(actor) == 0
 
@@ -214,7 +214,7 @@ def test_delivery_is_recorded_against_the_actor_that_received_it(
     cohort.spawn(actor, "measure the drift")
     cohort.say(actor, "use exact arithmetic")
 
-    cohort.inbox(actor).take()
+    cohort.mailbox(actor).take()
 
     posted = [entry.event for entry in CohortJournal(tmp_path).for_actor(actor)]
     assert [event.type for event in posted] == ["message_posted"]
@@ -409,7 +409,7 @@ async def test_a_spawn_is_handed_the_hooks_that_reach_it(tmp_path: Path) -> None
     cohort.session(cohort.actor("analyst"), recipe_for(session))
 
     assert session.hooks is not None
-    assert [matcher.tag for matcher in session.hooks.pre_tool_use] == ["inbox"]
+    assert [matcher.tag for matcher in session.hooks.pre_tool_use] == ["mailbox"]
 
 
 @pytest.mark.asyncio

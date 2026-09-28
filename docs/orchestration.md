@@ -236,7 +236,7 @@ and the turn's own failure path finishes the agent before the wave is ever
 consulted. Which failures suspend is a fact about the consumer's vocabulary,
 and a consumer has one.
 
-**The cohort owns the wiring.** Delivery works only if the inbox hook is in
+**The cohort owns the wiring.** Delivery works only if the mailbox hook is in
 the options the session opened with, so callers pass an `ActorRecipe`
 (`(ActorRef, LupHooksConfig) -> Agent`) and the cohort hands it the
 hooks. A recipe that had to fetch them could be written once without them,
@@ -254,7 +254,7 @@ same address the cohort's own tools do, and a restart rebuilds the roster.
 `cohort.json` beside it says the directory is a cohort at all, which is what a
 peer that did not create one reads to find it.
 
-**The person is on the roster.** They join as the member `user`, with an inbox
+**The person is on the roster.** They join as the member `user`, with a mailbox
 and no session, so a report reaches them through the verb that steers an agent
 rather than through a channel of its own — and a console attaching to a
 directory some other process wrote resolves that address by the same fold. It

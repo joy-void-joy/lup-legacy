@@ -188,7 +188,7 @@ class ClaimOutput(BaseModel):
     )
 
 
-class InboxOutput(BaseModel):
+class MailboxOutput(BaseModel):
     """What was waiting for this session, consumed by the reading."""
 
     messages: list[str] = []
@@ -206,7 +206,7 @@ def create_peer_tools(
     The identity is bound here rather than taken as an argument for the reason
     a resolver worker's concern is: a session that could name itself in a call
     could describe another session's work as its own, or read another
-    session's inbox — and neither is a thing to be trusted rather than made
+    session's mailbox — and neither is a thing to be trusted rather than made
     unspellable.
 
     Which conversation of the session called is the one thing a call carries,
@@ -377,17 +377,17 @@ def create_peer_tools(
         )
 
     @lup_tool(
-        "Read what other sessions have said to you, and consume it. Use it "
-        "when you want to check for messages deliberately — a session whose "
-        "mail waits in a file has nothing that will interrupt it, so this is "
+        "Read your mailbox: what other sessions have said to you. Use it when "
+        "you want to check for messages deliberately — a session whose "
+        "delivery is `mailbox` has nothing that will interrupt it, so this is "
         "the only way it hears anything.\n\n"
         "Reading consumes: what this hands back will not be handed back "
         "again. Returns {messages: [text]}.",
-        name="coordination_inbox",
+        name="coordination_mailbox",
     )
-    async def coordination_inbox(params: Called) -> InboxOutput:
+    async def coordination_mailbox(params: Called) -> MailboxOutput:
         delivery = peers.take(present(params.caller).id)
-        return InboxOutput(
+        return MailboxOutput(
             messages=[
                 f"[{'redirect' if message.redirect else 'message'} by "
                 f"{message.door}] {message.text}"
@@ -460,7 +460,7 @@ def create_peer_tools(
         coordination_describe,
         coordination_rename,
         coordination_send,
-        coordination_inbox,
+        coordination_mailbox,
         coordination_lock,
         coordination_release,
     ]

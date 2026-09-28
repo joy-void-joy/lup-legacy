@@ -15,9 +15,8 @@ subjects = [
     "inbox_refusal",
 ]
 reason = """
-the socket a session is woken through holds no mail, and the inbox is the \
-operator's review page, so the socket is the session's wake socket and its \
-directory moves from /tmp/lup-inbox to /tmp/lup-wake"""
+the socket a session is woken through holds no mail, so it is the session's \
+wake socket and its directory moves from /tmp/lup-inbox to /tmp/lup-wake"""
 
 [[steps]]
 instruction = """

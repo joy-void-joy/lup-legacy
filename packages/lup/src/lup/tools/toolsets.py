@@ -220,7 +220,7 @@ def registered(
     configuration every adapter is built from.
 
     Registration alone starts no companion lifecycle, so this path provides
-    neither a roster pulse nor receiver-local inbox relay.
+    neither a roster pulse nor receiver-local mailbox relay.
     """
     return [
         create_mcp_server(name, tools=policy.filter_tools(tools))
@@ -234,7 +234,7 @@ def coordination_group(name: str = COORDINATION_SERVER) -> ToolGroup:
 
     Built only for a session the roster knows by name. A process with no
     identity would either join as a new member on every call or read somebody
-    else's inbox, and neither is better than having no verbs — so a session
+    else's mailbox, and neither is better than having no verbs — so a session
     without one carries no coordination group rather than a broken one.
 
     The pulse serves beside it, because the server's lifetime is the session's:
@@ -254,13 +254,13 @@ def coordination_group(name: str = COORDINATION_SERVER) -> ToolGroup:
 
     def companions(needs: SessionNeeds) -> list[ServerCompanion]:
         from lup.coordination.peer_tools import RosterPulse
-        from lup.coordination.relay import InboxRelay
+        from lup.coordination.relay import MailboxRelay
 
         if not needs.member:
             return []
         return [
             RosterPulse(root=needs.root, member_id=needs.member, wake=needs.wake),
-            InboxRelay(root=needs.root, member_id=needs.member),
+            MailboxRelay(root=needs.root, member_id=needs.member),
         ]
 
     return ToolGroup(name=name, tools=tools, companions=companions)

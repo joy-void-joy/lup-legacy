@@ -109,7 +109,7 @@ megabytes. A worker is finished when its concern settles; its reviewer is
 not, because a join asks that reviewer again over the merged tree.
 
 **The run is an address, and it is where a worker reports.** `send_message`
-with no target reaches `run:<run-id>`, whose inbox `resolve actors` prints
+with no target reaches `run:<run-id>`, whose mailbox `resolve actors` prints
 first, under "said to you by this run's actors". That is the channel for
 anything that is not a decision — a consequence for whoever merges, or a
 worker blocked on something a human would simply fix. It never parks anyone,

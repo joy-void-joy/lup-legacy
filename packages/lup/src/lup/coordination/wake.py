@@ -68,7 +68,7 @@ class WakePath(BaseModel, frozen=True):
     """Which runtime's path this is, empty where the member declared none.
 
     Empty is the honest default. A session that never said how to reach it
-    still has a durable inbox, and a sender is told that nothing will wake it
+    still has a durable mailbox, and a sender is told that nothing will wake it
     rather than being told a wake was attempted.
     """
 
@@ -247,7 +247,7 @@ def queued(
         # lup: Add an owned execution bridge before supporting Codex wake across container boundaries.
         return Woken(
             reached=False,
-            reason="Direct Codex wake cannot cross this execution boundary; durable mail remains pending for the peer's owned inbox relay or its next activity.",
+            reason="Direct Codex wake cannot cross this execution boundary; durable mail remains pending for the peer's owned mailbox relay or its next activity.",
             error_type="ForeignExecutionScope",
         )
     try:

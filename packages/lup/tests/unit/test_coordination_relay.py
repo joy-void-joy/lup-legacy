@@ -12,7 +12,7 @@ import lup.coordination.bare.arrival as arrival
 import lup.coordination.relay as relaying
 import lup.coordination.wake as routing
 from lup.coordination.identity import member_ref
-from lup.coordination.relay import InboxRelay, WakeReceipts
+from lup.coordination.relay import MailboxRelay, WakeReceipts
 from lup.coordination.repository import RepositoryPeers
 from lup.coordination.wake import WakePath, wake
 
@@ -28,7 +28,7 @@ def native_queue(monkeypatch: pytest.MonkeyPatch) -> Mock:
 
 
 @pytest.fixture
-def relay(tmp_path: Path) -> InboxRelay:
+def relay(tmp_path: Path) -> MailboxRelay:
     peers = RepositoryPeers(tmp_path)
     peers.join("recipient", tmp_path, wake=WakePath(runtime="codex"))
     assert arrival.bind(
@@ -43,16 +43,16 @@ def relay(tmp_path: Path) -> InboxRelay:
         ("SessionStart",),
         str(tmp_path / "native-home"),
     )
-    return InboxRelay(root=tmp_path, member_id="recipient", queue_timeout_seconds=0.2)
+    return MailboxRelay(root=tmp_path, member_id="recipient", queue_timeout_seconds=0.2)
 
 
-def receipts(relay: InboxRelay) -> WakeReceipts:
+def receipts(relay: MailboxRelay) -> WakeReceipts:
     [path] = (RepositoryPeers(relay.root).root / "wake-relay").glob("*.json")
     return WakeReceipts.model_validate_json(path.read_text(encoding="utf-8"))
 
 
 def test_cross_container_mail_queues_only_from_the_target_boundary(
-    relay: InboxRelay, native_queue: Mock, monkeypatch: pytest.MonkeyPatch
+    relay: MailboxRelay, native_queue: Mock, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     peers = RepositoryPeers(relay.root)
     peers.send("recipient", "mail from another container")
@@ -76,7 +76,7 @@ def test_cross_container_mail_queues_only_from_the_target_boundary(
 
 
 def test_queue_acceptance_survives_server_restart_without_consuming_mail(
-    relay: InboxRelay, native_queue: Mock
+    relay: MailboxRelay, native_queue: Mock
 ) -> None:
     peers = RepositoryPeers(relay.root)
     first = peers.cohort.mail.send(member_ref("recipient"), "identical body")
@@ -84,7 +84,7 @@ def test_queue_acceptance_survives_server_restart_without_consuming_mail(
     assert first.id != second.id
 
     assert relay.tick() is not None
-    restarted = InboxRelay(root=relay.root, member_id=relay.member_id)
+    restarted = MailboxRelay(root=relay.root, member_id=relay.member_id)
     assert restarted.tick() is None
 
     native_queue.assert_called_once()
@@ -93,7 +93,7 @@ def test_queue_acceptance_survives_server_restart_without_consuming_mail(
 
 
 def test_only_new_mail_is_queued_and_consumed_ids_are_retired(
-    relay: InboxRelay, native_queue: Mock
+    relay: MailboxRelay, native_queue: Mock
 ) -> None:
     peers = RepositoryPeers(relay.root)
     peers.send("recipient", "first")
@@ -113,7 +113,7 @@ def test_only_new_mail_is_queued_and_consumed_ids_are_retired(
 
 
 def test_queue_failure_is_retried_without_acceptance_or_delivery_receipts(
-    relay: InboxRelay, native_queue: Mock
+    relay: MailboxRelay, native_queue: Mock
 ) -> None:
     peers = RepositoryPeers(relay.root)
     peers.send("recipient", "still pending")
@@ -131,7 +131,10 @@ def test_queue_failure_is_retried_without_acceptance_or_delivery_receipts(
 
 @pytest.mark.parametrize("changed", ["session", "home", "scope"])
 def test_a_new_native_route_can_receive_mail_accepted_by_the_old_route(
-    relay: InboxRelay, native_queue: Mock, monkeypatch: pytest.MonkeyPatch, changed: str
+    relay: MailboxRelay,
+    native_queue: Mock,
+    monkeypatch: pytest.MonkeyPatch,
+    changed: str,
 ) -> None:
     peers = RepositoryPeers(relay.root)
     peers.send("recipient", "still unread")
@@ -165,7 +168,7 @@ def test_missing_binding_waits_for_a_native_hook_instead_of_guessing(
     peers = RepositoryPeers(tmp_path)
     peers.join("recipient", tmp_path, wake=WakePath(runtime="codex"))
     peers.send("recipient", "waiting for native identity")
-    relay = InboxRelay(root=tmp_path, member_id="recipient")
+    relay = MailboxRelay(root=tmp_path, member_id="recipient")
     outcome = relay.tick()
     assert outcome is not None and not outcome.reached
     native_queue.assert_not_called()
@@ -184,7 +187,7 @@ def test_missing_binding_waits_for_a_native_hook_instead_of_guessing(
 
 
 def test_only_its_own_pending_mail_is_relayed(
-    relay: InboxRelay, native_queue: Mock
+    relay: MailboxRelay, native_queue: Mock
 ) -> None:
     peers = RepositoryPeers(relay.root)
     peers.join("other", relay.root, wake=WakePath(runtime="codex"))
@@ -197,7 +200,7 @@ def test_only_its_own_pending_mail_is_relayed(
 
 
 def test_multiple_servers_share_a_lock_and_one_acceptance_record(
-    relay: InboxRelay, native_queue: Mock
+    relay: MailboxRelay, native_queue: Mock
 ) -> None:
     peers = RepositoryPeers(relay.root)
     peers.send("recipient", "once")
@@ -214,7 +217,7 @@ def test_multiple_servers_share_a_lock_and_one_acceptance_record(
         first = pool.submit(relay.tick)
         try:
             assert entered.wait(5)
-            assert InboxRelay(root=relay.root, member_id="recipient").tick() is None
+            assert MailboxRelay(root=relay.root, member_id="recipient").tick() is None
         finally:
             release.set()
         assert first.result() is not None
@@ -224,7 +227,7 @@ def test_multiple_servers_share_a_lock_and_one_acceptance_record(
 
 
 def test_receipt_publication_failure_can_repeat_an_accepted_nudge(
-    relay: InboxRelay, native_queue: Mock, monkeypatch: pytest.MonkeyPatch
+    relay: MailboxRelay, native_queue: Mock, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     peers = RepositoryPeers(relay.root)
     peers.send("recipient", "durable mail survives receipt failure")
@@ -240,7 +243,7 @@ def test_receipt_publication_failure_can_repeat_an_accepted_nudge(
 
 
 async def test_cancellation_joins_the_inflight_queue_before_server_shutdown(
-    relay: InboxRelay, native_queue: Mock
+    relay: MailboxRelay, native_queue: Mock
 ) -> None:
     peers = RepositoryPeers(relay.root)
     peers.send("recipient", "pending")
@@ -272,7 +275,7 @@ async def test_cancellation_joins_the_inflight_queue_before_server_shutdown(
 def test_an_unjoined_or_departed_member_never_creates_a_relay(
     tmp_path: Path, native_queue: Mock
 ) -> None:
-    relay = InboxRelay(root=tmp_path, member_id="missing")
+    relay = MailboxRelay(root=tmp_path, member_id="missing")
     assert relay.tick() is None
     peers = RepositoryPeers(tmp_path)
     assert not peers.root.exists()
@@ -285,7 +288,7 @@ def test_an_unjoined_or_departed_member_never_creates_a_relay(
 
 
 async def test_companion_reports_storage_failure_without_payloads_and_retries(
-    relay: InboxRelay,
+    relay: MailboxRelay,
     monkeypatch: pytest.MonkeyPatch,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
@@ -293,13 +296,13 @@ async def test_companion_reports_storage_failure_without_payloads_and_retries(
     loop = asyncio.get_running_loop()
     attempts = Mock()
 
-    def failing_once(_relay: InboxRelay) -> None:
+    def failing_once(_relay: MailboxRelay) -> None:
         attempts()
         if attempts.call_count == 1:
             raise ValueError("private-message-body")
         loop.call_soon_threadsafe(retried.set)
 
-    monkeypatch.setattr(InboxRelay, "tick", failing_once)
+    monkeypatch.setattr(MailboxRelay, "tick", failing_once)
     serving = asyncio.create_task(
         relay.model_copy(update={"interval_seconds": 0.01}).run()
     )
