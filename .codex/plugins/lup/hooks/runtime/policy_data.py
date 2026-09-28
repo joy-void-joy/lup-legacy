@@ -401,6 +401,27 @@ PATH_RULES: list[PathRuleRow] = [
         "allow_autonomous": False,
     },
     {
+        "kind": "subtree",
+        "value": "src/lup_template/harness/content/catalog.py",
+        "reason": "protected path requires approval",
+        "recovery": "",
+        "allow_autonomous": False,
+    },
+    {
+        "kind": "subtree",
+        "value": "src/lup_template/harness/content/shell_vocabulary.py",
+        "reason": "protected path requires approval",
+        "recovery": "",
+        "allow_autonomous": False,
+    },
+    {
+        "kind": "subtree",
+        "value": "packages/lup/src/lup/harness/codescan",
+        "reason": "protected path requires approval",
+        "recovery": "",
+        "allow_autonomous": False,
+    },
+    {
         "kind": "exact",
         "value": "README.md",
         "reason": "README.md is human-authored",

@@ -58,6 +58,36 @@ def test_launch_authority_writes_remain_protected(path: str) -> None:
 
 
 @pytest.mark.parametrize(
+    "path",
+    [
+        "src/lup_template/harness/content/catalog.py",
+        "src/lup_template/harness/content/shell_vocabulary.py",
+        "packages/lup/src/lup/harness/codescan/antipatterns.py",
+        "packages/lup/src/lup/harness/codescan/registry.py",
+    ],
+)
+def test_which_rules_apply_is_protected_as_the_policy_is(path: str) -> None:
+    """Retiring a scan rule or re-judging a command widens what a session may do.
+
+    The policy package and the catalog were protected while the selection
+    they compile from was not, so a rule was retired, or a verb re-judged,
+    by an edit nobody was asked about and the next `harness generate all`.
+    """
+    policy = EditPolicy(declared_path_rules(declared_hook_set()))
+
+    decision = policy.decide(
+        EditBatch(
+            changes=[
+                EditChange(path=Path(path), before="value = 1\n", after="value = 2\n")
+            ]
+        )
+    )
+
+    assert decision.effect == "ask"
+    assert "protected" in decision.rule
+
+
+@pytest.mark.parametrize(
     "command",
     [
         "install -m644 tmp/x .lup/preflight/n.json",

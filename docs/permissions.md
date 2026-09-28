@@ -965,9 +965,10 @@ file without a question because it reviews its own. Protected roots,
 temporary paths, human-owned files like `README.md`, marker changes, and
 anti-pattern violations retain their guardrails in every mode. A protected
 root is where a session's own boundary is declared — its settings, its
-launch registry, its measured preflight, its review queue, the policy — so an
-edit there asks a person whoever is making it, including an identity trusted
-to review its own work.
+launch registry, its measured preflight, its review queue, the policy, and
+the selection of which scan and shell rules apply — so an edit there asks a
+person whoever is making it, including an identity trusted to review its own
+work.
 
 A few of those guardrails open only for a gate a human granted — creating a
 devtools module, adding an anti-pattern suppression. What a lease holds is

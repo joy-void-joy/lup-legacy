@@ -784,6 +784,13 @@ def portable_harness(
                 # once and evaporates.
                 Path("packages/lup/src/lup/policy"),
                 Path("src/lup_template/harness/catalog.py"),
+                # Which of those rules apply is the same widening by another
+                # name: retiring a scan rule, or judging a command differently,
+                # is decided in these, and the next generation compiles it into
+                # the hooks as surely as an edit of the policy would.
+                Path("src/lup_template/harness/content/catalog.py"),
+                Path("src/lup_template/harness/content/shell_vocabulary.py"),
+                Path("packages/lup/src/lup/harness/codescan"),
             ],
             # lup: template: what each tree in this domain is *for*. A role is
             # how a gate tells a fixture from production and a build product
