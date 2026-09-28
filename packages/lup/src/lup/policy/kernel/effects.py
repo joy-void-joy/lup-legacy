@@ -373,8 +373,12 @@ class WritesPath(Effect):
             return "ask"
         if row["scope"] == "scratch":
             return "allow"
+        # Beyond the checkout the question is whose the path is, which a
+        # placement cannot say: a container holds a directory the host never
+        # lent and none it did. So the write asks, and the reach settles it
+        # where the host measured every path it names as the container's own.
         if row["scope"] == "outside":
-            return "allow" if placement == "inside" else "ask"
+            return "ask"
         if row["write"] == "create" or not evidence.existing:
             return "allow"
         if row["reviewed"]:

@@ -226,7 +226,7 @@
     {
       "path": ".codex/plugins/lup/hooks/runtime/kernel/effects.py",
       "category": "generated",
-      "sha256": "b0b7e85396f5ea16512424a32fefb12b3e22a1da09243c56de331a9dd7d1533f",
+      "sha256": "cddea51a0c2c7f2709b66a5e64e3f57c970c3ea6f7c69e190fb801f1e2c7fd2e",
       "semantic_id": "hooks.lup-policy",
       "executable": false
     },
@@ -254,7 +254,7 @@
     {
       "path": ".codex/plugins/lup/hooks/runtime/kernel/lex.py",
       "category": "generated",
-      "sha256": "8fe6d29151fd7fa432db1a39a4fbacbb3aa6c5d3ec768a9eb44faf753544e044",
+      "sha256": "4627a7e73aef36560c0173da6f86a8cc1afd4bead10a7f0e60f4da0b8d7eded9",
       "semantic_id": "hooks.lup-policy",
       "executable": false
     },

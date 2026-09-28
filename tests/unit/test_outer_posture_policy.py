@@ -75,6 +75,7 @@ SETTLED_INSIDE = [
     pytest.param("git grep foo -O", "ask", id="git-grep-pager"),
     pytest.param("codex exec hi", "ask", id="codex-exec"),
     pytest.param("rm -rf /opt/outer-probe", "ask", id="rm-private"),
+    pytest.param("ls > /opt/outer-probe.txt", "ask", id="redirect-private"),
     pytest.param(
         "git clone https://github.com/o/r /opt/outer-clone", "ask", id="clone-private"
     ),
@@ -401,6 +402,37 @@ def test_a_target_the_host_lent_from_outside_the_checkout_keeps_the_question(
 ) -> None:
     """Mode bits on a sibling project are that project's, whatever wall stands."""
     command = f"chmod 777 {checkout.parent / 'sibling' / 'x'}"
+
+    assert met(runtime, "outer", command, checkout) == "ask"
+    assert previewed(command, checkout, monkeypatch)["outer"] == "ask"
+
+
+@pytest.mark.parametrize(
+    "spelled",
+    [
+        pytest.param("ls > {tree}/x.txt", id="redirect"),
+        pytest.param("date >> {tree}/log.txt", id="append"),
+        pytest.param("ls | tee {tree}/x.txt", id="tee"),
+    ],
+)
+def test_a_write_the_host_lent_from_outside_the_checkout_keeps_the_question(
+    runtime: Runtime, checkout: Path, monkeypatch: pytest.MonkeyPatch, spelled: str
+) -> None:
+    """Output landing in a tree the host lent is that tree's, whatever wall stands.
+
+    The container holds a file under a directory the host never lent, and
+    nothing under one it did: those bytes are on the host the moment they are
+    written. The tree stands outside the temporary root, which is disposable
+    wherever it is.
+    """
+    lent = "/srv/lent-tree"
+    ledger = checkout / ".lup" / "preflight" / "launch.json"
+    measured = json.loads(ledger.read_text(encoding="utf-8"))
+    ledger.write_text(
+        json.dumps({**measured, "writable_roots": [*measured["writable_roots"], lent]}),
+        encoding="utf-8",
+    )
+    command = spelled.format(tree=lent)
 
     assert met(runtime, "outer", command, checkout) == "ask"
     assert previewed(command, checkout, monkeypatch)["outer"] == "ask"

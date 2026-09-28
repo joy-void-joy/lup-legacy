@@ -23,7 +23,7 @@ from .bindings import (
 )
 from .decision import KernelDecision, unjudged
 from .downloads import download_targets
-from .effects import EffectEvidence, declare, verdict_for
+from .effects import EffectEvidence, declare, question_reach, verdict_for
 from .roles import git_state, spells_its_path
 from .rows import (
     DisplacedTargetRow,
@@ -1012,24 +1012,23 @@ def written_path_verdict(
         scope, carried, existing, spelled in (tracked_targets or [])
     ):
         return unread_question(spelled)
-    decided = verdict_for(
-        [
-            declare(
-                "writes_path",
-                scope=scope,
-                write="overwrite" if existing else "create",
-                # Reviewed, because the gates do read what this wrote --
-                # afterwards, against the file itself. That is the whole of
-                # what stops the row refusing here: a redirection produces its
-                # content by running, so nothing could read it in advance, and
-                # a refusal on the strength of "nobody read this" would be
-                # refusing the only writes for which that is unavoidable.
-                reviewed=True,
-            )
-        ],
-        EffectEvidence(existing=existing),
-        "inside" if contained else "ambient",
-    )
+    effects = [
+        declare(
+            "writes_path",
+            scope=scope,
+            write="overwrite" if existing else "create",
+            # Reviewed, because the gates do read what this wrote --
+            # afterwards, against the file itself. That is the whole of
+            # what stops the row refusing here: a redirection produces its
+            # content by running, so nothing could read it in advance, and
+            # a refusal on the strength of "nobody read this" would be
+            # refusing the only writes for which that is unavoidable.
+            reviewed=True,
+        )
+    ]
+    evidence = EffectEvidence(existing=existing)
+    placement = "inside" if contained else "ambient"
+    decided = verdict_for(effects, evidence, placement)
     if decided == "allow":
         return None
     written = "overwrites" if existing else "creates"
@@ -1038,6 +1037,9 @@ def written_path_verdict(
         f"{writer} {written} {spelled}, {SCOPE_PHRASES[scope]}",
         checkpoint=write_checkpoint(scope),
         purpose="unrecovered_local_mutation",
+        # Where the write lands is what settles it in a container: the
+        # container's own directory holds it, and one the host lent does not.
+        reach=question_reach(effects, evidence, placement),
     )
 
 

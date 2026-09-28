@@ -3971,11 +3971,11 @@ def test_a_tee_and_a_redirect_answer_alike_in_a_confined_session(
 ) -> None:
     """A confined session writes outside the checkout by both spellings or neither.
 
-    Measured before this: `date > <another checkout>/tmp/x.txt` was allowed in
-    a contained session, where the write row reads the boundary, and `date |
-    tee` of the same path asked in every placement, because its row asked
-    about every tee and named a loss no capture holds. The canonical policy
-    and the bundled kernel are asked the same questions.
+    `date > <another checkout>/tmp/x.txt` and `date | tee` of the same path
+    reach one row and one answer. Beyond the checkout that answer is a
+    question until the host measures the path as the container's own, which
+    nothing here measured, so both ask. The canonical policy and the bundled
+    kernel are asked the same questions.
     """
     checkout = tmp_path / "checkout"
     checkout.mkdir()
@@ -3988,7 +3988,7 @@ def test_a_tee_and_a_redirect_answer_alike_in_a_confined_session(
     )
     for into in ("> ", "| tee "):
         for target, effect in (
-            ("/srv/other/tmp/x.txt", "allow"),
+            ("/srv/other/tmp/x.txt", "ask"),
             ("tmp/x.txt", "allow"),
             ("a$X", "ask"),
             ("README.md", "ask"),

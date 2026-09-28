@@ -544,8 +544,11 @@ naming no program's verb — `$EDITOR file`, `"$PYTHON" x.py` — read nothing i
 A redirection is answered by its path, and the reason is that a command
 produces its output by running: before the fact there is nothing for the
 content gates to read. What the path settles is who gets asked. Into scratch
-or beyond the checkout it is the ordinary work it was; into this repository's
-own tree it **asks**, because the same bytes arriving through an `Edit` or an
+it is the ordinary work it was. Beyond the checkout it asks whose the path is,
+and a measured container settles that only where the host placed every path
+the write names as the container's own — a directory the host lent, a sibling
+worktree bound in, is the host's the moment the bytes land. Into this
+repository's own tree it **asks**, because the same bytes arriving through an `Edit` or an
 `echo` would have been read by the content gates and these never will be. So
 `dev render > docs/api.md` puts one question, and its recovery names the two
 ways past it: redirect into a scratch path and move the result in once it has
