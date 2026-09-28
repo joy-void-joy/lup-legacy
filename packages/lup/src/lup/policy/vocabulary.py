@@ -102,6 +102,12 @@ class JudgedCommand(BaseModel, frozen=True):
     Where `write_markers` still needs a word to find no marker in, this needs
     every word to be absent: `mount` alone prints the mount table, and each
     form that acts names a device or a mountpoint."""
+    allow_flags: list[str] = []
+    """The flags that, standing alone, are this command's report of itself.
+
+    Every word has to be one of them, which is what separates `capsh --print`
+    from `capsh --print -- -c id`: the first prints the process's capabilities
+    and the second goes on to run a shell with them."""
     write_flags: list[str] = []
     """Options whose value is the path this command lands on.
 
@@ -342,6 +348,47 @@ def judged_ask_rules(
         ),
         JudgedCommand(name="sudo", reason="privilege escalation requires approval"),
         JudgedCommand(name="doas", reason="privilege escalation requires approval"),
+        # Every other way of running a command as another identity, or with
+        # capabilities it did not hold, is the escalation `sudo` is, and states
+        # no reach for the same reason: what it runs is not judged, so nothing
+        # can say where its harm lands and no boundary settles it.
+        *(
+            JudgedCommand(name=name, reason="privilege escalation requires approval")
+            for name in (
+                "su",
+                "runuser",
+                "sudoedit",
+                "pkexec",
+                "run0",
+                "gosu",
+                "su-exec",
+                "setuidgid",
+                "sg",
+                "newgrp",
+                "setcap",
+            )
+        ),
+        JudgedCommand(
+            name="setpriv",
+            reason="privilege escalation requires approval",
+            allow_flags=["--dump", "-d"],
+        ),
+        JudgedCommand(
+            name="capsh",
+            reason="privilege escalation requires approval",
+            allow_flags=["--print"],
+        ),
+        # A namespace is one of the walls a command runs behind, so entering
+        # one or making one is choosing the walls: the same escalation, by the
+        # route a container is built from.
+        *(
+            JudgedCommand(
+                name=name,
+                reason="entering or making a namespace is privilege escalation,"
+                " which requires approval",
+            )
+            for name in ("unshare", "nsenter", "chroot")
+        ),
         JudgedCommand(
             name="ssh", reason="remote access requires approval", reach="host_later"
         ),
@@ -447,6 +494,7 @@ def judged_ask_rules(
             write_markers=command.write_markers,
             write_flags=command.write_flags,
             bare_reads=command.bare_reads,
+            allow_flags=command.allow_flags,
             landing_operands=command.landing_operands,
             checkpoint=command.checkpoint,
             reason=command.reason,

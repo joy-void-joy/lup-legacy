@@ -112,6 +112,12 @@ GUARDED = [
     pytest.param("cat .env.local", "deny", id="env-local-read"),
     pytest.param("grep KEY .env.production.local", "deny", id="env-mode-local-read"),
     pytest.param("sudo ls", "ask", id="sudo"),
+    pytest.param("su -c id root", "ask", id="su"),
+    pytest.param("setpriv --reuid=0 --regid=0 --clear-groups id", "ask", id="setpriv"),
+    pytest.param("capsh --user=root -- -c id", "ask", id="capsh"),
+    pytest.param("unshare -r id", "ask", id="unshare"),
+    pytest.param("nsenter -t 1 -m id", "ask", id="nsenter"),
+    pytest.param("capsh --print", "allow", id="capsh-report"),
     pytest.param(
         "install -m644 README.md .lup/preflight/n.json", "ask", id="install-ledger"
     ),

@@ -107,7 +107,12 @@ nobody can read, and a mount table nobody can read, land on the host. A
 reach nobody stated — any verdict reached by code rather than a declared
 effect — keeps its question everywhere, which is why `sudo` (whose payload
 is not judged), `ss -K` (the host's network), and a `git -c` setting that
-hands over a credential or retargets a remote do.
+hands over a credential or retargets a remote do. Every other tool that runs
+a command as another identity or with other capabilities — `su`, `runuser`,
+`setpriv`, `capsh`, `pkexec`, `setcap` and their kin — is the same escalation
+and keeps the same question, and so do `unshare`, `nsenter` and `chroot`,
+which choose the namespaces a command runs behind; `capsh --print` and
+`setpriv --dump` alone report the present process and read.
 
 A decision escalation keeps the question the agent asked for, and a hard
 prohibition, a missing channel and a read-only hole are settled before the

@@ -1801,6 +1801,26 @@ SHELL_POLICY_CASES = [
     DecisionCase(input="gh secret set TOKEN", effect="ask"),
     # Adversarial hardening: no auto-allowed code execution or injection.
     DecisionCase(input="sudo cat /etc/shadow", effect="ask"),
+    # Every tool that runs a command as another identity, with other
+    # capabilities, or in another namespace is the same escalation `sudo` is,
+    # and a boundary that runs it inside is the boundary it can leave; the
+    # report each prints about the present process reads.
+    *(
+        DecisionCase(input=command, effect="ask", sandboxed=sandboxed)
+        for command in (
+            "su -c id root",
+            "runuser -u root -- id",
+            "setpriv --reuid=0 --regid=0 --clear-groups id",
+            "capsh --user=root -- -c id",
+            "pkexec id",
+            "unshare -r id",
+            "nsenter -t 1 -m id",
+            "chroot / id",
+        )
+        for sandboxed in (False, True)
+    ),
+    DecisionCase(input="capsh --print", effect="allow"),
+    DecisionCase(input="setpriv --dump", effect="allow"),
     DecisionCase(input="LD_PRELOAD=./x.so ls", effect="ask"),
     DecisionCase(input="GIT_SSH_COMMAND=./x git fetch origin", effect="ask"),
     DecisionCase(input="git fetch ext::sh -c id", effect="ask"),
