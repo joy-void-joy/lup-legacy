@@ -2,6 +2,29 @@
 
 ## Unreleased
 
+### A member's messages wait in its mailbox
+
+What peers say to a session waited in its "inbox". It is the session's
+mailbox, and "inbox" names nothing in lup: the `coordination_inbox` tool is
+`coordination_mailbox`, `lup-devtools coordination inbox` is
+`coordination mailbox`, and the coordination store keeps each member's
+mail under `mailbox/` rather than `inbox/`. `ActorInbox` is
+`ActorMailbox`, `create_inbox_hooks` is `create_mailbox_hooks`,
+`ActorCohort.inbox` is `ActorCohort.mailbox`, `InboxRelay` is
+`MailboxRelay`, `INBOX_DIR` is `MAILBOX_DIR`, `inbox_path` is
+`mailbox_path`, and the hook matcher that delivers mail is tagged
+`mailbox`. End every session before regenerating, and move the mail still
+waiting as the migration says.
+
+The two ways mail reaches a member were called `inbox` and `mailbox`,
+though mail waits in the member's mailbox either way. Each is named for
+what hands the message over: `hook` (`Delivery.HOOK`), where the member's
+own hook puts it in front of its next tool call, and `waiting`
+(`Delivery.WAITING`), where it waits until the member next looks and
+nothing wakes it. `coordination_send` and `spawn_say` report those
+spellings, and the member files the store keeps are respelled by the
+migration's step.
+
 ### A session's wake socket is keyed by its member id
 
 The Unix socket a peer writes to so an idle Claude session takes a turn
@@ -13,9 +36,9 @@ file at a member's own path is replaced rather than refused, and a
 departed member's socket is removed only where the roster says it left and
 nothing answers on it.
 
-It is also called what it is. "Inbox" is the review page; this socket
-holds no mail, so it is the session's wake socket, in `/tmp/lup-wake`
-rather than `/tmp/lup-inbox`. `SessionInboxes` is `WakeSockets`,
+It is also called what it is. This socket holds no mail, so it is the
+session's wake socket, in `/tmp/lup-wake` rather than `/tmp/lup-inbox`.
+`SessionInboxes` is `WakeSockets`,
 `placed_inbox` is `placed_wake_socket`, `Image.inboxes` and
 `Member.inboxes` are `wake_sockets`, and `inbox_refusal` is
 `wake_socket_refusal`; `cleared`, `UnixSocketRefused` and
@@ -36,7 +59,7 @@ live while its session is.
 A new `PreToolUse` hook on each runtime, matched to the coordination
 server's tools, writes the calling conversation into the call's hidden
 `lup_caller` argument, so `describe`, `rename`, `lock`, `release` and
-`inbox` act on the calling subagent's row and `coordination_peers` lists
+`mailbox` act on the calling subagent's row and `coordination_peers` lists
 subagents beneath their session. A subagent's edits are held on its row: a
 sibling writing there is asked, its own session's claims are not. A native
 send between conversations of one session is no longer redirected, and an

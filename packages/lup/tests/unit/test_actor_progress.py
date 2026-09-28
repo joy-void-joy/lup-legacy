@@ -275,7 +275,7 @@ def test_a_redirect_reads_as_a_redirect(tmp_path: Path) -> None:
     cohort.spawn(actor, "locate the barrier")
     cohort.say(actor, "that branch is closed", redirect=True)
     cohort.say(actor, "here is a bound")
-    cohort.inbox(actor).take()
+    cohort.mailbox(actor).take()
 
     progress = read_progress(cohort, actor, ProgressWindow())
 
@@ -289,7 +289,7 @@ def test_what_a_closing_spawn_never_read_is_read_here(tmp_path: Path) -> None:
     actor = cohort.actor("analyst")
     cohort.spawn(actor, "locate the barrier")
     cohort.say(actor, "stop and check n=27", redirect=True)
-    cohort.inbox(actor).record_outstanding()
+    cohort.mailbox(actor).record_outstanding()
 
     progress = read_progress(cohort, actor, ProgressWindow())
 

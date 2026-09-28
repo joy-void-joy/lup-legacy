@@ -1,7 +1,7 @@
 """Saying something to a member, and saying something that stays true.
 
 Two acts, and separating them is the whole of this module. A **message** is
-addressed and consumed: it goes in one member's inbox and leaves when that
+addressed and consumed: it goes in one member's mailbox and leaves when that
 member reads it. A **notice** is neither: it is a fact about the population,
 read at the head of every turn by whoever is there to read it, and retracted
 by taking it down.
@@ -100,7 +100,7 @@ class MailEventBase(BaseModel, frozen=True):
 
     What separates the kinds is whether the member took the message, which is
     the one fact a reader cannot infer and the one a sender most needs: a
-    sender is told a message was sent on the strength of the inbox accepting
+    sender is told a message was sent on the strength of the mailbox accepting
     it, which is not the same as anybody having read it.
     """
 
@@ -110,7 +110,7 @@ class MailEventBase(BaseModel, frozen=True):
 
     @property
     def delivered(self) -> bool:
-        """Whether the member took this, or it only ever reached its inbox."""
+        """Whether the member took this, or it only ever reached its mailbox."""
         raise NotImplementedError
 
 
@@ -133,9 +133,9 @@ class MessagePostedEvent(MailEventBase, frozen=True):
 
 
 class MessageOutstandingEvent(MailEventBase, frozen=True):
-    """A message still in a member's inbox as its session is being closed.
+    """A message still in a member's mailbox as its session is being closed.
 
-    Recorded because the sender was told the message was sent, and the inbox
+    Recorded because the sender was told the message was sent, and the mailbox
     alone cannot say whether anyone read it. On a park this is a message that
     will land at the head of the resumed turn; on a run that ended it is one
     that reached nobody, and a redirect nobody read is the failure of an
@@ -180,7 +180,7 @@ def folded_notice(notice: mail.Notice) -> StandingNotice:
 
 
 class ActorMail:
-    """Every member's inbox, and the notices standing over all of them.
+    """Every member's mailbox, and the notices standing over all of them.
 
     Holds nothing and remembers nothing: a door posting, a console peeking and
     a member reading all reach the same directories, so none of them has to be
@@ -199,7 +199,7 @@ class ActorMail:
         in_reply_to: str = "",
         redirect: bool = False,
     ) -> ActorMessage:
-        """Put one message in one member's inbox, and say what was put there."""
+        """Put one message in one member's mailbox, and say what was put there."""
         message = mail.new_message(
             sender=sender,
             to=to.label(),
@@ -212,7 +212,7 @@ class ActorMail:
         return folded_message(message)
 
     def waiting(self, actor: ActorRef) -> ActorDelivery:
-        """Everything in this member's inbox, consuming none of it.
+        """Everything in this member's mailbox, consuming none of it.
 
         Reading is separated from consuming so that asking what a member has
         waiting — which is how a sender learns whether anything was read —
@@ -228,7 +228,7 @@ class ActorMail:
     def delivered(self, actor: ActorRef, delivery: ActorDelivery) -> None:
         """Record that this member has been handed exactly these messages.
 
-        By deleting them, so what was handed over is what leaves the inbox and
+        By deleting them, so what was handed over is what leaves the mailbox and
         nothing between the read and the commit is consumed unseen.
         """
         mail.consume(

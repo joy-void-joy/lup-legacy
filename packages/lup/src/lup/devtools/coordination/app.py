@@ -138,7 +138,7 @@ def create_coordination_app() -> typer.Typer:
         chosen = member_id or mint_member_id()
         tree = worktree or project_root()
         try:
-            peers().join(chosen, tree, cli_name=name, delivery=Delivery.MAILBOX)
+            peers().join(chosen, tree, cli_name=name, delivery=Delivery.WAITING)
         except NameTakenError as taken:
             raise typer.BadParameter(str(taken)) from taken
         typer.echo(chosen)
@@ -292,10 +292,10 @@ def create_coordination_app() -> typer.Typer:
             )
         typer.echo(f"retracted {notice_id}")
 
-    @app.command("inbox")
-    def inbox_cmd(
+    @app.command("mailbox")
+    def mailbox_cmd(
         member_id: Annotated[
-            str, typer.Option("--id", help="Which session's inbox to read")
+            str, typer.Option("--id", help="Which session's mailbox to read")
         ],
         take: Annotated[
             bool,
@@ -304,7 +304,7 @@ def create_coordination_app() -> typer.Typer:
     ) -> None:
         """Read what is queued for one session, consuming it only when asked.
 
-        Peeking by default, because reading an inbox is how a person finds out
+        Peeking by default, because reading a mailbox is how a person finds out
         whether a peer has been reached — and a read that consumed would be a
         read that stopped the peer ever seeing it.
         """
@@ -389,7 +389,7 @@ def create_coordination_app() -> typer.Typer:
         """Stream what changes: who arrives and leaves, what they are on, what reaches them.
 
         Nothing is consumed. Mail is read the way a peek reads it, so a person
-        watching a peer's inbox is not the reason the peer never saw it. The
+        watching a peer's mailbox is not the reason the peer never saw it. The
         first look is a baseline — the live roster and the waiting mail once —
         rather than a replay.
 

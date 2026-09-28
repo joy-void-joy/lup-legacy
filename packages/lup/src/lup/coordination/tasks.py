@@ -165,7 +165,7 @@ class Delegation(BaseModel, frozen=True):
     """Paths taken on the holder's behalf, empty where it was parked."""
 
     delivered: bool = False
-    """Whether mail reached the holder's inbox."""
+    """Whether mail reached the holder's mailbox."""
 
     woken: bool = False
     """Whether anything has actually made the holder look."""

@@ -86,7 +86,7 @@ asks is almost always "who is here", and a flag would make answering it a
 listing that opens every file ever written.
 """
 
-INBOX_DIR = "inbox"
+MAILBOX_DIR = "mailbox"
 NOTICES_DIR = "notices"
 """What is waiting for one member, and what is true for all of them.
 
@@ -137,7 +137,7 @@ own: a subagent cannot outlive the session it runs in, and nothing beats for
 it between the calls it makes.
 """
 
-SUBAGENT_DELIVERY = "inbox"
+SUBAGENT_DELIVERY = "hook"
 """How mail reaches a subagent: its runtime's tool hook, before its next call.
 
 The typed roster's spelling of that mode, written here because this is the one

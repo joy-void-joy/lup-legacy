@@ -35,7 +35,7 @@ Run any of them with `uv run lup-devtools <command>`, and add `--help` for its a
 | `coordination notice` | State something true for every session, now and for whoever starts next. |
 | `coordination notices` | Everything standing over this repository, with the id that takes one down. |
 | `coordination unnotice` | Take one standing fact down, so no later prompt reads it. |
-| `coordination inbox` | Read what is queued for one session, consuming it only when asked. |
+| `coordination mailbox` | Read what is queued for one session, consuming it only when asked. |
 | `coordination holdings` | List what each live session in this repository is holding. |
 | `coordination lock` | Take everything beneath a prefix, before having touched any of it. |
 | `coordination release` | Give a prefix back, refusing where this session does not hold it. |

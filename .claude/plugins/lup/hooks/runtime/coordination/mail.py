@@ -3,7 +3,7 @@
 Two things reach a member and only one of them is mail, which is the whole of
 what this module separates.
 
-**A message is addressed and consumed.** It is one file in one member's inbox,
+**A message is addressed and consumed.** It is one file in one member's mailbox,
 written by the sender and deleted by the recipient, so "what is waiting for
 me" is a directory listing and there is no position for anybody to keep. No
 token in the store means *everyone*: a sender resolves it against the roster
@@ -36,7 +36,7 @@ from typing import TypedDict
 from uuid import uuid4
 
 from .store import (
-    INBOX_DIR,
+    MAILBOX_DIR,
     NOTICES_DIR,
     discarded,
     listed,
@@ -48,7 +48,7 @@ from .store import (
 
 
 class Message(TypedDict, total=False):
-    """One thing said to one member, as a file in that member's inbox.
+    """One thing said to one member, as a file in that member's mailbox.
 
     ``sender`` rather than ``from``, which is not a name a field can have in
     this language. Everything else is spelled as the typed writer spells it.
@@ -80,7 +80,7 @@ class Notice(TypedDict, total=False):
     posted_at: str
 
 
-def inbox_path(root: Path, inbox: str) -> Path:
+def mailbox_path(root: Path, mailbox: str) -> Path:
     """Where one member's mail waits, under the conversation that reads it.
 
     The conversation rather than the bare id, because an id is unique only
@@ -90,12 +90,12 @@ def inbox_path(root: Path, inbox: str) -> Path:
     through a second round is that member further on, and reads what was said
     to the first.
     """
-    return root / INBOX_DIR / inbox
+    return root / MAILBOX_DIR / mailbox
 
 
-def message_path(root: Path, inbox: str, message_id: str) -> Path:
+def message_path(root: Path, mailbox: str, message_id: str) -> Path:
     """Where one message to one member sits."""
-    return inbox_path(root, inbox) / f"{message_id}.json"
+    return mailbox_path(root, mailbox) / f"{message_id}.json"
 
 
 def new_message(
@@ -123,21 +123,21 @@ def new_message(
     )
 
 
-def post(root: Path, inbox: str, message: Message) -> bool:
-    """Put one message in one member's inbox, by rename.
+def post(root: Path, mailbox: str, message: Message) -> bool:
+    """Put one message in one member's mailbox, by rename.
 
     One recipient, always. Where a sender meant everyone, it resolved that
     against the roster and calls this once per member — so no reader of this
-    store has to know what a broadcast is, and a message in an inbox is a
-    message for whoever owns that inbox.
+    store has to know what a broadcast is, and a message in a mailbox is a
+    message for whoever owns that mailbox.
     """
     landed = published(
-        message_path(root, inbox, text(message.get("id")) or uuid4().hex), message
+        message_path(root, mailbox, text(message.get("id")) or uuid4().hex), message
     )
     return landed is not None
 
 
-def waiting(root: Path, inbox: str) -> list[Message]:
+def waiting(root: Path, mailbox: str) -> list[Message]:
     """Everything queued for this member, oldest first, consuming none of it.
 
     Reading is separated from consuming so that asking what a member has
@@ -146,22 +146,22 @@ def waiting(root: Path, inbox: str) -> list[Message]:
     """
     found = [
         message
-        for path in listed(inbox_path(root, inbox))
+        for path in listed(mailbox_path(root, mailbox))
         for message in [loaded(path, Message)]
         if message is not None and text(message.get("id"))
     ]
     return sorted(found, key=lambda message: text(message.get("sent_at")))
 
 
-def consume(root: Path, inbox: str, messages: list[Message]) -> None:
-    """Take these messages out of this member's inbox, having handed them over.
+def consume(root: Path, mailbox: str, messages: list[Message]) -> None:
+    """Take these messages out of this member's mailbox, having handed them over.
 
-    By deletion, which is what makes the inbox its own position: there is no
+    By deletion, which is what makes the mailbox its own position: there is no
     offset to commit, nothing to re-read after a crash but what was never
     handed over, and a second reader cannot be behind a first.
     """
     for message in messages:
-        discarded(message_path(root, inbox, text(message.get("id"))))
+        discarded(message_path(root, mailbox, text(message.get("id"))))
 
 
 def notice_path(root: Path, notice_id: str) -> Path:

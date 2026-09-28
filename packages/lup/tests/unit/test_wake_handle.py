@@ -42,7 +42,7 @@ def frames_taken_at(address: Path, wake_with: WakePath) -> list[dict[str, object
 
         waiting = Thread(target=take_one_frame)
         waiting.start()
-        roused = wake(wake_with, "look at your inbox")
+        roused = wake(wake_with, "look at your mailbox")
         waiting.join(timeout=5)
 
     assert roused.reached, roused.reason
@@ -151,12 +151,12 @@ def test_the_roster_row_is_what_actually_wakes_the_member(
 
         waiting = Thread(target=take_one_frame)
         waiting.start()
-        roused = wake(next(row.wake for row in peers.present()), "look at your inbox")
+        roused = wake(next(row.wake for row in peers.present()), "look at your mailbox")
         waiting.join(timeout=5)
 
     assert roused.reached
     assert not roused.reason
-    assert json.loads(delivered[0])["message"]["content"] == "look at your inbox"
+    assert json.loads(delivered[0])["message"]["content"] == "look at your mailbox"
 
 
 def test_a_session_declares_the_id_its_wake_socket_checks_beside_the_path(

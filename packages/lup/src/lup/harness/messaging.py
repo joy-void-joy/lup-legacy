@@ -6,8 +6,8 @@ and starts a turn. That socket is the session's **wake socket**: what
 :mod:`lup.coordination.wake` writes to when a peer is to look, and the only
 thing between a nudge and an idle peer is whether the waking process can open
 the file. It holds no mail -- a message is the coordination store's, read
-whether or not anything woke its reader -- which is why it is not called an
-inbox.
+whether or not anything woke its reader -- which is why it is not called a
+mailbox.
 
 A contained session cannot open it, left alone. Measured:
 ``/proc/self/mountinfo`` carries no mount for ``/tmp``, so each session's

@@ -3,7 +3,7 @@
 The subject is not orchestration. One process deciding what several agents do
 is covered elsewhere; this is the population nobody assembled — every session
 working in one repository, in whatever worktree, started by whoever — and what
-it needs is an address book, a durable inbox, and a way to say what it is
+it needs is an address book, a durable mailbox, and a way to say what it is
 doing.
 
 Delegation belongs here rather than there for the same reason. Handing work to

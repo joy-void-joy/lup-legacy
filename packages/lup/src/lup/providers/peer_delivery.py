@@ -5,7 +5,7 @@
 # to ship a guard that reaches nothing.
 """What a plugin ships so a peer's mail reaches a session nobody opened in-process.
 
-The in-process hook closes over a live inbox, which is why it reaches only the
+The in-process hook closes over a live mailbox, which is why it reaches only the
 sessions lup itself opened. A person's own session has the plugin and no live
 object, so delivery has to arrive as files a script can read — and the script
 has to be cheap enough to run before *every* tool call, because the tools a
@@ -13,10 +13,10 @@ session uses while it is only reading are the ones the policy matcher does not
 name.
 
 Two artifacts answer that. A shell guard looks for a file in this member's
-inbox and exits without starting an interpreter where there is none, which is
+mailbox and exits without starting an interpreter where there is none, which is
 almost always. Only where something is waiting does it hand over to
 ``providers/assets/peer_delivery_runtime.py``, shipped verbatim beside the
-coordination package it reads the inbox through. Named as a path rather than
+coordination package it reads the mailbox through. Named as a path rather than
 a module because an asset is carried to its destination rather than imported
 from here, and `assets` is deliberately not a package.
 
@@ -30,7 +30,7 @@ from pathlib import Path
 
 from lup.coordination.bare.store import (
     COORDINATION_DIR,
-    INBOX_DIR,
+    MAILBOX_DIR,
     MEMBER_KIND,
     STORE_DIR,
     Actor,
@@ -65,7 +65,7 @@ def delivery_runtime_source() -> str:
 
 
 def guard_body() -> str:
-    """An inbox listing that answers "nothing waiting" without starting Python.
+    """A mailbox listing that answers "nothing waiting" without starting Python.
 
     A maildir is its own position: a message is one file, put there by the
     sender and deleted by this member once it has been handed over, so what is
@@ -77,7 +77,7 @@ def guard_body() -> str:
     as, which is the member kind and the id together — an id alone is unique
     only within a kind, and the guard has to look where the sender wrote.
 
-    The session's own subagents each have an inbox of their own, keyed under
+    The session's own subagents each have a mailbox of their own, keyed under
     the session, so the guard looks in those too: which conversation the call
     belongs to is in the payload, which only the reader parses, and one
     subagent's waiting mail starts the reader for any call of the session
@@ -105,7 +105,7 @@ case "$shared" in
     *) shared="$PWD/$shared" ;;
 esac
 root="$shared/{STORE_DIR}/{COORDINATION_DIR}"
-set -- "$root/{INBOX_DIR}/{session}"/*.json "$root/{INBOX_DIR}/{subagents}"*/*.json
+set -- "$root/{MAILBOX_DIR}/{session}"/*.json "$root/{MAILBOX_DIR}/{subagents}"*/*.json
 for waiting do
     [ -e "$waiting" ] || continue
     exec python3 -s "${{0%/*}}/../runtime/{RUNTIME_MODULE}" "$root" "{member}"
