@@ -92,8 +92,9 @@ list; 0.3.0's and 0.4.0's migrations are recovered into records of their own.
 a project updating across several releases hears what each asks of it, and
 `dev migrate check` and the `declared migrations` gate read them too, so a
 range spanning a release finds what that release declared. A released
-migration speaks only for a range whose base predates it: a name an old
-release retired, reused and dropped again, is a break of its own.
+migration speaks only for a range its commit landed in: a name an old release
+retired, reused and dropped again, is a break of its own, and so is a
+project's name that a library release happened to retire too.
 `docs/contributing.md` shows a file. `MigrationRecord` reads the record where
 `DECLARED` was read, and `undeclared_breaks` takes one as `record`.
 

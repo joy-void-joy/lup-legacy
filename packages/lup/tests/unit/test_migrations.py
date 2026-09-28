@@ -357,3 +357,29 @@ def test_a_break_a_release_declared_is_read_across_a_range_spanning_it(
     owed = undeclared_breaks(DevProject(package="app"), returned, record)
 
     assert [capability.identity for capability in owed] == ["stop"]
+
+
+def test_a_migration_that_landed_in_another_history_speaks_for_nothing_here(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A released migration speaks only for a range its commit landed in.
+
+    The library's record travels into every checkout that runs the gate, and
+    its released names are common words: a project whose own `stop` went
+    must not find it covered by a library release that retired a `stop` of
+    its own, in a history this project does not hold.
+    """
+    root = tmp_path / "project"
+    base = vendoring_checkout(root)
+    monkeypatch.chdir(root)
+    record = MigrationRecord(root=tmp_path / "library-record")
+    released = declare(record.root / "0.2.0", "stop", "stop")
+    released.write_text(
+        f'commit = "{"1" * 40}"\n' + released.read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+    (root / "src/app/core.py").write_text("def run() -> None: ...\n", encoding="utf-8")
+
+    owed = undeclared_breaks(DevProject(package="app"), base, record)
+
+    assert [capability.identity for capability in owed] == ["stop"]
