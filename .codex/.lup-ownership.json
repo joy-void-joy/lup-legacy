@@ -492,7 +492,7 @@
     {
       "path": ".codex/plugins/lup/skills/bump/SKILL.md",
       "category": "generated",
-      "sha256": "75cbba0d98ebfdaf988eb37a6555cc81d453670f001aee6ff8f72c0d21c6baea",
+      "sha256": "291085eb15bac2a02a96b299614a604cb406c7974bd622880abaf29a962fd2ef",
       "semantic_id": "skill.bump",
       "executable": false
     },
@@ -632,7 +632,7 @@
     {
       "path": ".codex/plugins/lup/skills/merge/SKILL.md",
       "category": "generated",
-      "sha256": "b29597de2ffabea4ae66bac733df69bf0b096f855a7a9ffc16dacf11612ff5d7",
+      "sha256": "3e1ed2884870dfd10a1243255a2892f6d3993dfca3868728d789b8efc5317ad9",
       "semantic_id": "skill.merge",
       "executable": false
     },
@@ -646,7 +646,7 @@
     {
       "path": ".codex/plugins/lup/skills/modify-command/SKILL.md",
       "category": "generated",
-      "sha256": "795313f16bdc8a8e60fa47f68bb3e8c00e2bad71c105ddbee9d755300b4b8251",
+      "sha256": "a4b65303e83fd513a104292227fb412354073514079fc77d353dd46daf3902e0",
       "semantic_id": "skill.modify-command",
       "executable": false
     },
@@ -688,7 +688,7 @@
     {
       "path": ".codex/plugins/lup/skills/release/SKILL.md",
       "category": "generated",
-      "sha256": "66c2ac4167a7d7595e7240613e2bd55e1de1337bb6f6ea6a8f4c3f1fe293fb05",
+      "sha256": "e9c0a467f614c3e9472099eb42b90611a4acbef42ac06106a59a9362bc1ed4e5",
       "semantic_id": "skill.release",
       "executable": false
     },
@@ -730,7 +730,7 @@
     {
       "path": ".codex/plugins/lup/skills/upstream/SKILL.md",
       "category": "generated",
-      "sha256": "43d5d01702e21f14c40c986dd39a0acd725ab09b7e4d372562d68e426a583bd2",
+      "sha256": "0e4047dbf6ec9c7c155b701eb709b2e5ad07c61d5dc7f8e2c02428ec94ea7c04",
       "semantic_id": "skill.upstream",
       "executable": false
     },

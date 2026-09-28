@@ -18,7 +18,10 @@ uv run lup-devtools dev release <level> --dry-run --json
 ```
 
 It reports the version it would move to, the date, whether a section is open,
-and what the declared breaks ask of a caller. Read it beside the range itself:
+and what the pending breaks ask of a caller. Each is one file under the
+library's `migrations/pending/`; the release moves them into
+`migrations/<version>/`, stamped with the commit each landed in, and renders
+their prose into the section it closes. Read the plan beside the range itself:
 
 ```bash
 git log --oneline <last-tag>..HEAD
@@ -30,7 +33,7 @@ Where there is no tag yet, the range is from the release branch.
 ### 2. Settle the level
 
 **A break decides it, not a count of commits.** `dev migrate check` has
-already refused anything undeclared, so the declarations are the record of
+already refused anything undeclared, so the pending files are the record of
 what breaks — read them rather than guessing from diff size.
 
 Pre-1.0, a break goes in the minor by convention; the command does not encode
@@ -74,15 +77,17 @@ back to step 3 and say so plainly rather than closing the section around it.
 ### 5. Confirm, then cut
 
 Show the dry run's plan and Request explicit user approval before cutting.
-Reason: the release writes four files, makes a commit and creates a tag, and
-the tag is what a publish workflow acts on.
+Reason: the release closes the changelog, moves the version and the pending
+migrations, makes a commit and creates a tag, and the tag is what a publish
+workflow acts on.
 
 ```bash
 uv run lup-devtools dev release <level>
 ```
 
 It refuses a dirty tree and an undeclared break. Neither is a reason to force
-anything: commit or discard what is loose, and declare what broke.
+anything: commit or discard what is loose, and declare what broke as a file
+under `migrations/pending/`, in a commit of its own before the release.
 
 ### 6. Land it, then push the tag
 

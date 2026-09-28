@@ -1,8 +1,8 @@
 """Settling a conflict both sides made by inserting at the same place.
 
 The commonest conflict in a repository that declares things in lists is two
-branches each adding an entry at the head of the same one — a migration, a
-changelog line, a registry row. Git reports it as a conflict because both
+branches each adding an entry at the head of the same one — a changelog line,
+a registry row. Git reports it as a conflict because both
 changes touch one position, and the resolution is always the same: keep both
 entries. Taking either side by hand drops the other's entry, which is the
 silent loss the merge guidance warns about, and retyping the union is where a

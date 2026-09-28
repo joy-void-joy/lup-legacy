@@ -1,7 +1,7 @@
 """Behavior tests for settling a conflict made of two same-place insertions.
 
 Two branches each prepend an entry to one declared list — the recurring shape
-of a migrations or changelog conflict. What has to hold: both entries survive
+of a changelog or registry conflict. What has to hold: both entries survive
 in a stated order, an edit elsewhere in the file rides along, a change that
 both sides made alike lands once, and two different changes to one line are
 refused with the file left exactly as git left it.
@@ -34,7 +34,7 @@ def git_in(work: Path) -> sh.Command:
 
 
 DECLARED = "DECLARED = [\n    'first',\n]\n"
-"""A list both branches prepend to, as a migrations table is."""
+"""A list both branches prepend to, as a registry is."""
 
 
 def lines(text: str) -> list[str]:
