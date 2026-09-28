@@ -632,7 +632,11 @@ Every manifest and lockfile — `pyproject.toml`, `package.json`, `uv.lock`,
 `pnpm-lock.yaml`, `yarn.lock`, `Cargo.lock` — is a protected root in whichever
 package holds it, declared as `**/<name>` from
 `lup.policy.rules.dependency_declarations()`, and so is `.github`, because CI
-runs with the repository's secrets on every push. An edit of one, or any
+runs with the repository's secrets on every push — and `.vscode`,
+`.devcontainer` and `.pre-commit-config.yaml` for the same reason by other
+hands: an editor's tasks, a container recipe and the hooks `git commit` runs
+are code another tool runs later, with none of this policy in front of it.
+(`.envrc` is already under the `.env` rule.) An edit of one, or any
 shell write of one, asks whoever makes it, a self-reviewing identity
 included, exactly as the root manifest does. The commands that write them
 for a reason — `uv lock`, `uv add`, `bun install` — are judged by the

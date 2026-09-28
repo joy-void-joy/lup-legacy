@@ -140,6 +140,9 @@ GUARDED = [
         id="gh-api-attached-equals",
     ),
     pytest.param("gh api -XGET repos/{owner}/{repo}", "allow", id="gh-api-read"),
+    # Code another tool runs later, with none of this policy in front of it.
+    pytest.param("echo '{}' > .vscode/tasks.json", "ask", id="vscode-task"),
+    pytest.param("cp README.md .pre-commit-config.yaml", "ask", id="pre-commit"),
     # An interpreter build arrives from an index and runs everything after it.
     pytest.param("uv python install 3.13", "ask", id="uv-python-install"),
     pytest.param("uv python pin 3.13", "ask", id="uv-python-pin"),

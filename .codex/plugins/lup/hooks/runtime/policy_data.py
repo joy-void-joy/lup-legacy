@@ -339,6 +339,27 @@ PATH_RULES: list[PathRuleRow] = [
     },
     {
         "kind": "subtree",
+        "value": ".vscode",
+        "reason": "protected path requires approval",
+        "recovery": "",
+        "allow_autonomous": False,
+    },
+    {
+        "kind": "subtree",
+        "value": ".devcontainer",
+        "reason": "protected path requires approval",
+        "recovery": "",
+        "allow_autonomous": False,
+    },
+    {
+        "kind": "subtree",
+        "value": ".pre-commit-config.yaml",
+        "reason": "protected path requires approval",
+        "recovery": "",
+        "allow_autonomous": False,
+    },
+    {
+        "kind": "subtree",
         "value": "sync.json",
         "reason": "protected path requires approval",
         "recovery": "",

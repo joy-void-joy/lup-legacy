@@ -60,6 +60,36 @@ def test_launch_authority_writes_remain_protected(path: str) -> None:
 @pytest.mark.parametrize(
     "path",
     [
+        ".vscode/tasks.json",
+        ".vscode/launch.json",
+        ".devcontainer/devcontainer.json",
+        ".pre-commit-config.yaml",
+        ".envrc",
+        "packages/lup/.envrc",
+    ],
+)
+def test_code_that_runs_later_outside_the_session_is_protected(path: str) -> None:
+    """An editor task, a commit hook, a container recipe, a directory's env.
+
+    Each is code somebody else's tool runs later -- the editor, `git commit`,
+    the container build, the shell entering a directory -- with nothing of
+    this session's policy in front of it, as a CI workflow is.
+    """
+    policy = EditPolicy(declared_path_rules(declared_hook_set()))
+
+    decision = policy.decide(
+        EditBatch(
+            changes=[EditChange(path=Path(path), before=None, after="value = 2\n")]
+        )
+    )
+
+    assert decision.effect == "ask"
+    assert "protected" in decision.rule
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
         "src/lup_template/harness/content/catalog.py",
         "src/lup_template/harness/content/shell_vocabulary.py",
         "packages/lup/src/lup/harness/codescan/antipatterns.py",

@@ -753,6 +753,13 @@ def portable_harness(
                 # CI runs with the repository's secrets and on every push, so
                 # a workflow or an action is code somebody else executes.
                 Path(".github"),
+                # And the same by other hands, later and outside the session:
+                # an editor's tasks and launch configurations, a container
+                # recipe, and the hooks `git commit` runs. None of them has
+                # this policy in front of it when it runs.
+                Path(".vscode"),
+                Path(".devcontainer"),
+                Path(".pre-commit-config.yaml"),
                 Path("sync.json"),
                 # The gitignored half alongside it, because a registration
                 # there can now carry a `mount` — and that key is what a
