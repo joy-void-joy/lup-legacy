@@ -1,6 +1,5 @@
 """Real hook order and explicit review of complete document replacements."""
 
-import importlib.util
 import io
 import json
 import os
@@ -15,6 +14,7 @@ import sh
 from lup.policy.relay import QuestionRelay
 from lup.policy.assets.host import review_hook_call
 from lup.types import JsonObject
+from tests.unit.bundled import bundled
 from tests.unit.native import codex_denial, codex_effect
 
 
@@ -136,11 +136,9 @@ def test_host_executor_deferral_reaches_explicit_permission_review(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    path = Path(".codex/plugins/lup/hooks/scripts/policy.py").resolve()
-    spec = importlib.util.spec_from_file_location("codex_permission_policy", path)
-    assert spec is not None and spec.loader is not None
-    dispatcher = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(dispatcher)
+    dispatcher = bundled(
+        "codex_permission_policy", Path(".codex/plugins/lup/hooks/scripts/policy.py")
+    )
     monkeypatch.setenv("PLUGIN_DATA", str(root / "plugin-data"))
     monkeypatch.setattr(
         dispatcher,

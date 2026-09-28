@@ -6,7 +6,6 @@ run the emitted script on a fresh interpreter with JSON on stdin, the way
 the harness invokes it.
 """
 
-import importlib.util
 import io
 import json
 import shlex
@@ -27,6 +26,7 @@ from lup.policy.kernel.decision import (
 )
 from lup.types import EnvVars, JsonObject
 from lup_template.harness.catalog import declared_hook_set
+from tests.unit.bundled import bundled
 from tests.unit.repos import commit_file, git_in, initialized_repo
 
 DISPATCHER = Path(".claude/plugins/lup/hooks/scripts/policy.py")
@@ -910,13 +910,7 @@ def bundled_dispatcher() -> ModuleType:
     here pins every placement the vocabulary has, where driving one from a
     command would pin only the placements some rule happens to declare.
     """
-    spec = importlib.util.spec_from_file_location(
-        "bundled_claude_policy", DISPATCHER.resolve()
-    )
-    assert spec is not None and spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
+    return bundled("bundled_claude_policy", DISPATCHER)
 
 
 def dispatcher_rewrite(

@@ -24,7 +24,7 @@ def test_the_worker_flag_is_offered_where_the_plugin_answers_for_it(
 ) -> None:
     monkeypatch.setattr(check, "find_spec", lambda name: ModuleSpec(name, None))
 
-    assert check.parallel_arguments(4) == ["-n", "4"]
+    assert check.parallel_arguments(4) == ["-n", "4", "--dist", "worksteal"]
 
 
 def test_no_worker_flag_where_the_plugin_is_absent(

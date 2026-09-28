@@ -156,6 +156,33 @@ class Migration(BaseModel, frozen=True, extra="forbid"):
             return False
         return True
 
+    def landed_between(self, base: str, head: str = "", root: Path = Path()) -> bool:
+        """Whether this break landed after ``base`` and by ``head``.
+
+        What lets it speak for a name that went over that range. A pending
+        declaration names no commit and lands in every range it is read in,
+        since it is newer than any commit. A stamped one lands only where its
+        commit is not yet in ``base``'s history and is in ``head``'s — so one a
+        base already carried speaks for nothing that base still had, and one
+        from a history this checkout does not hold speaks for nothing here.
+
+        An empty ``head`` is the working tree, whose history is every commit
+        this checkout holds rather than HEAD's alone: while a merge runs, the
+        tree carries the merged branch's record, stamped with commits only the
+        merge head has.
+        """
+        if not self.commit:
+            return True
+        if self.applied_at(base, root):
+            return False
+        if head:
+            return self.applied_at(head, root)
+        try:
+            git("-C", str(root), "cat-file", "-e", f"{self.commit}^{{commit}}")
+        except sh.ErrorReturnCode:
+            return False
+        return True
+
     def spelled(self) -> list[str]:
         """This migration as an update reports it: the reason, then the steps."""
         return [
@@ -320,30 +347,35 @@ def unnamed(
     ]
 
 
-def unnamed_since(
+def unnamed_between(
     disappeared: list[Capability],
     declared: list[Migration],
     base: str,
+    head: str = "",
     root: Path = Path(),
 ) -> list[Capability]:
-    """:func:`unnamed`, heard only from migrations ``base`` did not already carry.
+    """:func:`unnamed`, heard only from migrations that landed over the range.
 
-    A migration in force at the base spoke for a name that was gone before the
-    range began, so a name the base still had is not its to speak for: one
-    that came back and went again is a break of its own. Released records are
-    read with the rest, so a range spanning a release hears what it declared,
-    and this is what keeps an old release's names from covering a new break
-    that reuses one.
+    Released records are read with the rest, so a range spanning a release
+    hears what it declared. Their names are common words, though, and a
+    migration speaks only where it landed: one the base already carried
+    spoke for a name gone before the range began, and one from another
+    history — the library's record, read in a project built on it — spoke
+    for a name of that history's. Either way a name gone here is a break of
+    its own. ``head`` is empty for the working tree, as a span spells it.
 
     Ancestry is asked only of the migrations naming something that went,
     which is the few rather than the record.
     """
-    speaking = [
-        migration
-        for migration in declared
-        if any(migration.covers(capability) for capability in disappeared)
-    ]
-    return unnamed(disappeared, unapplied(speaking, base, root))
+    return unnamed(
+        disappeared,
+        [
+            migration
+            for migration in declared
+            if any(migration.covers(capability) for capability in disappeared)
+            and migration.landed_between(base, head, root)
+        ],
+    )
 
 
 def last_release_commit() -> str:
@@ -428,7 +460,7 @@ def undeclared_breaks(
     topology can no longer recover it.
     """
     divergence = Span(base=base).divergence(project)
-    return unnamed_since(divergence.disappeared, record.declared(), base)
+    return unnamed_between(divergence.disappeared, record.declared(), base)
 
 
 def rendered(declared: list[Migration]) -> list[str]:

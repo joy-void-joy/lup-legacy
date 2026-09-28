@@ -10,9 +10,24 @@ path ignores the override and that the rendered prose uses it.
 import importlib
 from pathlib import Path
 
+import pytest
+
 from lup.harness.content.skills import fb_status
 from lup.providers.harness import claude_prompt_renderer
 from lup.workspace import paths
+
+
+@pytest.fixture(autouse=True)
+def configured_paths_restored(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Hand the next test on this worker the paths it would have had.
+
+    Each case configures the process-wide path state for a throwaway root.
+    Left configured, every later test on the worker resolved the project
+    there: one reading the template's own declaration opened a
+    `pyproject.toml` in a directory pytest had already removed, and failed or
+    passed by which worker the scheduler happened to hand it to.
+    """
+    monkeypatch.setattr(paths.state, "config", paths.state.config)
 
 
 def test_checkout_feedback_path_ignores_the_notes_override(tmp_path: Path) -> None:
