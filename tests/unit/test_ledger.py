@@ -334,7 +334,7 @@ def test_every_field_an_arrival_carries_reaches_the_member_it_becomes(
     written = {
         "task": "working",
         "liveness": "watcher",
-        "delivery": Delivery.INBOX,
+        "delivery": Delivery.HOOK,
         "worktree": "/tmp/tree",
         "wake": WakePath(runtime="codex", handle="thread-1"),
     }

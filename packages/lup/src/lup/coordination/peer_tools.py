@@ -74,7 +74,7 @@ class RosterPulse(ServerCompanion, frozen=True):
                 peers.join(
                     self.member_id,
                     self.root,
-                    delivery=Delivery.INBOX,
+                    delivery=Delivery.HOOK,
                     wake=self.wake,
                 )
                 peers.beat(self.member_id)
@@ -155,9 +155,9 @@ class PeerSayOutput(BaseModel):
     address: str
     delivery: Delivery = Field(
         description=(
-            "What carries this. `inbox` means the peer's own hook puts it in "
-            "front of its next tool call. `mailbox` means it waits in the file "
-            "until that peer next looks, and nothing will wake it"
+            "What carries this. `hook` means the peer's own hook puts it in "
+            "front of its next tool call. `waiting` means it waits in its "
+            "mailbox until that peer next looks, and nothing will wake it"
         )
     )
     outstanding: int = Field(
@@ -232,11 +232,11 @@ def create_peer_tools(
         own announce, so every call after the first costs a fold rather than
         a record.
 
-        ``INBOX`` because this session has the plugin carrying the delivery
+        ``HOOK`` because this session has the plugin carrying the delivery
         hook. What a member says about itself is what a sender is told, so
         claiming the weaker mode here would understate what a message does.
         """
-        peers.join(member_id, worktree, delivery=Delivery.INBOX, wake=wake)
+        peers.join(member_id, worktree, delivery=Delivery.HOOK, wake=wake)
         if not caller.get("agent_id"):
             return member_ref(member_id)
         return peers.join_subagent(member_id, caller)
@@ -341,7 +341,7 @@ def create_peer_tools(
         "file you are about to rewrite underneath it. A subagent reaches the "
         "session that dispatched it at that session's address.\n\n"
         "This never blocks and never stops anything. It also never guarantees "
-        "arrival: the reply says what carries it, and `mailbox` means nothing "
+        "arrival: the reply says what carries it, and `waiting` means nothing "
         "will wake that peer — it reads when it next looks. If what you need "
         "is a decision before you can continue, that is a question for the "
         "person, not a message to a peer.\n\n"
@@ -379,7 +379,7 @@ def create_peer_tools(
     @lup_tool(
         "Read your mailbox: what other sessions have said to you. Use it when "
         "you want to check for messages deliberately — a session whose "
-        "delivery is `mailbox` has nothing that will interrupt it, so this is "
+        "delivery is `waiting` has nothing that will interrupt it, so this is "
         "the only way it hears anything.\n\n"
         "Reading consumes: what this hands back will not be handed back "
         "again. Returns {messages: [text]}.",

@@ -237,7 +237,7 @@ async def test_a_message_to_a_subagent_waits_in_its_own_mailbox(
         )
     )
 
-    assert sent["delivery"] == "inbox"
+    assert sent["delivery"] == "hook"
     assert sent["outstanding"] == 1
     assert [message.text for message in peers.waiting(child).messages] == [
         "rebase before you commit"

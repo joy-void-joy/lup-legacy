@@ -660,7 +660,7 @@ def test_a_peer_that_joins_is_a_member_nobody_spawned(tmp_path: Path) -> None:
     assert member.running
     assert member.task == "reading the ledger"
     assert member.liveness == "launcher"
-    assert member.delivery is Delivery.MAILBOX, "no wake declared, so mail waits"
+    assert member.delivery is Delivery.WAITING, "no wake declared, so mail waits"
 
 
 def test_a_peer_rejoining_after_a_restart_is_the_same_member(tmp_path: Path) -> None:
@@ -678,14 +678,14 @@ def test_a_peer_leaves_by_the_same_record_a_spawn_does(tmp_path: Path) -> None:
     """How a member went is one question however it arrived."""
     roster = Roster(tmp_path)
     peer = ActorRef(kind="session", id="departed")
-    roster.joined(peer, delivery=Delivery.INBOX)
+    roster.joined(peer, delivery=Delivery.HOOK)
 
     roster.finished(peer, summary="done reading")
 
     [member] = roster.live()
     assert not member.running
     assert member.summary == "done reading"
-    assert member.delivery is Delivery.INBOX, "how it was reached survives its leaving"
+    assert member.delivery is Delivery.HOOK, "how it was reached survives its leaving"
 
 
 def test_a_spawned_member_is_reachable_through_its_own_hook(tmp_path: Path) -> None:
@@ -694,5 +694,5 @@ def test_a_spawned_member_is_reachable_through_its_own_hook(tmp_path: Path) -> N
     roster.spawned(ActorRef(kind="worker", id="opened"), task="work")
 
     [member] = roster.live()
-    assert member.delivery is Delivery.INBOX
+    assert member.delivery is Delivery.HOOK
     assert member.liveness == "", "the process that spawned it is the answer"

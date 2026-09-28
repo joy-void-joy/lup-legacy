@@ -117,7 +117,7 @@ def test_nudging_wakes_a_peer_through_its_wake_socket_and_says_so_for_one_withou
     peers.cohort.roster.joined(
         member_ref(claude),
         task="working",
-        delivery=Delivery.INBOX,
+        delivery=Delivery.HOOK,
         worktree=str(tmp_path / "claude"),
         wake=WakePath(runtime="claude", handle=str(address)),
     )

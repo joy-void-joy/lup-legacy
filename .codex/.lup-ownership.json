@@ -135,7 +135,7 @@
     {
       "path": ".codex/plugins/lup/hooks/runtime/coordination/store.py",
       "category": "generated",
-      "sha256": "a05792e368b00f45b5152b17c120caa773a0b77fcdc04b4e629e05d6dd4168ce",
+      "sha256": "2b8e3c741c8a512b6e90c50302084044ceb1e8a904f7394e0b39bb6a86447ee8",
       "semantic_id": "hooks.lup-policy",
       "executable": false
     },

@@ -77,7 +77,7 @@ def test_the_person_is_a_member_the_same_verbs_reach(tmp_path: Path) -> None:
 
     assert member.task == USER_TASK
     assert cohort.reaching(USER_ADDRESS) == user_peer()
-    assert member.delivery is Delivery.MAILBOX, "a person reads when they look"
+    assert member.delivery is Delivery.WAITING, "a person reads when they look"
     assert cohort.live() == [], "nobody started them, so no listing of spawns has them"
 
 
@@ -112,6 +112,6 @@ def test_a_sender_is_told_what_carries_its_message(tmp_path: Path) -> None:
     spawned = cohort.actor("worker", "one")
     cohort.spawn(spawned, "do the thing")
 
-    assert cohort.delivery(spawned) is Delivery.INBOX
-    assert cohort.delivery(cohort.user) is Delivery.MAILBOX
-    assert cohort.delivery(cohort.actor("worker", "never-recorded")) is Delivery.MAILBOX
+    assert cohort.delivery(spawned) is Delivery.HOOK
+    assert cohort.delivery(cohort.user) is Delivery.WAITING
+    assert cohort.delivery(cohort.actor("worker", "never-recorded")) is Delivery.WAITING

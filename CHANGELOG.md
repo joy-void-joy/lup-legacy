@@ -16,6 +16,15 @@ mail under `mailbox/` rather than `inbox/`. `ActorInbox` is
 `mailbox`. End every session before regenerating, and move the mail still
 waiting as the migration says.
 
+The two ways mail reaches a member were called `inbox` and `mailbox`,
+though mail waits in the member's mailbox either way. Each is named for
+what hands the message over: `hook` (`Delivery.HOOK`), where the member's
+own hook puts it in front of its next tool call, and `waiting`
+(`Delivery.WAITING`), where it waits until the member next looks and
+nothing wakes it. `coordination_send` and `spawn_say` report those
+spellings, and the member files the store keeps are respelled by the
+migration's step.
+
 ### A session's wake socket is keyed by its member id
 
 The Unix socket a peer writes to so an idle Claude session takes a turn

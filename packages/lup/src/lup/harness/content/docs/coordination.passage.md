@@ -125,10 +125,10 @@ it and a sender is told which mode it got:
 
 | Mode | What it means |
 | --- | --- |
-| `inbox` | Its own hook puts the message in front of its next tool call, so a working recipient cannot fail to read it |
-| `mailbox` | The message waits in the file until the recipient next looks, and nothing wakes it |
+| `hook` | Its own hook puts the message in front of its next tool call, so a working recipient cannot fail to read it |
+| `waiting` | The message waits in its mailbox until the recipient next looks, and nothing wakes it |
 
-File mail is the durable record either way; every other mode is a wake *on top
+The mailbox is the durable record either way; every other mode is a wake *on top
 of* it rather than an alternative. A sender told only that the mail accepted a
 message cannot tell a hook from a file nobody is watching, which is why
 `spawn_say` reports the mode rather than asserting delivery.

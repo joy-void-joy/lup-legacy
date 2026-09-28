@@ -250,7 +250,7 @@ class RepositoryPeers:
         member_id: str,
         worktree: Path,
         cli_name: str = "",
-        delivery: Delivery = Delivery.MAILBOX,
+        delivery: Delivery = Delivery.WAITING,
         wake: WakePath = WakePath(),
     ) -> ActorRef:
         """Put this session on the roster, and hand back the address it answers to.

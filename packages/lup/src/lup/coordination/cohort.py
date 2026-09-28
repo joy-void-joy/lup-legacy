@@ -543,7 +543,7 @@ class ActorCohort:
                 for member in self.roster.standing()
                 if member.actor.conversation() == conversation
             ),
-            Delivery.MAILBOX,
+            Delivery.WAITING,
         )
 
     def outstanding(self, actor: ActorRef) -> int:

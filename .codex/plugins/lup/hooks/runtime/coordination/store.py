@@ -137,7 +137,7 @@ own: a subagent cannot outlive the session it runs in, and nothing beats for
 it between the calls it makes.
 """
 
-SUBAGENT_DELIVERY = "inbox"
+SUBAGENT_DELIVERY = "hook"
 """How mail reaches a subagent: its runtime's tool hook, before its next call.
 
 The typed roster's spelling of that mode, written here because this is the one

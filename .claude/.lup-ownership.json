@@ -408,7 +408,7 @@
     {
       "path": ".claude/plugins/lup/hooks/runtime/coordination/store.py",
       "category": "generated",
-      "sha256": "a05792e368b00f45b5152b17c120caa773a0b77fcdc04b4e629e05d6dd4168ce",
+      "sha256": "2b8e3c741c8a512b6e90c50302084044ceb1e8a904f7394e0b39bb6a86447ee8",
       "semantic_id": "hooks.lup-policy",
       "executable": false
     },
@@ -772,7 +772,7 @@
     {
       "path": "docs/coordination.md",
       "category": "generated",
-      "sha256": "d9b383064a0f43481e9acf38039238ce6c8b9f4ee6f19473c4eae5029704c63a",
+      "sha256": "81f1ef170ff8779335545fd7f37d88bba9c72a3d2cbd0b72f71258308bb2b4bc",
       "semantic_id": "docs.coordination",
       "executable": false
     },

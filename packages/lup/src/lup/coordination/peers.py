@@ -71,5 +71,5 @@ def join_user(roster: Roster) -> ActorRef:
     for itself — the difference is that this one never stops answering.
     """
     peer = user_peer()
-    roster.joined(peer, task=USER_TASK, delivery=Delivery.MAILBOX)
+    roster.joined(peer, task=USER_TASK, delivery=Delivery.WAITING)
     return peer

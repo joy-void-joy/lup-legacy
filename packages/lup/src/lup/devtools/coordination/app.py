@@ -138,7 +138,7 @@ def create_coordination_app() -> typer.Typer:
         chosen = member_id or mint_member_id()
         tree = worktree or project_root()
         try:
-            peers().join(chosen, tree, cli_name=name, delivery=Delivery.MAILBOX)
+            peers().join(chosen, tree, cli_name=name, delivery=Delivery.WAITING)
         except NameTakenError as taken:
             raise typer.BadParameter(str(taken)) from taken
         typer.echo(chosen)
