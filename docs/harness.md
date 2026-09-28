@@ -307,7 +307,7 @@ owns the subject, then regenerate.
 - /lup:rebase — Clean up commit history on the feature branch and open/update a PR
 - /lup:refactor — Rewrite a file or folder from scratch while respecting coding conventions
 - /lup:refactor-tools — Audit SDK agent tools and subagents — find gaps, overlaps, and refactoring opportunities
-- /lup:release — Cut a release: settle the level, close the changelog, tag it
+- /lup:release — Cut a release or a candidate of one: settle the level, close the changelog, tag it — or promote the candidate that held
 - /lup:report — Write the report of everything left to implement, rewritten whole under tmp/, after a long session or after implementing a plan
 - /lup:resolve — Resolve inline feedback through isolated work
 - /lup:resolve-reviewer — Review one resolver concern against its acceptance criteria
