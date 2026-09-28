@@ -449,6 +449,43 @@ Two conventions catch most first-time review comments:
 the module that enforces it. A denial names its rule id, so you rarely need to
 read it first.
 
+### A break declares what to do about it
+
+In a repository other projects build on — one declaring a `spread`, as lup
+does — `dev check` also reads what the change took away. A module that moved
+or a name that was renamed needs nothing written down: `dev migrate map`
+derives the relocation from the two trees. A capability that is gone, or a
+signature a caller can no longer satisfy, needs a sentence somebody wrote,
+and the `declared migrations` row fails until one exists.
+
+Declare it in the commit that makes the break, as one TOML file under the
+library's `migrations/pending/` (`packages/lup/src/lup/migrations/pending/`
+in lup's own checkout), named for the break:
+
+```toml
+subjects = ["Runtime.contained"]
+reason = """
+`contained` named the configuration home rather than a container, so the \
+method takes the word for what it does"""
+
+[[steps]]
+instruction = "Call `Runtime.homed(request)` where you called `Runtime.contained(request)`."
+command = ["uv", "run", "lup-devtools", "dev", "py", "text", "\\.contained\\("]
+```
+
+`subjects` names every capability the one decision took, spelled as the gate
+spells them; `reason` is what the changelog carries; each step is a sentence
+a caller acts on, with the `command` that does it where one does. Leave
+`commit` out. A file per break is what lets parallel branches each declare
+one without meeting in a merge.
+
+`dev release` moves the pending files into `migrations/<version>/`, fills in
+the commit each break landed in, and renders their prose into the section it
+closes. The files stay: `dev migrate pending <commit>` tells a project
+crossing several releases what each one asks of it, and
+`dev migrate check --over <base>..<head>` judges any range against every
+release's record as well as the pending one.
+
 ### The `# lup: ignore` escape hatch
 
 When `Any` or another anti-pattern is genuinely needed — an untyped library

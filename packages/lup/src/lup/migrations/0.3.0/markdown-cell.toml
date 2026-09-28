@@ -1,0 +1,14 @@
+subjects = ["MarkdownCell", "MarkdownCell.text", "MarkdownCell.render"]
+reason = """
+the base every generated Markdown leaf answers through is an inline node \
+rather than a table cell: the same escaping is what a heading compiled from a \
+catalog and a value inside a sentence need, and a name saying `cell` said the \
+table was the only container there could be"""
+commit = "6c7b929965042ea2efcc1799b936081403232d1b"
+
+[[steps]]
+instruction = """
+Import `InlineNode` from `lup.formats.markdown` where `MarkdownCell` was \
+imported; `text` and `render` are unchanged, and every concrete kind — \
+`PlainCell`, `CodeCell`, `HtmlCodeCell`, `LinkCell` — keeps its name and its \
+behaviour."""

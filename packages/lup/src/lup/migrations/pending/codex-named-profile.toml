@@ -1,0 +1,18 @@
+subjects = [
+    "Codex.named_profile",
+    "Codex.validated_for_app_server",
+    "CodexProfileSelection.named_profile",
+]
+reason = """
+a Codex profile named a configuration overlay inside one home, which the \
+app-server cannot select, so the field only ever refused; profile= now names \
+an account on Claude and Codex alike"""
+commit = "b431ce9e0684fd75e5239c9a3940711f53b36340"
+
+[[steps]]
+instruction = """
+Pass profile=NAME to Claude(...) or Codex(...) to open its sessions as that \
+account: a name among the person's lup profiles, resolved to that runtime's \
+home inside it, and refused listing the known names where there is none. Drop \
+named_profile=..., which a session could never open with, and every call to \
+validated_for_app_server(), which checked nothing else."""

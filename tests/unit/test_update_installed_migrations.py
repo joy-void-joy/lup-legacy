@@ -11,7 +11,9 @@ def test_update_reads_migrations_from_a_fresh_installed_process(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     root = Path(__file__).resolve().parents[2]
-    installed = migrations.unapplied(migrations.DECLARED, "HEAD", root)
+    installed = migrations.unapplied(
+        migrations.MigrationRecord().declared(), "HEAD", root
+    )
     expected = (
         [f"{len(installed)} migration(s) pending:", *migrations.rendered(installed)]
         if installed
@@ -22,7 +24,7 @@ def test_update_reads_migrations_from_a_fresh_installed_process(
         reason="This process predates the install.",
         steps=[],
     )
-    monkeypatch.setattr(migrations, "DECLARED", [stale])
+    monkeypatch.setattr(migrations.MigrationRecord, "declared", lambda _record: [stale])
 
     lines = update.owed_since("HEAD", root, lambda _line: None, root)
 

@@ -1,0 +1,63 @@
+subjects = [
+    "PROFILE_ROOT",
+    "local_profile_directory",
+    "ACTIVE_FILE",
+    "REGISTRY_PATH",
+    "Account",
+    "Account.config_dir",
+    "Registry.profiles",
+    "Registry.active",
+    "AccountFile",
+    "AccountFile.__init__",
+    "AccountFile.homes_root",
+    "AccountFile.load_registry",
+    "AccountFile.save_registry",
+    "AccountFile.resolver_registry",
+    "AccountFile.resolve_config_dir",
+    "ClaudeProfileNames",
+    "ClaudeProfileNames.__init__",
+    "ClaudeProfileNames.names",
+    "ClaudeProfileNames.config_dir_for",
+    "ClaudeProfileNames.active_profile",
+    "ClaudeProfileRegistrar.__init__",
+    "ClaudeProfileRegistrar.add_profile",
+    "ClaudeProfileRegistrar.set_active",
+    "ClaudeProfileRegistrar.remove_profile",
+]
+reason = """
+an account lived either in one checkout's .lup/profiles or in the personal \
+registry at ~/.lup/profiles.json, which held Claude homes only, so a new \
+repository opened its accounts signed out; global profiles now live once per \
+person, a directory per name beside the per-user config at \
+$XDG_CONFIG_HOME/lup (~/.config/lup), a home per runtime inside each, \
+selected by that config.toml's profile — and a checkout's own .lup/profiles \
+still comes first, its .active overriding that selection"""
+commit = "90b9edda0b72b1ac0e5e8bae069e44b52a07f99d"
+
+[[steps]]
+instruction = """
+Move the old registry's accounts, which nothing reads any more: this moves \
+the homes it made, links a home registered elsewhere, and carries its \
+selection where the config file records none. A checkout's .lup/profiles \
+keeps working where it is, and the same command moves it too, only if its \
+accounts should be shared by every checkout."""
+command = ["uv", "run", "lup-devtools", "harness", "profile", "migrate"]
+
+[[steps]]
+instruction = """
+Build profile directories with profile_directory(login) from \
+lup.providers.profile_tree wherever local_profile_directory(root, login) or a \
+ProfileDirectory over ClaudeProfileNames and ClaudeProfileRegistrar was \
+built: it resolves a name through the checkout's .lup/profiles, then the \
+global profiles, and takes checkout= for a root other than the project's. A \
+ProfileDirectory is built over a list of ProfileRegistry, narrowest scope \
+first, and ProfileFolders takes its root, the login's home_subdir and a \
+ProfileSelection: ActiveFile for a checkout, ConfigSelection for the config \
+file's profile."""
+
+[[steps]]
+instruction = """
+Pass an application's own origin as claude_usage_entry(profiles) or \
+codex_usage_entry(executable, profiles); codex_usage_entry takes no home any \
+more, and `usage codex --profile NAME` reads that account's Codex home rather \
+than refusing the name."""

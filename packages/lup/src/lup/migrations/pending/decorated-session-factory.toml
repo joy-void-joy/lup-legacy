@@ -1,0 +1,30 @@
+subjects = [
+    "decorated_session_factory",
+    "journal_session_factory",
+    "recorded_session_factory",
+    "financial_budget_session_factory",
+    "quota_waiting_session_factory",
+]
+reason = """
+what wraps a session is part of the agent's declaration, its layers, so a \
+wrapper no longer rebuilds a client around the one it was handed"""
+commit = "eca60905d6e5e77d9e365f97345bd7553abe719f"
+
+[[steps]]
+instruction = """
+Lay the turn decorators on the agent: decorated_session_factory(client, \
+timeout=..., budget=...) is agent.layered(SessionLayers(timeout=..., \
+budget=...)), or layers=SessionLayers(...) where the agent is declared. \
+SessionLayers, in lup.sessions.layers, takes the same keyword arguments, \
+serialized included."""
+
+[[steps]]
+instruction = """
+Add a whole-session wrapper to SessionLayers(wrappers=[...]), innermost \
+first: journal_session_factory(client, journal) is JournalWrapper(journal) \
+from lup.observability.audit; recorded_session_factory(client, recorder, \
+session) is CloseRecordingWrapper(recorder, session) from \
+lup.observability.sessions; financial_budget_session_factory(client, config, \
+sink) is FinancialBudgetWrapper(config, sink) from lup.sessions.budget; and \
+quota_waiting_session_factory(client, config, sink) is \
+QuotaWaitWrapper(config, sink) from lup.sessions.quota."""

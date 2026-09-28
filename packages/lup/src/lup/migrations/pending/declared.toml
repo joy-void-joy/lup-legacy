@@ -1,0 +1,31 @@
+subjects = [
+    "DECLARED",
+    "declares_the_list",
+    "cleared_declarations",
+    "undeclared_breaks",
+]
+reason = """
+a migration is one file under the library's `migrations/pending/`, which a \
+release moves into `migrations/<version>/` and keeps, so no list holds the \
+pending window, two branches declaring a break each no longer meet at one \
+position, and a release's migrations stay readable after it ships"""
+
+[[steps]]
+instruction = """
+Read the record through `MigrationRecord` from lup.devtools.dev.migrations \
+where `DECLARED` was read: `MigrationRecord().declared()` is every release's \
+migrations, oldest first, then the pending ones, and `.pending()` is what the \
+next release carries."""
+
+[[steps]]
+instruction = """
+Declare a break as a TOML file under packages/lup/src/lup/migrations/pending/ \
+where an entry was added to `DECLARED`: `subjects` and `reason` at the top, \
+then a `[[steps]]` table per step with its `instruction` and, where one does \
+it, a `command`. Leave `commit` out; the release fills it in."""
+
+[[steps]]
+instruction = """
+Pass `undeclared_breaks` a `MigrationRecord` as `record` where a list was \
+passed as `declared`. `dev release` moves the pending files itself, so \
+`cleared_declarations` and `declares_the_list` have no replacement."""

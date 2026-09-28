@@ -63,7 +63,11 @@ from lup.ledger.models import LedgerNode
 from lup.ledger.store import LedgerLayout
 from lup.devtools.dev.environment import foreign_installs
 from lup.devtools.dev.gates import sweep_all
-from lup.devtools.dev.migrations import gate_base, undeclared_breaks
+from lup.devtools.dev.migrations import (
+    MigrationRecord,
+    gate_base,
+    undeclared_breaks,
+)
 from lup.devtools.dev.records import branches_awaiting_adoption, record_location
 from lup.devtools.dev.reach import Spread
 from lup.devtools.dev.scaffold import ScaffoldSource
@@ -972,8 +976,7 @@ def migration_reports(
                         f"declared migrations: FAIL ({len(owed)} gone with nothing "
                         "to read)",
                         *(f"  {capability.spelled()}" for capability in owed),
-                        "  declare each in `lup.devtools.dev.migrations.DECLARED`, "
-                        "with what a caller does about it",
+                        f"  {MigrationRecord().instruction(project_root())}",
                     ]
                     if owed
                     else ["declared migrations: ok"],

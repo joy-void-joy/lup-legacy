@@ -1,0 +1,21 @@
+subjects = ["LibraryMode.LINKED", "read_linked_path", "link_library"]
+reason = """
+an editable install of a lup checkout moved the library with no command run \
+in the project and nothing written down, so the pin, the copied half and the \
+generated trees had nothing to be held at one commit against"""
+commit = "61d8c01e1"
+
+[[steps]]
+instruction = """
+A project resolving lup from a path pins the branch carrying its changes \
+instead, which moves under a command and records the commit it moved to."""
+command = [
+    "uv",
+    "run",
+    "lup-devtools",
+    "dev",
+    "library",
+    "git",
+    "--branch",
+    "<branch>",
+]

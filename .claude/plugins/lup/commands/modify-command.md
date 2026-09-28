@@ -51,7 +51,7 @@ If `$ARGUMENTS` is empty, Ask the user with the AskUserQuestion tool, offering c
    before/after for key sections if helpful, then Request explicit user approval before writing the changed declaration. Reason: the change reaches every tree the declaration renders into.
 6. **Apply** the changes -- edit the declaration's prompt parts
 7. **Update the `tools` list** if needed (e.g., new grants for added functionality)
-8. **Follow what the prose recites** — a skill interpolating a value from another declaration cannot be changed on its own. Change it where it is declared, and declare a migration (`lup.devtools.dev.migrations.DECLARED`) if a name left with it: a capability that goes has to leave somebody downstream something to read, and `dev check` fails until one does
+8. **Follow what the prose recites** — a skill interpolating a value from another declaration cannot be changed on its own. Change it where it is declared, and declare a migration (one file under the library's `migrations/pending/`) if a name left with it: a capability that goes has to leave somebody downstream something to read, and `dev check` fails until one does
 9. **Regenerate** with `uv run lup-devtools harness generate all` when the source was a lup skill — not `harness claude` or `harness codex`, which regenerate one target and then launch it
 10. **Confirm** the modification and show a summary
 

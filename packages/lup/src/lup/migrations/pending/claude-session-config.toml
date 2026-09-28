@@ -1,0 +1,50 @@
+subjects = [
+    "ClaudeSessionConfig",
+    "ClaudeSessionConfig.model",
+    "ClaudeSessionConfig.system_prompt",
+    "ClaudeSessionConfig.coding_harness_preset",
+    "ClaudeSessionConfig.native_tools",
+    "ClaudeSessionConfig.allowed_tools",
+    "ClaudeSessionConfig.disallowed_tools",
+    "ClaudeSessionConfig.tool_servers",
+    "ClaudeSessionConfig.permission_mode",
+    "ClaudeSessionConfig.max_turns",
+    "ClaudeSessionConfig.delta_streaming",
+    "ClaudeSessionConfig.max_thinking_tokens",
+    "ClaudeSessionConfig.effort",
+    "ClaudeSessionConfig.cwd",
+    "ClaudeSessionConfig.add_dirs",
+    "ClaudeSessionConfig.plugin_dirs",
+    "ClaudeSessionConfig.environment",
+    "ClaudeSessionConfig.sandbox",
+    "ClaudeSessionConfig.hooks",
+    "ClaudeSessionConfig.submission_gate_resolver",
+    "ClaudeSessionConfig.subagents",
+    "ClaudeSessionConfig.max_buffer_size",
+    "ClaudeSessionConfig.stderr_tail_lines",
+    "ClaudeSessionConfig.setting_sources",
+    "ClaudeSessionConfig.cli_path",
+    "ClaudeSessionConfig.extra_args",
+    "ClaudeSessionConfig.the_model_takes_its_effort",
+    "ClaudeSessionConfig.model_id",
+    "ClaudeSessionConfig.enforce_native_authority",
+]
+reason = """
+the declaration and the agent it opened were two objects saying one thing; \
+Claude is both, so every field and validator of the config lives on it"""
+commit = "eca60905d6e5e77d9e365f97345bd7553abe719f"
+
+[[steps]]
+instruction = """
+Construct Claude(...), from lup or lup.providers.claude, wherever \
+ClaudeSessionConfig(...) was built: every field keeps its name and type, and \
+model_id(), the_model_takes_its_effort and enforce_native_authority move with \
+them."""
+
+[[steps]]
+instruction = """
+Read an unset effort as the model's default rather than the CLI's: xhigh \
+where the model's catalog row takes it, the row's highest rung below xhigh \
+otherwise, and none for a model taking no effort; resolved_effort() answers \
+which rung a session starts at. Pass effort=... where a session should think \
+at another."""

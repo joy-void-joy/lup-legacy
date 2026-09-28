@@ -1,0 +1,18 @@
+subjects = ["schema_digest_drift"]
+reason = """
+one regeneration of the app-server schemas answers two questions — whether \
+the shapes the typed models were read from have moved, and whether the reply \
+hook trust is seeded from still carries the fields it is read by — and a \
+second invocation for the second question could answer about a different \
+version"""
+commit = "c7e45f8987ca9d8221d553112f5d5c4ef5ff4a1a"
+
+[[steps]]
+instruction = """
+Call `schema_reading(contracts)` from `lup.devtools.harness.doctor` where \
+`schema_digest_drift()` was called. It takes the `WireContract`s the \
+composition declares — `NativeHarnessComposition.wire_contracts`, empty for a \
+runtime that depends on no reply by field name — and returns a \
+`SchemaReading` carrying `digests` and `contracts`. The digests are what the \
+old call returned; `findings()` renders both as the messages to print, and \
+`drifted()` answers whether anything moved."""

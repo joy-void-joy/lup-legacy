@@ -1,0 +1,21 @@
+subjects = [
+    "ModuleRun.renamed",
+    "ModuleEdit",
+    "ModuleEdit.row",
+    "ModuleEdit.start",
+    "ModuleEdit.end",
+    "ModuleEdit.text",
+    "module_edits",
+    "apply_edits",
+]
+reason = """
+`dev relocate` plans a file's rewrite as splices that may span rows and split \
+an import statement, which a one-row edit of a dotted run could not express"""
+commit = "79738c12ca5ee5022ec9510e882d64772120f634"
+
+[[steps]]
+instruction = """
+Call respellings(tokens, moves) from lup.devtools.dev.relocate for the \
+splices a file's tokens need, and apply_splices(text, splices) to write them; \
+destination(named, moves) answers where a dotted path lands, which \
+ModuleRun.renamed used to."""

@@ -1,0 +1,11 @@
+subjects = ["RepositoryPeers.naming_settled"]
+reason = """
+a native subagent's row is named under the same lock a session's join takes, \
+from the shipped store a hook writes it through, so the lock moved to the \
+store both halves stand on"""
+commit = "edcd90518a91c983c8278fd9ce10063a6bfd3585"
+
+[[steps]]
+instruction = """
+Hold `with naming_settled(peers.root):` from lup.coordination.bare.store \
+where `with peers.naming_settled():` was held."""

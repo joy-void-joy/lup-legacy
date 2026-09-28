@@ -1,0 +1,22 @@
+subjects = [
+    "ClaudeFork.open_fork",
+    "CodexFork.open_fork",
+    "ClaudeSessionOpener.create_state",
+    "ClaudeSessionOpener.build_options",
+]
+reason = """
+a fork is its provider's opener opening a branch, at any turn the session \
+took, and a Claude conversation's state builds its own options, so the \
+helpers that did either half went"""
+commit = "eca60905d6e5e77d9e365f97345bd7553abe719f"
+
+[[steps]]
+instruction = """
+Fork through fork(at) on ClaudeFork or CodexFork, which session.fork(at=...) \
+reaches: it opens the branch as a ClaudeSession or CodexSession."""
+
+[[steps]]
+instruction = """
+Construct ClaudeConversationState(opener, config, resume) from \
+lup.providers.claude.runtime where create_state(resume) was called, and read \
+its options() where build_options(...) was."""

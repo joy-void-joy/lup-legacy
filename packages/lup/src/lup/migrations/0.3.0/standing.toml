@@ -1,0 +1,72 @@
+subjects = [
+    "standing",
+    "unsaid",
+    "gone",
+    "member_of",
+    "RepositoryPeers.pulsed",
+    "RepositoryPeers.rewound",
+    "RosterRecord.applied",
+    "ActorSpawned.applied",
+    "ActorJoined.applied",
+    "ActorDescribed.applied",
+    "ActorFinished.applied",
+    "TouchRecord.claim",
+    "TouchRecord.applied",
+    "PathTouched.claim",
+    "PathTouched.applied",
+    "PathContested.claim",
+    "PathContested.applied",
+    "PrefixLocked.claim",
+    "PrefixLocked.applied",
+    "PrefixReleased.claim",
+    "PrefixReleased.applied",
+    "PathVacated.claim",
+    "PathVacated.applied",
+    "stream_records",
+    "peer_members",
+    "peer_heard",
+    "peer_present",
+    "peer_name_claims",
+    "peer_addresses",
+    "peer_listing",
+    "claim_covers",
+    "peer_claims",
+]
+reason = """
+the coordination store was folded by three hand-kept readers that shared no \
+import — the typed library, the prompt-time hook and the compiled permission \
+dispatcher — so every record the store gained had to be taught to each \
+separately, and one that missed a record went on answering confidently about \
+a store it no longer understood; there is now one fold, \
+`lup.coordination.bare.store`, which every reader imports and each plugin \
+ships"""
+commit = "9aa0dccf21e244fea62e5f713d85a98a4fab8a07"
+
+[[steps]]
+instruction = """
+Fold the roster with `store.members(roster_path)`, and read it as the pulses \
+and resets leave it with `store.present(root)`, which applies both. What a \
+record makes of a member is `store.applied` and is no longer a method on the \
+record: `ActorJoined` and its siblings are writers now, and the fold takes \
+them off disk without importing them."""
+
+[[steps]]
+instruction = """
+`RepositoryPeers.pulsed` and `.rewound` are `store.pulsed` and \
+`store.rewound`; `RepositoryPeers.present()` applies both already and is what \
+a caller wanted from either."""
+
+[[steps]]
+instruction = """
+Claims fold with `store.claims(root)`, narrow to live holders with \
+`store.held(root, live)`, and answer a path with `store.covering(root, path, \
+live)`. `Claim.covers`, `.subject` and `.vacant` still answer for a typed \
+caller, over that same fold."""
+
+[[steps]]
+instruction = """
+The dispatcher's half is gone from `lup.policy.assets.host`: `peer_addresses` \
+and `peer_listing` are `store.addresses` and `store.listing`, `claim_holders` \
+is `store.claim_holders`, `record_claims` is `store.record_claims`, and each \
+takes the coordination directory `peer_store` still resolves rather than a \
+project root and a list of file names."""

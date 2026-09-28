@@ -93,7 +93,7 @@
     {
       "path": ".claude/plugins/lup/commands/bump.md",
       "category": "generated",
-      "sha256": "b8a8f929eb3e6b68bf66fb86da2387f4a7035ba14689ae27405a7af120a405dd",
+      "sha256": "e9fec1c95ade7e0c61e1487d031a4eaa3e9529517b8ac68020b32c1d5468a10a",
       "semantic_id": "skill.bump",
       "executable": false
     },
@@ -233,7 +233,7 @@
     {
       "path": ".claude/plugins/lup/commands/merge.md",
       "category": "generated",
-      "sha256": "c6da92cb870fc8b2688887f5009d71d6df95af74eceb3bb309e4ec7e985096df",
+      "sha256": "464c0a5f512f025ade170c4c97223bd68eef6d90e3354dc7664eb3440998808a",
       "semantic_id": "skill.merge",
       "executable": false
     },
@@ -247,7 +247,7 @@
     {
       "path": ".claude/plugins/lup/commands/modify-command.md",
       "category": "generated",
-      "sha256": "881db78a06eb9c792f1b2f905f83c55348570ea98a3cb6fe5ecfb044caa0de12",
+      "sha256": "46a081fbe054be54a3172dbace9e964241d49d1ca335f1fc6d9c025333dca48b",
       "semantic_id": "skill.modify-command",
       "executable": false
     },
@@ -289,7 +289,7 @@
     {
       "path": ".claude/plugins/lup/commands/release.md",
       "category": "generated",
-      "sha256": "8690076f3fc55bba8025cd0b11b847d045d3fd2aa421e5210d8ff5e6d5cf597e",
+      "sha256": "4a31da492773092e4f166333ad762eee121011be44ae0fe50d7799ce3061653e",
       "semantic_id": "skill.release",
       "executable": false
     },
@@ -331,7 +331,7 @@
     {
       "path": ".claude/plugins/lup/commands/upstream.md",
       "category": "generated",
-      "sha256": "bf0f3f249a3736242a805e0f71d99b1266d4441c8b6ad2aa7d79b2f43a2cd1bd",
+      "sha256": "d6f4ea8f737c8457c35b0de25bc4385b537cb0b9b2ba60ac2d3035f39a169568",
       "semantic_id": "skill.upstream",
       "executable": false
     },
@@ -758,7 +758,7 @@
     {
       "path": "docs/contributing.md",
       "category": "generated",
-      "sha256": "32e5d27614231b623b8158d03b63c9e71dea45723212b0090e98c96d2977a1fd",
+      "sha256": "62ff485f0726f159b7e2d047439e92b58e3a824a3e332dcd831a5c634088d67b",
       "semantic_id": "docs.contributing",
       "executable": false
     },
