@@ -2,6 +2,26 @@
 
 ## Unreleased
 
+### A session's wake socket is keyed by its member id
+
+The Unix socket a peer writes to so an idle Claude session takes a turn
+was named after the session's display name, which repeats by design and
+changes at a rename: a launch met the stale socket of an earlier session
+called the same, and a rename left peers holding a path to nothing. It is
+now `<dir>/<repository>-<digest>--<member id>.sock`, at most 103 bytes. A
+file at a member's own path is replaced rather than refused, and a
+departed member's socket is removed only where the roster says it left and
+nothing answers on it.
+
+It is also called what it is. "Inbox" is the review page; this socket
+holds no mail, so it is the session's wake socket, in `/tmp/lup-wake`
+rather than `/tmp/lup-inbox`. `SessionInboxes` is `WakeSockets`,
+`placed_inbox` is `placed_wake_socket`, `Image.inboxes` and
+`Member.inboxes` are `wake_sockets`, and `inbox_refusal` is
+`wake_socket_refusal`; `cleared`, `UnixSocketRefused` and
+`RepositoryPeers.woken_through` are gone. Regenerate so the compiled
+policy withholds the new directory.
+
 ### A native subagent is a roster row of its own
 
 A session's native subagents inherited its coordination identity, so a
