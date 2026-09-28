@@ -1,10 +1,13 @@
 """A candidate cut, landed and promoted in a real repository.
 
-The promise a promotion makes is about commits, not about files: the final
-version is the candidate's own commit under a second tag, so what was tested
-is what ships and nothing is rebuilt in between. These drive the whole cycle
-— cut on the integration branch, land on the release branch, promote — and
-read the tags back from git rather than from anything the release reported.
+The promise a promotion makes is that what ships is what was tested. The
+candidate's commit is tagged with its own version, and the release is one
+commit on top of it that changes nothing but the version, the changelog
+section it closes, and the record of the breaks it carried — which is
+checked against the candidate's tag before anything is tagged. These drive
+the whole cycle — cut on the integration branch, land on the release branch,
+promote — and read the result back from git rather than from anything the
+release reported.
 """
 
 import datetime as dt
@@ -53,6 +56,7 @@ def project(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
         '[project]\nname = "thing"\nversion = "0.4.0"\n', encoding="utf-8"
     )
     (root / "CHANGELOG.md").write_text(CHANGELOG, encoding="utf-8")
+    (root / "thing.py").write_text("answer = 41\n", encoding="utf-8")
     committed(root, "chore: 0.4.0")
     git("-C", str(root), "tag", "-a", "v0.4.0", "-m", "0.4.0")
     git("-C", str(root), "checkout", "-q", "-b", "dev")
@@ -66,8 +70,10 @@ def record_of(root: Path) -> MigrationRecord:
     return MigrationRecord(root=root / "migrations")
 
 
-def cut(root: Path, request: ReleaseRequest) -> ReleasePlan:
-    """What `dev release` does, with regeneration standing still."""
+def cut(
+    root: Path, request: ReleaseRequest, regenerate: tuple[str, str] | None = None
+) -> ReleasePlan:
+    """What `dev release` does, regeneration writing ``(path, text)`` if given."""
     record = record_of(root)
     pending = record.pending()
     log = Changelog.read(root / SPEC.changelog)
@@ -78,7 +84,12 @@ def cut(root: Path, request: ReleaseRequest) -> ReleasePlan:
         PendingBreaks(lines=rendered(pending), count=len(pending)),
         SPEC,
     )
-    carry_out(plan, SPEC, root, log, record, regenerate=lambda: None)
+
+    def regenerated() -> None:
+        if regenerate is not None:
+            (root / regenerate[0]).write_text(regenerate[1], encoding="utf-8")
+
+    carry_out(plan, SPEC, root, log, record, regenerate=regenerated)
     return plan
 
 
@@ -89,6 +100,17 @@ def land(root: Path) -> None:
     git("-C", str(root), "checkout", "-q", "dev")
 
 
+def open_an_entry(root: Path, entry: str) -> None:
+    """Land a changelog entry above the candidates' section, as a fix would."""
+    changelog = root / "CHANGELOG.md"
+    changelog.write_text(
+        changelog.read_text().replace(
+            "# Changelog\n\n", f"# Changelog\n\n## Unreleased\n\n- {entry}\n\n", 1
+        )
+    )
+    committed(root, f"docs(changelog): {entry}")
+
+
 def commit_of(root: Path, ref: str) -> str:
     return git.out("-C", str(root), "rev-parse", f"{ref}^{{commit}}")
 
@@ -97,39 +119,53 @@ def subject_of(root: Path, ref: str) -> str:
     return git.out("-C", str(root), "log", "-1", "--format=%s", ref)
 
 
-def test_a_candidate_is_tagged_as_one_and_moves_no_pending_break(project: Path) -> None:
+def manifest_at(root: Path, ref: str) -> str:
+    return git.out("-C", str(root), "show", f"{ref}:pyproject.toml")
+
+
+def test_a_candidate_carries_its_own_version_and_moves_no_pending_break(
+    project: Path,
+) -> None:
+    """A project pinned to the candidate's tag is told it holds the candidate."""
     plan = cut(project, ReleaseRequest(level="minor", pre=True))
 
     assert plan.tag == "v0.5.0rc1"
     assert commit_of(project, "v0.5.0rc1") == commit_of(project, "HEAD")
     assert subject_of(project, "HEAD") == "release: 0.4.0 → 0.5.0rc1"
-    # The manifest names where the series is heading; the tag names the
-    # candidate, and publishing takes the version from the tag.
-    assert 'version = "0.5.0"' in (project / "pyproject.toml").read_text()
-    # A candidate's breaks belong to the version it is heading for.
+    assert 'version = "0.5.0rc1"' in manifest_at(project, "v0.5.0rc1")
     assert [m.subjects for m in record_of(project).pending()] == [["gone_before_rc1"]]
     assert record_of(project).releases() == []
 
 
-def test_promotion_tags_the_candidate_commit_itself(project: Path) -> None:
-    """Same commit, second tag — and only what the candidate held is released."""
+def test_promotion_is_a_commit_that_changes_only_the_version(project: Path) -> None:
+    """Version, changelog, record: nothing the candidate did not ship."""
     cut(project, ReleaseRequest(level="minor", pre=True))
     land(project)
-    changelog = project / "CHANGELOG.md"
-    changelog.write_text(
-        changelog.read_text().replace(
-            "# Changelog\n\n", "# Changelog\n\n## Unreleased\n\n- after rc1\n\n", 1
-        )
-    )
-    declare(record_of(project).pending_directory(), "later", "gone_after_rc1")
-    committed(project, "feat: work after the candidate")
+    open_an_entry(project, "after rc1")
 
     plan = cut(project, ReleaseRequest())
 
     assert plan.kind == "promotion"
-    assert commit_of(project, "v0.5.0") == commit_of(project, "v0.5.0rc1")
-    assert not subject_of(project, "HEAD").startswith("release: ")
-    closed = Changelog.read(changelog)
+    assert commit_of(project, "v0.5.0") == commit_of(project, "HEAD")
+    assert subject_of(project, "HEAD") == "release: 0.5.0rc1 → 0.5.0"
+    assert 'version = "0.5.0"' in manifest_at(project, "v0.5.0")
+    assert set(
+        git.lines(
+            "-C",
+            str(project),
+            "diff",
+            "--name-only",
+            "--no-renames",
+            "v0.5.0rc1",
+            "v0.5.0",
+        )
+    ) == {
+        "CHANGELOG.md",
+        "pyproject.toml",
+        "migrations/pending/taken.toml",
+        "migrations/0.5.0/taken.toml",
+    }
+    closed = Changelog.read(project / "CHANGELOG.md")
     assert closed.candidate is None
     assert closed.sections[0].text.startswith(release_heading("0.5.0", DAY))
     assert "- a feature" in closed.sections[0].text
@@ -137,20 +173,47 @@ def test_promotion_tags_the_candidate_commit_itself(project: Path) -> None:
     assert [m.subjects for m in record_of(project).released("0.5.0")] == [
         ["gone_before_rc1"]
     ]
-    assert [m.subjects for m in record_of(project).pending()] == [["gone_after_rc1"]]
+
+
+def test_code_landed_since_the_candidate_refuses_promotion(project: Path) -> None:
+    """Promoting from here would ship what the candidate never tested."""
+    cut(project, ReleaseRequest(level="minor", pre=True))
+    land(project)
+    (project / "thing.py").write_text("answer = 42\n", encoding="utf-8")
+    committed(project, "fix: what rc1 got wrong")
+
+    with pytest.raises(ReleaseRefused, match="thing.py") as refused:
+        cut(project, ReleaseRequest())
+
+    assert "--pre" in str(refused.value)
+    assert "v0.5.0" not in git.lines("-C", str(project), "tag", "--list")
+
+
+def test_the_promotion_commit_is_checked_before_it_is_made(project: Path) -> None:
+    """Whatever writes the tree, a change beyond the version is refused and undone."""
+    cut(project, ReleaseRequest(level="minor", pre=True))
+    land(project)
+    head = commit_of(project, "HEAD")
+
+    with pytest.raises(ReleaseRefused, match="thing.py"):
+        cut(project, ReleaseRequest(), regenerate=("thing.py", "answer = 42\n"))
+
+    assert commit_of(project, "HEAD") == head
+    assert git.out("-C", str(project), "status", "--porcelain") == ""
+    assert "v0.5.0" not in git.lines("-C", str(project), "tag", "--list")
 
 
 def test_the_next_candidate_is_cut_from_what_landed_since(project: Path) -> None:
     cut(project, ReleaseRequest(level="minor", pre=True))
     land(project)
-    committed_fix = project / "fix.txt"
-    committed_fix.write_text("fixed\n", encoding="utf-8")
+    (project / "thing.py").write_text("answer = 42\n", encoding="utf-8")
     committed(project, "fix: what rc1 got wrong")
 
     plan = cut(project, ReleaseRequest(pre=True))
 
     assert (plan.previous, plan.version) == ("0.5.0rc1", "0.5.0rc2")
     assert commit_of(project, "v0.5.0rc2") == commit_of(project, "HEAD")
+    assert 'version = "0.5.0rc2"' in manifest_at(project, "v0.5.0rc2")
     log = Changelog.read(project / "CHANGELOG.md")
     assert log.candidate is not None
     assert [c.version for c in log.candidate.candidates] == ["0.5.0rc1", "0.5.0rc2"]

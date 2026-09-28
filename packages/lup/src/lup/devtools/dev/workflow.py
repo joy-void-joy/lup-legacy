@@ -308,10 +308,10 @@ class PublishSpec(BaseModel, frozen=True):
     tag_prefix: str = "v"
     """What a release tag puts before its version: `ReleaseSpec.tag_prefix`.
 
-    A pushed tag carrying it publishes, and what follows it is the version
-    built. A candidate and the release it is promoted to are one commit under
-    two tags, so the version cannot come from the manifest alone — the tag is
-    what says which of the two is being published.
+    A pushed tag carrying it publishes the tree it names, built as it stands:
+    every release and candidate commit carries its own version in the
+    manifest, so nothing is rewritten between what was tagged and what is
+    uploaded.
     """
 
     runner: str = RUNNER_IMAGE
@@ -323,10 +323,6 @@ class PublishSpec(BaseModel, frozen=True):
         return [
             WorkflowStep(uses="actions/checkout@v4"),
             WorkflowStep(uses="astral-sh/setup-uv@v6", settings={"enable-cache": True}),
-            WorkflowStep(
-                name="Take the version the tag names",
-                run=f'uv version --frozen{member} "${{GITHUB_REF_NAME#{self.tag_prefix}}}"',
-            ),
             WorkflowStep(name="Build the distribution", run=f"uv build{member}"),
             WorkflowStep(
                 name="Publish to PyPI", uses="pypa/gh-action-pypi-publish@release/v1"

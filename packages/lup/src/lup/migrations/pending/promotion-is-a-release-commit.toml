@@ -1,0 +1,11 @@
+subjects = ["promotion_subject", "ReleasePlan.subject"]
+reason = """
+a promotion is a commit of its own that changes only the version, the \
+changelog and the record, so it is a release commit like any other rather \
+than a changelog commit behind a second tag on the candidate"""
+
+[[steps]]
+instruction = """
+Call release_subject(plan.previous, plan.version) where you called \
+promotion_subject(candidate, version) or plan.subject(): every commit dev \
+release makes, a promotion's included, carries a release subject."""

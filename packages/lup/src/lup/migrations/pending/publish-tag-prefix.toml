@@ -1,8 +1,8 @@
 subjects = ["PublishSpec.tags"]
 reason = """
-the publishing workflow takes the version it builds from the tag, so it has \
-to know what the tag puts before the version rather than only which tags \
-match; the trigger is derived from that prefix"""
+the tags the publishing workflow runs on are derived from the prefix a \
+release writes, so the workflow and the release read one declaration rather \
+than a glob and a prefix kept in step by hand"""
 
 [[steps]]
 instruction = """

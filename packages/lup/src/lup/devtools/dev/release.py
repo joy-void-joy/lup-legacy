@@ -21,19 +21,21 @@ them as data; :mod:`lup.devtools.dev.migrations` opens by saying so.
 
 A release can go out first as candidates — ``vX.Y.ZrcN``, pre-releases in
 PEP 440's own spelling, which an installer passes over unless asked for one or
-unless nothing else is published — and then be promoted. The level is settled once, by the first candidate, and each later
-one counts on from the tags already spent on its version, since an index
-accepts a version once. Promotion is a second tag on the candidate's own
-commit, taken only while the release branch holds exactly what that
-candidate shipped: what was tried is then what ships, with nothing rebuilt
-between them. Where the branch moved, whether to cut another candidate or to
-release what it holds now is somebody's decision, and the command names both
-rather than taking one.
+unless nothing else is published — and then be promoted. The level is settled
+once, by the first candidate, and each later one counts on from the tags
+already spent on its version, since an index accepts a version once.
 
-The manifest names the version a series is heading for rather than any one
-candidate, so a candidate's commit already says the release's version and
-promoting it changes nothing in it. What a candidate is published as is its
-tag: the publishing workflow builds the version the tag names.
+A candidate's commit carries its own version, so what a tag publishes is the
+tree it names, built as it stands, and a project pinned to a candidate is
+told it holds one. Promotion is then one commit on top of the last candidate
+that changes nothing but the version, the changelog section it closes and
+the record of the breaks it carried — and that is checked against the
+candidate's tag before anything is committed, file by file, so what ships is
+what was tested. It is taken only while the release branch holds exactly
+what that candidate shipped and this branch has changed nothing since but
+the changelog. Where either moved, whether to cut another candidate or to
+release what is held now is somebody's decision, and the command names both
+rather than taking one.
 
 Which files a release touches is declared, not assumed. This repository
 publishes one distribution out of ``packages/lup`` and keeps two other version
@@ -140,20 +142,8 @@ tag calls every break that release shipped undeclared for exactly that long.
 
 
 def release_subject(previous: str, version: str) -> str:
-    """The subject line a release commit carries — a candidate's too."""
+    """The subject line a release commit carries — a candidate's and a promotion's too."""
     return f"{RELEASE_SUBJECT_PREFIX}{previous} → {version}"
-
-
-def promotion_subject(candidate: str, version: str) -> str:
-    """The subject of the commit that closes the changelog behind a promotion.
-
-    Not a release subject, on purpose. The migrations gate judges this branch
-    from its last release commit, and the commit a promotion releases is a
-    candidate's, which already is one: what this commit follows is work
-    landed since that candidate, and the gate has to go on judging it from
-    there.
-    """
-    return f"chore(release): {candidate} promoted to {version}"
 
 
 # lup: ignore[constant-declaration] — PEP 440's own spelling of a release
@@ -287,10 +277,13 @@ class Landing(BaseModel, frozen=True):
     """Commits on that branch the candidate does not hold."""
 
     since: int = 0
-    """Commits on this checkout the candidate does not hold.
+    """Commits on this checkout the candidate does not hold."""
 
-    What a promotion leaves out: they landed after the candidate was cut, so
-    the release the candidate becomes does not carry them.
+    changed: list[str] = []
+    """Files this checkout changed since the candidate, by path.
+
+    A promotion is committed here, so anything in this but the changelog would
+    ship in a release the candidate never tested it in.
     """
 
     carried: list[str] = []
@@ -367,10 +360,10 @@ class ReleasePlan(BaseModel, frozen=True):
     date: dt.date
     tag: str
     commit: str = ""
-    """The commit the tag names, where it is not the one this run makes.
+    """For a promotion, the candidate's commit the release is checked against.
 
-    A promotion's: the candidate's own, so the release is the commit that was
-    tried rather than a rebuild of it.
+    The release is one commit on top of it, and what that commit changes is
+    held to the version, the changelog and the record before it is made.
     """
 
     candidates: list[str] = []
@@ -382,8 +375,8 @@ class ReleasePlan(BaseModel, frozen=True):
     carried: list[str] = []
     """The pending break declarations a promotion keeps as the release's record.
 
-    Those the candidate held, by file name, and no others: a break declared
-    after the candidate is not in the commit being released.
+    Those the candidate held, by file name: the only files a promotion may
+    move, as the version and the changelog are the only ones it may change.
     """
 
     migrations: list[str] = []
@@ -396,7 +389,11 @@ class ReleasePlan(BaseModel, frozen=True):
     """Whether the changelog had anything open for this run to fold in."""
 
     since: int = 0
-    """For a promotion, the commits on this branch the release leaves out."""
+    """For a promotion, the commits on this branch since the candidate.
+
+    Changelog entries alone, or there would be no promotion: they stay open
+    above the section it closes.
+    """
 
     def spelled(self) -> list[str]:
         """This plan as the lines a reader is shown before approving it."""
@@ -423,9 +420,10 @@ class ReleasePlan(BaseModel, frozen=True):
                 ]
             case "promotion":
                 return [
-                    f"{self.previous} → {self.version}, tagged {self.tag} on the "
-                    f"commit {self.previous} was tagged on "
-                    f"({short_sha(self.commit)}) — nothing rebuilt",
+                    f"{self.previous} → {self.version}, tagged {self.tag} on a "
+                    "commit that changes only the version, the changelog and "
+                    f"the record from {self.previous} "
+                    f"({short_sha(self.commit)}) — checked before it is made",
                     dated,
                     f"closing the {self.target} section, which lists "
                     f"{', '.join(self.candidates)}",
@@ -434,7 +432,8 @@ class ReleasePlan(BaseModel, frozen=True):
                     *(
                         [
                             f"{self.since} commit(s) on this branch since "
-                            f"{self.previous} stay out of {self.version}"
+                            f"{self.previous}, changing only the changelog — "
+                            "their entries stay open"
                         ]
                         if self.since
                         else []
@@ -462,12 +461,6 @@ class ReleasePlan(BaseModel, frozen=True):
                     f"folding in what {self.breaks} pending break(s) ask of a "
                     f"caller, and keeping them as {self.version}'s record",
                 ]
-
-    def subject(self) -> str:
-        """The subject of the commit this run makes."""
-        if self.kind == "promotion":
-            return promotion_subject(self.previous, self.version)
-        return release_subject(self.previous, self.version)
 
     def written(self, log: Changelog) -> Changelog:
         """The changelog as this run leaves it."""
@@ -520,6 +513,12 @@ class ReleaseState(BaseModel, frozen=True):
             (version for version in versions if version.pre is None), default=None
         )
         if series is None:
+            if Version(self.manifest).is_prerelease:
+                raise ReleaseRefused(
+                    f"the manifest names {self.manifest}, a candidate, but no "
+                    "tag of one is reachable from here — fetch the tags, since "
+                    "the series it belongs to is read from them"
+                )
             if request.level is None:
                 raise ReleaseRefused(
                     "no candidate is open to continue or promote, so the level "
@@ -604,6 +603,14 @@ class ReleaseState(BaseModel, frozen=True):
                 f"whether it holds {candidate} — fetch it, or release what this "
                 "branch holds with `dev release --direct`"
             )
+        untested = [path for path in landing.changed if path != spec.changelog]
+        if landing.held and untested:
+            raise ReleaseRefused(
+                f"this branch changed {', '.join(untested)} since {candidate}, and "
+                f"a promotion committed here would ship it untested. Cut another "
+                "candidate with `dev release --pre`, or release what this branch "
+                "holds now with `dev release --direct`"
+            )
         if landing.held:
             return landing
         if not landing.moved:
@@ -627,9 +634,9 @@ def commits_in(revisions: str) -> int:
 def held_declarations(commit: str, root: Path, pending: Path) -> list[str]:
     """The pending break declarations ``commit`` held, by file name.
 
-    Read from the commit rather than the checkout, because a break declared
-    since is pending too and is not in what the commit releases. A record
-    outside this repository holds nothing this release carried.
+    Read from the commit rather than the checkout, because those are the only
+    ones a promotion of it may move. A record outside this repository holds
+    nothing this release carried.
     """
     if not pending.is_relative_to(root):
         return []
@@ -647,6 +654,9 @@ def landed(tag: str, branch: str, root: Path, pending: Path) -> Landing:
     """
     commit = git.out("rev-list", "-n", "1", tag)
     since = commits_in(f"{commit}..HEAD")
+    changed = [
+        path for path in git.lines("diff", "--name-only", commit, "HEAD") if path
+    ]
     carried = held_declarations(commit, root, pending)
     ref = next(
         (
@@ -659,7 +669,7 @@ def landed(tag: str, branch: str, root: Path, pending: Path) -> Landing:
         "",
     )
     if not ref:
-        return Landing(commit=commit, since=since, carried=carried)
+        return Landing(commit=commit, since=since, changed=changed, carried=carried)
     return Landing(
         commit=commit,
         branch=ref,
@@ -667,6 +677,7 @@ def landed(tag: str, branch: str, root: Path, pending: Path) -> Landing:
         == git.out("rev-parse", f"{commit}^{{tree}}"),
         moved=commits_in(f"{commit}..{ref}"),
         since=since,
+        changed=changed,
         carried=carried,
     )
 
@@ -729,13 +740,19 @@ def carry_out(
     record: MigrationRecord,
     regenerate: Callable[[], None],
 ) -> None:
-    """Write what the plan says, commit it, and tag the commit it names.
+    """Write what the plan says, check a promotion's, commit it, and tag it.
 
-    A candidate moves the manifest to the version its series is heading for
-    and leaves every pending break where it is: the breaks belong to the
-    release, and a later candidate renders them again. A release moves them
-    all into its record. A promotion keeps as the release's record only what
-    its candidate held, and tags the candidate's own commit.
+    Every kind moves the manifest to the version it publishes, so the tree a
+    tag names is the one the workflow builds and a project pinned to it
+    reads. A candidate leaves every pending break where it is: the breaks
+    belong to the release, and a later candidate renders them again. A
+    release moves them all into its record, a promotion only those its
+    candidate held.
+
+    A promotion is checked before it is committed, against the candidate's
+    commit, and what it wrote is undone where the check fails — the command
+    refuses a checkout that was not clean, so undoing loses nothing of
+    anybody's.
 
     The record is the release's migration step, taken whole so a record kept
     differently is the one thing a project replaces. ``regenerate`` runs
@@ -745,21 +762,79 @@ def carry_out(
     """
     (root / spec.changelog).write_text(plan.written(log).render())
     manifest = root / spec.version_file
-    match plan.kind:
-        case "candidate":
-            manifest.write_text(with_version(manifest.read_text(), plan.target))
-        case "promotion":
-            record.release(plan.version, root, plan.carried)
-        case "release":
-            manifest.write_text(with_version(manifest.read_text(), plan.version))
-            record.release(plan.version, root)
+    manifest.write_text(with_version(manifest.read_text(), plan.version))
+    if plan.kind != "candidate":
+        record.release(
+            plan.version, root, plan.carried if plan.kind == "promotion" else None
+        )
     regenerate()
     git.add("-A")
-    git.commit("-m", plan.subject())
-    git.tag(
-        "-a",
-        plan.tag,
-        plan.commit or "HEAD",
-        "-m",
-        f"{spec.version_file} {plan.version}",
+    beyond = unpromoted(plan, spec, root, record) if plan.kind == "promotion" else []
+    if beyond:
+        git.reset("-q", "--hard", "HEAD")
+        raise ReleaseRefused(
+            f"the promotion would change {', '.join(beyond)} beyond {plan.previous}'s "
+            "version, so what it shipped would not be what was tested — nothing "
+            "was committed or tagged"
+        )
+    git.commit("-m", release_subject(plan.previous, plan.version))
+    git.tag("-a", plan.tag, "-m", f"{spec.version_file} {plan.version}")
+
+
+def version_only(before: str, after: str, candidate: str, release: str) -> bool:
+    """Whether ``after`` is ``before`` with only ``candidate`` respelled ``release``.
+
+    Line by line, each line equal or equal once the version is respelled, in
+    whatever format carries it — a manifest, a lock file, the proof a
+    generator stamps its version into — which is why this reads lines rather
+    than any one parser's document.
+    """
+    was, now = before.splitlines(), after.splitlines()
+    return len(was) == len(now) and all(
+        old == new
+        # lup: ignore[string-replace] — the one respelling a promotion may
+        # make, compared across formats no single parser reads
+        or old.replace(candidate, release) == new
+        for old, new in zip(was, now, strict=True)
     )
+
+
+def unpromoted(
+    plan: ReleasePlan, spec: ReleaseSpec, root: Path, record: MigrationRecord
+) -> list[str]:
+    """What the staged promotion changes beyond the version, the changelog and the record.
+
+    Judged against the candidate's commit, file by file. The changelog, a
+    break the candidate held moved from pending into the release's record,
+    and a file whose every changed line differs only in the version are what
+    a promotion is; anything else is named.
+    """
+    moved = {
+        (directory / name).relative_to(root).as_posix()
+        for directory in (record.pending_directory(), record.root / plan.version)
+        if directory.is_relative_to(root)
+        for name in plan.carried
+    }
+
+    def staged(*filters: str) -> list[str]:
+        return [
+            path
+            for path in git.lines(
+                "diff", "--cached", "--name-only", "--no-renames", *filters, plan.commit
+            )
+            if path and path != spec.changelog
+        ]
+
+    return [
+        *(path for path in staged("--diff-filter=m") if path not in moved),
+        *(
+            path
+            for path in staged("--diff-filter=M")
+            if not version_only(
+                git.out("show", f"{plan.commit}:{path}"),
+                git.out("show", f":{path}"),
+                plan.previous,
+                plan.version,
+            )
+        ),
+    ]

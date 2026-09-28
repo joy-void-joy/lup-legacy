@@ -1525,18 +1525,21 @@ def create_dev_app(
         entries under `## Unreleased` say — and everything downstream of
         those is arithmetic, carried out the same way each time.
 
-        With `--pre` the release goes out first as a candidate. A plain
-        release while the newest tag is a candidate promotes it: that same
-        commit, tagged as the release, where the release branch still holds
-        exactly what the candidate shipped. Where the branch has moved, this
-        says so and names both ways on — another candidate, or `--direct`.
+        With `--pre` the release goes out first as a candidate, its manifest
+        carrying the candidate's version. A plain release while the newest
+        tag is a candidate promotes it: one commit changing only the version,
+        the changelog and the record, checked against the candidate before it
+        is made, where the release branch still holds exactly what the
+        candidate shipped and this branch changed nothing since but the
+        changelog. Where either moved, this says so and names both ways on —
+        another candidate, or `--direct`.
 
         Refused on a dirty tree and on an undeclared break, in that order. The
         first because a release commit should hold the release and not
         whatever somebody left lying about; the second because the gate exists
         to stop a break shipping with no instruction, and a release is the
-        moment it would ship. A promotion is not: it ships a commit already
-        cut, and what landed since stays out of it.
+        moment it would ship. A promotion is not: it ships what its candidate
+        shipped, and checks that it does.
         """
         from lup.devtools.dev.release import (
             PendingBreaks,

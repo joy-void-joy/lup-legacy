@@ -20,8 +20,6 @@ jobs:
       - uses: astral-sh/setup-uv@v6
         with:
           enable-cache: true
-      - name: Take the version the tag names
-        run: uv version --frozen --package lup-agents "${GITHUB_REF_NAME#v}"
       - name: Build the distribution
         run: uv build --package lup-agents
       - name: Publish to PyPI

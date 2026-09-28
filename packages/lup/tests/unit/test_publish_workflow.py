@@ -1,9 +1,10 @@
 """The publishing workflow a release tag runs.
 
-A release candidate and the release it is promoted to are one commit under
-two tags, so what the workflow publishes has to come from the tag rather than
-from the manifest in the tree — and a candidate has to arrive marked as the
-pre-release it is, on the index and on the forge alike.
+What a tag publishes is the tree it names, built as it stands: a candidate's
+manifest says its candidate version and a release's says the release, so
+nothing is rewritten between what was tagged and what is uploaded — and a
+candidate arrives marked as the pre-release it is, on the index and on the
+forge alike.
 """
 
 import yaml
@@ -46,20 +47,15 @@ def read(spec: PublishSpec) -> Workflow:
     return Workflow.model_validate(yaml.safe_load(spec.document().text()))
 
 
-def test_a_tag_publishes_the_version_it_names() -> None:
-    """Stamped before the build, so a promoted candidate builds as the release."""
+def test_a_tag_publishes_the_tree_it_names_as_it_stands() -> None:
+    """The build is the only command: nothing rewrites the tagged tree first."""
     steps = read(PublishSpec(package="thing")).jobs["publish"].steps
-    runs = [step.run for step in steps if step.run]
 
-    assert runs[0] == 'uv version --frozen --package thing "${GITHUB_REF_NAME#v}"'
-    assert runs[1] == "uv build --package thing"
+    assert [step.run for step in steps if step.run] == ["uv build --package thing"]
 
 
-def test_the_tag_prefix_is_what_triggers_and_what_is_taken_off() -> None:
-    workflow = read(PublishSpec(tag_prefix="release-"))
-
-    assert workflow.on.push.tags == ["release-*"]
-    assert '"${GITHUB_REF_NAME#release-}"' in workflow.jobs["publish"].steps[2].run
+def test_the_tag_prefix_is_what_triggers() -> None:
+    assert read(PublishSpec(tag_prefix="release-")).on.push.tags == ["release-*"]
 
 
 def test_a_candidate_is_recorded_on_the_forge_as_a_prerelease() -> None:
