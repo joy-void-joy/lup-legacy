@@ -121,7 +121,7 @@
     {
       "path": ".codex/plugins/lup/hooks/runtime/coordination/mail.py",
       "category": "generated",
-      "sha256": "54c18756fa518d83d76669a6408c3076a46f2a4d63bb01e38bd6454714c415e9",
+      "sha256": "ff56f22bb80f10f399ff228ffd9729b56bbed6589869ff3f57b8ce9316577144",
       "semantic_id": "hooks.lup-policy",
       "executable": false
     },
@@ -135,7 +135,7 @@
     {
       "path": ".codex/plugins/lup/hooks/runtime/coordination/store.py",
       "category": "generated",
-      "sha256": "61418b534f2d3a2108840d17c20e96d47ba2875d0b1cfc058d45bccf25fe6ae8",
+      "sha256": "2b8e3c741c8a512b6e90c50302084044ceb1e8a904f7394e0b39bb6a86447ee8",
       "semantic_id": "hooks.lup-policy",
       "executable": false
     },
@@ -163,7 +163,7 @@
     {
       "path": ".codex/plugins/lup/hooks/runtime/coordination_delivery.py",
       "category": "generated",
-      "sha256": "f083ccffdfe3acf48ac9dde228f2dab7a124e388846b7fa627fd7bfd078363b7",
+      "sha256": "af51f61c4c36d1a2a830610bc96ed19ea1062b5e9341922bb7cced2afc2f3b9f",
       "semantic_id": "hooks.lup-policy",
       "executable": false
     },
@@ -429,7 +429,7 @@
     {
       "path": ".codex/plugins/lup/hooks/scripts/coordination_delivery.sh",
       "category": "generated",
-      "sha256": "cb6a85a48bd314958808bde83bc56633c82d3fa80e590bcd2348eb57b97c2646",
+      "sha256": "99ca0754be63e99229a2752305db96b886e686d82534db3bc2a62e10d9596d0c",
       "semantic_id": "hooks.lup-policy",
       "executable": true
     },
