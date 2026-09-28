@@ -42,7 +42,7 @@ from typing import Literal, Self, overload
 from pydantic import AnyHttpUrl, BaseModel, Field, SecretStr, model_validator
 
 from lup.harness.models import Harness, HookSet
-from lup.harness.requirements import Finding
+from lup.harness.requirements import Finding, Manifest
 from lup.launch.declaration import (
     LaunchCommand,
     LaunchStep,
@@ -367,6 +367,12 @@ class Claude(
     different policy named beside a harness is refused, since the plugin
     already enforces its own. Compiled into in-process hooks for a session
     opened here and into the plugin's dispatcher for a launched one."""
+
+    requirements: Manifest | None = None
+    """What the host and the container are checked for before a launch opens.
+
+    Unset, the roster the ``plugin`` harness declares, where it is one, and
+    nothing beyond the runtime's own probes where it is not."""
 
     identity: Member | None = None
     """Who each session is on the coordination roster; unset, a session opened

@@ -12,15 +12,16 @@ from abc import ABC, abstractmethod
 from collections.abc import Awaitable, Callable
 from enum import StrEnum
 from pathlib import Path
-from typing import Protocol, runtime_checkable
+from typing import Protocol, Self, runtime_checkable
 
 from pydantic import BaseModel, Field
 
 from lup.harness.devices import Device
-from lup.harness.image import detected_client
+from lup.harness.image import Image, detected_client
 from lup.harness.messaging import SessionInboxes
 from lup.harness.models import Harness, HookSet, Resumption
 from lup.harness.notice import Notice
+from lup.harness.requirements import Manifest
 from lup.observability.sessions import SessionRecorder
 from lup.policy.enforcement import SandboxPosture
 from lup.sandbox.rail import AccessibleRoot
@@ -92,6 +93,15 @@ class Sandbox(BaseModel, ABC, frozen=True, extra="forbid"):
     a wall by asking, never by recognising one.
     """
 
+    mounts: list[Mount] = []
+    """Folders outside the working tree this session is meant to reach.
+
+    Each wall reaches them its own way — the container mounts them, the inner
+    sandbox widens its write root to them — and every wall hands them to the
+    policy judging the session, which reads them as reachable and accepts
+    their repositories' policies, so a folder is the session's the same way
+    whichever wall it opens behind."""
+
     @abstractmethod
     def posture(self) -> LaunchSandbox:
         """Which wall this makes load-bearing."""
@@ -109,11 +119,19 @@ class Sandbox(BaseModel, ABC, frozen=True, extra="forbid"):
 
     def roots(self) -> list[AccessibleRoot]:
         """The folders this wall lets the session reach beside its working tree."""
-        return []
+        return [mount.root() for mount in self.mounts]
+
+    def widened(self, mounts: list[Mount]) -> Self:
+        """This wall reaching ``mounts`` too, after the ones it declares."""
+        return self.model_copy(update={"mounts": [*self.mounts, *mounts]})
 
     def granted(self) -> list[Device]:
         """The devices this wall grants the session."""
         return []
+
+    def named_image(self) -> Image | None:
+        """The image this wall's container runs, where it names one."""
+        return None
 
     def confinement(self) -> "InnerSandbox | None":
         """The runtime's own sandbox this wall establishes, or ``None`` where it stands down."""
@@ -129,11 +147,12 @@ class OuterContainer(Sandbox, frozen=True):
     its egress proxy are the whole boundary.
     """
 
-    mounts: list[Mount] = []
-    """Folders mounted beside the working tree, ahead of the machine's standing ones."""
-
     devices: list[Device] = []
-    """Devices the container is granted, ahead of the machine's standing grants."""
+    """Host devices the container is granted."""
+
+    image: Image | None = None
+    """The image the container runs and how it is started; unset, the plugin
+    harness's own, or lup's default image where the plugin is no harness."""
 
     def posture(self) -> LaunchSandbox:
         return LaunchSandbox.OUTER
@@ -141,18 +160,15 @@ class OuterContainer(Sandbox, frozen=True):
     def enforcement(self) -> SandboxPosture:
         return SandboxPosture(contained=True)
 
-    def roots(self) -> list[AccessibleRoot]:
-        return [mount.root() for mount in self.mounts]
-
     def granted(self) -> list[Device]:
         return list(self.devices)
+
+    def named_image(self) -> Image | None:
+        return self.image
 
 
 class InnerSandbox(Sandbox, frozen=True):
     """The session opens on the host, inside the runtime's own workspace-write sandbox."""
-
-    mounts: list[Mount] = []
-    """Folders the sandbox's write root widens to, beside the working tree."""
 
     escapable: bool = Field(
         default=False,
@@ -194,15 +210,16 @@ class InnerSandbox(Sandbox, frozen=True):
         """
         return SandboxPosture(active=True, escapable=self.escapable)
 
-    def roots(self) -> list[AccessibleRoot]:
-        return [mount.root() for mount in self.mounts]
-
     def confinement(self) -> "InnerSandbox | None":
         return self
 
 
 class NoSandbox(Sandbox, frozen=True):
-    """No wall: the session opens on the host under the semantic policy alone."""
+    """No wall: the session opens on the host under the semantic policy alone.
+
+    Its mounts widen no wall, since there is none: they are what the policy
+    reads as the session's own beside its working tree.
+    """
 
     def posture(self) -> LaunchSandbox:
         return LaunchSandbox.NONE
@@ -238,6 +255,29 @@ def declared_policy(
             "or declare it in the harness"
         )
     return policy if policy is not None else carried
+
+
+def declared_requirements(
+    plugin: Harness | Path | None, requirements: Manifest | None
+) -> Manifest:
+    """What a launch checks the host and the container for: the roster named, or the harness's.
+
+    A harness declares the requirements its plugin's sessions stand on beside
+    the plugin itself, so a declaration compiling one checks those; a plugin
+    built elsewhere says nothing of what it needs, so its declaration names
+    them, and one naming none checks nothing beyond the runtime itself.
+    """
+    if requirements is not None:
+        return requirements
+    return plugin.requirements if isinstance(plugin, Harness) else Manifest()
+
+
+def declared_image(plugin: Harness | Path | None, sandbox: "SessionSandbox") -> Image:
+    """The image a contained session runs: the container's own, the harness's, or lup's."""
+    named = sandbox.named_image()
+    if named is not None:
+        return named
+    return plugin.image if isinstance(plugin, Harness) else Image()
 
 
 def settled_sandbox(asked: LaunchSandbox | None, stated: str) -> LaunchSandbox:
@@ -316,6 +356,10 @@ class Recording(BaseModel, frozen=True, extra="forbid", arbitrary_types_allowed=
 
     root: Path | None = None
     """Where the run's journal and transcript are written; unset, the project's runs."""
+
+    mode: str | None = None
+    """The named kind of session this is, written into its record, so a run
+    copied out of the directory that sorts it still says what it was."""
 
 
 type RecordedSessions = Callable[[], Awaitable[list[SessionSummary]]]

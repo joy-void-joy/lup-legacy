@@ -17,9 +17,8 @@ from lup.harness.generate import (
     claude_generation_recipe,
     generate,
 )
-from lup.harness.image import Image
 from lup.harness.models import CapabilityEvidence, Harness, HookSet, Resumption
-from lup.harness.requirements import Finding, Manifest
+from lup.harness.requirements import Finding
 from lup.harness.toolchain import bubblewrap_requirement, socat_requirement
 from lup.launch.boundary import apply_sandbox_environment
 from lup.launch.compilation import allowance_environment, inherited_environment
@@ -28,9 +27,11 @@ from lup.launch.declaration import (
     LaunchCommand,
     LaunchSandbox,
     LaunchStep,
-    launched_sandbox,
     Member,
     Recording,
+    declared_image,
+    declared_requirements,
+    launched_sandbox,
     resumption,
 )
 from lup.launch.foreground import between_steps, run_in_foreground
@@ -596,13 +597,12 @@ def claude_checked(agent: "Claude", sentinels: LaunchSentinels) -> LaunchOpening
     """Clear the gates before a session: the CLI's probes, then the declared requirements."""
     launched = claude_launched(agent)
     root = claude_root(launched)
-    harness = launched.plugin if isinstance(launched.plugin, Harness) else None
     posture = launched.sandbox.posture()
     opening = LaunchOpening(sandbox=posture)
     opening.findings = runtime_preflight(
         "claude",
         claude_readiness(launched, root),
-        harness.requirements if harness is not None else Manifest(),
+        declared_requirements(launched.plugin, launched.requirements),
         root,
         sentinels,
         opening,
@@ -678,13 +678,12 @@ def claude_opening(
         [bubblewrap_requirement(), socat_requirement()],
         sandbox=posture,
     )
-    harness = config.plugin if isinstance(config.plugin, Harness) else None
     argv = session_argv(
         str(config.cli_path or "claude"),
         arguments,
         root,
-        harness.image if harness is not None else Image(),
-        harness.requirements if harness is not None else Manifest(),
+        declared_image(config.plugin, config.sandbox),
+        declared_requirements(config.plugin, config.requirements),
         policy,
         CLAUDE_LOGIN.selected_home(environment),
         CLAUDE_LOGIN,
@@ -777,6 +776,7 @@ def launch_claude_session(
             arguments=list(words),
             record_root=record.root,
             transcribe=record.transcript,
+            mode=record.mode,
             recorder=record.ledger,
         )
         succeeded = False
@@ -796,10 +796,9 @@ def launch_claude_session(
         finally:
             release_ledger(root, sentinels.nonce)
             transcript.close(succeeded=succeeded, interrupted=interrupted)
-            harness = launched.plugin if isinstance(launched.plugin, Harness) else None
             if places is not None and applied:
                 carry_claude_home(
-                    harness.image if harness is not None else Image(),
+                    declared_image(launched.plugin, launched.sandbox),
                     root,
                     CLAUDE_LOGIN,
                     ClaudeHomeSeed.applied(places.applied),

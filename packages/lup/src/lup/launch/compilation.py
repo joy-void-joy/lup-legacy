@@ -107,6 +107,7 @@ def kept_record(
         arguments=[],
         record_root=record.root,
         transcribe=record.transcript,
+        mode=record.mode,
         recorder=record.ledger,
     )
     succeeded = False

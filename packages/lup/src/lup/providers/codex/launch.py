@@ -9,10 +9,9 @@ from pydantic import BaseModel
 
 from lup.coordination.repository import launched_member
 from lup.harness.generate import ProjectContent, codex_generation_recipe, generate
-from lup.harness.image import Image
 from lup.harness.models import CapabilityEvidence, Harness, HookSet, Resumption
 from lup.harness.notice import Notice
-from lup.harness.requirements import Finding, Manifest
+from lup.harness.requirements import Finding
 from lup.harness.toolchain import codex_envelope_requirement
 from lup.launch.boundary import apply_sandbox_environment
 from lup.launch.compilation import allowance_environment, inherited_environment
@@ -24,6 +23,8 @@ from lup.launch.declaration import (
     Member,
     Recording,
     Sandbox,
+    declared_image,
+    declared_requirements,
     launched_sandbox,
     resumption,
 )
@@ -534,7 +535,6 @@ def codex_root(agent: "Codex") -> Path:
 def codex_checked(agent: "Codex", sentinels: LaunchSentinels) -> LaunchOpening:
     """Clear the gates before a session: the CLI's probes, then the declared requirements."""
     launched = codex_launched(agent)
-    harness = launched.plugin if isinstance(launched.plugin, Harness) else None
     posture = launched.sandbox.posture()
     opening = LaunchOpening(sandbox=posture)
 
@@ -544,7 +544,7 @@ def codex_checked(agent: "Codex", sentinels: LaunchSentinels) -> LaunchOpening:
     opening.findings = runtime_preflight(
         "codex",
         readiness,
-        harness.requirements if harness is not None else Manifest(),
+        declared_requirements(launched.plugin, launched.requirements),
         codex_root(launched),
         sentinels,
         opening,
@@ -689,8 +689,7 @@ def codex_opening(
     )
     arguments = codex_arguments(config, envelope, words)
     environment[CODEX_HOME] = str(home.selection.path)
-    harness = config.plugin if isinstance(config.plugin, Harness) else None
-    image = harness.image if harness is not None else Image()
+    image = declared_image(config.plugin, config.sandbox)
     offered = codex_plugin_root(config, root)
 
     def authenticate(command: list[str], native_home: Path, headless: bool) -> None:
@@ -719,7 +718,7 @@ def codex_opening(
         arguments,
         root,
         image,
-        harness.requirements if harness is not None else Manifest(),
+        declared_requirements(config.plugin, config.requirements),
         policy,
         home.selection.path,
         CODEX_LOGIN,
@@ -804,6 +803,7 @@ def launch_codex_session(
             arguments=list(words),
             record_root=record.root,
             transcribe=record.transcript,
+            mode=record.mode,
             recorder=record.ledger,
         )
         succeeded = False
@@ -835,12 +835,9 @@ def launch_codex_session(
                     urgency="detail",
                 ).say()
             if home.selection.isolated and (state.installed or not contained):
-                harness = (
-                    launched.plugin if isinstance(launched.plugin, Harness) else None
-                )
                 carry_codex_home(
                     home.store,
-                    (harness.image if harness is not None else Image())
+                    declared_image(launched.plugin, launched.sandbox)
                     if contained
                     else None,
                     root,
