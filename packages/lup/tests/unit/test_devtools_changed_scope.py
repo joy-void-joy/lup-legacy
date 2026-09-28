@@ -7,14 +7,26 @@ directions. Naming a file that is gone turns a narrowed run into an error
 about its own arguments; *not* naming a file that changed reports "clean"
 about code nobody read, which is the failure this whole lane exists to avoid
 committing.
+
+Where the list starts is the other half. Read from a base's tip, a branch
+answers for every commit the base took after the branch was cut; read from
+where it left the base, it answers for its own.
 """
 
 from pathlib import Path
 
 import pytest
 import sh
+import typer
 
-from lup.devtools.dev.check import changed_python_files
+import lup.devtools.dev.check as check
+from lup.devtools.dev.check import (
+    ChangeBase,
+    ChangedScope,
+    change_base,
+    changed_scope,
+)
+from lup.devtools.project import DevProject
 
 
 @pytest.fixture
@@ -39,6 +51,25 @@ def repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     return work
 
 
+def committed(repo: Path, name: str, text: str) -> None:
+    """Write one file and commit it on whatever branch is checked out."""
+    git = sh.Command("git").bake("-C", str(repo), _tty_out=False)
+    (repo / name).write_text(text, encoding="utf-8")
+    git("add", name)
+    git("commit", "-m", name)
+
+
+def moved_on(repo: Path) -> None:
+    """`topic` records `main` as its base, and `main` takes a commit after the cut."""
+    git = sh.Command("git").bake("-C", str(repo), _tty_out=False)
+    git("switch", "-c", "topic")
+    git("config", "branch.topic.lup-base", "main")
+    committed(repo, "mine.py", "mine = 1\n")
+    git("switch", "main")
+    committed(repo, "theirs.py", "theirs = 1\n")
+    git("switch", "topic")
+
+
 def test_a_file_written_and_never_added_is_still_checked(repo: Path) -> None:
     """The half `git diff` does not report, and the half most worth reading.
 
@@ -48,14 +79,14 @@ def test_a_file_written_and_never_added_is_still_checked(repo: Path) -> None:
     """
     (repo / "fresh.py").write_text("fresh = 1\n", encoding="utf-8")
 
-    assert changed_python_files("HEAD") == ["fresh.py"]
+    assert changed_scope("HEAD").checked == ["fresh.py"]
 
 
-def test_a_changed_file_that_is_not_python_is_left_out(repo: Path) -> None:
-    """Ruff and Pyright are asked about Python, so the scope is Python."""
+def test_a_changed_file_that_is_not_python_is_named_as_unread(repo: Path) -> None:
+    """Ruff and Pyright are asked about Python, and the rest is said, not dropped."""
     (repo / "prose.md").write_text("changed prose\n", encoding="utf-8")
 
-    assert changed_python_files("HEAD") == []
+    assert changed_scope("HEAD") == ChangedScope(checked=[], unread=["prose.md"])
 
 
 def test_a_deleted_file_is_not_named_to_a_checker(repo: Path) -> None:
@@ -66,7 +97,7 @@ def test_a_deleted_file_is_not_named_to_a_checker(repo: Path) -> None:
     """
     (repo / "kept.py").unlink()
 
-    assert changed_python_files("HEAD") == []
+    assert changed_scope("HEAD") == ChangedScope(checked=[], unread=[])
 
 
 def test_a_tracked_edit_and_a_new_file_are_both_in_scope(repo: Path) -> None:
@@ -74,9 +105,83 @@ def test_a_tracked_edit_and_a_new_file_are_both_in_scope(repo: Path) -> None:
     (repo / "kept.py").write_text("kept = 2\n", encoding="utf-8")
     (repo / "fresh.py").write_text("fresh = 1\n", encoding="utf-8")
 
-    assert changed_python_files("HEAD") == ["fresh.py", "kept.py"]
+    assert changed_scope("HEAD").checked == ["fresh.py", "kept.py"]
 
 
 def test_a_tree_that_changed_nothing_scopes_nothing(repo: Path) -> None:
     """Empty is a real answer, and the caller reports it rather than checking all."""
-    assert changed_python_files("HEAD") == []
+    assert changed_scope("HEAD") == ChangedScope(checked=[], unread=[])
+
+
+def test_a_branch_answers_for_its_own_commits_not_its_base_s_later_ones(
+    repo: Path,
+) -> None:
+    """The 108-file report: a base's tip read as where the branch started.
+
+    `main` took `theirs.py` after `topic` was cut. Diffed against `main`'s
+    tip, `topic` would answer for that file too, as though it had removed it;
+    from the merge base with the base it records, it answers for `mine.py`.
+    """
+    moved_on(repo)
+
+    base = change_base(None, "main")
+
+    assert changed_scope(base.commit).checked == ["mine.py"]
+    assert base.reached == "the merge base with main, the base topic records"
+
+
+def test_a_named_ref_is_read_from_the_merge_base_with_it(repo: Path) -> None:
+    """Naming the base outright answers the same question, not the tip's."""
+    moved_on(repo)
+
+    base = change_base("main", "main")
+
+    assert changed_scope(base.commit).checked == ["mine.py"]
+    assert base.reached == "the merge base with main"
+
+
+def test_a_named_ref_nothing_resolves_refuses_by_the_flag_it_came_through(
+    repo: Path,
+) -> None:
+    """A mistyped ref answering nothing would read as a branch that changed nothing."""
+    with pytest.raises(typer.BadParameter, match="--since 'no-such-ref'"):
+        change_base("no-such-ref", "main")
+
+
+def test_the_integration_branch_answers_for_its_uncommitted_work(repo: Path) -> None:
+    """There is no base to leave from, so what changed is what is not committed."""
+    sh.Command("git")("-C", str(repo), "branch", "topic", _tty_out=False)
+    (repo / "kept.py").write_text("kept = 2\n", encoding="utf-8")
+
+    base = change_base(None, "main")
+
+    assert base.commit == "HEAD"
+    assert changed_scope(base.commit).checked == ["kept.py"]
+
+
+def test_a_change_no_scoped_check_reads_says_so_and_names_every_gate_left(
+    repo: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A Markdown-only change checked nothing, and the run has to say what it left.
+
+    Reporting only what ran reads as a verdict on the change: the unread
+    files are listed, and the suites are named as the gate runs them.
+    """
+    (repo / "prose.md").write_text("changed prose\n", encoding="utf-8")
+    roots = [
+        check.TestRoot(name="pytest", directory=repo),
+        check.TestRoot(name="pytest (lib)", directory=repo / "lib"),
+    ]
+
+    check.run_changed(
+        DevProject(package="app"), ChangeBase(commit="HEAD", reached="HEAD"), roots
+    )
+    printed = capsys.readouterr().out.splitlines()
+
+    assert "No Python file changed, so no scoped check ran." in printed
+    assert "Unread: 1 changed file(s) no scoped check reads:" in printed
+    assert "  prose.md" in printed
+    assert any(
+        line.startswith("Not run: the test suites (pytest, pytest (lib)) and ")
+        for line in printed
+    )

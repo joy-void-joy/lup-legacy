@@ -1167,6 +1167,23 @@ DECLARED: list[Migration] = [
             ),
         ],
     ),
+    Migration(
+        subjects=["changed_python_files"],
+        reason=(
+            "`dev check --changed` names every changed file a scoped check does "
+            "not read, where it used to drop them, so the scope it reads is one "
+            "answer holding both halves"
+        ),
+        steps=[
+            MigrationStep(
+                instruction=(
+                    "Call changed_scope(since).checked from lup.devtools.dev.check "
+                    "where changed_python_files(since) was called; "
+                    "changed_scope(since).unread holds the other changed files."
+                )
+            ),
+        ],
+    ),
 ]
 """Every break this library has taken since its last release, and what to do.
 

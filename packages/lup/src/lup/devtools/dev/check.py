@@ -48,7 +48,11 @@ from lup.devtools.dev.admission import Admission, admitted
 from lup.devtools.dev.antipatterns import scan_antipatterns
 from lup.devtools.project import DevProject
 from lup.devtools.dev.boundaries import scan_application_placement
-from lup.devtools.dev.branches import get_integration_branch, unlanded_siblings
+from lup.devtools.dev.branches import (
+    detect_base_branch,
+    get_integration_branch,
+    unlanded_siblings,
+)
 from lup.devtools.dev.git_guards import GitGuard, read_hooks
 from lup.devtools.dev.worktree import OWNERSHIP_MERGE_DRIVER, MergeDriver
 from lup.devtools.dev.cites import sweep_cites
@@ -936,14 +940,16 @@ def changed_paths(since: str) -> list[str]:
     return [line for line in named if line]
 
 
-def named_gate_base(named: str) -> str:
-    """The commit a caller's own ``--base`` names, for judging removed capabilities.
+def named_gate_base(named: str, option: str = "--base") -> str:
+    """The commit a caller's own ref names, for judging what this branch did.
 
     The merge base rather than the tip. What a branch took away is judged from
     where it started, and a base that has moved on since carries changes this
     branch never made — read against the tip they come back as capabilities
     this branch removed, which is how naming `dev` directly reported 504 gone
-    on a branch that had removed none.
+    on a branch that had removed none. What a branch changed is the same
+    question asked of files, and ``option`` is the flag the ref came through,
+    for the refusal to name.
 
     A ref nothing resolves refuses the run. Answering nothing instead would be
     indistinguishable from a branch that removed nothing, which is the reading
@@ -953,14 +959,77 @@ def named_gate_base(named: str) -> str:
         found = git.out("merge-base", named, "HEAD", _ok_code=[0])
     except sh.ErrorReturnCode as error:
         raise typer.BadParameter(
-            f"--base {named!r} shares no history with this checkout, so there "
-            f"is nothing to judge a surface from: {decode_stderr(error)}"
+            f"{option} {named!r} shares no history with this checkout, so there "
+            f"is nothing to judge a change from: {decode_stderr(error)}"
         ) from error
     return found
 
 
-def changed_python_files(since: str) -> list[str]:
-    """Every Python file this tree changed since a ref, untracked ones included.
+class ChangeBase(BaseModel, frozen=True):
+    """The commit a narrowed check reads this tree's changes from, and why that one."""
+
+    commit: str
+    reached: str
+    """How it was found, as the report says it: which base, by what evidence."""
+
+
+def change_base(named: str | None, integration: str) -> ChangeBase:
+    """Where this branch's own changes start: a merge base, never a tip.
+
+    A base's tip that moved on since the branch was cut carries changes the
+    branch never made, and a diff against it reads them back as the branch's:
+    108 files on a feature branch whose author touched a handful, among which
+    nobody could find their own failure. So a named ref is taken as the merge
+    base with it, and with none named, as the merge base with the base this
+    branch records — the one `worktree create` wrote, or else the cut git
+    logged, or else the nearest branch by topology, said as such.
+
+    On the integration branch itself, or a checkout on no branch with none
+    beside it, there is no base to leave from, and what changed is the work
+    not yet committed.
+    """
+    if named is not None:
+        return ChangeBase(
+            commit=named_gate_base(named, "--since"),
+            reached=f"the merge base with {named}",
+        )
+    current = git.out("branch", "--show-current")
+    siblings = [
+        branch
+        for branch in git.lines("branch", "--format=%(refname:short)")
+        if branch != current
+    ]
+    if not current or current == integration or not siblings:
+        return ChangeBase(
+            commit="HEAD",
+            reached=f"HEAD, the work {current or 'here'} has not committed",
+        )
+    found = detect_base_branch(current)
+    match found.source:
+        case "recorded":
+            evidence = f"the base {current} records"
+        case "created":
+            evidence = f"the branch git logged {current} as cut from"
+        case "guessed":
+            evidence = f"the nearest branch to {current}, guessed from topology"
+    return ChangeBase(
+        commit=found.merge_base,
+        reached=f"the merge base with {found.name}, {evidence}",
+    )
+
+
+class ChangedScope(BaseModel, frozen=True):
+    """What this tree changed since a ref, split by whether a scoped check reads it."""
+
+    checked: list[str]
+    """The Python files, which Ruff and Pyright answer about exactly."""
+
+    unread: list[str]
+    """Every other changed file, which no scoped check here reads."""
+
+
+def changed_scope(since: str) -> ChangedScope:
+    """Every file this tree changed since a ref, untracked ones included.
 
     Untracked is the half `git diff` does not report and an iterating check
     cannot afford to miss: a module written five minutes ago is exactly what
@@ -969,14 +1038,17 @@ def changed_python_files(since: str) -> list[str]:
 
     Deleted paths are dropped, because a scope naming them hands a checker a
     file it cannot open and turns a narrowed run into an error about its own
-    argument list.
+    argument list. What is not Python is kept rather than dropped, so the run
+    can say it went unread instead of implying it was checked.
     """
     named = {
         *changed_paths(since),
         *git.lines("ls-files", "--others", "--exclude-standard"),
     }
-    return sorted(
-        path for path in named if path.endswith(".py") and Path(path).is_file()
+    present = sorted(path for path in named if Path(path).is_file())
+    return ChangedScope(
+        checked=[path for path in present if path.endswith(".py")],
+        unread=[path for path in present if not path.endswith(".py")],
     )
 
 
@@ -1577,9 +1649,39 @@ def run_checks(
         raise typer.Exit(1)
 
 
+def unrun_lines(scope: ChangedScope, test_roots: list[TestRoot]) -> list[str]:
+    """What a narrowed run leaves to the whole gate, named rather than implied.
+
+    A run that reports only what it checked reads as a verdict on the change,
+    and a change of Markdown and CSS alone checked nothing at all. So the
+    changed files no scoped check reads are listed, and the gates not run
+    are named: the suites by the names the gate runs them under, and the
+    sweeps as the one kind they are — each reads the whole tree, which is
+    why no scope narrows them.
+    """
+    suites = ", ".join(root.name for root in test_roots) or "none declared"
+    return [
+        *(
+            [
+                f"Unread: {len(scope.unread)} changed file(s) no scoped check reads:",
+                *(f"  {path}" for path in scope.unread),
+            ]
+            if scope.unread
+            else []
+        ),
+        f"Not run: the test suites ({suites}) and the whole-tree sweeps — "
+        "notes, rules, harness drift, documented commands and the rest.",
+        "  `uv run lup-devtools dev test <path>` runs the tests named, "
+        "`uv run lup-devtools dev check --antipatterns --path <path>` the rules "
+        "over the files named, and `uv run lup-devtools dev check` all of it: "
+        "what a commit has to pass.",
+    ]
+
+
 def run_changed(
     project: DevProject,
-    since: str,
+    base: ChangeBase,
+    test_roots: list[TestRoot],
     fix: bool = False,
 ) -> None:
     """Check the files this tree changed, and say plainly what went unchecked.
@@ -1589,15 +1691,17 @@ def run_changed(
     the files it is handed and answers about those, so a narrowed run says the
     same thing about them a whole run would. Pyright resolves each file's
     imports itself, which is why naming files is a statement about what is
-    reported rather than about what was understood.
+    reported rather than about what was understood. ``base`` is where the
+    change starts, which :func:`change_base` answers.
 
     **Tests are not narrowed, and not run.** Which tests reach a change is a
     question about the import graph, and this repository reaches modules
     through `importlib` in places no static reading sees — so a narrowed suite
     could report green while skipping the one test the change breaks. A gate
     that is trusted and wrong costs more than a gate that is slow, so this one
-    declines the question and says so on every run. `dev test` runs the files
-    a person names; `dev check` stays the bar a commit passes.
+    declines the question and says so on every run, naming the suites and
+    sweeps it left (:func:`unrun_lines`). `dev test` runs the files a person
+    names; `dev check` stays the bar a commit passes.
 
     **No gate slot is held**, where `dev check` over its suites and `dev test`
     each hold one. This opens no suite, and its three tools over a handful of
@@ -1607,16 +1711,19 @@ def run_changed(
     run opens — to make room for a check long since finished.
     """
     started = perf_counter()
-    scope = changed_python_files(since)
+    scope = changed_scope(base.commit)
     excluded_roots = non_code_roots(project)
-    if not scope:
-        typer.echo(f"No Python file changed since {since}; nothing to check.")
+    typer.echo(f"Changes since {base.reached} ({base.commit}).\n")
+    if not scope.checked:
+        typer.echo("No Python file changed, so no scoped check ran.")
+        for line in unrun_lines(scope, test_roots):
+            typer.echo(line)
         return
 
     tools: list[Callable[[], CheckReport]] = [
-        partial(ruff_format_check, fix, excluded_roots, scope),
-        partial(ruff_lint_check, fix, excluded_roots, scope),
-        partial(pyright_check, excluded_roots, scope),
+        partial(ruff_format_check, fix, excluded_roots, scope.checked),
+        partial(ruff_lint_check, fix, excluded_roots, scope.checked),
+        partial(pyright_check, excluded_roots, scope.checked),
     ]
     with ThreadPoolExecutor(max_workers=len(tools)) as pool:
         reports = [job.result() for job in [pool.submit(tool) for tool in tools]]
@@ -1627,13 +1734,11 @@ def run_changed(
 
     passed = sum(1 for report in reports if report.passed)
     typer.echo(
-        f"\n{passed}/{len(reports)} checks passed over {len(scope)} changed "
-        f"file(s) since {since}{spent(reports, started)}"
+        f"\n{passed}/{len(reports)} checks passed over {len(scope.checked)} "
+        f"changed Python file(s){spent(reports, started)}"
     )
-    typer.echo(
-        "No tests ran, and no whole-tree gate ran. `uv run lup-devtools dev "
-        "check` is what a commit has to pass."
-    )
+    for line in unrun_lines(scope, test_roots):
+        typer.echo(line)
 
     failed = [report.name for report in reports if not report.passed]
     if failed:

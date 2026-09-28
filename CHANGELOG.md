@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+### `dev check --changed` reads a branch from where it left its base
+
+It diffed against the integration branch's tip, so a feature branch answered
+for every commit that branch took after the cut — 108 files for an author
+who had touched a handful — and it named only Python files, so a change of
+Markdown and CSS reported nothing at all. It now reads from the merge base
+with the base the branch records (or with `--since <ref>`), answers for
+uncommitted work on the integration branch itself, lists every changed file
+no scoped check read, and names the test suites and whole-tree sweeps it
+left to `dev check`.
+
 ### Claude asks natively; only Codex parks a review
 
 0.4.0's note on native approval authority says a call parks in
