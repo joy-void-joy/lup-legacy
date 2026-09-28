@@ -1359,16 +1359,64 @@ DECLARED: list[Migration] = [
         steps=[
             MigrationStep(
                 instruction=(
-                    "Call SessionInboxes.retire(repository, member_id, handle) from "
+                    "Call WakeSockets.retire(repository, member_id, handle) from "
                     "lup.harness.messaging where cleared(address) removed a dead "
                     "socket: ask it only for a member the roster reads as not "
                     "running, and it answers whether it removed the file, leaving "
                     "one it cannot ask about where cleared raised "
                     "UnixSocketRefused. Nothing replaces woken_through: no launch "
                     "is refused over a socket any more, so no holder is named. "
-                    "SessionInboxes.socket(repository, member_id) takes the "
+                    "WakeSockets.socket(repository, member_id) takes the "
                     "member's id where it took its display name."
                 )
+            ),
+        ],
+    ),
+    Migration(
+        subjects=[
+            "SessionInboxes",
+            "SessionInboxes.directory",
+            "SessionInboxes.longest_address",
+            "SessionInboxes.socket",
+            "SessionInboxes.serve",
+            "SessionInboxes.notice",
+            "Image.inboxes",
+            "Member.inboxes",
+            "placed_inbox",
+            "CLAUDE_INBOX_ENV",
+            "ClaudeSessionEnv.inbox",
+            "INBOX_REACHED",
+            "INBOX_RECOVERY",
+            "inbox_refusal",
+        ],
+        reason=(
+            "the socket a session is woken through holds no mail, and the inbox "
+            "is the operator's review page, so the socket is the session's wake "
+            "socket and its directory moves from /tmp/lup-inbox to /tmp/lup-wake"
+        ),
+        steps=[
+            MigrationStep(
+                instruction=(
+                    "Rename SessionInboxes to WakeSockets (lup.harness.messaging), "
+                    "Image.inboxes to Image.wake_sockets, Member.inboxes to "
+                    "Member.wake_sockets, placed_inbox to placed_wake_socket "
+                    "(lup.launch.session), CLAUDE_INBOX_ENV to "
+                    "CLAUDE_WAKE_SOCKET_ENV and ClaudeSessionEnv.inbox to "
+                    "ClaudeSessionEnv.wake_socket (lup.providers.claude.identity), "
+                    "and INBOX_REACHED, INBOX_RECOVERY and inbox_refusal to "
+                    "WAKE_SOCKET_REACHED, WAKE_SOCKET_RECOVERY and "
+                    "wake_socket_refusal (lup.coordination.policy). The keyword "
+                    "parameters follow: Image.session_arguments takes "
+                    "wake_directory, claude_arguments wake_socket, and "
+                    "lup.coordination.wake.injected address."
+                )
+            ),
+            MigrationStep(
+                instruction=(
+                    "Regenerate, so the refused path in the compiled policy and "
+                    "the Read denials in .claude/settings.json name /tmp/lup-wake:"
+                ),
+                command=["uv", "run", "lup-devtools", "harness", "generate", "all"],
             ),
         ],
     ),

@@ -688,10 +688,10 @@ project declaring none has both calls left entirely to the runtime's own
 permissions, which is what a repository whose sessions never coordinate should
 pay for them.
 
-The shell has a third way to reach a peer: its inbox socket, the wake handle
-the launcher binds under the image's `SessionInboxes.directory`, which takes a
-raw frame and starts that session's turn with nothing on the roster.
-`lup.coordination.policy.inbox_refusal` withholds that directory as a
+The shell has a third way to reach a peer: its wake socket, which the launcher
+binds under the image's `WakeSockets.directory` and which takes a raw frame and
+starts that session's turn with nothing on the roster.
+`lup.coordination.policy.wake_socket_refusal` withholds that directory as a
 `refused_paths` row built from the image's own declaration, so every spelling
 of a connection the kernel reads — a socat `UNIX-CONNECT`/`UNIX-CLIENT`/
 `UNIX-SENDTO`/`ABSTRACT-*` address, `nc -U`, `ncat -U`, `curl

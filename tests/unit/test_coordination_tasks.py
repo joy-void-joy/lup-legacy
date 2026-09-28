@@ -139,7 +139,7 @@ def test_a_member_with_no_wake_path_is_told_so_rather_than_nudged() -> None:
 
 
 @pytest.mark.usefixtures("unix_socket")
-def test_a_claude_peer_is_woken_by_a_frame_written_to_its_own_inbox(
+def test_a_claude_peer_is_woken_by_a_frame_written_to_its_wake_socket(
     tmp_path: Path,
 ) -> None:
     """Claude's path is a socket every session binds, not a tool a caller holds.
@@ -147,10 +147,10 @@ def test_a_claude_peer_is_woken_by_a_frame_written_to_its_own_inbox(
     A session takes a turn on a frame written there, so the library finishes
     the wake itself rather than handing it back with instructions.
     """
-    inbox = tmp_path / "peer.sock"
+    address = tmp_path / "peer.sock"
     delivered: list[bytes] = []
     with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as listener:
-        listener.bind(str(inbox))
+        listener.bind(str(address))
         listener.listen(1)
 
         def take_one_frame() -> None:
@@ -160,7 +160,7 @@ def test_a_claude_peer_is_woken_by_a_frame_written_to_its_own_inbox(
 
         waiting = Thread(target=take_one_frame)
         waiting.start()
-        answered = wake(WakePath(runtime="claude", handle=str(inbox)), "look")
+        answered = wake(WakePath(runtime="claude", handle=str(address)), "look")
         waiting.join(timeout=5)
 
     assert answered == Woken(reached=True)
@@ -171,7 +171,7 @@ def test_a_claude_peer_is_woken_by_a_frame_written_to_its_own_inbox(
 
 
 @pytest.mark.usefixtures("unix_socket")
-def test_a_claude_peer_whose_inbox_has_gone_leaves_the_mail_waiting(
+def test_a_claude_peer_whose_wake_socket_has_gone_leaves_the_mail_waiting(
     tmp_path: Path,
 ) -> None:
     """A wake that fails costs latency and never a message, so it never raises."""

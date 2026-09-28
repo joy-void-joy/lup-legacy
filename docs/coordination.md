@@ -315,11 +315,13 @@ can reach the peer, is reported rather than silently skipped.
 The handle a peer is woken by is **declared when it joins**, and declared by
 the adapter for the runtime that would use it — because what a handle even is
 differs by runtime, and a neutral answer would be right for at most one of
-them. On Claude it is the path of the session's own inbox socket, which the
+them. On Claude it is the path of the session's own wake socket, which the
 runtime names to the processes that session starts, so a tool server reports
 where its session listens without being told; the wake is a frame written
-there, carrying the member's session id so an inbox that is not theirs drops
-it, and the library makes it. On Codex it is the thread `codex queue` takes,
+there, carrying the member's session id so a socket that is not theirs drops
+it, and the library makes it. The socket holds no mail — a message is the
+store's, read whether or not anything woke its reader — which is why it is a
+wake socket and not an inbox. On Codex it is the thread `codex queue` takes,
 which nothing hands a server Codex starts, so that adapter declares nothing —
 an outcome reported rather than skipped.
 

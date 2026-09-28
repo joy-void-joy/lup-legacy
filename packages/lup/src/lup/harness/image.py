@@ -41,7 +41,7 @@ from lup.harness.credential import (
 )
 from lup.harness.egress import SessionEgress
 from lup.harness.environment import NON_INTERACTIVE_SHELL_ENV
-from lup.harness.messaging import SessionInboxes
+from lup.harness.messaging import WakeSockets
 from lup.harness.requirements import Manifest, Package, PackageManager
 from lup.harness.terminal import TerminalHandoff
 from lup.types import EnvVars, JsonObject
@@ -538,15 +538,16 @@ class Image(BaseModel, frozen=True):
             "and on Wayland or macOS would not work at all"
         ),
     )
-    inboxes: SessionInboxes = Field(
-        default=SessionInboxes(),
+    wake_sockets: WakeSockets = Field(
+        default=WakeSockets(),
         description=(
-            "Where this session binds the inbox a peer nudges it through, and "
-            "where it finds its peers'. Declared beside the other two bridges "
-            "and unlike them in what it crosses: the browser and the clipboard "
-            "run between a session and its operator, and this runs between two "
-            "sessions. Mounted at the same path it has outside, because the "
-            "path is what a member publishes and another container reads back"
+            "Where this session binds the wake socket a peer nudges it "
+            "through, and where it finds its peers'. Declared beside the other "
+            "two bridges and unlike them in what it crosses: the browser and "
+            "the clipboard run between a session and its operator, and this "
+            "runs between two sessions. Mounted at the same path it has "
+            "outside, because the path is what a member publishes and another "
+            "container reads back"
         ),
     )
     credential_seed: str = Field(
@@ -1224,7 +1225,7 @@ USER $UID:$GID
         identity: GitIdentity | None = None,
         browser_directory: Path | None = None,
         clipboard_directory: Path | None = None,
-        inbox_directory: Path | None = None,
+        wake_directory: Path | None = None,
         terminal: EnvVars | None = None,
         streams: SessionStreams = "terminal",
         proxy_address: str = "",
@@ -1356,8 +1357,8 @@ USER $UID:$GID
         # renamed it would leave every handle right where it was written and
         # wrong everywhere it was read.
         nudging = (
-            ["-v", f"{inbox_directory}:{inbox_directory}:rw"]
-            if inbox_directory is not None
+            ["-v", f"{wake_directory}:{wake_directory}:rw"]
+            if wake_directory is not None
             else []
         )
         # The forge configuration is passed rather than baked, and passed

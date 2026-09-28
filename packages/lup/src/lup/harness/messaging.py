@@ -1,22 +1,25 @@
-"""Where lup puts its sessions' inboxes, so one can reach another.
+"""Where lup puts its sessions' wake sockets, so one can reach another.
 
-Claude Code gives every session a private inbox on a Unix socket and takes a
+Claude Code gives every session a private Unix socket and takes a
 newline-delimited JSON frame written to it, which arrives there as a message
-and starts a turn. That is what :mod:`lup.coordination.wake` writes to, and
-the only thing between a nudge and an idle peer is whether the waking process
-can open the file.
+and starts a turn. That socket is the session's **wake socket**: what
+:mod:`lup.coordination.wake` writes to when a peer is to look, and the only
+thing between a nudge and an idle peer is whether the waking process can open
+the file. It holds no mail -- a message is the coordination store's, read
+whether or not anything woke its reader -- which is why it is not called an
+inbox.
 
-A contained session cannot, left alone. Measured: ``/proc/self/mountinfo``
-carries no mount for ``/tmp``, so each session's socket directory is its own.
-Worse than invisible -- the runtime's own default is
-``/tmp/cc-socks/<pid>.sock``, and a session that is pid 7 in its own namespace
-names a path that exists, live, and belongs to somebody else in every sibling
-container.
+A contained session cannot open it, left alone. Measured:
+``/proc/self/mountinfo`` carries no mount for ``/tmp``, so each session's
+socket directory is its own. Worse than invisible -- the runtime's own default
+is ``/tmp/cc-socks/<pid>.sock``, and a session that is pid 7 in its own
+namespace names a path that exists, live, and belongs to somebody else in every
+sibling container.
 
 So lup places the sockets itself: the launcher passes
 ``--messaging-socket-path`` naming a file under this directory, one bind mount
-arrives there, and a member's declared inbox is a path every peer can open and
-exactly one session owns.
+arrives there, and a member's declared wake socket is a path every peer can
+open and exactly one session owns.
 
 **The path is keyed by the member's id, which is what makes it one member's.**
 The id is minted once and never moves; a display name repeats by design --
@@ -53,7 +56,7 @@ What this does grant is worth naming rather than burying: any process that can
 open these files can start a turn in any session that bound one. Two things
 bound it. The record is always written before anything is nudged, so a wake
 that goes astray costs latency and never a message; and a wake carries the
-session id of the member it is for, which the receiving inbox checks against
+session id of the member it is for, which the receiving socket checks against
 its own and drops on a mismatch -- so a frame that reached the wrong session is
 refused by it rather than delivered.
 """
@@ -71,8 +74,8 @@ from lup.harness.notice import Notice
 logger = logging.getLogger(__name__)
 
 
-class SessionInboxes(BaseModel, frozen=True):
-    """The one directory this machine's sessions publish their inboxes into.
+class WakeSockets(BaseModel, frozen=True):
+    """The one directory this machine's sessions bind their wake sockets in.
 
     One model because three places have to agree on the same string: the
     launcher makes the directory and names a file in it on the command line,
@@ -82,25 +85,26 @@ class SessionInboxes(BaseModel, frozen=True):
     """
 
     directory: str = Field(
-        default="/tmp/lup-inbox",
+        default="/tmp/lup-wake",
         description=(
-            "Where every session this launcher starts binds its inbox, on the "
-            "host and under that same path inside a container. Constrained "
-            "rather than free: the runtime refuses a socket directory that is "
-            "a symlink, that it does not own, or that is not mode 0700, and "
-            "refuses the address outright past about 104 bytes -- which is "
-            "why this stays short and shallow rather than living beside the "
-            "checkout it serves. Emptying it declares sessions that reach "
-            "each other only where the runtime's own default path already "
-            "does, which is the posture every launch had before this existed"
+            "Where every session this launcher starts binds its wake socket, "
+            "on the host and under that same path inside a container. "
+            "Constrained rather than free: the runtime refuses a socket "
+            "directory that is a symlink, that it does not own, or that is not "
+            "mode 0700, and refuses the address outright past about 104 bytes "
+            "-- which is why this stays short and shallow rather than living "
+            "beside the checkout it serves. Emptying it declares sessions that "
+            "reach each other only where the runtime's own default path "
+            "already does, which is the posture every launch had before this "
+            "existed"
         ),
     )
 
     longest_address: int = Field(
         default=103,
         description=(
-            "The longest socket path, in bytes, a placed inbox may take. A "
-            "Unix socket address holds 108 bytes on Linux and 104 on macOS, "
+            "The longest socket path, in bytes, a placed wake socket may take. "
+            "A Unix socket address holds 108 bytes on Linux and 104 on macOS, "
             "each counting the terminating zero, and the runtime refuses a "
             "path past about 104 outright -- so the default is the shorter "
             "platform's, and a repository name that would run past it is cut "
@@ -109,7 +113,7 @@ class SessionInboxes(BaseModel, frozen=True):
     )
 
     def socket(self, repository: Path, member_id: str) -> str:
-        """The inbox path one member of *repository* binds, keyed by its id.
+        """The wake socket one member of *repository* binds, keyed by its id.
 
         By the id rather than by anything else a member has, because the id
         is minted once and names one member for as long as the file exists.
@@ -133,7 +137,7 @@ class SessionInboxes(BaseModel, frozen=True):
         room = self.longest_address - len(f"{self.directory}/-{keyed}".encode())
         if room < 0:
             raise ValueError(
-                f"an inbox in {self.directory} cannot carry member "
+                f"a wake socket in {self.directory} cannot carry member "
                 f"{member_id}'s whole id within {self.longest_address} bytes; "
                 "declare a shorter directory"
             )
@@ -150,7 +154,7 @@ class SessionInboxes(BaseModel, frozen=True):
 
         Nothing comes back when it cannot be made, which is a launch whose
         sessions do not nudge each other rather than a launch that fails: the
-        durable inbox is untouched and the notice says so.
+        mail is untouched and the notice says so.
         """
         if not self.directory:
             return None
@@ -163,14 +167,14 @@ class SessionInboxes(BaseModel, frozen=True):
             # a session nobody can nudge is an ordinary outcome, and "why" is
             # the difference between a machine that cannot have one and a path
             # this got wrong.
-            logger.warning("session inboxes did not open: %s", error)
+            logger.warning("the wake socket directory did not open: %s", error)
             return None
         return directory
 
     def retire(
         self, repository: Path, member_id: str, handle: str, patience: float = 1.0
     ) -> bool:
-        """Remove a departed member's inbox, where it is provably theirs and dead.
+        """Remove a departed member's wake socket, where it is provably theirs and dead.
 
         Asked only about a member the roster says is gone, which is the
         caller's to read: this module reads no roster. What is checked here
@@ -202,7 +206,7 @@ class SessionInboxes(BaseModel, frozen=True):
             opened = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         except OSError as refused:
             logger.info(
-                "left the inbox %s: this process may not open a Unix "
+                "left the wake socket %s: this process may not open a Unix "
                 "socket to ask whether its session still listens (%s)",
                 address,
                 refused,
@@ -229,9 +233,9 @@ class SessionInboxes(BaseModel, frozen=True):
             return [
                 Notice(
                     text=(
-                        "peer wake: this session's inbox is its own — mail "
-                        "still lands in the record, and waits until the peer "
-                        "it is for next looks"
+                        "peer wake: this session's wake socket is out of its "
+                        "peers' reach — mail still lands in the record, and "
+                        "waits until the peer it is for next looks"
                     ),
                     urgency="boundary",
                 )

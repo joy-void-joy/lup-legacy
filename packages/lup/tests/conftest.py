@@ -20,7 +20,7 @@ import lup.devtools.harness.launch as launch
 import lup.providers.profile_tree as profile_tree
 from lup.devtools.gitguard import TEST_IDENTITY, GuardVerdict, RepositoryWatch
 from lup.harness.environment import launcher_decided_names
-from lup.harness.messaging import SessionInboxes
+from lup.harness.messaging import WakeSockets
 from lup.providers.claude.config_home import ClaudeConfigHome, selected_config_home
 from lup.providers.claude.login import CLAUDE_CONFIG_DIR
 from lup.providers.identity import RUNTIME_DECIDED_ENV
@@ -208,15 +208,15 @@ def unix_socket() -> None:
 
 
 @pytest.fixture
-def inboxes() -> Iterator[SessionInboxes]:
-    """Inboxes placed in a directory short enough to key a whole member id.
+def wake_sockets() -> Iterator[WakeSockets]:
+    """Wake sockets placed in a directory short enough to key a whole member id.
 
     Beside ``/tmp`` rather than under pytest's own temporary path, whose depth
     leaves too few of a Unix socket address's bytes for a repository, a digest
     and an id -- which the placement refuses rather than cuts.
     """
     directory = Path(tempfile.mkdtemp(prefix="lupw", dir="/tmp"))
-    yield SessionInboxes(directory=str(directory))
+    yield WakeSockets(directory=str(directory))
     shutil.rmtree(directory, ignore_errors=True)
 
 

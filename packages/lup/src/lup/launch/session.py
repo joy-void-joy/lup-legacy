@@ -30,7 +30,7 @@ from lup.launch.config_volume import HomeSeedPlaces
 from lup.launch.container import contained_argv
 from lup.coordination.identity import MEMBER_ENV, NAME_ENV, LaunchedMember
 from lup.coordination.repository import RepositoryPeers, launched_member
-from lup.harness.messaging import SessionInboxes
+from lup.harness.messaging import WakeSockets
 from lup.workspace.edition import shared_git_directory
 from lup.harness.models import HookSet
 from lup.policy.boundary import BoundaryPreflight
@@ -999,10 +999,10 @@ def probing(opening: list[str], *, stdin: bool = False) -> list[str]:
     ]
 
 
-def placed_inbox(
-    inboxes: SessionInboxes, root: Path, member: LaunchedMember
+def placed_wake_socket(
+    sockets: WakeSockets, root: Path, member: LaunchedMember
 ) -> str | None:
-    """Where this session binds the inbox a peer nudges it through, if anywhere.
+    """Where this session binds the wake socket a peer nudges it through, if anywhere.
 
     Named by the launcher rather than left to the runtime, whose own default
     is a directory a container does not share and a file named after a pid its
@@ -1016,14 +1016,14 @@ def placed_inbox(
     nothing else was ever keyed there. The departed members of this
     repository are asked about while the roster is in hand -- a socket the
     roster's departed left behind is removed where nothing answers on it,
-    which :meth:`SessionInboxes.retire` settles.
+    which :meth:`WakeSockets.retire` settles.
     """
-    if inboxes.serve() is None:
+    if sockets.serve() is None:
         return None
     repository = shared_git_directory(root)
     for row in RepositoryPeers(root).present():
         if not row.running:
-            inboxes.retire(repository, row.actor.id, row.wake.handle)
-    inbox = inboxes.socket(repository, member.member_id)
-    Path(inbox).unlink(missing_ok=True)
-    return inbox
+            sockets.retire(repository, row.actor.id, row.wake.handle)
+    address = sockets.socket(repository, member.member_id)
+    Path(address).unlink(missing_ok=True)
+    return address

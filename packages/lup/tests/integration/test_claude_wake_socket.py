@@ -1,4 +1,4 @@
-"""A Claude session binds the inbox lup places, and takes lup's frame from it.
+"""A Claude session binds the wake socket lup places, and takes lup's frame from it.
 
 The wake rests on four behaviours of the runtime's messaging socket, none of
 them documented and each measured by hand before this: a session binds the
@@ -26,7 +26,7 @@ from pydantic import BaseModel, Field
 
 from lup.coordination.identity import mint_member_id
 from lup.coordination.wake import injected
-from lup.harness.messaging import SessionInboxes
+from lup.harness.messaging import WakeSockets
 from lup.types import JsonObject, JsonValue
 
 pytestmark = pytest.mark.integration
@@ -58,21 +58,21 @@ class StreamRecord(BaseModel, extra="ignore"):
 
 @pytest.fixture
 def placed() -> Iterator[Path]:
-    """A short, private inbox directory, as the runtime insists on one."""
+    """A short, private wake socket directory, as the runtime insists on one."""
     directory = Path(tempfile.mkdtemp(prefix="lupi", dir="/tmp"))
     directory.chmod(0o700)
     yield directory
     shutil.rmtree(directory, ignore_errors=True)
 
 
-def test_a_placed_inbox_takes_its_own_session_s_frame_and_drops_another_s(
+def test_a_placed_wake_socket_takes_its_own_session_s_frame_and_drops_another_s(
     placed: Path, tmp_path: Path
 ) -> None:
     binary = shutil.which("claude")
     if binary is None:
         pytest.skip("no claude CLI on PATH")
-    inbox = Path(
-        SessionInboxes(directory=str(placed)).socket(
+    address = Path(
+        WakeSockets(directory=str(placed)).socket(
             Path("/probe/repo.git"), mint_member_id()
         )
     )
@@ -85,7 +85,7 @@ def test_a_placed_inbox_takes_its_own_session_s_frame_and_drops_another_s(
             "--session-id",
             session,
             "--messaging-socket-path",
-            str(inbox),
+            str(address),
             "--output-format",
             "stream-json",
             "--verbose",
@@ -97,7 +97,7 @@ def test_a_placed_inbox_takes_its_own_session_s_frame_and_drops_another_s(
         cwd=tmp_path,
     )
     try:
-        bound = any(inbox.is_socket() or time.sleep(0.5) for _ in range(60))
+        bound = any(address.is_socket() or time.sleep(0.5) for _ in range(60))
         scanned = [
             directory / f"{running.pid}.sock"
             for directory in (
@@ -107,20 +107,20 @@ def test_a_placed_inbox_takes_its_own_session_s_frame_and_drops_another_s(
         ]
         published = [path for path in scanned if path.exists()]
         stray = injected(
-            inbox,
+            address,
             "Stop counting and reply with exactly WRONG-SESSION-41",
             str(uuid.uuid4()),
         )
         time.sleep(1.0)
         meant = injected(
-            inbox, "Stop counting and reply with exactly RIGHT-SESSION-73", session
+            address, "Stop counting and reply with exactly RIGHT-SESSION-73", session
         )
         out, err = running.communicate(timeout=300)
     finally:
         if running.poll() is None:
             running.kill()
 
-    assert bound, f"no socket at the placed path {inbox}: {err[-400:]}"
+    assert bound, f"no socket at the placed path {address}: {err[-400:]}"
     assert published == [], "the session also bound where its peers scan"
     assert stray.reached and meant.reached, (stray.reason, meant.reason)
     records = [

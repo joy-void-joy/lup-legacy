@@ -284,7 +284,7 @@ def test_an_identity_joins_the_roster_in_both_outputs(
     monkeypatch.setattr(
         claude_runtime, "launched_member", lambda _root, _name=None: MEMBER
     )
-    agent = Claude(cwd=tmp_path, identity=Member(name="reviewer", inboxes=None))
+    agent = Claude(cwd=tmp_path, identity=Member(name="reviewer", wake_sockets=None))
     compiled = ClaudeSessionOpener(agent).compiled()
     arguments = claude_arguments(agent, MEMBER, None, [])
 

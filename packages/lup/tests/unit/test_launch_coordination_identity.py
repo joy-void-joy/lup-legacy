@@ -30,7 +30,7 @@ from lup.coordination.identity import (
 )
 from lup.coordination.repository import RepositoryPeers
 from lup.coordination.wake import WakePath
-from lup.harness.messaging import SessionInboxes
+from lup.harness.messaging import WakeSockets
 from lup.workspace.edition import shared_git_directory
 
 
@@ -41,8 +41,8 @@ def composition() -> Mock:
     plugin.marketplace = "test"
     built = Mock()
     built.recipe.source.plugins = [plugin]
-    # Declined, so no launch here binds an inbox on the machine's directory.
-    built.recipe.source.image.inboxes = SessionInboxes(directory="")
+    # Declined, so no launch here binds a wake socket in the machine's directory.
+    built.recipe.source.image.wake_sockets = WakeSockets(directory="")
     return built
 
 
@@ -230,17 +230,17 @@ def launched(
     launch.launch_claude(composition(), extra, profiles, None, None, False)
 
 
-def placed(sockets: SessionInboxes, root: Path, member_id: str, cli_name: str) -> str:
-    """Where a launch in *root* places one member's inbox, which is somewhere."""
-    found = launch_session.placed_inbox(
+def placed(sockets: WakeSockets, root: Path, member_id: str, cli_name: str) -> str:
+    """Where a launch in *root* places one member's wake socket, which is somewhere."""
+    found = launch_session.placed_wake_socket(
         sockets, root, LaunchedMember(member_id=member_id, cli_name=cli_name)
     )
     assert found is not None
     return found
 
 
-def joined(root: Path, sockets: SessionInboxes, cli_name: str) -> tuple[str, str]:
-    """A member on *root*'s roster that declared the inbox placed for it."""
+def joined(root: Path, sockets: WakeSockets, cli_name: str) -> tuple[str, str]:
+    """A member on *root*'s roster that declared the wake socket placed for it."""
     member = mint_member_id()
     address = sockets.socket(shared_git_directory(root), member)
     RepositoryPeers(root).join(
@@ -252,37 +252,39 @@ def joined(root: Path, sockets: SessionInboxes, cli_name: str) -> tuple[str, str
     return member, address
 
 
-def test_the_inbox_is_keyed_by_the_member_id_and_not_its_name(
-    tmp_path: Path, inboxes: SessionInboxes
+def test_the_wake_socket_is_keyed_by_the_member_id_and_not_its_name(
+    tmp_path: Path, wake_sockets: WakeSockets
 ) -> None:
     """The id addresses; the name is for a person to read, and repeats."""
     member = mint_member_id()
 
-    address = placed(inboxes, tmp_path, member, "display-only")
+    address = placed(wake_sockets, tmp_path, member, "display-only")
 
-    assert address == inboxes.socket(shared_git_directory(tmp_path), member)
+    assert address == wake_sockets.socket(shared_git_directory(tmp_path), member)
     assert Path(address).name.endswith(f"--{member}.sock")
     assert "display-only" not in address
 
 
-def test_two_sessions_with_one_display_name_bind_two_inboxes(
-    tmp_path: Path, inboxes: SessionInboxes
+def test_two_sessions_with_one_display_name_bind_two_wake_sockets(
+    tmp_path: Path, wake_sockets: WakeSockets
 ) -> None:
     """Display names repeat by design, and each member still binds its own."""
-    first = placed(inboxes, tmp_path, mint_member_id(), "dev")
-    second = placed(inboxes, tmp_path, mint_member_id(), "dev")
+    first = placed(wake_sockets, tmp_path, mint_member_id(), "dev")
+    second = placed(wake_sockets, tmp_path, mint_member_id(), "dev")
 
     assert first != second
 
 
-def test_a_rename_keeps_the_inbox(tmp_path: Path, inboxes: SessionInboxes) -> None:
+def test_a_rename_keeps_the_wake_socket(
+    tmp_path: Path, wake_sockets: WakeSockets
+) -> None:
     """A session renames itself at will, and its peers go on reaching it.
 
     The roster's handle is what a peer writes to, and it is the path the
     session bound; a path keyed by the name would be a handle the next rename
     left pointing at nothing.
     """
-    member, address = joined(tmp_path, inboxes, "dev")
+    member, address = joined(tmp_path, wake_sockets, "dev")
     peers = RepositoryPeers(tmp_path)
 
     peers.rename(member, "reviewing-the-socket")
@@ -290,12 +292,12 @@ def test_a_rename_keeps_the_inbox(tmp_path: Path, inboxes: SessionInboxes) -> No
 
     assert row is not None
     assert row.wake.handle == address
-    assert placed(inboxes, tmp_path, member, "reviewing-the-socket") == address
+    assert placed(wake_sockets, tmp_path, member, "reviewing-the-socket") == address
 
 
 @pytest.mark.usefixtures("unix_socket")
 def test_a_stale_socket_of_a_departed_member_is_cleared(
-    tmp_path: Path, inboxes: SessionInboxes
+    tmp_path: Path, wake_sockets: WakeSockets
 ) -> None:
     """The roster says its owner left, and nothing answers where it bound.
 
@@ -303,13 +305,13 @@ def test_a_stale_socket_of_a_departed_member_is_cleared(
     again, so it blocks nobody; it is removed so the directory holds the
     sessions there are rather than every session there was.
     """
-    inboxes.serve()
-    gone, address = joined(tmp_path, inboxes, "dev")
+    wake_sockets.serve()
+    gone, address = joined(tmp_path, wake_sockets, "dev")
     RepositoryPeers(tmp_path).leave(gone)
     with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as crashed:
         crashed.bind(address)
 
-    newcomer = placed(inboxes, tmp_path, mint_member_id(), "dev")
+    newcomer = placed(wake_sockets, tmp_path, mint_member_id(), "dev")
 
     assert not Path(address).exists()
     assert newcomer != address
@@ -317,22 +319,22 @@ def test_a_stale_socket_of_a_departed_member_is_cleared(
 
 @pytest.mark.usefixtures("unix_socket")
 def test_a_live_member_s_socket_is_left_whatever_answers_on_it(
-    tmp_path: Path, inboxes: SessionInboxes
+    tmp_path: Path, wake_sockets: WakeSockets
 ) -> None:
     """Only the roster says a member is gone; a quiet socket does not."""
-    inboxes.serve()
-    _, address = joined(tmp_path, inboxes, "dev")
+    wake_sockets.serve()
+    _, address = joined(tmp_path, wake_sockets, "dev")
     with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as quiet:
         quiet.bind(address)
 
-    placed(inboxes, tmp_path, mint_member_id(), "dev")
+    placed(wake_sockets, tmp_path, mint_member_id(), "dev")
 
     assert Path(address).is_socket()
 
 
 @pytest.mark.usefixtures("unix_socket")
 def test_a_departed_member_still_listening_keeps_its_socket(
-    tmp_path: Path, inboxes: SessionInboxes
+    tmp_path: Path, wake_sockets: WakeSockets
 ) -> None:
     """The roster reads a lapsed pulse as a departure, and a process may outlive it.
 
@@ -340,31 +342,31 @@ def test_a_departed_member_still_listening_keeps_its_socket(
     each session still listens. Its socket stays, so a peer can still wake it
     once it beats again.
     """
-    inboxes.serve()
-    gone, address = joined(tmp_path, inboxes, "dev")
+    wake_sockets.serve()
+    gone, address = joined(tmp_path, wake_sockets, "dev")
     RepositoryPeers(tmp_path).leave(gone)
 
     with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as listening:
         listening.bind(address)
         listening.listen(1)
-        placed(inboxes, tmp_path, mint_member_id(), "dev")
+        placed(wake_sockets, tmp_path, mint_member_id(), "dev")
 
         assert Path(address).is_socket()
 
 
 @pytest.mark.usefixtures("socket_refused")
 def test_a_file_at_the_member_s_own_path_is_its_own_and_is_replaced(
-    tmp_path: Path, inboxes: SessionInboxes
+    tmp_path: Path, wake_sockets: WakeSockets
 ) -> None:
     """Nothing but this member was ever keyed there, so nothing is asked.
 
     Not even from a shell refused ``socket(AF_UNIX)``: the file is an earlier
     run of this same member, and the launch replaces it rather than refusing.
     """
-    inboxes.serve()
+    wake_sockets.serve()
     member = mint_member_id()
-    own = Path(inboxes.socket(shared_git_directory(tmp_path), member))
+    own = Path(wake_sockets.socket(shared_git_directory(tmp_path), member))
     own.touch()
 
-    assert placed(inboxes, tmp_path, member, "dev") == str(own)
+    assert placed(wake_sockets, tmp_path, member, "dev") == str(own)
     assert not own.exists()

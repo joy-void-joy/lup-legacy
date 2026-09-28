@@ -29,14 +29,14 @@ from pydantic_settings import BaseSettings
 from lup.coordination.wake import WakePath
 
 CLAUDE_SESSION_ENV = "CLAUDE_CODE_SESSION_ID"
-CLAUDE_INBOX_ENV = "CLAUDE_CODE_MESSAGING_SOCKET"
+CLAUDE_WAKE_SOCKET_ENV = "CLAUDE_CODE_MESSAGING_SOCKET"
 
 
 class ClaudeSessionEnv(BaseSettings):
     """The runtime's half of an unlaunched session's identity, read from the environment."""
 
     session_id: str = Field(default="", validation_alias=CLAUDE_SESSION_ENV)
-    inbox: str = Field(default="", validation_alias=CLAUDE_INBOX_ENV)
+    wake_socket: str = Field(default="", validation_alias=CLAUDE_WAKE_SOCKET_ENV)
 
 
 def claude_session_id() -> str:
@@ -45,34 +45,35 @@ def claude_session_id() -> str:
 
 
 def claude_wake(cli_name: str) -> WakePath:
-    """The path of this session's own inbox socket, which is what wakes it.
+    """The path of this session's own wake socket, which is what wakes it.
 
     Read from the environment rather than derived. The session binds the
     socket and the launcher only asks where; a path this adapter computed
     would be a second opinion about a file exactly one process created, and
-    wrong for every session whose inbox was placed somewhere else. The
+    wrong for every session whose socket was placed somewhere else. The
     runtime sets this variable for the processes a session starts, which is
-    what lets a tool server report its own session's inbox without being
-    told what it is.
+    what lets a tool server report its own session's wake socket without
+    being told what it is.
 
     *cli_name* is accepted and unused, because what wakes a Claude session is
     a path on this filesystem rather than a name: the roster's name reaches
     the session through a tool another session holds, and the wake does not
     go that way.
 
-    The session id travels beside the path, because the receiving inbox
-    checks a frame against its own id and drops one that disagrees. A path is
-    not unique the way a session is -- every contained session's default inbox
-    is named after a pid its own namespace assigns -- so the pair is what
-    reaches a member, where the path alone reaches whoever bound it.
+    The session id travels beside the path, because the receiving socket
+    checks a frame against its own id and drops one that disagrees. A path the
+    runtime chose is not unique the way a session is -- every contained
+    session's default socket is named after a pid its own namespace assigns --
+    so the pair is what reaches a member, where the path alone reaches whoever
+    bound it.
 
     Blank where the runtime set nothing, which is the honest answer for a
-    session whose inbox this process cannot name. The mail still waits in the
-    durable record, and a sender is told nothing will nudge it.
+    session whose wake socket this process cannot name. The mail still waits
+    in the durable record, and a sender is told nothing will nudge it.
     """
     reported = ClaudeSessionEnv()
-    if not reported.inbox:
+    if not reported.wake_socket:
         return WakePath()
     return WakePath(
-        runtime="claude", handle=reported.inbox, session=reported.session_id
+        runtime="claude", handle=reported.wake_socket, session=reported.session_id
     )

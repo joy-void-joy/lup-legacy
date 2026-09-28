@@ -71,7 +71,7 @@ from lup.launch.session import (
     StandingGrants,
     ambient_config_home,
     personal_config,
-    placed_inbox,
+    placed_wake_socket,
     runtime_preflight,
     session_argv,
     start_harness_transcript,
@@ -614,7 +614,9 @@ def launch_claude(
     # shows the name in its own chrome and the flag carrying it is built now;
     # the same identity is handed on so the exported one agrees with it.
     member = launched_member(root)
-    inbox = placed_inbox(composition.recipe.source.image.inboxes, root, member)
+    wake_socket = placed_wake_socket(
+        composition.recipe.source.image.wake_sockets, root, member
+    )
     named = [
         root / ".claude" / "plugins" / plugin.name,
         *companion_plugin_directories(root, plugin.name),
@@ -650,9 +652,14 @@ def launch_claude(
             # still wins.
             "--name",
             member.cli_name,
-            # Where this session binds the inbox a peer nudges it through;
-            # nowhere leaves the flag off and the session on its own default.
-            *(["--messaging-socket-path", inbox] if inbox is not None else []),
+            # Where this session binds the wake socket a peer nudges it
+            # through, keyed by the member id minted above; nowhere leaves the
+            # flag off and the session on its own default.
+            *(
+                ["--messaging-socket-path", wake_socket]
+                if wake_socket is not None
+                else []
+            ),
             *(mode.command_words("claude") if mode is not None else []),
             *extra_args,
         ]
