@@ -628,18 +628,6 @@ class RepositoryPeers:
             self.root, window=self.pulse.stale_after_seconds, without=USER_KIND
         )
 
-    def woken_through(self, handle: str) -> list[str]:
-        """Every member whose declared wake path is *handle*, by what it is called.
-
-        The departed included, because the reader is one who found something
-        listening where a member said it would be: a session whose pulse has
-        lapsed while its process runs on is exactly who that is, and naming
-        it is the difference between an operator who can end it and one told
-        only that something is there.
-        """
-        rows = [row for row in self.present() if row.wake.handle == handle]
-        return [self.called(row.actor.id) or row.actor.id for row in rows]
-
     def held(self) -> list[HeldPath]:
         """Every claim a live session is holding, newest first."""
         return [folded_held_path(row) for row in store.held(self.root, self.live_ids())]

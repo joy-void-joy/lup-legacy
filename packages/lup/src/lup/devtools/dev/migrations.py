@@ -1347,6 +1347,31 @@ DECLARED: list[Migration] = [
             ),
         ],
     ),
+    Migration(
+        subjects=["UnixSocketRefused", "cleared", "RepositoryPeers.woken_through"],
+        reason=(
+            "a session's socket is keyed by its member id, which is never minted "
+            "twice, so a launch no longer probes its own path and refuses over a "
+            "listener: a file there is an earlier run of the same member and is "
+            "replaced, and a departed member's socket is removed only where the "
+            "roster says it left and nothing answers on it"
+        ),
+        steps=[
+            MigrationStep(
+                instruction=(
+                    "Call SessionInboxes.retire(repository, member_id, handle) from "
+                    "lup.harness.messaging where cleared(address) removed a dead "
+                    "socket: ask it only for a member the roster reads as not "
+                    "running, and it answers whether it removed the file, leaving "
+                    "one it cannot ask about where cleared raised "
+                    "UnixSocketRefused. Nothing replaces woken_through: no launch "
+                    "is refused over a socket any more, so no holder is named. "
+                    "SessionInboxes.socket(repository, member_id) takes the "
+                    "member's id where it took its display name."
+                )
+            ),
+        ],
+    ),
 ]
 """Every break this library has taken since its last release, and what to do.
 

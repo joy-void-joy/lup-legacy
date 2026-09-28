@@ -24,6 +24,7 @@ from pathlib import Path
 import pytest
 from pydantic import BaseModel, Field
 
+from lup.coordination.identity import mint_member_id
 from lup.coordination.wake import injected
 from lup.harness.messaging import SessionInboxes
 from lup.types import JsonObject, JsonValue
@@ -72,7 +73,7 @@ def test_a_placed_inbox_takes_its_own_session_s_frame_and_drops_another_s(
         pytest.skip("no claude CLI on PATH")
     inbox = Path(
         SessionInboxes(directory=str(placed)).socket(
-            Path("/probe/repo.git"), "wake-probe"
+            Path("/probe/repo.git"), mint_member_id()
         )
     )
     session = str(uuid.uuid4())

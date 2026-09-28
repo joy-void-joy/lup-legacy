@@ -325,7 +325,10 @@ Declaring it is not enough to reach anybody. A path is only good to a process
 that can open it, and a contained session's filesystem is its own — so the
 launcher places these sockets in one directory every session it starts can
 reach, mounted under the path it has outside, because the path is what a
-member publishes and another container reads back. Reachability of that path
+member publishes and another container reads back. Each is keyed by the
+member's id, never its name: a name repeats and changes at a rename, and the
+id is what addresses. A socket file is removed only where the roster says its
+owner left and nothing still answers on it. Reachability of that path
 is the whole of the credential: the frame carries no token, so the directory
 those sockets live in is the boundary, and widening it widens who can put text
 into a session. It is deliberately not a directory the runtime scans for
