@@ -459,6 +459,9 @@ FIXTURE_PATH_ROLES = [
     # The files the gate's suites collect, derived here as the catalog derives
     # them, so a fixture judging a bun test judges what the runtime does.
     *declared_role_rows(collected_test_roles(declared_test_roots())),
+    # A sibling worktree of this repository, as the host spells its scratch
+    # where it stands: the checkout's own `**/tmp`, rooted at that worktree.
+    PathRoleRow(root="/srv/tree/sibling/**/tmp", role="scratch"),
 ]
 
 FIXTURE_PATH_RULES = declared_path_rules(declared_hook_set())
@@ -1258,6 +1261,22 @@ SHELL_POLICY_CASES = [
     DecisionCase(input="git worktree move ../wt ../moved", effect="allow"),
     DecisionCase(input="cat .git ../repo.git/worktrees/wt/gitdir", effect="allow"),
     DecisionCase(input="echo x > tmp/refs/heads/main", effect="allow"),
+    # A sibling worktree's scratch is scratch for every write and every
+    # delete, as this checkout's is: one rule, whichever spelling reaches it.
+    # Its production stays another tree's, and a plugin tree under its scratch
+    # is still one this checkout's scratch does not hold.
+    DecisionCase(input="echo x > /srv/tree/sibling/tmp/probe.txt", effect="allow"),
+    DecisionCase(input="cp README.md /srv/tree/sibling/tmp/probe.txt", effect="allow"),
+    DecisionCase(input="rm /srv/tree/sibling/tmp/probe.txt", effect="allow"),
+    DecisionCase(input="rm -rf /srv/tree/sibling/tmp/run", effect="allow"),
+    DecisionCase(
+        input="mv /srv/tree/sibling/tmp/a /srv/tree/sibling/tmp/b", effect="allow"
+    ),
+    DecisionCase(input="rm /srv/tree/sibling/src/app.py", effect="ask"),
+    DecisionCase(input="cp README.md /srv/tree/sibling/src/app.py", effect="ask"),
+    DecisionCase(
+        input="mkdir -p /srv/tree/sibling/tmp/kit/.claude/plugins/lup", effect="deny"
+    ),
     # A generated plugin tree is a build product the running runtime already
     # loaded, so writing one by hand changes nothing it will honor and the
     # next generation reverts it. Every writing form refuses it and names the

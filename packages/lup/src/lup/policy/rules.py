@@ -42,6 +42,7 @@ from lup.policy.assets.host import (
     recoverable_write_targets,
     resolved_write_targets,
     rewritten_text,
+    sibling_worktrees,
     text_at,
     this_checkout_path,
     tracked_write_targets,
@@ -62,7 +63,7 @@ from lup.policy.kernel.lex import (
     shell_written_targets,
 )
 from lup.policy.kernel.peers import decide_foreign_claim, settled_with_claim
-from lup.policy.kernel.roles import displaced_targets
+from lup.policy.kernel.roles import displaced_targets, sibling_scratch_rows
 from lup.policy.kernel.rows import (
     AcceptanceGuardRow,
     AntiPatternRow,
@@ -449,6 +450,17 @@ class ShellPolicy(DecisionPolicy[ShellCommand]):
         # tables would be two answers to what may be written.
         rewritten = self.rewritten_documents(event)
         edits = self.authored
+        # Another checkout of this repository keeps this one's scratch, as
+        # the dispatchers read it: asked of Git only where the command names
+        # an absolute path at all.
+        siblings = (
+            sibling_worktrees(root)
+            if any(
+                target.startswith("/")
+                for target in [*shell_write_targets(event.command), *acted_on, *flagged]
+            )
+            else []
+        )
         verdict = pydantic_decision(
             decide_shell(
                 event.command,
@@ -458,7 +470,10 @@ class ShellPolicy(DecisionPolicy[ShellCommand]):
                 sandboxed=self.sandbox_active and not event.unsandboxed,
                 excluded_commands=self.sandbox_excluded_commands,
                 trusted_script_roots=self.trusted_script_roots,
-                path_roles=self.path_roles,
+                path_roles=[
+                    *self.path_roles,
+                    *sibling_scratch_rows(siblings, self.path_roles),
+                ],
                 path_rules=self.path_rules,
                 interactive=self.interactive,
                 existing_targets=[

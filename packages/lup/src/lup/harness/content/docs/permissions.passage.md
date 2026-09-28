@@ -402,7 +402,9 @@ the subcommand that has one.
 opaque result rides only argument-safe commands; command position, deep
 nesting, and backticks stay conservative. File writes (redirection, `rm`)
 auto-allow only into a repo `tmp/` — the one at the top or any a package
-opened beside itself — and the machine's temporary root, the session
+opened beside itself, in this checkout or in another worktree of the same
+repository reached by its absolute path, where every write and every delete
+meet the one rule — and the machine's temporary root, the session
 scratchpad (`$TMPDIR`, `/tmp/claude-*`) with the rest of `/tmp` around it,
 which no review pass reads and no capture holds (reassigning `TMPDIR` asks,
 and a suffix climbing clear of `/tmp` leaves the grant behind); discards and

@@ -395,8 +395,11 @@ def path_role(path: str, rows: list[PathRoleRow]) -> PathRoleName:
     The two absolute scratch roots answer first — the session scratchpad the
     harness mints, and the machine's temporary root around it — because
     reaching the declared roots below would mean passing the guard that keeps
-    an absolute path from claiming a role by prefix. Every other path outside
-    the repository stays production: a file in some other tree is not
+    an absolute path from claiming a role by prefix. A path outside the
+    repository is then read only against rows rooted at an absolute path,
+    which the host spells for a tree it placed -- another worktree of this
+    repository, whose declared scratch is scratch as this checkout's is. Every
+    other path outside stays production: a file in some other tree is not
     disposable merely for being elsewhere, while one under ``/tmp`` is
     disposable by what that root is for.
     """
@@ -404,6 +407,13 @@ def path_role(path: str, rows: list[PathRoleRow]) -> PathRoleName:
     if is_session_scratch_target(path) or is_temporary_root_target(path):
         return "scratch"
     if normalized.startswith(("/", "../")) or normalized == "..":
+        for row in rows:
+            if (
+                row["root"].startswith("/")
+                and spells_its_path(normalized)
+                and role_pattern_covers(row["root"], normalized)
+            ):
+                return row["role"]
         return "production"
     # A declared pattern matches directory names, and an unexpanded word is
     # not one. The scratchpad above is the one opaque spelling with an answer,
@@ -414,6 +424,28 @@ def path_role(path: str, rows: list[PathRoleRow]) -> PathRoleName:
         if role_pattern_covers(row["root"], normalized):
             return row["role"]
     return "production"
+
+
+def sibling_scratch_rows(
+    trees: list[str], rows: list[PathRoleRow]
+) -> list[PathRoleRow]:
+    """This checkout's declared scratch, rooted at each other checkout of it.
+
+    Another worktree of the same repository is the same project on another
+    branch, so what this one declares disposable is disposable there -- a
+    write into its `tmp/` and a delete there are one rule, as they are here.
+    Only scratch crosses: the rest of that tree is another checkout's
+    production, and a role granting anything there would be reading this
+    one's history as if it were that one's. Spelled where each tree stands,
+    because an absolute path is how a session reaches one, and the only
+    spelling :func:`path_role` reads against a row rooted there.
+    """
+    return [
+        PathRoleRow(root=posixpath.join(tree, row["root"]), role=row["role"])
+        for tree in trees
+        for row in rows
+        if row["role"] == "scratch" and not row["root"].startswith("/")
+    ]
 
 
 def declared_scratch(spelled: str, rows: list[PathRoleRow]) -> bool:

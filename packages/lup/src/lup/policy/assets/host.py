@@ -1324,6 +1324,35 @@ def worktree_root(path_text: str) -> str:
     return ""
 
 
+def sibling_worktrees(root: Path | None = None) -> list[str]:
+    """Every other checkout of the repository holding *root*, where each stands.
+
+    Read from `git worktree list --porcelain`, the one place Git states them:
+    each entry is a block of lines ending at a blank one, opened by
+    `worktree <path>`, and one carrying `bare` is the repository a linked
+    layout keeps beside its checkouts, which holds none to write into. The
+    checkout *root* sits in is left out -- its own paths are read relative to
+    it already. Nothing where Git cannot answer.
+    """
+    where = Path.cwd() if root is None else root
+    here = worktree_root(str(where.resolve()))
+    lines = git_answers(["worktree", "list", "--porcelain"], where) or []
+
+    def checkouts():
+        """Each entry's path, once its block has said it is not the bare one."""
+        tree = ""
+        for line in [*lines, ""]:
+            if line.startswith("worktree "):
+                tree = line.removeprefix("worktree ")
+            if line == "bare":
+                tree = ""
+            if not line and tree:
+                yield tree
+                tree = ""
+
+    return [tree for tree in checkouts() if str(Path(tree).resolve()) != here]
+
+
 def shared_git_directory(path_text: str) -> str:
     """The one directory every worktree of a repository can name alike.
 

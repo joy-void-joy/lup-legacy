@@ -56,6 +56,7 @@ from host import (
     recoverable_write_targets,
     resolved_write_targets,
     rewritten_text,
+    sibling_worktrees,
     record_deferral,
     record_question,
     review_hook_call,
@@ -105,7 +106,7 @@ from kernel.rows import (
 )
 from kernel.spawns import decide_spawn
 from kernel.words import INTERPRETERS
-from kernel.roles import displaced_targets
+from kernel.roles import displaced_targets, sibling_scratch_rows
 from kernel.shell import decide_shell, sandbox_excluded, shell_posture_targets
 from kernel.tools import decide_tool
 from kernel.withheld import withheld_edit
@@ -204,6 +205,17 @@ def bash_decision(
     reading = rewritten_documents(
         command, cwd or Path.cwd(), autonomous, agent_identity
     )
+    # Another checkout of this repository keeps this one's scratch, reached by
+    # the absolute path a session spells it with -- so Git is asked for the
+    # checkouts only where the command names such a path at all.
+    siblings = (
+        sibling_worktrees(cwd)
+        if any(
+            target.startswith("/")
+            for target in [*shell_write_targets(command), *acted_on, *flagged]
+        )
+        else []
+    )
     verdict = decide_shell(
         command,
         SHELL_RULES,
@@ -212,7 +224,7 @@ def bash_decision(
         sandboxed=sandboxed,
         excluded_commands=SANDBOX_EXCLUDED_COMMANDS,
         trusted_script_roots=managed_script_roots(managed_root),
-        path_roles=PATH_ROLES,
+        path_roles=[*PATH_ROLES, *sibling_scratch_rows(siblings, PATH_ROLES)],
         path_rules=PATH_RULES,
         existing_targets=existing_write_targets(
             [*shell_write_targets(command), *acted_on, *flagged], cwd

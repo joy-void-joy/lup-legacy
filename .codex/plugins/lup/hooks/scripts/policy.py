@@ -80,7 +80,7 @@ from kernel.rows import (
 )
 from kernel.spawns import decide_spawn
 from kernel.words import INTERPRETERS
-from kernel.roles import displaced_targets
+from kernel.roles import displaced_targets, sibling_scratch_rows
 from kernel.shell import decide_shell, sandbox_excluded, shell_posture_targets
 from kernel.tools import decide_tool
 from kernel.withheld import withheld_edit
@@ -1401,6 +1401,35 @@ def worktree_root(path_text: str) -> str:
         if is_git_marker(root / ".git"):
             return str(root)
     return ""
+
+
+def sibling_worktrees(root: Path | None = None) -> list[str]:
+    """Every other checkout of the repository holding *root*, where each stands.
+
+    Read from `git worktree list --porcelain`, the one place Git states them:
+    each entry is a block of lines ending at a blank one, opened by
+    `worktree <path>`, and one carrying `bare` is the repository a linked
+    layout keeps beside its checkouts, which holds none to write into. The
+    checkout *root* sits in is left out -- its own paths are read relative to
+    it already. Nothing where Git cannot answer.
+    """
+    where = Path.cwd() if root is None else root
+    here = worktree_root(str(where.resolve()))
+    lines = git_answers(["worktree", "list", "--porcelain"], where) or []
+
+    def checkouts():
+        """Each entry's path, once its block has said it is not the bare one."""
+        tree = ""
+        for line in [*lines, ""]:
+            if line.startswith("worktree "):
+                tree = line.removeprefix("worktree ")
+            if line == "bare":
+                tree = ""
+            if not line and tree:
+                yield tree
+                tree = ""
+
+    return [tree for tree in checkouts() if str(Path(tree).resolve()) != here]
 
 
 def shared_git_directory(path_text: str) -> str:
@@ -3084,6 +3113,17 @@ def bash_decision(
     reading = rewritten_documents(
         command, cwd or Path.cwd(), autonomous, agent_identity
     )
+    # Another checkout of this repository keeps this one's scratch, reached by
+    # the absolute path a session spells it with -- so Git is asked for the
+    # checkouts only where the command names such a path at all.
+    siblings = (
+        sibling_worktrees(cwd)
+        if any(
+            target.startswith("/")
+            for target in [*shell_write_targets(command), *acted_on, *flagged]
+        )
+        else []
+    )
     verdict = decide_shell(
         command,
         SHELL_RULES,
@@ -3092,7 +3132,7 @@ def bash_decision(
         sandboxed=sandboxed,
         excluded_commands=SANDBOX_EXCLUDED_COMMANDS,
         trusted_script_roots=managed_script_roots(managed_root),
-        path_roles=PATH_ROLES,
+        path_roles=[*PATH_ROLES, *sibling_scratch_rows(siblings, PATH_ROLES)],
         path_rules=PATH_RULES,
         existing_targets=existing_write_targets(
             [*shell_write_targets(command), *acted_on, *flagged], cwd
