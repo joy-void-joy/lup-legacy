@@ -733,6 +733,6 @@ def test_the_vocabulary_probe_reads_the_policy_rather_than_a_copy() -> None:
         item for item in manifest().requirements if item.capability == "shell commands"
     )
 
-    assert entry.exercise.programs() == carried_vocabulary()
+    assert entry.exercise.programs() == list(carried_vocabulary())
     assert not entry.absence.refuses()
     assert entry.absence.costly()

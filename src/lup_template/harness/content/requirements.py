@@ -15,6 +15,8 @@ laptop with no bun and no clipboard is told nothing at all at launch, which
 is correct -- neither is a fault of that machine.
 """
 
+from functools import cache
+
 from lup.harness.egress import SessionEgress
 from lup.harness.requirements import Manifest
 from lup.harness.toolchain import (
@@ -48,9 +50,10 @@ from lup_template.harness.content.image import agent_image
 from lup_template.harness.content.shell_vocabulary import SHELL_RULES
 
 
+@cache
 def carried_vocabulary(
     unpackaged: tuple[str, ...] = ("man",),
-) -> list[str]:
+) -> tuple[str, ...]:
     """The programs this project's policy declares safe *and* expects to find.
 
     Derived from the table rather than listed beside it, which is the whole
@@ -65,12 +68,16 @@ def carried_vocabulary(
     installed without working, which is the failure this whole module is
     built to refuse to report as health. A host that has one is simply not
     measured here; a session that wants a manual page has the web.
+
+    Answered once per process: deriving it judges every word of the table
+    through the shell policy, which made it most of what building the harness
+    cost, and both inputs are declarations that do not move while it runs.
     """
-    return [
+    return tuple(
         name
         for name in allowed_programs(SHELL_RULES.over(default_vocabulary()))
         if name not in unpackaged
-    ]
+    )
 
 
 def manifest(boundary: SessionEgress | None = None) -> Manifest:
@@ -137,7 +144,7 @@ def manifest(boundary: SessionEgress | None = None) -> Manifest:
             # among the defaults because it is one, and early because a
             # session that cannot compare two files finds out by being told
             # the wrong thing rather than by being stopped.
-            shell_vocabulary_requirement(vocabulary=carried_vocabulary()),
+            shell_vocabulary_requirement(vocabulary=list(carried_vocabulary())),
             # What the placement vocabulary rests on, asked rather than
             # assumed. The relay and the store are the checkout's, so the host
             # roster answers for both however the session opens; the mount

@@ -399,8 +399,10 @@ def create_dev_app(
             typer.Option(
                 "--changed",
                 help="Run ruff and pyright over the Python files changed since "
-                "--since (default: the integration branch) and no tests at all — "
-                "the loop while a change is moving, not the bar a commit passes",
+                "the merge base with --since (default: this branch's recorded "
+                "base), and the declared-migrations row from that base, naming "
+                "what else changed and every gate left unrun — the loop while a "
+                "change is moving, not the bar a commit passes",
             ),
         ] = False,
         base: Annotated[
@@ -420,7 +422,9 @@ def create_dev_app(
 
             check.run_changed(
                 declarations.project,
-                since if since is not None else get_integration_branch(),
+                check.change_base(since, get_integration_branch()),
+                declarations.test_roots,
+                declarations.spread,
                 fix=fix,
             )
             return

@@ -42,6 +42,7 @@ publishing.
 """
 
 from collections.abc import Sequence
+from functools import cache
 
 from pydantic import BaseModel
 
@@ -3012,9 +3013,22 @@ def default_vocabulary() -> list[ShellCommandRule]:
 
     A project with no opinion yet composes this and gets a working agent; one
     that has an opinion replaces the groups it differs on rather than this
-    call.
+    call. The list is the caller's own; the rules in it are
+    :func:`offered_rules`, built once and shared.
     """
-    return [
+    return list(offered_rules())
+
+
+@cache
+def offered_rules() -> tuple[ShellCommandRule, ...]:
+    """The offered groups in their declared order, built once per process.
+
+    Several hundred models, tens of milliseconds to build, asked for by every
+    policy, survey and rendered dispatcher -- by a test suite, thousands of
+    times. Frozen, so one set serves every caller; a tuple, so no caller can
+    reorder or extend what the next one reads.
+    """
+    return (
         *read_only_rules(),
         *judged_ask_rules(),
         *redirected_rules(),
@@ -3026,4 +3040,4 @@ def default_vocabulary() -> list[ShellCommandRule]:
         gh_rule(),
         docker_rule(),
         codex_rule(),
-    ]
+    )

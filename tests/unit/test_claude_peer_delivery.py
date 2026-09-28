@@ -20,7 +20,6 @@ arrives once, a redirect stops the call it arrived before, and a store that is
 not there stops nothing.
 """
 
-import importlib.util
 import json
 from pathlib import Path
 from types import ModuleType
@@ -30,6 +29,7 @@ from lup.coordination.bare.mail import new_message, post
 from lup.coordination.identity import member_ref
 from lup.coordination.mail import ActorMail
 from lup.types import JsonObject
+from tests.unit.bundled import bundled
 
 RUNTIME = Path(".claude/plugins/lup/hooks/runtime/coordination_delivery.py")
 """Where the plugin carries the reader, and the only place its imports resolve."""
@@ -43,13 +43,7 @@ def bundled_delivery() -> ModuleType:
     the store package as a sibling: in the workspace there is no such sibling,
     and in the plugin there is.
     """
-    spec = importlib.util.spec_from_file_location(
-        "bundled_coordination_delivery", RUNTIME.resolve()
-    )
-    assert spec is not None and spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
+    return bundled("bundled_coordination_delivery", RUNTIME)
 
 
 def handed(root: Path, member_id: str) -> JsonObject | None:
