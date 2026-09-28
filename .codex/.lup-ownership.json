@@ -611,14 +611,14 @@
     {
       "path": ".codex/plugins/lup/skills/init/SKILL.md",
       "category": "generated",
-      "sha256": "02a1dfd994286b541429a5c27e5a45c44bf6d3daf396d1d2e9f7931b9ce445b9",
+      "sha256": "75b8cebf5668386d071289cc4d202a62bb11eb20aa5b8f37e69af02402e41d96",
       "semantic_id": "skill.init",
       "executable": false
     },
     {
       "path": ".codex/plugins/lup/skills/install/SKILL.md",
       "category": "generated",
-      "sha256": "26226e4fa6c19a6e650ba42f1e9362c7a5e475e54ab98913d42ea2a6eb1a3f78",
+      "sha256": "bde330c82cdbad89ee57b658dab822e1e3138a1d516d963b397ed71284860a1a",
       "semantic_id": "skill.install",
       "executable": false
     },

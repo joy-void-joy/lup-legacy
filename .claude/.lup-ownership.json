@@ -212,14 +212,14 @@
     {
       "path": ".claude/plugins/lup/commands/init.md",
       "category": "generated",
-      "sha256": "4d8c60058dd4dc8c196b22a0a914788b43ffcea82b26fa1053d92c2c561bb3d8",
+      "sha256": "f755973b3abb2f3d0e64b61658bf143cb1431eb5e0c53cc70d478e4933a41204",
       "semantic_id": "skill.init",
       "executable": false
     },
     {
       "path": ".claude/plugins/lup/commands/install.md",
       "category": "generated",
-      "sha256": "f302ce6bfdd36236c853360585801e545b7d00930a779b7b0153ad870128af6c",
+      "sha256": "59249ef729ac02b417b3f418b3c413fc868edf2aa78e5dea8dc80a008bbd7611",
       "semantic_id": "skill.install",
       "executable": false
     },
