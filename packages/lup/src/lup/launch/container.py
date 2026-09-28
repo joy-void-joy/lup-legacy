@@ -51,6 +51,7 @@ from lup.harness.egress import PROXY_LABEL, SessionEgress
 from lup.harness.image import (
     ContainerEngine,
     Image,
+    SessionPrivileges,
     SessionStreams,
     detected_client,
 )
@@ -1426,6 +1427,7 @@ def build_image(
     engine: ContainerEngine,
     root: Path,
     shown: int = 4,
+    privileges: SessionPrivileges = SessionPrivileges(),
 ) -> None:
     """Build this project's image from the declaration, in the open.
 
@@ -1448,7 +1450,7 @@ def build_image(
     scratch = root / "tmp"
     scratch.mkdir(parents=True, exist_ok=True)
     dockerfile = scratch / "agent.Dockerfile"
-    rendered = image.dockerfile(manifest)
+    rendered = image.dockerfile(manifest, privileges)
     dockerfile.write_text(rendered)
     log = scratch / "agent-build.log"
     argv = [
@@ -1646,6 +1648,7 @@ def contained_argv(
     lease: Lease | None = None,
     devices: list[Device] = [],
     home_seed: HomeSeedPlaces | None = None,
+    privileges: SessionPrivileges = SessionPrivileges(),
 ) -> list[str]:
     """The argv that opens a session in this project's container.
 
@@ -1696,6 +1699,12 @@ def contained_argv(
     a token for one editor window, holding no account and no credential -- so
     which account a session runs under and which editor it talks to are
     independent choices, and only the second decides this.
+
+    ``privileges`` is what the wall grants the session's processes, and
+    sudo among them only on a rootless engine: there the container's root is
+    an unprivileged user on the host, where on a rootful one it is the
+    host's root, held back only by the capabilities dropped -- so that grant
+    is refused before anything is built.
     """
     said = banner if banner is not None else Banner()
     if engine is not None:
@@ -1711,6 +1720,30 @@ def contained_argv(
         if not found.drives_its_server():
             raise LaunchRefused(found.consequence())
         client = found.engine()
+    if privileges.sudo:
+        if not client.rootless():
+            raise LaunchRefused(
+                f"sudo was granted, and `{client.binary}` does not run rootless. "
+                "Root inside a rootful engine's container is the host's root, "
+                "held back only by the capabilities the container drops, so "
+                "sudo is granted only on a rootless engine: use rootless Podman "
+                "or rootless Docker, or drop sudo from the declaration. Packages "
+                "sudo installs vanish with the container either way; declare "
+                "them in the image's `tooling` to keep them."
+            )
+        said.add(
+            [
+                Notice(
+                    text=(
+                        f"sudo: the session may become root in its container, "
+                        f"which `{client.binary}` runs rootless, so an "
+                        "unprivileged user on the host. What it installs vanishes with the "
+                        "container; the image's `tooling` keeps a package."
+                    ),
+                    urgency="boundary",
+                )
+            ]
+        )
     # Every root this launch mounts, before host git reads any of them -- the
     # lease's own layout questions and the prune guard below both run git
     # there -- and before a broker is started, which a refusal would strand.
@@ -1736,11 +1769,11 @@ def contained_argv(
     resolution = resolved_agent_clis(image)
     image = resolution.image
     said.add(resolution.said)
-    rendered = image.dockerfile(manifest)
+    rendered = image.dockerfile(manifest, privileges)
     tag = image_tag(rendered)
     built = not image_matches(tag, rendered, client)
     if built:
-        build_image(image, manifest, tag, client, root)
+        build_image(image, manifest, tag, client, root, privileges=privileges)
     name_for_checkout(tag, checkout_tag(root), client)
     # A build is what leaves an image behind, so it is the moment to sweep:
     # the checkout's own tag has just moved off whatever it ran before.
@@ -1912,6 +1945,7 @@ def contained_argv(
         devices=granted_devices.granted,
         home_seed=home_seed.seed if home_seed is not None else None,
         trust_document=login.trust_document,
+        privileges=privileges,
     )
 
 

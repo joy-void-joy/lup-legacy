@@ -73,7 +73,7 @@ from lup.types import EnvVars, JsonObject, JsonValue
 from lup.workspace.paths import agent_version, harness_runs_path
 from lup.harness.clipboard import ClipboardTransport
 from lup.harness.generate import RuntimeReadiness
-from lup.harness.image import Image
+from lup.harness.image import Image, SessionPrivileges
 from lup.launch.preflight import (
     LaunchSentinels,
     ROOT_VARIABLE,
@@ -784,6 +784,7 @@ def session_argv(
     home_seed: HomeSeedPlaces | None = None,
     clipboard: ClipboardTransport = "commands",
     forwarded: Sequence[str] = (),
+    privileges: SessionPrivileges = SessionPrivileges(),
 ) -> list[str]:
     """The argv that opens a session, inside the declared container or on the host.
 
@@ -820,6 +821,9 @@ def session_argv(
     ``forwarded`` names what else of ``environment`` a contained session is
     handed -- what the host companions held around it export -- carried by
     name into its container, as the launch's own variables are.
+
+    ``privileges`` is what the wall grants a contained session's processes,
+    which a host posture has no container to grant.
 
     What it reads of the declaration arrives piece by piece -- the checkout
     it opens in, the image and its manifest, the policy, the clipboard's way
@@ -921,6 +925,7 @@ def session_argv(
         accessible=accessible,
         devices=devices,
         home_seed=home_seed,
+        privileges=privileges,
     )
     # Verified on the way in, rather than asserted. This is §6's whole point
     # and the launch is where it has to happen: the boundary was built two

@@ -23,11 +23,12 @@ same-path mounting that :func:`run_arguments` refuses to spell any other way.
 
 import json
 from collections.abc import Callable, Mapping, Sequence
+from enum import StrEnum
 from pathlib import Path, PurePosixPath
 from typing import Literal
 
 import sh
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, TypeAdapter, ValidationError
 
 from lup.harness.browser import BrowserBridge
 from lup.harness.clipboard import ClipboardBridge, shim_program
@@ -88,6 +89,76 @@ class CacheVolume(BaseModel, frozen=True):
         return ["-v", f"{self.name}:{self.path}"]
 
 
+class Capability(StrEnum):
+    """One capability a session's root may be given back, as both engines name it.
+
+    What administering the container's own files takes, and nothing else:
+    owning and moving files it does not own (``CHOWN``, ``DAC_OVERRIDE``,
+    ``FOWNER``, ``FSETID``), switching user (``SETUID``, ``SETGID``, which
+    sudo and pacman's download user both do), signalling its own processes
+    (``KILL``), running install scriptlets in a chroot, as pacman does even
+    for the root it runs in (``SYS_CHROOT``), restoring the file capabilities
+    a package ships (``SETFCAP``), and writing the audit record sudo keeps
+    (``AUDIT_WRITE``). Each is in both engines' own default set.
+
+    A capability reaching past the container -- mounts and namespaces, the
+    network stack, other processes' memory, the clock, kernel modules, files
+    by handle -- has no member, so no declaration can spell one.
+    """
+
+    AUDIT_WRITE = "AUDIT_WRITE"
+    CHOWN = "CHOWN"
+    DAC_OVERRIDE = "DAC_OVERRIDE"
+    FOWNER = "FOWNER"
+    FSETID = "FSETID"
+    KILL = "KILL"
+    SETFCAP = "SETFCAP"
+    SETGID = "SETGID"
+    SETUID = "SETUID"
+    SYS_CHROOT = "SYS_CHROOT"
+
+
+class SessionPrivileges(BaseModel, frozen=True, extra="forbid"):
+    """What a session's processes may hold inside its container, and may come to hold.
+
+    Every capability is dropped, and none is given back unless the session
+    may administer its container. The session runs as the operator's own uid
+    with an empty effective set, measured, so dropping the bounding set costs
+    it nothing it used: what the drop closes is the way back up, since a
+    setuid-root binary is granted from that set and the image carries
+    thirteen (``su``, ``mount`` and ``passwd`` among them). ``no-new-privileges``
+    stops the exec that would do the granting.
+
+    ``sudo`` is the one widening, and it is two changes at once: the
+    administering capabilities come back into the bounding set for root to
+    hold, and ``no-new-privileges`` is lifted, since sudo is itself a setuid
+    binary. What the agent holds stays empty either way, because the
+    entrypoint clears the inheritable and ambient sets an engine hands a
+    non-root user before it starts the agent.
+    """
+
+    sudo: bool = Field(
+        default=False,
+        description=(
+            "Whether the session may become the container's root through "
+            "``sudo``, without a password"
+        ),
+    )
+
+    def capabilities(self) -> list[Capability]:
+        """The capabilities given back after every one is dropped."""
+        return list(Capability) if self.sudo else []
+
+    def arguments(self) -> list[str]:
+        """The run arguments that set these privileges, in either engine's words."""
+        return [
+            "--cap-drop",
+            "ALL",
+            *[word for held in self.capabilities() for word in ("--cap-add", held)],
+            *([] if self.sudo else ["--security-opt", "no-new-privileges:true"]),
+        ]
+
+
 class Registry(BaseModel, frozen=True):
     """A manager that installs by registry name, and the command that drives it.
 
@@ -141,6 +212,16 @@ class ContainerEngine(BaseModel, frozen=True):
         """Run the session as this uid and gid, in the words this engine takes."""
         return ["--user", f"{uid}:{gid}"]
 
+    def rootless(self) -> bool:
+        """Whether this engine runs as an unprivileged host user.
+
+        Where it does, the container's root is that user on the host and
+        holds nothing there; where it does not, it is the host's root, held
+        back only by what the container drops. Unanswered is not rootless,
+        since the answer is what a widening rests on.
+        """
+        return False
+
 
 class Docker(ContainerEngine, frozen=True):
     """Docker, which maps container uids to host uids without being told.
@@ -153,6 +234,20 @@ class Docker(ContainerEngine, frozen=True):
 
     binary: str = "docker"
 
+    def rootless(self) -> bool:
+        """Whether the daemon lists ``rootless`` among its security options."""
+        try:
+            answered = str(
+                sh.Command(self.binary)("info", "--format", "{{json .SecurityOptions}}")
+            )
+            options = TypeAdapter(list[str]).validate_json(answered)
+        except (sh.CommandNotFound, sh.ErrorReturnCode, ValidationError):
+            return False
+        return any(
+            option == "name=rootless" or option.startswith("name=rootless,")
+            for option in options
+        )
+
 
 class Podman(ContainerEngine, frozen=True):
     """Podman, which remaps into the subuid range unless told to keep the id."""
@@ -162,6 +257,18 @@ class Podman(ContainerEngine, frozen=True):
     def identity_arguments(self, uid: int, gid: int) -> list[str]:
         """The portable spelling, plus podman's word for leaving the id alone."""
         return [*super().identity_arguments(uid, gid), "--userns=keep-id"]
+
+    def rootless(self) -> bool:
+        """Whether podman reports itself rootless, as it does per invoking user."""
+        try:
+            answered = str(
+                sh.Command(self.binary)(
+                    "info", "--format", "{{.Host.Security.Rootless}}"
+                )
+            )
+        except (sh.CommandNotFound, sh.ErrorReturnCode):
+            return False
+        return answered.strip() == "true"
 
 
 def reported_version(name: str) -> str:
@@ -383,6 +490,7 @@ class Image(BaseModel, frozen=True):
             "uv",
             "nodejs",
             "bun",
+            "util-linux",
         ],
         description=(
             "Packages every image gets regardless of the manifest -- what a "
@@ -403,6 +511,8 @@ class Image(BaseModel, frozen=True):
             "``socat`` is the relay a session reaches for when something has "
             "to be carried between two things that cannot address each other "
             "-- a port, a socket, a transport an HTTP proxy will not take. "
+            "``util-linux`` is here for ``setpriv``, which the entrypoint "
+            "starts the agent through so it inherits no capability. "
             "It is *not* here for the runtime's own sandbox, whose packages "
             "``inner_sandbox`` deliberately leaves unlisted; read that field "
             "before adding its companion here"
@@ -785,8 +895,95 @@ class Image(BaseModel, frozen=True):
             },
         }
 
-    def dockerfile(self, manifest: Manifest) -> str:
-        """Render the image as a Dockerfile.
+    def entrypoint(self) -> str:
+        """The script every container of this image starts through, as the image carries it.
+
+        Everything a session's home needs at every start, applied as the
+        session's own uid before the agent runs: the config home checked
+        writable, trust merged into the runtime's document, the host login
+        and the person's settings seeded, the forge token handed to ``gh``.
+        Its own method so that what it leaves the agent holding can be run
+        and read rather than only rendered.
+        """
+        return f"""\
+#!/bin/sh
+set -e
+config={self.config_home}
+mkdir -p "$config"
+# Said here because here is where the evidence is. A config volume filled
+# under one user-namespace mapping and mounted under another belongs to a uid
+# this session is not, and the shell's own report of that is `Permission
+# denied` on a path -- which names neither the volume nor the mapping, and
+# reads as a broken image. Nothing on the host can ask this reliably: the
+# volume's directory is not always stat-able from outside, so a launcher's
+# check would be silent exactly when it mattered.
+if [ ! -w "$config" ]; then
+  echo "lup: $config is not writable by uid $(id -u)." >&2
+  echo "lup: the volume mounted there was filled by a different uid, which" >&2
+  echo "lup: happens when this project's container engine or its user" >&2
+  echo "lup: namespace mapping changed since the volume was created." >&2
+  echo "lup: remove that volume and the next launch recreates it." >&2
+  exit 1
+fi
+# Only for the runtime that keeps trust in a document of its own, which
+# the launch names; another runtime's home would gain a stray file.
+trust="${{LUP_TRUST_DOCUMENT:-}}"
+# The checkout this container was started against is the one the operator
+# chose when they wrote the mount and the workdir, so it is trusted here
+# rather than enumerated at build time. Building the list from a directory
+# listing was tried: it baked thirty-one host paths into the image, granted
+# trust to directories that were not checkouts, and rebuilt the layer every
+# time a worktree appeared or went. The repository the checkout belongs to
+# is trusted beside it: a linked worktree's project is its main repository
+# to the runtime, which asked for exactly that path and dropped the declared
+# permissions with a notice when the worktree alone was trusted. Merged on
+# every start rather than written once, because the document outlives the
+# image in its volume, and a runtime that moves where it looks would
+# otherwise meet a file nothing amends. A program rather than a jq pipeline,
+# because every container on this volume runs this line and several start at
+# once: trust-seed.py seeds a missing document, holds the lock, and says what
+# each of its guards answers.
+if [ -n "$trust" ]; then
+  repository=$(git -C "$PWD" rev-parse --path-format=absolute --git-common-dir 2>/dev/null || printf '%s' "$PWD")
+  case "$repository" in */.git) repository=${{repository%/.git}} ;; esac
+  python3 /opt/lup/trust-seed.py /opt/lup/trust-seed.json "$config/$trust" "$PWD" "$repository"
+fi
+# A selected host login is applied once per change. Native renewal remains
+# container-private, and unrelated records in a shared credential file survive.
+if [ -n "${{LUP_CREDENTIAL_NAME:-}}" ]; then
+  python3 /opt/lup/credential-seed.py {self.credential_seed} "$config/$LUP_CREDENTIAL_NAME" \\
+    --keys "${{LUP_CREDENTIAL_KEYS:-[]}}" --renewable "${{LUP_CREDENTIAL_RENEWABLE:-}}"
+fi
+# The person's settings, handed over at every start rather than once: a file
+# seeded once is the person's settings as they stood the day this volume was
+# made. Merged three ways against what the last launch seeded rather than
+# copied over, because another session may be running in this volume and
+# have changed a setting it has yet to carry back.
+if [ -f "{self.home_seed}/managed" ]; then
+  python3 /opt/lup/home-seed.py {self.home_seed} "$config"
+fi
+
+# One credential, two consumers. The token crosses the boundary by name --
+# `-e {self.forge.token_variable}` with no value, so it never appears in the
+# argv that starts this container and never reaches anything reading `ps` --
+# and `gh` reads a variable of its own. Derived in here rather than passed as
+# a second `-e`, because the launcher would have to hold the value to pass
+# it, which is the thing being avoided.
+if [ -n "${{{self.forge.token_variable}:-}}" ]; then
+  export GH_TOKEN="${self.forge.token_variable}"
+fi
+# Started through setpriv with its inheritable and ambient sets cleared: an
+# engine hands a non-root `--user` the capabilities a run gives back as
+# ambient ones -- measured on podman -- so without this the agent itself
+# would hold what only sudo's root is meant to. The bounding set is left
+# alone, since it is what sudo's root is granted from.
+exec setpriv --inh-caps=-all --ambient-caps=-all -- "$@"
+"""
+
+    def dockerfile(
+        self, manifest: Manifest, privileges: SessionPrivileges = SessionPrivileges()
+    ) -> str:
+        """Render the image as a Dockerfile, with sudo where ``privileges`` grant it.
 
         Layered by how often each part changes: the OS toolchain is baked in
         and rebuilt when the manifest changes, the agent CLIs sit last so a
@@ -800,7 +997,31 @@ class Image(BaseModel, frozen=True):
         no ``COPY`` of the project appears here -- the checkout arrives as a
         mount, at its own absolute path, for the reason
         ``same_path_mount_requirement`` explains.
+
+        Sudo is installed only into the image of a session granted it, so
+        the rule granting it is absent wherever the grant is: an image any
+        other session runs carries no passwordless root however its run is
+        spelled. The grant is a different image, and a different tag.
         """
+        entrypoint = self.entrypoint()
+        administered = (
+            "\n# sudo for the uid the session runs as, which the layer above named,\n"
+            "# and without a password: this image is built only for a session\n"
+            "# granted it. The proxy variables are kept across it, since a package\n"
+            "# manager reaches its mirrors the way the session does. What it\n"
+            "# installs lasts until the container stops; the image's tooling is\n"
+            "# where a package is kept.\n"
+            "RUN pacman -S --noconfirm --needed sudo \\\n"
+            "    && pacman -Scc --noconfirm \\\n"
+            "    && printf '%s\\n' \\\n"
+            "        'Defaults env_keep += \"http_proxy https_proxy HTTP_PROXY"
+            " HTTPS_PROXY no_proxy NO_PROXY\"' \\\n"
+            "        'ALL ALL=(ALL:ALL) NOPASSWD: ALL' \\\n"
+            "        > /etc/sudoers.d/lup-session \\\n"
+            "    && chmod 0440 /etc/sudoers.d/lup-session\n"
+            if privileges.sudo
+            else ""
+        )
         installed = " \\\n        ".join(
             item.name for item in self.obtained_by(manifest, "pacman")
         )
@@ -896,74 +1117,7 @@ COPY <<'SEED' /opt/lup/trust-seed.json
 {seed}
 SEED
 COPY <<'ENTRY' /usr/local/bin/lup-entrypoint
-#!/bin/sh
-set -e
-config={self.config_home}
-mkdir -p "$config"
-# Said here because here is where the evidence is. A config volume filled
-# under one user-namespace mapping and mounted under another belongs to a uid
-# this session is not, and the shell's own report of that is `Permission
-# denied` on a path -- which names neither the volume nor the mapping, and
-# reads as a broken image. Nothing on the host can ask this reliably: the
-# volume's directory is not always stat-able from outside, so a launcher's
-# check would be silent exactly when it mattered.
-if [ ! -w "$config" ]; then
-  echo "lup: $config is not writable by uid $(id -u)." >&2
-  echo "lup: the volume mounted there was filled by a different uid, which" >&2
-  echo "lup: happens when this project's container engine or its user" >&2
-  echo "lup: namespace mapping changed since the volume was created." >&2
-  echo "lup: remove that volume and the next launch recreates it." >&2
-  exit 1
-fi
-# Only for the runtime that keeps trust in a document of its own, which
-# the launch names; another runtime's home would gain a stray file.
-trust="${{LUP_TRUST_DOCUMENT:-}}"
-# The checkout this container was started against is the one the operator
-# chose when they wrote the mount and the workdir, so it is trusted here
-# rather than enumerated at build time. Building the list from a directory
-# listing was tried: it baked thirty-one host paths into the image, granted
-# trust to directories that were not checkouts, and rebuilt the layer every
-# time a worktree appeared or went. The repository the checkout belongs to
-# is trusted beside it: a linked worktree's project is its main repository
-# to the runtime, which asked for exactly that path and dropped the declared
-# permissions with a notice when the worktree alone was trusted. Merged on
-# every start rather than written once, because the document outlives the
-# image in its volume, and a runtime that moves where it looks would
-# otherwise meet a file nothing amends. A program rather than a jq pipeline,
-# because every container on this volume runs this line and several start at
-# once: trust-seed.py seeds a missing document, holds the lock, and says what
-# each of its guards answers.
-if [ -n "$trust" ]; then
-  repository=$(git -C "$PWD" rev-parse --path-format=absolute --git-common-dir 2>/dev/null || printf '%s' "$PWD")
-  case "$repository" in */.git) repository=${{repository%/.git}} ;; esac
-  python3 /opt/lup/trust-seed.py /opt/lup/trust-seed.json "$config/$trust" "$PWD" "$repository"
-fi
-# A selected host login is applied once per change. Native renewal remains
-# container-private, and unrelated records in a shared credential file survive.
-if [ -n "${{LUP_CREDENTIAL_NAME:-}}" ]; then
-  python3 /opt/lup/credential-seed.py {self.credential_seed} "$config/$LUP_CREDENTIAL_NAME" \\
-    --keys "${{LUP_CREDENTIAL_KEYS:-[]}}" --renewable "${{LUP_CREDENTIAL_RENEWABLE:-}}"
-fi
-# The person's settings, handed over at every start rather than once: a file
-# seeded once is the person's settings as they stood the day this volume was
-# made. Merged three ways against what the last launch seeded rather than
-# copied over, because another session may be running in this volume and
-# have changed a setting it has yet to carry back.
-if [ -f "{self.home_seed}/managed" ]; then
-  python3 /opt/lup/home-seed.py {self.home_seed} "$config"
-fi
-
-# One credential, two consumers. The token crosses the boundary by name --
-# `-e {self.forge.token_variable}` with no value, so it never appears in the
-# argv that starts this container and never reaches anything reading `ps` --
-# and `gh` reads a variable of its own. Derived in here rather than passed as
-# a second `-e`, because the launcher would have to hold the value to pass
-# it, which is the thing being avoided.
-if [ -n "${{{self.forge.token_variable}:-}}" ]; then
-  export GH_TOKEN="${self.forge.token_variable}"
-fi
-exec "$@"
-ENTRY
+{entrypoint}ENTRY
 ENTRYPOINT ["/usr/local/bin/lup-entrypoint"]
 
 COPY <<'CREDENTIAL' /opt/lup/credential-seed.py
@@ -1024,7 +1178,7 @@ RUN groupadd -g $GID agent 2>/dev/null || true \\
         {" ".join(c.path for c in self.caches)} \\
     && chown -R $UID:$GID {self.registry_root} \\
         {" ".join(c.path for c in self.caches)}
-
+{administered}
 {exported}
 
 {volumes}
@@ -1049,6 +1203,7 @@ USER $UID:$GID
         gid: int,
         engine: ContainerEngine = Docker(),
         proxy_address: str = "",
+        privileges: SessionPrivileges = SessionPrivileges(),
     ) -> list[str]:
         """The run arguments a session is started with, mounts excluded.
 
@@ -1095,6 +1250,11 @@ USER $UID:$GID
         test having broken something, and cost a whole bisection of a change
         that was fine. Both engines take the flag and put a real reaper at PID
         1, so the class stops existing rather than being watched for.
+
+        ``privileges`` is what the wall granted: every capability dropped and
+        none gained, unless the session may administer its container -- see
+        :class:`SessionPrivileges`. A device grant is untouched, being the
+        runtime's to inject from outside the container's own capability set.
         """
         return [
             *engine.identity_arguments(uid, gid),
@@ -1102,6 +1262,7 @@ USER $UID:$GID
             "--init",
             "--pids-limit",
             str(self.pids_limit),
+            *privileges.arguments(),
             *[
                 argument
                 for port in self.published_ports
@@ -1235,6 +1396,7 @@ USER $UID:$GID
         devices: Sequence[Device] = (),
         home_seed: Path | None = None,
         trust_document: str = "",
+        privileges: SessionPrivileges = SessionPrivileges(),
     ) -> list[str]:
         """The whole argv that opens one agent session inside a container.
 
@@ -1304,6 +1466,10 @@ USER $UID:$GID
         Emitted with the mounts because it is the same kind of thing -- the
         boundary, widened by a grant -- and read in the same place by
         whoever reads the argv.
+
+        ``privileges`` is what the wall this session opens behind granted,
+        and has to be what the image ``tag`` was rendered with: sudo is a
+        layer of the image and a flag of the run, one grant spelled twice.
         """
         granted_devices = [
             argument for device in devices for argument in device.arguments()
@@ -1405,7 +1571,7 @@ USER $UID:$GID
             "-e",
             f"{config_home_env}={self.config_home}",
             *(["-e", f"LUP_TRUST_DOCUMENT={trust_document}"] if trust_document else []),
-            *self.run_arguments(checkout, uid, gid, engine, proxy_address),
+            *self.run_arguments(checkout, uid, gid, engine, proxy_address, privileges),
             *[
                 argument
                 for name, value in reaching.items()

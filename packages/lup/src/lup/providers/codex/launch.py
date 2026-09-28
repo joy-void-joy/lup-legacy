@@ -740,6 +740,7 @@ def codex_opening(
         # bridge, as its composition declares.
         clipboard="x11",
         forwarded=list(joined.environment),
+        privileges=config.sandbox.privileges(),
     )
     return LaunchCommand(argv=argv, env=environment, cwd=root)
 

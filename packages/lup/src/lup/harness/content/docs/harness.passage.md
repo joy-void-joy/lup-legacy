@@ -79,6 +79,18 @@ container start. A launch reads the host's CDI registry itself and withholds,
 with one line, any grant no spec there names.
 [contributing.md](contributing.md) carries how a device is granted.
 
+Every session container drops every capability and refuses new privileges
+(`--cap-drop ALL`, `no-new-privileges`), and its entrypoint starts the agent
+through `setpriv` with empty inheritable and ambient sets, so the agent holds
+no capability and no setuid binary in the image can hand it one.
+`OuterContainer(sudo=True)` is the one widening: the image gains passwordless
+sudo, the container's root gets back what administering its own files takes
+(the `Capability` members, nothing reaching past the container), and new
+privileges are allowed. It is granted only on a rootless engine, where that
+root is an unprivileged user on the host; a rootful engine refuses the launch.
+What sudo installs vanishes with the container, so a package the session keeps
+needing belongs in the image's `tooling`.
+
 The target selector also chooses its login layout and configuration home:
 `claude` honors `CLAUDE_CONFIG_DIR`, falling back to the personal `.claude`
 directory; `codex` honors `CODEX_HOME`, falling back to the launcher's worktree

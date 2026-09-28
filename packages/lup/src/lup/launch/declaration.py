@@ -17,7 +17,7 @@ from typing import Protocol, Self, runtime_checkable
 from pydantic import BaseModel, Field
 
 from lup.harness.devices import Device
-from lup.harness.image import Image, detected_client
+from lup.harness.image import Image, SessionPrivileges, detected_client
 from lup.harness.messaging import WakeSockets
 from lup.harness.models import Harness, HookSet, Resumption
 from lup.harness.notice import Notice
@@ -133,6 +133,10 @@ class Sandbox(BaseModel, ABC, frozen=True, extra="forbid"):
         """The image this wall's container runs, where it names one."""
         return None
 
+    def privileges(self) -> SessionPrivileges:
+        """What this wall lets a session's processes come to hold: nothing, unless it grants sudo."""
+        return SessionPrivileges()
+
     def confinement(self) -> "InnerSandbox | None":
         """The runtime's own sandbox this wall establishes, or ``None`` where it stands down."""
         return None
@@ -154,6 +158,15 @@ class OuterContainer(Sandbox, frozen=True):
     """The image the container runs and how it is started; unset, the plugin
     harness's own, or lup's default image where the plugin is no harness."""
 
+    sudo: bool = False
+    """Whether the session may become the container's root through ``sudo``,
+    without a password, to administer the container: install a system
+    package, say. Unset, every capability is dropped and no process may gain
+    one. Granted only on a rootless engine, where that root is an
+    unprivileged user on the host; a rootful engine refuses the launch. What sudo
+    installs vanishes with the container, so a package the session keeps
+    needing belongs in the image's ``tooling``."""
+
     def posture(self) -> LaunchSandbox:
         return LaunchSandbox.OUTER
 
@@ -165,6 +178,9 @@ class OuterContainer(Sandbox, frozen=True):
 
     def named_image(self) -> Image | None:
         return self.image
+
+    def privileges(self) -> SessionPrivileges:
+        return SessionPrivileges(sudo=self.sudo)
 
 
 class InnerSandbox(Sandbox, frozen=True):
