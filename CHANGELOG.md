@@ -78,6 +78,25 @@ it, or `importlib.metadata` goes on answering for `lup`.
 `DISTRIBUTION` in `lup.devtools.dev.library` spells only the distribution; a
 caller that passed it as the sync registration's name passes `REGISTRATION`.
 
+### A migration is one file, and a release keeps its own
+
+A break two trees cannot describe is declared as one TOML file under
+`packages/lup/src/lup/migrations/pending/`, where it was an entry in
+`lup.devtools.dev.migrations.DECLARED`: every branch appended to that list at
+one position, so any two that each broke something conflicted there.
+`dev release` moves the pending files into `migrations/<version>/`, stamped
+with the commit each break landed in, and keeps them rather than emptying a
+list; 0.3.0's and 0.4.0's migrations are recovered into records of their own.
+
+`dev migrate pending` reads every release's record beside the pending one, so
+a project updating across several releases hears what each asks of it, and
+`dev migrate check` and the `declared migrations` gate read them too, so a
+range spanning a release finds what that release declared. A released
+migration speaks only for a range whose base predates it: a name an old
+release retired, reused and dropped again, is a break of its own.
+`docs/contributing.md` shows a file. `MigrationRecord` reads the record where
+`DECLARED` was read, and `undeclared_breaks` takes one as `record`.
+
 ## 0.4.0 — 2026-09-22
 
 ### Native execution carries no reusable approval authority
