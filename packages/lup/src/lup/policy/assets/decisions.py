@@ -566,9 +566,7 @@ def reviewed_decision(
                 cwd / ".lup/questions.jsonl", review_answers_home(REVIEW_ANSWERS_ENV)
             )
         ),
-        member=declared_identity(PEER_POLICY["member_env"])
-        if PEER_POLICY is not None
-        else "",
+        member=answering_member(peer_directory(cwd)),
         placement=decision.sandbox,
         provider=provider,
     )
