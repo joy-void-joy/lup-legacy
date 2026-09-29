@@ -6,11 +6,22 @@ catches a class of problem the others cannot.
 ## Commit time: the git guard
 
 `uv run lup-devtools git hooks install` writes one hook per moment a
-project declares. One comes declared: a `pre-commit` hook running
-`uv run lup-devtools harness check all`, so a commit is refused while any
-generated artifact differs from what its source renders. It reads back in
-about a second, which is what a check standing between somebody and their
-next keystroke has to cost.
+project declares. The `pre-commit` hook comes declared with two checks. The
+first runs `uv run lup-devtools harness check all`, so a commit is refused
+while any generated artifact differs from what its source renders. The
+second runs `uv run lup-devtools dev check --conflict-markers --staged`, so a
+commit is refused while a file it holds carries a conflict block a merge left
+behind: a `<<<<<<< ` line, a `=======` line and a `>>>>>>> ` line, in order.
+That second check runs for a merge's own commit too, which the drift check
+stands down for, because that commit is where markers get committed. Each
+reads back in about a second, which is what a check standing between
+somebody and their next keystroke has to cost.
+
+The whole gate and `dev check --changed` run the same conflict-marker row,
+over every tracked text file and over the changed ones. A fixture holding a
+conflict on purpose is excused by a marker in the file, never by its path: a
+line carrying `lup: ignore[conflict-marker]` excuses the blocks that open in
+the paragraph it heads, up to the next blank line.
 
 The whole gate is not among them. It belongs to the pipeline below, where a
 runner spends the two minutes rather than the person who is still working: a

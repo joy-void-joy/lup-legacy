@@ -111,6 +111,35 @@ it is declared, so a launched Codex may ask its person.
 A revision a contained Codex session ran its hooks from is listed with its
 size, and removed by `--yes` once no running container binds it.
 
+### The edit gates say everything at once, and each thing once
+
+An anti-pattern refusal names every violation an edit adds, in file order,
+each with its own way through, where it named the first and a whole file
+came back once per rule it broke. A question about a receiver nothing
+resolved is asked only once nothing is refused.
+
+After a write, the hooks sweep the file with the whole-tree rule check scoped
+to it, every project rule over every span, and report what it still refuses,
+so a native spelling in a multi-line string is met at the write rather than
+at the gate. The one-file sweep takes 7.5 seconds where it took 18. Its
+repair defers to the policy the session loaded, putting a directive back
+where that policy still needs it. What the hooks report after a call comes in
+two parts: what a gate still refuses blocks, and what is worth knowing
+arrives as context — a directive removed, a name the next edit supplies,
+another repository's referral, said in full once per repository per session.
+A shell command is reviewed for every file it changed, named or not.
+
+`dev check --antipatterns` lists what blocks first and counts what a
+receiver's type refuted (`--refutations` lists each). `--changed` no longer
+calls the migration declarations it parses unread. A conflict block a merge
+left in a tracked file fails the whole gate, `--changed` and a second
+`pre-commit` guard; `lup: ignore[conflict-marker]` excuses a fixture holding
+one on purpose. `dev test` names a path nothing answers, and `--integration`
+runs the tests the suites deselect. `x or TABLE` reaches a table as a default
+only behind what a caller supplies, and the rule reference shows an example
+the path decides with its path. Both suites filter `sh`'s fork warning and
+take every inherited `LUP_`, `CLAUDE` and `CODEX_` variable away.
+
 ### The dashboard shows every session live, and writes to any of them
 
 Everything live reaches the page on one stream, `GET /api/stream`: a fresh tab

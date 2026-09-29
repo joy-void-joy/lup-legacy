@@ -30,6 +30,8 @@ from lup.coordination.wake import WakePath
 
 CLAUDE_SESSION_ENV = "CLAUDE_CODE_SESSION_ID"
 CLAUDE_WAKE_SOCKET_ENV = "CLAUDE_CODE_MESSAGING_SOCKET"
+CLAUDE_ENV_PREFIXES = ("CLAUDE_", "CLAUDECODE")
+"""Every name Claude Code exports to the processes a session starts begins so."""
 
 
 class ClaudeSessionEnv(BaseSettings):

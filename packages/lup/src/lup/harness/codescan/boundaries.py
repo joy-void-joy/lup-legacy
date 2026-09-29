@@ -30,6 +30,7 @@ import ast
 from collections import deque
 from collections.abc import Collection, Iterator, Sequence
 from enum import StrEnum
+from functools import cache
 from pathlib import Path
 from typing import get_args
 
@@ -730,6 +731,7 @@ def constant_declarations(text: str) -> list[ConstantDeclaration]:
     ]
 
 
+@cache
 def default_position_names(
     text: str,
 ) -> set[str]:  # lup: ignore[set-shape] — name identity membership
@@ -740,10 +742,60 @@ def default_position_names(
     ``Field`` (or a ``default_factory`` lambda returning the constant) — and
     the two shapes a mutable default is written as, the ``TABLE if argument is
     None else argument`` sentinel and the ``argument or TABLE`` fallback.
+
+    The last two count only where ``argument`` is what a caller hands in: a
+    parameter of a function enclosing the expression, or an attribute of one,
+    which is how a model's field reaches its methods. Any operand used to do,
+    so ``something or TABLE`` over a local, a global or a call exempted the
+    table from both rules asking for a default, while no caller could reach it.
     """
     tree = python_tree(text)
     if tree is None:
         return set()  # lup: ignore[set-shape] — an unparseable module names nothing
+
+    def supplied(node: ast.expr, parameters: Collection[str]) -> bool:
+        match node:
+            case ast.Name(id=name):
+                return name in parameters
+            case ast.Attribute(value=value):
+                return supplied(value, parameters)
+        return False
+
+    def parameters(node: ast.AST) -> list[str]:
+        match node:
+            case (
+                ast.FunctionDef(args=args)
+                | ast.AsyncFunctionDef(args=args)
+                | ast.Lambda(args=args)
+            ):
+                return [
+                    argument.arg
+                    for argument in [
+                        *args.posonlyargs,
+                        *args.args,
+                        *args.kwonlyargs,
+                        *filter(None, [args.vararg, args.kwarg]),
+                    ]
+                ]
+        return []
+
+    def fallbacks(node: ast.AST, given: Collection[str]) -> list[ast.expr | None]:
+        match node:
+            case ast.IfExp(
+                test=ast.Compare(
+                    left=left,
+                    ops=[ast.Is() | ast.IsNot()],
+                    comparators=[ast.Constant(value=None)],
+                ),
+                body=body,
+                orelse=orelse,
+            ) if supplied(left, given):
+                return [body, orelse]
+            case ast.BoolOp(op=ast.Or(), values=[*passed, last]) if all(
+                supplied(value, given) for value in passed
+            ):
+                return [last]
+        return []
 
     def reached(node: ast.expr | None) -> list[str]:
         match node:
@@ -772,23 +824,52 @@ def default_position_names(
                     for keyword in keywords
                     if keyword.arg in ("default", "default_factory")
                 ]
-            case ast.IfExp(
-                test=ast.Compare(
-                    ops=[ast.Is() | ast.IsNot()], comparators=[ast.Constant(value=None)]
-                ),
-                body=body,
-                orelse=orelse,
-            ):
-                return [body, orelse]
-            case ast.BoolOp(op=ast.Or(), values=values):
-                return list(values)
         return []
 
-    return {
-        name
+    def scoped(node: ast.AST) -> list[ast.stmt | ast.expr]:
+        match node:
+            case ast.FunctionDef() | ast.AsyncFunctionDef() | ast.Lambda():
+                return [node]
+        return []
+
+    def candidate(node: ast.AST) -> list[ast.expr]:
+        match node:
+            case ast.IfExp() | ast.BoolOp():
+                return [node]
+        return []
+
+    functions = [
+        function
         for node in python_nodes(tree)
-        for default in defaults(node)
-        for name in reached(default)
+        for function in scoped(node)
+        if parameters(function)
+    ]
+
+    def enclosing(node: ast.expr) -> list[str]:
+        """Every parameter of each function the expression is written inside."""
+        return [
+            name
+            for function in functions
+            if (function.lineno, function.col_offset) <= (node.lineno, node.col_offset)
+            and (node.end_lineno or 0, node.end_col_offset or 0)
+            <= (function.end_lineno or 0, function.end_col_offset or 0)
+            for name in parameters(function)
+        ]
+
+    return {
+        *(
+            name
+            for node in python_nodes(tree)
+            for default in defaults(node)
+            for name in reached(default)
+        ),
+        *(
+            name
+            for node in python_nodes(tree)
+            for site in candidate(node)
+            for fallback in fallbacks(site, enclosing(site))
+            for name in reached(fallback)
+        ),
     }
 
 
@@ -932,7 +1013,9 @@ def constant_declaration_violations(
 
 
 def audit_constant_declarations(
-    sources: list[PythonSource], application: ApplicationRoots = NO_APPLICATION
+    sources: list[PythonSource],
+    application: ApplicationRoots = NO_APPLICATION,
+    judged: list[PythonSource] | None = None,
 ) -> list[RuleFinding]:
     """Judge every frozen constant in a project against how it is reached.
 
@@ -955,7 +1038,8 @@ def audit_constant_declarations(
     # modules' constants apart
     overridable = {name for source in sources for name in declared_defaults(source)}
     carved = {name for source in sources for name in carved_names(source.text)}
-    authored = [source for source in sources if not application.renders(source.path)]
+    reported = sources if judged is None else judged
+    authored = [source for source in reported if not application.renders(source.path)]
     violations = [
         RuleViolation(
             path=source.path,
@@ -1199,7 +1283,7 @@ def import_boundary_findings(
     owned = [boundary for boundary in declared if boundary.rule_id == rule_id]
     return [
         rule_finding(source.path, finding)
-        for source in audited.sources
+        for source in audited.judged_sources()
         for finding in audit_rule(
             source.text,
             rule_id,
@@ -1212,7 +1296,7 @@ def native_spelling_findings(audited: AuditedProject) -> list[RuleFinding]:
     """Every native spelling in a module the application did not sanction."""
     return [
         rule_finding(source.path, finding)
-        for source in audited.sources
+        for source in audited.judged_sources()
         if not native_spelling_path_is_sanctioned(source.path, audited.application)
         for finding in audit_rule(
             source.text, RuleId.NATIVE_SPELLING, native_spelling_violations(source.text)
@@ -1224,7 +1308,7 @@ def kernel_import_findings(audited: AuditedProject) -> list[RuleFinding]:
     """Every import outside the pinned allowlist, in the kernel's own files."""
     return [
         rule_finding(source.path, finding)
-        for source in audited.sources
+        for source in audited.judged_sources()
         if source.path.as_posix().startswith(KERNEL_ROOT)
         for finding in audit_kernel_imports(source.text)
     ]
@@ -1245,10 +1329,10 @@ def front_door_findings(audited: AuditedProject) -> list[RuleFinding]:
         for name, module in front_door_exports(source.text).items()
     }
     return audit_suppressions(
-        audited.sources,
+        audited.judged_sources(),
         [
             violation
-            for source in audited.sources
+            for source in audited.judged_sources()
             if source.path.as_posix().startswith(LIBRARY_ROOT)
             and source.path.as_posix() != FRONT_DOOR_PATH
             for violation in front_door_violations(source, exports)
@@ -1272,10 +1356,11 @@ def library_default_findings(audited: AuditedProject) -> list[RuleFinding]:
         if source.path.as_posix().startswith(LIBRARY_ROOT)
     ]
     overridable = {name for source in library for name in declared_defaults(source)}
+    judged = {source.path for source in audited.judged_sources()}
     return [
         rule_finding(source.path, finding)
         for source in library
-        if library_placement_path_is_audited(source.path)
+        if source.path in judged and library_placement_path_is_audited(source.path)
         for finding in audit_library_defaults(source.text, overridable, source.module)
     ]
 
@@ -1467,7 +1552,7 @@ CONSTANT_DECLARATION_RULE = ProjectRule(
         "the two partition every declaration and neither reaches the other's."
     ),
     audit=lambda audited: audit_constant_declarations(
-        audited.sources, audited.application
+        audited.sources, audited.application, audited.judged_sources()
     ),
 )
 """The constant-declaration rule: a judgement reaches its callers as a default."""

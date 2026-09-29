@@ -16,7 +16,7 @@ import lup.policy.assets.host as policy_host
 import lup.providers.profile_tree as profile_tree
 from lup.devtools.gitguard import TEST_IDENTITY, GuardVerdict, RepositoryWatch
 from lup.harness.environment import launcher_decided_names
-from lup.providers.identity import RUNTIME_DECIDED_ENV
+from lup.providers.identity import runtime_decided_names
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -31,10 +31,34 @@ def launcher_decisions_taken_away() -> Iterator[None]:
     found. See :func:`~lup.harness.environment.launcher_decided_names`.
     """
     with pytest.MonkeyPatch.context() as environment:
-        taken = [*launcher_decided_names(os.environ), *RUNTIME_DECIDED_ENV]
+        taken = [
+            *launcher_decided_names(os.environ),
+            *runtime_decided_names(os.environ),
+        ]
         for name in taken:
             environment.delenv(name, raising=False)
         yield
+
+
+def pytest_configure(config: pytest.Config) -> None:
+    """Keep `sh`'s forks from warning wherever a thread runs beside one.
+
+    Python warns about a fork from a threaded process, and `sh` execs straight
+    after it forks, which the warning cannot see: a suite running pools beside
+    it — xdist's own worker thread among them — printed hundreds per run,
+    burying the warnings that were news. A foreground call forks inside
+    `os.spawnve`, which execs as straight away and warns as `os`, so both
+    modules are named — and nothing else, since a fork that goes on running
+    Python is the hazard the warning is for. Added to the configuration rather
+    than set with `warnings.filterwarnings`, because pytest opens every test's
+    warnings afresh from its configuration, and a session fixture's git calls
+    land outside any window a fixture could open.
+    """
+    config.addinivalue_line(
+        "filterwarnings",
+        r"ignore:This process \(pid=\d+\) is multi-threaded"
+        r":DeprecationWarning:(sh|os)$",
+    )
 
 
 @pytest.fixture(scope="session", autouse=True)

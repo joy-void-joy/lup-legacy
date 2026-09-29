@@ -455,3 +455,41 @@ def test_a_configuration_a_merge_holds_open_configures_nothing(
         Path("**/*_test.py"),
         Path("**/conftest.py"),
     ]
+
+
+def test_a_named_path_nothing_answers_is_refused_by_name(tmp_path: Path) -> None:
+    # Handed to pytest it collected nothing, and the run reported "no tests
+    # ran" and a failed suite without saying which of the names was wrong.
+    (tmp_path / "tests/unit").mkdir(parents=True)
+    kept = tmp_path / "tests/unit/test_kept.py"
+    kept.write_text("def test_kept() -> None:\n    pass\n", encoding="utf-8")
+    gone = tmp_path / "tests/unit/test_gone.py"
+
+    with pytest.raises(typer.BadParameter, match="test_gone.py"):
+        check.run_selected(declared_roots(tmp_path), [str(kept), str(gone)], [])
+
+
+def test_a_node_id_is_found_by_the_file_it_names(tmp_path: Path) -> None:
+    named = tmp_path / "test_kept.py"
+    named.write_text("def test_kept() -> None:\n    pass\n", encoding="utf-8")
+
+    assert check.absent_selections([f"{named}::test_kept"]) == []
+    assert check.absent_selections([f"{tmp_path / 'gone.py'}::test_kept"]) == [
+        f"{tmp_path / 'gone.py'}::test_kept"
+    ]
+
+
+def test_integration_lifts_the_marker_the_configuration_deselects_by(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The suites' own configuration deselects `integration`, so an
+    # integration test named outright ran nothing; the flag is the way to run it.
+    ran: list[tuple[str, ...]] = []
+    monkeypatch.setattr(check, "uv", lambda *words, **_options: ran.append(words))
+    root = check.TestRoot(name="pytest", directory=tmp_path)
+
+    root.run(["tests/integration"], 1, [], integration=True)
+    root.run(["tests/unit"], 1, [])
+
+    assert ran[0][-2:] == ("-m", "")
+    assert "-m" not in ran[1]

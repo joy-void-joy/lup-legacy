@@ -13,14 +13,21 @@ coordination verbs rather than inventing a member on every call or answering
 to a name every session in the worktree would share.
 """
 
+from collections.abc import Mapping
+
 from lup.coordination.wake import WakePath
 from lup.providers.claude.identity import (
+    CLAUDE_ENV_PREFIXES,
     CLAUDE_SESSION_ENV,
     CLAUDE_WAKE_SOCKET_ENV,
     claude_session_id,
     claude_wake,
 )
-from lup.providers.codex.identity import codex_session_id, codex_wake
+from lup.providers.codex.identity import (
+    CODEX_ENV_PREFIXES,
+    codex_session_id,
+    codex_wake,
+)
 
 
 # lup: ignore[constant-declaration] — each member is a runtime's own spelling,
@@ -41,6 +48,27 @@ Codex contributes none: it documents no variable carrying a session's
 identity to a server it starts, which is the asymmetry
 :mod:`lup.providers.codex.identity` states.
 """
+
+RUNTIME_DECIDED_PREFIXES = (*CLAUDE_ENV_PREFIXES, *CODEX_ENV_PREFIXES)
+"""What every name a runtime exports for its session begins with, by adapter."""
+
+
+def runtime_decided_names(
+    environ: Mapping[str, str],  # lup: ignore[dict-str-payload] — open env-var map
+    prefixes: tuple[str, ...] = RUNTIME_DECIDED_PREFIXES,
+) -> list[str]:
+    """Every variable a runtime set for the session running this process.
+
+    The listed ones, and every name carrying a runtime's prefix. A suite is
+    the caller: the list says which variables name the session, and trails
+    what a runtime actually exports — a test here read the configuration
+    directory its runtime exported for the live session, which no list
+    carried, and wrote that session's settings through it.
+    """
+    return [
+        *RUNTIME_DECIDED_ENV,
+        *(name for name in environ if name.startswith(prefixes)),
+    ]
 
 
 def native_session_id(runtime: str) -> str:
