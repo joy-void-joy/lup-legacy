@@ -612,6 +612,9 @@ def decide_interpreter_words(
     executable = posixpath.basename(words[0])
     declared = declares_command(executable, context["rows"])
     reading = read_program(words)
+    # Its version or usage runs no program, whichever interpreter prints it.
+    if reading["kind"] == "informational":
+        return program_verdict(executable, reading)
     if executable in runs_scripts:
         verdict = program_verdict(executable, reading)
         if verdict is not None and (

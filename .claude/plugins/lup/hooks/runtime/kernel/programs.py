@@ -24,13 +24,22 @@ from .decision import KernelDecision
 from .syntax import expands
 
 type ProgramKind = Literal[
-    "script", "inline", "bare", "unread", "remote", "module", "subcommand"
+    "script",
+    "inline",
+    "bare",
+    "unread",
+    "remote",
+    "module",
+    "subcommand",
+    "informational",
 ]
 """What an invocation turned out to hand its interpreter.
 
 ``module`` and ``subcommand`` are not answers but hand-offs: a module is
 judged by whether this project declares its root, and a subcommand by the
-vocabulary row of the tool that owns it."""
+vocabulary row of the tool that owns it. ``informational`` hands it nothing
+and asks it only for its version or usage, which it prints before it would
+read a program."""
 
 
 class OptionGrammar(TypedDict):
@@ -88,6 +97,15 @@ class InterpreterGrammar(OptionGrammar):
     inline: list[str]
     """Options that carry the program itself, or have it read from stdin."""
 
+    informational: list[str]
+    """Options that print the interpreter's version or usage and run nothing.
+
+    The tool's own spellings, and only those: `bash -h` hashes commands and
+    `bash -v` echoes its input, where `node -v` prints a version, so a letter
+    one tool spends on help another spends on something else. Each is read
+    as a flag consuming nothing, since reading past it is how a program
+    beside it is still found."""
+
     module: str
     """The option naming a module to run in place of a file, or empty."""
 
@@ -123,10 +141,12 @@ def grammar(
     evaluator: str = "",
     suffixes: tuple[str, ...] = (),
     attached: tuple[str, ...] = (),
+    informational: tuple[str, ...] = (),
 ) -> InterpreterGrammar:
     """One grammar row, with every list it does not name empty."""
     return InterpreterGrammar(
         inline=list(inline),
+        informational=list(informational),
         valued=list(valued),
         flags=list(flags),
         families=list(families),
@@ -149,7 +169,6 @@ SHELL_GRAMMAR = grammar(
         "--debugger",
         "--dump-po-strings",
         "--dump-strings",
-        "--help",
         "--login",
         "--noediting",
         "--noprofile",
@@ -158,8 +177,8 @@ SHELL_GRAMMAR = grammar(
         "--pretty-print",
         "--restricted",
         "--verbose",
-        "--version",
     ),
+    informational=("--help", "--version"),
 )
 """The POSIX shells' shared invocation grammar, as bash spells its superset.
 
@@ -170,8 +189,10 @@ position would otherwise be mistaken for."""
 PYTHON_GRAMMAR = grammar(
     inline=("-c",),
     valued=("-W", "-X", "--check-hash-based-pycs"),
-    flags=(
-        *(f"-{letter}" for letter in "bBdEhiIOPqsSuvVx"),
+    flags=(*(f"-{letter}" for letter in "bBdEiIOPqsSuvx"),),
+    informational=(
+        "-h",
+        "-V",
         "--help",
         "--help-env",
         "--help-xoptions",
@@ -187,6 +208,7 @@ INTERPRETER_GRAMMARS: dict[str, InterpreterGrammar] = {
     "fish": grammar(
         inline=("-c", "--command", "-C", "--init-command"),
         flags=("-i", "--interactive", "-l", "--login", "-n", "--no-execute", "-N"),
+        informational=("-h", "--help", "-v", "--version"),
     ),
     "python": PYTHON_GRAMMAR,
     "python3": PYTHON_GRAMMAR,
@@ -229,10 +251,6 @@ INTERPRETER_GRAMMARS: dict[str, InterpreterGrammar] = {
         flags=(
             "-c",
             "--check",
-            "-v",
-            "--version",
-            "-h",
-            "--help",
             "--inspect",
             "--inspect-brk",
             "--inspect-wait",
@@ -256,6 +274,7 @@ INTERPRETER_GRAMMARS: dict[str, InterpreterGrammar] = {
         ),
         families=("--no-", "--experimental-", "--trace-", "--allow-", "--test-"),
         open_attached=True,
+        informational=("-v", "--version", "-h", "--help"),
     ),
     "bun": grammar(
         inline=("-e", "--eval", "-p", "--print"),
@@ -303,14 +322,10 @@ INTERPRETER_GRAMMARS: dict[str, InterpreterGrammar] = {
             "--expose-gc",
             "--zero-fill-buffers",
             "--throw-deprecation",
-            "-v",
-            "--version",
-            "--revision",
-            "-h",
-            "--help",
         ),
         families=("--no-",),
         open_attached=True,
+        informational=("-v", "--version", "--revision", "-h", "--help"),
         suffixes=(".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".mts", ".cts"),
     ),
     "deno": grammar(
@@ -358,10 +373,14 @@ INTERPRETER_GRAMMARS: dict[str, InterpreterGrammar] = {
         open_attached=True,
         runner="run",
         evaluator="eval",
+        informational=("-V", "--version", "-h", "--help"),
     ),
-    "perl": grammar(inline=("-e", "-E")),
-    "ruby": grammar(inline=("-e",)),
-    "php": grammar(inline=("-r", "-a")),
+    "perl": grammar(inline=("-e", "-E"), informational=("-v", "-V", "-h")),
+    "ruby": grammar(inline=("-e",), informational=("--version", "-h", "--help")),
+    "php": grammar(
+        inline=("-r", "-a"),
+        informational=("-v", "--version", "-h", "--help"),
+    ),
 }
 """Every interpreter's invocation grammar, keyed by executable name.
 
@@ -474,7 +493,7 @@ def read_program(
     # it would have consumed is never read in a position it does not hold.
     readable = OptionGrammar(
         valued=rules["valued"],
-        flags=[*rules["flags"], *rules["inline"]],
+        flags=[*rules["flags"], *rules["inline"], *rules["informational"]],
         families=rules["families"],
         open_attached=rules["open_attached"],
         attached=rules["attached"],
@@ -483,6 +502,9 @@ def read_program(
         option.startswith("+") for option in [*rules["valued"], *rules["flags"]]
     )
     awaiting_runner = bool(rules["runner"])
+    # Asked for its version or usage, it runs nothing -- but only where that
+    # is all it was handed: a program beside the question is read as before.
+    asked = ""
 
     def found(reading: ProgramReading) -> ProgramReading:
         """The reading, spelled from the runner on where one was consumed."""
@@ -516,6 +538,10 @@ def read_program(
                 for option in read["options"]
             ):
                 return found(ProgramReading(kind="inline", subject=word))
+            if not asked and any(
+                option["name"] in rules["informational"] for option in read["options"]
+            ):
+                asked = word
             position += read["width"]
             continue
         if awaiting_runner:
@@ -526,6 +552,8 @@ def read_program(
             kind: ProgramKind = "inline" if word == rules["evaluator"] else "subcommand"
             return ProgramReading(kind=kind, subject=word)
         return found(operand_reading(word, rules))
+    if asked:
+        return found(ProgramReading(kind="informational", subject=asked))
     return found(ProgramReading(kind="bare", subject=""))
 
 
@@ -540,6 +568,10 @@ def program_verdict(spelled: str, reading: ProgramReading) -> KernelDecision | N
         case "script":
             return KernelDecision(
                 "allow", "a script file can be read, where inline code cannot"
+            )
+        case "informational":
+            return KernelDecision(
+                "allow", f"{spelled} {subject} prints its own version or usage"
             )
         case "inline":
             return KernelDecision(

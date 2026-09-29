@@ -399,7 +399,13 @@ vocabulary names the interpreter too, so `bun --eval` is refused beside the
 `bun` subcommands its row declares. Python runs through `uv run python
 <script>`, in this project's environment, so `python <script>` keeps its
 refusal and names that route, and `uv run <interpreter>` reads the same
-grammar. The refusal is decided by the words up to the code, so an argument
+grammar. Asking an interpreter what it is runs no program at all, so its
+version or usage alone is a read on every interpreter, Python's bare spelling
+included: `python3 --version`, `uv run python -V`, `node -v`, `deno
+--version`. Each grammar lists its own spellings, since a letter one tool
+spends on help another spends on something else (`bash -h` hashes commands),
+and a program beside the question is read as though it were absent:
+`python3 -V tmp/x.py` and `bash --version -c ls` keep their refusals. The refusal is decided by the words up to the code, so an argument
 after it that nobody can read — a variable a substitution bound, a `$(...)`
 result — does not hand it to a boundary: `perl -pi -e … $files`, `python -c
 … $x` and `node -e … $(ls)` are refused on every posture as their spelled
