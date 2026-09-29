@@ -1,8 +1,9 @@
 """Reusable setup-wizard framework for project integrations.
 
 Walks a project's declared integrations, prompting for what each one
-needs, writing the answers to ``.env.local``, and reporting what is
-already configured.
+needs, writing the answers to ``.env.local`` — or, for an integration
+declared ``host_only``, to the project's host store under the person's lup
+config, which no session reads — and reporting what is already configured.
 
 Nothing here names a service: an application declares its own
 ``Integration`` list and composes the command tree with
@@ -13,9 +14,11 @@ detection, validation) supplies ``setup_func`` instead, and ``status_func``
 overrides the display when env-key presence isn't the whole story.
 """
 
+import os
 import webbrowser
 from collections.abc import Callable, Iterable
 from pathlib import Path
+from typing import Annotated
 
 import typer
 from dotenv import dotenv_values, set_key, unset_key
@@ -25,6 +28,8 @@ from rich.panel import Panel
 from rich.table import Table
 from lup.devtools.harness.composition import claude_profile_directory
 from lup.devtools.harness.profile_app import create_profile_app
+from lup.harness.environment import inside_a_container
+from lup.launch.secrets import HostSecrets
 from lup.providers.profiles import ProfileDirectory
 from lup.types import EnvVars
 from lup.workspace.paths import project_root
@@ -99,6 +104,28 @@ def save_and_confirm(values: EnvVars) -> None:
     if values:
         write_env_local(values)
         console.print("[green]Saved to .env.local[/]")
+
+
+def host_store() -> HostSecrets:
+    """This project's host store, which every worktree of it shares."""
+    return HostSecrets.for_checkout(PROJECT_ROOT)
+
+
+def refused_on_the_host_only(command: str) -> str:
+    """Why a host-only write is refused here, naming the host command; empty on the host.
+
+    Asked before anything is typed: a secret entered inside a container
+    would land in the container's own configuration, where no companion on
+    the host reads it and the session can.
+    """
+    # lup: ignore[os-environ] — the process's own placement hint is what is read
+    if not inside_a_container(dict(os.environ)):
+        return ""
+    return (
+        "This runs inside a lup container, where a host-only secret would land "
+        "in the container rather than in the host store. Set it from a "
+        f"terminal on the host: `uv run lup-devtools setup {command}`."
+    )
 
 
 def mask(value: str, show: int = 6) -> str:
@@ -176,6 +203,31 @@ class Integration(BaseModel):
         default=None,
         description="Custom status checker (default: checks env_keys)",
     )
+    host_only: bool = Field(
+        default=False,
+        description=(
+            "Keep this integration's keys in the project's host store rather "
+            "than .env.local: for a key a host companion is started with and "
+            "a session must never hold"
+        ),
+    )
+
+    def stored(self) -> EnvVars:
+        """What this integration's keys are answered from: the host store, or .env.local."""
+        return host_store().read() if self.host_only else read_env_local()
+
+    def save(self, values: EnvVars) -> str:
+        """Write this integration's answers where it keeps them, answering where that is."""
+        if self.host_only:
+            store = host_store()
+            store.write(values)
+            return f"the host store ({store.path()})"
+        write_env_local(values)
+        return ".env.local"
+
+    def refused_here(self) -> str:
+        """Why this integration cannot be answered in this process; empty where it can."""
+        return refused_on_the_host_only(self.command) if self.host_only else ""
 
     def run(self) -> EnvVars:
         """Run the setup flow and return env vars to write."""
@@ -189,7 +241,7 @@ class Integration(BaseModel):
         console.rule(f"[bold]{self.name}[/]")
         console.print()
 
-        env = read_env_local()
+        env = self.stored()
         # Gate re-entry only for secrets, which can't be shown as defaults;
         # non-secret fields echo their current value, so re-walking is cheap.
         guards_secret = any(f.secret for f in self.fields)
@@ -244,14 +296,13 @@ class Integration(BaseModel):
 
 
 def build_status_table(integrations: list[Integration]) -> Table:
-    """Build a rich table showing configuration status."""
-    env = read_env_local()
+    """Build a rich table showing configuration status, each from where it is kept."""
     table = Table(show_header=False, box=None, padding=(0, 2))
     table.add_column("Status", width=3)
     table.add_column("Integration", min_width=30)
     table.add_column("Detail", style="dim")
     for integration in integrations:
-        status = integration.check_status(env)
+        status = integration.check_status(integration.stored())
         status_text = "[green]OK[/]" if status.ok else "[red]--[/]"
         table.add_row(status_text, integration.name, status.detail)
     return table
@@ -261,7 +312,13 @@ def make_setup_command(integration: Integration) -> Callable[[], None]:
     """Build a zero-argument command that runs one integration's setup."""
 
     def run_one() -> None:
-        save_and_confirm(integration.run())
+        refused = integration.refused_here()
+        if refused:
+            typer.echo(refused, err=True)
+            raise typer.Exit(1)
+        values = integration.run()
+        if values:
+            console.print(f"[green]Saved to {integration.save(values)}[/]")
 
     return run_one
 
@@ -314,6 +371,36 @@ def create_setup_app(
             make_setup_command(integration)
         )
 
+    @app.command("secret")
+    def secret(
+        key: Annotated[
+            str, typer.Argument(help="The variable, such as GEMINI_API_KEY")
+        ],
+        unset: Annotated[
+            bool, typer.Option("--unset", help="Remove it from the host store instead")
+        ] = False,
+    ) -> None:
+        """Set a key in this project's host store, which only host companions are handed.
+
+        For a key no integration declares. The store is outside every
+        checkout, under your lup config, and no session holds what it keeps.
+        """
+        refused = refused_on_the_host_only(f"secret {key}")
+        if refused:
+            typer.echo(refused, err=True)
+            raise typer.Exit(1)
+        store = host_store()
+        if unset:
+            store.clear([key])
+            console.print(f"[green]Removed {key} from {store.path()}[/]")
+            return
+        value = typer.prompt(key, hide_input=True).strip()
+        if not value:
+            console.print("[yellow]Nothing entered; nothing saved.[/]")
+            return
+        store.write({key: value})
+        console.print(f"[green]Saved {key} to {store.path()}[/]")
+
     @app.callback(invoke_without_command=True)
     def main(context: typer.Context) -> None:
         """Walk through all integrations, skipping configured entries."""
@@ -331,9 +418,13 @@ def create_setup_app(
         )
         console.print(build_status_table(integrations))
         for integration in integrations:
+            refused = integration.refused_here()
+            if refused:
+                typer.echo(f"{integration.name}: {refused}", err=True)
+                continue
             values = integration.run()
             if values:
-                write_env_local(values)
+                integration.save(values)
         console.print()
         console.rule("[bold green]Setup complete[/]")
         console.print()
