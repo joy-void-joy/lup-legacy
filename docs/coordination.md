@@ -303,7 +303,11 @@ is not enough to work from, something was still living in the sender's head.
 
 Mail is written first, always. A wake that cannot be made costs latency and
 never the work, which is what makes the asymmetry below tolerable rather than
-a gap.
+a gap. A wake carries every message waiting whole, so one the member's
+runtime accepted — a frame its wake socket took, a message its queue took —
+hands over what it carried then, the way the member's own delivery hook
+does: that hook, at the member's next tool call, hands over only what no wake
+carried, and a message is put in front of the member once.
 
 The asymmetry is the runtime's own. One of them serves a command that reaches
 a session from any process, so waking finishes the job itself. The other has
@@ -518,10 +522,11 @@ Everything here is an append-only file, and nothing pushes: a session folds
 the files again on its own next call, which serves a session and nobody else.
 `coordination watch` is the fold run on a clock, saying only what is different
 from the last look — who arrived and left, what a session now says it is on,
-and what reached whose mailbox. It consumes nothing: mail is read the way a peek
-reads it, so a person watching a peer's mailbox is never the reason the peer did
-not see a message. The first look is a baseline rather than a replay, the same
-convention a run follower keeps when attaching to work already under way.
+and what reached whose mailbox. Noticing consumes nothing: mail is read the way
+a peek reads it, so a person watching a peer's mailbox is never the reason the
+peer did not see a message. The first look is a baseline rather than a replay,
+the same convention a run follower keeps when attaching to work already under
+way.
 
 The same watcher is a **run** for the case where nobody is at the terminal.
 `coordination watch --as-run <dir>` declares it as a pipeline, so it survives

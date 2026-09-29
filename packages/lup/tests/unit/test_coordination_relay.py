@@ -1,4 +1,9 @@
-"""A target's own MCP companion queues durable mail without acknowledging it."""
+"""A target's own MCP companion queues durable mail, and hands over what its queue took.
+
+What the native queue accepted is on its way into the session as a turn, so
+it leaves the mailbox then: the delivery hook at the session's next call
+hands over only what no wake carried.
+"""
 
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
@@ -9,10 +14,9 @@ from unittest.mock import Mock
 import pytest
 
 import lup.coordination.bare.arrival as arrival
-import lup.coordination.relay as relaying
 import lup.coordination.wake as routing
 from lup.coordination.identity import member_ref
-from lup.coordination.relay import MailboxRelay, WakeReceipts
+from lup.coordination.relay import MailboxRelay
 from lup.coordination.repository import RepositoryPeers
 from lup.coordination.wake import WakePath, wake
 
@@ -46,11 +50,6 @@ def relay(tmp_path: Path) -> MailboxRelay:
     return MailboxRelay(root=tmp_path, member_id="recipient", queue_timeout_seconds=0.2)
 
 
-def receipts(relay: MailboxRelay) -> WakeReceipts:
-    [path] = (RepositoryPeers(relay.root).root / "wake-relay").glob("*.json")
-    return WakeReceipts.model_validate_json(path.read_text(encoding="utf-8"))
-
-
 def test_cross_container_mail_queues_only_from_the_target_boundary(
     relay: MailboxRelay, native_queue: Mock, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -72,10 +71,10 @@ def test_cross_container_mail_queues_only_from_the_target_boundary(
     assert arguments[4] == "native-thread"
     assert "mail from another container" in arguments[6]
     assert native_queue.call_args.kwargs["_timeout"] == 0.2
-    assert len(peers.waiting("recipient").messages) == 1
+    assert peers.waiting("recipient").messages == []
 
 
-def test_queue_acceptance_survives_server_restart_without_consuming_mail(
+def test_what_the_queue_accepted_is_handed_over_once_across_a_restart(
     relay: MailboxRelay, native_queue: Mock
 ) -> None:
     peers = RepositoryPeers(relay.root)
@@ -88,31 +87,28 @@ def test_queue_acceptance_survives_server_restart_without_consuming_mail(
     assert restarted.tick() is None
 
     native_queue.assert_called_once()
-    assert receipts(relay).message_ids == [first.id, second.id]
-    assert peers.waiting("recipient").messages == [first, second]
+    assert native_queue.call_args.args[6].count("identical body") == 2
+    assert peers.waiting("recipient").messages == []
 
 
-def test_only_new_mail_is_queued_and_consumed_ids_are_retired(
+def test_only_mail_no_wake_carried_is_queued(
     relay: MailboxRelay, native_queue: Mock
 ) -> None:
     peers = RepositoryPeers(relay.root)
     peers.send("recipient", "first")
     relay.tick()
-    peers.take("recipient")
-    second = peers.cohort.mail.send(member_ref("recipient"), "second")
+    peers.send("recipient", "second")
 
     relay.tick()
 
     assert native_queue.call_count == 2
     assert "second" in native_queue.call_args.args[6]
     assert "first" not in native_queue.call_args.args[6]
-    assert receipts(relay).message_ids == [second.id]
-    peers.take("recipient")
+    assert peers.waiting("recipient").messages == []
     assert relay.tick() is None
-    assert receipts(relay).message_ids == []
 
 
-def test_queue_failure_is_retried_without_acceptance_or_delivery_receipts(
+def test_queue_failure_is_retried_and_leaves_the_mail_waiting(
     relay: MailboxRelay, native_queue: Mock
 ) -> None:
     peers = RepositoryPeers(relay.root)
@@ -121,24 +117,25 @@ def test_queue_failure_is_retried_without_acceptance_or_delivery_receipts(
 
     failed = relay.tick()
     assert failed is not None and not failed.reached
-    assert list((peers.root / "wake-relay").glob("*.json")) == []
+    assert len(peers.waiting("recipient").messages) == 1
     succeeded = relay.tick()
 
     assert succeeded is not None and succeeded.reached
-    assert len(peers.waiting("recipient").messages) == 1
+    assert peers.waiting("recipient").messages == []
     assert native_queue.call_count == 2
 
 
 @pytest.mark.parametrize("changed", ["session", "home", "scope"])
-def test_a_new_native_route_can_receive_mail_accepted_by_the_old_route(
+def test_mail_after_a_new_native_route_is_queued_by_that_route(
     relay: MailboxRelay,
     native_queue: Mock,
     monkeypatch: pytest.MonkeyPatch,
     changed: str,
 ) -> None:
     peers = RepositoryPeers(relay.root)
-    peers.send("recipient", "still unread")
+    peers.send("recipient", "taken by the old route")
     relay.tick()
+    peers.send("recipient", "for the new route")
     session = "other-thread" if changed == "session" else "native-thread"
     home = relay.root / ("other-home" if changed == "home" else "native-home")
     if changed == "scope":
@@ -158,8 +155,11 @@ def test_a_new_native_route_can_receive_mail_accepted_by_the_old_route(
     relay.tick()
 
     assert native_queue.call_count == 2
-    assert receipts(relay).route.session == session
-    assert receipts(relay).route.home == str(home)
+    arguments = native_queue.call_args.args
+    assert arguments[0] == f"CODEX_HOME={home}"
+    assert arguments[4] == session
+    assert "for the new route" in arguments[6]
+    assert "taken by the old route" not in arguments[6]
 
 
 def test_missing_binding_waits_for_a_native_hook_instead_of_guessing(
@@ -199,7 +199,7 @@ def test_only_its_own_pending_mail_is_relayed(
     assert len(peers.waiting("other").messages) == 1
 
 
-def test_multiple_servers_share_a_lock_and_one_acceptance_record(
+def test_multiple_servers_share_a_lock_and_queue_once(
     relay: MailboxRelay, native_queue: Mock
 ) -> None:
     peers = RepositoryPeers(relay.root)
@@ -226,20 +226,21 @@ def test_multiple_servers_share_a_lock_and_one_acceptance_record(
     native_queue.assert_called_once()
 
 
-def test_receipt_publication_failure_can_repeat_an_accepted_nudge(
+def test_a_hand_over_that_fails_after_acceptance_repeats_the_nudge(
     relay: MailboxRelay, native_queue: Mock, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     peers = RepositoryPeers(relay.root)
-    peers.send("recipient", "durable mail survives receipt failure")
+    peers.send("recipient", "durable mail survives a failed hand-over")
     with monkeypatch.context() as fail:
         fail.setattr(
-            relaying, "publish_atomic", Mock(side_effect=OSError("disk unavailable"))
+            RepositoryPeers, "delivered", Mock(side_effect=OSError("disk unavailable"))
         )
         with pytest.raises(OSError):
             relay.tick()
+    assert len(peers.waiting("recipient").messages) == 1
     relay.tick()
     assert native_queue.call_count == 2
-    assert len(peers.waiting("recipient").messages) == 1
+    assert peers.waiting("recipient").messages == []
 
 
 async def test_cancellation_joins_the_inflight_queue_before_server_shutdown(
@@ -269,7 +270,7 @@ async def test_cancellation_joins_the_inflight_queue_before_server_shutdown(
     with pytest.raises(asyncio.CancelledError):
         await serving
     native_queue.assert_called_once()
-    assert receipts(relay).message_ids
+    assert peers.waiting("recipient").messages == []
 
 
 def test_an_unjoined_or_departed_member_never_creates_a_relay(
@@ -316,5 +317,5 @@ async def test_companion_reports_storage_failure_without_payloads_and_retries(
     assert attempts.call_count >= 2
     assert "Mail remains pending" in caplog.text
     assert "ValueError" in caplog.text
-    assert str(relay.receipt_path) in caplog.text
+    assert str(relay.lock_path) in caplog.text
     assert "private-message-body" not in caplog.text

@@ -16,10 +16,10 @@ from httpx import ASGITransport, AsyncClient
 from starlette.types import Message, Scope
 
 from lup.channels.models import Door
+from lup.coordination import watch as watching
 from lup.coordination.identity import mint_member_id
 from lup.coordination.repository import RepositoryPeers
 from lup.coordination.wake import WakePath, Woken
-from lup.devtools.dashboard import live
 from lup.devtools.dashboard.companion import KnownRepository
 from lup.devtools.dashboard.live import ReplyOutcome
 from lup.devtools.dashboard.reviews import ReviewStore, dashboard_app
@@ -292,11 +292,17 @@ async def test_a_reply_goes_to_the_session_it_names_as_the_user(
 ) -> None:
     lead = session(tmp_path, "lead")
 
-    def nudged(path: WakePath, message: str, cwd: Path | None = None) -> Woken:
-        del path, message, cwd
+    def nudged(
+        path: WakePath,
+        message: str,
+        cwd: Path | None = None,
+        *,
+        queue_timeout_seconds: float = 20.0,
+    ) -> Woken:
+        del path, message, cwd, queue_timeout_seconds
         return Woken(reached=False, reason="nothing is listening")
 
-    monkeypatch.setattr(live, "wake", nudged)
+    monkeypatch.setattr(watching, "wake", nudged)
     repository = known(tmp_path).key()
 
     async with client(tmp_path) as http:

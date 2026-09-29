@@ -7,7 +7,7 @@ and no use to a person at a second terminal or to a process meant to wake
 peers nobody is currently asking about. This is the fold, run on a clock, that
 says only what is different from the last time it looked.
 
-**It never consumes anything.** Mail is read through the same non-consuming
+**Noticing consumes nothing.** Mail is read through the same non-consuming
 path a console peeks with, so a watcher reporting that a message arrived is
 not a watcher that stopped the peer ever seeing it. What it saw is kept by
 identity rather than by position, because a position is the peer's own —
@@ -18,7 +18,9 @@ two-cursors-over-one-stream bug this module's neighbours close.
 watcher nudges a member that has new mail by whatever path that member
 declared, and reports what happened in the runtime's own terms: reached,
 left to a session holding the tool, or nothing declared. A nudge that fails
-costs the peer latency and never the message.
+costs the peer latency and never the message. A nudge that reached carried
+the mail whole, so that mail is handed over then — :func:`roused` — and the
+peer's own hook hands over only what no nudge carried.
 """
 
 import time
@@ -29,7 +31,7 @@ from pathlib import Path
 from pydantic import BaseModel
 
 from lup.channels.models import utc_now
-from lup.coordination.mail import ActorMessage
+from lup.coordination.mail import ActorDelivery, ActorMessage
 from lup.coordination.repository import PeerView, RepositoryPeers
 from lup.coordination.roster import RosterMember
 from lup.coordination.wake import Woken, wake
@@ -138,10 +140,42 @@ def nudge_text(fresh: list[ActorMessage]) -> str:
             *[said_by(message) for message in fresh],
             (
                 "This is a nudge on top of the record, not instead of it —"
-                " `coordination_mailbox` holds these and anything since."
+                " these are handed over with it, and `coordination_mailbox`"
+                " holds anything since."
             ),
         ]
     )
+
+
+def roused(
+    peers: RepositoryPeers,
+    member: RosterMember,
+    fresh: list[ActorMessage],
+    cwd: Path | None = None,
+    queue_timeout_seconds: float = 20.0,
+) -> Woken:
+    """Make one member look at *fresh*, and hand over what the wake carried.
+
+    The wake carries the mail whole — :func:`nudge_text` — so a wake the
+    member's runtime accepted has put it in front of the member, and it is
+    taken out of the mailbox then, the way the member's own hook takes what
+    it hands over: that hook, at the member's next tool call, hands over only
+    what no wake carried. A wake that did not reach leaves every message
+    waiting for it.
+
+    Accepted is the most a runtime says: a frame its wake socket took, or a
+    queue that took the message. Neither proves the turn it starts has read
+    it, which is the same promise the hook's own hand-over makes.
+    """
+    outcome = wake(
+        member.wake,
+        nudge_text(fresh),
+        cwd,
+        queue_timeout_seconds=queue_timeout_seconds,
+    )
+    if outcome.reached:
+        peers.delivered(member.actor.id, ActorDelivery(messages=fresh))
+    return outcome
 
 
 def mail_key(message: ActorMessage) -> str:
@@ -240,8 +274,8 @@ class Watcher:
                 if fresh and self.nudge:
                     # One nudge per look, not one per message: a wake starts a
                     # turn, so two would interrupt the turn the first began.
-                    roused = wake(view.member.wake, nudge_text(fresh), self.root)
-                    yield Nudged(at=now, address=view.address, outcome=roused)
+                    outcome = roused(self.peers, view.member, fresh, self.root)
+                    yield Nudged(at=now, address=view.address, outcome=outcome)
 
         events = [*roster_changes(), *mail_changes()]
         self.known = current

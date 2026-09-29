@@ -191,6 +191,10 @@ def test_nudging_wakes_a_peer_through_its_wake_socket_and_says_so_for_one_withou
     [frame] = [json.loads(line) for line in delivered]
     assert frame["type"] == "user"
     assert "look" in frame["message"]["content"]
+    # What the wake carried reached the peer, so its hook has nothing of it
+    # left to hand over at the next call; the peer nothing woke still has it.
+    assert peers.waiting(claude).messages == []
+    assert [message.text for message in peers.waiting(silent).messages] == ["look"]
 
 
 def test_the_run_lands_when_the_roster_is_empty(tmp_path: Path) -> None:

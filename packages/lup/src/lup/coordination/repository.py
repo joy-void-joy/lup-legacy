@@ -632,6 +632,16 @@ class RepositoryPeers:
         mailbox.commit(delivery)
         return delivery
 
+    def delivered(self, member_id: str, delivery: ActorDelivery) -> None:
+        """Record exactly these messages as handed over to this member by something else.
+
+        What a wake the member's runtime accepted does: it carried them whole,
+        so the member's own hook must not hand them over a second time. The
+        rest of the mailbox — what arrived since, or what no wake carried —
+        stays for that hook.
+        """
+        self.cohort.mailbox(self.actor(member_id)).commit(delivery)
+
     def live_ids(self) -> list[str]:
         """Every member still working here, by id, which is what expires a claim.
 

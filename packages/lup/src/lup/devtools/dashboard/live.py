@@ -26,8 +26,7 @@ from lup.coordination.mail import ActorMail, MailCursor, PostedMessage
 from lup.coordination.peers import USER_ADDRESS
 from lup.coordination.repository import PeerDepartedError, PeerView, RepositoryPeers
 from lup.coordination.roster import Delivery
-from lup.coordination.wake import wake
-from lup.coordination.watch import nudge_text
+from lup.coordination.watch import roused
 from lup.devtools.dashboard.companion import KnownRepository
 from lup.providers.transcripts import native_turn, subagent_transcript
 from lup.types import JsonObject
@@ -443,8 +442,9 @@ def reply(known: KnownRepository, member_id: str, text: str) -> ReplyOutcome:
     The path a session's own `coordination_send` to a peer takes — the
     recipient's mailbox, where its hook hands it over at its next tool call —
     then its wake path, carrying everything waiting for it, so an idle
-    session takes a turn. Refused for an id nothing here answers to, and for
-    a session that has stopped.
+    session takes a turn; what a wake its runtime accepted carried is handed
+    over with it, so the hook does not hand it over again. Refused for an id
+    nothing here answers to, and for a session that has stopped.
     """
     peers = RepositoryPeers(known.checkout)
     row = peers.row(member_id)
@@ -454,16 +454,14 @@ def reply(known: KnownRepository, member_id: str, text: str) -> ReplyOutcome:
         raise PeerDepartedError(row, peers.called(member_id))
     peers.send(member_id, text, door=Door.PAGE, sender=USER_ADDRESS)
     waiting = peers.waiting(member_id).messages
-    roused = wake(
-        row.wake, nudge_text(waiting), Path(row.worktree) if row.worktree else None
-    )
+    woken = roused(peers, row, waiting, Path(row.worktree) if row.worktree else None)
     session = f"{known.key()}/{member_id}"
-    if roused.reached:
+    if woken.reached:
         return ReplyOutcome(
             session=session,
             queued=True,
             woken=True,
-            detail="Queued in its mailbox, and its runtime accepted the wake.",
+            detail="Handed over with the wake its runtime accepted.",
         )
     if row.delivery == Delivery.HOOK:
         return ReplyOutcome(
@@ -476,5 +474,5 @@ def reply(known: KnownRepository, member_id: str, text: str) -> ReplyOutcome:
         session=session,
         queued=True,
         woken=False,
-        detail=f"Queued in its mailbox. {roused.reason}",
+        detail=f"Queued in its mailbox. {woken.reason}",
     )
