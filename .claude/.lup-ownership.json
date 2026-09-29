@@ -772,7 +772,7 @@
     {
       "path": "docs/coordination.md",
       "category": "generated",
-      "sha256": "461ac81c1d91489afac710531f0cd754b6356a68cf40fbc7ded8cdedcbffcc6e",
+      "sha256": "b99c1ff05b181899dc962962cb2dd42fe21ae4162b702af50108285d77644aca",
       "semantic_id": "docs.coordination",
       "executable": false
     },
@@ -786,7 +786,7 @@
     {
       "path": "docs/dashboard.md",
       "category": "generated",
-      "sha256": "21b3dca38156b96cd458f17089cbc71ba1c9308bf619d3721353d717efecdd3f",
+      "sha256": "c741d4cdfacf3b15004c145033303602588ff7c024226680b4999fd0bfba1cc1",
       "semantic_id": "docs.dashboard",
       "executable": false
     },

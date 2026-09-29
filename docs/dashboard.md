@@ -2,11 +2,12 @@
 
 # Dashboard
 
-The `dashboard` module gives the operator one page over every session's parked
-reviews, in every repository they work in, with each repository's setup beside
-them. Declining it removes the `dashboard` commands and the service every
-launch holds; `review list`, `show`, `approve`, `decline` and `cancel` remain,
-and a parked call is answered from the terminal.
+The `dashboard` module gives the operator one page over every session, in every
+repository they work in: what each session and its subagents are doing, what
+they said to each other, a box to write to any of them, the reviews they
+parked, and each repository's setup. Declining it removes the `dashboard`
+commands and the service every launch holds; `review list`, `show`, `approve`,
+`decline` and `cancel` remain, and a parked call is answered from the terminal.
 
 ## One service for every session
 
@@ -47,7 +48,70 @@ own, over the current repository or each `--root <checkout>` named, until
 Ctrl+C. `--host` picks a loopback address, `--port` its port, and `--no-open`
 keeps the browser closed.
 
-## What the page shows
+## One stream
+
+Everything live reaches the page on one stream, `GET /api/stream`, as
+server-sent events; nothing on the page polls. One producer serves every open
+tab: while any tab follows, it looks at every repository the dashboard serves
+twice a second — each roster, the transcript each live row names, the mail
+record — and at the review queues once a second, and numbers every difference
+it finds. A fresh tab is handed the whole state once, then each numbered
+change. A tab that reconnects sends the cursor of the last frame it saw as
+`Last-Event-ID` and is handed exactly what it missed; a cursor this dashboard
+never handed out — one from before it restarted, or older than the 4096
+changes it keeps — is answered with the whole state again, so a tab can fall
+behind but never go wrong. Once what a tab missed is sent the stream says so,
+and the page reads as current even when nothing had changed.
+
+Each source is read again only where it moved. A roster is read when a member's
+file changes, and at least every five seconds, since a runtime can stop without
+writing; a transcript from the byte it was last read to, its last megabyte the
+first time; the mail record from its cursor; a checkout's review queue only when
+its relay changed on disk, and a settled review is projected once. An idle
+dashboard costs a few file checks a look however many sessions it shows and
+however long the history behind them.
+
+Until the first frame arrives, the page shows loading with unknown counts.
+Reconnecting or unreadable queues remain visibly incomplete; only a current
+stream with every queue read can confirm that no requests are waiting.
+
+## Sessions
+
+The Sessions view lists every session of every repository the dashboard
+serves, read from that repository's roster, with its native subagents nested
+beneath it — each subagent is a roster row of its own, named from its spawn.
+Each row says what the session says it is doing, the call it is waiting on or
+the last thing it said, and how many messages wait in its mailbox. Sessions
+that stopped within the roster's window stay listed, marked stopped.
+
+Choose a session to read its id, worktree and task; what it says it is doing;
+what it is doing now, folded from the runtime's own transcript the row names —
+the last thing it said in its own words, and the tool call nothing has answered
+yet, with its arguments (a subagent's from its own transcript beside its
+session's); what its calls hold, marked where another session holds it too;
+its subagents; and every message sent to it or by it, oldest first, each marked
+as waiting in its mailbox or taken. Choose a repository's name to read every
+message its sessions sent each other as one conversation. Messages come from
+the repository's mail record (see [coordination](coordination.md)), so what was
+said stays readable after its reader took it.
+
+## Writing to a session
+
+A running session has a box beneath its messages. What the operator writes goes
+the way a session's own `coordination_send` to a peer goes: into the session's
+mailbox, signed `user`, where its hook hands it over before its next tool call
+as `[message from user by page] …`, then through its wake path so an idle
+session takes a turn — its wake socket for Claude Code, `codex queue` for
+Codex — carrying everything waiting for it. The page says which happened: the
+runtime accepted the wake, the message waits for the next tool call (a
+subagent's only route), or why no wake was attempted. The session answers the
+operator by sending to `user`. The box writes through the page's capability and
+origin check, addressed by the repository's key and the session's member id —
+the id every verb accepts and no rename changes
+(`POST /api/repositories/<key>/sessions/<member-id>/messages`). A session that
+stopped has no box: a message to it would wait for nobody.
+
+## Reviews
 
 Reviews are grouped by repository, then by the session that asked, named as the
 roster names it. A review whose requester is gone is expired, recording why: at
@@ -56,14 +120,6 @@ never knew it, since a session it never recorded cannot be told from one that
 has not joined yet. The dashboard sweeps every ten seconds, and
 `review list` sweeps its checkout before it lists. A retry of an expired
 review's call parks a fresh review.
-
-One producer serves every open tab. A checkout's queue is read again only when
-its relay changed on disk, and a settled review is projected once, so an idle
-page costs a few file checks a second however long the history behind it.
-
-Until the first snapshot arrives, the page shows loading with unknown counts.
-Reconnecting or unreadable queues remain visibly incomplete; only a fresh,
-complete snapshot can confirm that no requests are waiting.
 
 ## Setup
 

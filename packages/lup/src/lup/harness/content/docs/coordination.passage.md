@@ -429,6 +429,15 @@ so "what is waiting for me" is a directory listing. There is no position for
 anybody to keep: nothing to commit after a crash but what was never handed
 over, and no way for a second reader to be behind a first.
 
+A message is signed with the address a reply reaches — the sending member's
+id, or `user` for the person — and its reader is handed it as
+`[message from <sender> by <door>] …`; a door with no address of its own, a
+run steering its workers, signs nothing and reads `[message by <door>] …`.
+Every message posted also lands on the store's mail record, `mail.jsonl`, one
+line naming the member it went to: the mailbox is its reader's position and
+empties as it is read, so what was said to a member, and by whom, is read
+from the record — the dashboard follows it from a cursor.
+
 **A notice is neither.** "The base moved under all of you" is a fact about the
 population rather than about its recipients: it stays true after it is said,
 and a member arriving afterwards needs it as much as one already here. It sits
