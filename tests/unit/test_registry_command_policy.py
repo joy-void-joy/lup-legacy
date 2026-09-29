@@ -26,7 +26,7 @@ import sh
 from lup.devtools.dev.policy_explain import PolicyVerdict, verdict_for
 from lup.types import JsonObject
 from lup_template.harness.catalog import declared_hook_set
-from tests.unit.native import codex_denial
+from tests.unit.native import claude_effect, codex_denial
 from tests.unit.repos import initialized_repo
 
 type Runtime = Literal["claude", "codex"]
@@ -148,8 +148,9 @@ def met(runtime: Runtime, command: str, checkout: Path) -> tuple[str, str]:
         if not result.stdout:
             return "allow", ""
         return "ask", codex_denial(result)
-    specific = json.loads(str(result))["hookSpecificOutput"]
-    return str(specific["permissionDecision"]), str(
+    answered = json.loads(str(result))
+    specific = answered["hookSpecificOutput"]
+    return claude_effect(answered), str(
         specific["permissionDecisionReason"]
         if "permissionDecisionReason" in specific
         else ""

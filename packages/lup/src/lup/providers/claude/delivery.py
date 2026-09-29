@@ -23,22 +23,30 @@ CLAUDE_DELIVERY: list[DeliveryFact] = [
         guarantee="ask_survives_auto_mode",
         provider="claude",
         mechanism=(
-            "the generated PreToolUse hook refuses unresolved asks and requires"
-            " an explicit recorded reviewer answer before allowing one exact retry"
+            "a human_only ask is never rendered as a prompt a mode could answer:"
+            " the generated PreToolUse hook parks it in the review queue and"
+            " refuses the call while it waits, and only an answer the operator"
+            " recorded in the host's state releases it, once, to `review wait`"
+            " or an exact retry; with a dashboard held, every ask parks"
         ),
         standing="measured",
         fallback=(
-            "generated-dispatcher fixtures verify the receipt gate; native ask"
-            " is not a human receipt, and unexpected execution is diagnosed as"
-            " in_doubt without granting future authority"
+            "generated-dispatcher fixtures verify the parking and the receipt"
+            " gate, and a hook's refusal held in a `-p` run under both the"
+            " default and the auto mode on 2.1.283; a prompt is not a human"
+            " receipt -- an auto-mode classifier answered a hook's ask with no"
+            " prompt shown on 2.1.263 -- so only an ask a supervisor may"
+            " answer is left to the prompt, and only where no dashboard is held"
         ),
     ),
     DeliveryFact(
         guarantee="exact_call_resumes",
         provider="claude",
         mechanism=(
-            "an operator answer releases one retry with the same session,"
-            " directory, payload, policy reason and edited file preimages"
+            "an operator answer releases the call once: `review wait` writes the"
+            " after-documents or runs the command it recorded, or one retry with"
+            " the same session, directory, payload, policy reason and edited"
+            " file preimages spends it"
         ),
         standing="measured",
         fallback=(
@@ -88,7 +96,7 @@ CLAUDE_DELIVERY: list[DeliveryFact] = [
     DeliveryFact(
         guarantee="rejection_receipt",
         provider="claude",
-        mechanism="an explicit rejection is recorded by the review queue",
+        mechanism="an explicit rejection is recorded on the host by the review queue",
         standing="measured",
         fallback=(
             "absence of native execution supplies no answer; pending questions"

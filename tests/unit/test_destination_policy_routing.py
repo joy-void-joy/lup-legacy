@@ -128,7 +128,7 @@ def test_destination_allows_ordinary_edit_and_preserves_its_human_gate(
     authorize(origin, owner, runtime, monkeypatch)
     assert native_edit(origin, owner / "value.txt", runtime)[0] == "allow"
     effect, detail = native_edit(origin, owner / "OWNED.md", runtime)
-    assert effect == ("ask" if runtime == "claude" else "deny")
+    assert effect == "deny"
     assert "destination human author" in detail
     assert native_edit(origin, origin / "OWNED.md", runtime)[0] == "allow"
     assert (owner / "OWNED.md").read_text() == "before\n"
@@ -244,6 +244,8 @@ def test_destination_does_not_execute_mutable_checkout_resolver(
         {"command": f"cat > {shlex.quote(str(target))} <<'CONTENT'\n{after}CONTENT"},
     )
 
+    # A quality question a supervisor may answer keeps Claude's prompt where
+    # no dashboard is held; Codex, with no prompt, parks it.
     assert effect == ("ask" if runtime == "claude" else "deny"), detail
     assert "dict-get" in detail
     assert not marker.exists()
@@ -411,7 +413,7 @@ def test_shell_edit_routes_preserve_destination_human_authority(
 
     effect, detail = native_tool_response(origin, runtime, "Bash", {"command": command})
 
-    assert effect == ("ask" if runtime == "claude" else "deny")
+    assert effect == "deny"
     assert "destination human author" in detail
     assert (owner / "OWNED.md").read_text() == "before\n"
 
@@ -596,7 +598,7 @@ def test_an_explicit_sibling_grant_uses_that_worktrees_accepted_policy(
 
     effect, detail = native_edit(origin, owner / "OWNED.md", runtime)
 
-    assert effect == ("ask" if runtime == "claude" else "deny")
+    assert effect == "deny"
     assert "sibling human author" in detail
     assert native_edit(origin, origin / "OWNED.md", runtime)[0] == "allow"
 

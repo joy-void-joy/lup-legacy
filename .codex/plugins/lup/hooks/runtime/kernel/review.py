@@ -11,6 +11,14 @@ class CopiedPaths(TypedDict):
     target: str
 
 
+class Reviewed(TypedDict):
+    """One ask put to the review queue: its verdict, and what the operator is told."""
+
+    decision: KernelDecision
+    notice: str
+    """The line a runtime shows the person beside the refusal, empty on an allow."""
+
+
 def single_command(command: str) -> Command | None:
     """A single foreground command, preserving its words and redirects."""
     tree = parse_shell(command)

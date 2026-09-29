@@ -18,6 +18,7 @@ from lup.policy.kernel.decision import KernelDecision, captured_edit_decision
 from lup.policy.kernel.peers import decide_foreign_claim, settled_with_claim
 from lup.policy.peer_policy import erase_peer_policy
 from lup.policy.relay import QuestionRelay
+from tests.unit.native import claude_effect
 from lup.types import JsonObject
 from tests.unit.repos import commit_file, initialized_repo
 
@@ -129,9 +130,10 @@ def test_an_edit_under_another_session_s_claim_asks_and_names_the_holder(
     decision = decide(edit_payload(work / "a.py", "value = 1", "value = 2", work), mine)
     specific = decision["hookSpecificOutput"]
     assert isinstance(specific, dict)
-    assert specific["permissionDecision"] == "ask"
+    assert claude_effect(decision) == "ask"
     assert "feat-rewriting" in str(specific["permissionDecisionReason"])
-    assert QuestionRelay(work / ".lup/questions.jsonl").pending() == []
+    (question,) = QuestionRelay(work / ".lup/questions.jsonl").pending()
+    assert "feat-rewriting" in question.reason
 
 
 def test_a_session_is_not_asked_about_a_path_it_holds_itself(tmp_path: Path) -> None:
@@ -239,7 +241,7 @@ def test_a_claim_the_sweep_vacated_no_longer_asks(tmp_path: Path) -> None:
     peers.touched(holder, work / "a.py")
     asked = decide(edit_payload(work / "a.py", "value = 1", "value = 2", work), mine)
     assert isinstance(asked["hookSpecificOutput"], dict)
-    assert asked["hookSpecificOutput"]["permissionDecision"] == "ask"
+    assert claude_effect(asked) == "ask"
     assert "feat-rewriting" in str(
         asked["hookSpecificOutput"]["permissionDecisionReason"]
     )

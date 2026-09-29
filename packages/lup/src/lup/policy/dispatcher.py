@@ -760,16 +760,7 @@ def edit_evaluator_artifact(
     body = (
         "\n\n\n".join(
             [
-                "\n".join(
-                    [
-                        prologue,
-                        *[
-                            segment
-                            for half in (shared, decisions)
-                            for segment in half.spliced_prologue(prologue)
-                        ],
-                    ]
-                ),
+                "\n".join([prologue, *carried_imports(prologue, shared, decisions)]),
                 *[shared.source_of(node) for node in shared.functions()],
                 *[decisions.source_of(node) for node in decisions.functions()],
                 *[evaluator.source_of(node) for node in evaluator.functions()],
@@ -786,6 +777,19 @@ def edit_evaluator_artifact(
             source="lup.policy.assets.policy_evaluator", command=REGENERATE_COMMAND
         ),
     )
+
+
+def carried_imports(
+    prologue: str, shared: SourceHalf, decisions: SourceHalf
+) -> list[str]:
+    """The spliced halves' imports the entry half's prologue lacks, each once.
+
+    The decisions half is read against the host half's carried lines as well
+    as the prologue: two halves importing one name alike would otherwise both
+    carry it, and the script would bind the name twice.
+    """
+    hosted = shared.spliced_prologue(prologue)
+    return [*hosted, *decisions.spliced_prologue("\n".join([prologue, *hosted]))]
 
 
 def compile_dispatcher(declaration: DispatcherDeclaration) -> str:
@@ -809,11 +813,7 @@ def compile_dispatcher(declaration: DispatcherDeclaration) -> str:
         raise ValueError(f"{runtime.module} " + "; ".join(breaches))
     header = "\n".join([SHEBANG, compiled_docstring(declaration)])
     prologue = runtime.prologue()
-    carried = [
-        segment
-        for half in (shared, decisions)
-        for segment in half.spliced_prologue(prologue)
-    ]
+    carried = carried_imports(prologue, shared, decisions)
     blocks = [
         "\n".join([f"{header}\n\n{prologue}", *carried]),
         *[shared.source_of(node) for node in shared.functions()],

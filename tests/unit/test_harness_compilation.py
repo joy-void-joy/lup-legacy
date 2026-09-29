@@ -217,6 +217,12 @@ class ClaudeHookOutput(BaseModel, frozen=True):
     """Generated Claude hook output envelope."""
 
     hook_specific_output: ClaudeHookDecision = Field(alias="hookSpecificOutput")
+    system_message: str = Field(default="", alias="systemMessage")
+
+    def effect(self) -> str:
+        """``ask`` for a call parked for the operator, else the decision itself."""
+        decided = self.hook_specific_output.permission_decision
+        return "ask" if decided == "deny" and self.system_message else decided
 
 
 class CodexPermissionDecision(BaseModel, frozen=True):
@@ -2191,7 +2197,7 @@ def test_generated_codex_pretool_never_treats_pending_requests_as_approval(
         assert refused.exit_code == 0
         output = json.loads(refused.stdout)
         assert output["hookSpecificOutput"]["permissionDecision"] == "deny"
-        assert "Review " in output["systemMessage"]
+        assert "Lup review " in output["systemMessage"]
 
 
 def test_generated_codex_permission_request_denies_unapproved_code() -> None:
@@ -2313,8 +2319,7 @@ def test_generated_hooks_find_uv_dependency_routes_past_global_flags(
         }
         result = sh.Command(str(script))(_in=json.dumps(body), _return_cmd=True)
         assert isinstance(result, sh.RunningCommand)
-        output = ClaudeHookOutput.model_validate_json(result.stdout)
-        return output.hook_specific_output.permission_decision
+        return ClaudeHookOutput.model_validate_json(result.stdout).effect()
 
     def codex(command: str) -> str:
         body: JsonObject = {
@@ -2374,11 +2379,12 @@ def test_generated_claude_hook_refuses_the_declared_calls(tmp_path: Path) -> Non
         "content": "# lup: escalate[decision]: the user asked for a page\npage"
     }
     # The marker exists to turn a refusal into the question its caller asked
-    # for, and the question is put where the caller's reader already is.
+    # for, and a person's question is parked for the operator to answer.
     escalated = decision("Artifact", proposal)
-    assert escalated.permission_decision == "ask"
+    assert escalated.permission_decision == "deny"
     assert "the user asked for a page" in escalated.permission_decision_reason
-    assert QuestionRelay(tmp_path / ".lup/questions.jsonl").pending() == []
+    (question,) = QuestionRelay(tmp_path / ".lup/questions.jsonl").pending()
+    assert question.operation.tool == "Artifact"
 
 
 def test_generated_claude_hook_leaves_every_other_skill_to_the_runtime() -> None:
@@ -2735,9 +2741,9 @@ def test_generated_claude_hook_requires_review_for_human_owned_readme_edits(
         hook_decision(payload, tmp_path, agent_type="resolver-worker"),
         hook_decision(payload, tmp_path, identity="resolver-worker"),
     ):
-        assert granted.permission_decision == "ask"
+        assert granted.permission_decision == "deny"
         assert "human-authored" in granted.permission_decision_reason
-        assert QuestionRelay(tmp_path / ".lup/questions.jsonl").pending() == []
+        assert len(QuestionRelay(tmp_path / ".lup/questions.jsonl").pending()) == 1
         assert readme.read_text(encoding="utf-8") == "# Operator-authored design\n"
 
 

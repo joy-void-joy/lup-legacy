@@ -38,7 +38,7 @@ from lup.types import JsonObject
 from lup_template.harness.catalog import declared_hook_set
 from lup_template.harness.composition import TARGETS
 from tests.unit.held import held_argv, holding
-from tests.unit.native import codex_denial
+from tests.unit.native import claude_effect, codex_denial
 from tests.unit.repos import commit_file, initialized_repo
 
 type Runtime = Literal["claude", "codex"]
@@ -145,7 +145,7 @@ class Session:
         )
         if "permissionDecision" not in specific:
             return "defer"
-        return str(specific["permissionDecision"])
+        return claude_effect(rendered)
 
     def composed(self, monkeypatch: pytest.MonkeyPatch, event: SemanticTool) -> str:
         """The in-process effect, composed the way `dev policy` composes it."""

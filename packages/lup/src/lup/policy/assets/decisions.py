@@ -23,6 +23,8 @@ against the workspace.
 
 import json
 import shlex
+from collections.abc import Callable
+from hashlib import sha256
 from pathlib import Path
 import policy_data as identity_policy
 
@@ -33,6 +35,10 @@ from host import (
     contained,
     defers_unjudged,
     note_asked,
+    policy_snapshot_digest,
+    review_answers,
+    review_answers_home,
+    routing_policy_identity,
     delivers,
     host_held_ports,
     measured_boundary,
@@ -111,6 +117,7 @@ from kernel.rows import (
     landing_rows,
     unproduced_cause,
 )
+from kernel.review import Reviewed, copied_paths
 from kernel.spawns import decide_spawn, spawn_name
 from kernel.words import INTERPRETERS
 from kernel.roles import displaced_targets, sibling_scratch_rows, unscratched
@@ -128,6 +135,7 @@ from policy_data import (
     ALLOWANCE_GRANTS_ENV,
     ALLOWED_FETCH_SCOPES,
     ANTI_PATTERN_ROWS,
+    DASHBOARD_URL_ENV,
     RESOLUTION_COMMAND,
     DENIED_FETCH_SCOPES,
     EDIT_RULES,
@@ -139,6 +147,7 @@ from policy_data import (
     PEER_POLICY,
     POLICY_ROOT_ENV,
     RECOVERABLE_TARGET_LIMIT,
+    REVIEW_ANSWERS_ENV,
     REFUSED_PATHS,
     REFUSED_TOOLS,
     RUNNER_TARGET_TABLES,
@@ -449,6 +458,65 @@ def bash_decision(
     return verdict.revised(reason=verdict.reason + nudge)
 
 
+def dashboard_held() -> bool:
+    """Whether this session's launch holds a dashboard, where a reviewer reads what parks."""
+    return bool(declared_identity(DASHBOARD_URL_ENV))
+
+
+def shell_preimages(command: str, cwd: Path) -> dict[Path, str | None]:
+    """What each file one command would write holds now, keyed where it resolves.
+
+    Every spelling of a write the policy reads -- a redirection, a path verb's
+    operand, a write flag, an authored document, a sed rewrite, a copy -- so
+    the review binds to the files as they stood, and a change to any of them
+    since makes the same command a fresh question. A directory operand has no
+    document to bind, so it is bound by the command that names it alone.
+    """
+    copied = copied_paths(command)
+    if copied is not None and not (cwd / copied["source"]).is_file():
+        raise ValueError("copy review requires a readable source file")
+    paths = [
+        *shell_write_targets(command),
+        *shell_path_verb_targets(command, SHELL_RULES),
+        *shell_flag_write_targets(command, SHELL_RULES),
+        *(write["path"] for write in authored_writes(command)),
+        *(
+            path
+            for rewrite in shell_sed_rewrites(command, SHELL_RULES)
+            for path in rewrite["targets"]
+        ),
+        *(copied.values() if copied is not None else []),
+    ]
+
+    def standing(target: Path) -> str | None:
+        """One target's text as it stands, absent where nothing does."""
+        if not target.is_file():
+            return None
+        return target.read_text(encoding="utf-8", newline="")
+
+    return {
+        (cwd / path).resolve(): standing(cwd / path)
+        for path in dict.fromkeys(paths)
+        if (cwd / path).is_file() or not (cwd / path).exists()
+    }
+
+
+def review_policy_identity(cwd: Path, script: Path) -> str:
+    """Which policy judged a parked call: the routed one, and this compiled script's own.
+
+    Part of what an approval binds to, so a regeneration between asking and
+    answering makes the same call a fresh question rather than spending an
+    answer given under other rules.
+    """
+    return json.dumps(
+        [
+            routing_policy_identity(cwd),
+            policy_snapshot_digest(script.parents[1]),
+            sha256(script.read_bytes()).hexdigest(),
+        ]
+    )
+
+
 def reviewed_decision(
     decision: KernelDecision,
     cwd: Path,
@@ -456,13 +524,21 @@ def reviewed_decision(
     tool: str,
     arguments: dict,
     preconditions: dict[Path, str | None],
+    waiting: Callable[[str], str],
     execution_id: str = "",
     stage: str = "",
     predecessor: str = "",
     execution_payload: dict | None = None,
     policy_identity: str = "",
-) -> KernelDecision:
-    """Only an explicit, single-use recorded answer can settle a native ask."""
+    provider: str = "",
+) -> Reviewed:
+    """Park one ask for the operator, or spend the single-use answer they recorded.
+
+    The call is refused while it waits, with a recovery written for the agent:
+    it is queued rather than refused, the call is not to be reshaped, and
+    ``waiting`` spells, in the runtime's own words, how to start `review wait`
+    on it, which carries the approved call out and reports the result.
+    """
     result = review_hook_call(
         cwd,
         session,
@@ -484,20 +560,39 @@ def reviewed_decision(
         else None,
         policy_identity,
         json.dumps(decision.file_reviews, sort_keys=True),
+        answers=str(
+            review_answers(
+                cwd / ".lup/questions.jsonl", review_answers_home(REVIEW_ANSWERS_ENV)
+            )
+        ),
+        member=declared_identity(PEER_POLICY["member_env"])
+        if PEER_POLICY is not None
+        else "",
+        placement=decision.sandbox,
+        provider=provider,
     )
-    if result["state"] == "approved":
-        return decision.revised(effect="allow")
-    if result["state"] == "rejected":
-        return decision.revised(
-            effect="deny",
-            recovery=f"Review {result['id']} was rejected: {result['reason']}. Revise the proposal before retrying.",
-        )
     identifier = result["id"]
+    if result["state"] == "approved":
+        return {"decision": decision.revised(effect="allow"), "notice": ""}
+    if result["state"] == "rejected":
+        note = f": {result['reason']}" if result["reason"] else ""
+        return {
+            "decision": decision.revised(
+                effect="deny",
+                recovery=(
+                    f"The operator declined review {identifier}{note}. Don't "
+                    "retry this call as it stands: change course, or ask the "
+                    "user."
+                ),
+            ),
+            "notice": f"Lup review {identifier} was declined; the agent is told.",
+        }
     if not identifier:
-        return decision.revised(
-            effect="deny",
-            recovery=f"Review queue unavailable: {result['reason']}. Run this operation from an operator terminal.",
-        )
+        unavailable = f"Review queue unavailable: {result['reason']}. Run this operation from an operator terminal."
+        return {
+            "decision": decision.revised(effect="deny", recovery=unavailable),
+            "notice": unavailable,
+        }
     project = declared_identity(POLICY_ROOT_ENV)
     prefix = [
         "uv",
@@ -510,19 +605,26 @@ def reviewed_decision(
         "lup-devtools",
         "review",
     ]
-    show = shlex.join([*prefix, "show", identifier])
     approve = shlex.join([*prefix, "approve", identifier, "--as", "operator"])
     decline = shlex.join([*prefix, "decline", identifier, "--as", "operator"])
-    return decision.revised(
-        effect="deny",
-        recovery=(
-            f"Review {identifier} is {result['state']}; this request is already submitted. "
-            "Wait for its answer on the dashboard, then retry this exact tool call. "
-            "Do not add an escalation or rewrite the call: that creates a different review. "
-            f"The operator can also run `{show}`, then `{approve}` or `{decline}`. "
-            "Changed file contents or policy require fresh review."
-        ),
+    dashboard = declared_identity(DASHBOARD_URL_ENV)
+    where = (
+        f"on the dashboard, {dashboard}"
+        if dashboard
+        else f"from a terminal outside the session: `{approve}` or `{decline}`"
     )
+    return {
+        "decision": decision.revised(
+            effect="deny",
+            recovery=(
+                f"Queued for the operator as review {identifier} — not refused. "
+                "Don't change the command; carry on with other work. "
+                + waiting(shlex.join([*prefix, "wait", identifier]))
+                + f" The operator answers it {where}."
+            ),
+        ),
+        "notice": f"Lup review {identifier} is waiting for you {where}.",
+    }
 
 
 def session_contained(cwd: Path | None) -> bool:

@@ -9,7 +9,7 @@ import sh
 
 from lup.policy.assets.host import approvals_log
 from lup.policy.relay import QuestionRelay
-from tests.unit.native import codex_effect
+from tests.unit.native import claude_effect, codex_effect
 from tests.unit.repos import commit_file, initialized_repo
 
 CLAUDE = Path(".claude/plugins/lup/hooks/scripts/policy.py")
@@ -73,12 +73,14 @@ def refused(result: sh.RunningCommand) -> bool:
     return codex_effect(result) == "deny"
 
 
-def test_claude_renders_the_question_rather_than_parking_it(repo: Path) -> None:
-    """The verdict goes out as an ask, carrying the reason that earned it."""
-    asked = decision(claude("PreToolUse", repo))
-    assert asked["permissionDecision"] == "ask"
+def test_claude_parks_a_person_s_question_rather_than_prompting(repo: Path) -> None:
+    """The verdict is refused while it waits, carrying the reason that earned it."""
+    answered = claude("PreToolUse", repo)
+    asked = decision(answered)
+    assert claude_effect(answered) == "ask"
     assert "deleting a remote branch" in str(asked["permissionDecisionReason"])
-    assert QuestionRelay(repo / ".lup/questions.jsonl").pending() == []
+    (question,) = QuestionRelay(repo / ".lup/questions.jsonl").pending()
+    assert question.requirement == "human_only"
 
 
 def test_a_call_that_ran_without_asking_leaves_no_memory(repo: Path) -> None:

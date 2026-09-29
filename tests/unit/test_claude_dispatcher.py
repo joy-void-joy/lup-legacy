@@ -19,6 +19,7 @@ import sh
 from lup.providers.claude.hooks import claude_placed_input
 from lup.policy.grants import allowance_grants_environment, write_allowance_grants
 from lup.policy.identity import AGENT_IDENTITY_ENV, ConcernAllowance
+from lup.policy.relay import QuestionRelay
 from lup.policy.kernel.decision import (
     CONTAINED_ESCAPE_NOTICE,
     SANDBOX_ESCAPE_NOTICE,
@@ -28,6 +29,7 @@ from lup.types import EnvVars, JsonObject
 from lup_template.harness.catalog import declared_hook_set
 from tests.unit.bundled import bundled
 from tests.unit.held import held_argv, holding
+from tests.unit.native import claude_effect
 from tests.unit.repos import commit_file, git_in, initialized_repo
 
 DISPATCHER = Path(".claude/plugins/lup/hooks/scripts/policy.py")
@@ -249,7 +251,7 @@ def test_absolute_paths_resolve_against_their_worktree_not_the_launch_directory(
     guarded = under_test["hookSpecificOutput"]
     assert isinstance(asked, dict)
     assert isinstance(guarded, dict)
-    assert asked["permissionDecision"] == "ask"
+    assert claude_effect(protected) == "ask"
     assert guarded["permissionDecision"] == "allow"
     assert "small safe edit" in str(guarded["permissionDecisionReason"])
 
@@ -261,11 +263,10 @@ def bash_payload(command: str) -> JsonObject:
 
 def effect_from(command: str, cwd: Path) -> tuple[str, str]:
     """The effect and reason the emitted dispatcher returns for one command."""
-    specific = decide_from(bash_payload(command), cwd)["hookSpecificOutput"]
+    answer = decide_from(bash_payload(command), cwd)
+    specific = answer["hookSpecificOutput"]
     assert isinstance(specific, dict)
-    return str(specific["permissionDecision"]), str(
-        specific["permissionDecisionReason"]
-    )
+    return claude_effect(answer), str(specific["permissionDecisionReason"])
 
 
 @pytest.fixture
@@ -300,11 +301,10 @@ def foreign_verdict(path: Path, old: str, new: str, cwd: Path) -> tuple[str, str
         **edit_payload(str(path), old, new, False),
         "cwd": str(cwd),
     }
-    specific = decide_from(payload, cwd)["hookSpecificOutput"]
+    answer = decide_from(payload, cwd)
+    specific = answer["hookSpecificOutput"]
     assert isinstance(specific, dict)
-    return str(specific["permissionDecision"]), str(
-        specific["permissionDecisionReason"]
-    )
+    return claude_effect(answer), str(specific["permissionDecisionReason"])
 
 
 def ownership_context(accessible: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
@@ -423,11 +423,10 @@ def note_verdict(path: str, cwd: Path) -> tuple[str, str]:
         **edit_payload(path, NOTE_PREIMAGE, f"{NOTE_PREIMAGE}\n{ADDED_NOTE}", False),
         "cwd": str(cwd),
     }
-    specific = decide_from(payload, cwd)["hookSpecificOutput"]
+    answer = decide_from(payload, cwd)
+    specific = answer["hookSpecificOutput"]
     assert isinstance(specific, dict)
-    return str(specific["permissionDecision"]), str(
-        specific["permissionDecisionReason"]
-    )
+    return claude_effect(answer), str(specific["permissionDecisionReason"])
 
 
 @pytest.fixture
@@ -500,11 +499,10 @@ def snapshotting_effect(command: str, cwd: Path) -> tuple[str, str]:
     where, and these cases have to say.
     """
     payload = {**bash_payload(command), "cwd": str(cwd)}
-    specific = decide_from(payload, cwd)["hookSpecificOutput"]
+    answer = decide_from(payload, cwd)
+    specific = answer["hookSpecificOutput"]
     assert isinstance(specific, dict)
-    return str(specific["permissionDecision"]), str(
-        specific["permissionDecisionReason"]
-    )
+    return claude_effect(answer), str(specific["permissionDecisionReason"])
 
 
 def test_a_command_that_could_destroy_work_is_snapshotted_first(
@@ -821,9 +819,7 @@ def effect_under(payload: JsonObject, environment: EnvVars) -> str:
             _env=environment,
         )
     )
-    specific = json.loads(output)["hookSpecificOutput"]
-    assert isinstance(specific, dict)
-    return str(specific["permissionDecision"])
+    return claude_effect(json.loads(output))
 
 
 def test_a_grant_made_after_a_session_started_releases_its_very_next_call(
@@ -1226,9 +1222,7 @@ def unjudged_effect_under(
         root,
         written.parent if "yes" in ledger["contained"] else None,
     )
-    specific = decision["hookSpecificOutput"]
-    assert isinstance(specific, dict)
-    return str(specific["permissionDecision"])
+    return claude_effect(decision)
 
 
 def test_a_contained_session_settles_unjudged_work_inside(
@@ -1269,8 +1263,9 @@ def escalated_reason_under(
     put it and named by the nonce this session is entitled to believe; none
     given is a launch that measured nothing, which the reader answers as
     uncontained. The native sandbox is off in both, as it is in every
-    contained launch. Returns the effect, the reason the approver reads, and
-    the rewrite the call goes out with.
+    contained launch. Returns the effect, the reason the approver reads in
+    the queue it is parked in, and the rewrite the call goes out with once
+    the operator approves it.
     """
     written = root / ".lup" / "preflight" / "launch.json"
     if ledger is None:
@@ -1286,16 +1281,16 @@ def escalated_reason_under(
         "session_id": "requester",
     }
     contained = ledger is not None and "yes" in ledger["contained"]
-    specific = decide_from(payload, root, written.parent if contained else None)[
-        "hookSpecificOutput"
-    ]
+    answer = decide_from(payload, root, written.parent if contained else None)
+    relay = QuestionRelay(root / ".lup/questions.jsonl")
+    (parked,) = relay.pending()
+    relay.answer(parked.id, "operator", True)
+    retried = decide_from(payload, root, written.parent if contained else None)
+    specific = retried["hookSpecificOutput"]
     assert isinstance(specific, dict)
+    assert specific["permissionDecision"] == "allow"
     rewritten = specific["updatedInput"] if "updatedInput" in specific else None
-    return (
-        str(specific["permissionDecision"]),
-        str(specific["permissionDecisionReason"]),
-        rewritten,
-    )
+    return claude_effect(answer), parked.reason, rewritten
 
 
 def test_an_approved_crossing_on_a_host_is_described_as_leaving_for_it(
@@ -1372,11 +1367,18 @@ def test_a_reason_naming_only_its_category_announces_nothing() -> None:
     assert "systemMessage" not in decision
 
 
-def test_a_shell_prompt_is_not_told_twice() -> None:
-    """A command's prompt renders the reason itself, so announcing it repeats it."""
-    decision = decide({"tool_name": "Bash", "tool_input": {"command": "rm -rf src"}})
+def test_a_parked_shell_question_is_not_told_twice() -> None:
+    """The agent reads the reason and the person the line saying where it waits.
 
-    assert "systemMessage" not in decision
+    Neither repeats the other: the person's line names the review and its
+    route to an answer, and the reason stays with the call it refused.
+    """
+    decision = decide({"tool_name": "Bash", "tool_input": {"command": "rm -rf src"}})
+    specific = decision["hookSpecificOutput"]
+    assert isinstance(specific, dict)
+    reason = str(specific["permissionDecisionReason"]).splitlines()[0]
+
+    assert reason not in str(decision["systemMessage"])
 
 
 @pytest.mark.parametrize(

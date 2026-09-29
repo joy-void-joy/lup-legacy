@@ -24,7 +24,7 @@ import sh
 
 from lup.devtools.dev.policy_explain import verdict_for
 from lup_template.harness.catalog import declared_hook_set
-from tests.unit.native import codex_denial, codex_effect
+from tests.unit.native import claude_effect, codex_denial, codex_effect
 from tests.unit.repos import commit_file, initialized_repo
 
 CLAUDE = Path(".claude/plugins/lup/hooks/scripts/policy.py")
@@ -142,7 +142,7 @@ def test_the_compiled_claude_dispatcher_answers_it_alike(
     )
     specific = answered["hookSpecificOutput"]
     assert isinstance(specific, dict)
-    assert specific["permissionDecision"] == effect, command
+    assert claude_effect(answered) == effect, command
     assert stake in str(specific["permissionDecisionReason"])
 
 
