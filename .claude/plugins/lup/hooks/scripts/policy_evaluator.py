@@ -808,6 +808,62 @@ def script_run_nudge(
     )
 
 
+def referral_noted(
+    root: Path,
+    session: str,
+    repository: str,
+    ledger: str = ".lup/referrals.json",
+    kept_days: int = 7,
+) -> bool:
+    """Whether this session was already referred to that repository, noting it if not.
+
+    Kept per session under the checkout, for *kept_days*, so the ledger holds
+    what a live session could still ask about and nothing older. A ledger that
+    cannot be read or written answers no, which errs toward saying a referral
+    again rather than never.
+    """
+    path = root / ledger
+    now = datetime.now(UTC)
+
+    def recent(entry: object) -> bool:
+        if not isinstance(entry, dict) or "repositories" not in entry:
+            return False
+        try:
+            stamped = datetime.fromisoformat(str(entry["at"]))
+        except (KeyError, ValueError):
+            return False
+        return now - stamped < timedelta(days=kept_days)
+
+    try:
+        loaded = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+    except (OSError, ValueError):
+        loaded = {}
+    held = loaded if isinstance(loaded, dict) else {}
+    kept = {name: entry for name, entry in held.items() if recent(entry)}
+    seen = kept[session]["repositories"] if session in kept else []
+    if repository in seen:
+        return True
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            json.dumps(
+                {
+                    **kept,
+                    session: {
+                        "at": now.isoformat(),
+                        "repositories": [*seen, repository],
+                    },
+                },
+                indent=2,
+                sort_keys=True,
+            ),
+            encoding="utf-8",
+        )
+    except OSError:
+        return False
+    return False
+
+
 def review_records(path: Path) -> list[dict]:
     """Read complete object records, preserving malformed bytes as inert evidence."""
     try:
@@ -4150,7 +4206,7 @@ def authored_review(
     )
 
 
-def written_review(command: str, cwd: Path) -> PostToolReport:
+def written_review(command: str, cwd: Path, session: str = "") -> PostToolReport:
     """What the gates say about the files a shell command just wrote.
 
     The half of an edit's review a shell write cannot reach in advance. An
@@ -4202,7 +4258,7 @@ def written_review(command: str, cwd: Path) -> PostToolReport:
         if target not in carried and (cwd / target).is_file()
     ]
     verdicts = [
-        (target, verdict)
+        (target, referred_once(verdict, target, cwd, session))
         for target in targets
         for after in [text_at(cwd, target)]
         if after is not None
@@ -4230,6 +4286,9 @@ def written_review(command: str, cwd: Path) -> PostToolReport:
             f"{target}: {verdict.addressed()}"
             for target, verdict in verdicts
             if verdict.effect not in ("allow", "deny")
+            # Said once already: the file is only another repository's, which
+            # the agent was told.
+            and not (verdict.rule == "edit:foreign-repository" and not verdict.recovery)
         ],
     )
 
@@ -4332,6 +4391,26 @@ def repair_report(path: str, file: dict, cwd: Path | None) -> PostToolReport:
             verdict.reason,
         ],
     )
+
+
+def referred_once(
+    verdict: KernelDecision, path_text: str, cwd: Path | None, session: str
+) -> KernelDecision:
+    """Another repository's referral, said in full once per repository per session.
+
+    The referral's second sentence -- that the repository's conventions are
+    its own and the rule checker is not applying any of them -- is true of
+    every file in that repository and news only the first time. Printed on
+    every edit it was read about 150 times by one agent, which is the noise
+    this project's own "say it once" refuses. So the verdict stands on every
+    edit and its recovery goes with the first (:func:`referral_noted`).
+    """
+    if verdict.rule != "edit:foreign-repository" or not session or cwd is None:
+        return verdict
+    repository = worktree_root(str((cwd / path_text).resolve())) or path_text
+    if referral_noted(cwd, session, repository):
+        return verdict.revised(recovery="")
+    return verdict
 
 
 def foreign_claim_decision(

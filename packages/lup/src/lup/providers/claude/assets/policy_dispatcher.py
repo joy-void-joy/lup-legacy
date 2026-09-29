@@ -43,6 +43,7 @@ from decisions import (
     peer_send_decision,
     placed_document,
     placed_edit_text,
+    referred_once,
     refused_tool_decision,
     reviewed_writes,
     session_contained,
@@ -237,6 +238,7 @@ def dispatch(payload):
     # what it is asked about are its own roster row's — a subagent's where
     # one called — read the way the caller hook reads it for the tool server.
     caller = caller_of(payload)
+    session = payload["session_id"] if "session_id" in payload else ""
     if name == "Bash":
         unsandboxed = spent_escape(tool_input)
         # A command names no file it will write, so what it changed can only
@@ -275,15 +277,20 @@ def dispatch(payload):
             "replace_all" in tool_input and tool_input["replace_all"] is True,
         )
         return edit_claim_decision(
-            edit_decision(
+            referred_once(
+                edit_decision(
+                    path,
+                    before,
+                    after,
+                    Path(path).exists(),
+                    autonomous,
+                    "modify",
+                    session_directory,
+                    agent_identity=agent_identity,
+                ),
                 path,
-                before,
-                after,
-                Path(path).exists(),
-                autonomous,
-                "modify",
                 session_directory,
-                agent_identity=agent_identity,
+                session,
             ),
             path,
             session_directory,
@@ -293,15 +300,20 @@ def dispatch(payload):
         path = tool_input["file_path"]
         exists = Path(path).exists()
         return edit_claim_decision(
-            edit_decision(
+            referred_once(
+                edit_decision(
+                    path,
+                    read_document(path),
+                    tool_input["content"],
+                    exists,
+                    autonomous,
+                    "overwrite" if exists else "create",
+                    session_directory,
+                    agent_identity=agent_identity,
+                ),
                 path,
-                read_document(path),
-                tool_input["content"],
-                exists,
-                autonomous,
-                "overwrite" if exists else "create",
                 session_directory,
-                agent_identity=agent_identity,
+                session,
             ),
             path,
             session_directory,
@@ -529,6 +541,7 @@ def observe(payload):
             written_review(
                 command,
                 session_root(payload) or Path.cwd(),
+                payload["session_id"] if "session_id" in payload else "",
             ),
             # What the boundary refused, named as the boundary rather than
             # left as an errno the agent would debug as a broken disk.

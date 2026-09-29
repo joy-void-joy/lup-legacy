@@ -43,6 +43,7 @@ from decisions import (
     fetch_decision,
     merged,
     named_claim_recorded,
+    referred_once,
     refused_tool_decision,
     reviewed_decision,
     reviewed_writes,
@@ -131,19 +132,24 @@ def patch_changes(command, cwd):
     return changes
 
 
-def patch_decision(command, cwd, autonomous, caller):
+def patch_decision(command, cwd, autonomous, caller, session=""):
     """Judge every decoded path, including the source of a move and peer claims."""
     return joined(
         [
             edit_claim_decision(
-                edit_decision(
+                referred_once(
+                    edit_decision(
+                        change.path,
+                        change.before,
+                        change.after,
+                        change.path_exists,
+                        autonomous,
+                        change.operation(),
+                        cwd,
+                    ),
                     change.path,
-                    change.before,
-                    change.after,
-                    change.path_exists,
-                    autonomous,
-                    change.operation(),
                     cwd,
+                    session,
                 ),
                 change.path,
                 cwd,
@@ -175,10 +181,13 @@ def dispatch(payload, permission_request=False):
     # what it is asked about are its own roster row's — a subagent's where
     # one called — read the way the caller hook reads it for the tool server.
     caller = caller_of(payload)
+    session = payload["session_id"] if "session_id" in payload else ""
     if name == "Bash":
         envelope = literal_input(tool_input["command"], "apply_patch")
         if envelope is not None:
-            return patch_decision(envelope, session_directory, autonomous, caller)
+            return patch_decision(
+                envelope, session_directory, autonomous, caller, session
+            )
         requested_escape = spent_escape(tool_input)
         # The snapshot a comparison afterwards is read against, taken only on
         # the event that runs immediately before the call: a permission
@@ -231,7 +240,7 @@ def dispatch(payload, permission_request=False):
         return fetch_decision(tool_input["url"], session_directory)
     if name == "apply_patch":
         return patch_decision(
-            tool_input["command"], session_directory, autonomous, caller
+            tool_input["command"], session_directory, autonomous, caller, session
         )
     if name == "collaborationspawn_agent":
         # Measured on 0.155.1 and 0.158.0: the spawn carries `task_name` and
@@ -457,6 +466,7 @@ def observe(payload):
             written_review(
                 command,
                 Path(root) if root else Path.cwd(),
+                payload["session_id"] if "session_id" in payload else "",
             ),
             PostToolReport(
                 blocking=[],

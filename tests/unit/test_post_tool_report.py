@@ -160,3 +160,29 @@ def test_a_repair_the_loaded_policy_agrees_with_stands_and_is_said(
         "module.py: line 1: removed `# lup: ignore[subprocess]` — it guarded no"
         " rule, so it silenced nothing"
     ]
+
+
+def test_another_repositorys_referral_is_said_in_full_once_per_session(
+    tmp_path: Path,
+) -> None:
+    """The verdict stands on every edit; the paragraph about it, the first time."""
+    dispatcher = claude()
+    work, other = tmp_path / "repo", tmp_path / "other"
+    initialized_repo(work, tmp_path / "no-hooks")
+    initialized_repo(other, tmp_path / "no-hooks")
+    target = str(other / "notes.py")
+    referral = dispatcher.KernelDecision(
+        "ask",
+        "this file belongs to a different repository",
+        recovery="That repository's conventions are its own.",
+        rule="edit:foreign-repository",
+    )
+
+    first = dispatcher.referred_once(referral, target, work, "session-a")
+    again = dispatcher.referred_once(referral, target, work, "session-a")
+    elsewhere = dispatcher.referred_once(referral, target, work, "session-b")
+
+    assert first.recovery
+    assert again.effect == "ask"
+    assert again.recovery == ""
+    assert elsewhere.recovery

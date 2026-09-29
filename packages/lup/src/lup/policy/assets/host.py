@@ -737,6 +737,62 @@ def script_run_nudge(
     )
 
 
+def referral_noted(
+    root: Path,
+    session: str,
+    repository: str,
+    ledger: str = ".lup/referrals.json",
+    kept_days: int = 7,
+) -> bool:
+    """Whether this session was already referred to that repository, noting it if not.
+
+    Kept per session under the checkout, for *kept_days*, so the ledger holds
+    what a live session could still ask about and nothing older. A ledger that
+    cannot be read or written answers no, which errs toward saying a referral
+    again rather than never.
+    """
+    path = root / ledger
+    now = datetime.now(UTC)
+
+    def recent(entry: object) -> bool:
+        if not isinstance(entry, dict) or "repositories" not in entry:
+            return False
+        try:
+            stamped = datetime.fromisoformat(str(entry["at"]))
+        except (KeyError, ValueError):
+            return False
+        return now - stamped < timedelta(days=kept_days)
+
+    try:
+        loaded = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+    except (OSError, ValueError):
+        loaded = {}
+    held = loaded if isinstance(loaded, dict) else {}
+    kept = {name: entry for name, entry in held.items() if recent(entry)}
+    seen = kept[session]["repositories"] if session in kept else []
+    if repository in seen:
+        return True
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            json.dumps(
+                {
+                    **kept,
+                    session: {
+                        "at": now.isoformat(),
+                        "repositories": [*seen, repository],
+                    },
+                },
+                indent=2,
+                sort_keys=True,
+            ),
+            encoding="utf-8",
+        )
+    except OSError:
+        return False
+    return False
+
+
 def review_records(path: Path) -> list[dict]:
     """Read complete object records, preserving malformed bytes as inert evidence."""
     try:

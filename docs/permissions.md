@@ -1376,7 +1376,8 @@ unresolved import, an unknown symbol on an import line), what a question
 would have asked about a shell write, or another repository's referral.
 Claude and Codex both get it as `hookSpecificOutput.additionalContext`. When
 something also blocks, Codex adds it after the refusal. Nothing here undoes
-an edit or reports a crashed hook.
+an edit or reports a crashed hook. Another repository's referral is said in
+full once per repository per session.
 
 Codex's patch parser reads every touched path without replaying the old file
 contents, so both runtimes run the same sweep and type check after an edit,

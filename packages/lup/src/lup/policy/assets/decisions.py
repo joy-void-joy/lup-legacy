@@ -68,6 +68,8 @@ from host import (
     text_at,
     undo_snapshot,
     worktree_path,
+    worktree_root,
+    referral_noted,
     file_diagnostics,
     swept_files,
 )
@@ -997,7 +999,7 @@ def authored_review(
     )
 
 
-def written_review(command: str, cwd: Path) -> PostToolReport:
+def written_review(command: str, cwd: Path, session: str = "") -> PostToolReport:
     """What the gates say about the files a shell command just wrote.
 
     The half of an edit's review a shell write cannot reach in advance. An
@@ -1049,7 +1051,7 @@ def written_review(command: str, cwd: Path) -> PostToolReport:
         if target not in carried and (cwd / target).is_file()
     ]
     verdicts = [
-        (target, verdict)
+        (target, referred_once(verdict, target, cwd, session))
         for target in targets
         for after in [text_at(cwd, target)]
         if after is not None
@@ -1077,6 +1079,9 @@ def written_review(command: str, cwd: Path) -> PostToolReport:
             f"{target}: {verdict.addressed()}"
             for target, verdict in verdicts
             if verdict.effect not in ("allow", "deny")
+            # Said once already: the file is only another repository's, which
+            # the agent was told.
+            and not (verdict.rule == "edit:foreign-repository" and not verdict.recovery)
         ],
     )
 
@@ -1179,6 +1184,26 @@ def repair_report(path: str, file: dict, cwd: Path | None) -> PostToolReport:
             verdict.reason,
         ],
     )
+
+
+def referred_once(
+    verdict: KernelDecision, path_text: str, cwd: Path | None, session: str
+) -> KernelDecision:
+    """Another repository's referral, said in full once per repository per session.
+
+    The referral's second sentence -- that the repository's conventions are
+    its own and the rule checker is not applying any of them -- is true of
+    every file in that repository and news only the first time. Printed on
+    every edit it was read about 150 times by one agent, which is the noise
+    this project's own "say it once" refuses. So the verdict stands on every
+    edit and its recovery goes with the first (:func:`referral_noted`).
+    """
+    if verdict.rule != "edit:foreign-repository" or not session or cwd is None:
+        return verdict
+    repository = worktree_root(str((cwd / path_text).resolve())) or path_text
+    if referral_noted(cwd, session, repository):
+        return verdict.revised(recovery="")
+    return verdict
 
 
 def foreign_claim_decision(

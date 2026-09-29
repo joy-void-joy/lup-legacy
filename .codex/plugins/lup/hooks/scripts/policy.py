@@ -827,6 +827,62 @@ def script_run_nudge(
     )
 
 
+def referral_noted(
+    root: Path,
+    session: str,
+    repository: str,
+    ledger: str = ".lup/referrals.json",
+    kept_days: int = 7,
+) -> bool:
+    """Whether this session was already referred to that repository, noting it if not.
+
+    Kept per session under the checkout, for *kept_days*, so the ledger holds
+    what a live session could still ask about and nothing older. A ledger that
+    cannot be read or written answers no, which errs toward saying a referral
+    again rather than never.
+    """
+    path = root / ledger
+    now = datetime.now(UTC)
+
+    def recent(entry: object) -> bool:
+        if not isinstance(entry, dict) or "repositories" not in entry:
+            return False
+        try:
+            stamped = datetime.fromisoformat(str(entry["at"]))
+        except (KeyError, ValueError):
+            return False
+        return now - stamped < timedelta(days=kept_days)
+
+    try:
+        loaded = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+    except (OSError, ValueError):
+        loaded = {}
+    held = loaded if isinstance(loaded, dict) else {}
+    kept = {name: entry for name, entry in held.items() if recent(entry)}
+    seen = kept[session]["repositories"] if session in kept else []
+    if repository in seen:
+        return True
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            json.dumps(
+                {
+                    **kept,
+                    session: {
+                        "at": now.isoformat(),
+                        "repositories": [*seen, repository],
+                    },
+                },
+                indent=2,
+                sort_keys=True,
+            ),
+            encoding="utf-8",
+        )
+    except OSError:
+        return False
+    return False
+
+
 def review_records(path: Path) -> list[dict]:
     """Read complete object records, preserving malformed bytes as inert evidence."""
     try:
@@ -4169,7 +4225,7 @@ def authored_review(
     )
 
 
-def written_review(command: str, cwd: Path) -> PostToolReport:
+def written_review(command: str, cwd: Path, session: str = "") -> PostToolReport:
     """What the gates say about the files a shell command just wrote.
 
     The half of an edit's review a shell write cannot reach in advance. An
@@ -4221,7 +4277,7 @@ def written_review(command: str, cwd: Path) -> PostToolReport:
         if target not in carried and (cwd / target).is_file()
     ]
     verdicts = [
-        (target, verdict)
+        (target, referred_once(verdict, target, cwd, session))
         for target in targets
         for after in [text_at(cwd, target)]
         if after is not None
@@ -4249,6 +4305,9 @@ def written_review(command: str, cwd: Path) -> PostToolReport:
             f"{target}: {verdict.addressed()}"
             for target, verdict in verdicts
             if verdict.effect not in ("allow", "deny")
+            # Said once already: the file is only another repository's, which
+            # the agent was told.
+            and not (verdict.rule == "edit:foreign-repository" and not verdict.recovery)
         ],
     )
 
@@ -4351,6 +4410,26 @@ def repair_report(path: str, file: dict, cwd: Path | None) -> PostToolReport:
             verdict.reason,
         ],
     )
+
+
+def referred_once(
+    verdict: KernelDecision, path_text: str, cwd: Path | None, session: str
+) -> KernelDecision:
+    """Another repository's referral, said in full once per repository per session.
+
+    The referral's second sentence -- that the repository's conventions are
+    its own and the rule checker is not applying any of them -- is true of
+    every file in that repository and news only the first time. Printed on
+    every edit it was read about 150 times by one agent, which is the noise
+    this project's own "say it once" refuses. So the verdict stands on every
+    edit and its recovery goes with the first (:func:`referral_noted`).
+    """
+    if verdict.rule != "edit:foreign-repository" or not session or cwd is None:
+        return verdict
+    repository = worktree_root(str((cwd / path_text).resolve())) or path_text
+    if referral_noted(cwd, session, repository):
+        return verdict.revised(recovery="")
+    return verdict
 
 
 def foreign_claim_decision(
@@ -4506,19 +4585,24 @@ def patch_changes(command, cwd):
     return changes
 
 
-def patch_decision(command, cwd, autonomous, caller):
+def patch_decision(command, cwd, autonomous, caller, session=""):
     """Judge every decoded path, including the source of a move and peer claims."""
     return joined(
         [
             edit_claim_decision(
-                edit_decision(
+                referred_once(
+                    edit_decision(
+                        change.path,
+                        change.before,
+                        change.after,
+                        change.path_exists,
+                        autonomous,
+                        change.operation(),
+                        cwd,
+                    ),
                     change.path,
-                    change.before,
-                    change.after,
-                    change.path_exists,
-                    autonomous,
-                    change.operation(),
                     cwd,
+                    session,
                 ),
                 change.path,
                 cwd,
@@ -4550,10 +4634,13 @@ def dispatch(payload, permission_request=False):
     # what it is asked about are its own roster row's — a subagent's where
     # one called — read the way the caller hook reads it for the tool server.
     caller = caller_of(payload)
+    session = payload["session_id"] if "session_id" in payload else ""
     if name == "Bash":
         envelope = literal_input(tool_input["command"], "apply_patch")
         if envelope is not None:
-            return patch_decision(envelope, session_directory, autonomous, caller)
+            return patch_decision(
+                envelope, session_directory, autonomous, caller, session
+            )
         requested_escape = spent_escape(tool_input)
         # The snapshot a comparison afterwards is read against, taken only on
         # the event that runs immediately before the call: a permission
@@ -4606,7 +4693,7 @@ def dispatch(payload, permission_request=False):
         return fetch_decision(tool_input["url"], session_directory)
     if name == "apply_patch":
         return patch_decision(
-            tool_input["command"], session_directory, autonomous, caller
+            tool_input["command"], session_directory, autonomous, caller, session
         )
     if name == "collaborationspawn_agent":
         # Measured on 0.155.1 and 0.158.0: the spawn carries `task_name` and
@@ -4832,6 +4919,7 @@ def observe(payload):
             written_review(
                 command,
                 Path(root) if root else Path.cwd(),
+                payload["session_id"] if "session_id" in payload else "",
             ),
             PostToolReport(
                 blocking=[],
