@@ -2,6 +2,67 @@
 
 ## Unreleased
 
+### A mode is a named preset of the declaration, selected by `--mode`
+
+`harness claude|codex --mode <name>` opens a kind of session the project
+declares. A `LaunchMode` states a `Claude(...)` and its `Codex(...)` variant
+naming only what it changes, laid over the declaration the launch builds by
+`laid_over` — a nested declaration field by field — with the command line laid
+over both, and an `OuterContainer` for what it grants its container. How much
+the runtime asks is those declarations' own fields; a mode switching the asking
+off, or carrying guidance of its own, is refused on the host. The per-mode
+`--<name>` flags, `LaunchSession` and the mode's `model`, `arguments`,
+`record_root` and `session` callables are gone (`migrations/pending/launch-modes.toml`).
+
+### A container's settings are one `OuterContainer`, stated by each hand in turn
+
+Network, memory, sudo, devices, folders and the held generated trees are
+`OuterContainer` fields, and the command line (`--network`, `--memory`,
+`--sudo/--no-sudo`, `--hold-generated/--release-generated`, `--mount`,
+`--device`) lays over a mode's, over the person's `[container]` config, over
+the project's `launch_container`. A memory share is resolved against what the
+engine can hand out, and refused where nothing says.
+
+### A contained session may be held from the trees that judge it
+
+`OuterContainer(hold_generated=True)` binds the runtime's generated plugin,
+settings and guidance read-only in the checkout's container, so a session
+cannot change the hooks judging it; `harness generate all` in such a session
+refuses before writing anything, naming the host command, and the drift line
+says the same.
+
+### A container may put guidance of its own over the committed one
+
+`OuterContainer(guidance=PromptDocument(...))` is rendered as generation renders
+the project's guidance, held to its budget, and mounted read-only over
+`.claude/CLAUDE.md` or `AGENTS.md`; the host tree never changes.
+
+### A service on the host's loopback, reached by its declared name
+
+`HostService(name, port, variable)` hands a session the service's address;
+a container whose loopback is its own reaches it through a socket the launch
+relays for that one port, bound inside by the image's entrypoint.
+
+### Host-only secrets
+
+`$XDG_CONFIG_HOME/lup/secrets/<project>.env` keeps the keys a host companion
+is started with: `Integration(host_only=True)` answers into it, `setup secret
+<KEY> [--unset]` sets one no integration declares, a `SharedProcess` is handed
+only the keys its `secrets` names, and a launched session inherits none of
+them. Inside a container each write refuses, naming the host command.
+
+### Codex says who answers what it asks
+
+`Codex.approvals_reviewer` (`user` or `auto_review`) reaches both a launched
+CLI and a thread opened here. An asking `approval_policy` is refused where a
+session opens in this process without hooks to answer it, rather than where
+it is declared, so a launched Codex may ask its person.
+
+### `harness clean` sweeps held Codex revisions
+
+A revision a contained Codex session ran its hooks from is listed with its
+size, and removed by `--yes` once no running container binds it.
+
 ### The dashboard shows every session live, and writes to any of them
 
 Everything live reaches the page on one stream, `GET /api/stream`: a fresh tab
