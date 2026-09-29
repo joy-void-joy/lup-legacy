@@ -338,6 +338,9 @@ def claude_status_line(
     """
     if shown is None:
         return {}
+    # lup: defer: `[claude.settings]` reaches a contained session only, through
+    # its home seed; a session on the host is handed none of it, so a status
+    # line named there suppresses this one and is not shown in its place
     named = [
         load_document(account.directory / WORKSPACE_SETTINGS),
         personal.claude.settings,
