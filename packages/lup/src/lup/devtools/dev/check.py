@@ -1621,6 +1621,13 @@ def run_checks(
     Pass *fix* to auto-fix formatting and lint issues. ``scope`` narrows the
     note and anti-pattern gates to paths this tree is answerable for, and
     ``migration_base`` names the commit removed capabilities are judged from.
+
+    A gate with no suite to run says so in a row of its own, where the suites
+    would have reported. A tally counting only what ran reads the same
+    whether the tests passed or nobody declared any, and a project whose code
+    all sits in a nested one met exactly that: every check passed while the
+    nested suite, run by nobody, had been failing. Advisory, because declaring
+    none is a choice the gate reports rather than refuses.
     """
     started = perf_counter()
     excluded_roots = non_code_roots(project)
@@ -1688,7 +1695,16 @@ def run_checks(
                 scanned = sweeps()
                 tooled = [job.result() for job in running]
 
-    reports = [*tooled, *scanned]
+    undeclared = (
+        []
+        if no_test or test_roots
+        else [
+            CheckReport(
+                name="tests", lines=["tests: no suites declared"], counted=False
+            )
+        ]
+    )
+    reports = [*tooled, *undeclared, *scanned]
     # Ahead of the reports, because it says what the numbers below were
     # measured under: a run that took its share of a busy machine is not a
     # run that was slow, and a reader given the timings alone reads it as one.
