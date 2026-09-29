@@ -92,8 +92,9 @@ session's); what its calls hold, marked where another session holds it too;
 its subagents; and every message sent to it or by it, oldest first, each marked
 as waiting in its mailbox or taken. Choose a repository's name to read every
 message its sessions sent each other as one conversation. Messages come from
-the repository's mail record (see [coordination](coordination.md)), so what was
-said stays readable after its reader took it.
+the repository's mail record, `mail.jsonl` in its coordination store, where
+every message posted lands as well as in its reader's mailbox, so what was said
+stays readable after its reader took it.
 
 ## Writing to a session
 
