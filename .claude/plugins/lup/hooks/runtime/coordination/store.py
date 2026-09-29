@@ -101,6 +101,15 @@ what lets a notice be read by a member that did not exist when it was posted,
 with no position for anybody to keep.
 """
 
+MAIL_RECORD = "mail.jsonl"
+"""Every message posted here, one line each, in the order they were posted.
+
+Beside the mailboxes rather than instead of them: a mailbox is its reader's
+position and empties as it is read, so what was said to a member, and by
+whom, is answered here — by a reader following the file from where it last
+stopped.
+"""
+
 LOOKS_DIR = "looks"
 WINDOWS_DIR = "windows"
 """The two places one process keeps working state of its own under the store.

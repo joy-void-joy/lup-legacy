@@ -26,11 +26,12 @@ that member's first turn, and at every turn after, because it has not
 stopped being true.
 """
 
+from collections.abc import Iterator
 from datetime import datetime
 from pathlib import Path
 from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, TypeAdapter, ValidationError
 
 from lup.channels.models import Door, utc_now
 from lup.coordination.bare import mail
@@ -54,8 +55,20 @@ class ActorMessage(BaseModel, frozen=True):
     door: Door
     sent_at: datetime
     sender: str = ""
+    """Whoever said it, by the address a reply reaches: a member's id, or `user`.
+
+    Empty where a door with no address of its own said it — a run's own
+    orchestration steering its workers.
+    """
+
     in_reply_to: str = ""
     redirect: bool = False
+
+    def heading(self) -> str:
+        """What its reader is told before the text: what it is, who sent it, through what."""
+        kind = "redirected" if self.redirect else "message"
+        signed = f" from {self.sender}" if self.sender else ""
+        return f"[{kind}{signed} by {self.door}]"
 
 
 class StandingNotice(BaseModel, frozen=True):
@@ -179,6 +192,38 @@ def folded_notice(notice: mail.Notice) -> StandingNotice:
     )
 
 
+POSTED = TypeAdapter(mail.Posted)
+
+
+class MailCursor(BaseModel, frozen=True):
+    """Where a reader of the mail record stopped: the byte it resumes at, and the line."""
+
+    offset: int = 0
+    seq: int = 0
+
+
+class PostedMessage(BaseModel, frozen=True):
+    """One message as the record keeps it: its line, and the mailbox it was put in."""
+
+    seq: int
+    mailbox: str
+    message: ActorMessage
+
+
+class RecordLine(BaseModel, frozen=True):
+    """One whole line of the record, and the byte just past it."""
+
+    end: int
+    content: bytes
+
+
+class MailPage(BaseModel, frozen=True):
+    """What the record gained since a cursor, and the cursor to resume from."""
+
+    messages: list[PostedMessage] = []
+    cursor: MailCursor = MailCursor()
+
+
 class ActorMail:
     """Every member's mailbox, and the notices standing over all of them.
 
@@ -235,6 +280,53 @@ class ActorMail:
             self.root,
             actor.conversation(),
             [mail.Message(id=message.id) for message in delivery.messages],
+        )
+
+    def posted(self, cursor: MailCursor) -> MailPage:
+        """Every message the record gained since *cursor*, each at the line it sits on.
+
+        Whole lines only: one a sender is still writing waits for the next
+        read. A record shorter than the cursor was replaced, and is read again
+        from its start. A line that will not parse keeps its number and
+        yields nothing, so every other line keeps the number it always had.
+        """
+        path = self.root / store.MAIL_RECORD
+        try:
+            size = path.stat().st_size
+        except OSError:
+            return MailPage()
+        start = cursor if size >= cursor.offset else MailCursor()
+
+        def lines() -> Iterator[RecordLine]:
+            with path.open("rb") as record:
+                record.seek(start.offset)
+                offset = start.offset
+                for line in record:
+                    if not line.endswith(b"\n"):
+                        return
+                    offset += len(line)
+                    yield RecordLine(end=offset, content=line)
+
+        read = list(lines())
+
+        def messages() -> Iterator[PostedMessage]:
+            for seq, line in enumerate(read, start=start.seq):
+                try:
+                    posted = POSTED.validate_json(line.content)
+                except ValidationError:
+                    continue
+                yield PostedMessage(
+                    seq=seq,
+                    mailbox=store.text(posted.get("mailbox")),
+                    message=folded_message(posted.get("message") or mail.Message()),
+                )
+
+        return MailPage(
+            messages=list(messages()),
+            cursor=MailCursor(
+                offset=read[-1].end if read else start.offset,
+                seq=start.seq + len(read),
+            ),
         )
 
     def standing(self) -> list[StandingNotice]:

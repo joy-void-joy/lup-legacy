@@ -566,6 +566,7 @@ class RepositoryPeers:
         redirect: bool = False,
         door: Door = Door.AGENT,
         in_reply_to: str = "",
+        sender: str = "",
     ) -> ActorRef | None:
         """Post one message to whatever a sender spelled, or say it reached nobody.
 
@@ -577,6 +578,9 @@ class RepositoryPeers:
         A member that has stopped is the other answer, and that one raises:
         the address was right, the session is gone, and queuing for it would
         tell the sender nothing while the message waits for nobody.
+
+        *sender* signs it with the address a reply reaches: the sending
+        member's id, or `user` for the person.
         """
         member = self.address(to)
         if member is None:
@@ -585,7 +589,12 @@ class RepositoryPeers:
         if standing is not None and not standing.running:
             raise PeerDepartedError(standing, self.called(member.id))
         self.cohort.say(
-            member, text, redirect=redirect, door=door, in_reply_to=in_reply_to
+            member,
+            text,
+            redirect=redirect,
+            door=door,
+            in_reply_to=in_reply_to,
+            sender=sender,
         )
         return member
 

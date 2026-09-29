@@ -120,14 +120,22 @@ def nudge_text(fresh: list[ActorMessage]) -> str:
     The record is named at the end rather than the beginning: it is what the
     reader needs *after* deciding the mail matters, and a line repeated on
     every nudge ahead of the content is a line that stops being read.
+
+    Each message names who sent it where it was signed — a peer's id, or
+    `user` for the person — since that is the address a reply goes to.
     """
+
+    def said_by(message: ActorMessage) -> str:
+        signed = f"{message.sender} by " if message.sender else ""
+        return f"from {signed}{message.door} —\n{message.text}"
+
     return "\n\n".join(
         [
             (
-                f"{len(fresh)} message(s) from your peers are on this"
+                f"{len(fresh)} message(s) waiting for you are on this"
                 " repository's coordination record, copied here in full:"
             ),
-            *[f"from {message.door} —\n{message.text}" for message in fresh],
+            *[said_by(message) for message in fresh],
             (
                 "This is a nudge on top of the record, not instead of it —"
                 " `coordination_mailbox` holds these and anything since."
