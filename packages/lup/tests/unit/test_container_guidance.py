@@ -7,6 +7,7 @@ read-only over the committed file's path inside the container.
 
 from pathlib import Path
 from typing import Any
+from unittest.mock import Mock
 
 import pytest
 
@@ -70,6 +71,24 @@ def test_the_container_mounts_what_it_holds_over_the_checkout_read_only() -> Non
     )
 
 
+def test_a_held_file_something_is_held_over_is_bound_once_by_what_is_over_it() -> None:
+    """The lease holds the committed guidance; the overlay is what is bound there."""
+    argv = Image().session_arguments(
+        tag="lup-agent:x",
+        checkout=Path("/work"),
+        uid=1000,
+        gid=1000,
+        writable={Path("/work"): "/work"},
+        read_only={Path("/work/.claude/CLAUDE.md"): "/work/.claude/CLAUDE.md"},
+        state_volume="lup-claude-x",
+        config_home_env="CLAUDE_CONFIG_DIR",
+        overlays={Path("/cache/g/CLAUDE.md"): "/work/.claude/CLAUDE.md"},
+    )
+
+    bound = [word for word in argv if word.endswith(":/work/.claude/CLAUDE.md:ro")]
+    assert bound == ["/cache/g/CLAUDE.md:/work/.claude/CLAUDE.md:ro"]
+
+
 def test_a_claude_launch_holds_its_rendered_guidance_over_the_committed_file(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -102,4 +121,32 @@ def test_a_claude_launch_holds_its_rendered_guidance_over_the_committed_file(
     assert inside == str(committed)
     assert "Explore freely" in written.read_text(encoding="utf-8")
     assert written.is_relative_to(tmp_path / "home" / ".cache" / "lup" / "guidance")
-    assert committed not in handed["trees"]
+    assert handed["trees"].count(committed) == 1
+
+
+def test_the_boundary_a_launch_records_holds_the_guidance_it_swapped_in(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The policy and `harness binds` read the record, so the held guidance is in it.
+
+    Held whether or not the launch holds the generated trees: the guidance a
+    container puts over the committed file is read-only either way.
+    """
+    root = tmp_path / "work"
+    committed = root / ".claude" / "CLAUDE.md"
+    committed.parent.mkdir(parents=True)
+    committed.write_text("committed\n", encoding="utf-8")
+    stub_host(monkeypatch, root)
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    monkeypatch.setattr(claude_launch, "settle_claude_theme", lambda *_a, **_k: None)
+    settled = Mock()
+    monkeypatch.setattr(launch_session, "settle_boundary", settled)
+    agent = Claude(
+        cwd=root,
+        identity=Member(wake_sockets=None),
+        sandbox=OuterContainer(guidance=document("A mode's own guidance.\n")),
+    )
+
+    agent.command()
+
+    assert list(settled.call_args.kwargs["trees"]) == [committed]

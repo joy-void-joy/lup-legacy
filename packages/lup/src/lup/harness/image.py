@@ -1569,7 +1569,9 @@ USER $UID:$GID
         ``overlays`` are files held read-only over a path inside the checkout
         -- a kind of session's own guidance over the committed one -- keyed
         by where each is on the host. Sorted with every other mount, so each
-        lands over the checkout it sits in rather than under it.
+        lands over the checkout it sits in rather than under it. A path the
+        lease holds read-only and an overlay covers is bound once, by the
+        overlay: the lease says it is held, and what is held there is that.
         """
         granted_devices = [
             argument for device in devices for argument in device.arguments()
@@ -1581,7 +1583,11 @@ USER $UID:$GID
         # in either direction.
         declared = [
             *[(host, inside, "rw") for host, inside in writable.items()],
-            *[(host, inside, "ro") for host, inside in read_only.items()],
+            *[
+                (host, inside, "ro")
+                for host, inside in read_only.items()
+                if inside not in (overlays or {}).values()
+            ],
             *[(host, inside, "ro") for host, inside in (overlays or {}).items()],
         ]
         mounts = [

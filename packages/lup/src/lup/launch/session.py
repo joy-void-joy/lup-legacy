@@ -851,7 +851,8 @@ def session_argv(
     much its container may hold, ``trees`` the generated trees it holds
     read-only, which the boundary it records names as it names every hold,
     and ``overlays`` the files it holds over a path in the checkout -- a
-    kind of session's own guidance -- keyed by where each is on the host.
+    kind of session's own guidance -- keyed by where each is on the host,
+    each path they cover held and recorded as a tree is.
 
     ``prepare`` readies the runtime's home through the argv the session
     opens with, and answers with what the session should find held
@@ -883,8 +884,12 @@ def session_argv(
     environment[POLICY_ROOT_ENV] = str(root)
 
     accessible = list(mounts)
-    # A file something is held over is held by that, and one bind to a path.
-    held_trees = [path for path in trees if str(path) not in (overlays or {}).values()]
+    # A file something is held over is held all the same, and the boundary
+    # this launch records names it as it names every hold, so the policy and
+    # `harness binds` know it; what is bound there is the overlay.
+    held_trees = list(
+        dict.fromkeys([*trees, *(Path(inside) for inside in (overlays or {}).values())])
+    )
     if not sandbox.contained():
         # A host posture holds the host's devices already, so a flag asking
         # for one describes a container this launch does not open. Said
