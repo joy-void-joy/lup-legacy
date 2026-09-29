@@ -622,6 +622,7 @@ describes the declaration.
 | `--sandbox outer\|inner\|none` | `OuterContainer(image=..., mounts=..., devices=...)`, `InnerSandbox(escapable=True)` on Claude and `InnerSandbox()` on Codex, `NoSandbox()`; unnamed, outer where Docker or Podman answers and inner with a warning where neither does |
 | `--mount`, `--mount-ro`, `sync.json.local` | `Mount(path, writable=...)` on the sandbox, the command line's first |
 | `--device`, `sync.json.local` grants | `devices=` on `OuterContainer`; said and not granted on the host |
+| `--sudo`/`--no-sudo`, `--network`, `--memory` | `sudo=`, `network=`, `memory=MemoryLimit(...)` on `OuterContainer`; said and not granted on the host |
 | `--continue` / `--resume` / `--session ID` | `resume=Latest()` / `Pick()` / `Reopen(session=...)` |
 | `--max-recursive-agent` | `max_recursive_agent=`, a mode's default where it names none |
 | `--transcribe-session`, a mode's record | `record=Recording(transcript=..., root=..., mode=..., ledger=...)` |
@@ -719,6 +720,11 @@ animations = false
 
 [cleanup]
 superseded_volumes_after_days = 14   # an old config volume's history, kept this long
+
+[container]                 # what every contained session is granted: over the
+network = "bridge"          # project's, under a mode and the command line
+memory = "75%"              # an amount such as "12GiB", or a share of the engine's
+sudo = true                 # rootless engines only
 ```
 
 A value is chosen the same way everywhere: lup's default, then this file, then
@@ -728,6 +734,17 @@ fields), then what the invocation names (`--model`, `--effort`, `--profile`,
 refused; the file's effort, like lup's, is where the default starts before
 stepping down to a rung the model takes. A file that does not parse refuses the
 launch, naming itself.
+
+The container is the one place the order turns: what a machine can grant is
+its person's to say, so `[container]` overrules the project's declared
+container (`DevtoolsDeclarations.launch_container`, over the harness's image
+and the folders and devices `sync.json.local` registers), and a mode's
+`container=` and the command line's `--sudo`, `--network`, `--memory`,
+`--mount` and `--device` overrule it in turn. Each is an `OuterContainer`
+stating only what it sets, laid one over the next by `OuterContainer.over`: a
+setting stated higher wins even said as its default, and the folders and
+devices every layer names are all granted. A person's config names no image
+and no nested repositories, which are one repository's own.
 
 The theme is the one exception, because it is the account's rather than the
 launch's: a session's `/theme` is kept. A launch writes a theme into the
