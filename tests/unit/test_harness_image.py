@@ -212,6 +212,16 @@ def test_the_registry_managers_are_installed_before_they_are_used() -> None:
     assert "uv" in baseline and "nodejs" in baseline
 
 
+def test_the_baseline_carries_a_font_family_so_headless_text_renders() -> None:
+    """With no face fontconfig can see, headless text draws nothing.
+
+    Measured in a contained session: `fc-list` listed none, and headless
+    Chromium failed every `@font-face` page text asked for, measuring the text
+    0 px wide, and Pillow drew nothing.
+    """
+    assert "ttf-liberation" in Image().baseline
+
+
 def test_docker_is_never_handed_podmans_identity_flag() -> None:
     """Measured: Docker 29.7.2 refuses `--userns=keep-id` outright.
 

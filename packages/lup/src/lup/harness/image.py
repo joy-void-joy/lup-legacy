@@ -569,6 +569,7 @@ class Image(BaseModel, frozen=True):
             "nodejs",
             "bun",
             "util-linux",
+            "ttf-liberation",
         ],
         description=(
             "Packages every image gets regardless of the manifest -- what a "
@@ -591,6 +592,11 @@ class Image(BaseModel, frozen=True):
             "-- a port, a socket, a transport an HTTP proxy will not take. "
             "``util-linux`` is here for ``setpriv``, which the entrypoint "
             "starts the agent through so it inherits no capability. "
+            "``ttf-liberation`` is one small font family, metric-compatible "
+            "with the faces pages ask for, so text renders somewhere: with no "
+            "face fontconfig can see, headless Chromium fails every "
+            "``@font-face`` and measures page text 0 px wide, and Pillow "
+            "draws nothing. "
             "It is *not* here for the runtime's own sandbox, whose packages "
             "``inner_sandbox`` deliberately leaves unlisted; read that field "
             "before adding its companion here"
