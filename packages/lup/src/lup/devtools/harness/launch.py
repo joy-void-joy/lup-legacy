@@ -13,12 +13,12 @@ generates regenerated. What it reads only here, the registrations in
 
 import os
 from collections.abc import Callable, Iterator
-from contextlib import AbstractContextManager, contextmanager, nullcontext
+from contextlib import contextmanager
 from pathlib import Path
-from typing import Protocol, runtime_checkable
+from typing import Protocol, Self, runtime_checkable
 
 import typer
-from pydantic import BaseModel, Field, TypeAdapter, ValidationError
+from pydantic import BaseModel, Field, TypeAdapter, ValidationError, model_validator
 
 from lup.devtools.dashboard.companion import Dashboard
 from lup.devtools.dev.branches import settle_base_freshness
@@ -36,7 +36,7 @@ from lup.harness.image import Image, MemoryLimit
 from lup.harness.models import Harness, NativeName, Plugin, Resumption
 from lup.harness.notice import Notice
 from lup.harness.process import LocalProcessLauncher
-from lup.launch.companions import CompanionLaunch, Contribution, HostCompanion
+from lup.launch.companions import HostCompanion
 from lup.launch.declaration import (
     InnerSandbox,
     LaunchSandbox,
@@ -51,11 +51,11 @@ from lup.launch.declaration import (
     Reopen,
     Resume,
     SessionSandbox,
+    laid_over,
     settled_sandbox,
 )
 from lup.launch.refusal import LaunchRefused
 from lup.launch.session import StandingGrants, personal_config
-from lup.observability.audit import TraceJournal
 from lup.observability.sessions import SessionRecorder
 from lup.providers.claude import Claude, ClaudeTools
 from lup.providers.claude.harness import ClaudeSpellings
@@ -69,7 +69,7 @@ from lup.providers.profiles import DefaultHomeProfile, ProfileDirectory
 from lup.providers.user_config import UserConfigFile
 from lup.sandbox.models import NetworkMode
 from lup.sessions.events import SessionId
-from lup.types import CustomModel, EnvVars
+from lup.types import CustomModel
 from lup.workspace.paths import project_root
 
 
@@ -171,190 +171,144 @@ def relocation_hint(worktree_path: Path) -> RelocationHint:
     return RelocationHint(agent="", shell=move)
 
 
-@runtime_checkable
-class LaunchSession(Protocol):
-    """How a launch mode opens whatever its session needs, around one run.
-
-    Runtime-checkable because :class:`LaunchMode` is a pydantic model and an
-    arbitrary-typed field is validated by ``isinstance``; the protocol carries
-    only ``__call__``, which is exactly what that check can answer.
-
-    Returns a context manager yielding the environment the native CLI is
-    launched under, so a mode that has state to hold — a directory to make, a
-    pointer to publish, a record to close — holds it for exactly the span the
-    CLI is running and gets its exit path for free.
-
-    The journal rather than a directory, because a mode's session usually has
-    to be *findable* by a subprocess the CLI spawns, and what identifies one
-    run is the trace context the journal already carries.
-    """
-
-    def __call__(
-        self, *, provider: str, journal: TraceJournal, transcribe: bool
-    ) -> AbstractContextManager[EnvVars]: ...
-
-
 class LaunchMode(BaseModel, frozen=True, arbitrary_types_allowed=True):
-    """One named way of opening a session that the default launch is not.
+    """One named kind of session: a preset over the project's declaration, selected by ``--mode``.
 
-    A mode is the application's, never the library's: it names a flag, the
-    tree generation compiles while it is in force, the model that kind of
-    session runs on, where its record is kept, and what has to be open around
-    it. Each becomes a field of the declaration the launch opens, and nothing
-    here knows what any particular mode is *for*, which is what keeps a
-    downstream project's vocabulary out of the framework.
+    A mode is the application's, never the library's, and nothing here knows
+    what any mode is *for*. What it changes is a declaration's own fields —
+    the model, how much the runtime asks, the system prompt, the record, the
+    companions held beside it — stated as a ``Claude(...)`` and its
+    ``Codex(...)`` variant naming only those, each laid over the declaration
+    the project's composition builds by
+    :func:`~lup.launch.declaration.laid_over`, and the command line laid over
+    both. What it grants its container is an ``OuterContainer``, between the
+    command line and the person's config. The wall itself is the command
+    line's, so a preset naming a sandbox is refused.
     """
 
     name: NativeName
-    """Spells the flag: a mode named ``syra`` is selected by ``--syra``."""
+    """Selects it: ``harness claude --mode <name>``."""
 
     help: str = Field(min_length=1)
+    """What this kind of session is for, where the launchers list the modes."""
 
-    targets: NativeTargets
-    """What generation compiles while this mode is in force.
+    claude: Claude = Claude()
+    """What this mode changes of the project's Claude Code declaration: every
+    field it states, a nested declaration field by field."""
 
-    A mode changes the tree rather than only the command line, because the
-    thing a mode usually adds — a skill, a hook, a tool server — has to reach
-    the session through what the runtime reads at startup."""
+    codex: Codex = Codex()
+    """Its Codex variant, laid over the project's Codex declaration the same way."""
 
-    model: Callable[[str], str | None] | None = None
-    """What this kind of session runs on, given the runtime that will run it.
+    container: OuterContainer = OuterContainer()
+    """What this mode grants its container — network, memory, sudo, devices,
+    folders, held trees, guidance of its own — over the person's config and
+    the project's, under the command line."""
 
-    Per runtime for the reason :attr:`arguments` is. A model name is one
-    provider's vocabulary, so a mode declaring "the best available" means a
-    different word on each, and one name shared between them reaches the
-    other as a model that does not exist — a failure that arrives from the
-    provider's API mid-session, naming neither the mode nor the launch that
-    chose it. Absent an explicit ``--model``, which still wins."""
+    targets: NativeTargets | None = None
+    """What generation compiles while this mode is in force; unset, the project's own.
 
-    record_root: Callable[[], Path] | None = None
-    """Where this mode's transcripts are rooted, resolved at launch.
-
-    A callable because the answer is relative to a project root that moves
-    between worktrees, and a path captured at import time names the checkout
-    the process started in rather than the one it is running against."""
-
-    arguments: Callable[[str], list[str]] | None = None
-    """Words this mode adds to the native command line, given the runtime.
-
-    Per runtime because the same intent is spelled differently or not at all:
-    a mode that wants its brief in the system prompt has a flag for that on
-    one CLI and a generated document on the other, and a seam that could not
-    tell them apart would put an unknown option on the second."""
-
-    session: LaunchSession | None = None
-    """What must be open while a session of this kind runs."""
-
-    max_recursive_agent: int = Field(default=-1, ge=-1)
-    """Mode default when the launcher receives no explicit allowance."""
+    A mode changes the tree rather than only the declaration where what it
+    adds — a skill, a hook, a tool server — reaches the session through what
+    the runtime reads at startup."""
 
     recursive_targets: Callable[[int], NativeTargets] | None = None
-    """Targets selected from the effective recursive-agent allowance."""
+    """The tree compiled for the effective recursive-agent allowance, where it differs by one."""
 
-    transcribe_session: Callable[[str], bool] | None = None
-    """Whether one runtime's native transcript is mirrored for this mode."""
+    @model_validator(mode="after")
+    def the_wall_is_the_command_line_s(self) -> Self:
+        """Refuse a preset naming a sandbox: a mode's container is its ``container``."""
+        named = [
+            runtime
+            for runtime, preset in (("claude", self.claude), ("codex", self.codex))
+            if "sandbox" in preset.model_fields_set
+        ]
+        if named:
+            raise ValueError(
+                f"mode {self.name!r} names a sandbox in its {' and '.join(named)} "
+                "preset; state what its container grants in container=, and "
+                "leave the wall to --sandbox"
+            )
+        return self
 
-    def command_words(self, provider: str) -> list[str]:
-        """Words this mode contributes to one runtime's command line, if any."""
-        return self.arguments(provider) if self.arguments is not None else []
+    def targets_at(self, allowance: int) -> NativeTargets | None:
+        """The trees compiled for this allowance, or ``None`` for the project's."""
+        if self.recursive_targets is not None:
+            return self.recursive_targets(allowance)
+        return self.targets
 
-    def native_model(self, provider: str) -> str | None:
-        """What this mode runs one runtime on, when it names anything at all."""
-        return self.model(provider) if self.model is not None else None
+    def allowance(self, runtime: str) -> int | None:
+        """The recursive-agent allowance this mode states for one runtime, if it states one."""
+        match runtime:
+            case "claude" if "max_recursive_agent" in self.claude.model_fields_set:
+                return self.claude.max_recursive_agent
+            case "codex" if "max_recursive_agent" in self.codex.model_fields_set:
+                return self.codex.max_recursive_agent
+            case _:
+                return None
 
-    def transcript_root(self) -> Path | None:
-        """Where this launch keeps its record, resolved now, not at import."""
-        return self.record_root() if self.record_root is not None else None
+    def contained_only(self, runtime: str) -> list[str]:
+        """What this mode asks of one runtime that only a container stands in for.
 
-    def transcribes(self, provider: str) -> bool:
-        """Whether this mode mirrors one provider's native session record."""
-        return (
-            self.transcribe_session(provider)
-            if self.transcribe_session is not None
-            else True
-        )
-
-    def recursive_agent_limit(self, explicit: int | None) -> int:
-        """Resolve an explicit allowance over this mode's default."""
-        return self.max_recursive_agent if explicit is None else explicit
-
-    def targets_at(self, allowance: int) -> NativeTargets:
-        """The native trees compiled for this allowance."""
-        return (
-            self.recursive_targets(allowance)
-            if self.recursive_targets is not None
-            else self.targets
-        )
-
-    def opened(
-        self, provider: str, journal: TraceJournal, transcribe: bool
-    ) -> AbstractContextManager[EnvVars]:
-        """Whatever this mode needs open around the run, or nothing to open.
-
-        An empty environment from :func:`contextlib.nullcontext` rather than a
-        branch at the call site, so a caller holds one shape and a mode
-        declaring no session costs it no conditional.
+        A runtime told not to ask — Claude Code's ``auto`` or
+        ``bypassPermissions``, Codex never asking or its reviewer answering in
+        the person's place — or with its own sandbox stood down, and guidance
+        of the mode's own, which only a container can put over the committed
+        file. On the host nothing would be left where these took something
+        away, so a mode naming any of them is refused there.
         """
-        if self.session is None:
-            return nullcontext({})
-        return self.session(
-            provider=provider,
-            journal=journal,
-            transcribe=transcribe,
+        match runtime:
+            case "claude":
+                asked = (
+                    [f"Claude Code's {self.claude.permission_mode} permission mode"]
+                    if "permission_mode" in self.claude.model_fields_set
+                    and self.claude.permission_mode in ("auto", "bypassPermissions")
+                    else []
+                )
+            case "codex":
+                asked = [
+                    *(
+                        ["Codex never asking"]
+                        if "approval_policy" in self.codex.model_fields_set
+                        and self.codex.approval_policy == "never"
+                        else []
+                    ),
+                    *(
+                        ["Codex's auto_review reviewer"]
+                        if self.codex.approvals_reviewer == "auto_review"
+                        else []
+                    ),
+                    *(
+                        ["Codex's own sandbox stood down"]
+                        if self.codex.sandbox_mode == "danger-full-access"
+                        else []
+                    ),
+                ]
+            case _:
+                asked = []
+        guidance = ["its own guidance"] if self.container.guidance is not None else []
+        return [*asked, *guidance]
+
+
+def selected_mode(modes: list[LaunchMode], name: str | None) -> LaunchMode | None:
+    """The mode ``--mode`` names, or none; an undeclared one is refused naming the declared ones."""
+    if name is None:
+        return None
+    declared = {mode.name: mode for mode in modes}
+    if name not in declared:
+        raise typer.BadParameter(
+            f"--mode {name!r} is not a mode this project declares"
+            + (
+                f"; it declares {', '.join(declared)}"
+                if declared
+                else "; it declares none"
+            )
         )
+    return declared[name]
 
 
-class LaunchSelection(BaseModel, frozen=True, arbitrary_types_allowed=True):
-    """Which mode a caller's words selected, and what is left for the CLI."""
-
-    mode: LaunchMode | None
-    arguments: list[str]
-
-
-def extract_launch_mode(
-    modes: list[LaunchMode], arguments: list[str]
-) -> LaunchSelection:
-    """Take a declared mode flag out of the words meant for the native CLI.
-
-    Read out of the passthrough vector rather than declared as a command
-    option, because the flag's name belongs to a declaration the library
-    reads at runtime and a Typer option's name is fixed when its function is
-    defined. The launch commands already own unknown options — that is how
-    they forward a caller's own arguments — so recognizing a few of them
-    first is the same surface, not a new one.
-    """
-    selected = {f"--{mode.name}": mode for mode in modes}
-    chosen = [selected[word] for word in arguments if word in selected]
-    if len(chosen) > 1:
-        named = ", ".join(f"--{mode.name}" for mode in chosen)
-        raise typer.BadParameter(f"launch modes are exclusive; got {named}")
-    return LaunchSelection(
-        mode=chosen[0] if chosen else None,
-        arguments=[word for word in arguments if word not in selected],
-    )
-
-
-class ModeSession(HostCompanion, frozen=True, arbitrary_types_allowed=True):
-    """What a launch mode needs open around its session, held the way a companion is.
-
-    Held around the run with the run's journal, which is what makes the
-    mode's session findable by what the CLI spawns. A command printed rather
-    than run has no run to be found by, so it is handed nothing there.
-    """
-
-    mode: LaunchMode
-    runtime: str
-    transcribe: bool
-
-    @contextmanager
-    def held(self, launch: CompanionLaunch) -> Iterator[Contribution]:
-        if launch.journal is None:
-            yield Contribution()
-            return
-        with self.mode.opened(
-            self.runtime, launch.journal, self.transcribe
-        ) as environment:
-            yield Contribution(environment=environment)
+def modes_help(modes: list[LaunchMode]) -> str:
+    """The modes a launcher's ``--mode`` selects among, one per line, for its help."""
+    return "".join(f"  --mode {mode.name}: {mode.help}" for mode in modes)
 
 
 def announce_relaxed_rules(relaxed: bool, plugin: Plugin) -> None:
@@ -431,11 +385,12 @@ class LaunchRequest(BaseModel, frozen=True, arbitrary_types_allowed=True):
     mode: LaunchMode | None = None
     recorder: SessionRecorder | None = None
 
-    def allowance(self) -> int:
+    def allowance(self, runtime: str) -> int:
         """The recursive-agent allowance: the flag's, else the mode's, else no limit."""
-        if self.mode is not None:
-            return self.mode.recursive_agent_limit(self.max_recursive_agent)
-        return -1 if self.max_recursive_agent is None else self.max_recursive_agent
+        if self.max_recursive_agent is not None:
+            return self.max_recursive_agent
+        stated = self.mode.allowance(runtime) if self.mode is not None else None
+        return -1 if stated is None else stated
 
     def reopening(self) -> Resume | None:
         """The session to reopen, refusing two named at once before anything runs."""
@@ -448,46 +403,78 @@ class LaunchRequest(BaseModel, frozen=True, arbitrary_types_allowed=True):
             return Pick()
         return Latest() if self.resume.latest else None
 
-    def named_model(self, runtime: str) -> str | None:
-        """The model named: the flag's, else the mode's for this runtime."""
-        if self.model is not None:
-            return self.model
-        return self.mode.native_model(runtime) if self.mode is not None else None
-
-    def launch_words(self, runtime: str) -> list[str]:
-        """The mode's words for this runtime, then the caller's own."""
-        mode = self.mode.command_words(runtime) if self.mode is not None else []
-        return [*mode, *self.words]
-
-    def transcribes(self, runtime: str) -> bool:
-        """Whether the native transcript is mirrored: asked for, or no mode declines it."""
-        return (
-            self.transcribe_session
-            or self.mode is None
-            or self.mode.transcribes(runtime)
-        )
-
-    def recording(self, runtime: str) -> Recording:
-        """What is kept of the session: its transcript, its ledger entry, the mode's root."""
+    def recording(self) -> Recording:
+        """What the project keeps of a session: its transcript, its ledger entry, the mode's name."""
         return Recording(
-            transcript=self.transcribes(runtime),
+            transcript=True,
             ledger=self.recorder,
-            root=self.mode.transcript_root() if self.mode is not None else None,
             mode=self.mode.name if self.mode is not None else None,
         )
 
-    def companions(self, runtime: str) -> list[HostCompanion]:
-        """What the mode needs open around its session, held as a companion."""
-        if self.mode is None or self.mode.session is None:
-            return []
-        return [
-            ModeSession(
-                name=self.mode.name,
-                mode=self.mode,
-                runtime=runtime,
-                transcribe=self.transcribes(runtime),
+    def stated_claude(self) -> Claude:
+        """What this command line states of a Claude Code declaration, and nothing else."""
+        return Claude.model_validate(
+            {
+                **(
+                    {"model": model_choice(self.model, TypeAdapter(ClaudeModelChoice))}
+                    if self.model is not None
+                    else {}
+                ),
+                **(
+                    {"effort": effort_named(self.effort, claude_effort_named)}
+                    if self.effort is not None
+                    else {}
+                ),
+                **self.stated_launch(),
+            }
+        )
+
+    def stated_codex(self) -> Codex:
+        """What this command line states of a Codex declaration, and nothing else."""
+        return Codex.model_validate(
+            {
+                **(
+                    {"model": model_choice(self.model, TypeAdapter(CodexModelChoice))}
+                    if self.model is not None
+                    else {}
+                ),
+                **(
+                    {"effort": effort_named(self.effort, codex_effort_named)}
+                    if self.effort is not None
+                    else {}
+                ),
+                **self.stated_launch(),
+            }
+        )
+
+    def stated_launch(self) -> dict[str, object]:
+        """The launch fields this command line states, spelled alike for either runtime."""
+        reopening = self.reopening()
+        return {
+            **({"resume": reopening} if reopening is not None else {}),
+            **(
+                {"max_recursive_agent": self.max_recursive_agent}
+                if self.max_recursive_agent is not None
+                else {}
+            ),
+            **(
+                {"record": Recording(transcript=True)}
+                if self.transcribe_session
+                else {}
+            ),
+        }
+
+    def refuse_hosted_mode(self, posture: LaunchSandbox, runtime: str) -> None:
+        """Refuse a mode taking away what only a container stands in for, where none opens."""
+        if self.mode is None or posture.contained():
+            return
+        asked = self.mode.contained_only(runtime)
+        if asked:
+            raise typer.BadParameter(
+                f"mode {self.mode.name!r} asks for {', '.join(asked)}, which only "
+                "a container stands in for, and this session opens on the host; "
+                "launch it with --sandbox outer, where Docker or Podman answers"
             )
-        ]
 
     def posture(self, settle: bool) -> LaunchSandbox:
         """The sandbox a session opens under: the one named, else the host's default.
@@ -530,7 +517,7 @@ class LaunchRequest(BaseModel, frozen=True, arbitrary_types_allowed=True):
         )
 
     def settled_container(self, image: Image) -> OuterContainer:
-        """The container this launch opens: the command line over the person, over the project.
+        """The container this launch opens: the command line over the mode, the person, the project.
 
         The project's layer is its declared container over what this machine
         registers for the repository — its standing folders and devices — on
@@ -546,7 +533,8 @@ class LaunchRequest(BaseModel, frozen=True, arbitrary_types_allowed=True):
             devices=granted_devices(),
         )
         person = personal_config(UserConfigFile()).container
-        return self.stated().over(person.over(self.container.over(standing)))
+        mode = self.mode.container if self.mode is not None else OuterContainer()
+        return self.stated().over(mode.over(person.over(self.container.over(standing))))
 
     def wall(
         self, posture: LaunchSandbox, image: Image, escapable: bool
@@ -701,11 +689,7 @@ def claude_declaration(
     # home a container's theme belongs to is the volume's question.
 
     def declaration(sandbox: SessionSandbox) -> Claude:
-        return Claude(
-            model=model_choice(
-                request.named_model("claude"), TypeAdapter(ClaudeModelChoice)
-            ),
-            effort=effort_named(request.effort, claude_effort_named),
+        project = Claude(
             cwd=root,
             tools=ClaudeTools(
                 builtin="stock", mcp=composition.servers, serve=composition.serve
@@ -719,16 +703,26 @@ def claude_declaration(
             requirements=source.requirements,
             sandbox=sandbox,
             identity=Member(wake_sockets=source.image.wake_sockets),
-            record=request.recording("claude"),
-            resume=request.reopening(),
-            max_recursive_agent=request.allowance(),
+            record=request.recording(),
+            max_recursive_agent=-1,
             profile=selected,
             home=home,
-            companions=[*request.companions("claude"), *held_services(source)],
+        )
+        moded = (
+            laid_over(request.mode.claude, project)
+            if request.mode is not None
+            else project
+        )
+        stated = laid_over(request.stated_claude(), moded)
+        return laid_over(
+            Claude(companions=[*stated.companions, *held_services(source)]), stated
         )
 
     declared(lambda: declaration(NoSandbox()))
-    wall = request.wall(request.posture(settle), source.image, escapable=True)
+    posture = request.posture(settle)
+    if settle:
+        request.refuse_hosted_mode(posture, "claude")
+    wall = request.wall(posture, source.image, escapable=True)
     return declared(lambda: declaration(wall))
 
 
@@ -755,11 +749,7 @@ def codex_declaration(
     # question.
 
     def declaration(sandbox: SessionSandbox) -> Codex:
-        return Codex(
-            model=model_choice(
-                request.named_model("codex"), TypeAdapter(CodexModelChoice)
-            ),
-            effort=effort_named(request.effort, codex_effort_named),
+        project = Codex(
             cwd=root,
             tools=CodexTools(
                 builtin="stock", mcp=composition.servers, serve=composition.serve
@@ -769,16 +759,26 @@ def codex_declaration(
             requirements=source.requirements,
             sandbox=sandbox,
             identity=Member(wake_sockets=source.image.wake_sockets),
-            record=request.recording("codex"),
-            resume=request.reopening(),
-            max_recursive_agent=request.allowance(),
+            record=request.recording(),
+            max_recursive_agent=-1,
             profile=request.profile,
             home=home,
-            companions=[*request.companions("codex"), *held_services(source)],
+        )
+        moded = (
+            laid_over(request.mode.codex, project)
+            if request.mode is not None
+            else project
+        )
+        stated = laid_over(request.stated_codex(), moded)
+        return laid_over(
+            Codex(companions=[*stated.companions, *held_services(source)]), stated
         )
 
     declared(lambda: declaration(NoSandbox()))
-    wall = request.wall(request.posture(settle), source.image, escapable=False)
+    posture = request.posture(settle)
+    if settle:
+        request.refuse_hosted_mode(posture, "codex")
+    wall = request.wall(posture, source.image, escapable=False)
     return declared(lambda: declaration(wall))
 
 
@@ -901,7 +901,7 @@ def launch_claude(
         return
     exited(
         agent.launch(
-            *request.launch_words("claude"),
+            *request.words,
             steps=workflow_steps("claude", generation, checkpoint),
         )
     )
@@ -932,7 +932,7 @@ def launch_codex(
         return
     exited(
         agent.launch(
-            *request.launch_words("codex"),
+            *request.words,
             steps=workflow_steps("codex", generation, checkpoint),
             force=force_install,
         )
