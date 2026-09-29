@@ -203,6 +203,9 @@ LAUNCH_FIELDS = {
     "container memory": FieldExample(
         example="launch_memory.py", call="OuterContainer", keyword="memory"
     ),
+    "held generated trees": FieldExample(
+        example="launch_held_trees.py", call="OuterContainer", keyword="hold_generated"
+    ),
 }
 
 

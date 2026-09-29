@@ -643,9 +643,24 @@ revision again from the plugin source on the host, under
 source's content, and mounts it read-only over the plugin's whole cache in the
 home, after the volume it nests in. The session runs the hooks it was
 launched with and sees no other revision; the rest of the home stays
-writable. A Claude Code session loads its plugin from the checkout's
-generated tree, which a contained session can write — holding the generated
-trees is its own piece of work.
+writable.
+
+A Claude Code session loads its plugin from the checkout's generated tree,
+which a contained session can write, so it could rewrite the hooks judging it.
+`OuterContainer(hold_generated=True)` — `--hold-generated` on the command
+line, or `hold_generated = true` in a mode, a person's `[container]` or the
+project's declared container — holds what the runtime runs from read-only:
+Claude Code's plugin directory whole with its marketplace, the project
+settings and `.claude/CLAUDE.md`; Codex's plugin source with its rules, the
+generated agents, `.codex/config.toml`, the marketplace and `AGENTS.md`. Only
+this checkout's, so a sibling worktree stays the session's to regenerate. The
+cost is that regenerating this checkout's trees is the host's work: `harness
+generate all` in such a session refuses before writing anything, "these trees
+are read-only in this session; run `uv run lup-devtools harness generate all`
+on the host", `dev check`'s drift line says the same, and so is any git command
+rewriting them here — a merge, a switch or a reset that touches them. Off by
+default, since a project whose sessions regenerate their own checkout would
+lose that.
 
 `lup-devtools harness claude|codex` launches a declaration. Each flag is a
 field of the `Claude(...)` or `Codex(...)` it builds from this repository's
@@ -668,7 +683,7 @@ describes the declaration.
 | `--sandbox outer\|inner\|none` | `OuterContainer(image=..., mounts=..., devices=...)`, `InnerSandbox(escapable=True)` on Claude and `InnerSandbox()` on Codex, `NoSandbox()`; unnamed, outer where Docker or Podman answers and inner with a warning where neither does |
 | `--mount`, `--mount-ro`, `sync.json.local` | `Mount(path, writable=...)` on the sandbox, the command line's first |
 | `--device`, `sync.json.local` grants | `devices=` on `OuterContainer`; said and not granted on the host |
-| `--sudo`/`--no-sudo`, `--network`, `--memory` | `sudo=`, `network=`, `memory=MemoryLimit(...)` on `OuterContainer`; said and not granted on the host |
+| `--sudo`/`--no-sudo`, `--network`, `--memory`, `--hold-generated`/`--release-generated` | `sudo=`, `network=`, `memory=MemoryLimit(...)`, `hold_generated=` on `OuterContainer`; said and not granted on the host |
 | `--continue` / `--resume` / `--session ID` | `resume=Latest()` / `Pick()` / `Reopen(session=...)` |
 | `--max-recursive-agent` | `max_recursive_agent=`, a mode's default where it names none |
 | `--transcribe-session`, a mode's record | `record=Recording(transcript=..., root=..., mode=..., ledger=...)` |
