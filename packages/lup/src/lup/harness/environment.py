@@ -14,6 +14,7 @@ the child project must select its own environment from its working directory.
 from collections.abc import Mapping
 
 from lup.coordination.identity import MEMBER_ENV, NAME_ENV, MemberEnv
+from lup.devtools.dashboard.pulse import DASHBOARD_PULSE_ENV
 from lup.policy.identity import DASHBOARD_URL_ENV, REVIEW_ANSWERS_ENV
 from lup.devtools.launcher import ENVIRONMENT_VARIABLE
 from lup.sessions.recursion import RecursiveAgentSettings
@@ -61,6 +62,7 @@ LAUNCHER_DECIDED_ENV: list[str] = [
     MEMBER_ENV,
     NAME_ENV,
     DASHBOARD_URL_ENV,
+    DASHBOARD_PULSE_ENV,
     REVIEW_ANSWERS_ENV,
 ]
 """What a launched process is told about where it is, rather than what it does.

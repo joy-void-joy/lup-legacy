@@ -9,7 +9,9 @@ a launch from code that differs replaces it.
 
 import os
 import socket
+import time
 from collections.abc import Iterator
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import httpx
@@ -26,8 +28,12 @@ from lup.devtools.dashboard.companion import (
     dashboard_status,
     launched_by_an_operator,
     private_url,
+    written,
 )
+from lup.devtools.dashboard.pulse import DASHBOARD_PULSE_ENV, DashboardPulse, PulseFile
 from lup.devtools.dashboard.reviews import create_operator_dashboard_app
+from lup.launch.declaration import Mount
+from lup.providers.user_config import UserConfigFile
 from lup.devtools.harness.launch import held_services
 from lup.devtools.review.answers import ReviewAnswers
 from lup.devtools.review.app import relay
@@ -51,8 +57,9 @@ def state(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     """lup's own state, this test's alone, so no dashboard of the person's is touched."""
     home = tmp_path / "state"
     monkeypatch.setenv("XDG_STATE_HOME", str(home))
-    for name in (NONCE_VARIABLE, MEMBER_ENV, DASHBOARD_URL_ENV):
+    for name in (NONCE_VARIABLE, MEMBER_ENV, DASHBOARD_URL_ENV, DASHBOARD_PULSE_ENV):
         monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
     monkeypatch.setattr("webbrowser.open", lambda _url: True)
     return home
 
@@ -235,19 +242,106 @@ def test_status_open_and_stop_are_read_from_outside_every_launch(
         assert dashboard.standing(root).serving is None
 
 
-def test_inside_a_session_the_dashboard_is_only_its_advertised_address(
+def test_inside_a_session_the_dashboard_answers_from_what_it_publishes(
     dashboard: Dashboard, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """Truthfully, and without the private state or the capability a session never holds."""
+    url = "http://127.0.0.1:8766"
+    pulse = PulseFile.of(tmp_path / "dashboard")
+    beat = datetime.now(UTC)
+    published = DashboardPulse(
+        url=url,
+        pid=4242,
+        pending=2,
+        sessions=3,
+        repositories=["/work/project/.git"],
+        tabs=1,
+        beat=beat,
+    )
+    written(pulse.path, published.model_dump_json())
     monkeypatch.setenv(MEMBER_ENV, "a-session")
-    monkeypatch.setenv(DASHBOARD_URL_ENV, "http://127.0.0.1:8766")
+    monkeypatch.setenv(DASHBOARD_URL_ENV, url)
+    monkeypatch.setenv(DASHBOARD_PULSE_ENV, str(pulse.path))
 
     status = dashboard_status(dashboard, tmp_path)
     runner = CliRunner()
     refused = runner.invoke(create_operator_dashboard_app(tmp_path), ["open"])
+    line = runner.invoke(create_operator_dashboard_app(tmp_path), ["line"])
+    stale = published.model_copy(update={"beat": beat - timedelta(minutes=5)})
+    written(pulse.path, stale.model_dump_json())
+    stopped = dashboard_status(dashboard, tmp_path)
+    pulse.path.unlink()
+    taken_down = dashboard_status(dashboard, tmp_path)
+    monkeypatch.delenv(DASHBOARD_PULSE_ENV)
+    unlent = dashboard_status(dashboard, tmp_path)
 
-    assert status.url == "http://127.0.0.1:8766" and status.pid is None
+    assert status.serving and status.url == url and status.pid == 4242
+    assert status.sessions == 3 and status.pending == 2 and status.tabs == 1
+    assert status.repositories == ["/work/project/.git"]
     assert refused.exit_code == 2
     assert "outside the agent session" in refused.output
+    assert line.exit_code == 0 and line.output == f"2 reviews pending · {url}\n"
+    assert not stopped.serving and "stopped" in stopped.detail
+    assert not taken_down.serving and "took its pulse down" in taken_down.detail
+    assert unlent.serving and unlent.url == url and "lent no pulse" in unlent.detail
+
+
+def test_the_service_tells_the_desktop_and_publishes_what_it_counts(
+    dashboard: Dashboard, tmp_path: Path
+) -> None:
+    """End to end: a review parked under a held dashboard reaches the desktop and the pulse."""
+    root = repository(tmp_path / "project")
+    tools = tmp_path / "bin"
+    tools.mkdir()
+    told, opened = tmp_path / "told.txt", tmp_path / "opened.txt"
+    for name, record in (("notify-send", told), ("browser", opened)):
+        script = tools / name
+        script.write_text(f"#!/bin/sh\nprintf '%s\\n' \"$@\" >> {record}\n")
+        script.chmod(0o755)
+    launch = launch_at(
+        root,
+        PATH=f"{tools}:{os.environ['PATH']}",  # lup: ignore[os-environ]
+        BROWSER=str(tools / "browser"),
+        DISPLAY=":0",
+    )
+
+    with held_companions([dashboard], launch) as joined:
+        pulse = PulseFile(path=Path(joined.environment[DASHBOARD_PULSE_ENV]))
+        parked(root)
+        counted = None
+        for _ in range(100):
+            counted = pulse.read()
+            waited = counted is not None and counted.pending == 1
+            if told.exists() and opened.exists() and waited:
+                break
+            time.sleep(0.2)
+        assert Mount(path=pulse.path.parent) in joined.mounts
+        assert joined.status_line is not None
+        assert joined.status_line.argv[-3:] == ["dashboard", "line", str(pulse.path)]
+        assert counted is not None and counted.pending == 1 and counted.sessions == 1
+        assert "Run: touch must-not-run" in told.read_text()
+        assert "/#token=" in opened.read_text()
+
+    assert pulse.read() is None
+
+
+def test_reopening_is_turned_off_and_on_from_the_operators_terminal(
+    state: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    cli = create_operator_dashboard_app(tmp_path)
+    runner = CliRunner()
+
+    off = runner.invoke(cli, ["reopen", "--off"])
+    said = runner.invoke(cli, ["reopen"])
+    turned_off = UserConfigFile().load().dashboard.reopen
+    on = runner.invoke(cli, ["reopen", "--on"])
+    monkeypatch.setenv(MEMBER_ENV, "a-session")
+    refused = runner.invoke(cli, ["reopen", "--off"])
+
+    assert off.exit_code == 0 and not turned_off
+    assert "off" in said.output
+    assert on.exit_code == 0 and UserConfigFile().load().dashboard.reopen
+    assert refused.exit_code == 2 and UserConfigFile().load().dashboard.reopen
 
 
 def test_a_harness_taking_the_module_holds_the_dashboard_at_every_launch() -> None:

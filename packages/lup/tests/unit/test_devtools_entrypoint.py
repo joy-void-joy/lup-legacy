@@ -1,11 +1,18 @@
-"""What `lup-devtools` says when its environment registers no project application, or several."""
+"""What `lup-devtools` says when its environment registers no project application, or several.
 
+And what it answers without loading one: a session's status line runs at
+every render, so its route reads the dashboard's pulse and nothing else.
+"""
+
+import sys
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
 import typer
 
 import lup.devtools.entrypoint as entrypoint
+from lup.devtools.dashboard.pulse import DashboardPulse, PulseFile
 
 
 def registering(site: Path, name: str, target: str) -> None:
@@ -48,3 +55,29 @@ def test_an_environment_with_no_project_says_what_installs_one(
         entrypoint.project_application()
 
     assert "`uv sync` in the project installs it" in capsys.readouterr().err
+
+
+def test_the_status_line_is_read_without_the_project_application(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    pulse = PulseFile.of(tmp_path)
+    pulse.path.parent.mkdir(parents=True)
+    pulse.path.write_text(
+        DashboardPulse(
+            url="http://127.0.0.1:8766", pid=1, pending=2, beat=datetime.now(UTC)
+        ).model_dump_json()
+    )
+
+    def refused() -> typer.Typer:
+        raise AssertionError("the status line loaded the project application")
+
+    monkeypatch.setattr(entrypoint, "project_application", refused)
+    monkeypatch.setattr(
+        sys, "argv", ["lup-devtools", "dashboard", "line", str(pulse.path)]
+    )
+
+    entrypoint.main()
+
+    assert capsys.readouterr().out == "2 reviews pending · http://127.0.0.1:8766\n"

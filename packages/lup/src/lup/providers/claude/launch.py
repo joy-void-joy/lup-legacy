@@ -1,6 +1,7 @@
 """Claude Code's spelling of a launch: the words and settings an interactive CLI starts with."""
 
 import json
+import shlex
 import shutil
 from collections.abc import Sequence
 from pathlib import Path
@@ -21,7 +22,7 @@ from lup.harness.models import ArtifactTree, CapabilityEvidence, Harness, Resump
 from lup.harness.requirements import Finding
 from lup.harness.toolchain import bubblewrap_requirement, socat_requirement
 from lup.launch.boundary import apply_sandbox_environment
-from lup.launch.companions import CompanionLaunch, Joined, held_companions
+from lup.launch.companions import CompanionLaunch, Joined, StatusLine, held_companions
 from lup.launch.compilation import allowance_environment, inherited_environment
 from lup.launch.config_volume import HomeSeedPlaces
 from lup.launch.declaration import (
@@ -51,7 +52,10 @@ from lup.launch.session import (
     start_harness_transcript,
 )
 from lup.providers.claude.config_home import (
+    WORKSPACE_SETTINGS,
+    ClaudeConfigHome,
     ClaudeConfigUnreadable,
+    load_document,
     selected_config_home,
 )
 from lup.providers.claude.confinement import CLAUDE_SANDBOX_OFF
@@ -72,7 +76,7 @@ from lup.providers.claude.session import carry_claude_home
 from lup.providers.claude.theme import settle_claude_theme
 from lup.providers.claude.transcripts import ClaudeTranscripts
 from lup.providers.profile_tree import profile_environment
-from lup.providers.user_config import UserConfigFile
+from lup.providers.user_config import UserConfig, UserConfigFile
 from lup.observability.audit import TraceJournal
 from lup.sandbox.rail import AccessibleRoot, host_run, in_repository
 from lup.sessions.layers import SessionLayers
@@ -316,6 +320,44 @@ def claude_settings(agent: "Claude", tree: Path | None = None) -> JsonObject:
     return {"sandbox": block, **carried}
 
 
+def claude_status_line(
+    shown: StatusLine | None,
+    root: Path,
+    account: ClaudeConfigHome,
+    personal: UserConfig,
+) -> JsonObject:
+    """A companion's status line as the settings a launched session reads, where nobody named one.
+
+    Handed with ``--settings``, which outranks every settings file, so it is
+    handed only where the account's own settings, the person's lup config
+    and the project's shared and local settings all leave `statusLine`
+    unset: lup's answer is the last one, and a status line anybody else
+    named stays theirs. Re-run every ``refresh`` seconds as well as on the
+    runtime's own events, so a review another session parks shows while this
+    one is idle.
+    """
+    if shown is None:
+        return {}
+    # lup: defer: `[claude.settings]` reaches a contained session only, through
+    # its home seed; a session on the host is handed none of it, so a status
+    # line named there suppresses this one and is not shown in its place
+    named = [
+        load_document(account.directory / WORKSPACE_SETTINGS),
+        personal.claude.settings,
+        load_document(root / ".claude" / "settings.json"),
+        load_document(root / ".claude" / "settings.local.json"),
+    ]
+    if any("statusLine" in settings for settings in named):
+        return {}
+    return {
+        "statusLine": {
+            "type": "command",
+            "command": shlex.join(shown.argv),
+            "refreshInterval": shown.refresh,
+        }
+    }
+
+
 class ClaudeServerLoading(TypedDict, total=False):
     """Whether Claude Code offers a server's tools from the first turn.
 
@@ -465,13 +507,16 @@ def claude_arguments(
     wake_socket: str | None,
     words: list[str],
     tree: Path | None = None,
+    shown: JsonObject | None = None,
 ) -> list[str]:
     """The words Claude Code starts with, from a declaration already launched and compiled.
 
     In the order the CLI's own launcher has always spoken them, the caller's
     ``words`` last, so a flag a person passes still wins. Every list a flag
     takes is joined into one value, because the CLI's list flags are
-    variadic and would otherwise swallow the words after them.
+    variadic and would otherwise swallow the words after them. ``shown`` is
+    the status line a held companion contributes, as
+    :func:`claude_status_line` settles it.
     """
     refuse_in_process_fields(config)
     from lup.providers.claude.subagents import model_alias, subagent_tools
@@ -508,7 +553,7 @@ def claude_arguments(
             for flag in ("--plugin-dir", str(directory))
         ],
         "--settings",
-        json.dumps(claude_settings(config, tree)),
+        json.dumps({**claude_settings(config, tree), **(shown or {})}),
         *claude_mcp_arguments(config.tools),
         *(["--tools", ",".join(native)] if native is not None else []),
         *(
@@ -672,8 +717,14 @@ def claude_opening(
     wake_socket = (
         placed_wake_socket(sockets, root, member) if sockets is not None else None
     )
+    shown = claude_status_line(
+        joined.status_line,
+        root,
+        selected_config_home({**inherited_environment(), **config.environment}),
+        personal_config(UserConfigFile()),
+    )
     arguments = claude_arguments(
-        config, member, wake_socket, words, worktrees_directory(root)
+        config, member, wake_socket, words, worktrees_directory(root), shown
     )
     environment = {
         **claude_server_environment(config.tools),

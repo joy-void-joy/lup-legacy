@@ -1271,6 +1271,10 @@ def review_hook_call(
     if entry is not None and entry["state"] == "pending":
         return {"state": "pending", "id": entry["id"], "reason": entry["reason"]}
     identifier = os.urandom(16).hex()
+    # The checkout the call changes: the one holding every file it records,
+    # which a session editing a sibling worktree does not sit in, and the
+    # session's own where it records none or files in several.
+    changed = {worktree_root(path) for path in resolved.values()} - {""}
     entry = {
         "id": identifier,
         "fingerprint": fingerprint,
@@ -1297,7 +1301,7 @@ def review_hook_call(
             "tool": tool,
             "payload": payload,
             "cwd": str(root),
-            "worktree": str(root),
+            "worktree": changed.pop() if len(changed) == 1 else str(root),
             "placement": placement,
             "provider": provider,
         },

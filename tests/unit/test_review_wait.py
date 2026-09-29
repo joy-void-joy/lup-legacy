@@ -237,6 +237,39 @@ def test_with_no_review_named_it_waits_on_every_one_this_session_asked(
     assert not (root / "theirs.txt").exists()
 
 
+def test_a_waiter_waits_until_its_review_settles_unless_given_a_timeout(
+    root: Path,
+) -> None:
+    """No limit of its own: only a timeout it was handed ends it early, carrying out nothing."""
+    asked(root, "Bash", {"command": f"{ESCALATED}echo later > marker.txt"})
+    question = only(root)
+
+    waited = RUNNER.invoke(
+        create_review_app(root), ["wait", question.id, "--timeout", "0.2"]
+    )
+
+    assert waited.exit_code == 3, waited.output
+    assert f"still waiting on {question.id}" in waited.output
+    assert "start the same `review wait` again" in waited.output
+    assert not (root / "marker.txt").exists()
+    assert only(root).state == "pending"
+
+
+def test_a_long_wait_says_now_and_then_that_it_is_still_waiting(
+    root: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    asked(root, "Bash", {"command": f"{ESCALATED}echo later > marker.txt"})
+    question = only(root)
+
+    status = waiter.wait_on(
+        root, [question.id], False, timeout=0.5, announce=0.1, poll=0.05
+    )
+
+    said = capsys.readouterr().out
+    assert status == 3
+    assert said.count(f"still waiting on {question.id} (") >= 2
+
+
 def test_a_waiter_is_seen_holding_what_it_waits_on(root: Path) -> None:
     waiters = ReviewWaiters(root=root)
 
