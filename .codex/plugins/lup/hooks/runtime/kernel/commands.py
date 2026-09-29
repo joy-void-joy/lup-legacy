@@ -738,17 +738,6 @@ def apply_command_row(
             return row_verdict(
                 row, "allow", "a declared dry-run flag makes this a probe"
             )
-    # Held to the read verb's bar rather than the probe's: an amendment still
-    # performs something, so a guarded flag beside it keeps its question.
-    if stated != "allow" and row["amending_flags"] and arguments:
-        clean = not any(
-            opaque_argument(word) or flag_matches(word, row["ask_flags"])
-            for word in arguments
-        )
-        if clean and any(flag_matches(w, row["amending_flags"]) for w in arguments):
-            return row_verdict(
-                row, "allow", "a declared flag points this at a record that exists"
-            )
     if stated != "allow" and row["write_markers"] and arguments:
         # Absence is the test, so every word has to be legible: one this
         # cannot read might carry the marker, and "no marker found" would
@@ -1810,9 +1799,8 @@ GH_API_ROUTES: tuple[GhApiRoute, ...] = (
         methods=["POST"],
         path=["issues"],
         act="filing an issue",
-        effect="ask",
-        reason="filing an issue publishes a report the repository's watchers"
-        " are notified of",
+        effect="allow",
+        reason="gh api filing an issue is `gh issue create` by another name",
     ),
     GhApiRoute(
         methods=["DELETE"],
@@ -1824,13 +1812,18 @@ GH_API_ROUTES: tuple[GhApiRoute, ...] = (
 )
 """The routes a write through ``gh api`` is judged by, as ``gh`` judges them.
 
-The pull-request and merge routes allow because the typed verbs reaching them
-do: an endpoint is one more spelling of opening, editing or merging a request,
-and a verdict that changed with the spelling would be two policies. Filing an
-issue and deleting a branch ask for what they are, rather than for the method
-that happens to reach them. A project whose forge access differs passes its
-own routes.
+The pull-request, merge and issue routes allow because the typed verbs
+reaching them do: an endpoint is one more spelling of opening, editing or
+merging a request, or of filing an issue, and a verdict that changed with the
+spelling would be two policies. Deleting a branch asks for what it is, rather
+than for the method that happens to reach it. A project whose forge access
+differs passes its own routes.
 """
+# lup: defer: `gh_rule(allow_authoring=False)` and `gh_rule(allow_filing=False)`
+# make `gh pr create` and `gh issue create` ask, while these routes still allow
+# the same writes through `gh api`: `decide_gh_words` calls `decide_gh_api_words`
+# with the defaults, so no vocabulary's parameters reach them. Compile the
+# routes from the gh rule the vocabulary composed.
 
 
 def gh_api_route(

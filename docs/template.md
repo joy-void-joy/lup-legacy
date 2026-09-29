@@ -340,8 +340,10 @@ source explicitly. Without `--url`, it uses the existing Git dependency pin,
 then the scaffold's named sync registration: its URL, or its checkout's origin.
 An absent source is reported before any pin is changed. Library friction reports
 use that same configured upstream; the consuming project's reports use its own
-origin. A `lup` entry that names no URL, remote or path — one committed before
-the entry carried a URL, which no update rewrites, since root files are the
+origin, and are the only ones filed without a question — one routed upstream
+prints the command naming that tracker with `--repo`, which asks. A `lup`
+entry that names no URL, remote or path — one committed before the entry
+carried a URL, which no update rewrites, since root files are the
 project's own — falls back to the source repository the installed library
 declares in its `[project.urls]`.
 
