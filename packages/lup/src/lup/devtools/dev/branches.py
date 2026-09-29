@@ -766,6 +766,21 @@ def scaffold_carrier(branch: str) -> str:
     )
 
 
+def kept_whatever_it_holds(name: str, scaffold: str = "") -> str:
+    """Why no verb may take ``name`` away, or nothing where one may.
+
+    A protected branch, or ``scaffold``, the branch the project's copied half
+    is compiled onto. Deleting and retiring both end in a deletion, so both
+    ask this before anything else and no force lifts the answer: the sweep
+    that reads these as spent is exactly the reader that must not act on it.
+    """
+    if name == scaffold:
+        return scaffold_carrier(name)
+    if name in PROTECTED_BRANCHES:
+        return "a protected branch, which no sweep retires"
+    return ""
+
+
 def disposition_for(
     name: str,
     *,
@@ -2620,10 +2635,8 @@ def plan_deletion(
     different deletions rather than one with steps that happen to fail:
     :func:`plan_remote_only_deletion` carries the second and the third.
 
-    A name the survey keeps whatever it holds — a protected branch, or
-    ``scaffold``, the branch the project's copied half is compiled onto — is
-    refused before any of that, and no force lifts it: the sweep that reads
-    these as spent is exactly the reader that must not be able to act on it.
+    A name the survey keeps whatever it holds (:func:`kept_whatever_it_holds`)
+    is refused before any of that.
 
     A dry run and the real path both read this, so what the dry run promises
     is what the real path went on to check.
@@ -2638,15 +2651,14 @@ def plan_deletion(
     """
     from lup.devtools.dev.worktree import branch_exists
 
-    kept = scaffold_carrier(name) if name == scaffold else ""
-    if kept or name in PROTECTED_BRANCHES:
+    if kept := kept_whatever_it_holds(name, scaffold):
         return DeletionPlan(
             branch=name,
             actions=[
                 PlannedAction(
                     description=f"Delete branch: {name}",
                     verdict="refused",
-                    detail=kept or "a protected branch, which no sweep retires",
+                    detail=kept,
                 )
             ],
         )
@@ -2990,9 +3002,21 @@ def unique_subjects(branch: str, integration: str) -> list[str]:
     ]
 
 
-def plan_retirement(name: str, integration: str) -> RetirementPlan:
-    """Evaluate every step a retirement depends on, changing nothing."""
+def plan_retirement(name: str, integration: str, scaffold: str = "") -> RetirementPlan:
+    """Evaluate every step a retirement depends on, changing nothing.
+
+    A retirement ends in a deletion, so a name no deletion may take
+    (:func:`kept_whatever_it_holds`) is refused before anything is pushed.
+    """
     from lup.devtools.dev.worktree import branch_exists
+
+    if kept := kept_whatever_it_holds(name, scaffold):
+        refused = PlannedAction(
+            description=f"Retire {name}", verdict="refused", detail=kept
+        )
+        return RetirementPlan(
+            branch=name, integration=integration, unique_commits=0, actions=[refused]
+        )
 
     actions: list[PlannedAction] = []
     if not branch_exists(name):
@@ -3108,14 +3132,19 @@ def retire_branch(
     reason: str,
     dry_run: bool,
     integration: str | None = None,
+    scaffold: str = "",
 ) -> None:
-    """Retire a branch through a pull request, so its commits outlive it."""
+    """Retire a branch through a pull request, so its commits outlive it.
+
+    ``scaffold`` names the carrier :func:`plan_retirement` refuses, as
+    :func:`delete_branch` is told it.
+    """
     target = integration if integration is not None else get_integration_branch()
     if name == git.out("branch", "--show-current"):
         typer.echo(f"Error: cannot retire the current branch ({name})", err=True)
         raise typer.Exit(1)
 
-    plan = plan_retirement(name, target)
+    plan = plan_retirement(name, target, scaffold)
 
     if dry_run:
         typer.echo(f"Would perform {len(plan.actions)} action(s):")
