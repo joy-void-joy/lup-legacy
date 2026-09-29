@@ -267,9 +267,10 @@ class TestDispatchedPatches:
             calls.append(("repair", path))
             return []
 
-        def diagnostics(path: str, _command: list[str]) -> list[str]:
+        def diagnostics(path: str, _command: list[str]) -> dict[str, list[str]]:
             calls.append(("diagnostics", path))
-            return [f"{path}: type mismatch"] if Path(path).is_file() else []
+            found = [f"{path}: type mismatch"] if Path(path).is_file() else []
+            return {"blocking": found, "context": []}
 
         monkeypatch.setattr(dispatcher, "repaired_directives", repair)
         monkeypatch.setattr(dispatcher, "file_diagnostics", diagnostics)
@@ -287,11 +288,15 @@ class TestDispatchedPatches:
         (root / "gone.py").unlink()
         target.write_text("value = 2\n", encoding="utf-8")
 
-        assert dispatcher.observe(payload) == [f"{target}: type mismatch"]
+        assert dispatcher.observe(payload) == {
+            "blocking": [f"{target}: type mismatch"],
+            "context": [],
+        }
+        # Every changed path repaired, then each one type-checked.
+        changed = [str(root / path) for path in ("old.py", "new.py", "gone.py")]
         assert calls == [
-            (operation, str(root / path))
-            for path in ("old.py", "new.py", "gone.py")
-            for operation in ("repair", "diagnostics")
+            *(("repair", path) for path in changed),
+            *(("diagnostics", path) for path in changed),
         ]
 
     @pytest.mark.parametrize("partial", [False, True])
@@ -314,14 +319,18 @@ class TestDispatchedPatches:
         dispatcher = bundled_dispatcher()
         calls: list[str] = []
 
-        def record(path: str, _command: list[str]) -> list[str]:
+        def swept(path: str, _command: list[str]) -> list[str]:
             calls.append(path)
             return []
+
+        def record(path: str, _command: list[str]) -> dict[str, list[str]]:
+            calls.append(path)
+            return {"blocking": [], "context": []}
 
         def claimed(path: str, _cwd: Path, _caller: Caller) -> None:
             calls.append(path)
 
-        monkeypatch.setattr(dispatcher, "repaired_directives", record)
+        monkeypatch.setattr(dispatcher, "repaired_directives", swept)
         monkeypatch.setattr(dispatcher, "file_diagnostics", record)
         monkeypatch.setattr(dispatcher, "named_claim_recorded", claimed)
         monkeypatch.setenv("PLUGIN_DATA", str(tmp_path / "data"))
@@ -341,7 +350,7 @@ class TestDispatchedPatches:
             first.write_text("value = 2\n", encoding="utf-8")
         payload["tool_response"] = {"exit_code": 1, "output": "failed to apply"}
 
-        assert dispatcher.observe(payload) == []
+        assert dispatcher.observe(payload) == {"blocking": [], "context": []}
         assert calls == ([str(first)] * 3 if partial else [])
         assert second.read_text(encoding="utf-8") == "value = 1\n"
         assert not dispatcher.patch_snapshot(payload).exists()
@@ -363,7 +372,10 @@ class TestDispatchedPatches:
         (tmp_path / "module.py").write_text("value = 1\n", encoding="utf-8")
         payload["tool_use_id"] = "different-call"
 
-        assert "no matching PreToolUse snapshot" in dispatcher.observe(payload)[0]
+        assert (
+            "no matching PreToolUse snapshot"
+            in (dispatcher.observe(payload)["blocking"][0])
+        )
 
     def test_native_pretool_entrypoint_records_only_allowed_calls(
         self,

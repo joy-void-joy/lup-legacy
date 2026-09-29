@@ -68,8 +68,11 @@ from host import (
     text_at,
     undo_snapshot,
     worktree_path,
+    file_diagnostics,
+    repaired_directives,
 )
 from kernel.decision import KernelDecision
+from kernel.rows import PostToolReport
 
 # A line of its own: a dispatcher's bundle drops an import line whose text is
 # already in it, and a line naming both would redefine `KernelDecision` there.
@@ -128,6 +131,8 @@ from policy_data import (
     ALLOWANCE_GRANTS_ENV,
     ALLOWED_FETCH_SCOPES,
     ANTI_PATTERN_ROWS,
+    DIAGNOSTICS_COMMAND,
+    REPAIR_COMMAND,
     RESOLUTION_COMMAND,
     DENIED_FETCH_SCOPES,
     EDIT_RULES,
@@ -992,7 +997,7 @@ def authored_review(
     )
 
 
-def written_review(command: str, cwd: Path) -> list[str]:
+def written_review(command: str, cwd: Path) -> PostToolReport:
     """What the gates say about the files a shell command just wrote.
 
     The half of an edit's review a shell write cannot reach in advance. An
@@ -1017,7 +1022,9 @@ def written_review(command: str, cwd: Path) -> list[str]:
     It reports and does not undo. The command has run, so a refusal here is
     an account of what landed rather than a verdict on whether it should
     have; the agent is told, in the words the gate would have used, and what
-    it does about it is the next turn's business.
+    it does about it is the next turn's business. A refusal is blocking; what
+    a question would have asked -- a suppression to approve, another
+    repository's file -- is context, since nobody is left to answer it.
 
     A patch is the third route in, and the one that is read rather than
     resolved: `git apply` replaces tracked content wholesale by a spelling no
@@ -1027,18 +1034,23 @@ def written_review(command: str, cwd: Path) -> list[str]:
     reasonable substitute.
     """
     carried = [write["path"] for write in authored_writes(command)]
-
-    return [
-        f"{target}: {verdict.reason}"
-        for target in [
-            *shell_write_targets(command),
-            *shell_flag_write_targets(command, SHELL_RULES),
-            *patch_write_targets(shell_patch_operands(command, SHELL_RULES), cwd),
-        ]
+    targets = [
+        target
+        for target in dict.fromkeys(
+            [
+                *shell_write_targets(command),
+                *shell_flag_write_targets(command, SHELL_RULES),
+                *patch_write_targets(shell_patch_operands(command, SHELL_RULES), cwd),
+            ]
+        )
         # A write whose bytes were in the command went to these gates before it
         # ran, and reporting it again tells the agent the same thing twice about
         # a write somebody has already answered for.
         if target not in carried and (cwd / target).is_file()
+    ]
+    verdicts = [
+        (target, verdict)
+        for target in targets
         for after in [text_at(cwd, target)]
         if after is not None
         for verdict in [
@@ -1054,8 +1066,57 @@ def written_review(command: str, cwd: Path) -> list[str]:
                 cwd=cwd,
             )
         ]
-        if verdict.effect != "allow"
     ]
+    return PostToolReport(
+        blocking=[
+            f"{target}: {verdict.addressed()}"
+            for target, verdict in verdicts
+            if verdict.effect == "deny"
+        ],
+        context=[
+            f"{target}: {verdict.addressed()}"
+            for target, verdict in verdicts
+            if verdict.effect not in ("allow", "deny")
+        ],
+    )
+
+
+def merged(reports: list[PostToolReport]) -> PostToolReport:
+    """Several reports about one call, as the one report its runtime delivers."""
+    return PostToolReport(
+        blocking=[line for report in reports for line in report["blocking"]],
+        context=[line for report in reports for line in report["context"]],
+    )
+
+
+def reviewed_writes(
+    paths: list[str], cwd: Path | None, diagnosed: bool = True
+) -> PostToolReport:
+    """What the checks after a write say about the files it wrote.
+
+    The repair goes first because it rewrites the file, and a type check run
+    before it describes lines that have since moved. Every removal is said: a
+    line that vanishes unsaid is one the agent writes again on the next file.
+    """
+    return merged(
+        [
+            *(
+                PostToolReport(
+                    blocking=[],
+                    context=[
+                        f"{worktree_path(path)}: {line}"
+                        for line in repaired_directives(path, REPAIR_COMMAND)
+                    ],
+                )
+                for path in paths
+            ),
+            *(
+                PostToolReport(blocking=found["blocking"], context=found["context"])
+                for path in (paths if diagnosed else [])
+                for found in [file_diagnostics(path, DIAGNOSTICS_COMMAND)]
+            ),
+        ]
+    )
 
 
 def foreign_claim_decision(

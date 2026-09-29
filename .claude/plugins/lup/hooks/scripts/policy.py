@@ -19,15 +19,15 @@ from pathlib import Path
 # distribution. Naming it as a search path is what lets the imports below
 # resolve, for the interpreter and for a type checker alike.
 sys.path.insert(0, str(Path(__file__).parents[1] / "runtime"))
+from kernel.rows import PostToolReport
 from kernel.decision import KernelDecision, sandbox_escaped
 from caller_payload import caller_of
 from policy_data import (
     AGENT_IDENTITY_ENV,
     AUTONOMOUS_AGENT_IDENTITIES,
-    DIAGNOSTICS_COMMAND,
     HOOK_DEADLINE_SECONDS,
-    REPAIR_COMMAND,
 )
+import ast
 import csv
 import fcntl
 import signal
@@ -97,6 +97,8 @@ from policy_data import (
     ALLOWANCE_GRANTS_ENV,
     ALLOWED_FETCH_SCOPES,
     ANTI_PATTERN_ROWS,
+    DIAGNOSTICS_COMMAND,
+    REPAIR_COMMAND,
     RESOLUTION_COMMAND,
     DENIED_FETCH_SCOPES,
     EDIT_RULES,
@@ -1998,12 +2000,33 @@ def conflicted(path_text: str) -> bool:
     )
 
 
+def import_lines(text: str) -> list[int]:
+    """Every line an import statement of this source spans, or none unparsed."""
+    try:
+        tree = ast.parse(text)
+    except (SyntaxError, ValueError):
+        return []
+
+    def spanned(node: ast.AST) -> range:
+        match node:
+            case ast.Import() | ast.ImportFrom():
+                return range(node.lineno, (node.end_lineno or node.lineno) + 1)
+        return range(0)
+
+    return [line for node in ast.walk(tree) for line in spanned(node)]
+
+
 def file_diagnostics(
     path_text: str,
     command: list[str],
     suffixes: tuple[str, ...] = (".py", ".pyi"),
     timeout_seconds: float = 20.0,
-) -> list[str]:
+    pending_rules: tuple[str, ...] = (
+        "reportUndefinedVariable",
+        "reportMissingImports",
+        "reportMissingModuleSource",
+    ),
+) -> dict[str, list[str]]:
     """Type-check one edited file, in the checkout that actually holds it.
 
     A language server the runtime starts is rooted once, where the session
@@ -2045,17 +2068,25 @@ def file_diagnostics(
     the merge rather than about the edit — during a resolution, which is
     exactly when a reader is editing that file and has the least attention to
     spare for a wall of output that cannot be acted on.
+
+    A name used before it exists is reported as context rather than as a
+    refusal: *pending_rules*, and an unknown symbol on an import line. A
+    change spanning two edits — the use, then the definition or its import —
+    reports it in between, and as a "blocking error" it arrived dozens of
+    times per change while four builders worked in parallel. What is still
+    unresolved when the change settles, `dev check --changed` reports.
     """
+    nothing: dict[str, list[str]] = {"blocking": [], "context": []}
     if not command or Path(path_text).suffix.lower() not in suffixes:
-        return []
+        return nothing
     if conflicted(path_text):
-        return []
+        return nothing
     root = worktree_root(path_text)
     if not root:
-        return []
+        return nothing
     located = declared_program(root, command[0])
     if not located:
-        return []
+        return nothing
     edited = str(Path(path_text).resolve())
     environ = os.environ  # lup: ignore[os-environ] — the checker inherits this
     inherited = environ["PATH"] if "PATH" in environ else ""
@@ -2078,14 +2109,40 @@ def file_diagnostics(
             check=False,
         )
         reported = json.loads(finished.stdout)["generalDiagnostics"]
+        imports = import_lines(Path(edited).read_text(encoding="utf-8"))
     except (OSError, subprocess.SubprocessError, ValueError, KeyError):
-        return []
-    return [
-        f"{Path(edited).relative_to(Path(root).resolve())}:"
-        f"{item['range']['start']['line'] + 1}: {item['severity']}: {item['message']}"
+        return nothing
+    shown = Path(edited).relative_to(Path(root).resolve())
+    found = [
+        item
         for item in reported
         if item["file"] == edited and item["severity"] != "information"
     ]
+
+    def line(item: dict) -> str:
+        return (
+            f"{shown}:{item['range']['start']['line'] + 1}: "
+            f"{item['severity']}: {item['message']}"
+        )
+
+    def pending(item: dict) -> bool:
+        rule = item["rule"] if "rule" in item else ""
+        return rule in pending_rules or (
+            rule == "reportAttributeAccessIssue"
+            and item["range"]["start"]["line"] + 1 in imports
+        )
+
+    awaited = [line(item) for item in found if pending(item)]
+    return {
+        "blocking": [line(item) for item in found if not pending(item)],
+        "context": [
+            "Named before it is supplied, which an edit still to come may do; "
+            "`uv run lup-devtools dev check --changed` settles it:",
+            *awaited,
+        ]
+        if awaited
+        else [],
+    }
 
 
 def repaired_directives(
@@ -4058,7 +4115,7 @@ def authored_review(
     )
 
 
-def written_review(command: str, cwd: Path) -> list[str]:
+def written_review(command: str, cwd: Path) -> PostToolReport:
     """What the gates say about the files a shell command just wrote.
 
     The half of an edit's review a shell write cannot reach in advance. An
@@ -4083,7 +4140,9 @@ def written_review(command: str, cwd: Path) -> list[str]:
     It reports and does not undo. The command has run, so a refusal here is
     an account of what landed rather than a verdict on whether it should
     have; the agent is told, in the words the gate would have used, and what
-    it does about it is the next turn's business.
+    it does about it is the next turn's business. A refusal is blocking; what
+    a question would have asked -- a suppression to approve, another
+    repository's file -- is context, since nobody is left to answer it.
 
     A patch is the third route in, and the one that is read rather than
     resolved: `git apply` replaces tracked content wholesale by a spelling no
@@ -4093,18 +4152,23 @@ def written_review(command: str, cwd: Path) -> list[str]:
     reasonable substitute.
     """
     carried = [write["path"] for write in authored_writes(command)]
-
-    return [
-        f"{target}: {verdict.reason}"
-        for target in [
-            *shell_write_targets(command),
-            *shell_flag_write_targets(command, SHELL_RULES),
-            *patch_write_targets(shell_patch_operands(command, SHELL_RULES), cwd),
-        ]
+    targets = [
+        target
+        for target in dict.fromkeys(
+            [
+                *shell_write_targets(command),
+                *shell_flag_write_targets(command, SHELL_RULES),
+                *patch_write_targets(shell_patch_operands(command, SHELL_RULES), cwd),
+            ]
+        )
         # A write whose bytes were in the command went to these gates before it
         # ran, and reporting it again tells the agent the same thing twice about
         # a write somebody has already answered for.
         if target not in carried and (cwd / target).is_file()
+    ]
+    verdicts = [
+        (target, verdict)
+        for target in targets
         for after in [text_at(cwd, target)]
         if after is not None
         for verdict in [
@@ -4120,8 +4184,57 @@ def written_review(command: str, cwd: Path) -> list[str]:
                 cwd=cwd,
             )
         ]
-        if verdict.effect != "allow"
     ]
+    return PostToolReport(
+        blocking=[
+            f"{target}: {verdict.addressed()}"
+            for target, verdict in verdicts
+            if verdict.effect == "deny"
+        ],
+        context=[
+            f"{target}: {verdict.addressed()}"
+            for target, verdict in verdicts
+            if verdict.effect not in ("allow", "deny")
+        ],
+    )
+
+
+def merged(reports: list[PostToolReport]) -> PostToolReport:
+    """Several reports about one call, as the one report its runtime delivers."""
+    return PostToolReport(
+        blocking=[line for report in reports for line in report["blocking"]],
+        context=[line for report in reports for line in report["context"]],
+    )
+
+
+def reviewed_writes(
+    paths: list[str], cwd: Path | None, diagnosed: bool = True
+) -> PostToolReport:
+    """What the checks after a write say about the files it wrote.
+
+    The repair goes first because it rewrites the file, and a type check run
+    before it describes lines that have since moved. Every removal is said: a
+    line that vanishes unsaid is one the agent writes again on the next file.
+    """
+    return merged(
+        [
+            *(
+                PostToolReport(
+                    blocking=[],
+                    context=[
+                        f"{worktree_path(path)}: {line}"
+                        for line in repaired_directives(path, REPAIR_COMMAND)
+                    ],
+                )
+                for path in paths
+            ),
+            *(
+                PostToolReport(blocking=found["blocking"], context=found["context"])
+                for path in (paths if diagnosed else [])
+                for found in [file_diagnostics(path, DIAGNOSTICS_COMMAND)]
+            ),
+        ]
+    )
 
 
 def foreign_claim_decision(
@@ -4668,28 +4781,57 @@ def observe(payload):
         # The tier that needs no comparison: the call said which file, so the
         # claim it leaves is one another session can act on unqualified.
         named_claim_recorded(path, session_root(payload), caller_of(payload))
-        # Repaired before checked, because the repair rewrites the file: run
-        # the other way round and the diagnostics describe lines that have
-        # already moved. Both reports reach the agent together, which is the
-        # one channel this event has.
-        return repaired_directives(path, REPAIR_COMMAND) + file_diagnostics(
-            path, DIAGNOSTICS_COMMAND
-        )
+        return reviewed_writes([path], session_root(payload))
     command = tool_input["command"] if "command" in tool_input else ""
     if not command:
-        return []
+        return PostToolReport(blocking=[], context=[])
     # What the command changed, read against the snapshot its own PreToolUse
     # took, and contested where another session had a window open across it.
     claim_window_closed(session_root(payload), caller_of(payload))
-    return [
-        *written_review(command, session_root(payload) or Path.cwd()),
-        # What the boundary refused, named as the boundary rather than left
-        # as an errno the agent would debug as a broken disk.
-        *boundary_account(
-            payload["tool_response"] if "tool_response" in payload else "",
-            session_root(payload),
-        ),
-    ]
+    return merged(
+        [
+            written_review(
+                command,
+                session_root(payload) or Path.cwd(),
+            ),
+            # What the boundary refused, named as the boundary rather than
+            # left as an errno the agent would debug as a broken disk.
+            PostToolReport(
+                blocking=[],
+                context=boundary_account(
+                    payload["tool_response"] if "tool_response" in payload else "",
+                    session_root(payload),
+                ),
+            ),
+        ]
+    )
+
+
+def post_tool_answer(report):
+    """One post-tool report, in the two channels this runtime reads it by.
+
+    What a gate still refuses goes as ``decision: "block"``, whose reason
+    Claude Code shows the agent as feedback to act on before it moves on.
+    What is only worth knowing goes as ``additionalContext``, which the
+    runtime wraps as a system reminder beside the result and does not label
+    as an error: https://code.claude.com/docs/en/hooks, "PostToolUse
+    decision control". One channel for both labelled a name another edit
+    was about to supply, and a justified suppression, as a blocking error.
+    """
+    answer = (
+        {"decision": "block", "reason": "\n".join(report["blocking"])}
+        if report["blocking"]
+        else {}
+    )
+    if not report["context"]:
+        return answer
+    return {
+        **answer,
+        "hookSpecificOutput": {
+            "hookEventName": "PostToolUse",
+            "additionalContext": "\n".join(report["context"]),
+        },
+    }
 
 
 def main():
@@ -4715,24 +4857,23 @@ def main():
         # approval prompt for work already done.
         if event == "PostToolUse":
             remembered_run(payload)
-            found = observe_hook_call(
+            observed = observe_hook_call(
                 session_root(payload) or Path.cwd(),
                 payload["session_id"] if "session_id" in payload else "",
                 payload["tool_name"],
                 payload["tool_input"],
                 payload["tool_use_id"] if "tool_use_id" in payload else "",
-            ) + observe(payload)
+            )
+            report = merged(
+                [PostToolReport(blocking=observed, context=[]), observe(payload)]
+            )
             # Structured feedback reaches the agent beside the completed tool.
             # A file diagnostic is a successful check, so it exits normally.
-            if found:
-                detail = "\n".join(found)
-                record_hook_evidence(
-                    plugin_data_root(), payload, "completed", "observed", detail
-                )
-                json.dump({"decision": "block", "reason": detail}, sys.stdout)
-                return
-            json.dump({}, sys.stdout)
-            record_hook_evidence(plugin_data_root(), payload, "completed", "observed")
+            detail = "\n".join([*report["blocking"], *report["context"]])
+            record_hook_evidence(
+                plugin_data_root(), payload, "completed", "observed", detail or None
+            )
+            json.dump(post_tool_answer(report), sys.stdout)
             return
         decision = dispatch(payload)
         placed = placed_input(payload)

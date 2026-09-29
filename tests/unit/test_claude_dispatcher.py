@@ -963,7 +963,9 @@ def test_post_tool_findings_are_feedback_without_a_process_error(
     dispatcher = bundled_dispatcher()
     payload = {"hook_event_name": "PostToolUse", "tool_name": "Edit", "tool_input": {}}
     monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps(payload)))
-    monkeypatch.setattr(dispatcher, "observe", lambda _payload: findings)
+    monkeypatch.setattr(
+        dispatcher, "observe", lambda _payload: {"blocking": findings, "context": []}
+    )
     monkeypatch.setattr(dispatcher, "plugin_data_root", lambda: tmp_path)
 
     dispatcher.main()
@@ -1174,8 +1176,11 @@ def test_a_write_the_gates_already_read_is_not_reported_again(tmp_path: Path) ->
     (work / "src" / "engine.py").write_text("value = 2\n", encoding="utf-8")
     review = bundled_dispatcher().written_review
 
-    assert review("cat > src/engine.py <<'EOF'\nvalue = 2\nEOF", work) == []
-    assert review("dev render > src/engine.py", work) != []
+    assert review("cat > src/engine.py <<'EOF'\nvalue = 2\nEOF", work) == {
+        "blocking": [],
+        "context": [],
+    }
+    assert review("dev render > src/engine.py", work)["blocking"] != []
 
 
 def test_an_effect_no_boundary_here_reaches_still_asks(delete_repo: Path) -> None:

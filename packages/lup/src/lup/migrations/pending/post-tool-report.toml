@@ -1,0 +1,11 @@
+subjects = ["file_diagnostics"]
+reason = """
+the checks after a write report what still refuses apart from what is only \
+worth knowing, so the type check says which of its findings a later edit may \
+still supply"""
+
+[[steps]]
+instruction = """
+Read file_diagnostics(path, command) as a mapping: "blocking" holds the lines \
+it returned before, and "context" the names used before an edit supplies \
+them, headed by one line saying so."""

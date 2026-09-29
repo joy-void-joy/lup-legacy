@@ -108,6 +108,7 @@ DISPATCHER_STDLIB = (
     "shlex",
     "urllib.parse",
     "typing",
+    "ast",
 )
 """The standard library a compiled dispatcher may reach.
 

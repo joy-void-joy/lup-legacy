@@ -1357,14 +1357,24 @@ settled by adding it to a list that asserts allow.
 
 ## Hook execution evidence
 
-Claude reports post-edit diagnostics through its
-[structured post-edit feedback](https://code.claude.com/docs/en/hooks#posttooluse-decision-control):
-exit 0 with `decision: "block"` and a `reason`. This gives the agent the findings
-beside the completed edit. It does not undo the edit or report a crashed hook.
-Diagnostics name the file, line, severity, and message. Codex delivers its
-post-tool findings through stderr and exit 2. Its patch parser reads every
-touched path without replaying the old file contents, so both runtimes run
-the same per-file repairs and type checks after an edit, including moves.
+After a write, the hooks take the dead directives out of the written file
+(`repair_command`) and say so, then type-check it (`diagnostics_command`).
+
+What reaches the agent comes in two parts. What a gate still refuses is
+*blocking*. Claude gets it as
+[structured post-edit feedback](https://code.claude.com/docs/en/hooks#posttooluse-decision-control)
+(exit 0 with `decision: "block"` and a `reason`), and Codex through stderr
+and exit 2. What is only worth knowing is *context*: a removed directive, a
+name used before a later edit supplies it (`reportUndefinedVariable`, an
+unresolved import, an unknown symbol on an import line), what a question
+would have asked about a shell write, or another repository's referral.
+Claude and Codex both get it as `hookSpecificOutput.additionalContext`. When
+something also blocks, Codex adds it after the refusal. Nothing here undoes
+an edit or reports a crashed hook.
+
+Codex's patch parser reads every touched path without replaying the old file
+contents, so both runtimes run the same repair and type check after an edit,
+including moves.
 
 Both plugins register a short command invoking the generated
 `hooks/scripts/policy.sh`. That guard runs `policy.py`, preserves its output

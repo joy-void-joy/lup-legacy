@@ -1,0 +1,140 @@
+"""What a finished call is told, through each runtime's two channels.
+
+After a write, some findings ask the agent to act — a gate refuses what
+landed — and some only inform it: a directive the sweep removed, a name an
+edit still to come is about to supply, another repository's referral. One
+channel for both labelled every notice a blocking error, so an agent could
+not tell whether anything was asked of it; these pin the split, and the
+reviews that feed it.
+"""
+
+import io
+import json
+import sys
+from pathlib import Path
+from types import ModuleType
+
+import pytest
+
+from tests.unit.bundled import bundled
+from tests.unit.repos import initialized_repo
+
+
+def claude() -> ModuleType:
+    return bundled(
+        "bundled_claude_policy", Path(".claude/plugins/lup/hooks/scripts/policy.py")
+    )
+
+
+def codex() -> ModuleType:
+    return bundled(
+        "bundled_codex_policy",
+        Path.cwd() / ".codex/plugins/lup/hooks/scripts/policy.py",
+    )
+
+
+def test_a_refusal_blocks_and_what_is_worth_knowing_rides_beside_it() -> None:
+    answer = claude().post_tool_answer(
+        {"blocking": ["module.py:3: error: wrong"], "context": ["line 2: removed"]}
+    )
+
+    assert answer == {
+        "decision": "block",
+        "reason": "module.py:3: error: wrong",
+        "hookSpecificOutput": {
+            "hookEventName": "PostToolUse",
+            "additionalContext": "line 2: removed",
+        },
+    }
+
+
+def test_what_is_only_worth_knowing_blocks_nothing() -> None:
+    answer = claude().post_tool_answer({"blocking": [], "context": ["line 2: removed"]})
+
+    assert "decision" not in answer
+    assert answer["hookSpecificOutput"]["additionalContext"] == "line 2: removed"
+
+
+def test_codex_hears_context_without_the_tool_result_replaced(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    codex().post_tool_answer({"blocking": [], "context": ["line 2: removed"]})
+
+    output = capsys.readouterr()
+    assert output.err == ""
+    assert json.loads(output.out)["hookSpecificOutput"] == {
+        "hookEventName": "PostToolUse",
+        "additionalContext": "line 2: removed",
+    }
+
+
+def test_codex_hears_a_refusal_on_its_measured_channel_with_the_context_after(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    with pytest.raises(SystemExit) as exited:
+        codex().post_tool_answer(
+            {"blocking": ["module.py:3: wrong"], "context": ["line 2: removed"]}
+        )
+
+    assert exited.value.code == 2
+    assert capsys.readouterr().err == "module.py:3: wrong\n\nline 2: removed"
+
+
+def test_the_claude_hook_emits_the_split_it_was_handed(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    dispatcher = claude()
+    payload = {"hook_event_name": "PostToolUse", "tool_name": "Edit", "tool_input": {}}
+    monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps(payload)))
+    monkeypatch.setattr(
+        dispatcher,
+        "observe",
+        lambda _payload: {"blocking": [], "context": ["worth knowing"]},
+    )
+    monkeypatch.setattr(dispatcher, "plugin_data_root", lambda: tmp_path)
+
+    dispatcher.main()
+
+    assert json.loads(capsys.readouterr().out) == {
+        "hookSpecificOutput": {
+            "hookEventName": "PostToolUse",
+            "additionalContext": "worth knowing",
+        }
+    }
+
+
+def sweeping(work: Path, rewritten: str, rule_id: str) -> None:
+    """A stand-in sweep that takes one directive out of `module.py`."""
+    script = work / "lup-devtools"
+    report = {
+        "repaired": [{"file": "module.py", "line": 1, "rule_id": rule_id}],
+        "findings": [],
+    }
+    script.write_text(
+        f"#!/bin/sh\nprintf '%s' '{rewritten}' > module.py\n"
+        f"cat <<'JSON'\n{json.dumps(report)}\nJSON\n",
+        encoding="utf-8",
+    )
+    script.chmod(0o755)
+
+
+def test_a_repair_the_loaded_policy_agrees_with_stands_and_is_said(
+    tmp_path: Path,
+) -> None:
+    work = tmp_path / "repo"
+    initialized_repo(work, tmp_path / "no-hooks")
+    module = work / "module.py"
+    module.write_text(
+        "value = 1  # lup: ignore[subprocess] — stale\n", encoding="utf-8"
+    )
+    sweeping(work, "value = 1\n", "subprocess")
+
+    report = claude().reviewed_writes([str(module)], work, diagnosed=False)
+
+    assert module.read_text(encoding="utf-8") == "value = 1\n"
+    assert report["context"] == [
+        "module.py: line 1: removed `# lup: ignore[subprocess]` — it guarded no"
+        " rule, so it silenced nothing"
+    ]

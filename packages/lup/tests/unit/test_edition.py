@@ -320,7 +320,7 @@ def test_a_diagnostic_for_the_edited_file_is_reported(tmp_path: Path) -> None:
     file = edited(work)
     command = checker(work, report(file))
 
-    assert file_diagnostics(str(file), command) == [
+    assert file_diagnostics(str(file), command)["blocking"] == [
         "module.py:1: error: something is wrong",
     ]
 
@@ -420,7 +420,7 @@ def test_the_checker_leads_the_path_with_its_own_environment(tmp_path: Path) -> 
     )
     script.chmod(0o755)
 
-    assert file_diagnostics(str(file), [".venv/bin/fake-checker"]) == []
+    assert file_diagnostics(str(file), [".venv/bin/fake-checker"])["blocking"] == []
     assert recorded.read_text(encoding="utf-8").startswith(f"{binaries}{os.pathsep}")
 
 
@@ -438,7 +438,7 @@ def test_a_file_the_checker_cannot_read_is_not_checked(tmp_path: Path) -> None:
     manifest.write_text('[project]\nname = "x"\n', encoding="utf-8")
     command = checker(work, report(manifest))
 
-    assert file_diagnostics(str(manifest), command) == []
+    assert file_diagnostics(str(manifest), command)["blocking"] == []
 
 
 def test_a_file_holding_a_merge_open_is_not_checked(tmp_path: Path) -> None:
@@ -457,7 +457,7 @@ def test_a_file_holding_a_merge_open_is_not_checked(tmp_path: Path) -> None:
     )
     command = checker(work, report(file))
 
-    assert file_diagnostics(str(file), command) == []
+    assert file_diagnostics(str(file), command)["blocking"] == []
 
 
 def test_a_file_quoting_one_marker_is_still_checked(tmp_path: Path) -> None:
@@ -472,7 +472,7 @@ def test_a_file_quoting_one_marker_is_still_checked(tmp_path: Path) -> None:
     file.write_text('x = """\n<<<<<<< quoted, not conflicted\n"""\n', encoding="utf-8")
     command = checker(work, report(file))
 
-    assert file_diagnostics(str(file), command) == [
+    assert file_diagnostics(str(file), command)["blocking"] == [
         "module.py:1: error: something is wrong",
     ]
 
@@ -483,8 +483,8 @@ def test_the_readable_suffixes_are_the_callers_to_choose(tmp_path: Path) -> None
     file = edited(work, "module.qs")
     command = checker(work, report(file))
 
-    assert file_diagnostics(str(file), command) == []
-    assert file_diagnostics(str(file), command, suffixes=(".qs",)) == [
+    assert file_diagnostics(str(file), command)["blocking"] == []
+    assert file_diagnostics(str(file), command, suffixes=(".qs",))["blocking"] == [
         "module.qs:1: error: something is wrong",
     ]
 
@@ -499,7 +499,7 @@ def test_a_diagnostic_about_another_file_is_not(tmp_path: Path) -> None:
     file = edited(work)
     command = checker(work, report(work / "elsewhere.py"))
 
-    assert file_diagnostics(str(file), command) == []
+    assert file_diagnostics(str(file), command)["blocking"] == []
 
 
 def test_an_informational_note_is_not_a_diagnostic(tmp_path: Path) -> None:
@@ -507,21 +507,21 @@ def test_an_informational_note_is_not_a_diagnostic(tmp_path: Path) -> None:
     file = edited(work)
     command = checker(work, report(file, severity="information"))
 
-    assert file_diagnostics(str(file), command) == []
+    assert file_diagnostics(str(file), command)["blocking"] == []
 
 
 def test_no_declared_checker_reports_nothing(tmp_path: Path) -> None:
     """Empty declares no checker, rather than guessing at one."""
     work = checkout(tmp_path / "repo")
 
-    assert file_diagnostics(str(edited(work)), []) == []
+    assert file_diagnostics(str(edited(work)), [])["blocking"] == []
 
 
 def test_a_checker_that_is_not_installed_reports_nothing(tmp_path: Path) -> None:
     """A missing checker is not evidence about the edit."""
     work = checkout(tmp_path / "repo")
 
-    assert file_diagnostics(str(edited(work)), ["nowhere/pyright"]) == []
+    assert file_diagnostics(str(edited(work)), ["nowhere/pyright"])["blocking"] == []
 
 
 def test_a_checker_that_writes_nonsense_reports_nothing(tmp_path: Path) -> None:
@@ -531,7 +531,7 @@ def test_a_checker_that_writes_nonsense_reports_nothing(tmp_path: Path) -> None:
     file = edited(work)
     command = checker(work, "not json at all")
 
-    assert file_diagnostics(str(file), command) == []
+    assert file_diagnostics(str(file), command)["blocking"] == []
 
 
 def test_a_corrupt_record_reads_as_none(tmp_path: Path) -> None:
@@ -575,3 +575,57 @@ def test_the_published_bytes_are_the_declared_fields(tmp_path: Path) -> None:
 
     written = json.loads(edition_path(work).read_text(encoding="utf-8"))
     assert set(written) == set(Edition.model_fields)
+
+
+def pending_report(file: Path, rule: str, line: int) -> str:
+    return json.dumps(
+        {
+            "generalDiagnostics": [
+                {
+                    "file": str(file),
+                    "severity": "error",
+                    "rule": rule,
+                    "range": {"start": {"line": line}},
+                    "message": "not there yet",
+                }
+            ]
+        }
+    )
+
+
+def test_a_name_used_before_it_is_supplied_is_context(tmp_path: Path) -> None:
+    """A change spanning two edits reports its use before its definition.
+
+    Labelled a blocking error, it arrived dozens of times per change while
+    four builders worked in parallel, each time about a name the next edit
+    wrote. It is said, and said as what it is.
+    """
+    work = checkout(tmp_path / "repo")
+    file = edited(work)
+    command = checker(work, pending_report(file, "reportUndefinedVariable", 0))
+
+    found = file_diagnostics(str(file), command)
+
+    assert found["blocking"] == []
+    assert found["context"][1:] == ["module.py:1: error: not there yet"]
+
+
+def test_an_unknown_symbol_on_an_import_line_is_context(tmp_path: Path) -> None:
+    work = checkout(tmp_path / "repo")
+    file = work / "module.py"
+    file.write_text("from lup import not_yet\n\nx = not_yet\n", encoding="utf-8")
+    command = checker(work, pending_report(file, "reportAttributeAccessIssue", 0))
+
+    assert file_diagnostics(str(file), command)["blocking"] == []
+
+
+def test_an_unknown_attribute_elsewhere_still_blocks(tmp_path: Path) -> None:
+    """The same rule off an import line is a real mistake, not a pending one."""
+    work = checkout(tmp_path / "repo")
+    file = work / "module.py"
+    file.write_text("import os\n\nx = os.nope\n", encoding="utf-8")
+    command = checker(work, pending_report(file, "reportAttributeAccessIssue", 2))
+
+    assert file_diagnostics(str(file), command)["blocking"] == [
+        "module.py:3: error: not there yet"
+    ]

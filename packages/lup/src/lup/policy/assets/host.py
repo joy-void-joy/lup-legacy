@@ -16,6 +16,7 @@ arrives as an argument — the managed root to enumerate, the environment
 variable to read — never as a branch on which runtime is asking.
 """
 
+import ast
 import csv
 import fcntl
 import json
@@ -1912,12 +1913,33 @@ def conflicted(path_text: str) -> bool:
     )
 
 
+def import_lines(text: str) -> list[int]:
+    """Every line an import statement of this source spans, or none unparsed."""
+    try:
+        tree = ast.parse(text)
+    except (SyntaxError, ValueError):
+        return []
+
+    def spanned(node: ast.AST) -> range:
+        match node:
+            case ast.Import() | ast.ImportFrom():
+                return range(node.lineno, (node.end_lineno or node.lineno) + 1)
+        return range(0)
+
+    return [line for node in ast.walk(tree) for line in spanned(node)]
+
+
 def file_diagnostics(
     path_text: str,
     command: list[str],
     suffixes: tuple[str, ...] = (".py", ".pyi"),
     timeout_seconds: float = 20.0,
-) -> list[str]:
+    pending_rules: tuple[str, ...] = (
+        "reportUndefinedVariable",
+        "reportMissingImports",
+        "reportMissingModuleSource",
+    ),
+) -> dict[str, list[str]]:
     """Type-check one edited file, in the checkout that actually holds it.
 
     A language server the runtime starts is rooted once, where the session
@@ -1959,17 +1981,25 @@ def file_diagnostics(
     the merge rather than about the edit — during a resolution, which is
     exactly when a reader is editing that file and has the least attention to
     spare for a wall of output that cannot be acted on.
+
+    A name used before it exists is reported as context rather than as a
+    refusal: *pending_rules*, and an unknown symbol on an import line. A
+    change spanning two edits — the use, then the definition or its import —
+    reports it in between, and as a "blocking error" it arrived dozens of
+    times per change while four builders worked in parallel. What is still
+    unresolved when the change settles, `dev check --changed` reports.
     """
+    nothing: dict[str, list[str]] = {"blocking": [], "context": []}
     if not command or Path(path_text).suffix.lower() not in suffixes:
-        return []
+        return nothing
     if conflicted(path_text):
-        return []
+        return nothing
     root = worktree_root(path_text)
     if not root:
-        return []
+        return nothing
     located = declared_program(root, command[0])
     if not located:
-        return []
+        return nothing
     edited = str(Path(path_text).resolve())
     environ = os.environ  # lup: ignore[os-environ] — the checker inherits this
     inherited = environ["PATH"] if "PATH" in environ else ""
@@ -1992,14 +2022,40 @@ def file_diagnostics(
             check=False,
         )
         reported = json.loads(finished.stdout)["generalDiagnostics"]
+        imports = import_lines(Path(edited).read_text(encoding="utf-8"))
     except (OSError, subprocess.SubprocessError, ValueError, KeyError):
-        return []
-    return [
-        f"{Path(edited).relative_to(Path(root).resolve())}:"
-        f"{item['range']['start']['line'] + 1}: {item['severity']}: {item['message']}"
+        return nothing
+    shown = Path(edited).relative_to(Path(root).resolve())
+    found = [
+        item
         for item in reported
         if item["file"] == edited and item["severity"] != "information"
     ]
+
+    def line(item: dict) -> str:
+        return (
+            f"{shown}:{item['range']['start']['line'] + 1}: "
+            f"{item['severity']}: {item['message']}"
+        )
+
+    def pending(item: dict) -> bool:
+        rule = item["rule"] if "rule" in item else ""
+        return rule in pending_rules or (
+            rule == "reportAttributeAccessIssue"
+            and item["range"]["start"]["line"] + 1 in imports
+        )
+
+    awaited = [line(item) for item in found if pending(item)]
+    return {
+        "blocking": [line(item) for item in found if not pending(item)],
+        "context": [
+            "Named before it is supplied, which an edit still to come may do; "
+            "`uv run lup-devtools dev check --changed` settles it:",
+            *awaited,
+        ]
+        if awaited
+        else [],
+    }
 
 
 def repaired_directives(
