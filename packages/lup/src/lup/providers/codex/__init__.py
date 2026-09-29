@@ -365,6 +365,18 @@ class Codex(
     approval_policy: Literal["untrusted", "on-request", "granular", "never"] | None = (
         None
     )
+    """When Codex asks before it acts. A launched session asks the person at
+    its terminal; one opened here asks this program, which answers only
+    through declared ``hooks``, so opening one that asks without them is
+    refused. Unset, Codex's own default."""
+
+    approvals_reviewer: Literal["user", "auto_review"] | None = None
+    """Who answers what Codex asks under ``on-request``: the person, or with
+    ``auto_review`` a reviewer agent approving or refusing each request in
+    their place — Codex's nearest to Claude Code's ``auto`` permission mode.
+    It reaches only what the sandbox would stop, so where the container stands
+    Codex's own sandbox down it sees side-effecting tool calls and permission
+    requests rather than every command. Unset, Codex's own default, the user."""
     hooks: LupHooksConfig | None = None
     effort: CodexEffort | None = None
     """What this session asks the model to spend.
@@ -397,13 +409,13 @@ class Codex(
 
     @model_validator(mode="after")
     def reject_unanswerable_approvals(self) -> Self:
-        """Refuse a thread that would ask questions this session cannot answer.
+        """Refuse what no Codex session this declares could honour.
 
-        An approval policy that asks makes the app-server send approval
-        requests back here, and only declared hooks answer them. Without
-        those the transport refuses every request as unhandled, which stalls
-        the turn on its first command — so the combination is rejected at
-        construction instead of at the first act.
+        An envelope with a way out for one command, a policy that is not the
+        plugin's, companions sharing a name, and delegated tools beside an
+        authority they would widen. Whether an asking policy has something
+        to answer it depends on how a session opens — a launched one asks
+        its person — so that is refused where a session opens here.
         """
         inner = self.sandbox.confinement()
         if inner is not None and (inner.escapable or inner.excluded_commands):
@@ -433,12 +445,6 @@ class Codex(
         if self.delegated_tools is not None and (self.tools.mcp or self.writable_roots):
             raise ValueError(
                 "delegated tool capabilities do not grant MCP servers or writable roots"
-            )
-        if self.approval_policy not in {None, "never"} and self.hooks is None:
-            raise ValueError(
-                f"approval_policy {self.approval_policy!r} makes the app-server "
-                "ask this session for decisions; supply hooks to answer them, "
-                "or use 'never'"
             )
         return self
 

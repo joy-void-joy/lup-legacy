@@ -530,6 +530,14 @@ def codex_arguments(
             else []
         ),
         *(
+            [
+                "--config",
+                f"approvals_reviewer={json.dumps(config.approvals_reviewer)}",
+            ]
+            if config.approvals_reviewer is not None
+            else []
+        ),
+        *(
             ["--config", f"model_provider={json.dumps(config.model_provider)}"]
             if config.model_provider is not None
             else []
