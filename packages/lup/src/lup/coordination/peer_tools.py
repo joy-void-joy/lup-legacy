@@ -33,7 +33,8 @@ from lup.coordination.repository import (
     nested,
 )
 from lup.coordination.bare.store import CALLER_FIELD, MEMBERS_DIR, Caller
-from lup.coordination.roster import Delivery
+from lup.coordination.bare.scope import execution_scope
+from lup.coordination.roster import Delivery, RosterMember
 from lup.coordination.wake import WakePath
 from lup.tools.mcp import LupMcpTool, ServerCompanion, ToolError, lup_tool
 
@@ -44,13 +45,15 @@ class RosterPulse(ServerCompanion, frozen=True):
     The server is started when the session opens and stopped when it ends,
     however that ending comes, so its lifetime is the session's, and a beat
     every interval is what lets every other process read that. Each tick
-    sweeps first, so every row whose pulse stopped is retired on the record
+    beats its own row before sweeping, so a delayed owner preserves its bound
+    route while every other row whose pulse stopped is retired on the record
     by whichever session is up rather than by the one that died; then it
     joins, which the roster's own idempotence makes free while the row is
     standing and is what puts it back after a finish the session outlived —
     a cleared conversation, a rewound one, a sweep that ran while this
-    server was stalled. A session that really ended writes its finish and
-    stops ticking, so that finish stands.
+    server was stalled. A retained binding survives that rejoin only when its
+    owner, worktree and execution boundary still match. A session that really
+    ended writes its finish and stops ticking, so that finish stands.
 
     Nothing is written where no session has ever joined: a beat or a sweep
     there would create the store, and a session that never coordinates must
@@ -65,17 +68,41 @@ class RosterPulse(ServerCompanion, frozen=True):
     pulse: Pulse = Pulse()
     wake: WakePath = WakePath()
 
+    def rejoin_wake(self, previous: RosterMember | None) -> WakePath:
+        """Keep this owner's retained binding only inside its original boundary."""
+        if (
+            previous is not None
+            and previous.actor == member_ref(self.member_id)
+            and previous.worktree
+            and Path(previous.worktree).resolve() == self.root.resolve()
+            and self.wake.receiver_local
+            and previous.wake.runtime == self.wake.runtime
+            and previous.wake.handle
+            and previous.wake.session
+            and previous.wake.home
+            and previous.wake.scope
+            and previous.wake.scope == execution_scope()
+            and not self.wake.handle
+            and not self.wake.session
+            and (not self.wake.home or self.wake.home == previous.wake.home)
+            and (not self.wake.scope or self.wake.scope == previous.wake.scope)
+        ):
+            return previous.wake
+        return self.wake
+
     async def run(self) -> None:
         peers = RepositoryPeers(self.root, pulse=self.pulse)
         members = peers.root / MEMBERS_DIR
         while True:
             if members.is_dir():
+                peers.beat(self.member_id)
+                wake = self.rejoin_wake(peers.row(self.member_id))
                 peers.sweep(by=member_ref(self.member_id))
                 peers.join(
                     self.member_id,
                     self.root,
                     delivery=Delivery.HOOK,
-                    wake=self.wake,
+                    wake=wake,
                 )
                 peers.beat(self.member_id)
             await asyncio.sleep(self.pulse.interval_seconds)

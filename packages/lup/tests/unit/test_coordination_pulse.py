@@ -16,6 +16,8 @@ from contextlib import suppress
 from datetime import datetime, timedelta
 from pathlib import Path
 
+import pytest
+
 from lup.channels.models import utc_now
 from lup.coordination.identity import mint_member_id
 from lup.coordination.peer_tools import RosterPulse
@@ -33,6 +35,7 @@ from lup.coordination.pulse import Pulse
 from lup.coordination.refs import ActorRef
 from lup.coordination.repository import RepositoryPeers
 from lup.coordination.roster import RosterMember
+from lup.coordination.wake import WakePath
 from lup.coordination.meeting import coordination_root
 
 FOREVER = Pulse(stale_after_seconds=3600.0)
@@ -259,6 +262,150 @@ async def test_the_companion_puts_back_a_row_the_session_outlived(
 
     assert row(peers, me).running
     assert len([one for one in peers.present() if one.actor.id == me]) == 1
+
+
+async def test_a_delayed_owned_pulse_preserves_its_bound_native_route(
+    tmp_path: Path,
+) -> None:
+    peers, me = RepositoryPeers(tmp_path), mint_member_id()
+    route = WakePath(
+        runtime="codex",
+        handle="native-thread",
+        session="native-thread",
+        home=str(tmp_path / "native-home"),
+        scope="recipient-scope",
+    )
+    peers.join(me, tmp_path, wake=route)
+    silent_since(peers, me, timedelta(seconds=peers.pulse.stale_after_seconds + 10))
+    companion = RosterPulse(
+        root=tmp_path,
+        member_id=me,
+        pulse=Pulse(interval_seconds=0.01),
+        wake=WakePath(runtime="codex"),
+    )
+    serving = asyncio.create_task(companion.run())
+    try:
+        await asyncio.sleep(0.05)
+        assert row(peers, me).running
+        assert row(peers, me).wake == route
+        assert not departed_path(peers.root, session_actor(me)).exists()
+    finally:
+        serving.cancel()
+        with suppress(asyncio.CancelledError):
+            await serving
+
+
+@pytest.mark.parametrize("departed", [False, True])
+async def test_the_owner_recovers_its_bound_route_after_another_peer_sweeps(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, departed: bool
+) -> None:
+    peers, me = RepositoryPeers(tmp_path), mint_member_id()
+    route = WakePath(
+        runtime="codex",
+        handle="native-thread",
+        session="native-thread",
+        home=str(tmp_path / "native-home"),
+        scope="recipient-scope",
+    )
+    monkeypatch.setattr(
+        "lup.coordination.peer_tools.execution_scope", lambda: route.scope
+    )
+    peers.join(me, tmp_path, wake=route)
+    silent_since(peers, me, timedelta(seconds=peers.pulse.stale_after_seconds + 10))
+    if departed:
+        RepositoryPeers(tmp_path).sweep()
+        assert not member_path(peers.root, session_actor(me)).exists()
+        assert row(peers, me).wake == route
+    companion = RosterPulse(
+        root=tmp_path,
+        member_id=me,
+        pulse=Pulse(interval_seconds=0.01),
+        wake=WakePath(runtime="codex"),
+    )
+    serving = asyncio.create_task(companion.run())
+    try:
+        await asyncio.sleep(0.05)
+        assert row(peers, me).running
+        assert row(peers, me).wake == route
+    finally:
+        serving.cancel()
+        with suppress(asyncio.CancelledError):
+            await serving
+
+
+@pytest.mark.parametrize(
+    "changed",
+    [
+        "scope",
+        "unknown-scope",
+        "worktree",
+        "runtime",
+        "handle",
+        "session",
+        "home",
+        "startup-scope",
+        "another-member",
+        "expired",
+    ],
+)
+async def test_a_rejoining_pulse_does_not_inherit_a_foreign_or_replaced_route(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, changed: str
+) -> None:
+    peers, me = RepositoryPeers(tmp_path), mint_member_id()
+    route = WakePath(
+        runtime="codex",
+        handle="old-thread",
+        session="old-thread",
+        home=str(tmp_path / "old-home"),
+        scope="recipient-scope",
+    )
+    startup = WakePath(runtime="codex")
+    scope = route.scope
+    worktree, recorded = tmp_path, me
+    match changed:
+        case "scope":
+            scope = "another-scope"
+        case "unknown-scope":
+            scope = ""
+        case "worktree":
+            worktree = tmp_path / "another-worktree"
+        case "runtime":
+            startup = WakePath(runtime="claude")
+        case "handle":
+            startup = WakePath(runtime="codex", handle="new-thread")
+        case "session":
+            startup = WakePath(runtime="codex", session="new-thread")
+        case "home":
+            startup = WakePath(runtime="codex", home=str(tmp_path / "new-home"))
+        case "startup-scope":
+            startup = WakePath(runtime="codex", scope="another-scope")
+        case "another-member":
+            recorded = mint_member_id()
+    monkeypatch.setattr("lup.coordination.peer_tools.execution_scope", lambda: scope)
+    peers.join(recorded, worktree, wake=route)
+    silent_since(
+        peers, recorded, timedelta(seconds=peers.pulse.stale_after_seconds + 10)
+    )
+    RepositoryPeers(tmp_path).sweep()
+    if changed == "expired":
+        peers.sweep(
+            now=utc_now() + timedelta(seconds=peers.retention.departed_seconds * 2)
+        )
+    companion = RosterPulse(
+        root=tmp_path,
+        member_id=me,
+        pulse=Pulse(interval_seconds=0.01),
+        wake=startup,
+    )
+    serving = asyncio.create_task(companion.run())
+    try:
+        await asyncio.sleep(0.05)
+        assert row(peers, me).running
+        assert row(peers, me).wake == startup
+    finally:
+        serving.cancel()
+        with suppress(asyncio.CancelledError):
+            await serving
 
 
 async def test_the_companion_writes_nothing_where_no_session_ever_joined(

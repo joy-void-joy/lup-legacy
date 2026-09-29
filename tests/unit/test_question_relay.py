@@ -8,10 +8,14 @@ and that it is spent once.
 
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
+from multiprocessing import get_context
 from pathlib import Path
+from threading import Barrier
+from time import sleep
 
 import pytest
 
+from lup.policy.assets.host import review_records
 from lup.policy.kernel.semantics import ReviewerRequirement
 from lup.policy.operations import MutationFootprint, Operation
 from lup.policy.relay import (
@@ -110,6 +114,87 @@ def test_an_answer_is_single_use(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="approved and cannot be answered again"):
         relay.answer("q-1", "person", approved=False)
+
+
+def delay_question_reads(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Expose stale-read races by holding every read before its caller appends."""
+    original = QuestionRelay.find
+
+    def delayed_find(self: QuestionRelay, question: str) -> PersistentQuestion | None:
+        found = original(self, question)
+        sleep(0.05)
+        return found
+
+    monkeypatch.setattr(QuestionRelay, "find", delayed_find)
+
+
+@pytest.mark.parametrize("separate_relays", [False, True])
+def test_concurrent_threads_record_exactly_one_answer(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, separate_relays: bool
+) -> None:
+    """Opposing browser and CLI decisions cannot overwrite each other's receipt."""
+    relay, _ = parked(tmp_path)
+    delay_question_reads(monkeypatch)
+    ready = Barrier(8)
+
+    def answer(index: int) -> str:
+        store = QuestionRelay(relay.path) if separate_relays else relay
+        ready.wait(timeout=5)
+        try:
+            return store.answer("q-1", "person", index % 2 == 0).state
+        except ValueError as refusal:
+            assert "cannot be answered again" in str(refusal)
+            return "refused"
+
+    with ThreadPoolExecutor(max_workers=8) as workers:
+        results = list(workers.map(answer, range(8)))
+
+    assert results.count("refused") == 7
+    assert results.count("approved") + results.count("rejected") == 1
+    assert len(review_records(relay.path)) == 2
+    settled = relay.find("q-1")
+    assert settled is not None and settled.answer is not None
+    assert settled.state in results
+    assert settled.answer.approved == (settled.state == "approved")
+
+
+def test_concurrent_processes_record_exactly_one_answer(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A lock held in Python memory cannot serialize separate operator commands."""
+    relay, _ = parked(tmp_path)
+    delay_question_reads(monkeypatch)
+    context = get_context("fork")
+    ready = context.Barrier(2)
+
+    def answer(approved: bool) -> None:
+        ready.wait(timeout=5)
+        try:
+            QuestionRelay(relay.path).answer("q-1", "person", approved)
+        except ValueError as refusal:
+            assert "cannot be answered again" in str(refusal)
+            raise SystemExit(2) from refusal
+
+    processes = [
+        context.Process(target=answer, args=(choice,)) for choice in (True, False)
+    ]
+    try:
+        for process in processes:
+            process.start()
+        for process in processes:
+            process.join(timeout=10)
+        assert not any(process.is_alive() for process in processes)
+        assert {process.exitcode for process in processes} == {0, 2}
+    finally:
+        for process in processes:
+            if process.is_alive():
+                process.kill()
+            process.join(timeout=5)
+
+    assert len(review_records(relay.path)) == 2
+    settled = relay.find("q-1")
+    assert settled is not None and settled.answer is not None
+    assert settled.answer.approved == (settled.state == "approved")
 
 
 def test_an_expired_question_is_not_answered_late(tmp_path: Path) -> None:

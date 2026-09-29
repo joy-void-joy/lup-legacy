@@ -290,7 +290,13 @@ class MarkerScan:
         self.marker = marker
         self.ignore = ignore
         self.is_markdown = mode == ScanMode.MARKDOWN
-        self.context = PythonContext.parse(text) if mode == ScanMode.PYTHON else None
+        match mode:
+            case ScanMode.PYTHON:
+                self.context = PythonContext.parse(text)
+            case ScanMode.JS:
+                self.context = PythonContext.parse_typescript(text)
+            case _:
+                self.context = None
         self.lines = text.splitlines()
         self.total = len(self.lines)
         self.cursor = LineCursor(self.lines)
@@ -330,13 +336,21 @@ class MarkerScan:
         """Whether a marker at `match` starts a real note under the active mode."""
         if self.in_fence:
             return False
+        if (
+            self.marker is IGNORE_RE
+            and self.context is not None
+            and not self.context.comment_at(line_no, match.start())
+        ):
+            return False
         if self.ignore is not None and self.ignore.match(line, match.start()):
             return False
         if self.mode == ScanMode.JS and match.group(1) == "#":
             return False
         if self.mode == ScanMode.JSON:
             return False
-        if inside_inline_code(line, match.start()):
+        if inside_inline_code(line, match.start()) and not (
+            self.context is not None and self.context.comment_at(line_no, match.start())
+        ):
             return False
         if not self.at_comment_start(line_no, line, match):
             return False
@@ -372,8 +386,15 @@ class MarkerScan:
                 self.in_fence = not self.in_fence
                 continue
 
-            match = self.marker.search(line)
-            if match is None or not self.opens_note(line_no, line, match):
+            match = next(
+                (
+                    candidate
+                    for candidate in self.marker.finditer(line)
+                    if self.opens_note(line_no, line, candidate)
+                ),
+                None,
+            )
+            if match is None:
                 continue
 
             parts = [line[match.end() :].strip()]

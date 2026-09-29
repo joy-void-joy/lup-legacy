@@ -84,6 +84,8 @@ def test_document_replacement_waits_for_review_then_runs_once(
     assert question.operation.requester == "requester"
     assert question.preconditions == {root / "DESIGN.md": "# Previous design\n"}
     assert question.id in detail
+    assert "already submitted" in detail
+    assert "Do not add an escalation" in detail
     assert denial(hook(root, command, tool=tool))
     assert len(store.pending()) == 1
     store.answer(question.id, "operator", True)

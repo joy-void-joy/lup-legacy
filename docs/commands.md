@@ -66,6 +66,7 @@ Run any of them with `uv run lup-devtools <command>`, and add `--help` for its a
 | `dev relocate` | Move a module and repoint every import of it. |
 | `dev update` | Move the library, the native trees, and the copied half to one commit. |
 | `dev release` | Cut a release or a candidate of one, or promote the newest candidate. |
+| `dev edit-prepare` | Audit proposed edits and prepare one patch without writing their targets. |
 | `dev policy` | Show what the declared permission policy decides about an input, and why. |
 | `dev vocabulary` | Show every shell form the declared vocabulary judges, and how. |
 | `dev env status` | Where this project&#x27;s environment is, and who is installed in it. |
@@ -93,6 +94,7 @@ Run any of them with `uv run lup-devtools <command>`, and add `--help` for its a
 | `dev model-config snapshot` | Record the configuration pydantic resolved onto every model. |
 | `dev model-config snapshot-at` | Record the configuration pydantic resolved at a git revision. |
 | `dev model-config compare` | Diff two snapshots; exit non-zero when any model&#x27;s config moved. |
+| `dev questions serve` | Keep an operator browser inbox open across the selected worktrees. |
 | `dev questions list` | List the questions this run has parked, and what each is waiting on. |
 | `dev questions show` | Show one question whole, including the operation it would resume. |
 | `dev questions answer` | Approve one question, optionally with a note for the agent. |

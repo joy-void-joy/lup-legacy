@@ -18,7 +18,7 @@ from typing import Annotated
 import typer
 
 from lup.channels.models import Door
-from lup.coordination.identity import NameTakenError, mint_member_id
+from lup.coordination.identity import NameTakenError, mint_member_id, session_member_id
 from lup.coordination.repository import (
     PeerDepartedError,
     PeerView,
@@ -122,7 +122,10 @@ def create_coordination_app() -> typer.Typer:
         ] = "",
         member_id: Annotated[
             str,
-            typer.Option("--id", help="A durable id to join under, minted if omitted"),
+            typer.Option(
+                "--id",
+                help="A durable id; defaults to the launcher identity, then a minted id",
+            ),
         ] = "",
         worktree: Annotated[
             Path | None,
@@ -135,7 +138,7 @@ def create_coordination_app() -> typer.Typer:
         launcher exports it, and a session that self-minted has no other way
         to learn what it was given.
         """
-        chosen = member_id or mint_member_id()
+        chosen = member_id or session_member_id() or mint_member_id()
         tree = worktree or project_root()
         try:
             peers().join(chosen, tree, cli_name=name, delivery=Delivery.WAITING)

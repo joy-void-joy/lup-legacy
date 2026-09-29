@@ -20,12 +20,19 @@ and a caller that does not gets the rest.
 """
 
 import difflib
+from functools import cache
 from collections.abc import Callable
 from pathlib import Path
 from typing import Literal
 
 from pydantic import BaseModel
 
+from lup.policy.assets.host import sed_output
+from lup.policy.kernel.bindings import literal_loop_word
+from lup.policy.kernel.decision import KernelDecision
+from lup.policy.kernel.review import single_command
+from lup.policy.kernel.syntax import word_text
+from lup.policy.kernel.words import safe_sed_script, sed_invocation
 from lup.policy.relay import PersistentQuestion
 
 type FileOperation = Literal["create", "modify", "overwrite", "delete"]
@@ -157,15 +164,134 @@ def edited_file(
     return [ReviewedFile(path=path, before=before, after=after)]
 
 
-def reviewed_files(
+class FilePreview(BaseModel, frozen=True):
+    """Captured file results, or the reason an exact preview is unavailable."""
+
+    files: list[ReviewedFile] = []
+    unavailable: str = ""
+    notice: str = ""
+
+
+@cache
+def captured_sed_output(
+    scripts: tuple[str, ...], options: tuple[str, ...], before: str
+) -> dict[Literal["text", "cause"], str | None]:
+    """Reuse the same captured-input simulation without caching live target checks."""
+    return sed_output(list(scripts), list(options), before=before)
+
+
+def shell_preview(question: PersistentQuestion) -> FilePreview:
+    """Preview a literal sed rewrite over captured input, without running a shell."""
+    payload = question.operation.payload
+    command = payload["command"] if "command" in payload else None
+    if not isinstance(command, str):
+        return FilePreview(unavailable="No shell command was captured.")
+    if not question.operation.cwd.is_absolute():
+        return FilePreview(unavailable="No absolute command directory was captured.")
+    if question.execution_payload is not None and question.execution_payload != payload:
+        return FilePreview(
+            unavailable="The native execution rewrites this command; no exact preview is available."
+        )
+    for field in ("workdir", "cwd"):
+        if field in payload and payload[field] != str(question.operation.cwd):
+            return FilePreview(
+                unavailable="The command directory differs from the directory bound to this review."
+            )
+    parsed = single_command(command)
+    if parsed is None or parsed["redirects"]:
+        return FilePreview(
+            unavailable="File previews require one literal command without pipelines, redirections, or adjacent shell effects."
+        )
+    if not all(literal_loop_word(word) for word in parsed["words"]):
+        return FilePreview(
+            unavailable="Shell expansion prevents an exact captured-file preview."
+        )
+    words = [word_text(word) for word in parsed["words"]]
+    if not words or words[0] != "sed":
+        return FilePreview(
+            unavailable="No captured before-and-after preview is available for this command."
+        )
+    invocation = sed_invocation(words)
+    if isinstance(invocation, KernelDecision):
+        return FilePreview(unavailable=invocation.reason)
+    if not invocation["in_place"] or not invocation["targets"]:
+        return FilePreview(
+            unavailable="This sed command does not name files to rewrite in place."
+        )
+    if invocation["backup"]:
+        return FilePreview(
+            unavailable="A sed backup suffix adds file effects that this preview cannot capture."
+        )
+    if not all(
+        safe_sed_script(script, captured=True) for script in invocation["scripts"]
+    ):
+        return FilePreview(
+            unavailable="This sed script has external effects, depends on filename or process-exit behavior, or uses locale-sensitive constructs whose execution environment was not captured."
+        )
+    try:
+        paths = [
+            (question.operation.cwd / target).resolve()
+            for target in invocation["targets"]
+        ]
+    except (OSError, RuntimeError) as error:
+        return FilePreview(
+            unavailable=f"A captured sed target cannot be resolved: {error}"
+        )
+    if len(dict.fromkeys(paths)) != len(paths):
+        return FilePreview(
+            unavailable="Repeated sed targets need sequential file effects; no exact preview is available."
+        )
+    if any(
+        path not in question.preconditions or question.preconditions[path] is None
+        for path in paths
+    ):
+        return FilePreview(
+            unavailable="One or more sed targets have no captured text preimage; no live file is substituted."
+        )
+
+    def transformed(path: Path) -> FilePreview:
+        before = question.preconditions[path]
+        if before is None:
+            return FilePreview(
+                unavailable=f"No captured text preimage exists for {path}."
+            )
+        if not before.isascii():
+            return FilePreview(
+                unavailable=f"The captured input for {path} is not ASCII and the execution locale was not captured; no output is inferred."
+            )
+        attempt = captured_sed_output(
+            tuple(invocation["scripts"]), tuple(invocation["options"]), before
+        )
+        after = attempt["text"]
+        if after is None:
+            return FilePreview(
+                unavailable=f"The sandboxed sed preview could not produce {path}: {attempt['cause']}."
+            )
+        return FilePreview(files=[ReviewedFile(path=path, before=before, after=after)])
+
+    results = [transformed(path) for path in paths]
+    failures = [result.unavailable for result in results if result.unavailable]
+    return (
+        FilePreview(unavailable="\n".join(failures))
+        if failures
+        else FilePreview(
+            files=[file for result in results for file in result.files],
+            notice=(
+                "Preview computed in inbox environment using sandboxed GNU sed and the captured input. "
+                "The request did not capture its execution environment; compare this simulation with the exact command."
+            ),
+        )
+    )
+
+
+def reviewed_preview(
     question: PersistentQuestion, patches: PatchReader | None = None
-) -> list[ReviewedFile]:
+) -> FilePreview:
     """Every file change one parked question proposes, as before/after pairs.
 
-    Empty is a real answer and the common one: a shell command that names no
-    file it will write has nothing to diff, and what a reviewer needs there is
-    the command, which the question already prints. An empty list means "this
-    is not a file change", never "the diff failed".
+    Captured tool arguments and preimages are the only source of file results.
+    An unsupported shell command carries an explanation alongside its complete
+    input, so a missing preview cannot be mistaken for a command with no effects.
     """
     payload = question.operation.payload
     cwd = question.operation.cwd
@@ -202,21 +328,36 @@ def reviewed_files(
     match question.operation.tool:
         case "Write" if text("file_path"):
             named = text("file_path")
-            return written_file(resolved(named), text("content"), captured(named))
+            return FilePreview(
+                files=written_file(resolved(named), text("content"), captured(named))
+            )
         case "Edit" if text("file_path"):
             named = text("file_path")
-            return edited_file(
-                resolved(named),
-                text("old_string"),
-                text("new_string"),
-                flag("replace_all"),
-                captured(named),
+            return FilePreview(
+                files=edited_file(
+                    resolved(named),
+                    text("old_string"),
+                    text("new_string"),
+                    flag("replace_all"),
+                    captured(named),
+                )
             )
         case "apply_patch" | "Bash" if patches is not None and text("command"):
-            return patches(
+            files = patches(
                 text("command"),
                 cwd,
                 question.preconditions,
                 question.operation.tool == "Bash",
             )
-    return []
+            if files:
+                return FilePreview(files=files)
+    return (
+        shell_preview(question) if question.operation.tool == "Bash" else FilePreview()
+    )
+
+
+def reviewed_files(
+    question: PersistentQuestion, patches: PatchReader | None = None
+) -> list[ReviewedFile]:
+    """The exact file results exposed to terminal and browser reviewers."""
+    return reviewed_preview(question, patches).files

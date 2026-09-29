@@ -18,7 +18,7 @@ is structurally incapable of holding, so the redirect would answer a question
 the reader did not ask.
 """
 
-from .decision import KernelDecision
+from .decision import KernelDecision, file_review_row
 from .effects import STRENGTH
 from .rows import PeerPolicyRow
 from .tools import TOOL_ESCALATE_HINT, escalated_reason
@@ -146,10 +146,22 @@ def settled_with_claim(
     concatenated here. A tie keeps the edit's own verdict as the carrier,
     which is right: it is the verdict about the act, and the claim is context
     for whoever answers it.
+
+    The per-file evidence the edit's owner bound is restated as the settled
+    verdict, whichever part carries it: a claim that decides changes what the
+    file's row says was decided, never which images were judged.
     """
     if claim is None:
         return verdict
     parts = (verdict, claim)
-    return max(parts, key=lambda part: STRENGTH.index(part.effect)).revised(
+    settled = max(parts, key=lambda part: STRENGTH.index(part.effect)).revised(
         findings=parts
+    )
+    return settled.revised(
+        file_reviews=tuple(
+            file_review_row(
+                settled, row["path"], row["before_sha256"], row["after_sha256"]
+            )
+            for row in verdict.file_reviews
+        )
     )

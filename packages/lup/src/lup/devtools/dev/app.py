@@ -32,6 +32,7 @@ import lup.devtools.dev.environment as environment_mod
 import lup.devtools.dev.pending as pending_mod
 import lup.devtools.dev.plugin as plugin_mod
 import lup.devtools.dev.policy_explain as policy_explain
+import lup.devtools.dev.edit_prepare as edit_prepare
 import lup.devtools.dev.questions as questions_mod
 import lup.devtools.dev.reach as reach
 import lup.devtools.dev.scaffold as scaffold_mod
@@ -1679,6 +1680,44 @@ def create_dev_app(
             )
         if unnamed:
             raise typer.Exit(1)
+
+    @app.command("edit-prepare")
+    def edit_prepare_cmd(
+        document: Annotated[
+            Path,
+            typer.Argument(help="JSON EditBatch with complete before/after documents"),
+        ],
+        output: Annotated[
+            Path,
+            typer.Option(
+                "--output",
+                help="Fresh native patch artifact in a declared scratch path",
+            ),
+        ],
+        suppressions: Annotated[
+            Path | None,
+            typer.Option(
+                "--suppressions",
+                help="JSON list of explicit path, line, rule_id and reason requests",
+            ),
+        ] = None,
+        as_json: Annotated[
+            bool,
+            typer.Option(
+                "--json", help="Emit complete candidate, findings and policy readings"
+            ),
+        ] = False,
+    ) -> None:
+        """Audit proposed edits and prepare one patch without writing their targets."""
+        declarations = declared()
+        edit_prepare.run(
+            document,
+            output,
+            suppressions,
+            declarations.project,
+            declarations.hooks,
+            as_json,
+        )
 
     @app.command("policy")
     def policy_cmd(

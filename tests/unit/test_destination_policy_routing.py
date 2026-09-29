@@ -243,7 +243,7 @@ def test_destination_does_not_execute_mutable_checkout_resolver(
         {"command": f"cat > {shlex.quote(str(target))} <<'CONTENT'\n{after}CONTENT"},
     )
 
-    assert effect == ("ask" if runtime == "claude" else "deny")
+    assert effect == ("ask" if runtime == "claude" else "deny"), detail
     assert "dict-get" in detail
     assert not marker.exists()
     assert target.read_text() == before
@@ -347,7 +347,7 @@ def test_protocol_preserves_all_semantic_fields_and_rejects_malformed_responses(
     row = decision_wire(source)
     restored = read_response(json.loads(json.dumps({"protocol": 1, "decision": row})))
     assert decision_wire(restored) == row
-    assert set(row) == set(vars(source))
+    assert set(row) == set(vars(source)) - {"file_reviews"}
     for malformed in (
         {"protocol": 2, "decision": row},
         {"protocol": 1, "decision": {"effect": "allow"}},

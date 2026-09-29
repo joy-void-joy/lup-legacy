@@ -40,6 +40,7 @@ import subprocess
 from typing import Literal
 from urllib.parse import urlsplit
 import policy_data as identity_policy
+from kernel.decision import captured_edit_decision
 from kernel.policy_protocol import read_response, routing_failure
 from coordination import store
 from kernel.edit import (
@@ -760,6 +761,7 @@ def review_hook_call(
     predecessor: str = "",
     execution_payload: str | None = None,
     policy_identity: str = "",
+    file_reviews: str = "null",
 ) -> dict[Literal["state", "id", "reason"], str]:
     """Park a call or spend its explicit, single-use reviewer answer.
 
@@ -779,6 +781,7 @@ def review_hook_call(
         json.loads(execution_payload) if execution_payload is not None else payload
     )
     before = json.loads(preconditions)
+    evidence = json.loads(file_reviews)
     material = json.dumps(
         [
             session,
@@ -793,6 +796,7 @@ def review_hook_call(
             expected,
             policy_identity,
             {path: str(Path(path).resolve()) for path in before},
+            evidence,
         ],
         sort_keys=True,
     )
@@ -900,6 +904,7 @@ def review_hook_call(
         "execution_payload": expected,
         "created": datetime.now(UTC).isoformat(),
         "preconditions": before,
+        "file_reviews": evidence,
         "resumption": "native_retry",
         "operation": {
             "id": identifier,
@@ -2266,13 +2271,43 @@ def text_at(root: Path, target: str) -> str | None:
     caller with no preimage to judge against and neither is a grant.
     """
     try:
-        return (root / target).read_text(encoding="utf-8")
+        return (root / target).read_text(encoding="utf-8", newline="")
     except (OSError, ValueError, UnicodeDecodeError):
         return None
 
 
+def sed_output(
+    scripts: list[str],
+    options: list[str],
+    *,
+    before: str | None = None,
+    target: Path | None = None,
+    root: Path | None = None,
+    timeout: float = 2.0,
+) -> dict[Literal["text", "cause"], str | None]:
+    """Run only sed's sandboxed text transformation, preserving output bytes."""
+    expressions = [word for script in scripts for word in ("-e", script)]
+    operands = [str(target)] if target is not None else []
+    try:
+        finished = subprocess.run(
+            ["sed", "--sandbox", *options, *expressions, "--", *operands],
+            cwd=str(root) if root is not None else None,
+            input=before.encode("utf-8") if before is not None else None,
+            capture_output=True,
+            timeout=timeout,
+            check=False,
+        )
+        if finished.returncode:
+            return {"text": None, "cause": "refused"}
+        return {"text": finished.stdout.decode("utf-8"), "cause": None}
+    except UnicodeError:
+        return {"text": None, "cause": "unreadable"}
+    except (OSError, ValueError, subprocess.TimeoutExpired):
+        return {"text": None, "cause": "refused"}
+
+
 def rewritten_text(
-    scripts: list[str], target: str, root: Path
+    scripts: list[str], target: str, root: Path, options: list[str] | None = None
 ) -> dict[Literal["text", "cause"], str | None]:
     """What one file would hold after these scripts, without touching the file.
 
@@ -2305,22 +2340,7 @@ def rewritten_text(
         return {"text": None, "cause": "missing"}
     if not landed.is_file():
         return {"text": None, "cause": "irregular"}
-    expressions = [word for script in scripts for word in ("-e", script)]
-    try:
-        finished = subprocess.run(
-            ["sed", *expressions, "--", str(landed)],
-            cwd=str(root),
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-    except UnicodeDecodeError:
-        return {"text": None, "cause": "unreadable"}
-    except (OSError, ValueError):
-        return {"text": None, "cause": "refused"}
-    if finished.returncode:
-        return {"text": None, "cause": "refused"}
-    return {"text": finished.stdout, "cause": None}
+    return sed_output(scripts, options or [], target=landed, root=root)
 
 
 def recoverable_write_targets(
@@ -2891,6 +2911,11 @@ def close_claim_window(
     }
 
 
+def document_digest(text: str | None) -> str | None:
+    """Bind captured attribution to exact UTF-8 content, preserving absence."""
+    return sha256(text.encode()).hexdigest() if text is not None else None
+
+
 def bash_decision(
     command: str,
     managed_root: Path | None,
@@ -3105,6 +3130,15 @@ def bash_decision(
         verdict.effect
     ):
         verdict = authored
+    verdict = verdict.revised(
+        file_reviews=tuple(
+            evidence
+            for document in reading["documents"]
+            if (original := document.get("decision")) is not None
+            for evidence in original.file_reviews
+        )
+        + (authored.file_reviews if authored is not None else ())
+    )
     if verdict.effect == "ask":
         note_asked(cwd, approval_fingerprint("shell", command, cwd), "shell", command)
     # In-process callers park here; native dispatchers park the complete tool
@@ -3133,13 +3167,7 @@ def bash_decision(
     nudge = script_run_nudge(python_script_targets(command, INTERPRETERS), cwd)
     if not nudge:
         return verdict
-    return KernelDecision(
-        verdict.effect,
-        verdict.reason + nudge,
-        verdict.sandbox,
-        verdict.escalated,
-        checkpoint=verdict.checkpoint,
-    )
+    return verdict.revised(reason=verdict.reason + nudge)
 
 
 def reviewed_decision(
@@ -3176,6 +3204,7 @@ def reviewed_decision(
         if execution_payload is not None
         else None,
         policy_identity,
+        json.dumps(decision.file_reviews, sort_keys=True),
     )
     if result["state"] == "approved":
         return decision.revised(effect="allow")
@@ -3209,9 +3238,11 @@ def reviewed_decision(
     return decision.revised(
         effect="deny",
         recovery=(
-            f"Review {identifier} is {result['state']}. The operator can run "
-            f"`{show}`, then `{answer}` or `{reject}`. "
-            "After approval, retry this exact tool call; changed file contents require fresh review."
+            f"Review {identifier} is {result['state']}; this request is already submitted. "
+            "Wait for its answer in the review inbox, then retry this exact tool call. "
+            "Do not add an escalation or rewrite the call: that creates a different review. "
+            f"The operator can also run `{show}`, then `{answer}` or `{reject}`. "
+            "Changed file contents or policy require fresh review."
         ),
     )
 
@@ -3439,7 +3470,9 @@ def rewritten_documents(
                 row["target"] == target for row in unproduced
             ):
                 continue
-            attempt = rewritten_text(rewrite["scripts"], target, cwd)
+            attempt = rewritten_text(
+                rewrite["scripts"], target, cwd, rewrite["options"]
+            )
             after = attempt["text"]
             if after is None:
                 unproduced.append(
@@ -3504,17 +3537,21 @@ def edit_decision(
             agent_identity or declared_identity(identity_policy.AGENT_IDENTITY_ENV),
         )
         if response is not None:
-            return read_response(json.loads(response))
+            return captured_edit_decision(
+                read_response(json.loads(response)),
+                path,
+                before_sha256=document_digest(before),
+                after_sha256=document_digest(after),
+            )
     except (OSError, ValueError, KeyError, TypeError) as error:
         return routing_failure(str(error))
-    return local_edit_decision(
+    return captured_edit_decision(
+        local_edit_decision(
+            path, before, after, path_exists, autonomous, operation, cwd
+        ),
         path,
-        before,
-        after,
-        path_exists,
-        autonomous,
-        operation,
-        cwd,
+        before_sha256=document_digest(before),
+        after_sha256=document_digest(after),
     )
 
 
@@ -3663,10 +3700,13 @@ def authored_review(
         for existing in [(cwd / write["path"]).is_file()]
         for before in [text_at(cwd, write["path"]) if existing else None]
     ]
-    stopped = [verdict for verdict in verdicts if verdict.effect != "allow"]
-    if not stopped:
+    if not verdicts:
         return None
-    return max(stopped, key=lambda verdict: STRENGTH.index(verdict.effect))
+    return max(verdicts, key=lambda verdict: STRENGTH.index(verdict.effect)).revised(
+        file_reviews=tuple(
+            evidence for verdict in verdicts for evidence in verdict.file_reviews
+        )
+    )
 
 
 def written_review(command: str, cwd: Path) -> list[str]:
@@ -3861,11 +3901,14 @@ def spent_escape(tool_input):
 
 def joined(decisions):
     """Join one envelope's files: deny beats ask beats defer beats allow."""
+    evidence = tuple(row for decision in decisions for row in decision.file_reviews)
     for effect in ("deny", "ask", "defer"):
         for decision in decisions:
             if decision.effect == effect:
-                return decision
-    return KernelDecision("allow", "every patched file is declared safe")
+                return decision.revised(file_reviews=evidence)
+    return KernelDecision(
+        "allow", "every patched file is declared safe", file_reviews=evidence
+    )
 
 
 def patch_changes(command, cwd):
@@ -4074,7 +4117,9 @@ def queued_review(payload, decision):
                     "shell review requires regular files; use an exact patch"
                 )
             before[target.resolve()] = (
-                target.read_text(encoding="utf-8") if target.exists() else None
+                target.read_text(encoding="utf-8", newline="")
+                if target.exists()
+                else None
             )
     reviewed = reviewed_decision(
         decision,

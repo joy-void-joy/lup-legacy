@@ -682,6 +682,7 @@ def review_hook_call(
     predecessor: str = "",
     execution_payload: str | None = None,
     policy_identity: str = "",
+    file_reviews: str = "null",
 ) -> dict[Literal["state", "id", "reason"], str]:
     """Park a call or spend its explicit, single-use reviewer answer.
 
@@ -701,6 +702,7 @@ def review_hook_call(
         json.loads(execution_payload) if execution_payload is not None else payload
     )
     before = json.loads(preconditions)
+    evidence = json.loads(file_reviews)
     material = json.dumps(
         [
             session,
@@ -715,6 +717,7 @@ def review_hook_call(
             expected,
             policy_identity,
             {path: str(Path(path).resolve()) for path in before},
+            evidence,
         ],
         sort_keys=True,
     )
@@ -822,6 +825,7 @@ def review_hook_call(
         "execution_payload": expected,
         "created": datetime.now(UTC).isoformat(),
         "preconditions": before,
+        "file_reviews": evidence,
         "resumption": "native_retry",
         "operation": {
             "id": identifier,
@@ -2188,13 +2192,43 @@ def text_at(root: Path, target: str) -> str | None:
     caller with no preimage to judge against and neither is a grant.
     """
     try:
-        return (root / target).read_text(encoding="utf-8")
+        return (root / target).read_text(encoding="utf-8", newline="")
     except (OSError, ValueError, UnicodeDecodeError):
         return None
 
 
+def sed_output(
+    scripts: list[str],
+    options: list[str],
+    *,
+    before: str | None = None,
+    target: Path | None = None,
+    root: Path | None = None,
+    timeout: float = 2.0,
+) -> dict[Literal["text", "cause"], str | None]:
+    """Run only sed's sandboxed text transformation, preserving output bytes."""
+    expressions = [word for script in scripts for word in ("-e", script)]
+    operands = [str(target)] if target is not None else []
+    try:
+        finished = subprocess.run(
+            ["sed", "--sandbox", *options, *expressions, "--", *operands],
+            cwd=str(root) if root is not None else None,
+            input=before.encode("utf-8") if before is not None else None,
+            capture_output=True,
+            timeout=timeout,
+            check=False,
+        )
+        if finished.returncode:
+            return {"text": None, "cause": "refused"}
+        return {"text": finished.stdout.decode("utf-8"), "cause": None}
+    except UnicodeError:
+        return {"text": None, "cause": "unreadable"}
+    except (OSError, ValueError, subprocess.TimeoutExpired):
+        return {"text": None, "cause": "refused"}
+
+
 def rewritten_text(
-    scripts: list[str], target: str, root: Path
+    scripts: list[str], target: str, root: Path, options: list[str] | None = None
 ) -> dict[Literal["text", "cause"], str | None]:
     """What one file would hold after these scripts, without touching the file.
 
@@ -2227,22 +2261,7 @@ def rewritten_text(
         return {"text": None, "cause": "missing"}
     if not landed.is_file():
         return {"text": None, "cause": "irregular"}
-    expressions = [word for script in scripts for word in ("-e", script)]
-    try:
-        finished = subprocess.run(
-            ["sed", *expressions, "--", str(landed)],
-            cwd=str(root),
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-    except UnicodeDecodeError:
-        return {"text": None, "cause": "unreadable"}
-    except (OSError, ValueError):
-        return {"text": None, "cause": "refused"}
-    if finished.returncode:
-        return {"text": None, "cause": "refused"}
-    return {"text": finished.stdout, "cause": None}
+    return sed_output(scripts, options or [], target=landed, root=root)
 
 
 def recoverable_write_targets(
@@ -2811,3 +2830,8 @@ def close_claim_window(
             if path not in entries or entries[path] != stamp
         )
     }
+
+
+def document_digest(text: str | None) -> str | None:
+    """Bind captured attribution to exact UTF-8 content, preserving absence."""
+    return sha256(text.encode()).hexdigest() if text is not None else None

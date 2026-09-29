@@ -926,6 +926,16 @@ def devtools_rules() -> list[ShellSubcommandRule]:
                     )
                     for action in ("answer", "reject")
                 ],
+                ShellOperationRule(
+                    name="serve",
+                    parents=["questions"],
+                    operator_only=True,
+                    reason="a requesting agent cannot mint operator credentials for the review inbox",
+                    recovery=(
+                        "The operator must start `uv run lup-devtools dev questions serve` "
+                        "from a terminal outside the agent session."
+                    ),
+                ),
                 # Retiring deletes the note and the words it was written in,
                 # which is the one step of the verify-solved pass nothing can
                 # undo: a claim wrongly retired takes the concern with it,

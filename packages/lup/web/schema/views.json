@@ -107,26 +107,6 @@
       "title": "ActorRef",
       "type": "object"
     },
-    "Answer": {
-      "additionalProperties": false,
-      "description": "One value that came back, against the field that asked for it.",
-      "properties": {
-        "key": {
-          "title": "Key",
-          "type": "string"
-        },
-        "value": {
-          "title": "Value",
-          "type": "string"
-        }
-      },
-      "required": [
-        "key",
-        "value"
-      ],
-      "title": "Answer",
-      "type": "object"
-    },
     "AnswerSettledEvent": {
       "additionalProperties": false,
       "description": "A question took its answer, from whichever door supplied it.",
@@ -296,6 +276,68 @@
         "block"
       ],
       "title": "BlockStartedEvent",
+      "type": "object"
+    },
+    "CapturedFileReview": {
+      "additionalProperties": false,
+      "description": "The original routed file verdict, bound to its captured input and result.",
+      "properties": {
+        "after_sha256": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "After Sha256"
+        },
+        "before_sha256": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Before Sha256"
+        },
+        "effect": {
+          "$ref": "#/$defs/DecisionEffect"
+        },
+        "path": {
+          "format": "path",
+          "title": "Path",
+          "type": "string"
+        },
+        "reason": {
+          "title": "Reason",
+          "type": "string"
+        },
+        "rule": {
+          "title": "Rule",
+          "type": "string"
+        },
+        "rules": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Rules",
+          "type": "array"
+        }
+      },
+      "required": [
+        "path",
+        "effect",
+        "reason",
+        "rule",
+        "rules",
+        "before_sha256",
+        "after_sha256"
+      ],
+      "title": "CapturedFileReview",
       "type": "object"
     },
     "CarriedParent": {
@@ -539,6 +581,15 @@
       "title": "CriteriaCarriedEvent",
       "type": "object"
     },
+    "DecisionEffect": {
+      "enum": [
+        "allow",
+        "ask",
+        "deny",
+        "defer"
+      ],
+      "type": "string"
+    },
     "EdgeCount": {
       "additionalProperties": false,
       "description": "How many edges of one kind point at a node \u2014 its weight in the log.",
@@ -583,6 +634,19 @@
       "title": "EdgeView",
       "type": "object"
     },
+    "EffectClass": {
+      "enum": [
+        "compensable",
+        "attestation",
+        "execution",
+        "publication",
+        "deployment",
+        "spending",
+        "repository_security",
+        "opaque"
+      ],
+      "type": "string"
+    },
     "ExportView": {
       "additionalProperties": false,
       "description": "Everything a standalone page needs, so it opens with no server behind it.\n\nThe graph, every node's detail and the declared kinds, because a page\nopened from a file cannot ask for more later \u2014 the worked example this\ncame from was an 18 MB single file for exactly this reason, and a memo\nattachment that needed a server would not be one. Stamped with the moment\nit was taken, since what it shows is the log as it was then.",
@@ -613,6 +677,34 @@
         "exported_at"
       ],
       "title": "ExportView",
+      "type": "object"
+    },
+    "ExternalEffectPlan": {
+      "additionalProperties": false,
+      "description": "What an operation does to state or people beyond this machine.\n\n``compensable`` is a claim about the remote *state* \u2014 that a normal\nfollow-up operation restores it \u2014 and never about observation. Nothing\nun-sends the mail a closed pull request generated, and saying so is what\nkeeps \"compensable\" from being read as \"free\".",
+      "properties": {
+        "destinations": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Destinations",
+          "type": "array"
+        },
+        "effects": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/EffectClass"
+          },
+          "title": "Effects",
+          "type": "array"
+        }
+      },
+      "required": [
+        "effects",
+        "destinations"
+      ],
+      "title": "ExternalEffectPlan",
       "type": "object"
     },
     "ForeignCriteriaEvent": {
@@ -1335,6 +1427,114 @@
       "title": "MessageSubmission",
       "type": "object"
     },
+    "Move": {
+      "additionalProperties": false,
+      "description": "One path an operation renames, and where it lands.\n\nNamed rather than paired, because which half of a pair is the source is a\nfact a reader has to already know \u2014 and the reader who does not is the one\nwriting the restore.",
+      "properties": {
+        "destination": {
+          "format": "path",
+          "title": "Destination",
+          "type": "string"
+        },
+        "source": {
+          "format": "path",
+          "title": "Source",
+          "type": "string"
+        }
+      },
+      "required": [
+        "source",
+        "destination"
+      ],
+      "title": "Move",
+      "type": "object"
+    },
+    "MutationFootprint": {
+      "additionalProperties": false,
+      "description": "Every local path an operation can change, and how exactly it is known.\n\n``exact`` is the whole of what decides which capture covers it. Targets\nthat resolve statically take a targeted snapshot of exactly those paths;\nvariables, globs, substitutions, or a directory walk mean the footprint\ncannot be enumerated, and the capture widens to every precious writable\nroot rather than the operation being refused. The wider capture is what\nthe opacity costs.",
+      "properties": {
+        "creations": {
+          "default": [],
+          "items": {
+            "format": "path",
+            "type": "string"
+          },
+          "title": "Creations",
+          "type": "array"
+        },
+        "deletions": {
+          "default": [],
+          "items": {
+            "format": "path",
+            "type": "string"
+          },
+          "title": "Deletions",
+          "type": "array"
+        },
+        "exact": {
+          "default": true,
+          "title": "Exact",
+          "type": "boolean"
+        },
+        "moves": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/Move"
+          },
+          "title": "Moves",
+          "type": "array"
+        },
+        "opacity": {
+          "default": "",
+          "title": "Opacity",
+          "type": "string"
+        },
+        "overwrites": {
+          "default": [],
+          "items": {
+            "format": "path",
+            "type": "string"
+          },
+          "title": "Overwrites",
+          "type": "array"
+        }
+      },
+      "required": [
+        "deletions",
+        "overwrites",
+        "creations",
+        "moves",
+        "exact",
+        "opacity"
+      ],
+      "title": "MutationFootprint",
+      "type": "object"
+    },
+    "NetworkPlan": {
+      "additionalProperties": false,
+      "description": "Where an operation reaches, recorded as evidence rather than policed.\n\nLup builds no egress proxy, chases no redirects, and polices no DNS: the\nboundary's own network posture stands, and this is what the classifier\ncould see. An operation whose only unusual fact is an unfamiliar\ndestination settles like any other operation \u2014 contained it runs inside,\nambient it follows the profile's declaration.",
+      "properties": {
+        "classified": {
+          "default": false,
+          "title": "Classified",
+          "type": "boolean"
+        },
+        "destinations": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Destinations",
+          "type": "array"
+        }
+      },
+      "required": [
+        "destinations",
+        "classified"
+      ],
+      "title": "NetworkPlan",
+      "type": "object"
+    },
     "NodeDetail": {
       "additionalProperties": false,
       "description": "One node in full: its own fields, its weight, and every edge in and out.",
@@ -1456,6 +1656,145 @@
       "title": "NodeView",
       "type": "object"
     },
+    "Operation": {
+      "additionalProperties": false,
+      "description": "One immutable native call, normalized, with everything it plans to do.\n\nImmutable because an approval binds to it. A model that could be edited\nafter a person answered would make \"the exact operation was approved\" a\nclaim nothing checks \u2014 which is the whole content of exact approval.",
+      "properties": {
+        "cwd": {
+          "format": "path",
+          "title": "Cwd",
+          "type": "string"
+        },
+        "escalation_normalized": {
+          "default": "",
+          "title": "Escalation Normalized",
+          "type": "string"
+        },
+        "escalation_raw": {
+          "default": "",
+          "title": "Escalation Raw",
+          "type": "string"
+        },
+        "external": {
+          "$ref": "#/$defs/ExternalEffectPlan",
+          "default": {
+            "destinations": [],
+            "effects": []
+          }
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/$defs/OperationKind",
+          "default": "unknown"
+        },
+        "mutations": {
+          "$ref": "#/$defs/MutationFootprint",
+          "default": {
+            "creations": [],
+            "deletions": [],
+            "exact": true,
+            "moves": [],
+            "opacity": "",
+            "overwrites": []
+          }
+        },
+        "nested": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/Operation"
+          },
+          "title": "Nested",
+          "type": "array"
+        },
+        "network": {
+          "$ref": "#/$defs/NetworkPlan",
+          "default": {
+            "classified": false,
+            "destinations": []
+          }
+        },
+        "payload": {
+          "$ref": "#/$defs/JsonObject",
+          "default": {}
+        },
+        "placement": {
+          "$ref": "#/$defs/SandboxPlacement",
+          "default": "ambient"
+        },
+        "provider": {
+          "default": "",
+          "title": "Provider",
+          "type": "string"
+        },
+        "reads": {
+          "$ref": "#/$defs/ReadPlan",
+          "default": {
+            "credential_targets": [],
+            "system_inspection": false,
+            "targets": [],
+            "unresolved": []
+          }
+        },
+        "requester": {
+          "title": "Requester",
+          "type": "string"
+        },
+        "session": {
+          "title": "Session",
+          "type": "string"
+        },
+        "supervisor": {
+          "default": "",
+          "title": "Supervisor",
+          "type": "string"
+        },
+        "tool": {
+          "title": "Tool",
+          "type": "string"
+        },
+        "worktree": {
+          "format": "path",
+          "title": "Worktree",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "session",
+        "requester",
+        "supervisor",
+        "tool",
+        "payload",
+        "cwd",
+        "worktree",
+        "kind",
+        "placement",
+        "reads",
+        "mutations",
+        "network",
+        "external",
+        "nested",
+        "escalation_raw",
+        "escalation_normalized",
+        "provider"
+      ],
+      "title": "Operation",
+      "type": "object"
+    },
+    "OperationKind": {
+      "enum": [
+        "read",
+        "local_mutation",
+        "full_write",
+        "remote_mutation",
+        "process_execution",
+        "unknown"
+      ],
+      "type": "string"
+    },
     "ParkSubmission": {
       "additionalProperties": false,
       "description": "A door asking every open wait in this run to give up now.",
@@ -1516,6 +1855,205 @@
         "offer"
       ],
       "title": "PendingQuestionView",
+      "type": "object"
+    },
+    "PersistentQuestion": {
+      "additionalProperties": false,
+      "description": "One parked ask, durable, with everything needed to resume it exactly.\n\nThe operation is carried whole rather than summarized, because the\nrequesting agent must not be the thing that reconstructs it: an agent\nasked to reissue an approved call is an agent that can reissue a\ndifferent one.",
+      "properties": {
+        "answer": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/lup__policy__relay__Answer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "chain_resolved": {
+          "default": true,
+          "title": "Chain Resolved",
+          "type": "boolean"
+        },
+        "checkpoint_failure": {
+          "default": "",
+          "title": "Checkpoint Failure",
+          "type": "string"
+        },
+        "completed": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Completed"
+        },
+        "created": {
+          "format": "date-time",
+          "title": "Created",
+          "type": "string"
+        },
+        "eligible": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Eligible",
+          "type": "array"
+        },
+        "escalation": {
+          "default": "",
+          "title": "Escalation",
+          "type": "string"
+        },
+        "execution_id": {
+          "default": "",
+          "title": "Execution Id",
+          "type": "string"
+        },
+        "execution_payload": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/JsonObject"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "expires": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Expires"
+        },
+        "file_reviews": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/CapturedFileReview"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "File Reviews"
+        },
+        "fingerprint": {
+          "title": "Fingerprint",
+          "type": "string"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "operation": {
+          "$ref": "#/$defs/Operation"
+        },
+        "outcome": {
+          "default": "",
+          "title": "Outcome",
+          "type": "string"
+        },
+        "preconditions": {
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "default": {},
+          "propertyNames": {
+            "format": "path"
+          },
+          "title": "Preconditions",
+          "type": "object"
+        },
+        "purpose": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ReviewPurpose"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "reason": {
+          "title": "Reason",
+          "type": "string"
+        },
+        "requirement": {
+          "$ref": "#/$defs/ReviewerRequirement",
+          "default": "human_only"
+        },
+        "resumption": {
+          "default": "coordinator",
+          "enum": [
+            "coordinator",
+            "native_retry"
+          ],
+          "title": "Resumption",
+          "type": "string"
+        },
+        "rule": {
+          "default": "",
+          "title": "Rule",
+          "type": "string"
+        },
+        "state": {
+          "$ref": "#/$defs/QuestionState",
+          "default": "pending"
+        }
+      },
+      "required": [
+        "id",
+        "operation",
+        "fingerprint",
+        "preconditions",
+        "file_reviews",
+        "resumption",
+        "reason",
+        "rule",
+        "purpose",
+        "requirement",
+        "eligible",
+        "chain_resolved",
+        "escalation",
+        "checkpoint_failure",
+        "state",
+        "answer",
+        "created",
+        "expires",
+        "completed",
+        "outcome",
+        "execution_id",
+        "execution_payload"
+      ],
+      "title": "PersistentQuestion",
       "type": "object"
     },
     "PhaseChangedEvent": {
@@ -1584,6 +2122,74 @@
       ],
       "title": "QuestionAskedEvent",
       "type": "object"
+    },
+    "QuestionState": {
+      "enum": [
+        "pending",
+        "approved",
+        "rejected",
+        "expired",
+        "cancelled",
+        "preparing",
+        "dispatched",
+        "completed",
+        "failed",
+        "in_doubt"
+      ],
+      "type": "string"
+    },
+    "ReadPlan": {
+      "additionalProperties": false,
+      "description": "Which resources an operation intends to inspect.\n\nExplicit intent, never a syscall trace: Lup does not authorize every read\nGit, a compiler, or a package manager performs internally, because doing\nso would make a question out of a toolchain reading its own configuration.\nWhat is recorded here is what the operation *named*.\n\n``credential_targets`` is the half that matters. Normal use of a\ncredential inside the boundary is part of a classified operation; naming\none as the thing to print, copy, or upload is a different operation, and\nthe two are only distinguishable if the naming is recorded.",
+      "properties": {
+        "credential_targets": {
+          "default": [],
+          "items": {
+            "format": "path",
+            "type": "string"
+          },
+          "title": "Credential Targets",
+          "type": "array"
+        },
+        "system_inspection": {
+          "default": false,
+          "title": "System Inspection",
+          "type": "boolean"
+        },
+        "targets": {
+          "default": [],
+          "items": {
+            "format": "path",
+            "type": "string"
+          },
+          "title": "Targets",
+          "type": "array"
+        },
+        "unresolved": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Unresolved",
+          "type": "array"
+        }
+      },
+      "required": [
+        "targets",
+        "unresolved",
+        "credential_targets",
+        "system_inspection"
+      ],
+      "title": "ReadPlan",
+      "type": "object"
+    },
+    "ReceiptKind": {
+      "enum": [
+        "observed",
+        "inferred",
+        "recorded"
+      ],
+      "type": "string"
     },
     "RecheckChangedEvent": {
       "additionalProperties": false,
@@ -1715,6 +2321,387 @@
       "title": "ResolvePhase",
       "type": "string"
     },
+    "ReviewAnswer": {
+      "additionalProperties": false,
+      "description": "A decision bound to the fingerprint the browser displayed.",
+      "properties": {
+        "approved": {
+          "title": "Approved",
+          "type": "boolean"
+        },
+        "fingerprint": {
+          "title": "Fingerprint",
+          "type": "string"
+        },
+        "note": {
+          "default": "",
+          "title": "Note",
+          "type": "string"
+        }
+      },
+      "required": [
+        "approved",
+        "note",
+        "fingerprint"
+      ],
+      "title": "ReviewAnswer",
+      "type": "object"
+    },
+    "ReviewDecision": {
+      "additionalProperties": false,
+      "description": "The recorded answer and the result of notifying its requester.",
+      "properties": {
+        "notification": {
+          "$ref": "#/$defs/ReviewNotification"
+        },
+        "review": {
+          "$ref": "#/$defs/ReviewDetail"
+        }
+      },
+      "required": [
+        "review",
+        "notification"
+      ],
+      "title": "ReviewDecision",
+      "type": "object"
+    },
+    "ReviewDetail": {
+      "additionalProperties": false,
+      "description": "Everything the operator reviews before answering.",
+      "properties": {
+        "command": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Command"
+        },
+        "files": {
+          "items": {
+            "$ref": "#/$defs/ReviewFile"
+          },
+          "title": "Files",
+          "type": "array"
+        },
+        "notification": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ReviewNotification"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "preview_notice": {
+          "default": "",
+          "title": "Preview Notice",
+          "type": "string"
+        },
+        "preview_unavailable": {
+          "title": "Preview Unavailable",
+          "type": "string"
+        },
+        "question": {
+          "$ref": "#/$defs/PersistentQuestion"
+        },
+        "stale_reason": {
+          "title": "Stale Reason",
+          "type": "string"
+        },
+        "summary": {
+          "$ref": "#/$defs/ReviewSummary"
+        }
+      },
+      "required": [
+        "summary",
+        "question",
+        "files",
+        "stale_reason",
+        "command",
+        "preview_unavailable",
+        "preview_notice",
+        "notification"
+      ],
+      "title": "ReviewDetail",
+      "type": "object"
+    },
+    "ReviewError": {
+      "additionalProperties": false,
+      "description": "A checkout that could not be read, without hiding its absence.",
+      "properties": {
+        "message": {
+          "title": "Message",
+          "type": "string"
+        },
+        "root": {
+          "title": "Root",
+          "type": "string"
+        }
+      },
+      "required": [
+        "root",
+        "message"
+      ],
+      "title": "ReviewError",
+      "type": "object"
+    },
+    "ReviewFile": {
+      "additionalProperties": false,
+      "description": "Captured file contents and the corresponding proposed change.",
+      "properties": {
+        "additions": {
+          "title": "Additions",
+          "type": "integer"
+        },
+        "after": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "After"
+        },
+        "before": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Before"
+        },
+        "deletions": {
+          "title": "Deletions",
+          "type": "integer"
+        },
+        "hunks": {
+          "items": {
+            "$ref": "#/$defs/ReviewHunk"
+          },
+          "title": "Hunks",
+          "type": "array"
+        },
+        "operation": {
+          "title": "Operation",
+          "type": "string"
+        },
+        "path": {
+          "title": "Path",
+          "type": "string"
+        },
+        "review_effect": {
+          "default": "unknown",
+          "enum": [
+            "allow",
+            "ask",
+            "deny",
+            "unknown"
+          ],
+          "title": "Review Effect",
+          "type": "string"
+        },
+        "review_reason": {
+          "default": "No per-file decision was captured.",
+          "title": "Review Reason",
+          "type": "string"
+        },
+        "suppressions": {
+          "items": {
+            "$ref": "#/$defs/ReviewSuppression"
+          },
+          "title": "Suppressions",
+          "type": "array"
+        },
+        "unchanged": {
+          "title": "Unchanged",
+          "type": "boolean"
+        },
+        "unified": {
+          "title": "Unified",
+          "type": "string"
+        }
+      },
+      "required": [
+        "path",
+        "operation",
+        "before",
+        "after",
+        "unified",
+        "unchanged",
+        "hunks",
+        "additions",
+        "deletions",
+        "suppressions",
+        "review_effect",
+        "review_reason"
+      ],
+      "title": "ReviewFile",
+      "type": "object"
+    },
+    "ReviewHunk": {
+      "additionalProperties": false,
+      "description": "A contiguous group of changes with unchanged context around it.",
+      "properties": {
+        "header": {
+          "title": "Header",
+          "type": "string"
+        },
+        "lines": {
+          "items": {
+            "$ref": "#/$defs/ReviewLine"
+          },
+          "title": "Lines",
+          "type": "array"
+        }
+      },
+      "required": [
+        "header",
+        "lines"
+      ],
+      "title": "ReviewHunk",
+      "type": "object"
+    },
+    "ReviewInbox": {
+      "additionalProperties": false,
+      "description": "A complete snapshot of the configured review queues.",
+      "properties": {
+        "errors": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/ReviewError"
+          },
+          "title": "Errors",
+          "type": "array"
+        },
+        "reviews": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/ReviewSummary"
+          },
+          "title": "Reviews",
+          "type": "array"
+        },
+        "roots": {
+          "items": {
+            "$ref": "#/$defs/ReviewRoot"
+          },
+          "title": "Roots",
+          "type": "array"
+        }
+      },
+      "required": [
+        "roots",
+        "reviews",
+        "errors"
+      ],
+      "title": "ReviewInbox",
+      "type": "object"
+    },
+    "ReviewLine": {
+      "additionalProperties": false,
+      "description": "One source line, with original terminators and both document positions.",
+      "properties": {
+        "kind": {
+          "enum": [
+            "context",
+            "add",
+            "remove",
+            "meta"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "new_line": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "New Line"
+        },
+        "old_line": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Old Line"
+        },
+        "suppression": {
+          "default": false,
+          "title": "Suppression",
+          "type": "boolean"
+        },
+        "text": {
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "text",
+        "old_line",
+        "new_line",
+        "suppression"
+      ],
+      "title": "ReviewLine",
+      "type": "object"
+    },
+    "ReviewNotification": {
+      "additionalProperties": false,
+      "description": "Queue acceptance is separate from both approval and recipient delivery.",
+      "properties": {
+        "detail": {
+          "title": "Detail",
+          "type": "string"
+        },
+        "queued": {
+          "title": "Queued",
+          "type": "boolean"
+        },
+        "woken": {
+          "title": "Woken",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "queued",
+        "woken",
+        "detail"
+      ],
+      "title": "ReviewNotification",
+      "type": "object"
+    },
+    "ReviewPurpose": {
+      "enum": [
+        "quality_review",
+        "sensitive_access",
+        "external_consequence",
+        "policy_override",
+        "unrecovered_local_mutation",
+        "untrusted_dependency"
+      ],
+      "type": "string"
+    },
     "ReviewResidualEvent": {
       "additionalProperties": false,
       "description": "Observations an accepting review recorded beside its verdict.\n\nA residual on a rejected review re-enters the worker's feedback; on an\naccepted one nothing else carries it, and real findings would sit unread\nin the round records. The journal is where they surface \u2014 for the CLI,\nthe supervisor, and whoever files the follow-up work.",
@@ -1750,6 +2737,180 @@
       "title": "ReviewResidualEvent",
       "type": "object"
     },
+    "ReviewRoot": {
+      "additionalProperties": false,
+      "description": "One operator-selected checkout and its opaque browser address.",
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "path": {
+          "title": "Path",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "path"
+      ],
+      "title": "ReviewRoot",
+      "type": "object"
+    },
+    "ReviewSummary": {
+      "additionalProperties": false,
+      "description": "The queue row, with eligibility and a descriptive evidence-based title.",
+      "properties": {
+        "answerable": {
+          "title": "Answerable",
+          "type": "boolean"
+        },
+        "created": {
+          "format": "date-time",
+          "title": "Created",
+          "type": "string"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "key": {
+          "title": "Key",
+          "type": "string"
+        },
+        "operation": {
+          "title": "Operation",
+          "type": "string"
+        },
+        "paths": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Paths",
+          "type": "array"
+        },
+        "reason": {
+          "title": "Reason",
+          "type": "string"
+        },
+        "requester": {
+          "title": "Requester",
+          "type": "string"
+        },
+        "root_id": {
+          "title": "Root Id",
+          "type": "string"
+        },
+        "rule": {
+          "title": "Rule",
+          "type": "string"
+        },
+        "state": {
+          "title": "State",
+          "type": "string"
+        },
+        "title": {
+          "title": "Title",
+          "type": "string"
+        },
+        "total_files": {
+          "default": 0,
+          "title": "Total Files",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "key",
+        "root_id",
+        "id",
+        "state",
+        "requester",
+        "reason",
+        "title",
+        "paths",
+        "total_files",
+        "operation",
+        "rule",
+        "created",
+        "answerable"
+      ],
+      "title": "ReviewSummary",
+      "type": "object"
+    },
+    "ReviewSuppression": {
+      "additionalProperties": false,
+      "description": "A result document's explicit rule exception, located for review.",
+      "properties": {
+        "introduced": {
+          "title": "Introduced",
+          "type": "boolean"
+        },
+        "line": {
+          "title": "Line",
+          "type": "integer"
+        },
+        "reason": {
+          "title": "Reason",
+          "type": "string"
+        },
+        "review_effect": {
+          "default": "unknown",
+          "enum": [
+            "allow",
+            "ask",
+            "deny",
+            "unknown"
+          ],
+          "title": "Review Effect",
+          "type": "string"
+        },
+        "review_reason": {
+          "default": "No directive-level decision was captured.",
+          "title": "Review Reason",
+          "type": "string"
+        },
+        "review_rule_ids": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Review Rule Ids"
+        },
+        "rule_ids": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Rule Ids"
+        }
+      },
+      "required": [
+        "line",
+        "rule_ids",
+        "reason",
+        "introduced",
+        "review_effect",
+        "review_reason",
+        "review_rule_ids"
+      ],
+      "title": "ReviewSuppression",
+      "type": "object"
+    },
     "ReviewView": {
       "additionalProperties": false,
       "description": "The branch this run built and what mechanically holds about it.\n\nNo verdict. Whether twelve merged concerns are jointly right is a\njudgement, and the actor that can act on the answer is the agent that\nlands the branch \u2014 so it is produced from the journal by whoever opens\nthe run, not persisted here by a reviewer nothing consumed.",
@@ -1772,6 +2933,13 @@
       ],
       "title": "ReviewView",
       "type": "object"
+    },
+    "ReviewerRequirement": {
+      "enum": [
+        "human_only",
+        "supervisor_allowed"
+      ],
+      "type": "string"
     },
     "Row": {
       "additionalProperties": false,
@@ -2060,6 +3228,14 @@
       "title": "RunSummary",
       "type": "object"
     },
+    "SandboxPlacement": {
+      "enum": [
+        "inside",
+        "ambient",
+        "outside"
+      ],
+      "type": "string"
+    },
     "ScopeChoice": {
       "additionalProperties": false,
       "description": "One of the things this wizard can be pointed at.",
@@ -2130,7 +3306,7 @@
         "answers": {
           "default": [],
           "items": {
-            "$ref": "#/$defs/Answer"
+            "$ref": "#/$defs/lup__devtools__dashboard__wizard__Answer"
           },
           "title": "Answers",
           "type": "array"
@@ -2917,6 +4093,69 @@
         "notice"
       ],
       "title": "WizardView",
+      "type": "object"
+    },
+    "lup__devtools__dashboard__wizard__Answer": {
+      "additionalProperties": false,
+      "description": "One value that came back, against the field that asked for it.",
+      "properties": {
+        "key": {
+          "title": "Key",
+          "type": "string"
+        },
+        "value": {
+          "title": "Value",
+          "type": "string"
+        }
+      },
+      "required": [
+        "key",
+        "value"
+      ],
+      "title": "Answer",
+      "type": "object"
+    },
+    "lup__policy__relay__Answer": {
+      "additionalProperties": false,
+      "description": "One decision about one question, and who made it.\n\n``note`` is how yes-plus-instructions and no-plus-instructions travel\nwithout a second message. It reaches the agent with the resumption or the\nrefusal, which is the moment it is worth reading.",
+      "properties": {
+        "approved": {
+          "title": "Approved",
+          "type": "boolean"
+        },
+        "at": {
+          "format": "date-time",
+          "title": "At",
+          "type": "string"
+        },
+        "note": {
+          "default": "",
+          "title": "Note",
+          "type": "string"
+        },
+        "principal": {
+          "title": "Principal",
+          "type": "string"
+        },
+        "receipt": {
+          "$ref": "#/$defs/ReceiptKind",
+          "default": "recorded"
+        },
+        "unresolved_chain": {
+          "default": false,
+          "title": "Unresolved Chain",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "approved",
+        "principal",
+        "receipt",
+        "unresolved_chain",
+        "note",
+        "at"
+      ],
+      "title": "Answer",
       "type": "object"
     }
   },
