@@ -173,6 +173,34 @@ textarea { display: block; width: 100%; resize: vertical; min-height: 3rem; max-
 kbd { display: inline-block; padding: .05rem .35rem; border: 1px solid #bbc9c1; border-bottom-width: 2px; border-radius: 4px; background: #fff; font: .8rem/1.5 ui-monospace, monospace; }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 .mobile-only, .mobile-switch { display: none; }
+.tree-repository button { border: 0; background: transparent; padding: 0; font-weight: 650; color: inherit; }
+.tree-repository button[aria-pressed="true"] { color: #174d3b; text-decoration: underline; text-underline-offset: .2em; }
+.session-list, .subagents, .conversation ul, .holding { list-style: none; margin: 0; padding: 0; }
+.subagents { margin: -.1rem 0 .5rem .6rem; padding-left: .5rem; border-left: 2px solid var(--line); }
+.session-item > button { display: flex; flex-direction: column; width: 100%; text-align: left; gap: .2rem; margin-bottom: .4rem; padding: .5rem .6rem; overflow-wrap: anywhere; }
+.session-item > button[aria-current="true"] { border-color: #4c9176; box-shadow: 0 0 0 1px #4c9176; }
+.session-item.stopped > button { background: #f4f6f5; }
+.doing { font-size: .85rem; white-space: pre-wrap; overflow-wrap: anywhere; }
+.said-brief { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; font-size: .78rem; white-space: pre-wrap; }
+.calling { font-size: .78rem; color: #345b81; }
+.waiting { color: #805707; font-weight: 600; }
+.state.working { background: #e8f4ed; border-color: #bad9c8; color: #1a6045; }
+.state.subagent { background: #edf4fa; border-color: #c4d8ea; color: #345b81; }
+.state.stopped { background: #f0f1f0; color: var(--muted); }
+.session-detail { flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; display: flex; flex-direction: column; gap: .9rem; padding: .2rem .4rem 0; }
+.session-detail > header { flex: none; }
+.session-detail section h3 { margin: 0 0 .35rem; font-size: .75rem; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
+.said { margin: 0 0 .35rem; padding: .6rem .8rem; border-left: 3px solid #aac6b8; background: #fff; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 40vh; overflow: auto; }
+.calling-detail { font-size: .8rem; margin-bottom: .45rem; }
+.calling-detail pre { margin: .35rem 0 0; max-height: 25vh; }
+.holding li { display: flex; align-items: baseline; flex-wrap: wrap; gap: .4rem; padding: .15rem 0; }
+.message { padding: .5rem .65rem; border: 1px solid var(--line); border-radius: 6px; background: #fff; margin-bottom: .45rem; }
+.message.from-user { border-color: #aac6b8; background: #f3f9f5; }
+.message p { margin: .3rem 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.message .state { margin-left: .4rem; }
+.reply { flex: none; position: sticky; bottom: 0; z-index: 2; display: flex; flex-direction: column; gap: .35rem; padding: .5rem 0; border-top: 1px solid var(--line); background: #fff; }
+.reply label { font-weight: 600; font-size: .85rem; }
+.reply-outcome { margin: 0; font-size: .8rem; color: var(--green); }
 @media (max-width: 1100px) { .workspace { grid-template-columns: 15rem minmax(0, 1fr); } .files { grid-template-columns: 12rem minmax(0, 1fr); } }
 @media (max-width: 800px) {
   .masthead { padding: .5rem .65rem; flex-wrap: wrap; gap: .4rem; }
