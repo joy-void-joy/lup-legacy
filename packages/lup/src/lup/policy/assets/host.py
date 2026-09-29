@@ -1799,7 +1799,7 @@ def this_checkout_path(path_text: str, root: Path | None) -> str:
     return resolved.relative_to(checkout).as_posix()
 
 
-def publish_edition(path_text: str) -> None:
+def publish_edition(path_text: str, session: str) -> None:
     """Say which checkout an edit landed in, for the servers that would guess.
 
     A language server and the code-intelligence tools are started once and
@@ -1816,13 +1816,18 @@ def publish_edition(path_text: str) -> None:
     whose diagnostics stay rooted where they were is worth strictly more
     than one that stopped editing over it.
 
+    Only an edit in the *session*'s own repository, whichever of its
+    worktrees: the servers read the record there, and a file in another — a
+    repository nested in the checkout, or one anywhere else — would have it
+    written into that repository's git directory, read by nobody.
+
     The rename is the whole guarantee, and the temporary is dot-prefixed, for
     the reasons ``lup.channels.models.write_atomic`` gives. This cannot call
     that one: it is compiled into a bare script with no ``lup`` to import.
     """
     root = worktree_root(path_text)
     shared = shared_git_directory(path_text)
-    if not root or not shared:
+    if not root or not shared or shared != shared_git_directory(session):
         return
     destination = Path(shared) / "lup" / "edition.json"
     record = json.dumps(

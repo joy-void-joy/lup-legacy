@@ -515,7 +515,7 @@ def observe(payload):
     tool_input = payload["tool_input"] if "tool_input" in payload else {}
     path = tool_input["file_path"] if "file_path" in tool_input else ""
     if path:
-        publish_edition(path)
+        publish_edition(path, str(session_root(payload) or ""))
         # The tier that needs no comparison: the call said which file, so the
         # claim it leaves is one another session can act on unqualified.
         named_claim_recorded(path, session_root(payload), caller_of(payload))
