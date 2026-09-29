@@ -458,6 +458,11 @@ def subagent_id(session: str, agent: str) -> str:
     return f"{session}-{agent}"
 
 
+def agent_of(member_id: str, session: str) -> str:
+    """The runtime's own id for a subagent, out of the roster id :func:`subagent_id` gave it."""
+    return member_id.removeprefix(f"{session}-")
+
+
 def subagent_actor(session: str, agent: str) -> Actor:
     """The identity one native subagent is a member under."""
     return Actor(kind=SUBAGENT_KIND, id=subagent_id(session, agent))

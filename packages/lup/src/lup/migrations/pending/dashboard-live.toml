@@ -1,0 +1,37 @@
+subjects = [
+    "SnapshotFeed",
+    "SnapshotFeed.__init__",
+    "SnapshotFeed.produce",
+    "SnapshotFeed.published_within",
+    "SnapshotFeed.follow",
+]
+reason = """
+everything live on the dashboard — sessions and their subagents, what each is \
+doing, the messages between them, and the reviews — reaches the page on one \
+numbered stream a reconnecting tab resumes, rather than a review snapshot \
+resent on a clock"""
+
+[[steps]]
+instruction = """
+Follow the dashboard with LiveFeed from lup.devtools.dashboard.stream where \
+SnapshotFeed from lup.devtools.dashboard.reviews was constructed: \
+LiveFeed(repositories, store) takes the repositories to read sessions from \
+beside the ReviewStore, and follow(resume, disconnected) yields server-sent \
+events resuming after the cursor a tab last saw. A page reads `GET \
+/api/stream` (text/event-stream, resuming after `Last-Event-ID`) where it read \
+`GET /api/events` (a review snapshot per line)."""
+
+[[steps]]
+instruction = """
+Call lup.coordination.bare.mail.post(root, recipient, message) with the \
+recipient's store Actor where it took the mailbox's name; the mailbox is \
+derived from it, and the line it appends to the coordination root's \
+`mail.jsonl` names the recipient."""
+
+[[steps]]
+instruction = """
+Sign a message with the address a reply reaches: RepositoryPeers.send, \
+ActorCohort.say and ActorCohort.post take `sender` (a member's id, or `user`), \
+and a cohort no longer signs with its run id. What a member is handed now \
+names a signed sender — `[message from <id> by agent] …` — where a reader \
+matched `[message by agent] …`."""

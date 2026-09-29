@@ -12,8 +12,10 @@ from lup.devtools.dashboard.reviews import (
     ReviewDecision,
     ReviewSnapshot,
 )
+from lup.devtools.dashboard.live import ReplyOutcome, ReplyRequest
 from lup.devtools.dashboard.panes import SetupPane
 from lup.devtools.dashboard.serve import RowRequest, ScopeRequest, StepReply
+from lup.devtools.dashboard.stream import StreamFrame
 from lup.devtools.dashboard.wizard import StepAnswers, WizardView
 from lup.devtools.review.app import ReviewDetail
 from lup.devtools.supervisor.projection import (
@@ -56,9 +58,19 @@ SUPERVISOR = Surface(
 
 DASHBOARD = Surface(
     name="dashboard",
-    models=[ReviewSnapshot, ReviewDetail, ReviewAnswer, ReviewDecision, SetupPane],
+    models=[
+        StreamFrame,
+        ReviewSnapshot,
+        ReviewDetail,
+        ReviewAnswer,
+        ReviewDecision,
+        ReplyRequest,
+        ReplyOutcome,
+        SetupPane,
+    ],
 )
-"""The operator's dashboard: parked reviews, captured changes, exact decisions, setup panes."""
+"""The operator's dashboard: the live stream, parked reviews, captured changes, exact
+decisions, a reply to a session, setup panes."""
 
 
 # lup: ignore[library-default] — the surfaces this library authors, so the
