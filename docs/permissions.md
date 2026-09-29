@@ -702,6 +702,21 @@ every writing route and the edit gate alike — `echo x > tmp/p/pyproject.toml`,
 `cp`, `mv`, `rm` and an edit of it are scratch writes — while a rule naming the
 scratch root itself holds, and the manifest in any package keeps its question.
 
+### A write to what compiles the policy
+
+The policy package, the scan rules and the declarations selecting them are
+protected edit roots, and so is what compiles them into the hooks: an edit
+there and a regeneration change what judges the session as an edit of the
+policy would. `lup.policy.bundle.compilation_sources()` reads that list off
+the compilation's imports — each runtime's hook renderer and the
+composition an in-process session judges by, followed into every module
+that itself imports from `lup.policy`, so `harness/models.py`,
+`harness/enforcement.py` and each runtime's `harness.py` — and adds the
+`assets/` each renderer ships verbatim as its dispatcher. Derived rather
+than listed, a module the compilation comes to import is covered the day it
+does, and one it reaches only for skills, prompts or launches stays ordinary
+source.
+
 ### A write that widens a later launch
 
 `sync.json` and `sync.json.local` are protected edit roots because a

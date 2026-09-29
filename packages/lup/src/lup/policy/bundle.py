@@ -10,10 +10,14 @@ as one unit against the kernel beside it. No decision logic lives here; the
 kernel decides.
 """
 
+import ast
+import importlib.util
 import json
 import urllib.parse
 from collections.abc import Iterator
-from pathlib import Path
+from functools import cache
+from importlib.machinery import ModuleSpec
+from pathlib import Path, PurePosixPath
 
 from pydantic import BaseModel
 
@@ -23,6 +27,7 @@ from lup.formats.banner import REGENERATE_COMMAND, GeneratedBanner
 from lup.policy.grants import ALLOWANCE_GRANTS_ENV, known_allowances
 from lup.policy.identity import AGENT_IDENTITY_ENV, POLICY_ROOT_ENV
 import lup.policy.kernel as kernel
+from lup.policy.kernel.imports import import_references
 from lup.policy.kernel.typescript import TYPESCRIPT_SUFFIXES
 from lup.policy.kernel.effects import EffectRow, effect_row_values
 from lup.policy.kernel.semantics import UnjudgedAmbient
@@ -93,6 +98,91 @@ def policy_kernel_modules() -> list[KernelModule]:
         KernelModule(name=path.name, source=path.read_text(encoding="utf-8"))
         for path in sorted(directory.glob("*.py"))
     ]
+
+
+@cache
+def compilation_sources(
+    renderers: tuple[str, ...] = (
+        "lup.providers.claude.harness",
+        "lup.providers.codex.harness",
+    ),
+    composers: tuple[str, ...] = ("lup.harness.enforcement",),
+    policy: str = "lup.policy",
+) -> tuple[PurePosixPath, ...]:
+    """Every library source a hook set's compiled policy is made from.
+
+    The policy package is protected as the policy is, and what compiles it
+    decides as much: an edit there and a regeneration change the hooks
+    judging the session. A hook set is compiled in each runtime's renderer
+    and in the composition a session in this process judges by, and the rest
+    is read off their imports rather than listed, so a module the compilation
+    comes to import is covered the day it does.
+
+    An import is followed only into a module that itself imports from
+    ``policy``, since that is the way the compilation reaches the policy:
+    following every import takes in the whole library the renderers also
+    use for skills, prompts and launches. Each renderer's package ships its
+    ``assets/`` into the tree verbatim -- the dispatcher a runtime runs as
+    its hook -- so that directory comes too. Paths are relative to the
+    library's package directory; the policy package itself is not repeated.
+    """
+    package = Path(__file__).resolve().parents[1]
+
+    def located(name: str) -> ModuleSpec | None:
+        """Where one of the library's modules is defined, if it is one."""
+        if name != package.name and not name.startswith(f"{package.name}."):
+            return None
+        try:
+            found = importlib.util.find_spec(name)
+        except ModuleNotFoundError:
+            # An imported name inside a module rather than a module of its own.
+            return None
+        return found if found is not None and found.origin else None
+
+    def imported(name: str) -> list[str]:
+        """The library modules one module imports from, relative ones resolved."""
+        spec = located(name)
+        if spec is None or spec.origin is None:
+            return []
+        tree = ast.parse(Path(spec.origin).read_text(encoding="utf-8"))
+        return list(
+            dict.fromkeys(
+                reference["module"]
+                for reference in import_references(tree, spec.parent or "")
+                if located(reference["module"]) is not None
+            )
+        )
+
+    def reaches_policy(name: str) -> bool:
+        return any(
+            module == policy or module.startswith(f"{policy}.")
+            for module in imported(name)
+        )
+
+    reached = [name for name in [*renderers, *composers] if located(name) is not None]
+    for name in reached:
+        reached.extend(
+            module
+            for module in imported(name)
+            if module not in reached
+            and not module.startswith(f"{policy}.")
+            and reaches_policy(module)
+        )
+    origins = [
+        Path(spec.origin) for name in reached if (spec := located(name)) and spec.origin
+    ]
+    assets = [
+        Path(spec.origin).parent / "assets"
+        for name in renderers
+        if (spec := located(name)) and spec.origin
+    ]
+    return tuple(
+        PurePosixPath(path.resolve().relative_to(package).as_posix())
+        for path in [
+            *origins,
+            *(directory for directory in assets if directory.is_dir()),
+        ]
+    )
 
 
 def bundled_antipattern_rows(

@@ -33,6 +33,7 @@ from lup.providers.claude.harness import ClaudeSpellings
 from lup.providers.claude.login import CLAUDE_LOGIN
 from lup.providers.codex.harness import CodexSpellings
 from lup.providers.codex.login import CODEX_LOGIN
+from lup.policy.bundle import compilation_sources
 from lup.policy.refused_paths import credential_files
 from lup.policy.rules import dependency_declarations
 from lup.harness.codescan.common import ApplicationRoots
@@ -795,6 +796,11 @@ def portable_harness(
                 Path(LAYOUT.path("harness", "content", "catalog.py")),
                 Path(LAYOUT.path("harness", "content", "shell_vocabulary.py")),
                 Path("packages/lup/src/lup/harness/codescan"),
+                # And what compiles all of it into the hooks, or into a
+                # session composed here: an edit there and a regeneration
+                # change what judges the session as an edit of the policy
+                # would. Read off the compilation's imports, not listed.
+                *(Path("packages/lup/src/lup", path) for path in compilation_sources()),
             ],
             # lup: template: what each tree in this domain is *for*. A role is
             # how a gate tells a fixture from production and a build product

@@ -5673,6 +5673,38 @@ def test_manifests_lockfiles_and_ci_ask_every_identity(
     assert named in generated.reason
 
 
+@pytest.mark.parametrize(
+    ("path", "effect"),
+    [
+        ("packages/lup/src/lup/harness/enforcement.py", "ask"),
+        ("packages/lup/src/lup/harness/models.py", "ask"),
+        ("packages/lup/src/lup/providers/claude/harness.py", "ask"),
+        ("packages/lup/src/lup/providers/codex/harness.py", "ask"),
+        ("packages/lup/src/lup/providers/claude/assets/policy_dispatcher.py", "ask"),
+        ("packages/lup/src/lup/providers/codex/assets/policy_dispatcher.py", "ask"),
+        ("packages/lup/src/lup/coordination/pulse.py", "allow"),
+        ("packages/lup/src/lup/formats/yaml.py", "allow"),
+    ],
+)
+def test_what_compiles_the_policy_is_protected_as_the_policy_is(
+    path: str, effect: str
+) -> None:
+    """Editing what compiles the hooks, then regenerating, changes the hooks.
+
+    So the modules the compilation reaches through the policy, and the hook
+    scripts each runtime ships verbatim, ask as the policy source does --
+    read off the compilation's imports rather than listed, so a module the
+    compilation comes to import is covered the day it does.
+    """
+    decision = EditPolicy(FIXTURE_PATH_RULES, path_roles=FIXTURE_PATH_ROLES).decide(
+        EditBatch(
+            changes=[EditChange(path=Path(path), before="a = 1\n", after="a = 2\n")]
+        )
+    )
+
+    assert decision.effect == effect
+
+
 def test_canonical_edit_policy_preserves_shared_security_outcomes() -> None:
     protected = [
         protected_root_rule(".claude"),
