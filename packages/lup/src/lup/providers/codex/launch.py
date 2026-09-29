@@ -41,6 +41,7 @@ from lup.launch.guidance import held_guidance
 from lup.launch.foreground import between_steps, run_in_foreground
 from lup.launch.preflight import LaunchSentinels, release_ledger
 from lup.launch.refusal import LaunchRefused
+from lup.launch.secrets import withheld_secrets
 from lup.launch.session import (
     LaunchOpening,
     cleared_on_the_way_in,
@@ -738,7 +739,7 @@ def codex_opening(
     posture = config.sandbox.posture()
     policy = config.enforced_policy()
     member = launched_member(root, config.identity.name if config.identity else None)
-    environment = inherited_environment()
+    environment = withheld_secrets(inherited_environment(), root)
     environment.update(config.environment)
     environment.update(joined.environment)
     environment.update(allowance_environment(config.max_recursive_agent, environment))
@@ -834,7 +835,10 @@ def codex_companions(
     return CompanionLaunch(
         root=root,
         runtime="codex",
-        environment={**inherited_environment(), **compiled_codex(agent).environment},
+        environment={
+            **withheld_secrets(inherited_environment(), root),
+            **compiled_codex(agent).environment,
+        },
         journal=journal,
         relayed=loopback_relayed(agent.plugin, agent.sandbox),
     )

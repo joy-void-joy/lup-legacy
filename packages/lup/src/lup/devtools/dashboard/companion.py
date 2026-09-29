@@ -34,6 +34,7 @@ from pydantic_settings import BaseSettings
 
 from lup.coordination.identity import MEMBER_ENV, NAME_ENV
 from lup.devtools.dashboard.address import DASHBOARD_URL_ENV, AdvertisedDashboard
+from lup.harness.environment import inside_a_container
 from lup.harness.notice import Notice
 from lup.harness.requirements import SENTINEL_VARIABLE
 from lup.launch.companions import (
@@ -105,15 +106,6 @@ def launched_by_an_operator(environment: EnvVars) -> bool:
             SESSION_ID_ENV,
         )
     )
-
-
-def inside_a_container(environment: EnvVars) -> bool:
-    """Whether a launch runs inside a session's container rather than on the host.
-
-    The image's baked marker, read as a placement hint only: a shell that
-    exported it on the host costs that launch its dashboard, and nothing else.
-    """
-    return "LUP_CONTAINED" in environment and environment["LUP_CONTAINED"] == "1"
 
 
 def refuse_inside_a_session(verb: str) -> None:

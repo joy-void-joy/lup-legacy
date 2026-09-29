@@ -40,6 +40,7 @@ from lup.launch.foreground import between_steps, run_in_foreground
 from lup.launch.guidance import held_guidance
 from lup.launch.preflight import LaunchSentinels, release_ledger
 from lup.launch.refusal import LaunchRefused
+from lup.launch.secrets import withheld_secrets
 from lup.launch.session import (
     LaunchOpening,
     cleared_on_the_way_in,
@@ -676,7 +677,7 @@ def claude_opening(
     )
     environment = {
         **claude_server_environment(config.tools),
-        **inherited_environment(),
+        **withheld_secrets(inherited_environment(), root),
         **config.environment,
         **joined.environment,
     }
@@ -733,7 +734,10 @@ def claude_companions(
     return CompanionLaunch(
         root=root,
         runtime="claude",
-        environment={**inherited_environment(), **compiled_claude(agent).environment},
+        environment={
+            **withheld_secrets(inherited_environment(), root),
+            **compiled_claude(agent).environment,
+        },
         journal=journal,
         relayed=loopback_relayed(agent.plugin, agent.sandbox),
     )

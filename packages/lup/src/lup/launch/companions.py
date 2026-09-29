@@ -58,6 +58,7 @@ from lup.channels.wait import wait_until
 from lup.harness.notice import Notice
 from lup.launch.declaration import Mount
 from lup.launch.refusal import LaunchRefused
+from lup.launch.secrets import HostSecrets
 from lup.observability.audit import TraceJournal
 from lup.sandbox.known import store_directory
 from lup.sandbox.process import process_is_alive, process_start_token
@@ -664,6 +665,13 @@ class SharedProcess(HostCompanion, ABC, frozen=True):
     grace: float = Field(default=5.0, gt=0)
     """How long a stopped process has to exit before it is killed."""
 
+    secrets: list[VariableName] = []
+    """The keys of the project's host store this process is started with.
+
+    Only those: the store's values leave it for the companions naming them,
+    and a launched session holds none. A key the store lacks refuses the
+    launch, naming where it is set."""
+
     @abstractmethod
     def process(self, place: CompanionPlace, root: Path) -> CompanionProcess:
         """How to start it at ``place``, for the session in the checkout at ``root``."""
@@ -756,6 +764,15 @@ class SharedProcess(HostCompanion, ABC, frozen=True):
         """
         command = self.process(place, launch.root)
         program, *arguments = command.argv
+        stored = HostSecrets.for_checkout(launch.root)
+        held = stored.read()
+        missing = [key for key in self.secrets if key not in held]
+        if missing:
+            raise LaunchRefused(
+                f"host companion {self.name!r} is started with {', '.join(missing)}, "
+                f"which {stored.path()} does not hold; set it there from a "
+                "terminal on the host"
+            )
         try:
             with (
                 slot.log().open("ab") as output,
@@ -764,7 +781,10 @@ class SharedProcess(HostCompanion, ABC, frozen=True):
                 running = sh.Command(program)(
                     *arguments,
                     _cwd=str(command.cwd),
-                    _env=command.started_from(launch.environment),
+                    _env={
+                        **command.started_from(launch.environment),
+                        **{key: held[key] for key in self.secrets},
+                    },
                     _bg=True,
                     _bg_exc=False,
                     _new_session=True,
