@@ -336,6 +336,32 @@ type SessionSandbox = OuterContainer | InnerSandbox | NoSandbox
 """Which wall a session opens behind."""
 
 
+def laid_over[T: BaseModel](preset: T, base: T) -> T:
+    """``base`` with every field ``preset`` states taken from it: a preset over a declaration.
+
+    A preset states only what it changes — a ``Claude(permission_mode="auto")``
+    names one field and leaves the rest — so what it left unstated is
+    ``base``'s, and one it states is its own even said as the default. A field
+    holding a declaration of the same kind on both sides is laid the same
+    way, field by field, so a preset moving its record's ``root`` keeps the
+    ledger the base records to; anything else it states, a list included,
+    replaces the base's whole. The result is validated again as a whole, so a
+    combination neither side refused alone is refused where they meet.
+    """
+
+    def stated(name: str) -> object:
+        value = getattr(preset, name)
+        under = getattr(base, name)
+        if isinstance(value, BaseModel) and type(value) is type(under):
+            return laid_over(value, under)
+        return value
+
+    laid = base.model_copy(
+        update={name: stated(name) for name in preset.model_fields_set}
+    )
+    return type(base).model_validate(laid)
+
+
 def declared_policy(
     plugin: Harness | Path | None, policy: HookSet | None
 ) -> HookSet | None:
@@ -465,7 +491,9 @@ class Recording(BaseModel, frozen=True, extra="forbid", arbitrary_types_allowed=
     """Where the session is recorded as opened and closed, or nowhere."""
 
     root: Path | None = None
-    """Where the run's journal and transcript are written; unset, the project's runs."""
+    """Where the run's journal and transcript are written; unset, the project's
+    runs. A relative one is in the checkout the session works in, wherever the
+    launching process stands."""
 
     mode: str | None = None
     """The named kind of session this is, written into its record, so a run

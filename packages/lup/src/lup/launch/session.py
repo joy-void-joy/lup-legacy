@@ -240,7 +240,8 @@ def start_harness_transcript(
     to scan, because where a runtime keeps its sessions and how one of its
     records names itself are the runtime's business, not this launcher's.
 
-    ``record_root`` is where the transcript tree is rooted, so a launch mode
+    ``record_root`` is where the transcript tree is rooted, a relative one
+    in the checkout the session works in, so a launch mode
     whose records are kept to a different standard keeps them somewhere a
     reader can tell apart without opening one. ``mode`` puts the same fact
     inside the record, because a directory is renameable and a run that has
@@ -259,7 +260,7 @@ def start_harness_transcript(
     run_id = (
         f"{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}_{provider}_{uuid4().hex[:8]}"
     )
-    runs = record_root or harness_runs_path()
+    runs = root / record_root if record_root is not None else harness_runs_path()
     trace_path = runs / provider / run_id / "observable.jsonl"
     journal = TraceJournal(
         trace_path,
