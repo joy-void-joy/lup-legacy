@@ -556,6 +556,24 @@ class TestTheAntiPatternSweepIsScopedToWhatATreeChanged:
 
         assert scan.findings == []
 
+    def test_a_scope_holding_no_production_file_reads_nothing(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A sweep asked about files no rule reads judges nothing.
+
+        The post-write review asks about every file a call wrote, and building
+        the whole project's context to judge none of them cost seconds a call.
+        """
+        project = self.two_files_that_trip_a_rule(tmp_path, monkeypatch)
+        (tmp_path / "repo/notes.md").write_text("# Notes\n", encoding="utf-8")
+
+        def unread(**_fields: object) -> list[object]:
+            raise AssertionError("a project rule was run for no production file")
+
+        monkeypatch.setattr("lup.devtools.dev.antipatterns.AuditedProject", unread)
+
+        assert scan_antipatterns(project, ["notes.md"]).findings == []
+
     @pytest.mark.parametrize(
         "suppression", ["", "    # lup: ignore[own-model-dispatch]\n"]
     )

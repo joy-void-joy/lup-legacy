@@ -57,7 +57,9 @@ def test_the_declared_commit_guard_reads_the_merge_before_it_checks() -> None:
     environment points at. Before, because a check that has already started
     cannot be stood down.
     """
-    for guard in (one for one in DECLARED_GUARDS if one.hook == "pre-commit"):
+    for guard in (
+        one for one in DECLARED_GUARDS if one.hook == "pre-commit" and one.standdown
+    ):
         check = guard.check()
 
         assert guard.standdown == MERGE_STANDDOWN

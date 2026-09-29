@@ -249,6 +249,17 @@ class MigrationRecord(BaseModel, frozen=True):
         """The declarations one directory holds, in the order they are read."""
         return sorted(directory.glob("*.toml")) if directory.is_dir() else []
 
+    def holds(self, path: Path) -> bool:
+        """Whether a file is one of the declarations this record reads."""
+        return path.resolve() in {
+            declared.resolve()
+            for directory in [
+                self.pending_directory(),
+                *map(self.root.joinpath, self.releases()),
+            ]
+            for declared in self.files(directory)
+        }
+
     def pending(self) -> list[Migration]:
         """What the next release will carry."""
         return [Migration.read(path) for path in self.files(self.pending_directory())]

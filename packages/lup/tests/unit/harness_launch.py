@@ -20,6 +20,7 @@ import lup.launch.session as launch_session
 import lup.providers.claude.launch as claude_launch
 import lup.providers.codex.launch as codex_launch
 from lup.coordination.identity import LaunchedMember
+from lup.harness.credential import GitAccess
 from lup.harness.generate import MachineOverlay, NativeHarnessComposition
 from lup.providers.claude.harness import CLAUDE_OVERLAY
 from lup.providers.codex.harness import CODEX_OVERLAY
@@ -187,6 +188,10 @@ def stub_host(monkeypatch: pytest.MonkeyPatch, root: Path) -> Caught:
     )
     monkeypatch.setattr(launch, "accessible_roots", lambda *_a, **_k: [])
     monkeypatch.setattr(launch, "granted_devices", lambda *_a, **_k: [])
+    # The forge login is a measurement of this host too: with no token
+    # exported, a contained launch asks the forge's own client for one, which
+    # read whoever ran the suite -- or an inherited session's token -- before.
+    monkeypatch.setattr(GitAccess, "sourced", lambda _access, _environ: "")
     monkeypatch.setattr(sh, "Command", catching(caught))
     return caught
 

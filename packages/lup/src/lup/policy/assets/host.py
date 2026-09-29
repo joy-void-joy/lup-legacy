@@ -16,6 +16,7 @@ arrives as an argument — the managed root to enumerate, the environment
 variable to read — never as a branch on which runtime is asking.
 """
 
+import ast
 import csv
 import fcntl
 import json
@@ -765,6 +766,66 @@ def script_run_nudge(
         " `lup-devtools` command, which lands in the diff and can be run"
         " again by name"
     )
+
+
+def referral_noted(
+    root: Path,
+    session: str,
+    repository: str,
+    ledger: str = ".lup/referrals.json",
+    kept_days: int = 7,
+) -> bool:
+    """Whether this session was already referred to that repository, noting it if not.
+
+    Kept per session under the checkout, for *kept_days*, so the ledger holds
+    what a live session could still ask about and nothing older. A ledger that
+    cannot be read or written answers no, which errs toward saying a referral
+    again rather than never.
+    """
+    path = root / ledger
+    now = datetime.now(UTC)
+
+    def recent(entry: dict) -> bool:
+        if "repositories" not in entry:
+            return False
+        try:
+            stamped = datetime.fromisoformat(str(entry["at"]))
+        except (KeyError, ValueError):
+            return False
+        return now - stamped < timedelta(days=kept_days)
+
+    try:
+        loaded = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+    except (OSError, ValueError):
+        loaded = {}
+    held = loaded if isinstance(loaded, dict) else {}
+    kept = {
+        name: entry
+        for name, entry in held.items()
+        if isinstance(entry, dict) and recent(entry)
+    }
+    seen = kept[session]["repositories"] if session in kept else []
+    if repository in seen:
+        return True
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            json.dumps(
+                {
+                    **kept,
+                    session: {
+                        "at": now.isoformat(),
+                        "repositories": [*seen, repository],
+                    },
+                },
+                indent=2,
+                sort_keys=True,
+            ),
+            encoding="utf-8",
+        )
+    except OSError:
+        return False
+    return False
 
 
 def review_records(path: Path) -> list[dict]:
@@ -2110,12 +2171,33 @@ def conflicted(path_text: str) -> bool:
     )
 
 
+def import_lines(text: str) -> list[int]:
+    """Every line an import statement of this source spans, or none unparsed."""
+    try:
+        tree = ast.parse(text)
+    except (SyntaxError, ValueError):
+        return []
+
+    def spanned(node: ast.AST) -> range:
+        match node:
+            case ast.Import() | ast.ImportFrom():
+                return range(node.lineno, (node.end_lineno or node.lineno) + 1)
+        return range(0)
+
+    return [line for node in ast.walk(tree) for line in spanned(node)]
+
+
 def file_diagnostics(
     path_text: str,
     command: list[str],
     suffixes: tuple[str, ...] = (".py", ".pyi"),
     timeout_seconds: float = 20.0,
-) -> list[str]:
+    pending_rules: tuple[str, ...] = (
+        "reportUndefinedVariable",
+        "reportMissingImports",
+        "reportMissingModuleSource",
+    ),
+) -> dict[str, list[str]]:
     """Type-check one edited file, in the checkout that actually holds it.
 
     A language server the runtime starts is rooted once, where the session
@@ -2157,17 +2239,25 @@ def file_diagnostics(
     the merge rather than about the edit — during a resolution, which is
     exactly when a reader is editing that file and has the least attention to
     spare for a wall of output that cannot be acted on.
+
+    A name used before it exists is reported as context rather than as a
+    refusal: *pending_rules*, and an unknown symbol on an import line. A
+    change spanning two edits — the use, then the definition or its import —
+    reports it in between, and as a "blocking error" it arrived dozens of
+    times per change while four builders worked in parallel. What is still
+    unresolved when the change settles, `dev check --changed` reports.
     """
+    nothing: dict[str, list[str]] = {"blocking": [], "context": []}
     if not command or Path(path_text).suffix.lower() not in suffixes:
-        return []
+        return nothing
     if conflicted(path_text):
-        return []
+        return nothing
     root = worktree_root(path_text)
     if not root:
-        return []
+        return nothing
     located = declared_program(root, command[0])
     if not located:
-        return []
+        return nothing
     edited = str(Path(path_text).resolve())
     environ = os.environ  # lup: ignore[os-environ] — the checker inherits this
     inherited = environ["PATH"] if "PATH" in environ else ""
@@ -2190,23 +2280,50 @@ def file_diagnostics(
             check=False,
         )
         reported = json.loads(finished.stdout)["generalDiagnostics"]
+        imports = import_lines(Path(edited).read_text(encoding="utf-8"))
     except (OSError, subprocess.SubprocessError, ValueError, KeyError):
-        return []
-    return [
-        f"{Path(edited).relative_to(Path(root).resolve())}:"
-        f"{item['range']['start']['line'] + 1}: {item['severity']}: {item['message']}"
+        return nothing
+    shown = Path(edited).relative_to(Path(root).resolve())
+    found = [
+        item
         for item in reported
         if item["file"] == edited and item["severity"] != "information"
     ]
 
+    def line(item: dict) -> str:
+        return (
+            f"{shown}:{item['range']['start']['line'] + 1}: "
+            f"{item['severity']}: {item['message']}"
+        )
 
-def repaired_directives(
-    path_text: str,
+    def pending(item: dict) -> bool:
+        rule = item["rule"] if "rule" in item else ""
+        return rule in pending_rules or (
+            rule == "reportAttributeAccessIssue"
+            and item["range"]["start"]["line"] + 1 in imports
+        )
+
+    awaited = [line(item) for item in found if pending(item)]
+    return {
+        "blocking": [line(item) for item in found if not pending(item)],
+        "context": [
+            "Named before it is supplied, which an edit still to come may do; "
+            "`uv run lup-devtools dev check --changed` settles it:",
+            *awaited,
+        ]
+        if awaited
+        else [],
+    }
+
+
+def swept_files(
+    paths: list[str],
     command: list[str],
     suffixes: tuple[str, ...] = (".py", ".pyi"),
     timeout_seconds: float = 30.0,
-) -> list[str]:
-    """Take the dead `# lup: ignore` directives out of one written file.
+    refusing: tuple[str, ...] = ("missing", "spurious"),
+) -> dict[str, dict]:
+    """Sweep the written files: repair dead directives, keep what still refuses.
 
     A directive guarding nothing is the one audit finding whose fix is not a
     judgement — there is a single correct edit and this is it — so the gate
@@ -2217,49 +2334,99 @@ def repaired_directives(
 
     Reported back rather than done in silence. The agent wrote the directive
     believing it did something, and a line that disappears without a word is
-    one it writes again on the next file.
+    one it writes again on the next file. What the file held before the sweep
+    comes back too, so a caller holding a policy the sweep does not can put
+    back a directive only that policy still needs.
 
-    Anything that goes wrong is nothing repaired, exactly as an unreadable
-    checker is no diagnostics: this runs after the tool, so the alternative
-    to saying nothing is failing a write that has already happened.
+    What the sweep still refuses in each file comes back beside it, in the
+    kinds *refusing* names. The sweep is the whole-tree check scoped to these
+    files — every rule, over every span it reads — so a verdict the gate ahead
+    of the write cannot reach, a project rule or a string spanning lines, is
+    reported per write rather than first met at the end.
+
+    One run per checkout for all its files, since starting the sweep is most
+    of what it costs. Anything that goes wrong is nothing swept, exactly as an
+    unreadable checker is no diagnostics: this runs after the tool, so the
+    alternative to saying nothing is failing a write that has already happened.
     """
-    if not command or Path(path_text).suffix.lower() not in suffixes:
-        return []
-    if conflicted(path_text):
-        return []
-    root = worktree_root(path_text)
-    if not root:
-        return []
-    located = declared_program(root, command[0])
-    if not located:
-        return []
-    # Named the way the sweep names its own files, which is how the request
-    # and the report come back in one spelling. It is also the only spelling
-    # every sweep must understand: a project declares its own program here,
-    # and one that selects by repository-relative prefix is the shape this
-    # can count on rather than one it would have to assume.
-    try:
-        named = str(Path(path_text).resolve().relative_to(Path(root).resolve()))
-    except ValueError:
-        return []
-    try:
-        finished = subprocess.run(
-            [located, *command[1:], "--path", named],
-            capture_output=True,
-            text=True,
-            cwd=root,
-            timeout=hook_seconds_left(timeout_seconds),
-            check=False,
-        )
-        reported = json.loads(finished.stdout)["repaired"]
-    except (OSError, subprocess.SubprocessError, ValueError, KeyError):
-        return []
-    return [
-        f"line {item['line']}: removed `# lup: ignore"
-        + (f"[{item['rule_id']}]" if item["rule_id"] else "")
-        + "` — it guarded no rule, so it silenced nothing"
-        for item in reported
+    readable = [
+        path
+        for path in paths
+        if command and Path(path).suffix.lower() in suffixes and not conflicted(path)
     ]
+    roots = {path: worktree_root(path) for path in readable}
+    by_root = {
+        root: [path for path in readable if roots[path] == root]
+        for root in dict.fromkeys(roots.values())
+        if root
+    }
+
+    def swept_in(root: str, held: list[str]) -> dict[str, dict]:
+        located = declared_program(root, command[0])
+        if not located:
+            return {}
+        # Named the way the sweep names its own files, which is how the
+        # request and the report come back in one spelling. It is also the
+        # only spelling every sweep must understand: a project declares its
+        # own program here, and one that selects by repository-relative prefix
+        # is the shape this can count on rather than one it would have to
+        # assume.
+        base = Path(root).resolve()
+        named = {
+            str(Path(path).resolve().relative_to(base)): path
+            for path in held
+            if Path(path).resolve().is_relative_to(base)
+        }
+        if not named:
+            return {}
+        written = {name: text_at(base, name) for name in named}
+        try:
+            finished = subprocess.run(
+                [
+                    located,
+                    *command[1:],
+                    *(word for name in named for word in ("--path", name)),
+                ],
+                capture_output=True,
+                text=True,
+                cwd=root,
+                timeout=hook_seconds_left(timeout_seconds),
+                check=False,
+            )
+            reported = json.loads(finished.stdout)
+            repaired = reported["repaired"]
+            findings = reported["findings"] if "findings" in reported else []
+        except (OSError, subprocess.SubprocessError, ValueError, KeyError):
+            return {}
+        return {
+            path: {
+                "written": written[name],
+                "repaired": [
+                    f"line {item['line']}: removed `# lup: ignore"
+                    + (f"[{item['rule_id']}]" if item["rule_id"] else "")
+                    + "` — it guarded no rule, so it silenced nothing"
+                    for item in repaired
+                    if item["file"] == name
+                ],
+                "refused": [
+                    {
+                        "line": item["line"],
+                        "rule_id": item["rule_id"],
+                        "kind": item["kind"],
+                        "message": item["message"],
+                    }
+                    for item in findings
+                    if item["file"] == name and item["kind"] in refusing
+                ],
+            }
+            for name, path in named.items()
+        }
+
+    return {
+        path: swept
+        for root, held in by_root.items()
+        for path, swept in swept_in(root, held).items()
+    }
 
 
 def resolved_refutations(

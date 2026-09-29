@@ -108,6 +108,7 @@ DISPATCHER_STDLIB = (
     "shlex",
     "urllib.parse",
     "typing",
+    "ast",
 )
 """The standard library a compiled dispatcher may reach.
 
@@ -174,6 +175,12 @@ fetch by its origin and by nothing else, which means splitting a URL into
 the scheme, host and port a scope is written against and dropping the path,
 the query and any userinfo -- taking that apart by hand is how the userinfo
 ends up in the record. Nothing already pinned here parses a URL.
+
+``ast`` earns its place the same way. A type checker's report after an edit
+names a symbol an import could not find, and whether that line is an import
+-- a name the change has yet to supply rather than a mistake -- is a question
+about the file's syntax. The kernel already reads Python with it under the
+same bare interpreter, and nothing already pinned here parses source.
 """
 
 ROUTER = "dispatch"
