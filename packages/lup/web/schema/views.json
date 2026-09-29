@@ -2506,6 +2506,7 @@
             "allow",
             "ask",
             "deny",
+            "defer",
             "unknown"
           ],
           "title": "Review Effect",
@@ -2859,6 +2860,7 @@
             "allow",
             "ask",
             "deny",
+            "defer",
             "unknown"
           ],
           "title": "Review Effect",

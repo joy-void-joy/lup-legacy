@@ -1,0 +1,20 @@
+subjects = ["tool.pyright.venvPath", "tool.pyright.venv", "pyright_environment"]
+reason = """
+the scaffold leaves Python environment selection to the project interpreter, \
+because a fixed .venv takes precedence over the language server's selected \
+interpreter and can resolve stale packages"""
+
+[[steps]]
+instruction = """
+Retire the unchanged scaffold venvPath='.' and venv='.venv' pair. Custom or \
+partial environment settings, inherited configurations, and pyrightconfig.json \
+are preserved. Use --dry-run to review the manifest change first."""
+command = ["uv", "run", "lup-devtools", "dev", "migrate", "pyright-environment"]
+
+[[steps]]
+instruction = """
+Replace calls to lup.devtools.dev.check.pyright_environment with \
+lup.devtools.launcher.project_python(root), which returns the selected \
+interpreter path or None. Pass that path through Pyright's --pythonpath option \
+or the python.pythonPath language-server setting instead of overriding \
+venvPath and venv."""

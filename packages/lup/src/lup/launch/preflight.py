@@ -71,7 +71,7 @@ class LaunchSentinels(BaseModel, frozen=True):
         return {SENTINEL_VARIABLE: self.inside, NONCE_VARIABLE: self.nonce}
 
     def outside(self) -> EnvVars:
-        """What the launcher's own environment carries, for a host-side probe."""
+        """What a process on the host side is given: a host probe, an uncontained session."""
         return {SENTINEL_VARIABLE: self.host, NONCE_VARIABLE: self.nonce}
 
 

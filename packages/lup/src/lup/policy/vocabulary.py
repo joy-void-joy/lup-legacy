@@ -1026,6 +1026,18 @@ def devtools_rules() -> list[ShellSubcommandRule]:
                         "writing it."
                     ),
                 ),
+                # Retiring the scaffold's Pyright environment pair rewrites the
+                # manifest, a protected root, the way an edit of it would.
+                ShellOperationRule(
+                    name="pyright-environment",
+                    parents=["migrate"],
+                    effects=[
+                        declare("writes_path", scope="protected", write="overwrite")
+                    ],
+                    probe_flags=["--dry-run"],
+                    reason="retiring Pyright environment defaults rewrites protected pyproject.toml",
+                    recovery="Review the change with --dry-run before applying the migration.",
+                ),
             ],
         ),
         ShellSubcommandRule(

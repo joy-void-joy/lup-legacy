@@ -184,7 +184,11 @@ class LspSession:
 
 @asynccontextmanager
 async def lsp_session(
-    server: Path, root: Path, *, name: str = "language server"
+    server: Path,
+    root: Path,
+    *,
+    name: str = "language server",
+    settings: JsonObject | None = None,
 ) -> AsyncGenerator[LspSession]:
     """Start one language server, initialize it, and always stop it."""
     process = await asyncio.create_subprocess_exec(
@@ -218,6 +222,10 @@ async def lsp_session(
             },
         )
         await session.notify("initialized", {})
+        if settings is not None:
+            await session.notify(
+                "workspace/didChangeConfiguration", {"settings": settings}
+            )
         yield session
         await session.request("shutdown", {})
         await session.notify("exit", {})

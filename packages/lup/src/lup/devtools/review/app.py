@@ -106,7 +106,8 @@ class ReviewSummary(BaseModel, frozen=True):
         files = [
             change
             for change in complete
-            if ReviewAttribution.of(change, question.file_reviews).effect != "allow"
+            if ReviewAttribution.of(change, question.file_reviews).effect
+            not in {"allow", "defer"}
         ]
 
         def relative(path: Path) -> str:
@@ -258,7 +259,7 @@ class ReviewHunk(BaseModel, frozen=True):
 class ReviewAttribution(BaseModel, frozen=True):
     """Original policy attribution, usable only for these exact file images."""
 
-    effect: Literal["allow", "ask", "deny", "unknown"] = "unknown"
+    effect: Literal["allow", "ask", "deny", "defer", "unknown"] = "unknown"
     reason: str = "No per-file decision was captured; this file remains visible as unclassified context."
     rules: list[str] = []
 
@@ -284,11 +285,6 @@ class ReviewAttribution(BaseModel, frozen=True):
             return cls(
                 reason="The captured file verdict does not match these exact images; relevance is unknown."
             )
-        if row.effect == "defer":
-            return cls(
-                reason=f"The captured policy deferred this file to the native provider: {row.reason}",
-                rules=row.rules,
-            )
         return cls(effect=row.effect, reason=row.reason, rules=row.rules)
 
 
@@ -299,7 +295,7 @@ class ReviewSuppression(BaseModel, frozen=True):
     rule_ids: list[str] | None
     reason: str
     introduced: bool
-    review_effect: Literal["allow", "ask", "deny", "unknown"] = "unknown"
+    review_effect: Literal["allow", "ask", "deny", "defer", "unknown"] = "unknown"
     review_reason: str = "No directive-level decision was captured."
     review_rule_ids: list[str] | None = None
 
@@ -430,7 +426,7 @@ class ReviewFile(BaseModel, frozen=True):
     additions: int
     deletions: int
     suppressions: list[ReviewSuppression]
-    review_effect: Literal["allow", "ask", "deny", "unknown"] = "unknown"
+    review_effect: Literal["allow", "ask", "deny", "defer", "unknown"] = "unknown"
     review_reason: str = "No per-file decision was captured."
 
     @classmethod

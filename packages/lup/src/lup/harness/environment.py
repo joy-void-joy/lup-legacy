@@ -14,6 +14,7 @@ the child project must select its own environment from its working directory.
 from collections.abc import Mapping
 
 from lup.coordination.identity import MEMBER_ENV, NAME_ENV, MemberEnv
+from lup.devtools.launcher import ENVIRONMENT_VARIABLE
 from lup.sessions.recursion import RecursiveAgentSettings
 from lup.types import EnvVars
 
@@ -78,6 +79,8 @@ def tool_server_env() -> list[str]:
     joins under and answers to; the recursion allowance is how many more agent
     levels its tools may open. A server that sees none of them serves a session
     nobody can address and opens agents without limit, and neither says so.
+    The project-environment selector keeps a tool server's interpreter and
+    language-server settings aligned with the checkout's selected toolchain.
 
     Read off the settings that read them rather than listed beside them, so a
     variable either grows is forwarded with nobody remembering to. Declared as
@@ -94,7 +97,7 @@ def tool_server_env() -> list[str]:
         for settings in (MemberEnv, RecursiveAgentSettings)
         for field in settings.model_fields.values()
         if isinstance(field.validation_alias, str)
-    ]
+    ] + [ENVIRONMENT_VARIABLE]
 
 
 def launcher_decided_names(

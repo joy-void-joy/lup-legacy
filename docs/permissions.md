@@ -391,6 +391,10 @@ own effects as the default beneath them. One statement serves both halves:
 while the runner row stated a verdict of its own, a target could bless itself
 and refuse its own verbs with nothing noticing.
 
+`uv run lup-devtools dev migrate pyright-environment` rewrites the protected
+`pyproject.toml` configuration and requires review. Its literal `--dry-run`
+form only reports the proposed change and is admitted as a read-only probe.
+
 Every axis cascades down a table's nesting, and absence means one thing
 everywhere: a subcommand or operation omitting `effects`, `refuses` or
 `sandbox` inherits the level above it, and one stating any of them overrides
@@ -1048,8 +1052,10 @@ The dashboard titles requests from captured evidence: a file's action and path,
 the number of files, or the command to run. The exact operation, requester,
 rule, reason, command or captured file diff, and recorded answer remain visible.
 The default view includes files that require review and highlights newly
-introduced rule exceptions. Files the policy allows automatically and existing
-exceptions remain available in the full-operation view. Approval still applies
+introduced rule exceptions. Files the policy allows automatically or explicitly
+leaves to the native provider, and existing exceptions, remain available in the
+full-operation view. A captured deferral means Lup requests no approval for that
+file; the native provider still applies its own permissions. Approval still applies
 to the exact complete submission. Where recorded evidence cannot establish a
 file's status, it remains visible rather than being treated as automatically allowed.
 The file navigator shows change counts and supports searching paths. Select
@@ -1076,6 +1082,10 @@ identical IDs. They open the exact pending or historical request,
 including in another tab of an already authorized browser. Back, forward, and
 changed links select the corresponding request. A missing ID stays selected
 while the dashboard watches for it; it never silently opens a different request.
+
+Until the first snapshot arrives, the page shows loading with unknown counts.
+Reconnecting or unreadable queues remain visibly incomplete; only a fresh,
+complete snapshot can confirm that no requests are waiting.
 
 The decision is recorded in the
 same durable relay that the terminal commands use, so a browser and terminal

@@ -23,7 +23,6 @@ from pydantic import BaseModel, Field
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
-from lup.devtools.conversation.app import create_conversation_setup_app
 from lup.devtools.harness.composition import claude_profile_directory
 from lup.devtools.harness.profile_app import create_profile_app
 from lup.providers.profiles import ProfileDirectory
@@ -282,7 +281,6 @@ def create_setup_app(
         pretty_exceptions_show_locals=False,
         invoke_without_command=True,
     )
-    app.add_typer(create_conversation_setup_app(directory), name="conversation")
     app.add_typer(create_profile_app(directory), name="profile")
     # The dashboard is this wizard seen through a browser — the same declared
     # integrations rendered for somebody who would rather click than answer

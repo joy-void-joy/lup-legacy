@@ -441,6 +441,14 @@ class Run(BaseModel, frozen=True):
             "`behind` because that is the only thing that puts one there"
         ),
     )
+    environment: EnvVars = Field(
+        default={},
+        description=(
+            "Variables set over the launcher's own for this command alone: "
+            "how a value minted for one launch reaches the probe observing "
+            "it without marking the launcher itself"
+        ),
+    )
 
     def programs(self) -> list[str]:
         """Which executables this exercise runs, for a reader that has to name them.
@@ -494,8 +502,12 @@ class Run(BaseModel, frozen=True):
 
     def run(self) -> ExerciseOutcome:
         """Carry the operation out, answering whether it proved the claim."""
+        # lup: ignore[os-environ] — the command inherits this process's environment, with this exercise's own laid over it
+        environment = {**os.environ, **self.environment}
         try:
-            output = str(sh.Command(self.command[0])(*self.command[1:]))
+            output = str(
+                sh.Command(self.command[0])(*self.command[1:], _env=environment)
+            )
         except sh.CommandNotFound:
             return ExerciseOutcome(
                 proved=False,
@@ -924,6 +936,9 @@ class SentinelProbe(BaseModel, frozen=True):
                 f'printf "sentinel=%s" "${self.variable}"{read}',
             ],
             expect=f"sentinel={self.sentinel(facts)}",
+            environment=(
+                {self.variable: facts.host_sentinel} if self.side == "host" else {}
+            ),
         )
 
     def programs(self) -> list[str]:

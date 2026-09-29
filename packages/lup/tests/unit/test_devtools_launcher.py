@@ -8,7 +8,9 @@ one project happens to use.
 """
 
 import sys
+import os
 from pathlib import Path
+from venv import EnvBuilder
 
 import pytest
 
@@ -18,13 +20,14 @@ from lup.devtools.launcher import (
     ENVIRONMENT_VARIABLE,
     console_script,
     launcher_invocation,
+    project_python,
 )
 from lup.policy.assets.host import project_environment
 
 
 def installed(root: Path, environment: str = DEFAULT_ENVIRONMENT) -> Path:
     """Put a console script where a sync into *root* would leave one."""
-    binaries = root / environment / Path(sys.executable).parent.name
+    binaries = root / environment / ("Scripts" if os.name == "nt" else "bin")
     binaries.mkdir(parents=True)
     script = binaries / CONSOLE_SCRIPT
     script.write_text("#!/bin/sh\n", encoding="utf-8")
@@ -72,14 +75,11 @@ def test_an_environment_inside_the_checkout_is_named_by_path(
     is a path rather than a name.
     """
     monkeypatch.delenv(ENVIRONMENT_VARIABLE, raising=False)
-    installed(tmp_path)
+    script = installed(tmp_path)
 
     spelled = launcher_invocation(tmp_path)
 
-    assert (
-        spelled
-        == f"{DEFAULT_ENVIRONMENT}/{Path(sys.executable).parent.name}/{CONSOLE_SCRIPT}"
-    )
+    assert spelled == script.relative_to(tmp_path).as_posix()
 
 
 def test_a_redirected_environment_still_resolves_inside_the_checkout(
@@ -120,3 +120,22 @@ def test_nothing_installed_is_named_bare_rather_than_guessed(
 
     assert console_script(tmp_path) is None
     assert launcher_invocation(tmp_path) == CONSOLE_SCRIPT
+
+
+def test_caller_outside_a_venv_does_not_rename_project_script_directory(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv(ENVIRONMENT_VARIABLE, raising=False)
+    environment = tmp_path / DEFAULT_ENVIRONMENT
+    EnvBuilder(with_pip=False).create(environment)
+    binaries = environment / ("Scripts" if os.name == "nt" else "bin")
+    script = binaries / CONSOLE_SCRIPT
+    script.write_text("#!/bin/sh\n", encoding="utf-8")
+    executable = "python.exe" if os.name == "nt" else "python"
+    monkeypatch.setattr(
+        sys, "executable", str(tmp_path / "unrelated-install" / executable)
+    )
+
+    assert console_script(tmp_path) == script
+    assert launcher_invocation(tmp_path) == script.relative_to(tmp_path).as_posix()
+    assert project_python(tmp_path) == binaries / executable

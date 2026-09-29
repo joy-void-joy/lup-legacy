@@ -17,6 +17,7 @@ from lup.devtools.conversation.browser import (
 from lup.devtools.conversation.checkpoint import checkpoint_delivery
 from lup.devtools.conversation.errors import ConversationDownloadError
 from lup.devtools.conversation.selection import RetentionAttempt, RetentionRequest
+from lup.devtools.harness.composition import claude_profile_directory
 from lup.providers.profiles import ProfileDirectory
 from lup.workspace.paths import project_root
 
@@ -170,7 +171,7 @@ async def retain_chatgpt(
         requests,
         run,
         "The ChatGPT browser login is missing or expired. Run "
-        "`uv run lup-devtools setup conversation chatgpt`, then retry.",
+        "`uv run lup-devtools conversation setup chatgpt`, then retry.",
     )
 
 
@@ -225,7 +226,7 @@ async def retain_claude(
         requests,
         run,
         "The Claude browser login is missing or expired. Run "
-        "`uv run lup-devtools setup conversation claude`, then retry.",
+        "`uv run lup-devtools conversation setup claude`, then retry.",
     )
 
 
@@ -246,7 +247,7 @@ def setup_browser_login(
 def create_conversation_setup_app(
     profiles: ProfileDirectory | None = None,
 ) -> typer.Typer:
-    """Build the explicit interactive-login tree mounted beneath setup."""
+    """Build the interactive-login tree owned by the conversation module."""
     application = typer.Typer(
         no_args_is_help=True,
         help="Authenticate browser sessions used for conversation retention",
@@ -306,8 +307,14 @@ def report(attempts: list[RetentionAttempt], provider: str, root: Path) -> None:
 def create_conversation_app(
     profiles: ProfileDirectory | None = None,
 ) -> typer.Typer:
-    """Build the conversation command tree over a project's profile directory."""
+    """Build the conversation command tree over a project's profile directory.
+
+    A project naming no directory of its own logs in and retains under the
+    person's, so the state a login writes is the state a retention reads.
+    """
+    directory = profiles or claude_profile_directory()
     application = typer.Typer(no_args_is_help=True)
+    application.add_typer(create_conversation_setup_app(directory), name="setup")
 
     @application.command("chatgpt")
     def chatgpt_cmd(
@@ -330,7 +337,7 @@ def create_conversation_app(
     ) -> None:
         """Retain ChatGPT conversations and their downloadable attachments."""
         root = project_root()
-        directories = browser_directories(root, "chatgpt", profiles, profile)
+        directories = browser_directories(root, "chatgpt", directory, profile)
         target = output if output.is_absolute() else root / output
         requests = [RetentionRequest.parse(value) for value in urls]
         report(
@@ -360,7 +367,7 @@ def create_conversation_app(
     ) -> None:
         """Retain Claude conversations and their API-provided attachments."""
         root = project_root()
-        directories = browser_directories(root, "claude", profiles, profile)
+        directories = browser_directories(root, "claude", directory, profile)
         target = output if output.is_absolute() else root / output
         requests = [RetentionRequest.parse(value) for value in urls]
         report(

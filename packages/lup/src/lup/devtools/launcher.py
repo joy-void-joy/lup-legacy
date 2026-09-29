@@ -23,7 +23,8 @@ disk, and reading them costs a `stat` — which is less than the guidance it
 replaces cost anybody who did not match the layout it assumed.
 """
 
-import sys
+import os
+import sysconfig
 from pathlib import Path
 
 from lup.policy.assets.host import project_environment
@@ -55,14 +56,30 @@ def console_script(root: Path, name: str = CONSOLE_SCRIPT) -> Path | None:
     printed by a program started from another, and the answer has to be about
     the checkout in question.
 
-    The directory the scripts sit in comes from the interpreter all the same —
-    ``bin`` on POSIX and ``Scripts`` on Windows — because that is a property
-    of how Python is installed rather than of any project, and reading it is
-    what keeps this from being a second layout assumption behind the one it
-    replaces.
+    The scripts directory comes from Python's virtual-environment installation
+    scheme. The caller can live outside a virtual environment, so the directory
+    containing its own executable does not describe the project's layout.
     """
-    candidate = project_environment(root) / Path(sys.executable).parent.name / name
+    environment = project_environment(root)
+    scripts = Path(
+        sysconfig.get_path(
+            "scripts",
+            scheme="venv",
+            vars={"base": str(environment), "platbase": str(environment)},
+        )
+    )
+    candidate = scripts / name
     return candidate if candidate.is_file() else None
+
+
+def project_python(root: Path) -> Path | None:
+    """The project's generic interpreter, independent of the caller's version.
+
+    A caller running ``python3.14`` can inspect a project using Python 3.13.
+    Virtual environments expose the unversioned interpreter on both platforms;
+    reusing the caller's basename would miss that valid project environment.
+    """
+    return console_script(root, name="python.exe" if os.name == "nt" else "python")
 
 
 def launcher_invocation(root: Path, name: str = CONSOLE_SCRIPT) -> str:

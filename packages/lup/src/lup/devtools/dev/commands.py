@@ -173,7 +173,7 @@ class CommandSurface(BaseModel, frozen=True):
 
         The question prose asks, and it has to survive two shapes that are not
         errors. A group named as a family reaches no command of its own —
-        `git pr` in a grant pattern, `setup conversation <provider>` with the
+        `git pr` in a grant pattern, `conversation setup <provider>` with the
         provider left to the reader — and an argument can be spelled exactly
         like a command name: `harness generate all` ends in one, and `all` is
         nobody's subcommand. So the walk takes the longest prefix the tree
