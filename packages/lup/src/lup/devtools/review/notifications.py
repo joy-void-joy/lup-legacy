@@ -17,7 +17,8 @@ from pydantic import BaseModel, ValidationError
 from lup.channels.models import Door, publish_atomic, utc_now
 from lup.coordination.repository import RepositoryPeers
 from lup.coordination.roster import RosterMember
-from lup.coordination.wake import wake
+from lup.coordination.peers import USER_ADDRESS
+from lup.coordination.watch import roused
 from lup.devtools.review.wait import ReviewWaiters
 from lup.policy.relay import PersistentQuestion
 
@@ -204,7 +205,13 @@ def answered_message(entry: PersistentQuestion) -> str:
 def notify_requester(
     roots: tuple[Path, ...], entry: PersistentQuestion
 ) -> ReviewNotification:
-    """Queue the answer for its requester and try its declared wake route."""
+    """Queue the answer for its requester and try its declared wake route.
+
+    Signed as the person's, whose answer it is and whom a reply reaches. The
+    wake carries every message waiting for the requester whole, and a wake
+    its runtime accepted hands them over (:func:`~lup.coordination.watch.roused`),
+    so the requester's own hook does not hand the answer over a second time.
+    """
     candidates = [RepositoryPeers(root) for root in roots]
     rosters = {peers.root: peers for peers in candidates}
     identities = {entry.operation.requester, entry.operation.session}
@@ -232,7 +239,9 @@ def notify_requester(
     recipient = members[0]
     member = recipient.member
     message = answered_message(entry)
-    delivered = recipient.peers.send(member.address, message, door=Door.PAGE)
+    delivered = recipient.peers.send(
+        member.address, message, door=Door.PAGE, sender=USER_ADDRESS
+    )
     if delivered is None:
         return ReviewNotification(
             queued=False, woken=False, detail="Decision recorded; requester left."
@@ -246,9 +255,13 @@ def notify_requester(
                 "holds this review, and it wakes the session when it settles."
             ),
         )
+    peers = recipient.peers
     try:
-        nudged = wake(
-            member.wake, message, Path(member.worktree) if member.worktree else None
+        nudged = roused(
+            peers,
+            member,
+            peers.waiting(member.actor.id).messages,
+            Path(member.worktree) if member.worktree else None,
         )
     except Exception as error:
         return ReviewNotification(
