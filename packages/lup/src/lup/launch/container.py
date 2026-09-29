@@ -39,7 +39,12 @@ from rich.console import Console
 from rich.live import Live
 from rich.text import Text
 
-from lup.launch.preflight import LaunchSentinels, ROOT_VARIABLE
+from lup.launch.preflight import (
+    LaunchSentinels,
+    ROOT_VARIABLE,
+    launch_record,
+    mount_table,
+)
 from lup.harness.credential import committer, fleet_rewrites
 from lup.harness.devices import (
     Device,
@@ -90,8 +95,11 @@ from lup.sandbox.rail import (
     fleet_lease,
     hold_pruning_across,
     in_repository,
+    merged,
     prepared_across,
     repository_layout,
+    rooted,
+    same_path,
     sibling_worktrees,
     worker_lease,
     working_trees,
@@ -810,8 +818,10 @@ def record_boundary(
     git directory, so a refusal under one is explained as git's rather than
     as a path to declare.
     """
-    ledger = root / ".lup" / "boundary.json"
+    ledger = mount_table(root)
     ledger.parent.mkdir(parents=True, exist_ok=True)
+    # Written in place, never replaced: a container already running in this
+    # checkout holds the file read-only by its inode.
     ledger.write_text(
         json.dumps(
             {
@@ -825,6 +835,32 @@ def record_boundary(
             indent=2,
         )
     )
+
+
+def held_lease(root: Path, lease: Lease) -> Lease:
+    """What a container at ``root`` mounts: ``lease``, its launch record held, every hold rooted.
+
+    The launch record is :func:`~lup.launch.preflight.launch_record`: what
+    the gates believe, written only on the host. It is held only where
+    ``lease`` would let it be written, so a hold narrows what a container
+    writes and never widens what it reaches -- a lease writing nothing holds
+    nothing. Then :func:`~lup.sandbox.rail.rooted` pins the directories
+    between each hold and its writable mount, this record's and the git
+    configuration's alike, so none can be moved out from under its hold.
+
+    Only this checkout's record. A sibling's is written by the session in it,
+    and a mount inside a sibling would make it a checkout nobody can remove
+    from inside -- the landing workflow this lease keeps siblings writable
+    for.
+    """
+    # lup: defer: a sibling worktree's launch record stays writable here, so a
+    # contained session can rewrite the ledger a session in that sibling reads
+    # through its own hold -- its destination policies and writable roots.
+    # Holding it would pin a mount point inside the sibling; closing it needs
+    # the record kept outside the checkout, or read against what its launch
+    # handed the runtime at start
+    record = [path for path in launch_record(root) if lease.writable_at(path)]
+    return rooted(merged([lease, Lease(read_only=same_path(record))]))
 
 
 class Spoken(BaseModel, frozen=True):
@@ -1760,7 +1796,9 @@ def contained_argv(
     # not readied -- its whole lease is read-only, and it is not ours to move.
     readied = [root, *(item.path for item in accessible if item.writable)]
     said.add(preparation_notice(prepared_across(readied, SHARED_STATE)))
-    lease = lease if lease is not None else fleet_lease(root, accessible)
+    lease = held_lease(
+        root, lease if lease is not None else fleet_lease(root, accessible)
+    )
     if exposed := store_exposure(lease):
         raise LaunchRefused(exposed)
     # Rebound before rendering, so the tag, the build, and the session all

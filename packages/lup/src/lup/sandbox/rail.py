@@ -250,6 +250,46 @@ def resolved(writable: dict[Path, str], read_only: dict[Path, str]) -> Lease:
     return Lease(writable=stated_once(writable), read_only=stated_once(settled))
 
 
+def rooted(lease: Lease) -> Lease:
+    """This lease with every hold kept where it is, not only kept unwritable.
+
+    A read-only mount refuses writes to what it covers. It does not stop the
+    directory *holding* it from being renamed, and a directory with mounts
+    beneath it can be: measured, ``mv .lup .lup2`` succeeded with
+    ``.lup/preflight`` held inside, and nothing then stopped a new
+    ``.lup/preflight`` being written where the host reads it. So every
+    directory between a hold and the writable mount enclosing it is bound
+    writable over itself -- a mount point cannot be renamed or removed from
+    inside -- and each hold is then reachable only by the path the host
+    reads it by.
+
+    Stated after the lease is settled, and never settled again: :func:`resolved`
+    drops a mount an enclosing one of the same mode already makes, which is
+    exactly what a pin is on purpose. Nothing is pinned inside a read-only
+    mount, where nothing can be renamed anyway, so this never makes a path
+    writable that was not; a lease pinned already gains nothing more.
+    """
+    mounts = [*lease.writable, *lease.read_only]
+
+    def between(held: Path) -> list[Path]:
+        """The directories from the mount enclosing ``held`` down to its parent."""
+        enclosing = max(
+            (mount for mount in mounts if mount in held.parents),
+            key=lambda mount: len(mount.parts),
+            default=None,
+        )
+        if enclosing is None or enclosing not in lease.writable:
+            return []
+        return [
+            directory for directory in held.parents if enclosing in directory.parents
+        ]
+
+    pins = same_path(
+        [directory for held in lease.read_only for directory in between(held)]
+    )
+    return Lease(writable={**lease.writable, **pins}, read_only=lease.read_only)
+
+
 def merged(leases: list[Lease]) -> Lease:
     """Every lease as one, with collisions settled across all of them at once.
 

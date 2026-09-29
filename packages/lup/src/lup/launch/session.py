@@ -27,7 +27,7 @@ from lup.harness.devices import Device
 from lup.providers.login import ProviderLogin
 from lup.providers.user_config import UserConfig, UserConfigFile
 from lup.launch.config_volume import HomeSeedPlaces
-from lup.launch.container import contained_argv
+from lup.launch.container import contained_argv, held_lease
 from lup.coordination.identity import MEMBER_ENV, NAME_ENV, LaunchedMember
 from lup.coordination.repository import RepositoryPeers, launched_member
 from lup.harness.messaging import WakeSockets
@@ -526,7 +526,7 @@ def verify_inside(
         environ: EnvVars = dict(os.environ)  # lup: ignore[os-environ]
     else:
         environ = dict(environment)
-    leased = fleet_lease(root, list(accessible))
+    leased = held_lease(root, fleet_lease(root, list(accessible)))
     return reported(
         manifest.check_inside(
             environ,
@@ -720,7 +720,10 @@ def settle_boundary(
         print(notice, file=sys.stderr)
     if trust.refusal:
         raise LaunchRefused(trust.refusal)
-    lease = fleet_lease(root, accessible=accessible)
+    # A container holds its launch record read-only, so the boundary its
+    # ledger describes carries the holds the policy then refuses writes to.
+    leased = fleet_lease(root, accessible=accessible)
+    lease = held_lease(root, leased) if sandbox.contained() else leased
     if exposed := store_exposure(lease):
         raise LaunchRefused(exposed)
     boundary = compile_boundary(
@@ -739,16 +742,25 @@ def settle_boundary(
         )
     if said:
         banner.add([Notice(text=said, urgency="boundary")])
-    record_preflight(
-        preflight,
-        sentinels,
-        root,
-        destination_policies=accept_destination_policies(
-            root, accessible, lease, runtime
-        ),
-        read_only_roots=list(lease.read_only),
-        destination_authorities=destination_authorities(accessible, runtime),
-    )
+    try:
+        record_preflight(
+            preflight,
+            sentinels,
+            root,
+            destination_policies=accept_destination_policies(
+                root, accessible, lease, runtime
+            ),
+            read_only_roots=list(lease.read_only),
+            destination_authorities=destination_authorities(accessible, runtime),
+        )
+    except OSError as refused:
+        # Where a launch is opened from inside a container, whose own
+        # launch record that container holds read-only.
+        raise LaunchRefused(
+            f"This launch cannot write its launch record under {root / '.lup'}: "
+            f"{refused.strerror}. A container holds its session's record "
+            "read-only, so a session is launched from the host."
+        ) from refused
     if not sandbox.contained():
         # No mounts, so no mount table -- and the one a contained launch left
         # behind describes a boundary this session is not behind. Attributing

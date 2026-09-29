@@ -792,6 +792,18 @@ inheritance and stale policy execution; they are mutable local bookkeeping,
 not authentication against a hostile process with the same filesystem
 authority.
 
+A container holds its checkout's launch record read-only — `.lup/preflight`,
+`.lup/policy-snapshots` and the mount table `.lup/boundary.json` — and pins
+every directory between a hold and the writable mount enclosing it, `.lup`
+and `.git` among them, so the record can be neither rewritten nor moved out
+from under its hold. A ledger's claim to a container is believed only where
+the dispatcher reads it through that read-only mount, which it measures from
+its own mount table: the same ledger written by a script in a host session,
+where the directory is writable, loses the claim and is answered as
+uncontained. Only the session's own checkout is held; a sibling's record
+stays writable, since a mount point inside a sibling would stop `git worktree
+remove` of it from inside.
+
 Every mounted repository's shared `config` and `hooks/` are held read-only,
 because git runs on the host what they name. For a linked worktree the
 container binds the shared git directory itself read-only and every directory
