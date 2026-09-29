@@ -738,17 +738,6 @@ def apply_command_row(
             return row_verdict(
                 row, "allow", "a declared dry-run flag makes this a probe"
             )
-    # Held to the read verb's bar rather than the probe's: an amendment still
-    # performs something, so a guarded flag beside it keeps its question.
-    if stated != "allow" and row["amending_flags"] and arguments:
-        clean = not any(
-            opaque_argument(word) or flag_matches(word, row["ask_flags"])
-            for word in arguments
-        )
-        if clean and any(flag_matches(w, row["amending_flags"]) for w in arguments):
-            return row_verdict(
-                row, "allow", "a declared flag points this at a record that exists"
-            )
     if stated != "allow" and row["write_markers"] and arguments:
         # Absence is the test, so every word has to be legible: one this
         # cannot read might carry the marker, and "no marker found" would
