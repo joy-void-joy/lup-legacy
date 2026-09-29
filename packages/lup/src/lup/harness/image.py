@@ -569,6 +569,7 @@ class Image(BaseModel, frozen=True):
             "nodejs",
             "bun",
             "util-linux",
+            "ttf-liberation",
         ],
         description=(
             "Packages every image gets regardless of the manifest -- what a "
@@ -591,6 +592,11 @@ class Image(BaseModel, frozen=True):
             "-- a port, a socket, a transport an HTTP proxy will not take. "
             "``util-linux`` is here for ``setpriv``, which the entrypoint "
             "starts the agent through so it inherits no capability. "
+            "``ttf-liberation`` is one small font family, metric-compatible "
+            "with the faces pages ask for, so text renders somewhere: with no "
+            "face fontconfig can see, headless Chromium fails every "
+            "``@font-face`` and measures page text 0 px wide, and Pillow "
+            "draws nothing. "
             "It is *not* here for the runtime's own sandbox, whose packages "
             "``inner_sandbox`` deliberately leaves unlisted; read that field "
             "before adding its companion here"
@@ -825,6 +831,15 @@ class Image(BaseModel, frozen=True):
                 variable="UV_CACHE_DIR",
                 because="a `uv sync` at every container start, re-downloading "
                 "the whole dependency tree without it",
+            ),
+            CacheVolume(
+                name="lup-uv-python",
+                path="/cache/uv-python",
+                variable="UV_PYTHON_INSTALL_DIR",
+                because="a project pinning a Python the image lacks: uv "
+                "downloaded it again at every container start and rebuilt the "
+                "environment linking to it; beside the cache rather than in "
+                "it, since `uv cache clean` empties that whole",
             ),
             CacheVolume(
                 name="lup-bun",
@@ -1569,7 +1584,9 @@ USER $UID:$GID
         ``overlays`` are files held read-only over a path inside the checkout
         -- a kind of session's own guidance over the committed one -- keyed
         by where each is on the host. Sorted with every other mount, so each
-        lands over the checkout it sits in rather than under it.
+        lands over the checkout it sits in rather than under it. A path the
+        lease holds read-only and an overlay covers is bound once, by the
+        overlay: the lease says it is held, and what is held there is that.
         """
         granted_devices = [
             argument for device in devices for argument in device.arguments()
@@ -1581,7 +1598,11 @@ USER $UID:$GID
         # in either direction.
         declared = [
             *[(host, inside, "rw") for host, inside in writable.items()],
-            *[(host, inside, "ro") for host, inside in read_only.items()],
+            *[
+                (host, inside, "ro")
+                for host, inside in read_only.items()
+                if inside not in (overlays or {}).values()
+            ],
             *[(host, inside, "ro") for host, inside in (overlays or {}).items()],
         ]
         mounts = [

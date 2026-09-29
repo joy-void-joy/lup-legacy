@@ -19,6 +19,7 @@ reports against, and what a project retires or rewrites by name.
 """
 
 import lup.harness.models as models
+from lup.harness.content.application import ApplicationLayout
 
 HEADER = models.GuidanceSection(
     id="header",
@@ -90,29 +91,51 @@ COMMIT_TYPE_POINTER = models.GuidanceSection(
     ],
 )
 
-CODE_CONVENTIONS = models.GuidanceSection(
-    id="code-conventions",
-    chapter="code",
-    parts=[
-        models.Passage(module=__name__, name="code-conventions"),
-    ],
-)
 
-TOOLING = models.GuidanceSection(
-    id="tooling",
-    chapter="tooling",
-    parts=[
-        models.Passage(module=__name__, name="tooling"),
-    ],
-)
+def code_conventions(layout: ApplicationLayout) -> models.GuidanceSection:
+    """How this repository's code is written, naming the application where it sits."""
+    return models.GuidanceSection(
+        id="code-conventions",
+        chapter="code",
+        parts=[
+            models.Passage(
+                module=__name__,
+                name="code-conventions",
+                values={"application": models.code(layout.directory())},
+            ),
+        ],
+    )
 
-CONFIGURATION = models.GuidanceSection(
-    id="configuration",
-    chapter="tooling",
-    parts=[
-        models.Passage(module=__name__, name="configuration"),
-    ],
-)
+
+def tooling(layout: ApplicationLayout) -> models.GuidanceSection:
+    """The development CLI and the tools beside it, naming the half that composes it."""
+    return models.GuidanceSection(
+        id="tooling",
+        chapter="tooling",
+        parts=[
+            models.Passage(
+                module=__name__,
+                name="tooling",
+                values={"application": models.code(layout.directory())},
+            ),
+        ],
+    )
+
+
+def configuration(layout: ApplicationLayout) -> models.GuidanceSection:
+    """Where settings load from, naming the one module that reads the environment."""
+    return models.GuidanceSection(
+        id="configuration",
+        chapter="tooling",
+        parts=[
+            models.Passage(
+                module=__name__,
+                name="configuration",
+                values={"config_py": models.code(layout.path("agent", "config.py"))},
+            ),
+        ],
+    )
+
 
 KEEPING_IN_STEP = models.GuidanceSection(
     id="keeping-in-step",

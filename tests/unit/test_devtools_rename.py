@@ -16,6 +16,7 @@ from pathlib import Path
 from lup_template.devtools.dev.init import (
     PACKAGE_IMPORT_RE,
     PACKAGE_STRING_ANCHOR_RE,
+    about_initialization,
     drop_stale_metadata,
     find_stale_references,
     is_renamer_module,
@@ -112,6 +113,34 @@ class TestStaleReferenceReport:
         assert "mod.py:1:" in stale[0]
         assert "src/lup_template/devtools/" in stale[0]
 
+    def test_reports_a_literal_left_in_a_passage(self, tmp_path: Path) -> None:
+        """Passages are prose, so the import rewriting never reaches them.
+
+        They name the application's paths through layout values; a literal
+        one somebody wrote anyway would go on naming the old package in
+        every generated page.
+        """
+        root = checkout(tmp_path)
+        passage = root / "src" / "pkg" / "harness" / "content" / "guidance.passage.md"
+        passage.parent.mkdir(parents=True)
+        passage.write_text("No module under `src/lup_template/` imports an SDK.\n")
+        (root / "src" / "pkg" / "notes.md").write_text("lup_template, in prose\n")
+
+        (stale,) = find_stale_references(root)
+
+        assert "guidance.passage.md:1:" in stale
+
+    def test_skips_the_passages_whose_subject_is_initialization(
+        self, tmp_path: Path
+    ) -> None:
+        """The init skill names the template's package on purpose."""
+        root = checkout(tmp_path)
+        skills = root / "src" / "pkg" / "harness" / "content" / "skills"
+        skills.mkdir(parents=True)
+        (skills / "init.passage.md").write_text("Renames `src/lup_template/`.\n")
+
+        assert find_stale_references(root) == []
+
     def test_skips_the_renamer_module(self, tmp_path: Path) -> None:
         root = checkout(tmp_path)
         renamer = root / "src" / "pkg" / "devtools" / "dev" / "init.py"
@@ -134,6 +163,18 @@ class TestStaleReferenceReport:
         assert find_stale_references(root) == [
             '  tests/test_mod.py:1: """Exercises lup_template.agent.core."""'
         ]
+
+
+def test_this_repository_s_passages_name_the_application_through_its_layout() -> None:
+    """So the rename has nothing in them to report, but where initialization is the subject."""
+    literal = [
+        str(path)
+        for path in Path("src").rglob("*.passage.md")
+        if "lup_template" in path.read_text(encoding="utf-8")
+        and not about_initialization(path)
+    ]
+
+    assert literal == []
 
 
 class TestStaleInstallMetadata:

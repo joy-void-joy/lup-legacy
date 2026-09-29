@@ -64,6 +64,7 @@ from lup.providers.claude.launch import companion_plugin_directories
 from lup.providers.claude.model_choice import ClaudeModelChoice, claude_effort_named
 from lup.providers.codex import Codex, CodexTools
 from lup.providers.codex.harness import CodexSpellings
+from lup.providers.codex.home import CodexWorktreeHomeStore, move_codex_homes
 from lup.providers.codex.model_choice import CodexModelChoice, codex_effort_named
 from lup.providers.codex.session import prepare_codex_plugin
 from lup.providers.profiles import DefaultHomeProfile, ProfileDirectory
@@ -203,7 +204,9 @@ class LaunchMode(BaseModel, frozen=True, arbitrary_types_allowed=True):
     container: OuterContainer = OuterContainer()
     """What this mode grants its container — network, memory, sudo, devices,
     folders, held trees, guidance of its own — over the person's config and
-    the project's, under the command line."""
+    the project's, under the command line. A mode meant to run unattended
+    holds the generated trees here, ``hold_generated=True``: the launch has no
+    other way to know the session will go unwatched."""
 
     targets: NativeTargets | None = None
     """What generation compiles while this mode is in force; unset, the project's own.
@@ -350,6 +353,15 @@ def install_codex_plugin_home(codex_home: Path, force: bool, trusted: bool) -> N
     it is the Codex adapter's and the command tree names no adapter.
     """
     prepare_codex_plugin([], codex_home, project_root(), {}, force, trusted)
+
+
+def move_checkout_codex_homes(dry_run: bool) -> list[str]:
+    """Move this repository's Codex homes out of its checkouts, into lup's state.
+
+    The whole of `harness codex-home migrate`, held here for the reason
+    :func:`install_codex_plugin_home` is: the store is the Codex adapter's.
+    """
+    return move_codex_homes(project_root(), CodexWorktreeHomeStore(), dry_run=dry_run)
 
 
 class StatedLaunch(TypedDict, total=False):

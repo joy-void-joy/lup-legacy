@@ -401,7 +401,7 @@ def observe(payload):
     """Record each patched path and run the shared post-edit checks."""
     root = payload["cwd"] if "cwd" in payload else ""
     if root:
-        publish_edition(root)
+        publish_edition(root, root)
     tool_input = payload["tool_input"] if "tool_input" in payload else {}
     command = tool_input["command"] if "command" in tool_input else ""
     if not command:
@@ -427,7 +427,7 @@ def observe(payload):
             if target in before and before[target] != stamp
         ]
         for target in changed:
-            publish_edition(target)
+            publish_edition(target, str(directory))
             named_claim_recorded(target, directory, caller_of(payload))
         return [
             finding

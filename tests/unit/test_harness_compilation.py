@@ -1138,7 +1138,7 @@ def test_every_typed_content_module_is_reachable_from_a_catalog() -> None:
     builder, including declined declarations, without changing that selection
     or importing the optional subjects owned by the library.
     """
-    for entry in [*opening_modules(LAYOUT), *closing_modules()]:
+    for entry in [*opening_modules(LAYOUT), *closing_modules(LAYOUT)]:
         assert entry.build().spec == entry.spec
     content = Path("src/lup_template/harness/content")
     assert content.is_dir()

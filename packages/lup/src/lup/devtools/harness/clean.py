@@ -1,4 +1,4 @@
-"""Everything lup keeps on this machine for contained sessions, and what nothing points at.
+"""Everything lup keeps on this machine for sessions, and what nothing points at.
 
 A launch sweeps as it goes — superseded images after a build, environments
 whose worktree is gone, stopped proxies — but a machine that has not launched
@@ -31,6 +31,10 @@ containers
     Egress proxies, which are left standing when they stop so their log can
     be read; a stopped one is finished. Sandbox and job containers keep
     lifecycles of their own and are not this command's to judge.
+homes
+    The checkout each was kept for, while it exists: the homes a runtime's
+    host sessions run in, kept in lup's state (:mod:`lup.launch.homes`),
+    each holding a copy of a login.
 """
 
 import shutil
@@ -64,6 +68,7 @@ from lup.launch.environments import (
     recorded_environments,
     revisions_home,
 )
+from lup.launch.homes import KeptHomes, kept_homes
 from lup.launch.superseded import SupersededFile
 from lup.harness.egress import PROXY_LABEL
 from lup.harness.image import ContainerEngine, Image
@@ -71,8 +76,10 @@ from lup.harness.notice import Notice
 from lup.providers.login import ProviderLogin
 from lup.sandbox.rail import sibling_worktrees
 
-type HeldKind = Literal["image", "volume", "environment", "revision", "container"]
-"""Which kind of thing lup keeps for contained sessions."""
+type HeldKind = Literal[
+    "image", "volume", "environment", "revision", "container", "home"
+]
+"""Which kind of thing lup keeps for sessions."""
 
 # lup: ignore[constant-declaration] — the name every sandbox workspace volume
 # is minted under, which this reads rather than chooses
@@ -268,6 +275,28 @@ def environments(root: Path) -> list[Held]:
     ]
 
 
+def homes() -> list[Held]:
+    """Every checkout's runtime homes on this machine, sized, with their checkout."""
+
+    def why(kept: KeptHomes) -> str:
+        if kept.checkout is None:
+            return "unclaimed: whose it is cannot be told; remove it by hand"
+        if kept.finished():
+            return f"its checkout {kept.checkout} is gone"
+        return f"the homes of {kept.checkout}"
+
+    return [
+        Held(
+            kind="home",
+            name=str(kept.directory),
+            size=readable_size(kept.size()),
+            why=why(kept),
+            finished=kept.finished(),
+        )
+        for kept in kept_homes()
+    ]
+
+
 class BoundMount(BaseModel, frozen=True):
     """One mount of a container, as the engine's inspection spells it."""
 
@@ -384,12 +413,19 @@ def inventory(
         if engine is not None
         else []
     )
-    return [*engined, *environments(root), *revisions(engine)]
+    return [*engined, *environments(root), *revisions(engine), *homes()]
 
 
 def listing(held: list[Held], engine: ContainerEngine | None) -> list[str]:
     """The inventory as a person reads it, kind by kind."""
-    kinds: list[HeldKind] = ["image", "volume", "environment", "revision", "container"]
+    kinds: list[HeldKind] = [
+        "image",
+        "volume",
+        "environment",
+        "revision",
+        "container",
+        "home",
+    ]
     unasked = (
         "No container client answered, so images, volumes and containers are unlisted."
     )
@@ -478,11 +514,15 @@ def cleaned(
     revisions_gone = [item for item in finished if item.kind == "revision"]
     for item in revisions_gone:
         shutil.rmtree(item.name)
+    homes_gone = [item for item in finished if item.kind == "home"]
+    for item in homes_gone:
+        shutil.rmtree(item.name)
     gone = [
         *gone,
         *superseded,
         *(item.name for item in environments_gone),
         *(item.name for item in revisions_gone),
+        *(item.name for item in homes_gone),
     ]
     return [
         *split,

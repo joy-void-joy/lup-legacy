@@ -39,8 +39,8 @@ def module(layout: ApplicationLayout) -> Module:
         guidance=[
             guidance.HEADER,
             guidance.DEVELOPMENT_WORKFLOW,
-            guidance.CODE_CONVENTIONS,
-            guidance.TOOLING,
+            guidance.code_conventions(layout),
+            guidance.tooling(layout),
             guidance.PROCESS_AND_COMMUNICATION,
             guidance.REPORTING_FRICTION,
             guidance.EXTERNAL_RESOURCES,

@@ -1,0 +1,16 @@
+subjects = ["ClipboardBridge.display_variable", "ClipboardBridge.display"]
+reason = """
+a contained session was handed DISPLAY=lup-bridge:0 so a runtime's clipboard \
+probe would find the shims, but the bridge speaks no X protocol, and every X \
+client in the session — headless Chromium among them, losing WebGL on every \
+page — tried to connect to it; the bridge's address reaches the session only \
+as LUP_CLIPBOARD_SOCKET, and a runtime finding no display copies through the \
+tmux shim or the terminal's escape sequence"""
+
+[[steps]]
+instruction = """
+Drop display_variable= and display= from any ClipboardBridge(...) you build; \
+ClipboardBridge.environment() carries the socket variable alone. A renderer \
+that removed DISPLAY before starting a headless browser in the container no \
+longer needs to."""
+command = ["uv", "run", "lup-devtools", "dev", "py", "text", "display_variable", "."]

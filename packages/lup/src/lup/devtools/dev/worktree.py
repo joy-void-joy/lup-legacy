@@ -26,6 +26,7 @@ from lup.web.build import dependencies_behind, restore_dependencies
 from lup.devtools.layout import find_tree_dir, get_tree_dir
 from lup.devtools.clipboard import copy_to_clipboard
 from lup.launch.environments import remove_worktree_environment
+from lup.launch.homes import remove_checkout_homes
 from lup.execution.shell import git
 from lup.launch.pointer_trust import judged_roots
 from lup.sandbox.pointers import tree_checkouts
@@ -1138,16 +1139,20 @@ def refuse_live_worktree_removal(path: Path) -> None:
         raise typer.Exit(1)
 
 
-def said_environment_removed(path: Path) -> None:
-    """Remove the container environment a removed worktree had, and say so.
+def said_checkout_state_removed(path: Path) -> None:
+    """Remove what lup kept outside a removed worktree for it, and say so.
 
-    From a session inside a container the host's environments are not
+    Its container environment, and the runtime homes lup's state kept for
+    its host sessions. From a session inside a container the host's are not
     here to remove, so nothing is said; the next launch on the host sweeps
-    every environment whose worktree is gone.
+    every environment whose worktree is gone, and `harness clean` every home.
     """
     removed = remove_worktree_environment(path)
     if removed is not None:
         typer.echo(f"Removed its container environment: {removed}")
+    homes = remove_checkout_homes(path.resolve())
+    if homes is not None:
+        typer.echo(f"Removed its runtime homes: {homes}")
 
 
 def remove(name: str, force: bool) -> None:
@@ -1180,7 +1185,7 @@ def remove(name: str, force: bool) -> None:
             args.append("--force")
         git(*args)
         typer.echo(f"Removed worktree: {path}")
-        said_environment_removed(path)
+        said_checkout_state_removed(path)
     except sh.ErrorReturnCode as e:
         typer.echo(f"Error removing worktree: {attributed_stderr(e)}", err=True)
         if not force:

@@ -2,6 +2,7 @@
 
 import json
 import plistlib
+import shutil
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -9,10 +10,13 @@ import jwt
 import tomlkit
 from tomlkit.items import Table
 
+from lup.launch.homes import kept_homes
+from lup.execution.shell import git
 from lup.providers.user_config import UserConfigFile
 from lup.types import EnvVars
 from lup.providers.codex.home import (
     CodexWorktreeHomeStore,
+    move_codex_homes,
     login_state,
     select_codex_home,
     trust_project,
@@ -78,22 +82,52 @@ def account_home_with(credential: str, root: Path) -> Path:
     return account
 
 
-def test_worktree_home_is_stable_and_lives_in_the_checkout(tmp_path: Path) -> None:
-    """Two checkouts are two homes, and each sits inside the checkout it serves.
+def test_worktree_home_is_stable_and_lives_outside_the_checkout(
+    tmp_path: Path,
+) -> None:
+    """Two checkouts are two homes, each kept in lup's state rather than the tree.
 
-    What a shared root needed a path digest to guarantee, distinct checkouts
-    now give for free — so the assertion is where the home is, not what it is
-    named."""
-    store = CodexWorktreeHomeStore(account_home=tmp_path / "account")
+    A home holds a copy of the login, so one inside the checkout made every
+    walk of the tree a walk over a credential — `grep -r` refused, an archive
+    or a build context carrying it. Its name is the checkout's, so a listing
+    reads, and the leaf is the runtime's own word for a home, which the
+    policy withholds a login beneath wherever it sits."""
+    store = CodexWorktreeHomeStore(
+        account_home=tmp_path / "account", homes=tmp_path / "state" / "codex-homes"
+    )
     first = tmp_path / "tree" / "first"
     second = tmp_path / "tree" / "second"
     first.mkdir(parents=True)
     second.mkdir()
 
-    assert store.home_for(first) == store.home_for(first)
-    assert store.home_for(first) != store.home_for(second)
-    assert store.home_for(first) == first / ".lup" / "codex-home"
-    assert first in store.home_for(first).parents
+    home = store.home_for(first)
+
+    assert home == store.home_for(first)
+    assert home != store.home_for(second)
+    assert not home.is_relative_to(first)
+    assert home.is_relative_to(tmp_path / "state" / "codex-homes")
+    assert home.name == "codex-home"
+    assert home.parent.name.startswith("first-")
+
+
+def test_a_home_says_which_checkout_it_is_for(tmp_path: Path) -> None:
+    """A home outlives nothing it cannot name: the sweep reads whose it is."""
+    store = CodexWorktreeHomeStore(
+        account_home=tmp_path / "account", homes=tmp_path / "homes"
+    )
+    worktree = tmp_path / "tree" / "dev"
+    worktree.mkdir(parents=True)
+
+    home = store.prepare(worktree)
+
+    assert store.derived(home)
+    assert not store.derived(worktree / ".lup" / "codex-home")
+    (listed,) = kept_homes(tmp_path / "homes")
+    assert listed.checkout == worktree.resolve()
+    assert not listed.finished()
+    shutil.rmtree(worktree)
+    (gone,) = kept_homes(tmp_path / "homes")
+    assert gone.finished()
 
 
 def test_a_worktree_below_a_project_answers_with_the_project_home(
@@ -111,8 +145,8 @@ def test_a_worktree_below_a_project_answers_with_the_project_home(
     )
     store = CodexWorktreeHomeStore(account_home=tmp_path / "account")
 
-    assert store.home_for(root / "src" / "deep") == root / ".lup" / "codex-home"
-    assert store.home_for(root) == store.home_for(root / "src" / "deep")
+    assert store.home_for(root / "src" / "deep") == store.home_for(root)
+    assert store.home_for(root).parent.name.startswith("project-")
 
 
 def test_prepare_seeds_auth_and_sanitized_personal_settings(tmp_path: Path) -> None:
@@ -849,3 +883,47 @@ def test_only_a_home_this_store_derived_may_be_written_into(tmp_path: Path) -> N
 
     assert store.derived(store.home_for(tmp_path / "checkout"))
     assert not store.derived(tmp_path / "account")
+
+
+def kept_in_the_checkout(root: Path) -> Path:
+    """A repository whose checkout keeps its Codex home where it used to: `.lup/codex-home`."""
+    git("init", "-q", "-b", "main", str(root))
+    kept = root / ".lup" / "codex-home"
+    kept.mkdir(parents=True)
+    (kept / "history.jsonl").write_text('{"session": 1}\n', encoding="utf-8")
+    return kept
+
+
+def test_a_home_kept_in_the_checkout_moves_to_lup_s_state_once(
+    tmp_path: Path,
+) -> None:
+    """The history a resumed session reopens goes with it, and a second run finds nothing."""
+    root = tmp_path / "repo"
+    kept = kept_in_the_checkout(root)
+    store = CodexWorktreeHomeStore(
+        account_home=tmp_path / "account", homes=tmp_path / "homes"
+    )
+
+    moved = move_codex_homes(root, store)
+
+    home = store.home_for(root)
+    assert len(moved) == 1
+    assert not kept.exists()
+    assert (home / "history.jsonl").read_text(encoding="utf-8") == '{"session": 1}\n'
+    (listed,) = kept_homes(tmp_path / "homes")
+    assert listed.checkout == root.resolve()
+    assert move_codex_homes(root, store) == []
+
+
+def test_a_home_already_kept_in_lup_s_state_is_not_overwritten(tmp_path: Path) -> None:
+    root = tmp_path / "repo"
+    kept = kept_in_the_checkout(root)
+    store = CodexWorktreeHomeStore(
+        account_home=tmp_path / "account", homes=tmp_path / "homes"
+    )
+    store.claimed(root).mkdir()
+
+    (said,) = move_codex_homes(root, store)
+
+    assert kept.is_dir()
+    assert "by hand" in said

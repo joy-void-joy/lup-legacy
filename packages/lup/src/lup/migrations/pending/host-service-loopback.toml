@@ -1,0 +1,15 @@
+subjects = ["CompanionLaunch.relayed", "loopback_relayed"]
+reason = """
+a container joined to no network still had a declared host service relayed \
+into it, the one way through a wall declared to have none; whose loopback a \
+session reaches is now three answers rather than a flag, and a host service \
+is refused where the container's network is none"""
+
+[[steps]]
+instruction = """
+Build CompanionLaunch with loopback=session_loopback(plugin, sandbox), from \
+lup.launch.declaration, where it took relayed=loopback_relayed(plugin, \
+sandbox): Loopback.HOST where the session reaches the host's loopback itself, \
+Loopback.OWN where a host service is relayed, Loopback.SEALED where the \
+container joins no network. A companion reading launch.relayed reads \
+launch.loopback is Loopback.OWN."""

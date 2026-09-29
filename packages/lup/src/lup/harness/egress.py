@@ -296,6 +296,10 @@ class SessionEgress(BaseModel, frozen=True):
         """
         return self.mode == "host"
 
+    def joins_no_network(self) -> bool:
+        """Whether the session is cut off from every network, its loopback alone left."""
+        return self.mode == "none"
+
     def enforced(self) -> EgressPolicy:
         """The policy the proxy is actually given, allowlist and all.
 

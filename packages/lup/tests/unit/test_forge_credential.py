@@ -121,6 +121,20 @@ def test_the_helper_refuses_in_the_name_of_the_variable_that_would_answer() -> N
     assert "exit 1" in helper.value
 
 
+def test_a_project_holding_no_credential_is_told_pushes_happen_on_the_host() -> None:
+    """A project that declines every credential is not invited to export one.
+
+    Its design is that the container holds none and the operator pushes from
+    the host, so naming a variable to export would point at the one thing it
+    decided not to do.
+    """
+    helper = GitAccess(source="none").helper(False)
+
+    assert "on the host" in helper.value
+    assert "LUP_GIT_TOKEN" not in helper.value
+    assert "exit 1" in helper.value
+
+
 def test_a_token_session_answers_https_challenges_with_the_variables_name() -> None:
     """The name, never the value: the container's own shell expands it.
 

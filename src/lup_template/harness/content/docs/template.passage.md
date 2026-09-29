@@ -244,7 +244,7 @@ what a session is offered are all derived from that one answer.
 
 {{ setup_page }}{{ sync_registry }}## How the two halves depend on each other
 
-`lup_template` imports `lup`. `lup` never imports `lup_template` — it is
+{{ application }} imports `lup`. `lup` never imports {{ application_2 }} — it is
 published standalone and could not. The placement test for any new utility is
 the same question in both directions: *would another project built on lup want
 this?* If yes it belongs in `packages/lup/`; if it only makes sense for this

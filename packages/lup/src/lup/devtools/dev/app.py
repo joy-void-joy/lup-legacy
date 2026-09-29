@@ -956,24 +956,26 @@ def create_dev_app(
             typer.Option("--check", help="Fail when docs/rules.md is stale"),
         ] = False,
     ) -> None:
-        """Generate the Lup rule and typed-suppression reference.
+        """Print the Lup rule and typed-suppression reference.
 
+        Read-only: `harness generate all` writes `docs/rules.md` with every
+        other generated page, and `--check` says whether it is current.
         Rendered against the selection this repository holds itself to, which
         is the same one the edit hook and the sweep read. Rendering the whole
-        library table instead writes a reference naming rules the gate here
-        does not enforce — and a project that retired one then has two
-        documents disagreeing about what it is held to, the generated file
-        saying it still applies.
+        library table instead names rules the gate here does not enforce —
+        and a project that retired one then has two documents disagreeing
+        about what it is held to, the generated file saying it still applies.
         """
+        selection = declared().hooks.rules
+        if not check_only:
+            typer.echo(rules.rule_reference_artifact(selection).content, nl=False)
+            return
         try:
-            destination = rules.write_rule_reference(
-                check=check_only, selection=declared().hooks.rules
-            )
+            destination = rules.write_rule_reference(check=True, selection=selection)
         except RuntimeError as error:
             typer.echo(str(error), err=True)
             raise typer.Exit(1) from error
-        verb = "verified" if check_only else "written"
-        typer.echo(f"Lup rule reference {verb}: {destination}")
+        typer.echo(f"Lup rule reference verified: {destination}")
 
     @app.command("models")
     def models_cmd(

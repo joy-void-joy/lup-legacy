@@ -11,6 +11,7 @@ A launch command exists exactly when its adapter is among those targets: a
 project generating one native tree is not offered a launcher for the other.
 """
 
+import os
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated
@@ -45,6 +46,7 @@ from lup.launch.container import (
     retire_images,
     superseded_images,
 )
+from lup.harness.environment import inside_a_container
 from lup.harness.image import Image, detected_client
 from lup.harness.generate import NativeHarnessComposition
 from lup.devtools.harness.profile_app import create_profile_app
@@ -59,6 +61,18 @@ from lup.workspace.paths import project_root
 from lup.policy.assets.host import boundary_description
 from lup.sandbox.models import NetworkMode
 from lup.sandbox.observed import unheld
+
+
+def refuse_inside_a_container(command: str, because: str) -> None:
+    """Stop a command whose answer is the host's, where it runs inside a session's container."""
+    # lup: ignore[os-environ] — the process's own placement hint is what is read
+    if inside_a_container(dict(os.environ)):
+        typer.echo(
+            f"This runs inside a lup container, where {because}. Run it from a "
+            f"terminal on the host: `uv run lup-devtools {command}`.",
+            err=True,
+        )
+        raise typer.Exit(1)
 
 
 def create_harness_app(
@@ -223,8 +237,15 @@ def create_harness_app(
         add --launch-only to run only the checks used at startup.
 
         Exits nonzero if a needed capability fails a check. Optional
-        conveniences alone do not cause failure.
+        conveniences alone do not cause failure. Refused inside a session's
+        container, where neither half can answer: run it on the host, and
+        `harness binds` to check from inside that the read-only binds hold.
         """
+        refuse_inside_a_container(
+            "harness requirements",
+            "the host's checks would take the container for the host and "
+            "--inside cannot start one",
+        )
         compositions = targets.resolve(target, project_root())
         # The two halves span the targets differently, because they answer
         # differently-scoped questions. What the image must carry is the
@@ -416,16 +437,16 @@ def create_harness_app(
             ),
         ] = False,
     ) -> None:
-        """List everything lup keeps for contained sessions, and what nothing points at.
+        """List everything lup keeps for sessions, and what nothing points at.
 
-        Images, volumes, project environments, held Codex revisions and egress
-        proxies, each with its size and what points at it. A dry run unless
-        ``--yes``: then this repository's old shared config home is split into
-        one per runtime, and every image no checkout points at, every
-        environment whose checkout is gone, every Codex revision no running
-        container binds, every stopped proxy and every sandbox workspace no
-        container holds is removed. A repository's own config home is never
-        removed here.
+        Images, volumes, project environments, held Codex revisions, egress
+        proxies and each checkout's runtime homes, with its size and what
+        points at it. A dry run unless ``--yes``: then this repository's old
+        shared config home is split into one per runtime, and every image no
+        checkout points at, every environment and every home whose checkout
+        is gone, every Codex revision no running container binds, every
+        stopped proxy and every sandbox workspace no container holds is
+        removed. A repository's own config home is never removed here.
         """
         root = project_root()
         compositions = targets.resolve(targets.every, root)
@@ -764,6 +785,40 @@ def create_harness_app(
         ) -> None:
             """Install the declared plugin and verify native discovery in the selected home."""
             launch.install_codex_plugin_home(codex_home, force, trust_project)
+
+        codex_home_app = typer.Typer(
+            help="The Codex home each checkout's host sessions run in"
+        )
+        app.add_typer(codex_home_app, name="codex-home")
+
+        @codex_home_app.command("migrate")
+        def migrate_codex_home(
+            dry_run: Annotated[
+                bool,
+                typer.Option("--dry-run", help="Say what would move, and move nothing"),
+            ] = False,
+        ) -> None:
+            """Move each worktree's Codex home out of the checkout, into lup's state.
+
+            A home holds a copy of the login, so one inside a checkout made every
+            recursive read of the tree walk a credential. Every worktree of this
+            repository is moved once; a home lup's state already keeps for that
+            checkout is left for a merge by hand.
+            """
+            refuse_inside_a_container(
+                "harness codex-home migrate",
+                "lup's state is the container's own rather than the host's",
+            )
+            moved = launch.move_checkout_codex_homes(dry_run)
+            if not moved:
+                typer.echo(
+                    "No checkout of this repository keeps a Codex home inside it."
+                )
+                return
+            if dry_run:
+                typer.echo("Dry run; nothing moved:")
+            for line in moved:
+                typer.echo(f"  {line}")
 
         @app.command(
             "codex",

@@ -49,7 +49,7 @@ from lup.launch.compilation import (
     kept_record,
     semantic_hooks,
 )
-from lup.launch.declaration import Reopening, loopback_relayed
+from lup.launch.declaration import Reopening, session_loopback
 from lup.policy.hooks import merge_hooks
 from lup.providers.claude.hooks import CLAUDE_SEMANTICS
 from lup.providers.claude.launch import claude_server, claude_settings, compiled_claude
@@ -867,7 +867,7 @@ class ClaudeSessionOpener:
             root=declared.cwd or Path.cwd(),
             runtime="claude",
             environment={**inherited_environment(), **declared.environment},
-            relayed=loopback_relayed(declared.plugin, declared.sandbox),
+            loopback=session_loopback(declared.plugin, declared.sandbox),
         )
         async with held_around(declared.companions, launch) as joined:
             for notice in joined.notices:

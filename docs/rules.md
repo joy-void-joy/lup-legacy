@@ -1,4 +1,4 @@
-<!-- Generated from lup.devtools.dev.rules by `uv run lup-devtools dev rules` — edit the source, not this file. See docs/harness.md. -->
+<!-- Generated from lup.devtools.dev.rules by `uv run lup-devtools harness generate all` — edit the source, not this file. See docs/harness.md. -->
 
 # Lup rule reference
 

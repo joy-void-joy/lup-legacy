@@ -123,7 +123,7 @@ def test_the_hook_and_the_library_name_one_location(tmp_path: Path) -> None:
     worktree = linked(main, tmp_path / "feature")
     file = edited(worktree)
 
-    publish_edition(str(file))
+    publish_edition(str(file), str(main))
 
     assert edition_path(worktree).is_file()
     assert edition_path(worktree) == edition_path(main)
@@ -133,7 +133,7 @@ def test_what_the_hook_writes_is_what_the_library_reads(tmp_path: Path) -> None:
     work = checkout(tmp_path / "repo")
     file = edited(work)
 
-    publish_edition(str(file))
+    publish_edition(str(file), str(work))
 
     assert read_edition(edition_path(work)) == Edition(workspace=work, file=file)
 
@@ -143,7 +143,7 @@ def test_an_edit_in_a_worktree_publishes_that_worktree(tmp_path: Path) -> None:
     main = checkout(tmp_path / "repo")
     worktree = linked(main, tmp_path / "feature")
 
-    publish_edition(str(edited(worktree)))
+    publish_edition(str(edited(worktree)), str(main))
 
     published = read_edition(edition_path(main))
     assert published is not None and published.workspace == worktree
@@ -153,8 +153,8 @@ def test_a_later_edit_replaces_an_earlier_one(tmp_path: Path) -> None:
     main = checkout(tmp_path / "repo")
     worktree = linked(main, tmp_path / "feature")
 
-    publish_edition(str(edited(main)))
-    publish_edition(str(edited(worktree)))
+    publish_edition(str(edited(main)), str(main))
+    publish_edition(str(edited(worktree)), str(main))
 
     published = read_edition(edition_path(main))
     assert published is not None and published.workspace == worktree
@@ -164,9 +164,26 @@ def test_a_path_in_no_repository_publishes_nothing(tmp_path: Path) -> None:
     loose = tmp_path / "loose.py"
     loose.write_text("x = 1\n", encoding="utf-8")
 
-    publish_edition(str(loose))
+    publish_edition(str(loose), str(tmp_path))
 
     assert list(tmp_path.glob("**/edition.json")) == []
+
+
+def test_an_edit_in_a_repository_nested_in_the_session_s_publishes_nothing(
+    tmp_path: Path,
+) -> None:
+    """Another repository's git directory is not this session's to keep state in.
+
+    The reader looks in the session's own repository, so a record written
+    into the nested one's is read by nobody and outlives the file it names.
+    """
+    session = checkout(tmp_path / "repo")
+    nested = checkout(session / "works")
+
+    publish_edition(str(edited(nested)), str(session))
+
+    assert not (nested / ".git" / "lup").exists()
+    assert read_edition(edition_path(session)) is None
 
 
 def test_an_unwritable_destination_does_not_raise(tmp_path: Path) -> None:
@@ -180,7 +197,7 @@ def test_an_unwritable_destination_does_not_raise(tmp_path: Path) -> None:
     work = checkout(tmp_path / "repo")
     (work / ".lup").write_text("occupied\n", encoding="utf-8")
 
-    publish_edition(str(edited(work)))
+    publish_edition(str(edited(work)), str(work))
 
 
 def checker(root: Path, payload: str) -> list[str]:
@@ -571,7 +588,7 @@ def test_the_published_bytes_are_the_declared_fields(tmp_path: Path) -> None:
     """The hook writes JSON by hand; drift here is drift in the contract."""
     work = checkout(tmp_path / "repo")
 
-    publish_edition(str(edited(work)))
+    publish_edition(str(edited(work)), str(work))
 
     written = json.loads(edition_path(work).read_text(encoding="utf-8"))
     assert set(written) == set(Edition.model_fields)

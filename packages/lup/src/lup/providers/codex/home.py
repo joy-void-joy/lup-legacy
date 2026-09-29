@@ -15,6 +15,7 @@ import asyncio
 import json
 import logging
 import shutil
+from collections.abc import Iterator
 from datetime import datetime
 from pathlib import Path
 
@@ -25,6 +26,7 @@ from tomlkit.items import Table
 from pydantic import BaseModel, TypeAdapter, ValidationError
 
 from lup.harness.assets.home_seed import RECORD, three_way
+from lup.launch.homes import checkout_directory, claimed_directory, homes_root
 from lup.providers.codex.harness_runtime import CodexPluginInstaller, PluginCacheConfig
 from lup.providers.codex.login import CODEX_LOGIN
 from lup.providers.codex.marketplace import CodexMarketplace
@@ -37,6 +39,7 @@ from lup.providers.codex.preferences import (
 )
 from lup.providers.codex.theme import CodexTheme, claude_daltonized_theme
 from lup.providers.user_config import EditorMode, UserConfigFile
+from lup.sandbox.rail import sibling_worktrees
 from lup.types import JsonObject
 from lup.providers.codex.trust import CodexHook, hooks_of, read_hooks, skipped
 from lup.types import EnvVars
@@ -46,18 +49,6 @@ from lup.workspace.paths import declared_project_root, project_root
 logger = logging.getLogger(__name__)
 
 
-SCOPED_HOME_DIR = Path(".lup") / "codex-home"
-"""Where a checkout keeps the Codex home its own sessions run under.
-
-Relative, and resolved against the checkout rather than against anything of
-the operator's. An absolute path handed here would resolve to itself for
-every worktree, which is the shared root this replaced.
-
-The directory holds a copy of the account credential, so a checkout that has
-opened a session is credential-bearing. `.lup/` is ignored, so git will not
-carry it; anything reading the tree without consulting git — an archive, a
-build context, an editor index — reads the credential along with the code.
-"""
 # lup: ignore[constant-declaration] — the keys Codex writes its own state under
 CODEX_CONFIG_STATE_KEYS = ("marketplaces", "plugins")
 
@@ -461,12 +452,14 @@ class CodexWorktreeHomeStore:
     own, drawn only where neither that nor the account names one.
     ``editor`` and ``settings`` are the lup config's editor mode and
     ``[codex.settings]`` table, laid over the account's at every launch.
+    ``homes`` is where the homes are kept, :func:`codex_homes_root` unless
+    named.
     """
 
     def __init__(
         self,
         account_home: Path = CODEX_LOGIN.ambient_home,
-        scoped_dir: Path = SCOPED_HOME_DIR,
+        homes: Path | None = None,
         launched_record: str = ".lup-launched.json",
         theme: str | None = None,
         fallback_theme: CodexTheme | None = None,
@@ -474,28 +467,34 @@ class CodexWorktreeHomeStore:
         settings: JsonObject | None = None,
     ) -> None:
         self.account_home = account_home
-        self.scoped_dir = scoped_dir
+        self.homes = homes or homes_root()
         self.launched_record = launched_record
         self.theme = theme
         self.fallback_theme = fallback_theme or claude_daltonized_theme()
         self.editor: EditorMode | None = editor
         self.settings = settings or {}
 
+    def checkout_for(self, worktree: Path) -> Path:
+        """The checkout whose home a worktree opens: the declared project enclosing it.
+
+        A worktree named below the root answers with the root's, rather than
+        opening a second home beneath itself; one enclosed by no declared
+        project answers for itself.
+        """
+        canonical = worktree.expanduser().resolve()
+        return declared_project_root(canonical) or canonical
+
     def home_for(self, worktree: Path) -> Path:
         """The home belonging to the checkout that encloses one worktree.
 
-        Inside the checkout, because a project's own state is the project's.
-        A checkout is already distinct from every other one, which is what
-        retires the path digest a root shared across projects needed to tell
-        two of them apart — and a worktree named below the root answers with
-        the root's home rather than opening a second one beneath itself.
-
-        A worktree enclosed by no declared project answers for itself. There
-        is no project to hold the home, and the alternative is reaching back
-        outside the tree for somewhere to put it.
+        In lup's state rather than the checkout, as :mod:`lup.launch.homes`
+        says why, under the runtime's own word for a home, so the policy
+        withholds the login in it the way it withholds one in any profile's.
         """
-        canonical = worktree.expanduser().resolve()
-        return (declared_project_root(canonical) or canonical) / self.scoped_dir
+        return (
+            checkout_directory(self.homes, self.checkout_for(worktree))
+            / CODEX_LOGIN.home_subdir
+        )
 
     def derived(self, home: Path) -> bool:
         """Whether this store made that home, which decides what may be written.
@@ -504,11 +503,23 @@ class CodexWorktreeHomeStore:
         reaches its home as one environment variable, and a second variable
         saying "this one may be written into" would be a claim any caller
         who controls the environment could make. The path is the claim: only
-        this store puts a home at :attr:`scoped_dir`, and a home somewhere
+        this store puts a home under :attr:`homes`, and a home somewhere
         else is somebody's own.
         """
         resolved = home.expanduser().resolve()
-        return resolved.parts[-len(self.scoped_dir.parts) :] == self.scoped_dir.parts
+        return (
+            resolved.name == CODEX_LOGIN.home_subdir
+            and resolved.parent.parent == self.homes.expanduser().resolve()
+        )
+
+    def claimed(self, worktree: Path) -> Path:
+        """The checkout's home, where its directory is made and says whose it is.
+
+        So a sweep can tell a home whose checkout is gone, which a digest
+        cannot say by running backwards.
+        """
+        directory = claimed_directory(self.homes, self.checkout_for(worktree))
+        return directory / CODEX_LOGIN.home_subdir
 
     def prepare(self, worktree: Path) -> Path:
         """Refresh Lup-owned files and derive the account's settings into a scoped home.
@@ -518,8 +529,8 @@ class CodexWorktreeHomeStore:
         setting the person changed since — in their own home, or in a
         session in any other checkout — would never arrive here.
         """
-        scoped_home = self.home_for(worktree)
-        scoped_home.mkdir(mode=0o700, parents=True, exist_ok=True)
+        scoped_home = self.claimed(worktree)
+        scoped_home.mkdir(mode=0o700, exist_ok=True)
         scoped_home.chmod(0o700)
         carried_themes(self.account_home, scoped_home, overwrite=True)
         self.fallback_theme.write(scoped_home)
@@ -652,6 +663,41 @@ def select_codex_home(
         path=active_store.prepare(worktree),
         isolated=True,
     )
+
+
+def move_codex_homes(
+    root: Path, store: CodexWorktreeHomeStore, *, dry_run: bool = False
+) -> list[str]:
+    """Move each checkout's Codex home out of ``.lup/codex-home``, to where ``store`` keeps it.
+
+    The one step a checkout that kept its home inside itself takes, once:
+    every worktree of the repository, since each kept one. Moved rather than
+    copied, so one login chain goes on renewing and the history a resumed
+    session reopens goes with it; a home already kept for that checkout is
+    left beside the one here rather than overwritten, since either may hold
+    history the other does not.
+    """
+
+    def moved(worktree: Path) -> Iterator[str]:
+        kept = worktree / ".lup" / "codex-home"
+        if not kept.is_dir():
+            return
+        destination = store.home_for(worktree)
+        if destination.exists():
+            yield (
+                f"{kept}: kept, since {destination} already holds this checkout's "
+                "home; merge the two by hand and remove this one"
+            )
+            return
+        if not dry_run:
+            shutil.move(kept, store.claimed(worktree))
+        yield f"{kept} -> {destination}"
+
+    return [
+        line
+        for worktree in [root, *sibling_worktrees(root)]
+        for line in moved(worktree)
+    ]
 
 
 class CodexPolicyUntrusted(RuntimeError):

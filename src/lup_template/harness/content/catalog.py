@@ -129,7 +129,7 @@ def adoptions(layout: ApplicationLayout) -> list[Adoption]:
                     page(
                         "corpus",
                         "corpus.md",
-                        lambda _: corpus.DOCUMENT,
+                        lambda _: corpus.document(layout),
                         layout.docs(),
                     )
                 ]

@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "generator_version": "0.2.0",
-  "source_digest": "7035464cea8859f8bc75e70ca2c784b186f5007619b46a372df569ea63959e40",
+  "source_digest": "12a6d91c62b63bfb3ac7aeb532a71d1a7d097d66d71ba9cfd3c1ca4326cfd4df",
   "target_requirements": [
     "codex-cli>=0.144"
   ],
@@ -58,7 +58,7 @@
     {
       "path": ".codex/plugins/lup/TEMPLATE_AGENTS.md",
       "category": "generated",
-      "sha256": "1d82fba3c1216ff9efb7bd815672ff95f462aa8f84edcd16472694d46964046c",
+      "sha256": "f7211a111345b38dd658a700868afadf2486330e057f61bfebe659f17113ea1a",
       "semantic_id": "harness.template-guidance",
       "executable": false
     },
@@ -457,7 +457,7 @@
     {
       "path": ".codex/plugins/lup/hooks/scripts/policy.py",
       "category": "generated",
-      "sha256": "29a60b2297793614f47fd2cb8d8da2018bd57a1e88e33b252e1b286d1b786fa3",
+      "sha256": "e0884f025416d021398162d293a6415bb55fd85202424b2786fd7db3893ab269",
       "semantic_id": "hooks.lup-policy",
       "executable": true
     },
@@ -471,7 +471,7 @@
     {
       "path": ".codex/plugins/lup/hooks/scripts/policy_evaluator.py",
       "category": "generated",
-      "sha256": "0c4a5e1576381dcaf1bfe7a6d7e6e4fa2ba47e147e92fda1639212d1d545f4d8",
+      "sha256": "4ca79e6013e698de02206e6f5662ac0f04ba0d3435c107911bbbf9795c716b01",
       "semantic_id": "hooks.lup-policy",
       "executable": false
     },
@@ -604,7 +604,7 @@
     {
       "path": ".codex/plugins/lup/skills/hooks/SKILL.md",
       "category": "generated",
-      "sha256": "2c53f1405c6f2f74c0cdfa25dd6cb90c70ece79ffb267e65dfa018b8289e30b3",
+      "sha256": "53286dc0996a3030fb22705b1512cf31db5b1346ef824dda1fd1212b35f1246a",
       "semantic_id": "skill.hooks",
       "executable": false
     },
@@ -625,7 +625,7 @@
     {
       "path": ".codex/plugins/lup/skills/init/SKILL.md",
       "category": "generated",
-      "sha256": "2e515e7e99a2adfc14e0cdbc6627b314c94b3c09e812139398974c8f86f54ce7",
+      "sha256": "cfa1f571102ef7a2617f177ae2989bd534a528cfc59ccb158db7aed9b700106c",
       "semantic_id": "skill.init",
       "executable": false
     },
