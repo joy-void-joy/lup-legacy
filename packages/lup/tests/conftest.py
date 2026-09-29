@@ -55,14 +55,18 @@ def pytest_configure(config: pytest.Config) -> None:
     Python warns about a fork from a threaded process, and `sh` execs straight
     after it forks, which the warning cannot see: a suite running pools beside
     it — xdist's own worker thread among them — printed hundreds per run,
-    burying the warnings that were news. Added to the configuration rather
+    burying the warnings that were news. A foreground call forks inside
+    `os.spawnve`, which execs as straight away and warns as `os`, so both
+    modules are named — and nothing else, since a fork that goes on running
+    Python is the hazard the warning is for. Added to the configuration rather
     than set with `warnings.filterwarnings`, because pytest opens every test's
     warnings afresh from its configuration, and a session fixture's git calls
     land outside any window a fixture could open.
     """
     config.addinivalue_line(
         "filterwarnings",
-        r"ignore:This process \(pid=\d+\) is multi-threaded:DeprecationWarning:sh",
+        r"ignore:This process \(pid=\d+\) is multi-threaded"
+        r":DeprecationWarning:(sh|os)$",
     )
 
 

@@ -8,25 +8,28 @@ import os
 import threading
 import warnings
 
+import pytest
 import sh
 
 from lup.harness.environment import launcher_decided_names
 from lup.providers.identity import runtime_decided_names
 
 
-def test_a_fork_beside_a_running_thread_warns_nothing() -> None:
+@pytest.mark.parametrize("foreground", [False, True])
+def test_a_fork_beside_a_running_thread_warns_nothing(foreground: bool) -> None:
     """`sh` forks, and Python warns about every fork a threaded process makes.
 
     The warning names a hazard `sh` does not have — it execs straight after
     forking — and a suite that runs a pool beside it printed hundreds of them
-    per run, burying the warnings that were news.
+    per run, burying the warnings that were news. A foreground call forks
+    through `os.spawnve`, so its warning names `os` rather than `sh`.
     """
     release = threading.Event()
     held = threading.Thread(target=release.wait)
     held.start()
     try:
         with warnings.catch_warnings(record=True) as caught:
-            sh.Command("true")()
+            sh.Command("true")(_fg=foreground)
     finally:
         release.set()
         held.join()
