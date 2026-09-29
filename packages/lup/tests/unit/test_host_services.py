@@ -26,11 +26,13 @@ from lup.harness.image import Image
 from lup.launch.companions import CompanionLaunch, HostService, held_companions
 from lup.launch.declaration import (
     InnerSandbox,
+    Loopback,
     Mount,
     NoSandbox,
     OuterContainer,
-    loopback_relayed,
+    session_loopback,
 )
+from lup.launch.refusal import LaunchRefused
 
 
 @pytest.fixture
@@ -55,9 +57,9 @@ def echo() -> Iterator[int]:
     listening.close()
 
 
-def launch(tmp_path: Path, relayed: bool) -> CompanionLaunch:
+def launch(tmp_path: Path, loopback: Loopback) -> CompanionLaunch:
     return CompanionLaunch(
-        root=tmp_path, runtime="claude", environment={}, relayed=relayed
+        root=tmp_path, runtime="claude", environment={}, loopback=loopback
     )
 
 
@@ -66,7 +68,7 @@ def test_on_the_host_the_session_is_handed_the_service_s_own_address(
 ) -> None:
     model = HostService(name="model-server", port=11434, variable="MODEL_URL")
 
-    with held_companions([model], launch(tmp_path, relayed=False)) as joined:
+    with held_companions([model], launch(tmp_path, Loopback.HOST)) as joined:
         assert joined.environment == {"MODEL_URL": "http://127.0.0.1:11434"}
         assert joined.mounts == []
 
@@ -76,7 +78,7 @@ def test_a_contained_session_reaches_the_service_through_its_socket_alone(
 ) -> None:
     model = HostService(name="model-server", port=echo, variable="MODEL_URL")
 
-    with held_companions([model], launch(tmp_path, relayed=True)) as joined:
+    with held_companions([model], launch(tmp_path, Loopback.OWN)) as joined:
         ((directory,),) = [[mount.path for mount in joined.mounts]]
         relay = joined.environment["LUP_HOST_SERVICE_MODEL_SERVER"]
         assert joined.environment["MODEL_URL"] == f"http://127.0.0.1:{echo}"
@@ -99,7 +101,7 @@ def test_each_service_is_relayed_under_a_variable_of_its_own(
         HostService(name="db", port=echo, variable="DATABASE_URL", scheme="postgres"),
     ]
 
-    with held_companions(services, launch(tmp_path, relayed=True)) as joined:
+    with held_companions(services, launch(tmp_path, Loopback.OWN)) as joined:
         assert joined.environment["DATABASE_URL"] == f"postgres://127.0.0.1:{echo}"
         assert {"LUP_HOST_SERVICE_MODEL", "LUP_HOST_SERVICE_DB"} <= set(
             joined.environment
@@ -132,7 +134,7 @@ def test_the_entrypoint_s_relay_carries_a_connection_to_the_host_service(
     script = tmp_path / "entrypoint"
     script.write_text(Image(config_home=str(tmp_path / "cfg")).entrypoint())
 
-    with held_companions([model], launch(tmp_path, relayed=True)) as joined:
+    with held_companions([model], launch(tmp_path, Loopback.OWN)) as joined:
         (directory,) = [mount.path for mount in joined.mounts]
         started = subprocess.Popen(
             ["sh", str(script), "sleep", "5"],
@@ -159,8 +161,21 @@ def test_the_entrypoint_s_relay_carries_a_connection_to_the_host_service(
 
 
 def test_only_a_container_with_a_loopback_of_its_own_is_relayed() -> None:
-    assert loopback_relayed(None, OuterContainer())
-    assert loopback_relayed(None, OuterContainer(network="none"))
-    assert not loopback_relayed(None, OuterContainer(network="host"))
-    assert not loopback_relayed(None, InnerSandbox())
-    assert not loopback_relayed(None, NoSandbox())
+    assert session_loopback(None, OuterContainer()) is Loopback.OWN
+    assert session_loopback(None, OuterContainer(network="none")) is Loopback.SEALED
+    assert session_loopback(None, OuterContainer(network="host")) is Loopback.HOST
+    assert session_loopback(None, InnerSandbox()) is Loopback.HOST
+    assert session_loopback(None, NoSandbox()) is Loopback.HOST
+
+
+def test_a_container_joined_to_no_network_refuses_a_host_service(
+    tmp_path: Path,
+) -> None:
+    """A relay would be the one way through a wall declared to have none."""
+    model = HostService(name="model-server", port=11434, variable="MODEL_URL")
+
+    with (
+        pytest.raises(LaunchRefused, match="model-server.*no network"),
+        held_companions([model], launch(tmp_path, Loopback.SEALED)),
+    ):
+        pass

@@ -444,17 +444,30 @@ def declared_image(plugin: Harness | Path | None, sandbox: "SessionSandbox") -> 
     return sandbox.networked(plugin.image if isinstance(plugin, Harness) else Image())
 
 
-def loopback_relayed(plugin: Harness | Path | None, sandbox: "SessionSandbox") -> bool:
-    """Whether a session behind ``sandbox`` has a loopback of its own.
+class Loopback(StrEnum):
+    """Whose ``127.0.0.1`` a session reaches, which is how a service on the host's reaches it."""
 
-    A container on any network but the host's does, so a service on the
-    host's loopback reaches it only through a relay; a session on the host,
-    or in a container sharing the host's network, reaches the service itself.
-    """
-    return (
-        sandbox.posture().contained()
-        and not declared_image(plugin, sandbox).egress.shares_host_loopback()
-    )
+    HOST = "host"
+    """The host's own: a session on the host, or in a container sharing its
+    network, reaches the service itself."""
+
+    OWN = "own"
+    """Its container's own, on a network: a service on the host's loopback
+    reaches it only through a relay."""
+
+    SEALED = "sealed"
+    """Its container's own, on no network at all: a relay would be the one
+    way through a wall declared to have none, so nothing is relayed."""
+
+
+def session_loopback(
+    plugin: Harness | Path | None, sandbox: "SessionSandbox"
+) -> Loopback:
+    """Whose loopback a session behind ``sandbox`` reaches."""
+    egress = declared_image(plugin, sandbox).egress
+    if not sandbox.posture().contained() or egress.shares_host_loopback():
+        return Loopback.HOST
+    return Loopback.SEALED if egress.joins_no_network() else Loopback.OWN
 
 
 def settled_sandbox(asked: LaunchSandbox | None, stated: str) -> LaunchSandbox:
