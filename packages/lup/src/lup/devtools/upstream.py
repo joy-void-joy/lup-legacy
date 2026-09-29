@@ -1,8 +1,10 @@
 """Defects this project measured in components it does not own.
 
-`dev report-friction` files against the repository it is run in, which is the
-right target while the repair is one somebody here could make. A defect in
-the runtime underneath has no such home: the fix is somebody else's, the
+`dev report-friction` files unasked on the repository it is run in, and on a
+tracker this project declares once `--repo` names it and somebody is asked:
+the right targets while the repair is one somebody here, or in a project this
+one builds on, could make. A defect in the runtime underneath has no such
+home: the fix is somebody else's, the
 evidence is ours, and a finding that lives only in a session's narration
 teaches nobody -- the same argument the guidance makes for filing friction,
 pointed one component outwards.

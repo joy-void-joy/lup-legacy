@@ -88,7 +88,9 @@ class TrackerRoutes(BaseModel, frozen=True):
         Unnamed, the owning component decides and this checkout answers for
         whatever no tracker claims -- which is the routing a report needs: a
         defect in a dependency this tree cannot edit belongs to whoever can
-        edit it, and everything else belongs here.
+        edit it, and everything else belongs here. Where a report belongs is
+        not where it may be filed unasked, which :meth:`claimed_elsewhere`
+        answers for a new one.
 
         Named, the repository has to be this one or a declared tracker.
         Returned in the spelling that was declared rather than the one that
@@ -136,6 +138,35 @@ class TrackerRoutes(BaseModel, frozen=True):
                 "To reach it deliberately, run gh directly — the permission"
                 " policy asks about that:",
                 f"  {shlex.join(['gh', *route, '--repo', named])}",
+            ]
+        )
+
+    def claimed_elsewhere(self, component: str, invocation: list[str]) -> str:
+        """Why a new report routed past this checkout is not filed, and what files it.
+
+        The permission policy reads the words and routing reads the
+        component, so an unnamed report reads as one filed on this checkout's
+        own repository, the form the policy lets through unasked. Filed where
+        a declared tracker claims its component, it would reach that
+        project's watchers with nobody asked. It stops instead, and prints
+        the same invocation naming the tracker -- the form the policy asks
+        about -- spelled with the arguments given, as :meth:`refusal` spells
+        its gh line.
+
+        Empty where the component stays here, a tracker naming this
+        checkout's own repository in another spelling included.
+        """
+        tracker = self.owning(component)
+        if not tracker or names_same_repository(tracker, self.own):
+            return ""
+        return "\n".join(
+            [
+                f"{component} belongs to {tracker}, not to this checkout's"
+                f" repository ({self.own or 'which origin does not name'}).",
+                "A report filed there reaches another project's watchers, so it"
+                " is not filed unasked. Naming the tracker files it, and the"
+                " permission policy asks about that:",
+                f"  {shlex.join([*invocation, '--repo', tracker])}",
             ]
         )
 

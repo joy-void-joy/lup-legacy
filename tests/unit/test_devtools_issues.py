@@ -1,5 +1,6 @@
 """Behavior tests for structured workflow-friction reports."""
 
+import shlex
 from types import SimpleNamespace
 from unittest.mock import Mock
 
@@ -162,7 +163,11 @@ def test_cli_forwards_correction_number(monkeypatch: pytest.MonkeyPatch) -> None
 def test_cli_routes_to_the_configured_dependency_owner(
     monkeypatch: pytest.MonkeyPatch, component: str, expected: str
 ) -> None:
-    """The copied catalog and wired command preserve component ownership."""
+    """The copied catalog and wired command preserve component ownership.
+
+    Read through a correction, which goes wherever routing sends it: a
+    report already filed on the dependency's tracker is corrected there.
+    """
     monkeypatch.setattr(
         library,
         "configured_repository",
@@ -173,10 +178,78 @@ def test_cli_routes_to_the_configured_dependency_owner(
     filed = Mock(return_value="https://forge.example/upstream/framework/issues/1")
     monkeypatch.setattr(issues.FrictionReport, "file", filed)
 
-    result = CliRunner().invoke(app, friction_arguments(report))
+    result = CliRunner().invoke(app, [*friction_arguments(report), "--issue", "4"])
 
     assert result.exit_code == 0, result.output
-    filed.assert_called_once_with(repository=expected, issue=None)
+    filed.assert_called_once_with(repository=expected, issue=4)
+
+
+@pytest.mark.parametrize(
+    "component",
+    ["lup/sandbox, lup/devtools", "lup.resolver.state", "lup/policy/resolver"],
+)
+def test_a_new_report_routed_to_a_dependency_prints_what_files_it(
+    monkeypatch: pytest.MonkeyPatch, component: str
+) -> None:
+    """Filed unasked only here; the dependency's tracker is named, and asks.
+
+    The permission policy reads the words, and an unnamed report reads as one
+    filed on this checkout's repository -- so filed on the dependency's
+    tracker it would reach that project's watchers with nobody asked. It
+    stops instead, and prints the same invocation naming the tracker. That
+    line is the whole route out, so it is run here: it files the very report
+    that stopped, where routing said it belongs.
+    """
+    monkeypatch.setattr(
+        library,
+        "configured_repository",
+        lambda *_args: "https://forge.example/upstream/framework.git",
+    )
+    monkeypatch.setattr("lup.devtools.dev.app.repository_slug", lambda: "acme/widget")
+    report = friction_report().model_copy(update={"component": component})
+    filed = Mock(return_value="https://forge.example/upstream/framework/issues/1")
+    monkeypatch.setattr(issues.FrictionReport, "file", filed)
+    named = ["--repo", "forge.example/upstream/framework"]
+    route = ["uv", "run", "lup-devtools", *friction_arguments(report), *named]
+
+    stopped = CliRunner().invoke(app, friction_arguments(report))
+
+    assert stopped.exit_code == 1
+    filed.assert_not_called()
+    assert shlex.join(route) in stopped.output
+
+    rerun = CliRunner().invoke(app, shlex.split(shlex.join(route))[3:])
+
+    assert rerun.exit_code == 0, rerun.output
+    filed.assert_called_once_with(
+        repository="forge.example/upstream/framework", issue=None
+    )
+
+
+def test_a_new_report_this_checkout_owns_is_filed_here(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Every defect this tree owns is filed without a question.
+
+    Including where the tracker claiming the component is this checkout's own
+    repository written another way, which is lup's own checkout reporting
+    against lup.
+    """
+    monkeypatch.setattr(
+        library,
+        "configured_repository",
+        lambda *_args: "https://github.com/acme/widget.git",
+    )
+    monkeypatch.setattr("lup.devtools.dev.app.repository_slug", lambda: "acme/widget")
+    filed = Mock(return_value="https://github.com/acme/widget/issues/1")
+    monkeypatch.setattr(issues.FrictionReport, "file", filed)
+
+    for component in ("aib.devtools.trace", "lup/policy"):
+        report = friction_report().model_copy(update={"component": component})
+        result = CliRunner().invoke(app, friction_arguments(report))
+        assert result.exit_code == 0, result.output
+
+    assert [call.kwargs["issue"] for call in filed.call_args_list] == [None, None]
 
 
 def test_disabled_issues_offer_an_explicit_declared_route(

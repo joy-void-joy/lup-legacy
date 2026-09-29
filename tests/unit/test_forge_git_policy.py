@@ -2,9 +2,10 @@
 
 What a session may do to a shared repository was settled per spelling rather
 than per verb: pushing, merging, and opening, editing or merging a pull
-request allow, however they are reached; a force allows only under a lease
-onto a named feature branch; deleting a remote branch, a request against a
-repository nobody declared, and filing an issue ask. Each row below is one
+request allow, however they are reached, and so does filing an issue on this
+repository; a force allows only under a lease onto a named feature branch;
+deleting a remote branch and a request against a repository nobody declared,
+a filed issue among them, ask. Each row below is one
 spelling of one of those decisions, and it is judged three times -- by the
 reading ``dev policy`` gives, by the compiled Claude dispatcher, and by the
 compiled Codex one -- because a decision one of them answered differently
@@ -78,15 +79,25 @@ DECISIONS = [
     ("gh pr create --repo other/x --title t --body b", "ask", "another repository"),
     ("gh pr create -R other/x --title t --body b", "ask", "another repository"),
     ("gh api repos/other/x/pulls -f title=t", "ask", "nobody declared"),
-    # Filing an issue, by gh or by the friction report that files one; the
-    # report pointed at one already filed amends it instead.
-    ("gh issue create --title t --body b", "ask", "filing an issue"),
-    ("gh api repos/{owner}/{repo}/issues -f title=t", "ask", "filing an issue"),
+    # Filing an issue, by gh or by the friction report that files one: on
+    # this repository's own tracker it allows, and naming another asks. The
+    # report pointed at one already filed corrects it.
+    ("gh issue create --title t --body b", "allow", ""),
+    ("gh api repos/{owner}/{repo}/issues -f title=t", "allow", ""),
+    ("gh issue create --repo other/x --title t", "ask", "another repository"),
+    ("gh issue create -R other/x --title t", "ask", "another repository"),
+    ("gh api repos/other/x/issues -f title=t", "ask", "nobody declared"),
     (
         "uv run lup-devtools dev report-friction --summary s --component c"
         " --command x --error e --state s --recovery-cost r",
+        "allow",
+        "",
+    ),
+    (
+        "uv run lup-devtools dev report-friction --summary s --component c"
+        " --command x --error e --state s --recovery-cost r --repo other/x",
         "ask",
-        "opens an issue",
+        "named tracker",
     ),
     (
         "uv run lup-devtools dev report-friction --summary s --component c"
