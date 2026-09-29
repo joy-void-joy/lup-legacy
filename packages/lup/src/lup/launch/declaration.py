@@ -146,6 +146,10 @@ class Sandbox(BaseModel, ABC, frozen=True, extra="forbid"):
         """How much memory this wall's container may hold, where it bounds it."""
         return None
 
+    def holds_generated(self) -> bool:
+        """Whether this wall holds the generated trees the runtime runs from read-only."""
+        return False
+
     def nested(self) -> list[NestedRepository]:
         """The repositories inside the checkout this wall holds as it holds the checkout's own."""
         return []
@@ -202,6 +206,15 @@ class OuterContainer(Sandbox, frozen=True):
     """How much memory the container may hold, an amount or a share of what
     the engine can hand out; unset, the engine's default, which is no limit."""
 
+    hold_generated: bool = False
+    """Whether the generated trees the runtime runs from are held read-only:
+    the plugin whose hooks judge the session, and the project settings and
+    guidance the runtime reads, so a session cannot change what judges it.
+    Regenerating them is then the host's work — a session asking is told so
+    before anything is written — as is any git command rewriting them in
+    this checkout: a merge, a switch or a reset that touches them. Only this
+    checkout's trees; a sibling worktree's stay the session's to regenerate."""
+
     def posture(self) -> LaunchSandbox:
         return LaunchSandbox.OUTER
 
@@ -225,6 +238,9 @@ class OuterContainer(Sandbox, frozen=True):
 
     def memory_limit(self) -> MemoryLimit | None:
         return self.memory
+
+    def holds_generated(self) -> bool:
+        return self.hold_generated
 
     def nested(self) -> list[NestedRepository]:
         return list(self.nested_repositories)

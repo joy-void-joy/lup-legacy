@@ -53,7 +53,7 @@ from lup.providers.codex.home import (
     select_codex_home,
 )
 from lup.providers.codex.login import CODEX_HOME, CODEX_LOGIN
-from lup.providers.codex.marketplace import CodexMarketplace
+from lup.providers.codex.marketplace import MARKETPLACE_MANIFEST, CodexMarketplace
 from lup.providers.codex.model_choice import (
     codex_default_effort,
     codex_effort_arguments,
@@ -312,6 +312,31 @@ def codex_sandbox_mode(
             return min(asked, key=CODEX_SANDBOX_WIDTH.index)
         case LaunchSandbox.NONE:
             return declared
+
+
+def codex_held_trees(root: Path, offered: CodexMarketplace | None) -> list[Path]:
+    """The generated trees a Codex session in ``root`` runs from, as a container holds them.
+
+    The plugin the session's home installs from, whole, and its rules file
+    where the checkout offers one; then the generated agents, the project
+    configuration Codex reads, the marketplace offering the plugin and the
+    guidance, each alone. The machine's rendered skills and the checkout's
+    local configuration stay writable, being nobody's generation. Only what
+    is there, since a bind whose source is missing refuses the container.
+    """
+    checkout = root.resolve()
+    offering = (
+        [offered.source, checkout / ".codex" / "rules" / f"{offered.plugin}.rules"]
+        if offered is not None and offered.source.is_relative_to(checkout)
+        else []
+    )
+    alone = [
+        checkout / ".codex" / "agents",
+        checkout / ".codex" / "config.toml",
+        checkout / MARKETPLACE_MANIFEST,
+        checkout / "AGENTS.md",
+    ]
+    return [path for path in [*offering, *alone] if path.exists()]
 
 
 def codex_account_environment(agent: "Codex") -> EnvVars:
@@ -754,6 +779,11 @@ def codex_opening(
         privileges=config.sandbox.privileges(),
         nested=config.sandbox.nested(),
         memory=config.sandbox.memory_limit(),
+        trees=(
+            codex_held_trees(root, CodexMarketplace.declared(offered))
+            if config.sandbox.holds_generated()
+            else []
+        ),
     )
     return LaunchCommand(argv=argv, env=environment, cwd=root)
 

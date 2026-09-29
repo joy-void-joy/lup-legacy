@@ -172,6 +172,30 @@ def claude_plugin_directory(agent: "Claude", root: Path) -> Path | None:
             return None
 
 
+def claude_held_trees(root: Path, plugin: Path | None) -> list[Path]:
+    """The generated trees a Claude Code session in ``root`` runs from, as a container holds them.
+
+    Its plugin directory whole — the hooks judging the session, their
+    dispatcher and policy — where the checkout keeps it, then the marketplace
+    naming it, the project settings and the guidance Claude Code reads, each
+    alone. The machine's overlay and the plugins a checkout keeps by hand
+    stay writable, being nobody's generation. Only what is there, since a
+    bind whose source is missing refuses the container.
+    """
+    checkout = root.resolve()
+    within = (
+        [plugin.resolve()]
+        if plugin is not None and plugin.resolve().is_relative_to(checkout)
+        else []
+    )
+    alone = [
+        checkout / ".claude" / "plugins" / ".claude-plugin" / "marketplace.json",
+        checkout / ".claude" / "settings.json",
+        checkout / ".claude" / "CLAUDE.md",
+    ]
+    return [path for path in [*within, *alone] if path.exists()]
+
+
 def compiled_claude(agent: "Claude") -> "Claude":
     """The declaration as its sessions open with it, the one compilation both outputs start from.
 
@@ -670,6 +694,11 @@ def claude_opening(
         privileges=config.sandbox.privileges(),
         nested=config.sandbox.nested(),
         memory=config.sandbox.memory_limit(),
+        trees=(
+            claude_held_trees(root, claude_plugin_directory(launched, root))
+            if config.sandbox.holds_generated()
+            else []
+        ),
     )
     return LaunchCommand(argv=argv, env=environment, cwd=root)
 

@@ -509,6 +509,7 @@ def verify_inside(
     skipped: Sequence[str] = (),
     accessible: Sequence[AccessibleRoot] = (),
     nested: Sequence[NestedRepository] = (),
+    trees: Sequence[Path] = (),
 ) -> list[Finding]:
     """Exercise the image half behind an argv somebody already assembled.
 
@@ -529,7 +530,7 @@ def verify_inside(
         environ: EnvVars = dict(os.environ)  # lup: ignore[os-environ]
     else:
         environ = dict(environment)
-    leased = held_lease(root, fleet_lease(root, list(accessible)), nested)
+    leased = held_lease(root, fleet_lease(root, list(accessible)), nested, trees)
     return reported(
         manifest.check_inside(
             environ,
@@ -678,6 +679,7 @@ def settle_boundary(
     accessible: list[AccessibleRoot] = [],
     runtime: str = "",
     nested: Sequence[NestedRepository] = (),
+    trees: Sequence[Path] = (),
 ) -> BoundaryPreflight:
     """Compile what this launch promised, measure it, and refuse if it fell short.
 
@@ -727,7 +729,7 @@ def settle_boundary(
     # A container holds its launch record read-only, so the boundary its
     # ledger describes carries the holds the policy then refuses writes to.
     leased = fleet_lease(root, accessible=accessible)
-    lease = held_lease(root, leased, nested) if sandbox.contained() else leased
+    lease = held_lease(root, leased, nested, trees) if sandbox.contained() else leased
     if exposed := launcher_state_exposure(lease):
         raise LaunchRefused(exposed)
     boundary = compile_boundary(
@@ -803,6 +805,7 @@ def session_argv(
     privileges: SessionPrivileges = SessionPrivileges(),
     nested: Sequence[NestedRepository] = (),
     memory: MemoryLimit | None = None,
+    trees: Sequence[Path] = (),
 ) -> list[str]:
     """The argv that opens a session, inside the declared container or on the host.
 
@@ -842,8 +845,9 @@ def session_argv(
 
     ``privileges`` is what the wall grants a contained session's processes,
     which a host posture has no container to grant, ``nested`` the
-    repositories inside the checkout its container holds, and ``memory`` how
-    much its container may hold.
+    repositories inside the checkout its container holds, ``memory`` how
+    much its container may hold, and ``trees`` the generated trees it holds
+    read-only, which the boundary it records names as it names every hold.
 
     ``prepare`` readies the runtime's home through the argv the session
     opens with, and answers with what the session should find held
@@ -953,6 +957,7 @@ def session_argv(
         privileges=privileges,
         nested=nested,
         memory=memory,
+        trees=trees,
     )
     # Verified on the way in, rather than asserted. This is §6's whole point
     # and the launch is where it has to happen: the boundary was built two
@@ -974,6 +979,7 @@ def session_argv(
         in_passing=True,
         accessible=accessible,
         nested=nested,
+        trees=trees,
     )
     if prepare is not None:
         # What preparing the home installed and asks to be held -- a
@@ -1008,6 +1014,7 @@ def session_argv(
         accessible,
         runtime=cli,
         nested=nested,
+        trees=trees,
     )
     say_opening(cleared, measured_here, transcript)
     native = image.clipboard.wrap([cli, *arguments], clipboard)

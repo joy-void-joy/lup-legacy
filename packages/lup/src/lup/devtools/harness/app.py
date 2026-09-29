@@ -669,6 +669,17 @@ def create_harness_app(
                     "mode's, your [container] config's, or no limit",
                 ),
             ] = None,
+            hold_generated: Annotated[
+                bool | None,
+                typer.Option(
+                    "--hold-generated/--release-generated",
+                    help="Hold the generated trees the runtime runs from "
+                    "read-only in the container, so the session cannot change "
+                    "the hooks judging it, and regenerates on the host; "
+                    "default: the mode's, your [container] config's, or the "
+                    "project's",
+                ),
+            ] = None,
             max_recursive_agent: Annotated[
                 int | None,
                 typer.Option(
@@ -697,6 +708,7 @@ def create_harness_app(
                 read_only=mount_ro,
                 devices=device,
                 sudo=sudo,
+                hold_generated=hold_generated,
                 network=network,
                 memory=launch.memory_limit(memory),
                 container=container,
@@ -896,6 +908,17 @@ def create_harness_app(
                     "mode's, your [container] config's, or no limit",
                 ),
             ] = None,
+            hold_generated: Annotated[
+                bool | None,
+                typer.Option(
+                    "--hold-generated/--release-generated",
+                    help="Hold the generated trees the runtime runs from "
+                    "read-only in the container, so the session cannot change "
+                    "the hooks judging it, and regenerates on the host; "
+                    "default: the mode's, your [container] config's, or the "
+                    "project's",
+                ),
+            ] = None,
             max_recursive_agent: Annotated[
                 int | None,
                 typer.Option(
@@ -924,6 +947,7 @@ def create_harness_app(
                 read_only=mount_ro,
                 devices=device,
                 sudo=sudo,
+                hold_generated=hold_generated,
                 network=network,
                 memory=launch.memory_limit(memory),
                 container=container,

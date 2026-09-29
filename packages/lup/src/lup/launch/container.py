@@ -941,7 +941,10 @@ def readied_nested(root: Path, declared: Sequence[NestedRepository]) -> list[Not
 
 
 def held_lease(
-    root: Path, lease: Lease, nested: Sequence[NestedRepository] = ()
+    root: Path,
+    lease: Lease,
+    nested: Sequence[NestedRepository] = (),
+    trees: Sequence[Path] = (),
 ) -> Lease:
     """What a container at ``root`` mounts: ``lease``, its launch record held, every hold rooted.
 
@@ -961,6 +964,10 @@ def held_lease(
     ``nested`` are the repositories the wall declares inside the checkout,
     each held as a plain checkout's own is -- ``config`` and ``hooks/`` --
     where it is there to hold; :func:`readied_nested` readies them first.
+
+    ``trees`` are the generated trees the runtime runs from, where the wall
+    holds them: each directory whole, so a host regeneration renaming a file
+    inside it leaves the hold standing, and each lone file as itself.
     """
     # lup: defer: a sibling worktree's launch record stays writable here, so a
     # contained session can rewrite the ledger a session in that sibling reads
@@ -975,7 +982,9 @@ def held_lease(
         if (root / repository.path / ".git" / name).exists()
     ]
     held = [
-        path for path in [*launch_record(root), *anchors] if lease.writable_at(path)
+        path
+        for path in [*launch_record(root), *anchors, *trees]
+        if lease.writable_at(path)
     ]
     return rooted(merged([lease, Lease(read_only=same_path(held))]))
 
@@ -1804,6 +1813,7 @@ def contained_argv(
     privileges: SessionPrivileges = SessionPrivileges(),
     nested: Sequence[NestedRepository] = (),
     memory: MemoryLimit | None = None,
+    trees: Sequence[Path] = (),
 ) -> list[str]:
     """The argv that opens a session in this project's container.
 
@@ -1866,7 +1876,8 @@ def contained_argv(
     :func:`held_lease`.
 
     ``memory`` is the limit the wall declares, resolved against this
-    engine by :func:`held_memory`.
+    engine by :func:`held_memory`, and ``trees`` the generated trees it
+    holds read-only -- see :func:`held_lease`.
     """
     said = banner if banner is not None else Banner()
     if engine is not None:
@@ -1926,7 +1937,10 @@ def contained_argv(
     said.add(preparation_notice(prepared_across(readied, SHARED_STATE)))
     said.add(readied_nested(root, nested))
     lease = held_lease(
-        root, lease if lease is not None else fleet_lease(root, accessible), nested
+        root,
+        lease if lease is not None else fleet_lease(root, accessible),
+        nested,
+        trees,
     )
     if exposed := launcher_state_exposure(lease):
         raise LaunchRefused(exposed)

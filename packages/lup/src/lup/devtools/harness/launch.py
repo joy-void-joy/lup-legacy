@@ -418,6 +418,9 @@ class LaunchRequest(BaseModel, frozen=True, arbitrary_types_allowed=True):
     sudo: bool | None = None
     """``--sudo`` or ``--no-sudo``, or ``None`` where the command line said neither."""
 
+    hold_generated: bool | None = None
+    """``--hold-generated`` or ``--release-generated``, or ``None`` for neither."""
+
     container: OuterContainer = OuterContainer()
     """The project's own container, under the person's config, the mode and
     what this command line states."""
@@ -511,6 +514,7 @@ class LaunchRequest(BaseModel, frozen=True, arbitrary_types_allowed=True):
                 ("network", self.network),
                 ("memory", self.memory),
                 ("sudo", self.sudo),
+                ("hold_generated", self.hold_generated),
             )
             if value is not None
         }
@@ -585,6 +589,11 @@ class LaunchRequest(BaseModel, frozen=True, arbitrary_types_allowed=True):
             *(
                 ["--sudo" if self.sudo else "--no-sudo"]
                 if self.sudo is not None
+                else []
+            ),
+            *(
+                ["--hold-generated" if self.hold_generated else "--release-generated"]
+                if self.hold_generated is not None
                 else []
             ),
         ]
