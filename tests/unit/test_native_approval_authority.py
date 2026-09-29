@@ -12,7 +12,7 @@ import sh
 
 from lup.policy.assets.host import approval_fingerprint, approvals_log
 from lup.policy.relay import Answer, QuestionRelay, ReceiptKind
-from lup.policy.identity import POLICY_ROOT_ENV
+from lup.policy.identity import DASHBOARD_URL_ENV, POLICY_ROOT_ENV
 from lup.types import JsonObject
 from tests.unit.native import codex_denial, codex_effect
 
@@ -79,7 +79,7 @@ def root(tmp_path: Path) -> Path:
     return tmp_path
 
 
-@pytest.mark.parametrize("runtime", ["codex"])
+@pytest.mark.parametrize("runtime", ["claude", "codex"])
 def test_unexpected_execution_never_authorizes_retry(root: Path, runtime: str) -> None:
     before = native_call(root, runtime)
     assert before in ("ask", "deny")
@@ -90,15 +90,15 @@ def test_unexpected_execution_never_authorizes_retry(root: Path, runtime: str) -
     assert native_call(root, runtime) == before
 
 
-@pytest.mark.parametrize(("runtime", "asked"), [("claude", "ask"), ("codex", "deny")])
+@pytest.mark.parametrize("runtime", ["claude", "codex"])
 @pytest.mark.parametrize("state", ["approved", "observed"])
 def test_unproven_legacy_record_never_authorizes(
-    root: Path, runtime: str, asked: str, state: Literal["approved", "observed"]
+    root: Path, runtime: str, state: Literal["approved", "observed"]
 ) -> None:
     """The approvals log is an audit, so the call is asked as if it were empty.
 
-    Claude renders the question natively; Codex's pre-tool boundary has no ask
-    effect, so it refuses and parks the question for a recorded answer.
+    Both runtimes park the question and refuse the call while it waits for a
+    recorded answer.
     """
     command = (
         "git push origin --delete probe-compound probe-excluded-prefix 2>&1 | tail -5"
@@ -118,10 +118,11 @@ def test_unproven_legacy_record_never_authorizes(
         )
         + "\n"
     )
-    assert native_call(root, runtime) == asked
+    assert native_call(root, runtime) == "deny"
+    assert len(QuestionRelay(root / ".lup/questions.jsonl").pending()) == 1
 
 
-@pytest.mark.parametrize("runtime", ["codex"])
+@pytest.mark.parametrize("runtime", ["claude", "codex"])
 def test_exact_answer_cannot_be_reused_after_execution(
     root: Path, runtime: str
 ) -> None:
@@ -136,7 +137,7 @@ def test_exact_answer_cannot_be_reused_after_execution(
     assert native_call(root, runtime) == "deny"
 
 
-@pytest.mark.parametrize("runtime", ["codex"])
+@pytest.mark.parametrize("runtime", ["claude", "codex"])
 @pytest.mark.parametrize("change", ["none", "payload", "tool"])
 def test_identified_execution_matches_the_approved_tool_and_input(
     root: Path, runtime: str, change: str
@@ -202,7 +203,7 @@ def test_identified_execution_matches_the_approved_tool_and_input(
     )
 
 
-@pytest.mark.parametrize("runtime", ["codex"])
+@pytest.mark.parametrize("runtime", ["claude", "codex"])
 def test_simultaneous_native_retries_consume_only_one_answer(
     root: Path, runtime: str
 ) -> None:
@@ -215,7 +216,7 @@ def test_simultaneous_native_retries_consume_only_one_answer(
     assert sorted(results) == ["allow", "deny"]
 
 
-@pytest.mark.parametrize("runtime", ["codex"])
+@pytest.mark.parametrize("runtime", ["claude", "codex"])
 @pytest.mark.parametrize("receipt", ["observed", "inferred"])
 def test_unrecorded_answer_does_not_release_a_native_retry(
     root: Path, runtime: str, receipt: ReceiptKind
@@ -260,20 +261,16 @@ def test_external_workspace_preserves_application_human_owned_paths(
     # The application is a registered destination, so its own policy judges the
     # write and names the gate it met; an unregistered repository meets the
     # foreign-repository ask, which test_destination_policy_routing pins.
-    if runtime == "claude":
-        spoken = json.loads(answer.stdout)["hookSpecificOutput"]
-        assert spoken["permissionDecision"] == "ask"
-        assert "human-authored" in spoken["permissionDecisionReason"]
-        assert relay.pending() == []
-    else:
-        assert codex_effect(answer) == "deny"
-        (question,) = relay.pending()
-        assert "human-authored" in question.reason
-        assert question.preconditions == {path: before}
+    spoken = json.loads(answer.stdout)
+    assert spoken["hookSpecificOutput"]["permissionDecision"] == "deny"
+    assert spoken["systemMessage"]
+    (question,) = relay.pending()
+    assert "human-authored" in question.reason
+    assert question.preconditions == {path: before}
     assert path.read_text() == before
 
 
-@pytest.mark.parametrize("runtime", ["codex"])
+@pytest.mark.parametrize("runtime", ["claude", "codex"])
 def test_external_review_recovery_commands_select_the_application_environment(
     root: Path, runtime: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -299,7 +296,7 @@ def test_external_review_recovery_commands_select_the_application_environment(
     ]
     show = [*prefix, "show", question.id, "--json"]
     approve = [*prefix, "approve", question.id, "--as", "operator"]
-    assert shlex.join(show[:-1]) in detail
+    assert shlex.join([*prefix, "wait", question.id]) in detail
     assert shlex.join(approve) in detail
     assert (
         native_call(root, runtime, arguments={"command": shlex.join(approve)}) == "deny"
@@ -310,7 +307,7 @@ def test_external_review_recovery_commands_select_the_application_environment(
     assert native_call(root, runtime) == "allow"
 
 
-@pytest.mark.parametrize("runtime", ["codex"])
+@pytest.mark.parametrize("runtime", ["claude", "codex"])
 @pytest.mark.parametrize("tail", [b'{"id":', b"\xff", b'[]\n{}\n{"id":'])
 def test_damaged_review_log_retains_later_answers_and_observations(
     root: Path, runtime: str, tail: bytes
@@ -333,7 +330,7 @@ def test_damaged_review_log_retains_later_answers_and_observations(
     assert native_call(root, runtime) == "deny"
 
 
-@pytest.mark.parametrize("runtime", ["codex"])
+@pytest.mark.parametrize("runtime", ["claude", "codex"])
 def test_unterminated_approval_never_becomes_authority_on_later_append(
     root: Path, runtime: str
 ) -> None:
@@ -360,12 +357,11 @@ def test_unterminated_approval_never_becomes_authority_on_later_append(
     assert native_call(root, runtime) == "allow"
 
 
-def test_a_protected_path_edit_asks_where_its_author_is_working(root: Path) -> None:
-    """The question reaches the prompt, and nothing is parked for it.
+def test_a_protected_path_edit_is_parked_for_its_author(root: Path) -> None:
+    """A protected path's edit waits for a recorded answer, never a prompt.
 
-    An unprompted yes here changes a file git already holds, against a
-    preimage this same event captured, so a receipt buys nothing the author's
-    own channel does not.
+    Its question is a person's to answer, so it is parked with the document
+    as it stands, and the file is untouched until somebody does.
     """
     target = Path("src/lup_template/harness/catalog.py").resolve()
     arguments: JsonObject = {
@@ -373,22 +369,50 @@ def test_a_protected_path_edit_asks_where_its_author_is_working(root: Path) -> N
         "old_string": "excluded_commands=served_exclusions(composed),",
         "new_string": "excluded_commands=served_exclusions(composed),  # reviewed",
     }
-    assert native_call(root, "claude", tool="Edit", arguments=arguments) == "ask"
-    assert QuestionRelay(root / ".lup/questions.jsonl").pending() == []
+    assert native_call(root, "claude", tool="Edit", arguments=arguments) == "deny"
+    (question,) = QuestionRelay(root / ".lup/questions.jsonl").pending()
+    assert question.requirement == "human_only"
+    assert question.preconditions == {target: target.read_text()}
     assert "# reviewed" not in target.read_text(encoding="utf-8")
 
 
-def test_the_question_a_verdict_asks_reaches_the_prompt(root: Path) -> None:
-    """Every ask this runtime raises is rendered, including the widest one.
+@pytest.mark.parametrize("mode", ["default", "auto", "bypassPermissions"])
+def test_a_person_s_question_is_parked_whatever_the_mode(
+    root: Path, mode: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A `human_only` ask never reaches a prompt a mode could answer.
 
     Removing a remote ref is what the reviewer axis reserves for a person, and
-    it is asked for in the session's own prompt rather than parked: whoever
-    the session answers to answers this, which in an autonomy mode is that
-    mode. Pinned because it is the edge of what the channel is trusted for.
+    an auto-mode classifier answered exactly this prompt on Claude Code 2.1.263
+    with nobody shown it. So it is parked and refused while it waits, whatever
+    mode the session is in and whether or not a dashboard serves, and the
+    refusal tells the operator where it waits: a mode can answer a prompt, and
+    nothing answers a refusal but the recorded answer.
     """
+    monkeypatch.delenv(DASHBOARD_URL_ENV, raising=False)
     arguments: JsonObject = {"command": "git push --delete origin topic"}
-    answer = native_response(root, "claude", tool="Bash", arguments=arguments)
-    spoken = json.loads(answer.stdout)["hookSpecificOutput"]
-    assert spoken["permissionDecision"] == "ask"
+    payload: JsonObject = {
+        "session_id": "requester",
+        "cwd": str(root),
+        "hook_event_name": "PreToolUse",
+        "permission_mode": mode,
+        "tool_name": "Bash",
+        "tool_input": arguments,
+    }
+    script = Path(".claude/plugins/lup/hooks/scripts/policy.py").resolve()
+    answer = json.loads(
+        str(
+            sh.Command(str(script))(
+                _in=json.dumps(payload),
+                _env={**os.environ, "CLAUDE_PLUGIN_DATA": str(root / "plugin-data")},
+            )
+        )
+    )
+    spoken = answer["hookSpecificOutput"]
+    (question,) = QuestionRelay(root / ".lup/questions.jsonl").pending()
+    assert spoken["permissionDecision"] == "deny"
     assert "remote branch" in spoken["permissionDecisionReason"]
-    assert QuestionRelay(root / ".lup/questions.jsonl").pending() == []
+    assert f"review {question.id}" in spoken["permissionDecisionReason"]
+    assert "not refused" in spoken["permissionDecisionReason"]
+    assert question.id in answer["systemMessage"]
+    assert question.requirement == "human_only"

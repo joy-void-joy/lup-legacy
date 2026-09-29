@@ -27,6 +27,28 @@ AGENT_IDENTITY_ENV = "LUP_AGENT_IDENTITY"
 POLICY_ROOT_ENV = "LUP_POLICY_ROOT"
 """Application environment for operator review commands, separate from native cwd."""
 
+# lup: ignore[constant-declaration] — the launch that exports it and the hook and
+# session that read it are different processes, so the name is an identity
+DASHBOARD_URL_ENV = "LUP_DASHBOARD_URL"
+"""Environment variable carrying the dashboard's address to every launched session.
+
+The address alone: the capability that opens the page stays in the host's
+private state, so a session knows where the operator reviews and cannot
+review for them. Its presence is also what tells a session's hook that a
+reviewer reads what it parks, so a question is parked there rather than put
+to a prompt.
+"""
+
+# lup: ignore[constant-declaration] — the launch that lends the directory and the
+# hook and waiter that read it are different processes, so the name is an identity
+REVIEW_ANSWERS_ENV = "LUP_REVIEW_ANSWERS"
+"""Environment variable naming where the host keeps the operator's answers.
+
+Set by every launch to the host's own path, which a contained session reaches
+through a read-only mount of its repository's answers at that same path;
+unset, the path is derived from `$XDG_STATE_HOME` as the host derives it.
+"""
+
 
 class ConcernAllowance(StrEnum):
     """One edit gate a concern needs, which only a human can grant it.

@@ -2,8 +2,16 @@
 
 Detached, supervised and interactive sessions require an explicit recorded
 answer. Native execution and a pending native prompt supply no authority.
-Generated hooks refuse an unresolved ask and name the operator commands that
-inspect and answer it; an exact retry consumes the recorded answer once.
+Generated hooks park an ask and refuse it while it waits; `review wait`, or an
+exact retry, consumes the recorded answer once.
+
+The question and its answer are kept apart. The question is written where the
+session that asked keeps it, in its checkout's relay; the answer is written
+only by the operator's side, into the host's own state
+(:func:`~lup.policy.assets.host.review_answers`), which a contained session
+reaches read-only. So nothing a session writes into its relay answers
+anything: a record there claiming an answer is ignored, and a parked record
+whose fields no longer hash to its fingerprint may not be answered at all.
 
 Two invariants hold everywhere:
 
@@ -21,13 +29,22 @@ import json
 from hashlib import sha256
 from collections.abc import Iterator
 from contextlib import contextmanager
+from functools import cache
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from lup.policy.assets.host import append_review_record, review_records
+from lup.policy.assets.host import (
+    append_review_record,
+    recorded_answers,
+    review_answers,
+    review_answers_home,
+    review_fingerprint,
+    review_records,
+)
+from lup.policy.identity import REVIEW_ANSWERS_ENV
 from lup.policy.kernel.decision import DecisionEffect
 from lup.policy.kernel.semantics import ReviewPurpose, ReviewerRequirement
 from lup.policy.operations import Operation
@@ -158,6 +175,19 @@ class Answer(BaseModel, frozen=True):
     at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
+class RecordedAnswer(BaseModel, frozen=True):
+    """One answer as the host keeps it: the review it settles, bound to its fingerprint.
+
+    An answer names the fingerprint it was given against, so it settles only
+    the review that still carries that fingerprint, and never one parked
+    since under the same id.
+    """
+
+    question: str
+    fingerprint: str
+    answer: Answer
+
+
 class CapturedFileReview(BaseModel, frozen=True):
     """The original routed file verdict, bound to its captured input and result."""
 
@@ -217,6 +247,71 @@ class PersistentQuestion(BaseModel, frozen=True):
     """Native invocation observed after dispatch; never an authority receipt."""
     execution_payload: JsonObject | None = None
     """Exact approved native rewrite; the operation retains the requested input."""
+    policy_identity: str = ""
+    """Which policy judged a native review, part of what its fingerprint covers."""
+    resolved: dict[Path, Path] = {}
+    """Where each preimage's path resolved when it was parked, which a retry must match."""
+    member: str = ""
+    """The launched session that asked, by its roster id, where its launch named one."""
+
+    def native_fingerprint(self) -> str:
+        """The digest a native hook binds this record to, recomputed from what it shows.
+
+        The same material the hook hashed when it parked the call
+        (:func:`~lup.policy.assets.host.review_fingerprint`), read back off the
+        record: the call, the documents it would change, the verdict and the
+        policy that reached it.
+        """
+        operation = self.operation
+        return review_fingerprint(
+            operation.session,
+            str(operation.cwd),
+            operation.tool,
+            operation.payload,
+            {str(path): before for path, before in self.preconditions.items()},
+            self.reason,
+            self.rule,
+            self.purpose or "",
+            self.requirement,
+            self.execution_payload
+            if self.execution_payload is not None
+            else operation.payload,
+            self.policy_identity,
+            {str(path): str(landed) for path, landed in self.resolved.items()},
+            [row.model_dump(mode="json") for row in self.file_reviews]
+            if self.file_reviews is not None
+            else None,
+        )
+
+    def bound(self) -> bool:
+        """Whether what this question shows is what its fingerprint covers.
+
+        A native review's own fields must hash to the fingerprint an answer
+        names; a record altered since it was parked shows one call and carries
+        another's authority. A coordinator's question is bound where the
+        coordinator dispatches it, against the operation it holds.
+        """
+        if self.resumption != "native_retry":
+            return True
+        return self.native_fingerprint() == self.fingerprint
+
+    def settled_by(self, recorded: "RecordedAnswer | None") -> "PersistentQuestion":
+        """This question with the operator's answer, where one was recorded for it.
+
+        A waiting question becomes approved or declined; one already carried
+        further keeps its state and shows who answered it. An answer given
+        against another fingerprint is not this question's.
+        """
+        if recorded is None or recorded.fingerprint != self.fingerprint:
+            return self
+        if self.state != "pending":
+            return self.model_copy(update={"answer": recorded.answer})
+        return self.model_copy(
+            update={
+                "state": "approved" if recorded.answer.approved else "rejected",
+                "answer": recorded.answer,
+            }
+        )
 
     @classmethod
     def review_fingerprint(
@@ -262,6 +357,47 @@ class PersistentQuestion(BaseModel, frozen=True):
         )
 
 
+class FileSignature(BaseModel, frozen=True):
+    """What one append-only file is on disk now; an appended record changes it."""
+
+    size: int = -1
+    modified: int = -1
+    inode: int = -1
+
+    @classmethod
+    def of(cls, path: Path) -> "FileSignature":
+        try:
+            status = path.stat()
+        except FileNotFoundError:
+            return cls()
+        return cls(
+            size=status.st_size, modified=status.st_mtime_ns, inode=status.st_ino
+        )
+
+
+class RelaySignature(BaseModel, frozen=True):
+    """What one relay's queue is on disk now: its questions, and the host's answers.
+
+    Both, because a question is appended to the one and its answer to the
+    other, and a reader that kept a queue until only the first changed would
+    go on showing an answered review as waiting.
+    """
+
+    questions: FileSignature = FileSignature()
+    answers: FileSignature = FileSignature()
+
+
+@cache
+def answers_file(relay: Path, home: Path) -> Path:
+    """The host's file of answers to one relay, found once per relay and home.
+
+    Finding it asks git which repository the relay's checkout belongs to,
+    which a checkout never changes; a dashboard reading every queue each
+    second asks once rather than every time.
+    """
+    return review_answers(relay, home)
+
+
 class QuestionRelay:
     """The durable store every final ask is written to before anybody sees it.
 
@@ -270,12 +406,29 @@ class QuestionRelay:
     a file in place has a window where the question is neither the old one nor
     the new one. Reading folds the log forward, so the last record for an id
     is its state and every earlier record is still there to be read.
+
+    ``answers`` is the host's file of answers to this relay's questions,
+    derived from where the relay is unless a caller names it: the one place
+    an answer is read from, and the one place :meth:`answer` writes.
     """
 
     path: Path
+    answers: Path
 
-    def __init__(self, path: Path) -> None:
+    def __init__(self, path: Path, answers: Path | None = None) -> None:
         self.path = path
+        self.answers = (
+            answers
+            if answers is not None
+            else answers_file(path, review_answers_home(REVIEW_ANSWERS_ENV))
+        )
+
+    def signature(self) -> RelaySignature:
+        """What this relay's queue is on disk now, to read it again only once it changes."""
+        return RelaySignature(
+            questions=FileSignature.of(self.path),
+            answers=FileSignature.of(self.answers),
+        )
 
     def record(self, question: PersistentQuestion) -> PersistentQuestion:
         """Append one question's current state, and return it unchanged."""
@@ -300,20 +453,42 @@ class QuestionRelay:
                 fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
 
     def questions(self) -> list[PersistentQuestion]:
-        """Every question, folded forward to its latest recorded state.
+        """Every question, folded forward to its latest state, with the host's answer.
 
         Malformed or unterminated lines remain inert evidence. Appenders
         preserve those bytes and frame later records separately, so a torn
         write neither loses the queue nor becomes authority on a later read.
+        A record in this relay claiming an answer is skipped: the answer is
+        the host's, and :meth:`recorded` is where it is read.
         """
-        folded: dict[str, PersistentQuestion] = {}
-        for record in review_records(self.path):
-            try:
-                entry = PersistentQuestion.model_validate(record)
-            except ValueError:
-                continue
-            folded[entry.id] = entry
-        return list(folded.values())
+
+        def valid() -> Iterator[PersistentQuestion]:
+            for record in review_records(self.path):
+                try:
+                    entry = PersistentQuestion.model_validate(record)
+                except ValueError:
+                    continue
+                if entry.state not in ("approved", "rejected"):
+                    yield entry
+
+        folded = {entry.id: entry for entry in valid()}
+        recorded = self.recorded()
+        return [
+            entry.settled_by(recorded[entry.id] if entry.id in recorded else None)
+            for entry in folded.values()
+        ]
+
+    def recorded(self) -> dict[str, RecordedAnswer]:
+        """The operator's answer to each of this relay's reviews, by review id."""
+
+        def valid() -> Iterator[RecordedAnswer]:
+            for entry in recorded_answers(self.answers).values():
+                try:
+                    yield RecordedAnswer.model_validate(entry)
+                except ValueError:
+                    continue
+
+        return {recorded.question: recorded for recorded in valid()}
 
     def find(self, question: str) -> PersistentQuestion | None:
         return next((entry for entry in self.questions() if entry.id == question), None)
@@ -341,12 +516,13 @@ class QuestionRelay:
         note: str = "",
         receipt: ReceiptKind = "recorded",
     ) -> PersistentQuestion:
-        """Record one decision, refusing every answer that is not this one's.
+        """Record one decision on the host, refusing every answer that is not this one's.
 
-        Four refusals, and each is a way an approval could otherwise be reused
-        or forged: a question that does not exist, one already answered, one
-        whose expiry passed, and one this principal may not answer — which
-        includes the requester, always.
+        Five refusals, and each is a way an approval could otherwise be
+        reused or forged: a question that does not exist, one already
+        answered, one whose expiry passed, one this principal may not answer
+        — which includes the requester, always — and one whose record no
+        longer shows what its fingerprint covers.
         """
         with self.transaction():
             entry = self.find(question)
@@ -363,20 +539,27 @@ class QuestionRelay:
                     f"{principal!r} may not answer {question!r}"
                     f" — eligible: {', '.join(entry.eligible) or 'nobody'}"
                 )
-            return self.record(
-                entry.model_copy(
-                    update={
-                        "state": "approved" if approved else "rejected",
-                        "answer": Answer(
-                            approved=approved,
-                            principal=principal,
-                            note=note,
-                            receipt=receipt,
-                            unresolved_chain=not entry.chain_resolved,
-                        ),
-                    }
+            if not entry.bound():
+                raise ValueError(
+                    f"review {question!r} changed after it was parked: what it "
+                    "shows is not what its fingerprint covers, so nothing may "
+                    "answer it"
                 )
+            given = RecordedAnswer(
+                question=entry.id,
+                fingerprint=entry.fingerprint,
+                answer=Answer(
+                    approved=approved,
+                    principal=principal,
+                    note=note,
+                    receipt=receipt,
+                    unresolved_chain=not entry.chain_resolved,
+                ),
             )
+            for directory in (self.answers.parent.parent, self.answers.parent):
+                directory.mkdir(mode=0o700, parents=True, exist_ok=True)
+            append_review_record(self.answers, given.model_dump_json())
+            return entry.settled_by(given)
 
     def cancel(self, question: str, reason: str = "") -> PersistentQuestion:
         """Withdraw a question nobody needs answered any more."""

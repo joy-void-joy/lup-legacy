@@ -84,8 +84,9 @@ def test_document_replacement_waits_for_review_then_runs_once(
     assert question.operation.requester == "requester"
     assert question.preconditions == {root / "DESIGN.md": "# Previous design\n"}
     assert question.id in detail
-    assert "already submitted" in detail
-    assert "Do not add an escalation" in detail
+    assert "not refused" in detail
+    assert "Don't change the command" in detail
+    assert f"review wait {question.id}" in detail
     assert denial(hook(root, command, tool=tool))
     assert len(store.pending()) == 1
     store.answer(question.id, "operator", True)
@@ -288,7 +289,7 @@ def test_rejection_does_not_create_another_question(root: Path) -> None:
     (question,) = store.pending()
     store.answer(question.id, "operator", False, "Keep the original design")
     refused = hook(root, replacement())
-    assert "rejected" in denial(refused)
+    assert "declined" in denial(refused)
     assert "Keep the original design" in denial(refused)
     assert len(store.questions()) == 1
 
@@ -450,14 +451,21 @@ def test_policy_identity_changes_require_another_review(root: Path) -> None:
         "",
         "human_only",
     )
-    first = review_hook_call(*arguments, policy_identity="original-policy")
     store = QuestionRelay(root / ".lup/questions.jsonl")
+    answers = str(store.answers)
+    first = review_hook_call(
+        *arguments, policy_identity="original-policy", answers=answers
+    )
     store.answer(first["id"], "operator", True)
-    changed = review_hook_call(*arguments, policy_identity="replacement-policy")
+    changed = review_hook_call(
+        *arguments, policy_identity="replacement-policy", answers=answers
+    )
     assert changed["state"] == "pending"
     assert changed["id"] != first["id"]
     assert (
-        review_hook_call(*arguments, policy_identity="original-policy")["state"]
+        review_hook_call(
+            *arguments, policy_identity="original-policy", answers=answers
+        )["state"]
         == "approved"
     )
 
@@ -468,6 +476,6 @@ def test_review_notice_quotes_the_checkout(root: Path) -> None:
     (nested / "DESIGN.md").write_text("# Previous design\n")
     notice = denial(hook(nested, replacement()))
     assert "uv run --directory '" in notice
-    assert "review show" in notice
+    assert "review wait" in notice
     assert "review approve" in notice
     assert "review decline" in notice

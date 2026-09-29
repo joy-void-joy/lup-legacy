@@ -268,16 +268,21 @@ def test_captured_attribution_changes_require_fresh_native_review(
         "human_only",
     )
     original = json.dumps([captured(change).model_dump(mode="json")])
-    first = review_hook_call(*arguments, file_reviews=original)
     relay = QuestionRelay(tmp_path / ".lup/questions.jsonl")
+    answers = str(relay.answers)
+    first = review_hook_call(*arguments, file_reviews=original, answers=answers)
     relay.answer(first["id"], "operator", True)
     changed = review_hook_call(
         *arguments,
         file_reviews=json.dumps([captured(change, "allow").model_dump(mode="json")]),
+        answers=answers,
     )
     assert changed["id"] != first["id"]
     assert changed["state"] == "pending"
-    assert review_hook_call(*arguments, file_reviews=original)["state"] == "approved"
+    assert (
+        review_hook_call(*arguments, file_reviews=original, answers=answers)["state"]
+        == "approved"
+    )
     stored = relay.find(first["id"])
     assert stored is not None
     assert stored.file_reviews == [captured(change)]

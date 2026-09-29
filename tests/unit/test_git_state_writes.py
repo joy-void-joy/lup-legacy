@@ -26,7 +26,7 @@ import sh
 from lup.devtools.dev.policy_explain import verdict_for
 from lup.types import JsonObject
 from lup_template.harness.catalog import declared_hook_set
-from tests.unit.native import codex_effect
+from tests.unit.native import claude_effect, codex_effect
 from tests.unit.repos import commit_file, initialized_repo
 
 type Runtime = Literal["claude", "codex"]
@@ -83,8 +83,7 @@ def met(runtime: Runtime, name: str, tool_input: JsonObject, checkout: Path) -> 
         )
     if result.exit_code == 2:
         return "deny"
-    specific = json.loads(str(result))["hookSpecificOutput"]
-    return str(specific["permissionDecision"])
+    return claude_effect(json.loads(str(result)))
 
 
 def edited(runtime: Runtime, path: str, checkout: Path) -> str:

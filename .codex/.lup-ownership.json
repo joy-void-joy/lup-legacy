@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "generator_version": "0.2.0",
-  "source_digest": "455ad337edba17ee9508e73f119b8e2f94d72ec0567b57613293dc898ade4d41",
+  "source_digest": "7035464cea8859f8bc75e70ca2c784b186f5007619b46a372df569ea63959e40",
   "target_requirements": [
     "codex-cli>=0.144"
   ],
@@ -303,7 +303,7 @@
     {
       "path": ".codex/plugins/lup/hooks/runtime/kernel/review.py",
       "category": "generated",
-      "sha256": "236fdee8cba9700202248cbdb7dee0db8c382be2ed1661f20986b74facd6eb98",
+      "sha256": "ec777c7fc5d6888b185fad444828f0b89f7534fdb6527402caf5d093efdda3bd",
       "semantic_id": "hooks.lup-policy",
       "executable": false
     },
@@ -401,7 +401,7 @@
     {
       "path": ".codex/plugins/lup/hooks/runtime/policy_data.py",
       "category": "generated",
-      "sha256": "95f4fb57d96ac523f2e2cb4f8715d1fb23fa752007262735edf539cfcd8c9552",
+      "sha256": "602c5285873d64077ef1e53a1719702bff65fe4cc3885d8da1165f7f77da4947",
       "semantic_id": "hooks.lup-policy",
       "executable": false
     },
@@ -457,7 +457,7 @@
     {
       "path": ".codex/plugins/lup/hooks/scripts/policy.py",
       "category": "generated",
-      "sha256": "3f37f93f1bba1252e8379068d461709f30b00a3dd0b23bcea64740c54e7c97d1",
+      "sha256": "29a60b2297793614f47fd2cb8d8da2018bd57a1e88e33b252e1b286d1b786fa3",
       "semantic_id": "hooks.lup-policy",
       "executable": true
     },
@@ -471,7 +471,7 @@
     {
       "path": ".codex/plugins/lup/hooks/scripts/policy_evaluator.py",
       "category": "generated",
-      "sha256": "b4e3d5dd122e8652032ba1c5b412b63d40d82dbf20067f6477d80ff01f1b3484",
+      "sha256": "0c4a5e1576381dcaf1bfe7a6d7e6e4fa2ba47e147e92fda1639212d1d545f4d8",
       "semantic_id": "hooks.lup-policy",
       "executable": false
     },
@@ -758,7 +758,7 @@
     {
       "path": "AGENTS.md",
       "category": "generated",
-      "sha256": "9df96f7e1bb1acdbdd1c3d00cc3bd77a6688269f93998c2270b4d5e33273a036",
+      "sha256": "8954f94fd75f395bfd429d85b8cc6483c4023c1a4c980aca1f748700b4faa6ee",
       "semantic_id": "harness.guidance",
       "executable": false
     }

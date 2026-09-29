@@ -5,16 +5,19 @@ from pathlib import Path
 
 import pytest
 
+from lup.devtools.review import notifications
 from lup.devtools.review.notifications import (
     ReviewNotification,
     ReviewNotificationRecord,
     ReviewNotifications,
     notify_requester,
 )
+from lup.devtools.review.wait import ReviewWaiters
 from lup.policy.operations import Operation
 from lup.policy.relay import Answer, PersistentQuestion
 from lup.coordination.repository import RepositoryPeers
-from lup.coordination.wake import WakePath
+from lup.coordination import watch
+from lup.coordination.wake import WakePath, Woken
 
 
 @pytest.fixture
@@ -174,4 +177,75 @@ def test_native_retry_never_notifies_a_rebound_or_unbound_member(
     )
     outcome = notify_requester((tmp_path,), entry)
     assert not outcome.queued and not outcome.woken
+    assert peers.waiting("recipient").messages == []
+
+
+def test_an_answer_a_waiter_holds_is_mailed_and_wakes_nothing(
+    tmp_path: Path,
+    answered: PersistentQuestion,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The waiter's own completion wakes the session; a second wake repeats it.
+
+    The message still names the waiter for a session that reads its mail
+    first, and asks for no retry a running waiter already made needless.
+    """
+    entry = answered.model_copy(
+        update={"id": "held-review", "state": "approved", "resumption": "native_retry"}
+    )
+    peers = RepositoryPeers(tmp_path)
+    peers.join(
+        "recipient",
+        tmp_path,
+        wake=WakePath(runtime="codex", session="native-thread", handle="native-thread"),
+    )
+    woken: list[str] = []
+    monkeypatch.setattr(
+        notifications,
+        "roused",
+        lambda peers, member, fresh, cwd: woken.append(member.actor.id),
+    )
+
+    with ReviewWaiters(root=tmp_path).holding([entry.id]):
+        outcome = notify_requester((tmp_path,), entry)
+
+    (message,) = peers.waiting("recipient").messages
+    assert outcome.queued and not outcome.woken
+    assert "review wait" in outcome.detail
+    assert woken == []
+    assert f"lup-devtools review wait {entry.id}" in message.text
+    assert "Retry" not in message.text
+
+
+def test_a_woken_requester_is_handed_the_answer_once(
+    tmp_path: Path, answered: PersistentQuestion, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The wake carries the mail whole, so the mail it carried is delivered with it.
+
+    Otherwise the requester's own hook hands the same answer over again at its
+    next tool call: one answer read twice, the second time as if it were new.
+    """
+    entry = answered.model_copy(
+        update={"id": "woken-review", "state": "approved", "resumption": "native_retry"}
+    )
+    peers = RepositoryPeers(tmp_path)
+    peers.join(
+        "recipient",
+        tmp_path,
+        wake=WakePath(runtime="codex", session="native-thread", handle="native-thread"),
+    )
+    carried: list[str] = []
+    monkeypatch.setattr(
+        watch,
+        "wake",
+        lambda path, message, cwd, queue_timeout_seconds: (
+            carried.append(message) or Woken(reached=True)
+        ),
+    )
+
+    outcome = notify_requester((tmp_path,), entry)
+
+    assert outcome.queued and outcome.woken
+    (message,) = carried
+    assert entry.id in message
     assert peers.waiting("recipient").messages == []

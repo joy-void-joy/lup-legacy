@@ -81,6 +81,7 @@ from kernel.rows import (
     landing_rows,
     unproduced_cause,
 )
+from kernel.review import Reviewed, copied_paths
 from kernel.spawns import decide_spawn, spawn_name
 from kernel.words import INTERPRETERS
 from kernel.roles import displaced_targets, sibling_scratch_rows, unscratched
@@ -98,6 +99,7 @@ from policy_data import (
     ALLOWANCE_GRANTS_ENV,
     ALLOWED_FETCH_SCOPES,
     ANTI_PATTERN_ROWS,
+    DASHBOARD_URL_ENV,
     RESOLUTION_COMMAND,
     DENIED_FETCH_SCOPES,
     EDIT_RULES,
@@ -109,6 +111,7 @@ from policy_data import (
     PEER_POLICY,
     POLICY_ROOT_ENV,
     RECOVERABLE_TARGET_LIMIT,
+    REVIEW_ANSWERS_ENV,
     REFUSED_PATHS,
     REFUSED_TOOLS,
     RUNNER_TARGET_TABLES,
@@ -897,11 +900,18 @@ def append_review_record(path: Path, encoded: str) -> None:
 
 
 def native_review_records(path: Path) -> dict[str, dict]:
-    """Read only native receipts with the fields used by the hermetic boundary."""
+    """Read only native receipts with the fields used by the hermetic boundary.
+
+    A record claiming an answer is skipped: the checkout's relay is the
+    session's to write, so an answer found there is one the session could
+    have written, and the answer is read from the host instead.
+    """
 
     def valid():
         for entry in review_records(path):
             match entry:
+                case {"state": "approved" | "rejected"}:
+                    continue
                 case {
                     "id": str(),
                     "fingerprint": str(),
@@ -921,6 +931,144 @@ def native_review_records(path: Path) -> dict[str, dict]:
     return {entry["id"]: entry for entry in valid()}
 
 
+def review_answers_home(variable: str) -> Path:
+    """Where the operator's answers to parked reviews are kept: the host's, per person.
+
+    The directory a launch names in *variable*, which is how a contained
+    session finds the host's store at the path the host has it, mounted
+    read-only; otherwise `$XDG_STATE_HOME/lup/reviews`, or
+    `~/.local/state/lup/reviews` where that is unset or relative.
+    """
+    declared = declared_identity(variable)
+    if declared:
+        return Path(declared)
+    state = declared_identity("XDG_STATE_HOME")
+    base = (
+        Path(state)
+        if state and Path(state).is_absolute()
+        else Path.home() / ".local" / "state"
+    )
+    return base / "lup" / "reviews"
+
+
+def review_answers(relay: Path, home: Path) -> Path:
+    """The file the operator's answers to one relay's reviews are kept in.
+
+    One directory per repository, named for its shared git directory, so a
+    launch lends a session its own repository's answers and no other's; one
+    file per relay inside it, so each checkout reads only its own.
+    """
+    located = relay.resolve()
+    shared = shared_git_directory(str(located.parent))
+    repository = sha256((shared or str(located.parent)).encode()).hexdigest()[:16]
+    checkout = sha256(str(located).encode()).hexdigest()[:16]
+    return home / repository / f"{checkout}.jsonl"
+
+
+def recorded_answers(path: Path) -> dict[str, dict]:
+    """The first answer the operator recorded for each review, by its id.
+
+    The first rather than the last: a review is answered once, so an answer
+    after it is one the relay refused to record, and nothing later replaces it.
+    """
+
+    def valid():
+        for entry in review_records(path):
+            match entry:
+                case {
+                    "question": str(),
+                    "fingerprint": str(),
+                    "answer": {
+                        "approved": bool(),
+                        "principal": str(),
+                        "receipt": str(),
+                    },
+                }:
+                    yield entry
+
+    return {entry["question"]: entry for entry in reversed(list(valid()))}
+
+
+def review_fingerprint(
+    session: str,
+    root: str,
+    tool: str,
+    payload: dict,
+    before: dict,
+    reason: str,
+    rule: str,
+    purpose: str,
+    reviewer: str,
+    expected: dict,
+    policy_identity: str,
+    resolved: dict,
+    evidence: list[dict] | None,
+) -> str:
+    """The digest one parked call is approved under: everything the approver reads."""
+    material = json.dumps(
+        [
+            session,
+            root,
+            tool,
+            payload,
+            before,
+            reason,
+            rule,
+            purpose,
+            reviewer,
+            expected,
+            policy_identity,
+            resolved,
+            evidence,
+        ],
+        sort_keys=True,
+    )
+    return sha256(material.encode()).hexdigest()
+
+
+def recorded_fingerprint(entry: dict) -> str:
+    """The digest a parked record's own fields hash to, or "" where it lacks one.
+
+    What binds the record an approver reads to the call its fingerprint names:
+    a record whose fields hash to another digest shows one call and carries
+    another's authority, and nothing may answer or spend it.
+    """
+    match entry:
+        case {
+            "operation": {
+                "session": str() as session,
+                "cwd": str() as root,
+                "tool": str() as tool,
+                "payload": dict() as payload,
+            },
+            "preconditions": dict() as before,
+            "reason": str() as reason,
+            "rule": str() as rule,
+            "requirement": str() as reviewer,
+            "execution_payload": dict() as expected,
+            "policy_identity": str() as policy_identity,
+            "resolved": dict() as resolved,
+        }:
+            purpose = entry["purpose"] if "purpose" in entry else None
+            evidence = entry["file_reviews"] if "file_reviews" in entry else None
+            return review_fingerprint(
+                session,
+                root,
+                tool,
+                payload,
+                before,
+                reason,
+                rule,
+                purpose if isinstance(purpose, str) else "",
+                reviewer,
+                expected,
+                policy_identity,
+                resolved,
+                evidence if isinstance(evidence, list) else None,
+            )
+    return ""
+
+
 def review_hook_call(
     root: Path,
     session: str,
@@ -937,8 +1085,17 @@ def review_hook_call(
     execution_payload: str | None = None,
     policy_identity: str = "",
     file_reviews: str = "null",
+    answers: str = "",
+    member: str = "",
+    placement: str = "ambient",
+    provider: str = "",
 ) -> dict[Literal["state", "id", "reason"], str]:
     """Park a call or spend its explicit, single-use reviewer answer.
+
+    The answer is read from *answers*, the host's file for this relay, and
+    never from the relay: the relay is the session's to write. A parked
+    record is matched only where its own fields hash to the call's
+    fingerprint, so a record rewritten to show another call spends nothing.
 
     A declared successor stage may spend one further claim for that same
     identified invocation. The immutable primary claim proves which stage
@@ -957,30 +1114,30 @@ def review_hook_call(
     )
     before = json.loads(preconditions)
     evidence = json.loads(file_reviews)
-    material = json.dumps(
-        [
-            session,
-            str(root),
-            tool,
-            payload,
-            before,
-            reason,
-            rule,
-            purpose,
-            reviewer,
-            expected,
-            policy_identity,
-            {path: str(Path(path).resolve()) for path in before},
-            evidence,
-        ],
-        sort_keys=True,
+    resolved = {path: str(Path(path).resolve()) for path in before}
+    fingerprint = review_fingerprint(
+        session,
+        str(root),
+        tool,
+        payload,
+        before,
+        reason,
+        rule,
+        purpose,
+        reviewer,
+        expected,
+        policy_identity,
+        resolved,
+        evidence,
     )
-    fingerprint = sha256(material.encode()).hexdigest()
     log = root / ".lup/questions.jsonl"
 
     entries = native_review_records(log)
     matches = [
-        entry for entry in entries.values() if entry["fingerprint"] == fingerprint
+        entry
+        for entry in entries.values()
+        if entry["fingerprint"] == fingerprint
+        and recorded_fingerprint(entry) == fingerprint
     ]
     continuations = [
         entry
@@ -998,12 +1155,12 @@ def review_hook_call(
         claim = root / ".lup/review-claims" / entry["id"]
         with claim.open(encoding="utf-8") as handle:
             consumed = json.load(handle)
-        expected = {
+        spent_by = {
             "fingerprint": fingerprint,
             "execution_id": execution_id,
             "stage": predecessor,
         }
-        if consumed == expected:
+        if consumed == spent_by:
             successor = (
                 root
                 / ".lup/review-stage-claims"
@@ -1013,23 +1170,32 @@ def review_hook_call(
             successor.parent.mkdir(parents=True, exist_ok=True)
             try:
                 with successor.open("x", encoding="utf-8") as handle:
-                    handle.write(json.dumps(expected, sort_keys=True))
+                    handle.write(json.dumps(spent_by, sort_keys=True))
             except FileExistsError:
                 pass
             else:
                 return {"state": "approved", "id": entry["id"], "reason": ""}
     entry = matches[-1] if matches else None
-    if entry is not None and entry["state"] == "approved":
-        match entry:
-            case {
-                "answer": {
-                    "approved": True,
-                    "principal": str() as principal,
-                    "receipt": "recorded",
-                }
-            } if principal and principal not in (
-                session,
-                entry["operation"]["requester"],
+    granted = recorded_answers(Path(answers)) if answers and entry is not None else {}
+    answer = (
+        granted[entry["id"]]["answer"]
+        if entry is not None
+        and entry["state"] == "pending"
+        and entry["id"] in granted
+        and granted[entry["id"]]["fingerprint"] == fingerprint
+        else None
+    )
+    if entry is not None and answer is not None and not answer["approved"]:
+        return {
+            "state": "rejected",
+            "id": entry["id"],
+            "reason": answer["note"] if "note" in answer and answer["note"] else "",
+        }
+    if entry is not None and answer is not None:
+        match answer:
+            case {"principal": str() as principal, "receipt": "recorded"} if (
+                principal
+                and principal not in (session, entry["operation"]["requester"])
             ):
                 pass
             case _:
@@ -1056,14 +1222,8 @@ def review_hook_call(
             entry["execution_id"] = execution_id
             append_review_record(log, json.dumps(entry, sort_keys=True))
             return {"state": "approved", "id": entry["id"], "reason": ""}
-    if entry is not None and entry["state"] in ("pending", "rejected"):
-        answer = entry["answer"] if "answer" in entry else None
-        note = answer["note"] if answer and "note" in answer else ""
-        return {
-            "state": entry["state"],
-            "id": entry["id"],
-            "reason": note or entry["reason"],
-        }
+    if entry is not None and entry["state"] == "pending":
+        return {"state": "pending", "id": entry["id"], "reason": entry["reason"]}
     identifier = os.urandom(16).hex()
     entry = {
         "id": identifier,
@@ -1079,8 +1239,11 @@ def review_hook_call(
         "execution_payload": expected,
         "created": datetime.now(UTC).isoformat(),
         "preconditions": before,
+        "resolved": resolved,
+        "policy_identity": policy_identity,
         "file_reviews": evidence,
         "resumption": "native_retry",
+        "member": member,
         "operation": {
             "id": identifier,
             "session": session,
@@ -1089,6 +1252,8 @@ def review_hook_call(
             "payload": payload,
             "cwd": str(root),
             "worktree": str(root),
+            "placement": placement,
+            "provider": provider,
         },
     }
     append_review_record(log, json.dumps(entry, sort_keys=True))
@@ -3547,6 +3712,65 @@ def bash_decision(
     return verdict.revised(reason=verdict.reason + nudge)
 
 
+def dashboard_held() -> bool:
+    """Whether this session's launch holds a dashboard, where a reviewer reads what parks."""
+    return bool(declared_identity(DASHBOARD_URL_ENV))
+
+
+def shell_preimages(command: str, cwd: Path) -> dict[Path, str | None]:
+    """What each file one command would write holds now, keyed where it resolves.
+
+    Every spelling of a write the policy reads -- a redirection, a path verb's
+    operand, a write flag, an authored document, a sed rewrite, a copy -- so
+    the review binds to the files as they stood, and a change to any of them
+    since makes the same command a fresh question. A directory operand has no
+    document to bind, so it is bound by the command that names it alone.
+    """
+    copied = copied_paths(command)
+    if copied is not None and not (cwd / copied["source"]).is_file():
+        raise ValueError("copy review requires a readable source file")
+    paths = [
+        *shell_write_targets(command),
+        *shell_path_verb_targets(command, SHELL_RULES),
+        *shell_flag_write_targets(command, SHELL_RULES),
+        *(write["path"] for write in authored_writes(command)),
+        *(
+            path
+            for rewrite in shell_sed_rewrites(command, SHELL_RULES)
+            for path in rewrite["targets"]
+        ),
+        *(copied.values() if copied is not None else []),
+    ]
+
+    def standing(target: Path) -> str | None:
+        """One target's text as it stands, absent where nothing does."""
+        if not target.is_file():
+            return None
+        return target.read_text(encoding="utf-8", newline="")
+
+    return {
+        (cwd / path).resolve(): standing(cwd / path)
+        for path in dict.fromkeys(paths)
+        if (cwd / path).is_file() or not (cwd / path).exists()
+    }
+
+
+def review_policy_identity(cwd: Path, script: Path) -> str:
+    """Which policy judged a parked call: the routed one, and this compiled script's own.
+
+    Part of what an approval binds to, so a regeneration between asking and
+    answering makes the same call a fresh question rather than spending an
+    answer given under other rules.
+    """
+    return json.dumps(
+        [
+            routing_policy_identity(cwd),
+            policy_snapshot_digest(script.parents[1]),
+            sha256(script.read_bytes()).hexdigest(),
+        ]
+    )
+
+
 def reviewed_decision(
     decision: KernelDecision,
     cwd: Path,
@@ -3554,13 +3778,21 @@ def reviewed_decision(
     tool: str,
     arguments: dict,
     preconditions: dict[Path, str | None],
+    waiting: Callable[[str], str],
     execution_id: str = "",
     stage: str = "",
     predecessor: str = "",
     execution_payload: dict | None = None,
     policy_identity: str = "",
-) -> KernelDecision:
-    """Only an explicit, single-use recorded answer can settle a native ask."""
+    provider: str = "",
+) -> Reviewed:
+    """Park one ask for the operator, or spend the single-use answer they recorded.
+
+    The call is refused while it waits, with a recovery written for the agent:
+    it is queued rather than refused, the call is not to be reshaped, and
+    ``waiting`` spells, in the runtime's own words, how to start `review wait`
+    on it, which carries the approved call out and reports the result.
+    """
     result = review_hook_call(
         cwd,
         session,
@@ -3582,20 +3814,37 @@ def reviewed_decision(
         else None,
         policy_identity,
         json.dumps(decision.file_reviews, sort_keys=True),
+        answers=str(
+            review_answers(
+                cwd / ".lup/questions.jsonl", review_answers_home(REVIEW_ANSWERS_ENV)
+            )
+        ),
+        member=answering_member(peer_directory(cwd)),
+        placement=decision.sandbox,
+        provider=provider,
     )
-    if result["state"] == "approved":
-        return decision.revised(effect="allow")
-    if result["state"] == "rejected":
-        return decision.revised(
-            effect="deny",
-            recovery=f"Review {result['id']} was rejected: {result['reason']}. Revise the proposal before retrying.",
-        )
     identifier = result["id"]
+    if result["state"] == "approved":
+        return {"decision": decision.revised(effect="allow"), "notice": ""}
+    if result["state"] == "rejected":
+        note = f": {result['reason']}" if result["reason"] else ""
+        return {
+            "decision": decision.revised(
+                effect="deny",
+                recovery=(
+                    f"The operator declined review {identifier}{note}. Don't "
+                    "retry this call as it stands: change course, or ask the "
+                    "user."
+                ),
+            ),
+            "notice": f"Lup review {identifier} was declined; the agent is told.",
+        }
     if not identifier:
-        return decision.revised(
-            effect="deny",
-            recovery=f"Review queue unavailable: {result['reason']}. Run this operation from an operator terminal.",
-        )
+        unavailable = f"Review queue unavailable: {result['reason']}. Run this operation from an operator terminal."
+        return {
+            "decision": decision.revised(effect="deny", recovery=unavailable),
+            "notice": unavailable,
+        }
     project = declared_identity(POLICY_ROOT_ENV)
     prefix = [
         "uv",
@@ -3608,19 +3857,26 @@ def reviewed_decision(
         "lup-devtools",
         "review",
     ]
-    show = shlex.join([*prefix, "show", identifier])
     approve = shlex.join([*prefix, "approve", identifier, "--as", "operator"])
     decline = shlex.join([*prefix, "decline", identifier, "--as", "operator"])
-    return decision.revised(
-        effect="deny",
-        recovery=(
-            f"Review {identifier} is {result['state']}; this request is already submitted. "
-            "Wait for its answer on the dashboard, then retry this exact tool call. "
-            "Do not add an escalation or rewrite the call: that creates a different review. "
-            f"The operator can also run `{show}`, then `{approve}` or `{decline}`. "
-            "Changed file contents or policy require fresh review."
-        ),
+    dashboard = declared_identity(DASHBOARD_URL_ENV)
+    where = (
+        f"on the dashboard, {dashboard}"
+        if dashboard
+        else f"from a terminal outside the session: `{approve}` or `{decline}`"
     )
+    return {
+        "decision": decision.revised(
+            effect="deny",
+            recovery=(
+                f"Queued for the operator as review {identifier} — not refused. "
+                "Don't change the command; carry on with other work. "
+                + waiting(shlex.join([*prefix, "wait", identifier]))
+                + f" The operator answers it {where}."
+            ),
+        ),
+        "notice": f"Lup review {identifier} is waiting for you {where}.",
+    }
 
 
 def session_contained(cwd: Path | None) -> bool:
@@ -4291,8 +4547,9 @@ def announced(effect, tool_name, reason, dialogs=("Edit", "Write")):
     every hook, and it arrives with the tool call rather than with the prompt,
     so this informs rather than gates. That is the whole of what is reachable:
     the reason is dropped here, and ``PermissionRequest`` — the event that runs
-    before the prompt — belongs to the control protocol rather than to a local
-    plugin, and never fires for one.
+    before the prompt — did not fire for a hook's ask in a plain `-p` run on
+    2.1.283 and fired only under `--permission-prompts none`, so no field of
+    it is one this prompt is known to carry.
 
     The colour is spelled here rather than in the kernel because it is this
     terminal's alphabet. The kernel states the sites; a runtime that shows them
@@ -4415,6 +4672,85 @@ def session_root(payload):
     is a second place it can be forgotten.
     """
     return Path(payload["cwd"]) if "cwd" in payload else None
+
+
+def parks(decision):
+    """Whether an ask is parked for the operator rather than put to a prompt.
+
+    Wherever the launch holds a dashboard, a reviewer reads what parks there,
+    for this session and every subagent and `-p` run inside it alike. A
+    `human_only` ask parks everywhere: an auto-mode session's classifier can
+    answer a prompt this hook raises -- measured on 2.1.263, where it ran a
+    ref deletion nobody was shown -- and no mode can approve a refusal. What
+    else asks keeps the native prompt where no dashboard is.
+    """
+    return decision.reviewer == "human_only" or dashboard_held()
+
+
+def waiting(command, payload):
+    """How this session waits on a parked call, in its own tool's words.
+
+    A command the main conversation of an interactive session starts with
+    `run_in_background` keeps running after the turn and re-invokes the model
+    when it exits, which is the whole wake. A subagent's, or a `-p` run's,
+    ends with it -- `CLAUDE_CODE_ENTRYPOINT` is `sdk-cli` there, measured on
+    2.1.283, where a subagent's hook payload carries `agent_id` -- so there
+    the wait moves to the foreground once nothing else is left.
+    """
+    started = (
+        f"Start `{command}` in the background (run_in_background) to be woken "
+        "with the result."
+    )
+    interactive = declared_identity("CLAUDE_CODE_ENTRYPOINT") == "cli"
+    if interactive and "agent_id" not in payload:
+        return started
+    return (
+        started + " A background command ends with this run, so once nothing "
+        "else is left, run it in the foreground instead."
+    )
+
+
+def preimages(payload, cwd):
+    """What each file the call would change holds now, keyed where it resolves."""
+    tool_input = payload["tool_input"]
+    match payload["tool_name"]:
+        case "Edit" | "Write":
+            named = Path(tool_input["file_path"])
+            target = named if named.is_absolute() else cwd / named
+            return {
+                target.resolve(): (
+                    target.read_text(encoding="utf-8", newline="")
+                    if target.is_file()
+                    else None
+                )
+            }
+        case "Bash":
+            return shell_preimages(tool_input["command"], cwd)
+        case _:
+            return {}
+
+
+def queued_review(payload, decision, placed):
+    """Park one ask in the review queue, or spend the operator's recorded answer.
+
+    The preimages are the files the call would change as they stand now, and
+    the exact input it would run with is the one placed, so what the operator
+    approves is what `review wait` or a retry carries out.
+    """
+    cwd = session_root(payload) or Path.cwd()
+    return reviewed_decision(
+        decision,
+        cwd,
+        payload["session_id"] if "session_id" in payload else "",
+        payload["tool_name"],
+        payload["tool_input"],
+        preimages(payload, cwd),
+        lambda command: waiting(command, payload),
+        payload["tool_use_id"] if "tool_use_id" in payload else "",
+        execution_payload=placed,
+        policy_identity=review_policy_identity(cwd, Path(__file__)),
+        provider="claude",
+    )
 
 
 def dispatch(payload):
@@ -4747,6 +5083,7 @@ def main():
     event = ""
     placed = None
     attached = ""
+    notice = ""
     failed = False
     read = False
     try:
@@ -4784,16 +5121,19 @@ def main():
         decision = dispatch(payload)
         placed = placed_input(payload)
         attached = attachment(payload["tool_name"], session_root(payload))
-        # An ask is rendered here, because this runtime has a channel for a
-        # question: the prompt, where the person already is. A recorded
-        # receipt is what a runtime with no ask effect falls back to, which
-        # is Codex's PreToolUse, and a question put where nobody is standing
-        # is read by nobody.
-        #
-        # The limit this accepts: an autonomy mode can answer the prompt
-        # itself, and no field here says whether a person saw one. The verdict
-        # reaches whoever the session is answering to, which in that mode is
-        # the mode.
+        # A parked ask is refused while it waits, telling the agent it is
+        # queued rather than refused and how to wait on it; an ask that does
+        # not park is rendered as this runtime's own prompt, where the person
+        # already is. It is parked as it would be rendered -- every reason
+        # it joined, and what its placement crosses -- since that is the
+        # question the operator answers.
+        if decision.effect == "ask" and parks(decision):
+            asked = decision.placed(
+                escapable=True, contained=session_contained(session_root(payload))
+            )
+            reviewed = queued_review(payload, asked, placed)
+            decision = reviewed["decision"]
+            notice = reviewed["notice"]
     # Every way this can fail means one thing — the call went unjudged — and
     # one answer is right for all of them. Naming the exceptions instead is
     # what let a plain unreadable file escape, and the traceback exit reaches
@@ -4829,7 +5169,10 @@ def main():
         return
     finally:
         closed_deadline(previous)
-    json.dump(rendered(decision, payload, placed, attached), sys.stdout)
+    answer = rendered(decision, payload, placed, attached)
+    # The person is told a review is waiting on them in the one field this
+    # runtime shows a person from every hook; the agent reads the reason.
+    json.dump({**answer, "systemMessage": notice} if notice else answer, sys.stdout)
     if not failed:
         detail = (
             decision.reason

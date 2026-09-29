@@ -6,7 +6,12 @@ not answered by an adapter fails here, at the moment somebody adds it, rather
 than silently reading as delivered.
 """
 
+import json
+import os
+from pathlib import Path
 from typing import get_args
+
+import sh
 
 from lup.policy.delivery import (
     DeliveryFact,
@@ -14,6 +19,8 @@ from lup.policy.delivery import (
     delivery_gaps,
     unmeasured,
 )
+from lup.policy.identity import DASHBOARD_URL_ENV
+from lup.policy.relay import QuestionRelay
 from lup.providers.claude.delivery import CLAUDE_DELIVERY
 from lup.providers.codex.delivery import CODEX_DELIVERY
 
@@ -105,3 +112,51 @@ def test_a_reader_sees_the_standing_before_the_claim() -> None:
     )
 
     assert fact.line().index("[documented]") < fact.line().index("emits no decision")
+
+
+def test_claude_s_auto_mode_claim_is_what_its_dispatcher_does(tmp_path: Path) -> None:
+    """The row says a person's question never reaches a prompt; the hook is asked.
+
+    What auto mode does with a hook's ask moves between releases: on Claude
+    Code 2.1.263 the mode answered one with no prompt shown, and on 2.1.283
+    one held a prompt. So the row names a mechanism that does not depend on
+    the mode, and this runs the generated dispatcher under an auto-mode
+    payload to hold the row to it: the question is parked, the call refused.
+    """
+    fact = next(
+        fact for fact in CLAUDE_DELIVERY if fact.guarantee == "ask_survives_auto_mode"
+    )
+    assert fact.standing == "measured"
+    assert "parks it in the review queue" in fact.mechanism
+    assert "2.1.263" in fact.fallback
+    root = tmp_path / "checkout"
+    (root / ".git").mkdir(parents=True)
+    (root / ".git/HEAD").write_text("ref: refs/heads/feature\n")
+    payload = {
+        "session_id": "auto-mode-session",
+        "cwd": str(root),
+        "hook_event_name": "PreToolUse",
+        "permission_mode": "auto",
+        "tool_name": "Bash",
+        "tool_input": {"command": "git push --delete origin topic"},
+    }
+    script = Path(".claude/plugins/lup/hooks/scripts/policy.py").resolve()
+    answered = json.loads(
+        str(
+            sh.Command(str(script))(
+                _in=json.dumps(payload),
+                _env={
+                    **{
+                        name: value
+                        for name, value in os.environ.items()
+                        if name != DASHBOARD_URL_ENV
+                    },
+                    "CLAUDE_PLUGIN_DATA": str(tmp_path / "plugin-data"),
+                },
+            )
+        )
+    )
+
+    (question,) = QuestionRelay(root / ".lup/questions.jsonl").pending()
+    assert answered["hookSpecificOutput"]["permissionDecision"] == "deny"
+    assert question.requirement == "human_only"

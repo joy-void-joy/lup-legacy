@@ -30,6 +30,8 @@ from rich.syntax import Syntax
 
 from lup.coordination.bare import store as roster
 from lup.coordination.repository import RepositoryPeers
+from lup.devtools.dashboard.companion import refuse_inside_a_session
+from lup.devtools.review.wait import wait_on
 from lup.devtools.review.notifications import (
     ReviewNotification,
     ReviewNotifications,
@@ -789,14 +791,17 @@ def answer(
 ) -> None:
     """Record one decision, and say what it means for the operation.
 
-    The refusal path prints the relay's own message rather than a generic
-    one, because every way this can fail is a distinct thing the reviewer
-    needs to know: the question is gone, already answered, expired, or theirs
-    to read and not to answer.
+    The operator's alone: the answer is written into the host's state, which
+    a session's own command has no business writing, so a launched session
+    is refused before anything is read. The refusal path prints the relay's
+    own message rather than a generic one, because every way this can fail
+    is a distinct thing the reviewer needs to know: the question is gone,
+    already answered, expired, altered, or theirs to read and not to answer.
     """
     try:
+        refuse_inside_a_session(f"review {'approve' if approved else 'decline'}")
         settled = relay(root).answer(question, principal, approved, note)
-    except ValueError as refusal:
+    except (PermissionError, ValueError) as refusal:
         typer.echo(str(refusal), err=True)
         raise typer.Exit(2) from refusal
     verb = {"approved": "approved", "rejected": "declined"}
@@ -806,7 +811,9 @@ def answer(
     if settled.state == "approved":
         if settled.resumption == "native_retry":
             typer.echo(
-                "Retry the exact tool call; its preimages are rechecked and approval is spent once."
+                "the session's `review wait` carries it out where the files still "
+                "stand as they did, or one exact retry of the call does; the "
+                "approval is spent once"
             )
             return
         typer.echo(
@@ -902,5 +909,24 @@ def create_review_app(root: Path) -> typer.Typer:
     ) -> None:
         """Withdraw a review nobody needs answered any more."""
         cancel(root, review, reason)
+
+    @app.command("wait")
+    def wait_cmd(
+        reviews: list[str] | None = typer.Argument(
+            None,
+            help="The reviews to wait on; none named waits on every review this "
+            "session and its subagents have waiting",
+        ),
+        first: bool = typer.Option(
+            False, "--any", help="Return once the first of them settles"
+        ),
+    ) -> None:
+        """Wait on this session's reviews, carrying out each one the operator approves.
+
+        Reports each as it settles: an approved edit is written as the operator
+        saw it, an approved command runs where it was asked, a declined one
+        brings the operator's note. Start it in the background and carry on.
+        """
+        raise typer.Exit(wait_on(root, reviews or [], first))
 
     return app

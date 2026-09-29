@@ -21,6 +21,7 @@ from lup.devtools.dashboard.reviews import ReviewStore, dashboard_app
 from lup.devtools.review.app import relay
 from lup.policy.operations import Operation
 from lup.policy.relay import PersistentQuestion
+from tests.unit.reviews import bound
 
 BASE_URL = "http://127.0.0.1:8766"
 TOKEN = "operator-capability"
@@ -37,13 +38,15 @@ def parked(root: Path, question_id: str) -> PersistentQuestion:
         worktree=root,
     )
     return relay(root).record(
-        PersistentQuestion(
-            id=question_id,
-            operation=operation,
-            fingerprint=operation.fingerprint(),
-            reason="The operator reviews this command.",
-            eligible=["operator"],
-            resumption="native_retry",
+        bound(
+            PersistentQuestion(
+                id=question_id,
+                operation=operation,
+                fingerprint="",
+                reason="The operator reviews this command.",
+                eligible=["operator"],
+                resumption="native_retry",
+            )
         )
     )
 

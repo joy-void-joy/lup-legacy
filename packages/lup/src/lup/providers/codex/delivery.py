@@ -21,8 +21,9 @@ CODEX_DELIVERY: list[DeliveryFact] = [
         guarantee="ask_survives_auto_mode",
         provider="codex",
         mechanism=(
-            "the generated PreToolUse hook refuses unresolved asks and requires"
-            " an explicit recorded reviewer answer before allowing one exact retry"
+            "the generated PreToolUse hook parks every ask in the review queue"
+            " and refuses the call while it waits; only an answer the operator"
+            " recorded in the host's state releases it, once"
         ),
         standing="measured",
         fallback=(
@@ -34,8 +35,10 @@ CODEX_DELIVERY: list[DeliveryFact] = [
         guarantee="exact_call_resumes",
         provider="codex",
         mechanism=(
-            "an operator answer releases one retry with the same session,"
-            " directory, payload, policy reason and edited file preimages"
+            "an operator answer releases the call once: `review wait` writes the"
+            " after-documents or runs the command it recorded, or one retry with"
+            " the same session, directory, payload, policy reason and edited"
+            " file preimages spends it"
         ),
         standing="measured",
         fallback=(
@@ -78,7 +81,7 @@ CODEX_DELIVERY: list[DeliveryFact] = [
     DeliveryFact(
         guarantee="rejection_receipt",
         provider="codex",
-        mechanism="an explicit rejection is recorded by the review queue",
+        mechanism="an explicit rejection is recorded on the host by the review queue",
         standing="measured",
         fallback="absence of native execution supplies no answer",
     ),

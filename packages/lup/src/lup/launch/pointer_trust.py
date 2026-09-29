@@ -20,7 +20,13 @@ from pydantic import BaseModel
 from lup.coordination.repository import RepositoryPeers
 from lup.launch.environments import revisions_home
 from lup.providers.user_config import UserConfigHome
-from lup.sandbox.known import host_side, known_repositories, remember, store_directory
+from lup.sandbox.known import (
+    answers_directory,
+    host_side,
+    known_repositories,
+    remember,
+    store_directory,
+)
 from lup.sandbox.pointers import Verdict, refusal, unvouchable, verdict, vouched_from
 from lup.sandbox.rail import Lease
 
@@ -87,7 +93,13 @@ def launcher_state_exposure(lease: Lease) -> str:
     mount, read-only ones too: a container has no reason to read them either,
     and a mount it may not write today is one a later lease may widen.
     Compared resolved, since a mount is bound where its path leads.
+
+    One part is lent: the operator's answers to parked reviews, at or inside
+    :func:`~lup.sandbox.known.answers_directory`, read-only. A session must
+    read the answer to its own review, and writing one is what the read-only
+    mount refuses it; a writable mount of them is refused like any other.
     """
+    lent = answers_directory().resolve()
 
     def relation(mount: Path, directory: Path) -> str:
         """How a mount meets a directory the launcher keeps, or empty where it misses."""
@@ -103,7 +115,14 @@ def launcher_state_exposure(lease: Lease) -> str:
         f"This launch would mount {mount}, {met} {held.holds}, at {directory}; "
         "a container could rewrite what the next launch trusts. Set "
         f"{held.moved_by} outside every mounted root, or leave {mount} unmounted."
-        for mount in [*lease.writable, *lease.read_only]
+        for mount in [
+            *lease.writable,
+            *(
+                read
+                for read in lease.read_only
+                if not read.resolve().is_relative_to(lent)
+            ),
+        ]
         for held in host_only_directories()
         for directory in [held.path.resolve()]
         if (met := relation(mount.resolve(), directory))

@@ -62,7 +62,7 @@ from lup.devtools.review.notifications import (
     ReviewNotifications,
     notify_requester,
 )
-from lup.policy.relay import PersistentQuestion
+from lup.policy.relay import PersistentQuestion, RelaySignature
 from lup.sandbox.rail import repository_layout, sibling_worktrees
 from lup.types import StringMap
 
@@ -140,24 +140,6 @@ class ReviewScan(BaseModel, frozen=True):
         )
 
 
-class RelaySignature(BaseModel, frozen=True):
-    """What a relay file is on disk now; an appended record changes it."""
-
-    size: int = -1
-    modified: int = -1
-    inode: int = -1
-
-    @classmethod
-    def of(cls, path: Path) -> "RelaySignature":
-        try:
-            status = path.stat()
-        except FileNotFoundError:
-            return cls()
-        return cls(
-            size=status.st_size, modified=status.st_mtime_ns, inode=status.st_ino
-        )
-
-
 class ReviewQueue(BaseModel, frozen=True):
     """A relay read whose failure does not hide other checkouts' reviews."""
 
@@ -169,7 +151,7 @@ class ReviewQueue(BaseModel, frozen=True):
     @classmethod
     def read(cls, root: Path) -> "ReviewQueue":
         store = relay(root)
-        signature = RelaySignature.of(store.path)
+        signature = store.signature()
         try:
             return cls(root=root, signature=signature, questions=store.questions())
         except (OSError, ValueError) as error:
@@ -236,8 +218,8 @@ class ReviewStore(BaseModel, frozen=True):
         return self.scan_roots().roots
 
     def queue(self, root: Path) -> ReviewQueue:
-        """One checkout's queue, re-read only where its relay changed on disk."""
-        signature = RelaySignature.of(relay(root).path)
+        """One checkout's queue, re-read only where its relay or its answers changed on disk."""
+        signature = relay(root).signature()
         if root in self._queues and self._queues[root].signature == signature:
             return self._queues[root]
         queue = ReviewQueue.read(root)
@@ -586,7 +568,7 @@ def create_operator_dashboard_app(root: Path) -> typer.Typer:
 
     def refused(verb: str, action: Callable[[], None]) -> None:
         try:
-            refuse_inside_a_session(verb)
+            refuse_inside_a_session(f"dashboard {verb}")
             action()
         except (PermissionError, LookupError) as refusal:
             typer.echo(str(refusal), err=True)

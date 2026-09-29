@@ -137,7 +137,7 @@ Settings load through pydantic-settings in `src/lup_template/agent/config.py`, t
 
 ## Process & Communication
 
-**Wait on pushed tool output, not polls.** Keep a long-lived command's resumable call live and yield to the runtime's event-driven waiter; repeated shell-session reads are polling, even with long timeouts.
+**Wait on pushed tool output, not polls.** Keep a long-lived command's resumable call live and yield to the runtime's event-driven waiter; repeated shell-session reads are polling, even with long timeouts. A call refused as *queued for the operator* is not refused: leave it as it is, start the `review wait` it names in the background, and carry on — the waiter carries the approved call out and wakes you with what happened.
 
 **Surface every question through the harness's structured facility**, not narration — clarifications, choices, destructive confirmations — with concrete options plus free-form even when open-ended, because downstream notifications read structured answers. **Ask what form the project should take** rather than inferring it: the shape a fix takes, how work is cut into branches or issues, what a surface looks like are the user's to settle, and picking one silently spends their decision. **A design conversation is the exception:** its decisions go numbered in plaintext in one batch, each standing alone.
 

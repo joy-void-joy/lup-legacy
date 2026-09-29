@@ -19,6 +19,8 @@ from httpx import ASGITransport, AsyncClient
 from typer.testing import CliRunner
 
 from lup.channels.models import Door
+from lup.coordination.mail import ActorMessage
+from lup.coordination.peers import USER_ADDRESS
 from lup.coordination.refs import ActorRef
 from lup.coordination.repository import RepositoryPeers
 from lup.coordination.roster import RosterMember
@@ -44,6 +46,7 @@ from lup.policy.relay import PersistentQuestion, QuestionRelay
 from lup.policy.review import ReviewedFile
 from lup.web import serve as web_serve
 from lup.web.serve import page_app
+from tests.unit.native import bound
 
 BASE_URL: Final = "http://127.0.0.1:8765"
 TOKEN: Final = "test-operator-secret"
@@ -93,14 +96,16 @@ def parked(root: Path, question_id: str = "q-1") -> PersistentQuestion:
         worktree=root,
     )
     return relay(root).record(
-        PersistentQuestion(
-            id=question_id,
-            operation=operation,
-            fingerprint=operation.fingerprint(),
-            reason="The operator reviews this command before it may run.",
-            rule="shell:test",
-            eligible=["operator"],
-            resumption="native_retry",
+        bound(
+            PersistentQuestion(
+                id=question_id,
+                operation=operation,
+                fingerprint="",
+                reason="The operator reviews this command before it may run.",
+                rule="shell:test",
+                eligible=["operator"],
+                resumption="native_retry",
+            )
         )
     )
 
@@ -302,12 +307,14 @@ async def test_file_detail_uses_the_captured_preimage_and_preserves_both_documen
     operation = entry.operation.model_copy(
         update={"tool": "Write", "payload": {"file_path": str(path), "content": after}}
     )
-    entry = entry.model_copy(
-        update={
-            "operation": operation,
-            "fingerprint": operation.fingerprint(),
-            "preconditions": {path: before},
-        }
+    entry = bound(
+        entry.model_copy(
+            update={
+                "operation": operation,
+                "execution_payload": None,
+                "preconditions": {path: before},
+            }
+        )
     )
     relay(tmp_path).record(entry)
     path.write_text("somebody else's intervening edit\n", encoding="utf-8")
@@ -962,7 +969,7 @@ def test_requester_notification_crosses_repositories_and_deduplicates_worktree_r
     upstream_store = RepositoryPeers(upstream).root
     visited: list[Path] = []
     sent: list[tuple[Path, str, str, Door]] = []
-    nudges: list[tuple[WakePath, str, Path | None]] = []
+    nudges: list[tuple[Path, RosterMember, Path | None]] = []
 
     def present(
         peers: RepositoryPeers, now: datetime | None = None
@@ -978,21 +985,29 @@ def test_requester_notification_crosses_repositories_and_deduplicates_worktree_r
         redirect: bool = False,
         door: Door = Door.AGENT,
         in_reply_to: str = "",
+        sender: str = "",
     ) -> ActorRef:
         assert not redirect
         assert not in_reply_to
+        assert sender == USER_ADDRESS
         sent.append((peers.root, to, text, door))
         return member.actor
 
-    def wake(path: WakePath, message: str, cwd: Path | None = None) -> Woken:
-        nudges.append((path, message, cwd))
+    def roused(
+        peers: RepositoryPeers,
+        woken: RosterMember,
+        fresh: list[ActorMessage],
+        cwd: Path | None = None,
+    ) -> Woken:
+        del fresh
+        nudges.append((peers.root, woken, cwd))
         if wake_failure:
             raise OSError("requester wake transport failed")
         return Woken(reached=True)
 
     monkeypatch.setattr(RepositoryPeers, "present", present)
     monkeypatch.setattr(RepositoryPeers, "send", send)
-    monkeypatch.setattr(notifications, "wake", wake)
+    monkeypatch.setattr(notifications, "roused", roused)
 
     notification = notify_requester((upstream, consumer, sibling), entry)
 
@@ -1016,7 +1031,7 @@ def test_requester_notification_crosses_repositories_and_deduplicates_worktree_r
     assert entry.id in message
     assert str(upstream) in message
     assert "Please retry the reviewed operation." in message
-    assert nudges[0] == (member.wake, message, sibling)
+    assert nudges[0] == (consumer_store, member, sibling)
 
 
 @pytest.mark.parametrize("missing_root", [True, False])

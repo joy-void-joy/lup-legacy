@@ -55,6 +55,17 @@ def store_file() -> Path:
     return store_directory() / "repositories.json"
 
 
+def answers_directory() -> Path:
+    """Where the operator's answers to parked reviews are kept, inside :func:`store_directory`.
+
+    The one part of the launcher's state a launch lends a container, and only
+    read-only, each repository's answers apart: an answer is authority a
+    session may read and never write. The hooks derive the same directory
+    for themselves (:func:`lup.policy.assets.host.review_answers_home`).
+    """
+    return store_directory() / "reviews"
+
+
 def host_side() -> bool:
     """Whether this process runs on the host rather than inside a launched session.
 

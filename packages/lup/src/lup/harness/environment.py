@@ -14,7 +14,7 @@ the child project must select its own environment from its working directory.
 from collections.abc import Mapping
 
 from lup.coordination.identity import MEMBER_ENV, NAME_ENV, MemberEnv
-from lup.devtools.dashboard.address import DASHBOARD_URL_ENV
+from lup.policy.identity import DASHBOARD_URL_ENV
 from lup.devtools.launcher import ENVIRONMENT_VARIABLE
 from lup.sessions.recursion import RecursiveAgentSettings
 from lup.types import EnvVars

@@ -151,7 +151,8 @@ def test_concurrent_threads_record_exactly_one_answer(
 
     assert results.count("refused") == 7
     assert results.count("approved") + results.count("rejected") == 1
-    assert len(review_records(relay.path)) == 2
+    assert len(review_records(relay.path)) == 1
+    assert len(review_records(relay.answers)) == 1
     settled = relay.find("q-1")
     assert settled is not None and settled.answer is not None
     assert settled.state in results
@@ -191,7 +192,8 @@ def test_concurrent_processes_record_exactly_one_answer(
                 process.kill()
             process.join(timeout=5)
 
-    assert len(review_records(relay.path)) == 2
+    assert len(review_records(relay.path)) == 1
+    assert len(review_records(relay.answers)) == 1
     settled = relay.find("q-1")
     assert settled is not None and settled.answer is not None
     assert settled.answer.approved == (settled.state == "approved")

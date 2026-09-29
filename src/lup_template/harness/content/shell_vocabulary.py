@@ -154,6 +154,8 @@ EVERYDAY_COMMANDS: list[CommandFamily] = everyday_commands(
                 "uv run lup-devtools dev py info lup.policy.kernel.effects",
                 "uv run lup-devtools dev py search 'declare'",
                 "uv run lup-devtools harness generate all",
+                "uv run lup-devtools review wait 0f3c9b1e2d4a",
+                "uv run --directory . lup-devtools review wait --any",
             ],
         )
     ]
@@ -162,7 +164,10 @@ EVERYDAY_COMMANDS: list[CommandFamily] = everyday_commands(
 
 The library's families, plus the half no other project inherits: every one of
 these reaches `lup-devtools` through `uv run`, and a rule that stopped one of
-them would stop a step the guidance documents by name.
+them would stop a step the guidance documents by name. `review wait` among
+them, in the shape a parked call's refusal tells the agent to start it: a rule
+that stopped it would leave every parked call waiting on a waiter that cannot
+run.
 """
 
 

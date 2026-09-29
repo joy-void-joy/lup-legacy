@@ -141,7 +141,7 @@ def test_rejection_stops_retry_and_preserves_the_rule(tmp_path: Path) -> None:
     specific = judged(command, tmp_path)["hookSpecificOutput"]
     assert isinstance(specific, dict) and specific["permissionDecision"] == "deny"
     reason = str(specific["permissionDecisionReason"])
-    assert "rejected" in reason and "deleting a remote branch" in reason
+    assert "declined" in reason and "deleting a remote branch" in reason
     persisted = relay(tmp_path).find(question.id)
     assert persisted is not None and persisted.state == "rejected"
     assert persisted.rule == "shell:git.push"

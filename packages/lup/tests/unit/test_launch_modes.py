@@ -205,7 +205,10 @@ def test_a_mode_s_companions_are_held_beside_the_project_s(root: Path) -> None:
         claude=Claude(companions=[Preview(name="preview")]),
     )
 
-    assert [each.name for each in claude(root, mode=kept).companions] == ["preview"]
+    assert [each.name for each in claude(root, mode=kept).companions] == [
+        "preview",
+        "review-answers",
+    ]
 
 
 def test_a_mode_compiles_its_own_tree_or_the_project_s() -> None:

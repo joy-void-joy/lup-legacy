@@ -263,6 +263,7 @@ Run any of them with `uv run lup-devtools <command>`, and add `--help` for its a
 | `review approve` | Approve one review, optionally with a note for the agent. |
 | `review decline` | Decline one review, optionally saying what to do instead. |
 | `review cancel` | Withdraw a review nobody needs answered any more. |
+| `review wait` | Wait on this session&#x27;s reviews, carrying out each one the operator approves. |
 
 ## `run`
 

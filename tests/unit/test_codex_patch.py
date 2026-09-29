@@ -194,11 +194,13 @@ def test_bundled_dispatcher_reads_its_own_policy_data(
     monkeypatch.setitem(sys.modules, "policy_data", foreign)
 
     dispatcher = bundled_dispatcher()
+    declared = sys.modules["policy_data"]
 
-    assert dispatcher.declared_policy is not foreign
-    assert Path(dispatcher.declared_policy.__file__) == (
+    assert declared is not foreign
+    assert Path(str(declared.__file__)) == (
         Path.cwd() / ".codex/plugins/lup/hooks/runtime/policy_data.py"
     )
+    assert dispatcher.AUTO_ESCAPE_PREFIXES is declared.AUTO_ESCAPE_PREFIXES
 
 
 def worktree(root: Path) -> Path:

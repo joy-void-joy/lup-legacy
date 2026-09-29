@@ -46,7 +46,7 @@ from lup.policy.shell_rules import erase_shell_rules
 from lup.types import JsonObject
 from lup_template.harness.catalog import declared_hook_set
 from tests.unit.held import held_argv, holding
-from tests.unit.native import codex_denial
+from tests.unit.native import claude_effect, codex_denial
 from tests.unit.repos import initialized_repo
 
 type Runtime = Literal["claude", "codex"]
@@ -367,8 +367,7 @@ def met(
             return "allow"
         codex_denial(result)
         return "ask"
-    specific = json.loads(str(result))["hookSpecificOutput"]
-    return str(specific["permissionDecision"])
+    return claude_effect(json.loads(str(result)))
 
 
 def previewed(
@@ -528,16 +527,11 @@ def test_a_capture_claims_only_what_it_holds(
     (checkout / "tmp" / "a").write_text("scratch\n", encoding="utf-8")
     postures: tuple[Posture, ...] = ("none", "inner", "outer")
     expected = "allow" if captured else "ask"
-    # Codex parks a question with the preimage of every file it names, and a
-    # directory has none to hold, so it refuses the call it cannot park.
-    parked = (
-        "deny"
-        if runtime == "codex" and expected == "ask" and command.startswith("rm -rf")
-        else expected
-    )
 
+    # A directory operand has no document to bind, so a parked question binds
+    # it by the command that names it, and the call is parked like any other.
     assert {met(runtime, posture, command, checkout) for posture in postures} == {
-        parked
+        expected
     }
     assert set(previewed(command, checkout, monkeypatch).values()) == {expected}
 
