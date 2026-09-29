@@ -941,7 +941,10 @@ def branch_record_reports(pending: list[str]) -> list[CheckReport]:
 
 
 def migration_reports(
-    project: DevProject, spread: Spread | None, base: str | None
+    project: DevProject,
+    spread: Spread | None,
+    base: str | None,
+    record: MigrationRecord = MigrationRecord(),
 ) -> list[CheckReport]:
     """What this checkout owes the projects built on it, judged from ``base``.
 
@@ -975,7 +978,7 @@ def migration_reports(
                 )
             ]
         case (_, str(judged)):
-            owed = undeclared_breaks(project, judged)
+            owed = undeclared_breaks(project, judged, record)
             return [
                 CheckReport(
                     name="declared migrations",
@@ -984,7 +987,7 @@ def migration_reports(
                         f"declared migrations: FAIL ({len(owed)} gone with nothing "
                         "to read)",
                         *(f"  {capability.spelled()}" for capability in owed),
-                        f"  {MigrationRecord().instruction(project_root())}",
+                        f"  {record.instruction(project_root())}",
                     ]
                     if owed
                     else ["declared migrations: ok"],
@@ -1720,6 +1723,7 @@ def run_changed(
     test_roots: list[TestRoot],
     spread: Spread | None = None,
     fix: bool = False,
+    record: MigrationRecord = MigrationRecord(),
 ) -> None:
     """Check the files this tree changed, and say plainly what went unchecked.
 
@@ -1737,7 +1741,8 @@ def run_changed(
     base — and a public name removed is a one-file mistake, which the loop is
     the place to catch rather than the whole gate. It runs whether or not any
     Python file survives, because deleting a module is the removal it exists
-    to see.
+    to see. It parses every declaration in ``record``, so a changed one it
+    read is not listed as unread.
 
     **Tests are not narrowed, and not run.** Which tests reach a change is a
     question about the import graph, and this repository reaches modules
@@ -1770,8 +1775,12 @@ def run_changed(
     )
     with ThreadPoolExecutor(max_workers=len(tools) + 1) as pool:
         running = [pool.submit(tool) for tool in tools]
-        migrated = migration_reports(project, spread, base.commit)
+        migrated = migration_reports(project, spread, base.commit, record)
         reports = [*(job.result() for job in running), *migrated]
+    unread = [
+        path for path in scope.unread if not (migrated and record.holds(Path(path)))
+    ]
+    scope = scope.model_copy(update={"unread": unread})
 
     if not scope.checked:
         typer.echo("No Python file changed, so neither ruff nor pyright ran.")
