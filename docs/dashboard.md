@@ -15,8 +15,8 @@ terminal.
 A session whose launch holds the dashboard parks every question its policy
 asks, on Claude as on Codex, for the session, its subagents and its `-p` runs
 alike: the call is written to the review queue and refused while it waits.
-Where no dashboard is held, Codex parks all the same and Claude parks what
-only a person may answer, leaving the rest to its own prompt
+Where no dashboard is held, Codex parks all the same, answered from the
+terminal, and Claude puts every question to its own permission prompt
 (`docs/permissions.md`, "Where a native ask is put").
 
 The refusal is written for the agent: the call is queued as review `<id>`,
