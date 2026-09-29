@@ -35,6 +35,7 @@ from lup.policy.assets.host import (
     empty_directory_targets,
     foreign_repository,
     host_held_ports,
+    ignored_write_targets,
     measured_boundary,
     measured_landings,
     outside_this_project,
@@ -42,6 +43,8 @@ from lup.policy.assets.host import (
     recoverable_write_targets,
     resolved_write_targets,
     rewritten_text,
+    sibling_worktrees,
+    walked_withheld,
     text_at,
     this_checkout_path,
     tracked_write_targets,
@@ -62,7 +65,11 @@ from lup.policy.kernel.lex import (
     shell_written_targets,
 )
 from lup.policy.kernel.peers import decide_foreign_claim, settled_with_claim
-from lup.policy.kernel.roles import displaced_targets
+from lup.policy.kernel.roles import (
+    displaced_targets,
+    sibling_scratch_rows,
+    unscratched,
+)
 from lup.policy.kernel.rows import (
     AcceptanceGuardRow,
     AntiPatternRow,
@@ -75,6 +82,7 @@ from lup.policy.kernel.rows import (
     RewrittenDocumentRow,
     UnproducedDocumentRow,
     UrlScopeRow,
+    WithheldWalkRow,
     landing_rows,
     unproduced_cause,
 )
@@ -83,6 +91,13 @@ from lup.policy.kernel.shell import (
     decide_shell_segment,
     shell_context,
     shell_posture_targets,
+)
+from lup.policy.kernel.walks import excluded_name, shell_walked_roots
+from lup.policy.kernel.withheld import (
+    carries_withheld_name,
+    withheld_edit,
+    withheld_names,
+    withheld_row,
 )
 from lup.policy.edit_rules import EditRule, erase_edit_rules
 from lup.policy.imports import ImportBoundary
@@ -450,6 +465,17 @@ class ShellPolicy(DecisionPolicy[ShellCommand]):
         # tables would be two answers to what may be written.
         rewritten = self.rewritten_documents(event)
         edits = self.authored
+        # Another checkout of this repository keeps this one's scratch, as
+        # the dispatchers read it: asked of Git only where the command names
+        # an absolute path at all.
+        siblings = (
+            sibling_worktrees(root)
+            if any(
+                target.startswith("/")
+                for target in [*shell_write_targets(event.command), *acted_on, *flagged]
+            )
+            else []
+        )
         verdict = pydantic_decision(
             decide_shell(
                 event.command,
@@ -459,7 +485,10 @@ class ShellPolicy(DecisionPolicy[ShellCommand]):
                 sandboxed=self.sandbox_active and not event.unsandboxed,
                 excluded_commands=self.sandbox_excluded_commands,
                 trusted_script_roots=self.trusted_script_roots,
-                path_roles=self.path_roles,
+                path_roles=[
+                    *self.path_roles,
+                    *sibling_scratch_rows(siblings, self.path_roles),
+                ],
                 path_rules=self.path_rules,
                 interactive=self.interactive,
                 existing_targets=[
@@ -522,7 +551,21 @@ class ShellPolicy(DecisionPolicy[ShellCommand]):
                 allowances=[] if edits is None else edits.grants.granted(),
                 escapable=self.escapable,
                 unjudged_ambient=self.unjudged_ambient,
-                recovered=self.recovered,
+                # The capture this session holds takes nothing Git ignores, so
+                # one ignored target outside declared scratch, which needs no
+                # capture, leaves the loss uncaptured.
+                recovered=self.recovered
+                and not ignored_write_targets(
+                    unscratched(
+                        [
+                            *shell_write_targets(event.command),
+                            *shell_written_targets(event.command, self.rules),
+                        ],
+                        self.path_roles,
+                        str(root),
+                    ),
+                    root,
+                ),
                 contained=self.contained,
                 # The same root the write readings above resolve against, so
                 # an absolute path inside the checkout reaches the declared
@@ -532,6 +575,27 @@ class ShellPolicy(DecisionPolicy[ShellCommand]):
                 relayed=self.relayed,
                 unscoped_fetch=self.unscoped_fetch,
                 refused_paths=self.refused_paths,
+                # What a recursive reader would walk into beneath a root it
+                # names, walked here as the dispatchers walk it.
+                withheld_walks=[
+                    WithheldWalkRow(root=walk["path"], found=found)
+                    for walk in shell_walked_roots(event.command, self.rules)
+                    for names in [withheld_names(self.refused_paths)]
+                    for found in [
+                        walked_withheld(
+                            walk["path"],
+                            walk["hidden"],
+                            lambda name: carries_withheld_name(name, names),
+                            lambda path: (
+                                withheld_row(path, self.refused_paths) is not None
+                            ),
+                            lambda name: excluded_name(name, walk["excluded"]),
+                            lambda name: excluded_name(name, walk["skipped"]),
+                            root,
+                        )
+                    ]
+                    if found
+                ],
                 secret_variables=self.secret_variables,
                 # The same two measurements a dispatcher takes inside a
                 # container, taken wherever this composition was told it is
@@ -782,8 +846,12 @@ class EditPolicy(DecisionPolicy[EditBatch]):
         import_boundaries: list[ImportBoundary] | None = None,
         peer_policy: PeerPolicyRow | None = None,
         rules: RuleSet | None = None,
+        refused_paths: list[RefusedPaths] | None = None,
     ) -> None:
         self.acceptance_guard = acceptance_guard
+        # The key and login files every command's words are refused, which a
+        # file tool writing one names as surely as `cp` would.
+        self.refused_paths = [paths.erased() for paths in refused_paths or []]
         self.path_roles = path_roles or []
         self.grants = LeaseGrants() if grants is None else grants
         self.protected = list(protected)
@@ -837,6 +905,9 @@ class EditPolicy(DecisionPolicy[EditBatch]):
         # Resolved before any gate reads a role, as the dispatchers resolve it,
         # so an edit through a link meets the gates of the file it lands on.
         path = str((root / change.path).resolve())
+        withheld = withheld_edit(path, self.refused_paths)
+        if withheld is not None:
+            return pydantic_decision(withheld)
         try:
             response = routed_edit_response(
                 path,

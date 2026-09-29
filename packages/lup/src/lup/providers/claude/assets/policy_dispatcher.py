@@ -52,10 +52,12 @@ from host import (
     approval_fingerprint,
     approval_subject,
     boundary_account,
+    closed_deadline,
     declared_identity,
     file_diagnostics,
     note_ran,
     observe_hook_call,
+    opened_deadline,
     publish_edition,
     read_document,
     record_hook_evidence,
@@ -68,6 +70,7 @@ from policy_data import (
     AGENT_IDENTITY_ENV,
     AUTONOMOUS_AGENT_IDENTITIES,
     DIAGNOSTICS_COMMAND,
+    HOOK_DEADLINE_SECONDS,
     REPAIR_COMMAND,
 )
 
@@ -540,6 +543,11 @@ def observe(payload):
 
 
 def main():
+    # What each runtime gives this hook before it lets the call through,
+    # less what starting Python and writing the verdict take: every step a
+    # verdict waits on shares it, and anything still waiting past it is
+    # refused rather than left for the runtime to wave through.
+    previous = opened_deadline(HOOK_DEADLINE_SECONDS)
     payload = {}
     event = ""
     placed = None
@@ -622,6 +630,8 @@ def main():
             sys.stdout,
         )
         return
+    finally:
+        closed_deadline(previous)
     json.dump(rendered(decision, payload, placed, attached), sys.stdout)
     if not failed:
         detail = (

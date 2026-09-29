@@ -37,6 +37,9 @@ def test_operator_refresh_cannot_be_called_by_a_requesting_session(prefix: str) 
     [
         ".lup/preflight/session.json",
         ".lup/policy-snapshots/digest/runtime/policy_data.py",
+        ".lup/questions.jsonl",
+        ".lup/review-claims/review-id",
+        ".lup/review-stage-claims/review-id/stage-digest",
     ],
 )
 def test_launch_authority_writes_remain_protected(path: str) -> None:
@@ -52,6 +55,125 @@ def test_launch_authority_writes_remain_protected(path: str) -> None:
 
     assert decision.effect == "ask"
     assert "protected" in decision.rule
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        ".vscode/tasks.json",
+        ".vscode/launch.json",
+        ".devcontainer/devcontainer.json",
+        ".pre-commit-config.yaml",
+        ".envrc",
+        "packages/lup/.envrc",
+    ],
+)
+def test_code_that_runs_later_outside_the_session_is_protected(path: str) -> None:
+    """An editor task, a commit hook, a container recipe, a directory's env.
+
+    Each is code somebody else's tool runs later -- the editor, `git commit`,
+    the container build, the shell entering a directory -- with nothing of
+    this session's policy in front of it, as a CI workflow is.
+    """
+    policy = EditPolicy(declared_path_rules(declared_hook_set()))
+
+    decision = policy.decide(
+        EditBatch(
+            changes=[EditChange(path=Path(path), before=None, after="value = 2\n")]
+        )
+    )
+
+    assert decision.effect == "ask"
+    assert "protected" in decision.rule
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "src/lup_template/harness/content/catalog.py",
+        "src/lup_template/harness/content/shell_vocabulary.py",
+        "packages/lup/src/lup/harness/codescan/antipatterns.py",
+        "packages/lup/src/lup/harness/codescan/registry.py",
+    ],
+)
+def test_which_rules_apply_is_protected_as_the_policy_is(path: str) -> None:
+    """Retiring a scan rule or re-judging a command widens what a session may do.
+
+    The policy package and the catalog were protected while the selection
+    they compile from was not, so a rule was retired, or a verb re-judged,
+    by an edit nobody was asked about and the next `harness generate all`.
+    """
+    policy = EditPolicy(declared_path_rules(declared_hook_set()))
+
+    decision = policy.decide(
+        EditBatch(
+            changes=[
+                EditChange(path=Path(path), before="value = 1\n", after="value = 2\n")
+            ]
+        )
+    )
+
+    assert decision.effect == "ask"
+    assert "protected" in decision.rule
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "install -m644 tmp/x .lup/preflight/n.json",
+        "install -D -m 0644 tmp/x .lup/preflight/n.json",
+        "install -t .lup/policy-snapshots tmp/x",
+        "install -d .lup/preflight/fresh",
+        "install tmp/x tmp/y .lup/preflight",
+    ],
+)
+def test_installing_onto_launch_authority_is_a_copy_onto_it(
+    command: str, tmp_path: Path
+) -> None:
+    """`install` copies its sources to its last operand, as `cp` does.
+
+    Unclassified, it deferred to whatever boundary the session ran behind,
+    and a boundary that mounts the checkout writable confines nothing here.
+    """
+    hooks = declared_hook_set()
+    policy = ShellPolicy(
+        hooks.resolved_shell_rules(),
+        path_rules=declared_path_rules(hooks),
+        runner_targets=list(hooks.runner_targets),
+        sandbox_active=True,
+    )
+
+    decision = policy.decide(ShellCommand(command=command, cwd=tmp_path))
+
+    assert decision.effect == "ask"
+    assert "protected path requires approval" in decision.reason
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "rsync tmp/x .lup/preflight/n.json",
+        "rsync -a tmp/ .lup/policy-snapshots/",
+        "rsync -a --delete tmp/ .claude/",
+        "scp tmp/x .lup/preflight/n.json",
+        "scp -r tmp/ .claude/",
+    ],
+)
+def test_a_sync_onto_a_protected_root_asks_for_the_root(
+    command: str, tmp_path: Path
+) -> None:
+    """A local destination is a write there, whatever else the verb can reach."""
+    hooks = declared_hook_set()
+    policy = ShellPolicy(
+        hooks.resolved_shell_rules(),
+        path_rules=declared_path_rules(hooks),
+        runner_targets=list(hooks.runner_targets),
+    )
+
+    decision = policy.decide(ShellCommand(command=command, cwd=tmp_path))
+
+    assert decision.effect == "ask"
+    assert "protected path requires approval" in decision.reason
 
 
 @pytest.mark.parametrize(

@@ -53,10 +53,12 @@ from host import (
     approval_fingerprint,
     approval_subject,
     boundary_account,
+    closed_deadline,
     declared_identity,
     file_diagnostics,
     note_ran,
     observe_hook_call,
+    opened_deadline,
     policy_snapshot_digest,
     publish_edition,
     read_document,
@@ -74,6 +76,7 @@ from caller_payload import caller_of
 from policy_data import AUTO_ESCAPE_PREFIXES
 from policy_data import AGENT_IDENTITY_ENV, AUTONOMOUS_AGENT_IDENTITIES
 from policy_data import DIAGNOSTICS_COMMAND, REPAIR_COMMAND
+from policy_data import HOOK_DEADLINE_SECONDS
 
 
 def hook_environment():
@@ -464,6 +467,11 @@ def observe(payload):
 
 
 def main():
+    # What each runtime gives this hook before it lets the call through,
+    # less what starting Python and writing the verdict take: every step a
+    # verdict waits on shares it, and anything still waiting past it is
+    # refused rather than left for the runtime to wave through.
+    previous = opened_deadline(HOOK_DEADLINE_SECONDS)
     payload = {}
     permission_request = False
     review_notice = False
@@ -538,6 +546,8 @@ def main():
         if not permission_request:
             sys.stderr.write(decision.addressed())
             raise SystemExit(2) from error
+    finally:
+        closed_deadline(previous)
     if permission_request and decision.effect != "defer":
         allowed = decision.effect == "allow"
         json.dump(

@@ -748,6 +748,13 @@ def portable_harness(
                 # CI runs with the repository's secrets and on every push, so
                 # a workflow or an action is code somebody else executes.
                 Path(".github"),
+                # And the same by other hands, later and outside the session:
+                # an editor's tasks and launch configurations, a container
+                # recipe, and the hooks `git commit` runs. None of them has
+                # this policy in front of it when it runs.
+                Path(".vscode"),
+                Path(".devcontainer"),
+                Path(".pre-commit-config.yaml"),
                 Path("sync.json"),
                 # The gitignored half alongside it, because a registration
                 # there can now carry a `mount` — and that key is what a
@@ -761,6 +768,14 @@ def portable_harness(
                 Path("sync.json.local"),
                 Path(".lup/preflight"),
                 Path(".lup/policy-snapshots"),
+                # The review queue, and the claims that spend an answer once.
+                # A hook parks a question here and releases the retry an
+                # approved row names, writing both from its own process; the
+                # session's own call writing either is the requester recording
+                # its own answer, or putting a spent approval back.
+                Path(".lup/questions.jsonl"),
+                Path(".lup/review-claims"),
+                Path(".lup/review-stage-claims"),
                 # What the agent is allowed to do at all is declared here, and
                 # an agent that can widen its own policy without a question
                 # has a preference rather than a boundary. Protected so the
@@ -771,6 +786,13 @@ def portable_harness(
                 # once and evaporates.
                 Path("packages/lup/src/lup/policy"),
                 Path(LAYOUT.path("harness", "catalog.py")),
+                # Which of those rules apply is the same widening by another
+                # name: retiring a scan rule, or judging a command differently,
+                # is decided in these, and the next generation compiles it into
+                # the hooks as surely as an edit of the policy would.
+                Path(LAYOUT.path("harness", "content", "catalog.py")),
+                Path(LAYOUT.path("harness", "content", "shell_vocabulary.py")),
+                Path("packages/lup/src/lup/harness/codescan"),
             ],
             # lup: template: what each tree in this domain is *for*. A role is
             # how a gate tells a fixture from production and a build product

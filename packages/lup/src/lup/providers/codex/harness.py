@@ -801,7 +801,7 @@ class CodexHookRenderer(ArtifactRenderer[HookSet]):
             "type": "command",
             "command": guarded_hook_command("PLUGIN_ROOT"),
             "statusMessage": "Checking Lup policy",
-            "timeout": 30,
+            "timeout": source.policy_timeout,
         }
         decided: list[JsonValue] = [
             {
@@ -1050,6 +1050,7 @@ class CodexHookRenderer(ArtifactRenderer[HookSet]):
                         diagnostics_command=source.diagnostics_command,
                         resolution_command=source.resolution_command,
                         repair_command=source.repair_command,
+                        hook_timeout=source.policy_timeout,
                         rules=rule_set_for(
                             self.spellings.read_document(DOCUMENT_IN_HAND),
                             source.rules,

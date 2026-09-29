@@ -297,16 +297,19 @@ class TestAFlagThatWritesIsJudgedWhereEveryWriteIs:
             assert written(spelling).effect == "ask", spelling
 
     def test_a_boundary_confines_both_spellings_or_neither(self) -> None:
-        """Whether a write outside is confined is a fact about the session.
+        """Whether a write outside is confined is one question for both spellings.
 
-        The flag spelling had no way to read it and reached for the row's
-        declared `sandbox` instead -- which states where a command must run,
-        not where this one is, and reads `ambient` on every row in the table.
-        So a contained session was told its own boundary did not count, but
-        only when the path arrived as a flag value.
+        A write beyond the checkout is settled by where the host measured it
+        landing, not by the row's declared `sandbox` -- which states where a
+        command must run, not where this one is. So a flag value and a
+        redirection reach one answer in a contained session: the question,
+        until the host places the path as the container's own.
         """
-        for spelling in ("sort -o /etc/hosts f", "sort f > /etc/hosts"):
-            assert written(spelling, contained=True).effect == "allow", spelling
+        answers = {
+            written(spelling, contained=True).effect
+            for spelling in ("sort -o /etc/hosts f", "sort f > /etc/hosts")
+        }
+        assert answers == {"ask"}
 
     def test_a_flag_naming_no_resolvable_path_keeps_the_row_s_question(self) -> None:
         """A write nobody can locate is what the guard was written for."""

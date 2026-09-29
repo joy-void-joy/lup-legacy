@@ -45,6 +45,7 @@ from host import (
     existing_write_targets,
     foreign_repository,
     granted_allowances,
+    ignored_write_targets,
     managed_script_roots,
     outside_this_project,
     this_checkout_path,
@@ -56,6 +57,8 @@ from host import (
     recoverable_write_targets,
     resolved_write_targets,
     rewritten_text,
+    sibling_worktrees,
+    walked_withheld,
     record_deferral,
     record_question,
     review_hook_call,
@@ -104,14 +107,22 @@ from kernel.rows import (
     RewriteReading,
     RewrittenDocumentRow,
     UnproducedDocumentRow,
+    WithheldWalkRow,
     landing_rows,
     unproduced_cause,
 )
 from kernel.spawns import decide_spawn, spawn_name
 from kernel.words import INTERPRETERS
-from kernel.roles import displaced_targets
+from kernel.roles import displaced_targets, sibling_scratch_rows, unscratched
 from kernel.shell import decide_shell, sandbox_excluded, shell_posture_targets
 from kernel.tools import decide_tool
+from kernel.walks import excluded_name, shell_walked_roots
+from kernel.withheld import (
+    carries_withheld_name,
+    withheld_edit,
+    withheld_names,
+    withheld_row,
+)
 from policy_data import (
     ACCEPTANCE_GUARD,
     ALLOWANCE_GRANTS_ENV,
@@ -207,6 +218,17 @@ def bash_decision(
     reading = rewritten_documents(
         command, cwd or Path.cwd(), autonomous, agent_identity
     )
+    # Another checkout of this repository keeps this one's scratch, reached by
+    # the absolute path a session spells it with -- so Git is asked for the
+    # checkouts only where the command names such a path at all.
+    siblings = (
+        sibling_worktrees(cwd)
+        if any(
+            target.startswith("/")
+            for target in [*shell_write_targets(command), *acted_on, *flagged]
+        )
+        else []
+    )
     verdict = decide_shell(
         command,
         SHELL_RULES,
@@ -215,7 +237,7 @@ def bash_decision(
         sandboxed=sandboxed,
         excluded_commands=SANDBOX_EXCLUDED_COMMANDS,
         trusted_script_roots=managed_script_roots(managed_root),
-        path_roles=PATH_ROLES,
+        path_roles=[*PATH_ROLES, *sibling_scratch_rows(siblings, PATH_ROLES)],
         path_rules=PATH_RULES,
         existing_targets=existing_write_targets(
             [*shell_write_targets(command), *acted_on, *flagged], cwd
@@ -286,6 +308,25 @@ def bash_decision(
         # What no word may name and no builtin may print, as the project
         # declared them: the same rows the canonical policy is handed.
         refused_paths=REFUSED_PATHS,
+        # And what a recursive reader would walk into beneath a root it names,
+        # which only the filesystem can say.
+        withheld_walks=[
+            WithheldWalkRow(root=walk["path"], found=found)
+            for walk in shell_walked_roots(command, SHELL_RULES)
+            for names in [withheld_names(REFUSED_PATHS)]
+            for found in [
+                walked_withheld(
+                    walk["path"],
+                    walk["hidden"],
+                    lambda name: carries_withheld_name(name, names),
+                    lambda path: withheld_row(path, REFUSED_PATHS) is not None,
+                    lambda name: excluded_name(name, walk["excluded"]),
+                    lambda name: excluded_name(name, walk["skipped"]),
+                    cwd,
+                )
+            ]
+            if found
+        ],
         secret_variables=SECRET_VARIABLES,
         # Resolved against what this launch mounted writable, so a write into a
         # worktree cut after the container started reaches a reviewer instead of
@@ -341,7 +382,21 @@ def bash_decision(
             if any(host in command for host in ("localhost", "127.", "::1"))
             else []
         ),
-        recovered=bool(reference),
+        # A snapshot proves a capture only of what it took, and it takes
+        # nothing Git ignores: one ignored target outside declared scratch,
+        # which needs no capture, leaves the loss uncaptured.
+        recovered=bool(reference)
+        and not ignored_write_targets(
+            unscratched(
+                [
+                    *shell_write_targets(command),
+                    *shell_written_targets(command, SHELL_RULES),
+                ],
+                PATH_ROLES,
+                str(cwd or Path.cwd()),
+            ),
+            cwd,
+        ),
     )
     # The gates an edit is judged by, over the writes this command carries the
     # content of. Joined here rather than inside the classifier because they
@@ -748,6 +803,11 @@ def edit_decision(
 ) -> KernelDecision:
     """Route an edit to its authorized owner while retaining the caller's boundary."""
     path = str(((cwd or Path.cwd()) / path_text).resolve())
+    # Before any owner is asked: a key or a login is this session's to be
+    # kept from, whichever repository's policy the rest of the edit answers to.
+    withheld = withheld_edit(path, REFUSED_PATHS)
+    if withheld is not None:
+        return withheld
     try:
         response = routed_edit_response(
             path,

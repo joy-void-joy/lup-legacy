@@ -69,6 +69,7 @@ from lup.policy.kernel.commands import decide_command_rows, decide_uv
 from lup.policy.kernel.edit import decide_edit
 from lup.policy.kernel.rows import (
     DisplacedTargetRow,
+    PathRoleRow,
     RunnerTargetRow,
     ShellRuleRow,
     runner_target_values,
@@ -445,12 +446,18 @@ def test_import_boundary_retirement_reaches_the_canonical_policy() -> None:
     assert decision.effect == "allow"
 
 
-FIXTURE_PATH_ROLES = declared_role_rows(list(declared_hook_set().path_roles))
+FIXTURE_PATH_ROLES = [
+    *declared_role_rows(list(declared_hook_set().path_roles)),
+    # A sibling worktree of this repository, as the host spells its scratch
+    # where it stands: the checkout's own `**/tmp`, rooted at that worktree.
+    PathRoleRow(root="/srv/tree/sibling/**/tmp", role="scratch"),
+]
 """The roles this repository declares, read off the hook set the runtime is rendered from.
 
 Read rather than mirrored, as the protected-path table below is: a copy kept
 by hand judges a vocabulary the generated runtime does not carry the moment
-the catalog gains a row."""
+the catalog gains a row. The one row added is what the host adds for a
+sibling worktree, which no declaration carries."""
 
 MIGRATION_DECLARATION = (
     'subjects = ["Runtime.contained"]\n'
@@ -1271,6 +1278,22 @@ SHELL_POLICY_CASES = [
     DecisionCase(input="git worktree move ../wt ../moved", effect="allow"),
     DecisionCase(input="cat .git ../repo.git/worktrees/wt/gitdir", effect="allow"),
     DecisionCase(input="echo x > tmp/refs/heads/main", effect="allow"),
+    # A sibling worktree's scratch is scratch for every write and every
+    # delete, as this checkout's is: one rule, whichever spelling reaches it.
+    # Its production stays another tree's, and a plugin tree under its scratch
+    # is still one this checkout's scratch does not hold.
+    DecisionCase(input="echo x > /srv/tree/sibling/tmp/probe.txt", effect="allow"),
+    DecisionCase(input="cp README.md /srv/tree/sibling/tmp/probe.txt", effect="allow"),
+    DecisionCase(input="rm /srv/tree/sibling/tmp/probe.txt", effect="allow"),
+    DecisionCase(input="rm -rf /srv/tree/sibling/tmp/run", effect="allow"),
+    DecisionCase(
+        input="mv /srv/tree/sibling/tmp/a /srv/tree/sibling/tmp/b", effect="allow"
+    ),
+    DecisionCase(input="rm /srv/tree/sibling/src/app.py", effect="ask"),
+    DecisionCase(input="cp README.md /srv/tree/sibling/src/app.py", effect="ask"),
+    DecisionCase(
+        input="mkdir -p /srv/tree/sibling/tmp/kit/.claude/plugins/lup", effect="deny"
+    ),
     # A generated plugin tree is a build product the running runtime already
     # loaded, so writing one by hand changes nothing it will honor and the
     # next generation reverts it. Every writing form refuses it and names the
@@ -1372,6 +1395,15 @@ SHELL_POLICY_CASES = [
     DecisionCase(input="cp /etc/hosts tmp/hosts", effect="allow"),
     DecisionCase(input="cp tmp/a src/b.py", effect="ask"),
     DecisionCase(input="mv src/a.py tmp/a.py", effect="ask"),
+    # `install` is a copy with modes attached: its last operand is written
+    # and the rest are read, so it is judged by the copy's own readings, and
+    # a flag the copy grammar does not read widens to every operand.
+    DecisionCase(input="install -D tmp/a tmp/b", effect="allow"),
+    DecisionCase(input="install src/a.py tmp/a.py", effect="allow"),
+    DecisionCase(input="install tmp/a src/b.py", effect="ask"),
+    DecisionCase(input="install -m644 tmp/a .lup/preflight/n.json", effect="ask"),
+    DecisionCase(input="install -d .claude/fresh", effect="ask"),
+    DecisionCase(input="install -Dv tmp/a .codex/plugins/lup/b", effect="deny"),
     DecisionCase(input="rm /home/u/.claude/plugins/lup/x", effect="deny"),
     DecisionCase(input="echo x > /srv/tree/dev/.codex/plugins/lup/y", effect="deny"),
     DecisionCase(input="rm .codex/config.local.toml", effect="ask"),
@@ -1519,16 +1551,25 @@ SHELL_POLICY_CASES = [
     DecisionCase(input="git push --delete origin feat", effect="ask"),
     DecisionCase(input="git checkout -- file", effect="deny"),
     # Ref-sourced pathspec restores name their content's commit; the shell
-    # option builtin is shell-local. Both anchor history-rebuild batches.
+    # option builtin is shell-local. Both anchor history-rebuild batches, and
+    # this project spells the restore with `git restore --source`: its table
+    # redirects `checkout`, so the checkout spelling is refused however its
+    # paths are written, and the refusal names the restore.
     DecisionCase(input="set -e", effect="allow"),
     DecisionCase(input="set -euo pipefail", effect="allow"),
-    DecisionCase(input="git checkout 81619e7 -- packages/x.py", effect="allow"),
-    DecisionCase(input="git checkout main -- f g", effect="allow"),
+    DecisionCase(input="git restore --source=81619e7 -- packages/x.py", effect="allow"),
+    DecisionCase(input="git checkout 81619e7 -- packages/x.py", effect="deny"),
+    DecisionCase(input="git checkout main -- f g", effect="deny"),
+    DecisionCase(input="git checkout main -- .", effect="deny"),
     DecisionCase(input="git checkout $ref -- f", effect="deny"),
     DecisionCase(input="git checkout -b topic", effect="deny"),
     DecisionCase(
-        input="set -e; git checkout 81619e7 -- x.py; git commit -m x",
+        input="set -e; git restore --source=81619e7 -- x.py; git commit -m x",
         effect="allow",
+    ),
+    DecisionCase(
+        input="set -e; git checkout 81619e7 -- x.py; git commit -m x",
+        effect="deny",
     ),
     DecisionCase(input="git config core.pager=x", effect="ask"),
     # Read verbs pin git config to its query action. Among writes, the key
@@ -1805,6 +1846,26 @@ SHELL_POLICY_CASES = [
     DecisionCase(input="gh secret set TOKEN", effect="ask"),
     # Adversarial hardening: no auto-allowed code execution or injection.
     DecisionCase(input="sudo cat /etc/shadow", effect="ask"),
+    # Every tool that runs a command as another identity, with other
+    # capabilities, or in another namespace is the same escalation `sudo` is,
+    # and a boundary that runs it inside is the boundary it can leave; the
+    # report each prints about the present process reads.
+    *(
+        DecisionCase(input=command, effect="ask", sandboxed=sandboxed)
+        for command in (
+            "su -c id root",
+            "runuser -u root -- id",
+            "setpriv --reuid=0 --regid=0 --clear-groups id",
+            "capsh --user=root -- -c id",
+            "pkexec id",
+            "unshare -r id",
+            "nsenter -t 1 -m id",
+            "chroot / id",
+        )
+        for sandboxed in (False, True)
+    ),
+    DecisionCase(input="capsh --print", effect="allow"),
+    DecisionCase(input="setpriv --dump", effect="allow"),
     DecisionCase(input="LD_PRELOAD=./x.so ls", effect="ask"),
     DecisionCase(input="GIT_SSH_COMMAND=./x git fetch origin", effect="ask"),
     DecisionCase(input="git fetch ext::sh -c id", effect="ask"),
@@ -4034,11 +4095,11 @@ def test_a_tee_and_a_redirect_answer_alike_in_a_confined_session(
 ) -> None:
     """A confined session writes outside the checkout by both spellings or neither.
 
-    Measured before this: `date > <another checkout>/tmp/x.txt` was allowed in
-    a contained session, where the write row reads the boundary, and `date |
-    tee` of the same path asked in every placement, because its row asked
-    about every tee and named a loss no capture holds. The canonical policy
-    and the bundled kernel are asked the same questions.
+    `date > <another checkout>/tmp/x.txt` and `date | tee` of the same path
+    reach one row and one answer. Beyond the checkout that answer is a
+    question until the host measures the path as the container's own, which
+    nothing here measured, so both ask. The canonical policy and the bundled
+    kernel are asked the same questions.
     """
     checkout = tmp_path / "checkout"
     checkout.mkdir()
@@ -4051,7 +4112,7 @@ def test_a_tee_and_a_redirect_answer_alike_in_a_confined_session(
     )
     for into in ("> ", "| tee "):
         for target, effect in (
-            ("/srv/other/tmp/x.txt", "allow"),
+            ("/srv/other/tmp/x.txt", "ask"),
             ("tmp/x.txt", "allow"),
             ("a$X", "ask"),
             ("README.md", "ask"),

@@ -20,12 +20,15 @@ import csv
 import fcntl
 import json
 import os
+import signal
 from hashlib import sha256
 import sys
+import time
 from datetime import UTC, datetime, timedelta
 
 # lup: ignore[subprocess] — `sh` is third-party and this half is compiled into a bare script that has no virtual environment to resolve it from
 import subprocess
+from collections.abc import Callable
 from pathlib import Path
 from typing import Literal
 from urllib.parse import urlsplit
@@ -241,6 +244,79 @@ def destination_policy_binding(path_text: str, root: Path | None) -> str:
     return ""
 
 
+def opened_deadline(seconds: float, grace: float = 2.0) -> str:
+    """Give this hook, and every process it starts, one deadline: returns the one before.
+
+    Each runtime lets a call through once its policy hook runs past its
+    timeout, so a hook that is still waiting when that comes has answered
+    nothing, and nothing is the one answer a gate may not give. Everything a
+    verdict may wait on -- a language server, a destination's evaluator, Git,
+    `sed` -- shares the deadline set here, where the hook starts, and asks
+    :func:`hook_seconds_left` rather than spending a timeout of its own; one
+    cut short reads as the failure it already answers, so the verdict is
+    reached in time.
+
+    What no step bounds -- a file lock another writer holds, a read that
+    never returns, the classifier itself -- is bounded by an alarm ``grace``
+    seconds past the deadline. It raises where the hook is, and the
+    dispatcher answers that as it answers every call it could not judge: it
+    refuses. The grace is what separates the two: a step cut short at the
+    deadline still has time to become the verdict it reads as.
+
+    Kept in the environment, on the monotonic clock every process on the
+    machine shares, so a process this hook starts inherits the deadline and
+    never extends it: one already set by a parent stands where it is sooner.
+    """
+    environ = os.environ  # lup: ignore[os-environ]
+    previous = environ["LUP_HOOK_DEADLINE"] if "LUP_HOOK_DEADLINE" in environ else ""
+    deadline = time.monotonic() + seconds
+    try:
+        inherited = float(previous) if previous else deadline
+    except ValueError:
+        inherited = deadline
+    held = min(deadline, inherited)
+    environ["LUP_HOOK_DEADLINE"] = repr(held)
+
+    # A RuntimeError rather than a TimeoutError, which is an OSError: steps on
+    # the way to a verdict answer an OSError as the failure it reads as and
+    # carry on, and an alarm one of them swallowed would leave the hook
+    # running with nothing left to stop it. Nothing before the dispatcher
+    # catches this one, so it reaches the refusal of a call it could not judge.
+    def overran(_number, _frame):
+        signal.signal(signal.SIGALRM, signal.SIG_IGN)
+        raise RuntimeError("this hook reached its deadline before a verdict")
+
+    signal.signal(signal.SIGALRM, overran)
+    signal.setitimer(signal.ITIMER_REAL, max(held - time.monotonic(), 0.0) + grace)
+    return previous
+
+
+def closed_deadline(previous: str) -> None:
+    """Disarm :func:`opened_deadline`'s alarm and put back the deadline it replaced."""
+    signal.setitimer(signal.ITIMER_REAL, 0)
+    signal.signal(signal.SIGALRM, signal.SIG_DFL)
+    environ = os.environ  # lup: ignore[os-environ]
+    if previous:
+        environ["LUP_HOOK_DEADLINE"] = previous
+        return
+    environ.pop("LUP_HOOK_DEADLINE", None)
+
+
+def hook_seconds_left(ceiling: float) -> float:
+    """How long a step may still take: ``ceiling``, or less where the hook's deadline is nearer.
+
+    Outside a hook no deadline is set and the step keeps its own ceiling.
+    """
+    environ = os.environ  # lup: ignore[os-environ]
+    if "LUP_HOOK_DEADLINE" not in environ:
+        return ceiling
+    try:
+        deadline = float(environ["LUP_HOOK_DEADLINE"])
+    except ValueError:
+        return ceiling
+    return max(0.0, min(ceiling, deadline - time.monotonic()))
+
+
 def destination_evaluation(binding: str, request: str, timeout: float = 15) -> str:
     """Run accepted bytes in isolation; return only the evaluator's protocol reply."""
     row = json.loads(binding)
@@ -249,6 +325,11 @@ def destination_evaluation(binding: str, request: str, timeout: float = 15) -> s
     snapshot = Path(row["snapshot"])
     if policy_snapshot_digest(snapshot) != row["digest"]:
         raise ValueError("accepted destination policy snapshot changed")
+    allowed = hook_seconds_left(timeout)
+    if allowed <= 0:
+        raise ValueError(
+            "this hook has no time left to run the destination's accepted policy"
+        )
     result = subprocess.run(
         [
             sys.executable,
@@ -262,7 +343,7 @@ def destination_evaluation(binding: str, request: str, timeout: float = 15) -> s
         input=request,
         text=True,
         capture_output=True,
-        timeout=timeout,
+        timeout=allowed,
         check=False,
     )
     if result.returncode != 0:
@@ -1303,6 +1384,108 @@ def worktree_root(path_text: str) -> str:
     return ""
 
 
+def sibling_worktrees(root: Path | None = None) -> list[str]:
+    """Every other checkout of the repository holding *root*, where each stands.
+
+    Read from `git worktree list --porcelain`, the one place Git states them:
+    each entry is a block of lines ending at a blank one, opened by
+    `worktree <path>`, and one carrying `bare` is the repository a linked
+    layout keeps beside its checkouts, which holds none to write into. The
+    checkout *root* sits in is left out -- its own paths are read relative to
+    it already. Nothing where Git cannot answer.
+    """
+    where = Path.cwd() if root is None else root
+    here = worktree_root(str(where.resolve()))
+    lines = git_answers(["worktree", "list", "--porcelain"], where) or []
+
+    def checkouts():
+        """Each entry's path, once its block has said it is not the bare one."""
+        tree = ""
+        for line in [*lines, ""]:
+            if line.startswith("worktree "):
+                tree = line.removeprefix("worktree ")
+            if line == "bare":
+                tree = ""
+            if not line and tree:
+                yield tree
+                tree = ""
+
+    return [tree for tree in checkouts() if str(Path(tree).resolve()) != here]
+
+
+def walked_withheld(
+    walked: str,
+    hidden: bool,
+    named: Callable[[str], bool],
+    withheld: Callable[[str], bool],
+    pruned: Callable[[str], bool],
+    skipped: Callable[[str], bool],
+    root: Path | None = None,
+    reserve: float = 1.0,
+) -> str:
+    """The first withheld path a recursive read of *walked* would reach, or "".
+
+    The kernel reads which words a command walks; what lies beneath each is
+    this half's to say, since only a filesystem can. A home is spelled from
+    the home -- `~`, `$HOME` -- and every other root from where the command
+    stands. A root that is not a directory walks nothing: a file is named, and
+    judged as named.
+
+    ``named`` says whether a file or a directory could carry a withheld path
+    by its name alone, which is what keeps this from reading every pattern at
+    every file: only a file so named, or beneath a directory so named, is put
+    to ``withheld``, the kernel's whole reading. ``hidden`` false skips names
+    beginning with a dot, as `rg` does unless told otherwise; ``pruned`` is a
+    directory and ``skipped`` a file the command told its walk to leave out.
+
+    What was found is returned beneath the root as the command spelled it --
+    `~/.codex/auth.json`, `.lup/codex-home/auth.json` -- which is the path the
+    refusal names, and whose first name is the directory to leave out.
+
+    Bounded by the hook's deadline less ``reserve``: a walk that has not
+    finished by then returns the directory it stopped in, which is withheld
+    by no pattern, and the kernel refuses a read nobody finished walking.
+    """
+    where = Path.cwd() if root is None else root
+    home = str(Path.home())
+    spelled = next(
+        (
+            home + walked.removeprefix(variable)
+            for variable in ("$HOME", "${HOME}")
+            if walked == variable or walked.startswith(f"{variable}/")
+        ),
+        str(Path(walked).expanduser()),
+    )
+    if any(mark in spelled for mark in "$*?["):
+        return ""
+    start = (where / spelled).resolve()
+    if not start.is_dir():
+        return ""
+    for directory, folders, files in start.walk():
+        if hook_seconds_left(float("inf")) < reserve:
+            return (Path(walked) / directory.relative_to(start)).as_posix()
+        folders[:] = [
+            name
+            for name in folders
+            if (hidden or not name.startswith(".")) and not pruned(name)
+        ]
+        beneath = any(named(part) for part in directory.parts)
+        found = next(
+            (
+                path
+                for name in files
+                if (hidden or not name.startswith(".")) and not skipped(name)
+                if beneath or named(name)
+                for path in [directory / name]
+                if withheld(str(path))
+            ),
+            None,
+        )
+        if found is not None:
+            return (Path(walked) / found.relative_to(start)).as_posix()
+    return ""
+
+
 def shared_git_directory(path_text: str) -> str:
     """The one directory every worktree of a repository can name alike.
 
@@ -1323,13 +1506,25 @@ def shared_git_directory(path_text: str) -> str:
     root = worktree_root(path_text)
     if not root:
         return ""
-    result = subprocess.run(
-        ["git", "-C", root, "rev-parse", "--path-format=absolute", "--git-common-dir"],
-        capture_output=True,
-        text=True,
-        timeout=5,
-        check=False,
-    )
+    try:
+        result = subprocess.run(
+            [
+                "git",
+                "-C",
+                root,
+                "rev-parse",
+                "--path-format=absolute",
+                "--git-common-dir",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=hook_seconds_left(5),
+            check=False,
+        )
+    except subprocess.TimeoutExpired:
+        # Git not answering in the time this hook has left reads as Git
+        # failing, which every caller already answers.
+        return ""
     return str(Path(result.stdout.strip()).resolve()) if result.returncode == 0 else ""
 
 
@@ -1793,7 +1988,7 @@ def file_diagnostics(
             text=True,
             cwd=root,
             env={**environ, "PATH": searched},
-            timeout=timeout_seconds,
+            timeout=hook_seconds_left(timeout_seconds),
             check=False,
         )
         reported = json.loads(finished.stdout)["generalDiagnostics"]
@@ -1855,7 +2050,7 @@ def repaired_directives(
             capture_output=True,
             text=True,
             cwd=root,
-            timeout=timeout_seconds,
+            timeout=hook_seconds_left(timeout_seconds),
             check=False,
         )
         reported = json.loads(finished.stdout)["repaired"]
@@ -1897,13 +2092,15 @@ def resolved_refutations(
     own name resolve against it and against nothing else.
 
     None where no answer was had — no declared resolver, none installed, a
-    crash, a timeout, output that will not decode — and it has to stay
-    distinct from an empty refutation. Empty means a checker looked and
-    refuted nothing, which is evidence; None means nothing looked, which is
-    the gate's cue to ask rather than refuse. Collapsing the two would turn
-    every unresolvable session into a wall of confident denials.
+    crash, a timeout, output that will not decode, or no time left before the
+    hook's deadline for one to answer in — and it has to stay distinct from an
+    empty refutation. Empty means a checker looked and refuted nothing, which
+    is evidence; None means nothing looked, which is the gate's cue to ask
+    rather than refuse. Collapsing the two would turn every unresolvable
+    session into a wall of confident denials.
     """
-    if not command:
+    allowed = hook_seconds_left(timeout_seconds)
+    if not command or allowed < 1.0:
         return None
     root = worktree_root(path_text)
     if not root:
@@ -1918,7 +2115,7 @@ def resolved_refutations(
             text=True,
             input=proposed,
             cwd=root,
-            timeout=timeout_seconds,
+            timeout=allowed,
             check=False,
         )
         reported = json.loads(finished.stdout)
@@ -1992,12 +2189,15 @@ def git_answers(
     # supplies, not an enumerable one this signature could name
     overrides: dict[str, str] | None = None,
     input_text: str | None = None,
+    timeout_seconds: float = 25.0,
 ) -> list[str] | None:
     """One Git invocation's lines, or None when Git cannot answer.
 
-    Git missing, the path outside a repository, a malformed pathspec, and a
-    non-zero exit all collapse to None, so a caller reading this as evidence
-    that something is safe to destroy treats an unanswerable question as a no.
+    Git missing, the path outside a repository, a malformed pathspec, a
+    non-zero exit, and no answer inside ``timeout_seconds`` or the hook's
+    deadline, whichever is nearer, all collapse to None, so a caller reading
+    this as evidence that something is safe to destroy treats an unanswerable
+    question as a no.
 
     ``overrides`` are merged over the inherited environment rather than
     replacing it, because a replacement drops ``PATH`` and ``HOME`` and the
@@ -2016,8 +2216,11 @@ def git_answers(
             check=False,
             input=input_text,
             env={**environ, **overrides} if overrides else None,
+            # Bounded by what the hook has left: an answer that does not come
+            # in time is the unanswerable question this already reads as no.
+            timeout=hook_seconds_left(timeout_seconds),
         )
-    except OSError:
+    except (OSError, subprocess.TimeoutExpired):
         return None
     return finished.stdout.splitlines() if finished.returncode == 0 else None
 
@@ -2261,7 +2464,12 @@ def sed_output(
     root: Path | None = None,
     timeout: float = 2.0,
 ) -> dict[Literal["text", "cause"], str | None]:
-    """Run only sed's sandboxed text transformation, preserving output bytes."""
+    """Run only sed's sandboxed text transformation, preserving output bytes.
+
+    Bounded by ``timeout`` or the hook's deadline, whichever is nearer: an
+    answer that does not come in time is a refused rewrite, which the
+    classifier asks about.
+    """
     expressions = [word for script in scripts for word in ("-e", script)]
     operands = [str(target)] if target is not None else []
     try:
@@ -2270,7 +2478,7 @@ def sed_output(
             cwd=str(root) if root is not None else None,
             input=before.encode("utf-8") if before is not None else None,
             capture_output=True,
-            timeout=timeout,
+            timeout=hook_seconds_left(timeout),
             check=False,
         )
         if finished.returncode:
@@ -2341,6 +2549,30 @@ def recoverable_write_targets(
         and git_answers(["ls-files", "--error-unmatch", "--", target], where)
         is not None
         and git_answers(["status", "--porcelain", "--", target], where) == []
+    ]
+
+
+def ignored_write_targets(targets: list[str], root: Path | None = None) -> list[str]:
+    """Report which targets Git ignores, which no undo snapshot holds.
+
+    The snapshot takes what `git add -A` would, so an ignored path -- or one
+    under an ignored directory -- is outside every capture this session has.
+    A loss there is one nothing restores, and "captured and restorable" said
+    of it is a sentence about a file no snapshot has ever seen. Git answers
+    for the ignore rules it applies rather than a second reading of them
+    here; a path Git tracks is never ignored, whatever a pattern says.
+
+    Asked one path at a time, because Git refuses the whole question when one
+    path in it lies outside the repository -- and a path out there is no
+    capture's to hold anyway, which the write's own scope already says. A path
+    Git cannot answer for is not reported, which leaves the capture's own
+    evidence to decide: a checkout Git cannot read took no snapshot either.
+    """
+    where = Path.cwd() if root is None else root
+    return [
+        target
+        for target in targets
+        if git_answers(["check-ignore", "-q", "--", target], where) is not None
     ]
 
 

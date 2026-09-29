@@ -187,17 +187,20 @@ def test_redirect_checkout_chooses_between_asking_and_naming_the_newer_verbs() -
     """Off, checkout asks because `checkout -- <path>` discards work.
 
     On, it denies and says which verbs replaced it. The ref-sourced form is
-    recognized ahead of the row either way, because a named commit still
-    holds the content.
+    recognized ahead of the row: granted where checkout asks, because a named
+    commit still holds the content, and refused where it is redirected, with
+    the `git restore --source` that does the same.
     """
     asking = [git_rule()]
     redirecting = [git_rule(redirect_checkout=True)]
+    restored = verdict("git checkout HEAD~1 -- src/x.py", redirecting)
 
     assert verdict("git checkout main", asking).effect == "ask"
     assert verdict("git checkout main", redirecting).effect == "deny"
     assert "git switch" in verdict("git checkout main", redirecting).reason
     assert verdict("git checkout HEAD~1 -- src/x.py", asking).effect == "allow"
-    assert verdict("git checkout HEAD~1 -- src/x.py", redirecting).effect == "allow"
+    assert restored.effect == "deny"
+    assert "git restore --source=HEAD~1 -- src/x.py" in restored.recovery
 
 
 def test_the_git_family_is_drawn_by_what_a_verb_reaches_not_by_what_it_writes() -> None:

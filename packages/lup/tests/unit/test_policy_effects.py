@@ -119,10 +119,19 @@ class TestWritesPath:
         evidence = EffectEvidence(existing=True, tracked=True)
         assert verdict_for(rows, evidence, "inside") == "ask"
 
-    def test_writing_outside_the_checkout_follows_the_placement(self) -> None:
-        rows = [effect("writes_path", "outside", "overwrite")]
-        assert verdict_for(rows, EffectEvidence(), "inside") == "allow"
-        assert verdict_for(rows, EffectEvidence(), "outside") == "ask"
+    def test_writing_outside_the_checkout_asks_whatever_the_placement(self) -> None:
+        """Whose the path is decides it, which a placement cannot say.
+
+        A container holds a directory the host never lent and none it did, so
+        the row asks and the reach it states is settled where the host measured
+        every named path as the container's own.
+        """
+        rows = [declare("writes_path", scope="outside", write="overwrite")]
+        placements: list[SandboxPlacement] = ["inside", "ambient", "outside"]
+        assert {verdict_for(rows, EffectEvidence(), where) for where in placements} == {
+            "ask"
+        }
+        assert rows[0]["reach"] == "mount"
 
     def test_a_reviewed_write_is_never_refused_by_this_row(self) -> None:
         """The refusal is about bypassing the gates, so a route to them is not it.

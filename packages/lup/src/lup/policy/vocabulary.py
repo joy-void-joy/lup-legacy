@@ -103,6 +103,12 @@ class JudgedCommand(BaseModel, frozen=True):
     Where `write_markers` still needs a word to find no marker in, this needs
     every word to be absent: `mount` alone prints the mount table, and each
     form that acts names a device or a mountpoint."""
+    allow_flags: list[str] = []
+    """The flags that, standing alone, are this command's report of itself.
+
+    Every word has to be one of them, which is what separates `capsh --print`
+    from `capsh --print -- -c id`: the first prints the process's capabilities
+    and the second goes on to run a shell with them."""
     write_flags: list[str] = []
     """Options whose value is the path this command lands on.
 
@@ -238,6 +244,11 @@ def judged_ask_rules(
             checkpoint="boundary_wide",
         ),
         JudgedCommand(
+            name="install",
+            reason="installing over files requires approval",
+            checkpoint="boundary_wide",
+        ),
+        JudgedCommand(
             name="chmod",
             reason="changing permissions requires approval",
             reach="container",
@@ -338,6 +349,47 @@ def judged_ask_rules(
         ),
         JudgedCommand(name="sudo", reason="privilege escalation requires approval"),
         JudgedCommand(name="doas", reason="privilege escalation requires approval"),
+        # Every other way of running a command as another identity, or with
+        # capabilities it did not hold, is the escalation `sudo` is, and states
+        # no reach for the same reason: what it runs is not judged, so nothing
+        # can say where its harm lands and no boundary settles it.
+        *(
+            JudgedCommand(name=name, reason="privilege escalation requires approval")
+            for name in (
+                "su",
+                "runuser",
+                "sudoedit",
+                "pkexec",
+                "run0",
+                "gosu",
+                "su-exec",
+                "setuidgid",
+                "sg",
+                "newgrp",
+                "setcap",
+            )
+        ),
+        JudgedCommand(
+            name="setpriv",
+            reason="privilege escalation requires approval",
+            allow_flags=["--dump", "-d"],
+        ),
+        JudgedCommand(
+            name="capsh",
+            reason="privilege escalation requires approval",
+            allow_flags=["--print"],
+        ),
+        # A namespace is one of the walls a command runs behind, so entering
+        # one or making one is choosing the walls: the same escalation, by the
+        # route a container is built from.
+        *(
+            JudgedCommand(
+                name=name,
+                reason="entering or making a namespace is privilege escalation,"
+                " which requires approval",
+            )
+            for name in ("unshare", "nsenter", "chroot")
+        ),
         JudgedCommand(
             name="ssh", reason="remote access requires approval", reach="host_later"
         ),
@@ -443,6 +495,7 @@ def judged_ask_rules(
             write_markers=command.write_markers,
             write_flags=command.write_flags,
             bare_reads=command.bare_reads,
+            allow_flags=command.allow_flags,
             landing_operands=command.landing_operands,
             checkpoint=command.checkpoint,
             reason=command.reason,
@@ -616,6 +669,7 @@ def uv_rules(
     global_values: Sequence[str] = UV_GLOBAL_VALUE_OPTIONS,
     pip_reads: Sequence[str] = ("list", "show", "freeze", "check", "tree"),
     tool_reads: Sequence[str] = ("list", "dir"),
+    python_reads: Sequence[str] = ("list", "find", "dir"),
 ) -> list[ShellCommandRule]:
     """The uv routes that bring in or send out a package this project never declared.
 
@@ -624,10 +678,12 @@ def uv_rules(
     is the rest of the surface, found past uv's global options the way every
     subcommand-gated command is: `uv pip` and `uv tool` install into an
     environment the lockfile does not describe, `uvx` fetches and runs a
-    package nobody declared, and `uv publish` uploads one. Each asks wherever
-    it runs, because what it weighs is trust in the package rather than where
-    its files land. Their read-only verbs list what is already installed, and
-    a verb this table does not name falls to the question.
+    package nobody declared, `uv python` fetches an interpreter build or pins
+    which one runs everything after it, and `uv publish` uploads a package.
+    Each asks wherever it runs, because what it weighs is trust in what
+    arrives rather than where its files land. Their read-only verbs list what
+    is already installed, and a verb this table does not name falls to the
+    question.
     """
     installs = [declare("installs_dependency", scope="python package")]
     reads = [declare("reads_environment", scope="python environment")]
@@ -661,6 +717,20 @@ def uv_rules(
                     operations=[
                         ShellOperationRule(name=verb, effects=reads)
                         for verb in tool_reads
+                    ],
+                ),
+                ShellSubcommandRule(
+                    name="python",
+                    effects=[
+                        declare("installs_dependency", scope="python interpreter")
+                    ],
+                    reason="uv python fetches an interpreter build, or pins which"
+                    " one runs this project",
+                    recovery="`uv python list` and `uv python find` show what is"
+                    " installed and which one runs.",
+                    operations=[
+                        ShellOperationRule(name=verb, effects=reads)
+                        for verb in python_reads
                     ],
                 ),
                 ShellSubcommandRule(
@@ -966,6 +1036,28 @@ def devtools_rules() -> list[ShellSubcommandRule]:
                         "original words. Where it is not met, `--restore` reopens "
                         "it with those words intact, and `--narrow` reopens the "
                         "part still outstanding."
+                    ),
+                ),
+                # The seams it widens are protected edit roots: which scan
+                # rules this project holds itself to, and which files are the
+                # human's rather than the agent's. Writing either through the
+                # command is the edit by another spelling, so it asks as the
+                # edit does. `--keep` and `--own` only narrow, and bare it reads.
+                ShellOperationRule(
+                    name="seams",
+                    ask_flags=["--retire", "--retire-all", "--disown"],
+                    flag_effects=[
+                        declare("writes_path", scope="protected", write="overwrite")
+                    ],
+                    reason=(
+                        "`--retire` and `--retire-all` stop the scan rules this "
+                        "project holds itself to, and `--disown` hands a "
+                        "human-owned file to the agent"
+                    ),
+                    recovery=(
+                        "`dev seams` alone prints every seam and where it is "
+                        "written; where nobody can approve the change, report "
+                        "the command for the user to run."
                     ),
                 ),
                 # Files a GitHub issue on whichever tracker owns the component,
@@ -1391,8 +1483,10 @@ def git_rule(
     discards work. On, it denies and names ``switch`` and ``restore``
     instead, which suits a project that has settled on the newer verbs. The
     ref-sourced ``checkout <ref> -- <path>`` form is recognized by the kernel
-    ahead of this row either way, because committed content stays
-    recoverable.
+    ahead of this row: granted where ``checkout`` asks, because committed
+    content stays recoverable, and refused where it is redirected, naming the
+    ``git restore --source`` that does the same -- however its paths are
+    spelled.
 
     ``sandbox`` is where git runs, stated once here and inherited by every
     subcommand. The default is ``ambient``, because what git needs is not the

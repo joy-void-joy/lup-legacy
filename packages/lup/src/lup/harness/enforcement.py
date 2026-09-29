@@ -163,6 +163,7 @@ def semantic_policy_for(
         # lup: defer: record a launch's relaxed selection in its ledger, so a
         # composition inside that session judges with what the session meets.
         rules=rule_set_for(NO_RUNTIME_READER, hooks.rules, hooks.anti_patterns),
+        refused_paths=list(hooks.refused_paths),
     )
     return SemanticToolPolicy(
         fetch=FetchPolicy(

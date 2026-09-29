@@ -1900,7 +1900,12 @@ def decide_gh_api_words(
     expect_method = False
 
     def writing(unread: str) -> KernelDecision:
-        """The body's question where one was sent, else the unread word's."""
+        """The body's question where one was sent, else the unread word's.
+
+        The unread word could be a method or a body as well as anything
+        else, so what it stands for reaches the remote: a container holds
+        none of that, and settles none of it.
+        """
         if body:
             return KernelDecision(
                 "ask",
@@ -1909,7 +1914,7 @@ def decide_gh_api_words(
                 rule="shell:gh.api",
                 evaluator="gh-api-screen",
             )
-        return unjudged(unread)
+        return unjudged(unread).revised(unread=True, reach="host_later")
 
     for word in words[2:]:
         if expect_value:
@@ -1925,6 +1930,18 @@ def decide_gh_api_words(
         if word.startswith("--method="):
             method = word.partition("=")[2]
             continue
+        # gh reads a short flag's value where it is attached, `=` or not, so
+        # `-XDELETE` and `-X=DELETE` are the method `-X DELETE` spells apart.
+        shorthand, attached = word[:2], word[2:].removeprefix("=")
+        if word.startswith("-") and not word.startswith("--") and attached:
+            if shorthand == "-X":
+                method = attached
+                continue
+            if shorthand in GH_API_BODY_FLAGS:
+                body = True
+                continue
+            if shorthand in GH_API_VALUE_FLAGS:
+                continue
         if word in GH_API_BODY_FLAGS or word.partition("=")[0] in GH_API_BODY_FLAGS:
             body = True
             expect_value = word in GH_API_BODY_FLAGS
@@ -2606,13 +2623,21 @@ def decide_uv(
     return unjudged(f"uv {subcommand} is not classified")
 
 
-def git_checkout_pathspec(words: list[str]) -> KernelDecision | None:
+def git_checkout_pathspec(
+    words: list[str], rows: list[ShellRuleRow]
+) -> KernelDecision | None:
     """Recognize ``git checkout <ref> -- <path>...`` — a ref-sourced restore.
 
     Content comes from a named commit, so committed state is recoverable
     through the reflog; the branch-switch and index-sourced ``checkout --
     <path>`` forms fall through to their redirect rows, and opaque words
     deny toward explicit literal bindings.
+
+    A project whose table refuses ``checkout`` for the newer verbs refuses
+    this form too, and names the ``git restore --source`` that restores the
+    same paths from the same ref. Granting it there made the answer turn on
+    how an operand was spelled: a path the checkout answers for was granted,
+    and the same path spelled absolutely met the refusal.
     """
     if len(words) < 5 or words[1] != "checkout" or words[3] != "--":
         return None
@@ -2621,6 +2646,22 @@ def git_checkout_pathspec(words: list[str]) -> KernelDecision | None:
         return None
     if any(opaque_argument(word) for word in words[4:]):
         return None
+    refusing = next(
+        (
+            row
+            for row in rows
+            if row["command"] == "git"
+            and row["subcommand"] == "checkout"
+            and not row["operation"]
+            and row["refuses"]
+        ),
+        None,
+    )
+    if refusing is not None:
+        return row_verdict(refusing, "deny", refusing["refuses"]).revised(
+            recovery=f"`git restore --source={ref} -- {' '.join(words[4:])}`"
+            " restores the same paths from the same ref."
+        )
     return KernelDecision(
         "allow", "checkout from a named ref restores committed file state"
     )

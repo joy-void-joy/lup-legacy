@@ -107,7 +107,12 @@ nobody can read, and a mount table nobody can read, land on the host. A
 reach nobody stated — any verdict reached by code rather than a declared
 effect — keeps its question everywhere, which is why `sudo` (whose payload
 is not judged), `ss -K` (the host's network), and a `git -c` setting that
-hands over a credential or retargets a remote do.
+hands over a credential or retargets a remote do. Every other tool that runs
+a command as another identity or with other capabilities — `su`, `runuser`,
+`setpriv`, `capsh`, `pkexec`, `setcap` and their kin — is the same escalation
+and keeps the same question, and so do `unshare`, `nsenter` and `chroot`,
+which choose the namespaces a command runs behind; `capsh --print` and
+`setpriv --dump` alone report the present process and read.
 
 A decision escalation keeps the question the agent asked for, and a hard
 prohibition, a missing channel and a read-only hole are settled before the
@@ -243,7 +248,11 @@ coverage, restoration, metadata, completion and post-state are the guarantee
 — so the row reads *measured* evidence and distinguishes three answers:
 nothing required, capture proven, and capture attempted and short. The third
 keeps the question and says which it was, because "nobody captured this" and
-"the capture did not work" are different things to tell somebody.
+"the capture did not work" are different things to tell somebody. Coverage is
+read per path: the snapshot takes what `git add -A` would, so a target Git
+ignores — `.lup/`, a gitignored cache nobody declared scratch — is one no
+capture holds, and a command removing or replacing one keeps its question
+however many snapshots exist.
 
 It discharges local loss and nothing travelling beside it. An operation that
 also rewrites a production file, touches a protected path, reads a credential
@@ -277,7 +286,10 @@ file stays where git stands, and a tree that holds where git stands — `.`,
 grant resting on this checkout's history — a checkout or restore from a
 named ref — holds only for paths this checkout answers for, so a placed path
 elsewhere meets the row's question and the write scope's reading of where
-it lands. And where git works in a tree outside the checkout, by
+it lands. A project that redirects `checkout` to the newer verbs grants no
+checkout at all: `git checkout <ref> -- <path>` is refused however the path
+is spelled — `.`, `./x`, `x` or absolute — and the refusal names the `git
+restore --source=<ref> -- <path>` that does the same. And where git works in a tree outside the checkout, by
 `--work-tree` or `-C`, a loss a capture would have settled keeps its
 question, because the capture is of this checkout: `git -C ../other reset
 --hard` and `git --work-tree=/srv/wt reset --hard` ask where `git reset
@@ -287,11 +299,18 @@ tree the host lent keeps the question there.
 Placing a file on a protected path is asked the same way, whether or not
 anything stood there: a path created is written as surely as one replaced,
 and no capture answers whose it is. Every path a command writes — a `cp`,
-`mv` or `ln` destination, a `touch`, a `dd of=`, an archive's target — asks
-when a protected rule matches it; a source `mv` takes away is read as a
-delete is, and a source landing under a directory destination is read at
-the name it lands at, so `cp -r /tmp/.claude .` asks though no word spells
-`.claude`. Reading a protected file, or copying one out, stays ordinary.
+`install`, `mv` or `ln` destination, a `touch`, a `dd of=`, an archive's
+target — asks when a protected rule matches it; a source `mv` takes away is
+read as a delete is, and a source landing under a directory destination is
+read at the name it lands at, so `cp -r /tmp/.claude .` asks though no word
+spells `.claude`. Reading a protected file, or copying one out, stays
+ordinary. `lup.policy.kernel.words.PATH_VERBS` declares each of these verbs
+once: the flags that leave its operands meaning what they read, which of
+them it writes, and whether an empty destination is created from the rest.
+`rsync` and `scp` are read from the same table and ask anyway, since they can
+reach another machine, so no scratch grant reaches them; what the table
+gives them is the reason — a local destination under a protected root asks
+as that root, not as a remote sync.
 
 **And it is written down**, which is what makes the relaxation honest rather
 than merely quieter. The lattice asks about everything unjudged for an
@@ -326,11 +345,12 @@ kernel, against the lockfile and the runner targets. The rest of uv is the
 vocabulary's `uv_rules`, walked from the command as spelled so the verb is
 found past uv's global options, before it or between its words:
 `uv pip`, `uv tool` and `uvx` install into an environment the lockfile does
-not describe or fetch and run a package nobody declared, so they ask with
-the dependency effect at every placement, and `uv publish` asks as the
+not describe or fetch and run a package nobody declared, and `uv python`
+fetches an interpreter build or pins which one runs the project, so they ask
+with the dependency effect at every placement, and `uv publish` asks as the
 external mutation an upload is. Their listing verbs (`uv pip list`, `show`,
-`freeze`, `check`, `tree`; `uv tool list`, `dir`) read, and a verb neither
-names falls to the question. A global option uv does not document leaves
+`freeze`, `check`, `tree`; `uv tool list`, `dir`; `uv python list`, `find`,
+`dir`) read, and a verb none names falls to the question. A global option uv does not document leaves
 the verb unread, and is refused; `uv --version` and `uv -V` name no verb and
 change nothing, so they read. The tool `uvx` or `uv tool run` runs is the
 first operand past their own options, read by the grammar `uvx --help`
@@ -379,7 +399,12 @@ vocabulary names the interpreter too, so `bun --eval` is refused beside the
 `bun` subcommands its row declares. Python runs through `uv run python
 <script>`, in this project's environment, so `python <script>` keeps its
 refusal and names that route, and `uv run <interpreter>` reads the same
-grammar.
+grammar. The refusal is decided by the words up to the code, so an argument
+after it that nobody can read — a variable a substitution bound, a `$(...)`
+result — does not hand it to a boundary: `perl -pi -e … $files`, `python -c
+… $x` and `node -e … $(ls)` are refused on every posture as their spelled
+forms are. An unread first operand keeps its abstention, since it could be
+the script file a named interpreter is allowed to run.
 
 A target may also carry subcommands, because a toolchain reached through
 `uv run` is one target and many commands — a devtools CLI that mostly reads
@@ -404,7 +429,9 @@ the subcommand that has one.
 opaque result rides only argument-safe commands; command position, deep
 nesting, and backticks stay conservative. File writes (redirection, `rm`)
 auto-allow only into a repo `tmp/` — the one at the top or any a package
-opened beside itself — and the machine's temporary root, the session
+opened beside itself, in this checkout or in another worktree of the same
+repository reached by its absolute path, where every write and every delete
+meet the one rule — and the machine's temporary root, the session
 scratchpad (`$TMPDIR`, `/tmp/claude-*`) with the rest of `/tmp` around it,
 which no review pass reads and no capture holds (reassigning `TMPDIR` asks,
 and a suffix climbing clear of `/tmp` leaves the grant behind); discards and
@@ -435,7 +462,11 @@ one written there without `=` takes the next word as its value, so `gh -t
 status api -X DELETE` is `gh api` rather than the `gh status` it spells. A
 flag before gh's subcommand, or before the operation of a subcommand that
 has operations, is refused rather than modelled; the same command with its
-flags after the operation is judged by its row.
+flags after the operation is judged by its row. A short flag's value is read
+where gh reads it, attached as well as apart, so `-XDELETE` and `-X=DELETE`
+are the method `-X DELETE` is; an option the screen does not read could be a
+method or a body, so it is refused on every posture, a measured container
+included, since what it could send lands on the remote.
 
 Quoting is kept past the parse. A `$` inside single quotes, or escaped as
 `\$`, is a dollar sign rather than an expansion, so `rg '$x' src`, `git config
@@ -484,7 +515,11 @@ A glob reaches what it could expand to, except a dot-named file an unspelled
 dot skips, and a run of names that is all glob reaches a home's file only
 where the word spells the home: `~/.*` is refused, `ls -d .*` in the checkout
 is not. `exempt` passes a word only when all it could name is exempt:
-`~/.ssh/*.pub` reads, `~/.ssh/*` does not.
+`~/.ssh/*.pub` reads, `~/.ssh/*` does not. The file tools meet the same
+declaration at the path they resolve, before any destination policy is
+consulted: an `Edit`, a `Write` or an `apply_patch` of a withheld path is
+refused on both runtimes, since authoring a login file is naming it as surely
+as `cp` is, and what a command may name — the exemptions — an edit may write.
 
 The library's default is `credential_files()`: everything in `~/.ssh` but
 the public keys, `known_hosts`, `config` and `authorized_keys`, `~/.gnupg`,
@@ -494,8 +529,26 @@ gitignored `.env.local` and `.env.<mode>.local` a project's settings keep
 its API keys in — `cat .env.local` is refused where `cat .env` and
 `cat .env.example` read. This project adds each runtime's
 own login through `ProviderLogin.withheld_logins()`: the default home's file
-and the file inside every profile's home. A directory reached only through
-an ancestor — `grep -r x ~` — names no withheld path and is not caught.
+and the file inside every profile's home.
+
+A recursive read names no withheld path and reads every one beneath its
+root, so it is judged by what lies there. `lup.policy.kernel.walks` reads
+which words a command walks, by each utility's own grammar: `grep -r`, `rg`,
+the members of an archive being written (`tar c`, `zip -r`), the sources of a
+recursive `cp`, `rsync` or `scp`, and both sides of `diff -r`. The host walks
+each root as the reader would — from the home for `~` and `$HOME`, skipping
+dot names where `rg` does — and a root holding a withheld path refuses the
+command as naming it would: `grep -r password ~`, `tar czf out.tgz ~` and
+`grep -r token .` over a checkout that keeps a runtime's login are refused,
+while `ls ~`, `grep x ~/notes.txt`, `rg password ~` and `grep -rn x src`
+read. grep's `--exclude-dir` and `--exclude` are walks leaving that
+directory or file out, so a refused search of a checkout names the two that
+read the same tree — `rg token .`, which skips hidden and ignored paths, and
+`grep -r --exclude-dir=.lup token .` — in the command's own words, and
+both are allowed. A walk the hook's deadline cut short is refused too, since a root
+nobody finished walking is not one known to hold nothing. `find` walks as
+well, but hands its payload only what its predicates select, which the run
+alone evaluates, so its payload is judged as the command it is.
 
 `HookSet.secret_variables` names the variables no command may print, matched
 without case: `printenv NAME`, `echo`/`printf`/`print` of an expansion, and a
@@ -551,8 +604,11 @@ naming no program's verb — `$EDITOR file`, `"$PYTHON" x.py` — read nothing i
 A redirection is answered by its path, and the reason is that a command
 produces its output by running: before the fact there is nothing for the
 content gates to read. What the path settles is who gets asked. Into scratch
-or beyond the checkout it is the ordinary work it was; into this repository's
-own tree it **asks**, because the same bytes arriving through an `Edit` or an
+it is the ordinary work it was. Beyond the checkout it asks whose the path is,
+and a measured container settles that only where the host placed every path
+the write names as the container's own — a directory the host lent, a sibling
+worktree bound in, is the host's the moment the bytes land. Into this
+repository's own tree it **asks**, because the same bytes arriving through an `Edit` or an
 `echo` would have been read by the content gates and these never will be. So
 `dev render > docs/api.md` puts one question, and its recovery names the two
 ways past it: redirect into a scratch path and move the result in once it has
@@ -604,7 +660,11 @@ Every manifest and lockfile — `pyproject.toml`, `package.json`, `uv.lock`,
 `pnpm-lock.yaml`, `yarn.lock`, `Cargo.lock` — is a protected root in whichever
 package holds it, declared as `**/<name>` from
 `lup.policy.rules.dependency_declarations()`, and so is `.github`, because CI
-runs with the repository's secrets on every push. An edit of one, or any
+runs with the repository's secrets on every push — and `.vscode`,
+`.devcontainer` and `.pre-commit-config.yaml` for the same reason by other
+hands: an editor's tasks, a container recipe and the hooks `git commit` runs
+are code another tool runs later, with none of this policy in front of it.
+(`.envrc` is already under the `.env` rule.) An edit of one, or any
 shell write of one, asks whoever makes it, a self-reviewing identity
 included, exactly as the root manifest does. The commands that write them
 for a reason — `uv lock`, `uv add`, `bun install` — are judged by the
@@ -983,9 +1043,12 @@ file without a question because it reviews its own. Protected roots,
 temporary paths, human-owned files like `README.md`, marker changes, and
 anti-pattern violations retain their guardrails in every mode. A protected
 root is where a session's own boundary is declared — its settings, its
-launch registry, its measured preflight, the policy — so an edit there asks
-a person whoever is making it, including an identity trusted to review its
-own work.
+launch registry, its measured preflight, its review queue, the policy, and
+the selection of which scan and shell rules apply — so an edit there asks a
+person whoever is making it, including an identity trusted to review its own
+work. A command writing one asks the same: `dev seams --retire`,
+`--retire-all` and `--disown` rewrite the rule selection and the human-owned
+files, while `--keep` and `--own` only narrow and `dev seams` alone reads.
 
 A few of those guardrails open only for a gate a human granted — creating a
 devtools module, adding an anti-pattern suppression. What a lease holds is
@@ -1116,7 +1179,13 @@ The terminal surface remains available: run `uv run lup-devtools review show
 operator` outside the agent session. Review answers and the dashboard server
 that mints browser review credentials are declared `operator_only` in the shell
 vocabulary; an escalation cannot grant the requester authority to answer
-itself. Nested command paths are declared with `ShellOperationRule.parents`,
+itself. The file those verbs write is guarded the same way:
+`.lup/questions.jsonl`, and the claims under `.lup/review-claims` and
+`.lup/review-stage-claims` that spend an answer once, are protected roots. The
+hooks and the operator's commands write them from their own processes, so a
+session's own write — a row appended, a copy over the file, a claim retired —
+asks, because an approved row naming any other principal is what releases the
+retry. Nested command paths are declared with `ShellOperationRule.parents`,
 and the deepest matching path decides.
 
 Approval releases one exact retry in the same session and directory.
@@ -1380,6 +1449,21 @@ terminal outside the affected session. If a merge left conflict markers in
 generated files, settle or abort that merge before regenerating; do not repair
 the generated dispatcher by hand. Recovery instructions live in the guard,
 so the native runtime does not echo them with every diagnostic.
+
+A runtime lets a call through once its policy hook runs past its timeout —
+Claude Code continues through its own permission flow, Codex records the
+hook as failed and runs the tool — so a hook still waiting then has answered
+nothing. `HookSet.policy_timeout` is declared once: the hooks file each
+runtime reads carries it, and the dispatcher opens one deadline five seconds
+short of it as it starts. The language server an anti-pattern rule consults,
+a destination's accepted evaluator, and every Git and `sed` call take what is
+left rather than a timeout of their own, and one cut short reads as the
+failure it already answers — no checker looked, so the gate asks; Git could
+not say, so no capture is claimed. What nothing can hand a timeout to — a
+review-queue lock another writer holds, a read that never returns, the
+classifier itself — is stopped by an alarm two seconds past the deadline,
+and the dispatcher refuses the call as one it could not judge. A process the
+hook starts inherits the deadline and cannot extend it.
 
 Plugin hooks receive a writable data directory: `PLUGIN_DATA` under Codex and
 `CLAUDE_PLUGIN_DATA` under Claude Code. Each dispatcher appends

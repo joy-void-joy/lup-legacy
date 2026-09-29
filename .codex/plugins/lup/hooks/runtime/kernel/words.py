@@ -6,7 +6,7 @@ import posixpath
 from collections.abc import Sequence
 from fnmatch import fnmatchcase
 from pathlib import PurePosixPath
-from typing import TypedDict
+from typing import Literal, TypedDict
 
 from .archives import archive_targets, archive_write
 from .decision import (
@@ -443,30 +443,61 @@ def uv_run_module_root(run_words: list[str]) -> str | None:
     return None
 
 
-# Every verb that acts on paths, paired with the short flags whose presence
-# does not change what the verb does to them. A long flag or an unrecognized
-# cluster falls through to the verb's own effect. Membership is about taking
-# paths, not about asking: `mkdir` and `touch` are allowed and still listed,
-# because the refusals that read this map — a write inside a generated plugin
-# tree, above all — are owed by every verb that names a path. A verb that
-# overwrites one in place belongs here for the same reason a verb that removes
-# one does: what is at the path afterwards is not what was there before.
-#
-# A flag that consumes the following word is left out rather than modelled, so
-# `truncate -s 0 f` reads as non-inert. Callers widen to every operand there,
-# which names the size as a target — harmless, since no size spells a path any
-# scope reading grades beyond this checkout.
-# lup: ignore[library-default] — each verb's own POSIX flags, fixed by what the utility does rather than by who is asking
-SCRATCH_VERB_FLAGS = {
-    "rm": "rfv",
-    "rmdir": "pv",
-    "mv": "fnv",
-    "cp": "aprRvL",
-    "mkdir": "pv",
-    "touch": "acm",
-    "ln": "sfnvrihTPL",
-    "tee": "aip",
-    "truncate": "co",
+class PathVerb(TypedDict):
+    """What one verb that takes paths does to the operands it is given.
+
+    ``inert`` holds the short flags whose presence leaves those operands
+    meaning what they read. A long flag or an unrecognized cluster falls
+    through to the verb's own effect, and a flag that consumes the following
+    word is left out rather than modelled, so `truncate -s 0 f` reads as
+    non-inert: callers widen to every operand there, which names the size as
+    a target -- harmless, since no size spells a path any scope reading grades
+    beyond this checkout.
+
+    ``lands`` is which operands it writes: ``each`` one it is given; the
+    ``last``, reading the others -- a copy, or a link that stands where its
+    last operand does; or the last with every other one ``moved`` away from
+    where it stood. ``creates`` is whether a last operand nothing occupies is
+    brought into being with the content of the rest, which is the reading the
+    creation grant takes. ``remote`` marks a verb that can reach another
+    machine besides, so it keeps its question wherever it lands: no scratch or
+    recoverable grant reads it, and its entry only says where a local
+    destination is, so a protected one is asked about as the path it is.
+    """
+
+    inert: str
+    lands: Literal["each", "last", "moved"]
+    creates: bool
+    remote: bool
+
+
+# Every verb that acts on paths. Membership is about taking paths, not about
+# asking: `mkdir` and `touch` are allowed and still listed, because the
+# refusals that read this map — a write inside a generated plugin tree, above
+# all — are owed by every verb that names a path. A verb that overwrites one in
+# place belongs here for the same reason a verb that removes one does: what is
+# at the path afterwards is not what was there before.
+# lup: ignore[library-default] — each verb's own POSIX grammar, fixed by what the utility does rather than by who is asking
+PATH_VERBS = {
+    "rm": PathVerb(inert="rfv", lands="each", creates=False, remote=False),
+    "rmdir": PathVerb(inert="pv", lands="each", creates=False, remote=False),
+    "mv": PathVerb(inert="fnv", lands="moved", creates=True, remote=False),
+    "cp": PathVerb(inert="aprRvL", lands="last", creates=True, remote=False),
+    # A copy with modes attached, which is how it writes launch authority as
+    # surely as `cp` does.
+    "install": PathVerb(inert="cCDpvT", lands="last", creates=True, remote=False),
+    "mkdir": PathVerb(inert="pv", lands="each", creates=False, remote=False),
+    "touch": PathVerb(inert="acm", lands="each", creates=False, remote=False),
+    "ln": PathVerb(inert="sfnvrihTPL", lands="last", creates=False, remote=False),
+    "tee": PathVerb(inert="aip", lands="each", creates=False, remote=False),
+    "truncate": PathVerb(inert="co", lands="each", creates=False, remote=False),
+    "rsync": PathVerb(
+        inert="vqcarRbulLkKHpEAXogDtOJSnWxyCzhPimIUNFs0468",
+        lands="last",
+        creates=False,
+        remote=True,
+    ),
+    "scp": PathVerb(inert="346ABCOpqRrTv", lands="last", creates=False, remote=True),
 }
 
 
@@ -857,7 +888,7 @@ def path_verb_operands(words: list[str]) -> VerbOperands:
     decline outright, and a caller refusing something must widen to every
     operand rather than trust their positions.
     """
-    allowed = SCRATCH_VERB_FLAGS[posixpath.basename(words[0])]
+    allowed = PATH_VERBS[posixpath.basename(words[0])]["inert"]
     named: list[PathWord] = []
     inert = True
     for index, word in enumerate(words[1:], start=1):
@@ -984,9 +1015,11 @@ def written_operands(executable: str, operands: list[str]) -> list[str]:
     Copying reads every source and writes only the destination, so a path
     named as a source is an ordinary read however protected it is. Linking
     reads its source the same way -- the link stands where the last operand
-    does. Every other verb here removes or creates each path it is given.
+    does. A move writes every operand, since each source is unlinked, and
+    every other verb here removes or creates each path it is given. Which is
+    which is the verb's own ``lands``.
     """
-    if executable in ("cp", "ln") and len(operands) > 1:
+    if PATH_VERBS[executable]["lands"] == "last" and len(operands) > 1:
         return operands[-1:]
     return operands
 
@@ -1028,7 +1061,7 @@ def written_targets(
     if archived is not None:
         return archive_targets(archived)
     executable = posixpath.basename(words[0])
-    if executable not in SCRATCH_VERB_FLAGS:
+    if executable not in PATH_VERBS:
         return None
     verb = path_verb_operands(words)
     if not verb["inert"]:
@@ -1044,8 +1077,8 @@ def created_destination(
 ) -> str | None:
     """The operand a copy or move would bring into being, if it would.
 
-    Both verbs write their last operand and read the rest, so a destination
-    nothing occupies yet is a creation, and creating a file destroys nothing
+    Both write their last operand and take the rest, so a destination nothing
+    occupies yet is a creation, and creating a file destroys nothing
     — the same reason a redirection to a fresh path is written freely. That
     is what leaves ``mv`` and ``rm`` agreeing about a tracked, clean file
     instead of the move asking where the delete did not.
@@ -1060,7 +1093,7 @@ def created_destination(
     every destination is treated as occupied. An expansion is never resolved:
     it names a different path at run time than the one that was stat'd.
     """
-    if executable not in ("cp", "mv") or len(operands) < 2:
+    if not PATH_VERBS[executable]["creates"] or len(operands) < 2:
         return None
     destination = operands[-1]
     if existing_targets is None or destination in existing_targets:
@@ -1127,7 +1160,7 @@ def refuses_generated_plugin_write(
             if refused is not None:
                 return refused
         return None
-    if executable not in SCRATCH_VERB_FLAGS:
+    if executable not in PATH_VERBS:
         return None
     verb = path_verb_operands(words)
     operands = verb["operands"]
@@ -1383,9 +1416,9 @@ def protected_placement(
     verb's destination, an archive's, a declared write flag's -- matched as
     the edit gate matches a path. Every source `mv` takes away, read as a
     delete is, so moving a directory that holds a protected file asks. And
-    where each source of `cp`, `mv` or `ln` lands under a destination that is
-    a directory, read the same way: `cp -r /tmp/.claude .` writes `.claude`
-    though no word spells it.
+    where each source of a copy, a move or a link lands under a destination
+    that is a directory, read the same way: `cp -r /tmp/.claude .` writes
+    `.claude` though no word spells it.
 
     `rm` is :func:`protected_deletion`'s, which words its question as the
     delete it is.
@@ -1414,14 +1447,11 @@ def protected_placement(
                 protected_path_reason(posixpath.normpath(word), matched),
                 recovery=matched["recovery"],
             )
-    operands = (
-        path_verb_operands(words)["operands"]
-        if executable in ("cp", "mv", "ln")
-        else []
-    )
+    lands = PATH_VERBS[executable]["lands"] if executable in PATH_VERBS else "each"
+    operands = path_verb_operands(words)["operands"] if lands != "each" else []
     sources = operands[:-1]
     reached = [
-        *[(source, "move") for source in sources if executable == "mv"],
+        *[(source, "move") for source in sources if lands == "moved"],
         *[
             (
                 posixpath.join(
@@ -1484,9 +1514,13 @@ def confined_to_recoverable_roots(
     All three readings are about a path this checkout answers for, so a target
     beyond it gives the line back to the row rather than taking any of them:
     see :func:`written_beyond_the_checkout`.
+
+    A verb that can reach another machine takes none of them: its entry names
+    where a local destination is, and nothing here can say where a remote one
+    lands.
     """
     executable = posixpath.basename(words[0])
-    if executable not in SCRATCH_VERB_FLAGS:
+    if executable not in PATH_VERBS or PATH_VERBS[executable]["remote"]:
         return None
     verb = path_verb_operands(words)
     operands = verb["operands"]

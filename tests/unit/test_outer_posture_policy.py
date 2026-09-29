@@ -76,6 +76,7 @@ SETTLED_INSIDE = [
     pytest.param("git grep foo -O", "ask", id="git-grep-pager"),
     pytest.param("codex exec hi", "ask", id="codex-exec"),
     pytest.param("rm -rf /opt/outer-probe", "ask", id="rm-private"),
+    pytest.param("ls > /opt/outer-probe.txt", "ask", id="redirect-private"),
     pytest.param(
         "git clone https://github.com/o/r /opt/outer-clone", "ask", id="clone-private"
     ),
@@ -113,6 +114,73 @@ GUARDED = [
     pytest.param("cat .env.local", "deny", id="env-local-read"),
     pytest.param("grep KEY .env.production.local", "deny", id="env-mode-local-read"),
     pytest.param("sudo ls", "ask", id="sudo"),
+    pytest.param("su -c id root", "ask", id="su"),
+    pytest.param("setpriv --reuid=0 --regid=0 --clear-groups id", "ask", id="setpriv"),
+    pytest.param("capsh --user=root -- -c id", "ask", id="capsh"),
+    pytest.param("unshare -r id", "ask", id="unshare"),
+    pytest.param("nsenter -t 1 -m id", "ask", id="nsenter"),
+    pytest.param("capsh --print", "allow", id="capsh-report"),
+    pytest.param(
+        "uv run lup-devtools dev seams --retire dict-get", "ask", id="seams-retire"
+    ),
+    pytest.param("uv run lup-devtools dev seams --retire-all", "ask", id="seams-all"),
+    pytest.param(
+        "uv run lup-devtools dev seams --disown README.md", "ask", id="seams-disown"
+    ),
+    pytest.param("uv run lup-devtools dev seams --keep dict-get", "allow", id="keep"),
+    # gh's flag grammar takes a short flag's value attached, so these are
+    # the remote branch deletion `-X DELETE` spells apart.
+    pytest.param(
+        "gh api -XDELETE repos/{owner}/{repo}/git/refs/heads/x",
+        "ask",
+        id="gh-api-attached-method",
+    ),
+    pytest.param(
+        "gh api -X=DELETE repos/{owner}/{repo}/git/refs/heads/x",
+        "ask",
+        id="gh-api-attached-equals",
+    ),
+    pytest.param("gh api -XGET repos/{owner}/{repo}", "allow", id="gh-api-read"),
+    # Code another tool runs later, with none of this policy in front of it.
+    pytest.param("echo '{}' > .vscode/tasks.json", "ask", id="vscode-task"),
+    pytest.param("cp README.md .pre-commit-config.yaml", "ask", id="pre-commit"),
+    # Inline code leaves nothing behind to review whatever its arguments turn
+    # out to be, so an argument nobody can read does not hand it to a wall.
+    pytest.param(
+        "files=$(git ls-files) && perl -pi -e 's/a/b/' $files",
+        "deny",
+        id="perl-inline-bound-operands",
+    ),
+    pytest.param(
+        "perl -pi -e 's/a/b/' $(git ls-files)",
+        "deny",
+        id="perl-inline-substituted-operands",
+    ),
+    pytest.param("x=$(ls) && perl -e 'print 1' $x", "deny", id="perl-inline-bound"),
+    pytest.param(
+        "x=$(ls) && python -c 'print(1)' $x", "deny", id="python-inline-bound"
+    ),
+    pytest.param("python3 -c 'print(1)' $(ls)", "deny", id="python-inline-substituted"),
+    pytest.param(
+        "x=$(ls) && node -e 'console.log(1)' $x", "deny", id="node-inline-bound"
+    ),
+    pytest.param(
+        "node -e 'console.log(1)' $(ls)", "deny", id="node-inline-substituted"
+    ),
+    # An interpreter build arrives from an index and runs everything after it.
+    pytest.param("uv python install 3.13", "ask", id="uv-python-install"),
+    pytest.param("uv python pin 3.13", "ask", id="uv-python-pin"),
+    pytest.param("uv python list", "allow", id="uv-python-list"),
+    # An option gh api's screen cannot read could be a method or a body, and
+    # either lands on the remote whatever holds the process.
+    pytest.param(
+        "gh api -iXDELETE repos/{owner}/{repo}/git/refs/heads/x",
+        "deny",
+        id="gh-api-unread-cluster",
+    ),
+    pytest.param(
+        "install -m644 README.md .lup/preflight/n.json", "ask", id="install-ledger"
+    ),
     pytest.param("ssh host.example ls", "ask", id="ssh"),
     pytest.param("export GH_TOKEN=x", "deny", id="export-token"),
     pytest.param("ss -K", "ask", id="ss-kill"),
@@ -384,11 +452,124 @@ def test_a_question_whose_harm_reaches_past_the_container_keeps_it(
     assert set(previewed(command, checkout, monkeypatch).values()) == {host}
 
 
+REVIEW_QUEUE_WRITES = [
+    pytest.param("echo '{}' >> .lup/questions.jsonl", id="append-relay"),
+    pytest.param("tee -a .lup/questions.jsonl < README.md", id="tee-relay"),
+    pytest.param("cp README.md .lup/questions.jsonl", id="copy-over-relay"),
+    pytest.param("touch .lup/review-claims/fresh", id="claim-created"),
+    pytest.param("rm .lup/review-claims/spent", id="claim-retired"),
+    pytest.param("mkdir -p .lup/review-stage-claims/spent/next", id="stage-claimed"),
+]
+"""A session writing the review queue its hooks keep, by every route a file takes.
+
+The Codex hook releases a parked call for an approved row whose principal is
+neither the session nor its requester, and spends a claim file to release it
+once. A session free to append that row, or to retire the claim, answers its
+own question."""
+
+
+@pytest.mark.parametrize("command", REVIEW_QUEUE_WRITES)
+def test_a_session_writing_its_own_review_queue_is_asked_on_every_posture(
+    runtime: Runtime, checkout: Path, monkeypatch: pytest.MonkeyPatch, command: str
+) -> None:
+    lup = checkout / ".lup"
+    (lup / "questions.jsonl").write_text("{}\n", encoding="utf-8")
+    (lup / "review-claims").mkdir()
+    (lup / "review-claims" / "spent").write_text("{}", encoding="utf-8")
+    (lup / "review-stage-claims" / "spent").mkdir(parents=True)
+    postures: tuple[Posture, ...] = ("none", "inner", "outer")
+
+    assert {met(runtime, posture, command, checkout) for posture in postures} == {"ask"}
+    assert set(previewed(command, checkout, monkeypatch).values()) == {"ask"}
+
+
+@pytest.mark.parametrize(
+    ("command", "captured"),
+    [
+        pytest.param("rm -rf state", False, id="ignored-directory"),
+        pytest.param("rm state/run.json", False, id="ignored-file"),
+        pytest.param("mv state/run.json tmp/run.json", False, id="ignored-moved-away"),
+        pytest.param("rm notes.txt", True, id="untracked-file"),
+        # Declared scratch is disposable whether or not Git ignores it, so a
+        # loss there asks for no capture: the scratch grant's own reading,
+        # reached here by a flag that grant does not read.
+        pytest.param("cp --archive tmp/a tmp/b", True, id="ignored-scratch"),
+        pytest.param(
+            "install -m755 tmp/a tmp/bin/b", True, id="ignored-scratch-install"
+        ),
+    ],
+)
+def test_a_capture_claims_only_what_it_holds(
+    runtime: Runtime,
+    checkout: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    command: str,
+    captured: bool,
+) -> None:
+    """The undo snapshot takes what Git would take, and Git ignores `state/`.
+
+    So a loss there is one no capture holds, and "captured and restorable" is
+    a sentence about a file no snapshot has ever seen. An untracked file Git
+    does not ignore is taken, and its loss stays settled.
+    """
+    (checkout / ".gitignore").write_text("state/\ntmp/\n", encoding="utf-8")
+    (checkout / "state").mkdir()
+    (checkout / "state" / "run.json").write_text("{}\n", encoding="utf-8")
+    (checkout / "notes.txt").write_text("draft\n", encoding="utf-8")
+    (checkout / "tmp").mkdir()
+    (checkout / "tmp" / "a").write_text("scratch\n", encoding="utf-8")
+    postures: tuple[Posture, ...] = ("none", "inner", "outer")
+    expected = "allow" if captured else "ask"
+    # Codex parks a question with the preimage of every file it names, and a
+    # directory has none to hold, so it refuses the call it cannot park.
+    parked = (
+        "deny"
+        if runtime == "codex" and expected == "ask" and command.startswith("rm -rf")
+        else expected
+    )
+
+    assert {met(runtime, posture, command, checkout) for posture in postures} == {
+        parked
+    }
+    assert set(previewed(command, checkout, monkeypatch).values()) == {expected}
+
+
 def test_a_target_the_host_lent_from_outside_the_checkout_keeps_the_question(
     runtime: Runtime, checkout: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Mode bits on a sibling project are that project's, whatever wall stands."""
     command = f"chmod 777 {checkout.parent / 'sibling' / 'x'}"
+
+    assert met(runtime, "outer", command, checkout) == "ask"
+    assert previewed(command, checkout, monkeypatch)["outer"] == "ask"
+
+
+@pytest.mark.parametrize(
+    "spelled",
+    [
+        pytest.param("ls > {tree}/x.txt", id="redirect"),
+        pytest.param("date >> {tree}/log.txt", id="append"),
+        pytest.param("ls | tee {tree}/x.txt", id="tee"),
+    ],
+)
+def test_a_write_the_host_lent_from_outside_the_checkout_keeps_the_question(
+    runtime: Runtime, checkout: Path, monkeypatch: pytest.MonkeyPatch, spelled: str
+) -> None:
+    """Output landing in a tree the host lent is that tree's, whatever wall stands.
+
+    The container holds a file under a directory the host never lent, and
+    nothing under one it did: those bytes are on the host the moment they are
+    written. The tree stands outside the temporary root, which is disposable
+    wherever it is.
+    """
+    lent = "/srv/lent-tree"
+    ledger = checkout / ".lup" / "preflight" / "launch.json"
+    measured = json.loads(ledger.read_text(encoding="utf-8"))
+    ledger.write_text(
+        json.dumps({**measured, "writable_roots": [*measured["writable_roots"], lent]}),
+        encoding="utf-8",
+    )
+    command = spelled.format(tree=lent)
 
     assert met(runtime, "outer", command, checkout) == "ask"
     assert previewed(command, checkout, monkeypatch)["outer"] == "ask"
@@ -428,6 +609,35 @@ def test_git_moved_into_a_lent_tree_keeps_the_question_there(
 
     assert {met(runtime, posture, command, checkout) for posture in postures} == {"ask"}
     assert set(previewed(command, checkout, monkeypatch).values()) == {"ask"}
+
+
+@pytest.mark.parametrize(
+    "spelled",
+    [
+        pytest.param("git checkout HEAD -- .", id="dot"),
+        pytest.param("git checkout HEAD -- ./README.md", id="dot-relative"),
+        pytest.param("git checkout HEAD -- README.md", id="relative"),
+        pytest.param("git checkout HEAD -- {checkout}", id="absolute-root"),
+        pytest.param("git checkout HEAD -- {checkout}/README.md", id="absolute"),
+    ],
+)
+def test_a_checkout_from_a_ref_is_refused_however_its_path_is_spelled(
+    runtime: Runtime, checkout: Path, monkeypatch: pytest.MonkeyPatch, spelled: str
+) -> None:
+    """This project checks out through `git switch` and `git restore`.
+
+    A path spelled from the checkout was granted as a restore from a ref while
+    the same path spelled absolutely was refused, so which answer a session
+    met turned on how the operand was written. Refused whatever the spelling,
+    and pointed at the `git restore --source` that does the same.
+    """
+    command = spelled.format(checkout=checkout)
+    postures: tuple[Posture, ...] = ("none", "inner", "outer")
+
+    assert {met(runtime, posture, command, checkout) for posture in postures} == {
+        "deny"
+    }
+    assert set(previewed(command, checkout, monkeypatch).values()) == {"deny"}
 
 
 @pytest.mark.parametrize(
