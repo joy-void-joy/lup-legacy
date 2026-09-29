@@ -4674,17 +4674,18 @@ def session_root(payload):
     return Path(payload["cwd"]) if "cwd" in payload else None
 
 
-def parks(decision):
+def parks():
     """Whether an ask is parked for the operator rather than put to a prompt.
 
     Wherever the launch holds a dashboard, a reviewer reads what parks there,
-    for this session and every subagent and `-p` run inside it alike. A
-    `human_only` ask parks everywhere: an auto-mode session's classifier can
-    answer a prompt this hook raises -- measured on 2.1.263, where it ran a
-    ref deletion nobody was shown -- and no mode can approve a refusal. What
-    else asks keeps the native prompt where no dashboard is.
+    for this session and every subagent and `-p` run inside it alike. Where
+    none is held, nobody reads a parked question until they run a terminal
+    command for it, so every ask -- a person's included -- is this runtime's
+    own prompt, where the person already is. Measured on 2.1.283 in an
+    interactive auto-mode session: a hook's ask raised the prompt, and the
+    call had not run a minute later with nobody answering.
     """
-    return decision.reviewer == "human_only" or dashboard_held()
+    return dashboard_held()
 
 
 def waiting(command, payload):
@@ -5127,7 +5128,7 @@ def main():
         # already is. It is parked as it would be rendered -- every reason
         # it joined, and what its placement crosses -- since that is the
         # question the operator answers.
-        if decision.effect == "ask" and parks(decision):
+        if decision.effect == "ask" and parks():
             asked = decision.placed(
                 escapable=True, contained=session_contained(session_root(payload))
             )

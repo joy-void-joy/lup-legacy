@@ -1155,25 +1155,26 @@ inside a shell tool call never reaches the dispatcher that judges it.
 
 ## Where a native ask is put
 
-A policy ask is parked for the operator, or put to the runtime's own prompt
-where that is safe. Parking writes the call to the review queue —
-`.lup/questions.jsonl` in the checkout — and refuses it while it waits; the
-answer releases it once. Codex parks every ask, having no ask effect at its
-pre-tool boundary, at both pre-tool and permission-request events. Claude
-parks every ask where the session's launch holds a dashboard (the launch
-hands the session `LUP_DASHBOARD_URL`, which the hook reads), for the
-session, its subagents and its `-p` runs alike; and it parks every
-`human_only` ask everywhere. Only an ask a supervisor may answer, where no
-dashboard is held, is rendered as Claude's native permission request.
+A policy ask is parked for the operator where somebody reads what parks, and
+is otherwise put to the runtime's own prompt. Parking writes the call to the
+review queue — `.lup/questions.jsonl` in the checkout — and refuses it while
+it waits; the answer releases it once. Codex parks every ask, having no ask
+effect at its pre-tool boundary, at both pre-tool and permission-request
+events, and is answered on the dashboard or from the terminal. Claude parks
+every ask where the session's launch holds a dashboard (the launch hands the
+session `LUP_DASHBOARD_URL`, which the hook reads), for the session, its
+subagents and its `-p` runs alike. Where no dashboard is held, every Claude
+ask — a `human_only` one included — is its native permission request, where
+the person already is.
 
-A `human_only` ask never reaches a prompt, because a prompt is not a person.
-An autonomy mode may answer a prompt on the session's behalf — on Claude Code
-2.1.263 an auto-mode classifier let a hook's ask for a ref deletion run with
-no prompt shown, while on 2.1.283 the same shape raised a prompt that held,
-unanswered, for a minute — and no field in the hook payload separates a
-prompt somebody saw from one a mode settled. What a mode does with a prompt
-moves between releases; a refusal it does not answer: a hook's `deny` held
-in a `-p` run under both the default and the auto mode on 2.1.283. Observed
+Measured on Claude Code 2.1.283, in an interactive session driven in auto
+mode: a hook's `ask` raised the permission prompt, and the call had not run
+a minute later with nobody answering; a hook's `deny` held in a `-p` run
+under both the default and the auto mode. What a mode does with a prompt is
+the vendor's and has moved between releases: on 2.1.263 an auto-mode
+classifier let a hook's ask for a ref deletion run with no prompt shown.
+No field in the hook payload separates a prompt somebody saw from one a mode
+settled; a parked question is answered only by a recorded answer. Observed
 execution is evidence of neither: it records that a call ran and confers no
 authority over the next.
 

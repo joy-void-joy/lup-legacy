@@ -367,19 +367,22 @@ and `sed -i` reviews preview what the rewrite would leave. `dev edit-prepare`
 audits a batch of complete documents and writes one patch without touching
 its targets.
 
-### Claude asks natively; only Codex parks a review
+### Claude parks a question where a dashboard reads it, and prompts elsewhere
 
 0.4.0's note on native approval authority says a call parks in
 `.lup/questions.jsonl` until an operator's single-use answer releases it.
-That is Codex alone, whose pre-tool boundary has no ask effect. Claude has
-rendered every policy ask as a native permission request since 0.4.0 itself,
-carrying the reason that earned it, and parks nothing, so `review list`
-never lists a Claude call.
+Codex parks every ask, its pre-tool boundary having no ask effect. Claude
+parks every ask where the session's launch holds a dashboard
+(`LUP_DASHBOARD_URL`), for the session, its subagents and its `-p` runs
+alike, refused while it waits and carried out once by `review wait` or one
+exact retry. Where no dashboard is held, every Claude ask — a `human_only`
+one included — is its native permission request, carrying its reason.
 
-What a rendered ask rests on is the session answering to a person. An
-autonomy mode answers it on the session's behalf, the operations the
-`human_only` reviewer reserves included, and the hook payload carries no
-field telling that answer from a person's. Observed execution still grants
+What a rendered ask rests on is the prompt holding until somebody answers.
+On Claude Code 2.1.283 an interactive auto-mode session held a hook's ask
+unanswered for a minute; on 2.1.263 an auto-mode classifier let one run with
+nobody shown it (#436). The hook payload carries no field telling a mode's
+answer from a person's, so a held dashboard parks. Observed execution grants
 nothing on either runtime; `docs/permissions.md` ("Where a native ask is
 put") states both channels.
 
