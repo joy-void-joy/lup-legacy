@@ -554,6 +554,10 @@ class RepositoryPeers:
         # `names.jsonl`, `delivery/`, `heartbeats/` and `resets/` stay on every
         # clone that ran 0.2.x; the user settled that the first sweep of this
         # store deletes them, and no sweep or migration does
+        # lup: defer: nothing bounds `mail.jsonl` -- every message posted in
+        # this clone stays on it, and the dashboard reads all of it; the user
+        # has not settled whether this sweep keeps it to the retention window
+        # (taking the dashboard's older history with it) or it stays whole
         return [
             folded_member(member)
             for member in store.swept(self.root, now, self.pulse.stale_after_seconds)
