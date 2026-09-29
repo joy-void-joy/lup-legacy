@@ -1232,6 +1232,11 @@ def gate_references(
         if not effective or not argument_safe_words(effective, context):
             return standing_interpreter_refusal(effective, context) or unjudged(
                 "an opaquely bound variable could become a guarded flag"
+            ).advising(
+                "Run what computes the value in its own call and write the"
+                " literal it printed into this one, or do the whole computation"
+                " in a script file (`uv run python tmp/<name>.py`), which is read"
+                " as the file it is."
             )
     return None
 

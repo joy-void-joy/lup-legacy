@@ -4542,6 +4542,21 @@ def test_inline_code_is_refused_as_code_and_not_as_a_path_it_spells(
     assert "key or a login" not in decided.reason
 
 
+def test_a_variable_nobody_can_read_says_how_to_spell_it_readably(
+    tmp_path: Path,
+) -> None:
+    """The strict reading stands, and the refusal names the way through it."""
+    decided = ShellPolicy(SHELL_RULES).decide(
+        ShellCommand(
+            command='start=$(grep -n x f | cut -d: -f1) && sed -i "${start},\\$d" f',
+            cwd=tmp_path,
+        )
+    )
+
+    assert decided.effect == "deny"
+    assert "script file" in decided.recovery
+
+
 def test_write_targets_name_only_the_paths_a_command_opens_for_writing() -> None:
     assert shell_write_targets("echo x > out.txt") == ["out.txt"]
     assert shell_write_targets("echo x >> notes.log") == ["notes.log"]
