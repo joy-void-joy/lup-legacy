@@ -1470,11 +1470,6 @@ def commit_count(path: str, since: str, tip: str = "HEAD") -> int:
     )
 
 
-def current_head(path: str) -> str:
-    """Get current HEAD sha."""
-    return git_in(path, "rev-parse", "HEAD")
-
-
 def resolved_checkpoint(path: str, ref: str, tip: str = "HEAD") -> str:
     """The commit a checkpoint should record, from a ref or from the tip.
 
