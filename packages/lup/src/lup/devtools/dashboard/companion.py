@@ -510,17 +510,23 @@ def published_status(advertised: AdvertisedDashboard, now: datetime) -> Dashboar
     session holding the capability; the pulse is what the service publishes
     for sessions, lent to each read-only.
     """
-    pulse = PulseFile(path=Path(advertised.pulse)).read() if advertised.pulse else None
+    if not advertised.pulse:
+        return DashboardStatus(
+            serving=bool(advertised.url),
+            url=advertised.url,
+            detail=(
+                "The address this session's launch handed it; the launch lent "
+                "no pulse, so what the dashboard counts is not readable here."
+                if advertised.url
+                else "This session's launch held no dashboard."
+            ),
+        )
+    pulse = PulseFile(path=Path(advertised.pulse)).read()
     if pulse is None:
         return DashboardStatus(
             serving=False,
             url=advertised.url,
-            detail=(
-                "The dashboard publishes nothing this session can read: it has "
-                "stopped, or this session's launch predates its pulse."
-                if advertised.url
-                else "This session's launch held no dashboard."
-            ),
+            detail="The dashboard stopped: it took its pulse down.",
         )
     if not pulse.current(now):
         return DashboardStatus(

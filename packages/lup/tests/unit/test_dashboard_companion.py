@@ -270,6 +270,10 @@ def test_inside_a_session_the_dashboard_answers_from_what_it_publishes(
     stale = published.model_copy(update={"beat": beat - timedelta(minutes=5)})
     written(pulse.path, stale.model_dump_json())
     stopped = dashboard_status(dashboard, tmp_path)
+    pulse.path.unlink()
+    taken_down = dashboard_status(dashboard, tmp_path)
+    monkeypatch.delenv(DASHBOARD_PULSE_ENV)
+    unlent = dashboard_status(dashboard, tmp_path)
 
     assert status.serving and status.url == url and status.pid == 4242
     assert status.sessions == 3 and status.pending == 2 and status.tabs == 1
@@ -278,6 +282,8 @@ def test_inside_a_session_the_dashboard_answers_from_what_it_publishes(
     assert "outside the agent session" in refused.output
     assert line.exit_code == 0 and line.output == f"2 reviews pending · {url}\n"
     assert not stopped.serving and "stopped" in stopped.detail
+    assert not taken_down.serving and "took its pulse down" in taken_down.detail
+    assert unlent.serving and unlent.url == url and "lent no pulse" in unlent.detail
 
 
 def test_the_service_tells_the_desktop_and_publishes_what_it_counts(
