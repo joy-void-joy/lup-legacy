@@ -126,6 +126,13 @@
       "executable": false
     },
     {
+      "path": ".codex/plugins/lup/hooks/runtime/coordination/runtime.py",
+      "category": "generated",
+      "sha256": "f133a1db3862a5fdd670e5d007b1d646ddf2848b78ec6e6bc5aeb5404e5ec982",
+      "semantic_id": "hooks.lup-policy",
+      "executable": false
+    },
+    {
       "path": ".codex/plugins/lup/hooks/runtime/coordination/scope.py",
       "category": "generated",
       "sha256": "1059abedb85e3bf4271464ec40aaa9ded15883e1760ba24c929c9e4a5579c611",
@@ -135,7 +142,7 @@
     {
       "path": ".codex/plugins/lup/hooks/runtime/coordination/store.py",
       "category": "generated",
-      "sha256": "2b8e3c741c8a512b6e90c50302084044ceb1e8a904f7394e0b39bb6a86447ee8",
+      "sha256": "1bb42408c2167e488e5ca7851c1d7afc074058496275f0ad9ddadaa4afcf35c2",
       "semantic_id": "hooks.lup-policy",
       "executable": false
     },

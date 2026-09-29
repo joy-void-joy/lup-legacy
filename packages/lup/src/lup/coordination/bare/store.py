@@ -16,9 +16,13 @@ is recorded with a guess and a list of rivals.
 It is state. One file per member, written by nobody but that member's own
 processes, and every relation between members derived at the read:
 
-- **presence** is the member file's modification time. The owner touches it
-  while it lives, and a file older than the window is a session that stopped
-  without saying so. Nothing folds a departure to find out.
+- **presence** is the session's runtime process, asked wherever it can be.
+  A row names the process it answers for, and a reader in that process's
+  namespace asks it directly; a reader elsewhere tests the pulse lock the
+  session's tool server holds while that process runs; and a reader who can
+  do neither reads the member file's modification time, which the owner
+  touches while it lives — a file older than the window is a session that
+  stopped without saying so. Nothing folds a departure to find out.
 - **a claim** records the modification time of the path it was taken over. A
   reader stats that path: gone means vacant, newer than recorded means
   somebody else has written it since, and otherwise the claim stands. There is
@@ -67,6 +71,8 @@ from itertools import count
 from pathlib import Path
 from typing import TypedDict
 from uuid import uuid4
+
+from .runtime import Runtime, process_scope, runtime_alive
 
 STORE_DIR = "lup"
 COORDINATION_DIR = "coordination"
@@ -154,7 +160,7 @@ and the hook's payload does.
 """
 
 STALE_AFTER_SECONDS = 120.0
-"""How long a member's silence reads as absence.
+"""How long a member's silence reads as absence, where nothing can ask its runtime.
 
 A few beats wide rather than one, so a stalled scheduler or a slow disk is not
 read as a departure; short because the roster is read to decide whether a path
@@ -251,9 +257,10 @@ class Member(TypedDict, total=False):
     """One member as its own file holds it, plus what the read derives.
 
     Everything down to ``left_at`` is written; ``running`` and ``heard`` are
-    not in the file at all — they are the file's modification time, read as
-    presence. That is the whole of what replaces a departure record nobody
-    wrote: a member is here while something is touching its file.
+    not in the file at all — they are read as presence, from the process the
+    row names where a reader can ask it and the file's modification time where
+    it cannot. That is the whole of what replaces a departure record nobody
+    wrote: a member is here while its runtime runs.
     """
 
     kind: str
@@ -269,6 +276,7 @@ class Member(TypedDict, total=False):
     liveness: str
     delivery: str
     wake: Wake
+    runtime: Runtime
     conversation: Conversation
     claims: list[Holding]
     arrived: str
@@ -488,6 +496,39 @@ def member_lock(root: Path, member: Actor) -> Path:
     return root / MEMBERS_DIR / f"{conversation_of(member)}.lock"
 
 
+def pulse_path(root: Path, member: Actor) -> Path:
+    """The lock a session's tool server holds for as long as it answers for that session.
+
+    Apart from :func:`member_lock`, which is taken for one read and one
+    rename: this one is held for the life of the process holding it, and the
+    kernel lets it go when that process ends however it ends — which is what
+    makes it a fact a reader in another container can test, where the process
+    itself is out of its sight. Kept when the member departs, because a
+    server answering for a cleared conversation holds it across the
+    departure and joins again.
+    """
+    return root / MEMBERS_DIR / f"{conversation_of(member)}.pulse"
+
+
+def answered(root: Path, member: Actor) -> bool:
+    """Whether a live process holds this member's pulse.
+
+    Asked for a moment with a shared lock that yields at once: refused means
+    somebody holds it. Nothing is created — a member nobody ever answered for
+    has no pulse to test, which reads as nobody answering.
+    """
+    try:
+        with pulse_path(root, member).open("rb") as handle:
+            try:
+                fcntl.flock(handle.fileno(), fcntl.LOCK_SH | fcntl.LOCK_NB)
+            except BlockingIOError:
+                return True
+            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+            return False
+    except OSError:
+        return False
+
+
 def read_member(path: Path, running: bool) -> Member | None:
     """One member file, with the presence its modification time carries.
 
@@ -524,6 +565,7 @@ def blank_member(kind: str, member_id: str) -> Member:
         liveness="",
         delivery="",
         wake=Wake(),
+        runtime=Runtime(),
         conversation=Conversation(transcript="", roots=0),
         claims=[],
         arrived=stamped(),
@@ -601,6 +643,35 @@ def beat(root: Path, member: Actor) -> None:
         os.utime(member_path(root, member))
     except OSError:
         return
+
+
+def named_runtime(root: Path, member: Actor) -> Runtime:
+    """The runtime this member's row names, standing or departed, empty where it names none.
+
+    The departed stub counts: a departure is written under a runtime, and a
+    server deciding whether to put the row back is asking whose it was.
+    """
+    found = read_member(member_path(root, member), running=True) or read_member(
+        departed_path(root, member), running=False
+    )
+    recorded = found.get("runtime") if found is not None else None
+    return recorded if isinstance(recorded, dict) else Runtime()
+
+
+def adopt(root: Path, member: Actor, runtime: Runtime) -> None:
+    """Record *runtime* as the process this member's row answers for, where it names none."""
+
+    def answering(found: Member) -> Member:
+        """This member, naming the process it answers for."""
+        if found.get("runtime"):
+            return found
+        settled = found.copy()
+        settled["runtime"] = runtime
+        return settled
+
+    found = read_member(member_path(root, member), running=True)
+    if found is not None and not found.get("runtime"):
+        revised(root, member, answering)
 
 
 @contextmanager
@@ -776,22 +847,46 @@ def stale(heard: datetime | None, now: datetime, window: float) -> bool:
     return now - heard > timedelta(seconds=window)
 
 
-def pulsed(member: Member, now: datetime, window: float) -> Member:
-    """This member as its own file's modification time leaves it.
+def absent(member: Member, why: str) -> Member:
+    """This member read as no longer here, saying why."""
+    gone = member.copy()
+    gone["running"] = False
+    gone["error"] = why
+    return gone
+
+
+def pulsed(
+    member: Member, now: datetime, window: float, held: bool = False, scope: str = ""
+) -> Member:
+    """This member as its runtime, its pulse, or its file's modification time leaves it.
 
     Only a session answers for itself this way. A spawned agent's presence is
     the word of the process that spawned it, and the person is never finished
     at all, so both pass through as their files say.
+
+    The process first, wherever the reader can ask it — the reader in *scope*
+    whose pid namespace the row's runtime was recorded in. A runtime that runs
+    is a session present however long its file was quiet: a machine that
+    slept stopped every beat and no process. One that stopped is a session
+    gone at once, whatever beat last. A reader who cannot ask takes *held* —
+    a live process holding the session's pulse — as the same answer, and the
+    clock only where neither speaks.
     """
     if text(member.get("kind")) != MEMBER_KIND or not member.get("running"):
         return member
-    heard = spoken_at(text(member.get("heard")))
-    if not stale(heard, now, window):
-        return member
-    gone = member.copy()
-    gone["running"] = False
-    gone["error"] = f"unheard since {heard.isoformat() if heard else 'it joined'}"
-    return gone
+    match runtime_alive(member.get("runtime"), scope):
+        case True:
+            return member
+        case False:
+            return absent(member, "its runtime stopped")
+        case None if held:
+            return member
+        case None:
+            heard = spoken_at(text(member.get("heard")))
+            if not stale(heard, now, window):
+                return member
+            since = heard.isoformat() if heard else "it joined"
+            return absent(member, f"unheard since {since}")
 
 
 def housed(member: Member, sessions: list[str]) -> Member:
@@ -803,10 +898,7 @@ def housed(member: Member, sessions: list[str]) -> Member:
     parent = parent_of(member)
     if not parent or not member.get("running") or parent in sessions:
         return member
-    gone = member.copy()
-    gone["running"] = False
-    gone["error"] = f"its session {parent} stopped"
-    return gone
+    return absent(member, f"its session {parent} stopped")
 
 
 def pulsed_members(
@@ -816,8 +908,18 @@ def pulsed_members(
 
     *mine* is the reading member's own id, which is never read as absent.
     """
+    scope = process_scope()
     here = [
-        member if text(member.get("id")) == mine else pulsed(member, now, window)
+        member
+        if text(member.get("id")) == mine
+        else pulsed(
+            member,
+            now,
+            window,
+            held=text(member.get("kind")) == MEMBER_KIND
+            and answered(root, member_actor(member)),
+            scope=scope,
+        )
         for member in members(root)
     ]
     sessions = [
@@ -1314,6 +1416,11 @@ def swept(
     for path in listed(root / DEPARTED_DIR):
         found = read_member(path, running=False)
         left = spoken_at(text(found.get("left_at"))) if found is not None else None
-        if found is None or (left is not None and left < since):
-            discarded(path)
+        match found:
+            case None:
+                discarded(path)
+            case dict() if left is not None and left < since:
+                discarded(path)
+                if not answered(root, member_actor(found)):
+                    discarded(pulse_path(root, member_actor(found)))
     return retired
