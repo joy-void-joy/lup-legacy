@@ -819,6 +819,10 @@ animations = false
 [cleanup]
 superseded_volumes_after_days = 14   # an old config volume's history, kept this long
 
+[dashboard]
+reopen = true               # a review parking with no tab open reopens the page;
+                            # `dashboard reopen --off` writes false
+
 [container]                 # what every contained session is granted: over the
 network = "bridge"          # project's, under a mode and the command line
 memory = "75%"              # an amount such as "12GiB", or a share of the engine's
