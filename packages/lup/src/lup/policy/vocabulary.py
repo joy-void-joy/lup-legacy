@@ -1030,6 +1030,17 @@ def devtools_rules() -> list[ShellSubcommandRule]:
                         "session; it stops by itself once the last session ends."
                     ),
                 ),
+                # Reopening is how a parked review reaches an operator with no
+                # page open; turning it off is theirs, as stopping is.
+                ShellOperationRule(
+                    name="reopen",
+                    operator_only=True,
+                    reason="a requesting agent cannot change how the dashboard reaches the operator",
+                    recovery=(
+                        "The operator turns it on or off from a terminal outside "
+                        "the agent session, or in their lup config's [dashboard]."
+                    ),
+                ),
             ],
         ),
         ShellSubcommandRule(
