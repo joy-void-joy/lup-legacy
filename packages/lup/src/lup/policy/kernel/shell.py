@@ -757,7 +757,10 @@ def decide_segment_words(
             (checkout if held else None)
             or (git_restore_source(words) if held else None)
             or git_restore_unchanged(
-                words, context["recoverable_targets"], context["path_rules"]
+                words,
+                context["recoverable_targets"],
+                context["path_rules"],
+                context["path_roles"],
             )
             or git_symbolic_ref_read(words)
         )
@@ -774,6 +777,7 @@ def decide_segment_words(
             [words[0], *words[at:]],
             context["recoverable_targets"],
             context["path_rules"],
+            context["path_roles"],
         )
         if owned is not None and owned.effect != "allow":
             return owned
@@ -786,11 +790,16 @@ def decide_segment_words(
     if refused is not None:
         return refused
     deleted = protected_deletion(
-        words, context["path_rules"], context["rows"], context["checkout_root"]
+        words,
+        context["path_rules"],
+        context["rows"],
+        context["path_roles"],
+        context["checkout_root"],
     ) or protected_placement(
         words,
         context["path_rules"],
         context["rows"],
+        context["path_roles"],
         context["existing_targets"],
         context["checkout_root"],
     )

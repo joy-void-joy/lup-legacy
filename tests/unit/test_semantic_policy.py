@@ -1233,6 +1233,15 @@ SHELL_POLICY_CASES = [
     DecisionCase(input="echo x > .github/actions/setup/action.yml", effect="ask"),
     DecisionCase(input="cat uv.lock web/package.json", effect="allow"),
     DecisionCase(input="echo x > docs/pyproject.toml.md", effect="allow"),
+    # Named anywhere, a manifest is named by what it is, and one a scratch
+    # root holds is a disposable copy no install trusts: a project scaffolded
+    # under `tmp/` writes its own.
+    DecisionCase(input="echo x > tmp/adopter/pyproject.toml", effect="allow"),
+    DecisionCase(input="cp tmp/a tmp/adopter/pyproject.toml", effect="allow"),
+    DecisionCase(input="mv tmp/a tmp/adopter/uv.lock", effect="allow"),
+    DecisionCase(input="rm tmp/adopter/package.json", effect="allow"),
+    DecisionCase(input="cd tmp/adopter && echo x > pyproject.toml", effect="allow"),
+    DecisionCase(input="cp tmp/adopter/pyproject.toml pyproject.toml", effect="ask"),
     DecisionCase(input="uv lock", effect="allow"),
     DecisionCase(input="echo x > docs/fresh-note.md", effect="allow"),
     # Housekeeping confined to the disposable roots is as safe as writing
@@ -5521,6 +5530,11 @@ def test_a_composed_session_enforces_the_rules_the_generated_tree_does() -> None
         ("crates/core/Cargo.lock", "ask", "matches **/Cargo.lock"),
         (".github/workflows/ci.yml", "ask", "is under .github"),
         ("docs/package.json.md", "allow", ""),
+        # A project scaffolded in scratch carries its own manifest, and a
+        # scratch root is disposable by declaration: nothing installs from it.
+        ("tmp/adopter/pyproject.toml", "allow", ""),
+        ("tmp/adopter/uv.lock", "allow", ""),
+        ("packages/lup/tmp/web/package.json", "allow", ""),
     ],
 )
 def test_manifests_lockfiles_and_ci_ask_every_identity(

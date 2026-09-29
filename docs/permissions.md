@@ -681,6 +681,14 @@ included, exactly as the root manifest does. The commands that write them
 for a reason — `uv lock`, `uv add`, `bun install` — are judged by the
 dependency rows instead, which read what they fetch rather than the path.
 
+A root spelled from anywhere names a file by what it is, and a declared
+scratch root holds only disposable copies of it: a project scaffolded under
+`tmp/` carries its own `pyproject.toml`, and nothing installs from there. So
+every `**/<name>` rule gives way to the scratch root holding the path, by
+every writing route and the edit gate alike — `echo x > tmp/p/pyproject.toml`,
+`cp`, `mv`, `rm` and an edit of it are scratch writes — while a rule naming the
+scratch root itself holds, and the manifest in any package keeps its question.
+
 ### A write that widens a later launch
 
 `sync.json` and `sync.json.local` are protected edit roots because a

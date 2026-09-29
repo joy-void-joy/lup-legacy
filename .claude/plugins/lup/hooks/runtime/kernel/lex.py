@@ -996,6 +996,7 @@ def written_path_verdict(
         [spelled],
         path_rules or [],
         existing_targets is None or spelled in existing_targets,
+        path_roles or [],
     )
     if protected is not None:
         return protected

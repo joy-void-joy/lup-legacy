@@ -3612,6 +3612,26 @@ def antipattern_decision(
     return None
 
 
+def yields_to_scratch(
+    path: str, row: PathRuleRow, path_roles: list[PathRoleRow]
+) -> bool:
+    """Whether a rule naming a file wherever it sits gives way to scratch.
+
+    A root spelled from anywhere (`**/pyproject.toml`) names a file by what it
+    is, which is right in any package that holds one and wrong in a scratch
+    root, which holds only disposable copies: a project scaffolded under
+    `tmp/` carries its own manifest, and nothing installs from it. A rule
+    naming the scratch root itself (`tmp`) is about scratch, so it holds.
+    Every gate reads a protected path through this, so a shell write and an
+    edit of the same file get one answer.
+    """
+    return (
+        row["kind"] == "contains_part"
+        and path_role(path, path_roles) == "scratch"
+        and path_role(row["value"], path_roles) != "scratch"
+    )
+
+
 def path_rule_matches(path: str, path_exists: bool, row: PathRuleRow) -> bool:
     """Evaluate one primitive protected-path rule.
 
@@ -4038,6 +4058,7 @@ def decide_edit(
             row
             for row in path_rules
             if path_rule_matches(path, path_exists, row)
+            and not yields_to_scratch(path, row, path_roles or [])
             and not (row["kind"] == "new_devtools" and "new-devtools-module" in granted)
         ),
         None,

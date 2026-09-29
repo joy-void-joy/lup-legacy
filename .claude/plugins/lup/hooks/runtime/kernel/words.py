@@ -15,7 +15,7 @@ from .decision import (
     SUBSTITUTION_SENTINEL,
     unjudged,
 )
-from .edit import path_rule_matches, protected_path_reason
+from .edit import path_rule_matches, protected_path_reason, yields_to_scratch
 from .programs import InterpreterGrammar, ReadOption, grammar, read_options
 from .roles import (
     GENERATED_PLUGIN_RECOVERY,
@@ -1253,7 +1253,10 @@ def asks_before_removing_a_directory(
 
 
 def protected_write_target(
-    targets: list[str], path_rules: list[PathRuleRow], path_exists: bool
+    targets: list[str],
+    path_rules: list[PathRuleRow],
+    path_exists: bool,
+    path_roles: list[PathRoleRow],
 ) -> KernelDecision | None:
     """Ask before granting a write to a path the declared rules protect.
 
@@ -1272,7 +1275,12 @@ def protected_write_target(
     """
     for word in targets:
         matched = next(
-            (row for row in path_rules if path_rule_matches(word, path_exists, row)),
+            (
+                row
+                for row in path_rules
+                if path_rule_matches(word, path_exists, row)
+                and not yields_to_scratch(word, row, path_roles)
+            ),
             None,
         )
         if matched is not None:
@@ -1365,6 +1373,7 @@ def protected_deletion(
     words: list[str],
     path_rules: list[PathRuleRow],
     rows: list[ShellRuleRow],
+    path_roles: list[PathRoleRow],
     checkout: str = "",
 ) -> KernelDecision | None:
     """Ask before `rm` or `git rm` deletes a path the declared rules protect.
@@ -1380,7 +1389,13 @@ def protected_deletion(
     for operand in deleted_operands(words, rows):
         spelled = repository_relative(operand, checkout)
         matched = next(
-            (row for row in path_rules if deletes_protected(spelled, row)), None
+            (
+                row
+                for row in path_rules
+                if deletes_protected(spelled, row)
+                and not yields_to_scratch(spelled, row, path_roles)
+            ),
+            None,
         )
         if matched is None:
             continue
@@ -1397,6 +1412,7 @@ def protected_placement(
     words: list[str],
     path_rules: list[PathRuleRow],
     rows: list[ShellRuleRow],
+    path_roles: list[PathRoleRow],
     existing: list[str] | None = None,
     checkout: str = "",
 ) -> KernelDecision | None:
@@ -1438,7 +1454,12 @@ def protected_placement(
         spelled = repository_relative(word, checkout)
         present = existing is None or word in existing
         matched = next(
-            (row for row in path_rules if path_rule_matches(spelled, present, row)),
+            (
+                row
+                for row in path_rules
+                if path_rule_matches(spelled, present, row)
+                and not yields_to_scratch(spelled, row, path_roles)
+            ),
             None,
         )
         if matched is not None:
@@ -1465,7 +1486,13 @@ def protected_placement(
     for word, verb in reached:
         spelled = repository_relative(word, checkout)
         matched = next(
-            (row for row in path_rules if deletes_protected(spelled, row)), None
+            (
+                row
+                for row in path_rules
+                if deletes_protected(spelled, row)
+                and not yields_to_scratch(spelled, row, path_roles)
+            ),
+            None,
         )
         if matched is None:
             continue
@@ -1542,7 +1569,7 @@ def confined_to_recoverable_roots(
         return None
     if len(restorable) > recoverable_target_limit:
         return None
-    protected = protected_write_target(targets, path_rules or [], True)
+    protected = protected_write_target(targets, path_rules or [], True, path_roles)
     if protected is not None:
         return protected
     return KernelDecision("allow", "confined to recoverable roots")
@@ -1621,7 +1648,7 @@ def archive_lands_on_nothing(
             return None
         if directory in existing_targets and directory not in (empty_directories or []):
             return None
-    protected = protected_write_target(named, path_rules or [], True)
+    protected = protected_write_target(named, path_rules or [], True, path_roles)
     if protected is not None:
         return protected
     return KernelDecision("allow", "archive lands where nothing stands")
