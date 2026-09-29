@@ -684,6 +684,21 @@ SHELL_POLICY_CASES = [
     # marker expression: reading that as a module would refuse the way this
     # project runs a slice of its own tests.
     DecisionCase(input="uv run pytest -m slow", effect="allow"),
+    # A target is one program however it is reached: bare on the path, or
+    # from this checkout's environment, it is judged as `uv run` judges it.
+    # A file that only shares its name -- anywhere else -- is not the target.
+    DecisionCase(input="pytest tests/unit", effect="allow"),
+    DecisionCase(input=".venv/bin/pytest -q tests", effect="allow"),
+    DecisionCase(input="pytest -m slow", effect="allow"),
+    DecisionCase(input="ruff check packages", effect="allow"),
+    DecisionCase(input=".venv/bin/ruff check .", effect="allow"),
+    DecisionCase(input="ruff format --check .", effect="allow"),
+    DecisionCase(input="ruff check --fix .", effect="allow"),
+    DecisionCase(input="pyright src", effect="allow"),
+    DecisionCase(input="pytest tests/unit", effect="allow", sandboxed=True),
+    DecisionCase(input="tmp/pytest tests", effect="ask"),
+    DecisionCase(input="../other/.venv/bin/pytest tests", effect="ask"),
+    DecisionCase(input="lup-devtools dev check", effect="deny"),
     DecisionCase(input="find . -name '*.py' | xargs grep TODO", effect="allow"),
     DecisionCase(input="echo x | xargs rm -rf", effect="ask"),
     # xargs appends what it reads to the payload, so a payload that changes

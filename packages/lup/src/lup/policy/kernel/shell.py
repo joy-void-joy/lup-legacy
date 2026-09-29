@@ -81,6 +81,7 @@ from .programs import (
     program_verdict,
     read_program,
 )
+from .roles import repository_relative
 from .walks import names_read
 from .withheld import (
     printed_secret,
@@ -916,6 +917,17 @@ def decide_segment_words(
             if handed is None
             else decide_shell_segment(handed["words"], context, handed["directory"]),
         )
+    target = reached_target(words[0], directory, context)
+    if target:
+        # The same program `uv run` reaches, spelled without it: one row for
+        # it, whichever spelling found it.
+        return decide_uv(
+            ["uv", "run", target, *words[1:]],
+            context["runner_targets"],
+            context["target_tables"],
+            write_facts(context),
+            rows=context["rows"],
+        )
     decided = decide_command_rows(words, context["rows"], write_facts(context))
     # A variable a later command sees stays in this process, unless it is one
     # that swaps who that command acts as: the row states the first, and the
@@ -923,6 +935,30 @@ def decide_segment_words(
     if executable in BINDING_BUILTINS and decided.reach == "container":
         return decided.revised(reach=binding_reach(bound_names(words[1:])))
     return decided
+
+
+def reached_target(word: str, directory: str | None, context: ShellContext) -> str:
+    """The runner target a command word reaches without `uv run`, or nothing.
+
+    A declared target is one program however a session reaches it: `uv run
+    pytest`, `pytest` found on the path, and `.venv/bin/pytest` from this
+    checkout's own environment run the same code, so each is judged by the
+    one row `uv run` reads rather than by a row per spelling. A file that
+    only shares the name -- under `tmp/`, in another project's environment
+    -- is some other program. A command the vocabulary states a row for
+    answers by that row instead, which is where a project declines a
+    spelling on purpose.
+    """
+    name = posixpath.basename(word)
+    if not any(row["name"] == name for row in context["runner_targets"]):
+        return ""
+    if declares_command(name, context["rows"]):
+        return ""
+    if word == name:
+        return name
+    placed = placed_path(word, directory)
+    spelled = repository_relative(placed, context["checkout_root"]) if placed else ""
+    return name if posixpath.normpath(spelled) == f".venv/bin/{name}" else ""
 
 
 def decide_shell_segment(

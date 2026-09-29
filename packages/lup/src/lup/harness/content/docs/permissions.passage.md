@@ -346,6 +346,14 @@ each declares its `effects`, its `refuses`, its placement, and its reason.
 Blessing a toolchain is the common case and it is one word,
 `runs_declared_target`. A project that means to stop a target — one that
 spends money, runs for an hour, or publishes something — refuses it there.
+A target is one program however a session reaches it: `pytest` found on the
+path and this checkout's `.venv/bin/pytest` run what `uv run pytest` runs,
+so each is judged by that one row rather than a row per spelling — `ruff
+format .` allows as `uv run ruff format .` does. A file that only shares the
+name (`tmp/pytest`, another project's `.venv/bin/pytest`) is some other
+program, and a command the vocabulary states a row for answers by that row,
+which is where `lup-devtools` declines its bare spelling for the environment
+`uv run` guarantees.
 A program the shell vocabulary judges is judged as itself: `uv run` puts this
 project's environment on the path and nothing more, so `uv run pip install x`
 and `uv -q run pip install x` are refused as `pip install x` is, whatever uv
