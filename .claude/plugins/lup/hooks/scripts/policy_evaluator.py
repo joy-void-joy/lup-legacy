@@ -4249,9 +4249,12 @@ def written_review(
     is every file the claim window measured moving across the command, among
     those differing from the commit or untracked, so a write no word names is
     reviewed as a redirect is -- and a checkout's own moves, which leave files
-    matching the commit, are not. The Python files among them are then swept
-    as an edit is (:func:`reviewed_writes`), for what the rules the edit gate
-    does not run still refuse.
+    matching the commit, are not. Such a file is put to the rule scan alone,
+    the anti-pattern gate's refusal and nothing else: a generator rewrites its
+    own trees, which the path gates refuse editing by hand, and read against
+    them every regeneration would come back refused. The Python files among
+    all of them are then swept as an edit is (:func:`reviewed_writes`), for
+    what the rules the edit gate does not run still refuse.
     """
     carried = [write["path"] for write in authored_writes(command)]
     base = cwd.resolve()
@@ -4259,16 +4262,14 @@ def written_review(
         str(Path(path).relative_to(base)) if Path(path).is_relative_to(base) else path
         for path in changed or []
     ]
+    named = [
+        *shell_write_targets(command),
+        *shell_flag_write_targets(command, SHELL_RULES),
+        *patch_write_targets(shell_patch_operands(command, SHELL_RULES), cwd),
+    ]
     targets = [
         target
-        for target in dict.fromkeys(
-            [
-                *shell_write_targets(command),
-                *shell_flag_write_targets(command, SHELL_RULES),
-                *patch_write_targets(shell_patch_operands(command, SHELL_RULES), cwd),
-                *measured,
-            ]
-        )
+        for target in dict.fromkeys([*named, *measured])
         # A write whose bytes were in the command went to these gates before it
         # ran, and reporting it again tells the agent the same thing twice about
         # a write somebody has already answered for.
@@ -4292,6 +4293,8 @@ def written_review(
                 cwd=cwd,
             )
         ]
+        if target in named
+        or (verdict.effect == "deny" and verdict.rule == "edit:anti-pattern")
     ]
     # The edit gate answered the line rules against the commit; the sweep adds
     # what only it runs, so the two never name one finding twice.

@@ -210,3 +210,28 @@ def test_a_file_a_command_wrote_without_naming_it_is_reviewed(tmp_path: Path) ->
         line.startswith("module.py: line 1:") and "(rule subprocess)" in line
         for line in report["blocking"]
     )
+
+
+def test_a_file_a_generator_rewrote_is_not_reported_for_where_it_sits(
+    tmp_path: Path,
+) -> None:
+    """What the window saw move is put to the rule scan, not to the path gates.
+
+    A generator rewrites its own trees, and the path gates refuse editing one
+    by hand: read against them, every regeneration would come back refused.
+    """
+    work = tmp_path / "repo"
+    initialized_repo(work, tmp_path / "no-hooks")
+    generated = work / ".claude/plugins/lup/hooks/scripts/policy.py"
+    generated.parent.mkdir(parents=True)
+    generated.write_text("value = 1\n", encoding="utf-8")
+    (work / "lup-devtools").write_text(
+        '#!/bin/sh\necho \'{"repaired": [], "findings": []}\'\n', encoding="utf-8"
+    )
+    (work / "lup-devtools").chmod(0o755)
+
+    report = claude().written_review(
+        "uv run lup-devtools harness generate all", work, [str(generated)], "session"
+    )
+
+    assert report == {"blocking": [], "context": []}
