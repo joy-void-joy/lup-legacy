@@ -146,16 +146,6 @@ def unheld(expected: list[str]) -> list[str]:
     return [path for path in expected if not bound_read_only(path)]
 
 
-def leased_read_only(path: Path) -> bool:
-    """Whether this path sits on a mount the boundary made unwritable.
-
-    The question a caller asks *before* a write it could offer to do
-    differently, where :func:`observed_topology` is what it asks *after* one
-    already failed.
-    """
-    return refuses_writes(str(path))
-
-
 def is_mount_point(path: Path) -> bool:
     """Whether something is mounted at exactly this path.
 
