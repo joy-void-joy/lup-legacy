@@ -117,6 +117,20 @@ class AuditedProject(BaseModel, arbitrary_types_allowed=True):
     sources: list[PythonSource]
     application: ApplicationRoots = NO_APPLICATION
     boundaries: list[ImportBoundary] | None = None
+    judged: list[Path] | None = None
+    """The files whose verdicts are asked for, or ``None`` for every source.
+
+    A scope narrows what is judged and never what is read: every rule still
+    takes its context from the whole tree. Judging every module to report
+    one cost the post-edit sweep a median 18 seconds per edit, and its
+    slowest runs passed the hook's deadline and reported nothing.
+    """
+
+    def judged_sources(self) -> list[PythonSource]:
+        """The sources whose verdicts are asked for."""
+        if self.judged is None:
+            return self.sources
+        return [source for source in self.sources if source.path in self.judged]
 
 
 class ProjectRule(Rule):

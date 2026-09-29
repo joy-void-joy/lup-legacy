@@ -367,6 +367,14 @@ def create_dev_app(
                 "instead of what it found — parsing, walking, or resolving",
             ),
         ] = False,
+        refutations: Annotated[
+            bool,
+            typer.Option(
+                "--refutations",
+                help="With --antipatterns: list each finding the receiver's type "
+                "refuted or left unresolved, which are otherwise only counted",
+            ),
+        ] = False,
         as_json: Annotated[
             bool,
             typer.Option(
@@ -409,8 +417,27 @@ def create_dev_app(
                 "base it cannot work out",
             ),
         ] = None,
+        conflict_markers: Annotated[
+            bool,
+            typer.Option(
+                "--conflict-markers",
+                help="Refuse a tracked file holding a conflict block a merge left "
+                "behind only — the row the full check and --changed also run",
+            ),
+        ] = False,
+        staged: Annotated[
+            bool,
+            typer.Option(
+                "--staged",
+                help="With --conflict-markers: read what the next commit holds, "
+                "as the commit hook does",
+            ),
+        ] = False,
     ) -> None:
         """Run ruff format, ruff check, pyright, and pytest. Read-only by default."""
+        if conflict_markers:
+            check.run_conflict_markers(staged)
+            return
         declarations = declared()
         if changed:
             from lup.devtools.dev.branches import get_integration_branch
@@ -432,7 +459,11 @@ def create_dev_app(
                     antipatterns_mod.summarize(declarations.project, as_json, path)
                 case _:
                     antipatterns_mod.report(
-                        declarations.project, as_json, path, fix=fix
+                        declarations.project,
+                        as_json,
+                        path,
+                        fix=fix,
+                        refutations=refutations,
                     )
             return
         if boundaries:
@@ -472,6 +503,14 @@ def create_dev_app(
                 "its whole suite"
             ),
         ] = None,
+        integration: Annotated[
+            bool,
+            typer.Option(
+                "--integration",
+                help="Also run the tests marked integration, which each suite's "
+                "configuration deselects",
+            ),
+        ] = False,
     ) -> None:
         """Run named tests in the suite that installs each, one run per suite.
 
@@ -484,6 +523,7 @@ def create_dev_app(
             test_roots=declarations.test_roots,
             selections=paths or [],
             excluded_roots=check.non_code_roots(declarations.project),
+            integration=integration,
         )
 
     # -- comments command --

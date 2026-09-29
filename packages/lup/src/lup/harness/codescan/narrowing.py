@@ -166,6 +166,6 @@ CHAIN_RULE = ProjectRule(
         "expression position, where match has no spelling at all."
     ),
     strength="strong",
-    audit=lambda audited: audit_isinstance_chains(audited.sources),
+    audit=lambda audited: audit_isinstance_chains(audited.judged_sources()),
 )
 """The isinstance-chain rule, declared beside the audit that decides it."""

@@ -238,21 +238,24 @@ def architecture_violations(
     return violations
 
 
-def audit_capabilities(sources: list[PythonSource]) -> list[RuleFinding]:
+def audit_capabilities(
+    sources: list[PythonSource], judged: list[PythonSource] | None = None
+) -> list[RuleFinding]:
     """Build the project index, enforce the rule, and audit its suppressions.
 
     The index resolves through the library's classes as well, so a class
     descending from a library model reads as the variant union it is; what is
-    reported is only what stands in the sources handed in.
+    reported is only what stands in the sources handed in, or in *judged*.
     """
+    reported = sources if judged is None else judged
     symbols = project_index(sources)
-    scanned = {source.path for source in sources}
+    scanned = {source.path for source in reported}
     violations = [
         violation
         for violation in architecture_violations(symbols, capability_names(symbols))
         if violation.path in scanned
     ]
-    return audit_suppressions(sources, violations, RULE_ID)
+    return audit_suppressions(reported, violations, RULE_ID)
 
 
 def undeclared_abstractions(
@@ -292,16 +295,19 @@ def undeclared_abstractions(
     ]
 
 
-def audit_abstract_declarations(sources: list[PythonSource]) -> list[RuleFinding]:
+def audit_abstract_declarations(
+    sources: list[PythonSource], judged: list[PythonSource] | None = None
+) -> list[RuleFinding]:
     """Build the project index, enforce the rule, and audit its suppressions."""
+    reported = sources if judged is None else judged
     symbols = project_index(sources)
-    scanned = {source.path for source in sources}
+    scanned = {source.path for source in reported}
     violations = [
         violation
         for violation in undeclared_abstractions(symbols)
         if violation.path in scanned
     ]
-    return audit_suppressions(sources, violations, ABSTRACT_DECLARATION_RULE_ID)
+    return audit_suppressions(reported, violations, ABSTRACT_DECLARATION_RULE_ID)
 
 
 CAPABILITY_RULE = ProjectRule(
@@ -344,7 +350,7 @@ CAPABILITY_RULE = ProjectRule(
         "well as the project's, so a kind declared over a lup model is not judged "
         "a capability."
     ),
-    audit=lambda audited: audit_capabilities(audited.sources),
+    audit=lambda audited: audit_capabilities(audited.sources, audited.judged_sources()),
 )
 """The capability rule, as the set that runs it and the reference read it."""
 
@@ -384,6 +390,8 @@ ABSTRACT_DECLARATION_RULE = ProjectRule(
         "capability seam from a variant union. A Protocol is exempt, being "
         "satisfied structurally rather than by declaration."
     ),
-    audit=lambda audited: audit_abstract_declarations(audited.sources),
+    audit=lambda audited: audit_abstract_declarations(
+        audited.sources, audited.judged_sources()
+    ),
 )
 """The abstract-declaration rule, declared beside the audit that decides it."""

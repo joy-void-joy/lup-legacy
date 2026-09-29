@@ -26,6 +26,7 @@ from lup.devtools.dev.check import (
     change_base,
     changed_scope,
 )
+from lup.devtools.dev.migrations import MigrationRecord
 from lup.devtools.dev.reach import Spread
 from lup.devtools.project import DevProject
 from tests.unit.test_devtools_check_ledger import quiet
@@ -181,7 +182,8 @@ def test_a_change_no_scoped_check_reads_says_so_and_names_every_gate_left(
     printed = capsys.readouterr().out.splitlines()
 
     assert "No Python file changed, so neither ruff nor pyright ran." in printed
-    assert not any("checks passed" in line for line in printed)
+    # What does read every changed file is the conflict row, and it says so.
+    assert "conflict markers: ok" in printed
     assert "Unread: 1 changed file(s) no scoped check reads:" in printed
     assert "  prose.md" in printed
     assert any(
@@ -223,3 +225,32 @@ def test_a_public_name_the_branch_removed_fails_the_narrowed_run(
 
     assert "declared migrations: FAIL (1 gone with nothing to read)" in printed
     assert printed[-1] == "Failed: declared migrations"
+
+
+def test_a_migration_declaration_the_migrations_row_read_is_not_named_unread(
+    repo: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A declaration the row parses was read, and saying otherwise sends a
+    reader looking for the gate that checks it."""
+    (repo / "migrations/pending").mkdir(parents=True)
+    (repo / "migrations/pending/gone.toml").write_text(
+        'subjects = ["app.gone"]\nreason = "it went"\n\n'
+        '[[steps]]\ninstruction = "call kept instead"\n',
+        encoding="utf-8",
+    )
+    (repo / "prose.md").write_text("changed prose\n", encoding="utf-8")
+    for tool in ("ruff_format_check", "ruff_lint_check", "pyright_check"):
+        monkeypatch.setattr(check, tool, quiet(tool))
+
+    check.run_changed(
+        DevProject(package="app"),
+        ChangeBase(commit="HEAD", reached="HEAD"),
+        [],
+        Spread(library=["src/app"], copied=[], generated=[]),
+        record=MigrationRecord(root=repo / "migrations"),
+    )
+    printed = capsys.readouterr().out.splitlines()
+
+    assert "declared migrations: ok" in printed
+    assert "Unread: 1 changed file(s) no scoped check reads:" in printed
+    assert "  migrations/pending/gone.toml" not in printed

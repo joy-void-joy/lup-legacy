@@ -97,11 +97,10 @@ def stale_reference_violations(sources: list[PythonSource]) -> list[RuleViolatio
 
 
 def stale_reference_findings(audited: AuditedProject) -> list[RuleFinding]:
-    """This rule's verdicts across every module the project holds."""
+    """This rule's verdicts across every module the project holds, or its scope."""
+    judged = audited.judged_sources()
     return audit_suppressions(
-        audited.sources,
-        stale_reference_violations(audited.sources),
-        STALE_REFERENCE,
+        judged, stale_reference_violations(judged), STALE_REFERENCE
     )
 
 

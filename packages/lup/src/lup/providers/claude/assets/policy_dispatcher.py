@@ -31,23 +31,22 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parents[1] / "runtime"))
 from decisions import (
     bash_decision,
-    dashboard_held,
     edit_decision,
     claim_window_closed,
     claim_window_opened,
     edit_claim_decision,
     fetch_decision,
+    merged,
     named_claim_recorded,
     peer_listing_attachment,
     peer_listing_decision,
     peer_send_decision,
     placed_document,
     placed_edit_text,
+    referred_once,
     refused_tool_decision,
-    review_policy_identity,
-    reviewed_decision,
+    reviewed_writes,
     session_contained,
-    shell_preimages,
     spawn_decision,
     spawn_named,
     written_review,
@@ -58,25 +57,21 @@ from host import (
     boundary_account,
     closed_deadline,
     declared_identity,
-    file_diagnostics,
     note_ran,
     observe_hook_call,
     opened_deadline,
     publish_edition,
     read_document,
     record_hook_evidence,
-    repaired_directives,
     sandbox_active,
-    unjudged_reason,
 )
+from kernel.rows import PostToolReport
 from kernel.decision import KernelDecision, sandbox_escaped
 from caller_payload import caller_of
 from policy_data import (
     AGENT_IDENTITY_ENV,
     AUTONOMOUS_AGENT_IDENTITIES,
-    DIAGNOSTICS_COMMAND,
     HOOK_DEADLINE_SECONDS,
-    REPAIR_COMMAND,
 )
 
 
@@ -101,9 +96,8 @@ def announced(effect, tool_name, reason, dialogs=("Edit", "Write")):
     every hook, and it arrives with the tool call rather than with the prompt,
     so this informs rather than gates. That is the whole of what is reachable:
     the reason is dropped here, and ``PermissionRequest`` — the event that runs
-    before the prompt — did not fire for a hook's ask in a plain `-p` run on
-    2.1.283 and fired only under `--permission-prompts none`, so no field of
-    it is one this prompt is known to carry.
+    before the prompt — belongs to the control protocol rather than to a local
+    plugin, and never fires for one.
 
     The colour is spelled here rather than in the kernel because it is this
     terminal's alphabet. The kernel states the sites; a runtime that shows them
@@ -228,86 +222,6 @@ def session_root(payload):
     return Path(payload["cwd"]) if "cwd" in payload else None
 
 
-def parks():
-    """Whether an ask is parked for the operator rather than put to a prompt.
-
-    Wherever the launch holds a dashboard, a reviewer reads what parks there,
-    for this session and every subagent and `-p` run inside it alike. Where
-    none is held, nobody reads a parked question until they run a terminal
-    command for it, so every ask -- a person's included -- is this runtime's
-    own prompt, where the person already is. Measured on 2.1.283 in an
-    interactive auto-mode session: a hook's ask raised the prompt, and the
-    call had not run a minute later with nobody answering.
-    """
-    return dashboard_held()
-
-
-def waiting(command, payload):
-    """How this session waits on a parked call, in its own tool's words.
-
-    A command the main conversation of an interactive session starts with
-    `run_in_background` keeps running after the turn and re-invokes the model
-    when it exits, which is the whole wake. A subagent's, or a `-p` run's,
-    ends with it -- `CLAUDE_CODE_ENTRYPOINT` is `sdk-cli` there, measured on
-    2.1.283, where a subagent's hook payload carries `agent_id` -- so there
-    the wait moves to the foreground once nothing else is left.
-    """
-    started = (
-        f"Start `{command}` in the background (run_in_background) to be woken "
-        "with the result."
-    )
-    interactive = declared_identity("CLAUDE_CODE_ENTRYPOINT") == "cli"
-    if interactive and "agent_id" not in payload:
-        return started
-    return (
-        started + " A background command ends with this run, so once nothing "
-        "else is left, run it in the foreground instead."
-    )
-
-
-def preimages(payload, cwd):
-    """What each file the call would change holds now, keyed where it resolves."""
-    tool_input = payload["tool_input"]
-    match payload["tool_name"]:
-        case "Edit" | "Write":
-            named = Path(tool_input["file_path"])
-            target = named if named.is_absolute() else cwd / named
-            return {
-                target.resolve(): (
-                    target.read_text(encoding="utf-8", newline="")
-                    if target.is_file()
-                    else None
-                )
-            }
-        case "Bash":
-            return shell_preimages(tool_input["command"], cwd)
-        case _:
-            return {}
-
-
-def queued_review(payload, decision, placed):
-    """Park one ask in the review queue, or spend the operator's recorded answer.
-
-    The preimages are the files the call would change as they stand now, and
-    the exact input it would run with is the one placed, so what the operator
-    approves is what `review wait` or a retry carries out.
-    """
-    cwd = session_root(payload) or Path.cwd()
-    return reviewed_decision(
-        decision,
-        cwd,
-        payload["session_id"] if "session_id" in payload else "",
-        payload["tool_name"],
-        payload["tool_input"],
-        preimages(payload, cwd),
-        lambda command: waiting(command, payload),
-        payload["tool_use_id"] if "tool_use_id" in payload else "",
-        execution_payload=placed,
-        policy_identity=review_policy_identity(cwd, Path(__file__)),
-        provider="claude",
-    )
-
-
 def dispatch(payload):
     name = payload["tool_name"]
     tool_input = payload["tool_input"]
@@ -324,6 +238,7 @@ def dispatch(payload):
     # what it is asked about are its own roster row's — a subagent's where
     # one called — read the way the caller hook reads it for the tool server.
     caller = caller_of(payload)
+    session = payload["session_id"] if "session_id" in payload else ""
     if name == "Bash":
         unsandboxed = spent_escape(tool_input)
         # A command names no file it will write, so what it changed can only
@@ -362,15 +277,20 @@ def dispatch(payload):
             "replace_all" in tool_input and tool_input["replace_all"] is True,
         )
         return edit_claim_decision(
-            edit_decision(
+            referred_once(
+                edit_decision(
+                    path,
+                    before,
+                    after,
+                    Path(path).exists(),
+                    autonomous,
+                    "modify",
+                    session_directory,
+                    agent_identity=agent_identity,
+                ),
                 path,
-                before,
-                after,
-                Path(path).exists(),
-                autonomous,
-                "modify",
                 session_directory,
-                agent_identity=agent_identity,
+                session,
             ),
             path,
             session_directory,
@@ -380,15 +300,20 @@ def dispatch(payload):
         path = tool_input["file_path"]
         exists = Path(path).exists()
         return edit_claim_decision(
-            edit_decision(
+            referred_once(
+                edit_decision(
+                    path,
+                    read_document(path),
+                    tool_input["content"],
+                    exists,
+                    autonomous,
+                    "overwrite" if exists else "create",
+                    session_directory,
+                    agent_identity=agent_identity,
+                ),
                 path,
-                read_document(path),
-                tool_input["content"],
-                exists,
-                autonomous,
-                "overwrite" if exists else "create",
                 session_directory,
-                agent_identity=agent_identity,
+                session,
             ),
             path,
             session_directory,
@@ -600,32 +525,63 @@ def observe(payload):
     tool_input = payload["tool_input"] if "tool_input" in payload else {}
     path = tool_input["file_path"] if "file_path" in tool_input else ""
     if path:
-        publish_edition(path, str(session_root(payload) or ""))
+        publish_edition(path)
         # The tier that needs no comparison: the call said which file, so the
         # claim it leaves is one another session can act on unqualified.
         named_claim_recorded(path, session_root(payload), caller_of(payload))
-        # Repaired before checked, because the repair rewrites the file: run
-        # the other way round and the diagnostics describe lines that have
-        # already moved. Both reports reach the agent together, which is the
-        # one channel this event has.
-        return repaired_directives(path, REPAIR_COMMAND) + file_diagnostics(
-            path, DIAGNOSTICS_COMMAND
-        )
+        return reviewed_writes([path], session_root(payload))
     command = tool_input["command"] if "command" in tool_input else ""
     if not command:
-        return []
+        return PostToolReport(blocking=[], context=[])
     # What the command changed, read against the snapshot its own PreToolUse
     # took, and contested where another session had a window open across it.
-    claim_window_closed(session_root(payload), caller_of(payload))
-    return [
-        *written_review(command, session_root(payload) or Path.cwd()),
-        # What the boundary refused, named as the boundary rather than left
-        # as an errno the agent would debug as a broken disk.
-        *boundary_account(
-            payload["tool_response"] if "tool_response" in payload else "",
-            session_root(payload),
-        ),
-    ]
+    changed = claim_window_closed(session_root(payload), caller_of(payload))
+    return merged(
+        [
+            written_review(
+                command,
+                session_root(payload) or Path.cwd(),
+                changed,
+                payload["session_id"] if "session_id" in payload else "",
+            ),
+            # What the boundary refused, named as the boundary rather than
+            # left as an errno the agent would debug as a broken disk.
+            PostToolReport(
+                blocking=[],
+                context=boundary_account(
+                    payload["tool_response"] if "tool_response" in payload else "",
+                    session_root(payload),
+                ),
+            ),
+        ]
+    )
+
+
+def post_tool_answer(report):
+    """One post-tool report, in the two channels this runtime reads it by.
+
+    What a gate still refuses goes as ``decision: "block"``, whose reason
+    Claude Code shows the agent as feedback to act on before it moves on.
+    What is only worth knowing goes as ``additionalContext``, which the
+    runtime wraps as a system reminder beside the result and does not label
+    as an error: https://code.claude.com/docs/en/hooks, "PostToolUse
+    decision control". One channel for both labelled a name another edit
+    was about to supply, and a justified suppression, as a blocking error.
+    """
+    answer = (
+        {"decision": "block", "reason": "\n".join(report["blocking"])}
+        if report["blocking"]
+        else {}
+    )
+    if not report["context"]:
+        return answer
+    return {
+        **answer,
+        "hookSpecificOutput": {
+            "hookEventName": "PostToolUse",
+            "additionalContext": "\n".join(report["context"]),
+        },
+    }
 
 
 def main():
@@ -638,14 +594,11 @@ def main():
     event = ""
     placed = None
     attached = ""
-    notice = ""
     failed = False
-    read = False
     try:
         payload = json.load(sys.stdin)
         if not isinstance(payload, dict):
             raise ValueError("hook input must be an object")
-        read = True
         record_hook_evidence(plugin_data_root(), payload, "started")
         event = payload["hook_event_name"] if "hook_event_name" in payload else ""
         # Watching and deciding are separate events, and this one returns
@@ -654,41 +607,37 @@ def main():
         # approval prompt for work already done.
         if event == "PostToolUse":
             remembered_run(payload)
-            found = observe_hook_call(
+            observed = observe_hook_call(
                 session_root(payload) or Path.cwd(),
                 payload["session_id"] if "session_id" in payload else "",
                 payload["tool_name"],
                 payload["tool_input"],
                 payload["tool_use_id"] if "tool_use_id" in payload else "",
-            ) + observe(payload)
+            )
+            report = merged(
+                [PostToolReport(blocking=observed, context=[]), observe(payload)]
+            )
             # Structured feedback reaches the agent beside the completed tool.
             # A file diagnostic is a successful check, so it exits normally.
-            if found:
-                detail = "\n".join(found)
-                record_hook_evidence(
-                    plugin_data_root(), payload, "completed", "observed", detail
-                )
-                json.dump({"decision": "block", "reason": detail}, sys.stdout)
-                return
-            json.dump({}, sys.stdout)
-            record_hook_evidence(plugin_data_root(), payload, "completed", "observed")
+            detail = "\n".join([*report["blocking"], *report["context"]])
+            record_hook_evidence(
+                plugin_data_root(), payload, "completed", "observed", detail or None
+            )
+            json.dump(post_tool_answer(report), sys.stdout)
             return
         decision = dispatch(payload)
         placed = placed_input(payload)
         attached = attachment(payload["tool_name"], session_root(payload))
-        # A parked ask is refused while it waits, telling the agent it is
-        # queued rather than refused and how to wait on it; an ask that does
-        # not park is rendered as this runtime's own prompt, where the person
-        # already is. It is parked as it would be rendered -- every reason
-        # it joined, and what its placement crosses -- since that is the
-        # question the operator answers.
-        if decision.effect == "ask" and parks():
-            asked = decision.placed(
-                escapable=True, contained=session_contained(session_root(payload))
-            )
-            reviewed = queued_review(payload, asked, placed)
-            decision = reviewed["decision"]
-            notice = reviewed["notice"]
+        # An ask is rendered here, because this runtime has a channel for a
+        # question: the prompt, where the person already is. A recorded
+        # receipt is what a runtime with no ask effect falls back to, which
+        # is Codex's PreToolUse, and a question put where nobody is standing
+        # is read by nobody.
+        #
+        # The limit this accepts: an autonomy mode can answer the prompt
+        # itself, and no field here says whether a person saw one. The verdict
+        # reaches whoever the session is answering to, which in that mode is
+        # the mode.
     # Every way this can fail means one thing — the call went unjudged — and
     # one answer is right for all of them. Naming the exceptions instead is
     # what let a plain unreadable file escape, and the traceback exit reaches
@@ -697,7 +646,7 @@ def main():
     # interrupt still passes through as the BaseException it is.
     except Exception as error:
         failed = True
-        decision = KernelDecision("deny", unjudged_reason(error, read))
+        decision = KernelDecision("deny", f"Lup could not judge this call: {error}")
         record_hook_evidence(
             plugin_data_root(),
             payload if isinstance(payload, dict) else {},
@@ -724,10 +673,7 @@ def main():
         return
     finally:
         closed_deadline(previous)
-    answer = rendered(decision, payload, placed, attached)
-    # The person is told a review is waiting on them in the one field this
-    # runtime shows a person from every hook; the agent reads the reason.
-    json.dump({**answer, "systemMessage": notice} if notice else answer, sys.stdout)
+    json.dump(rendered(decision, payload, placed, attached), sys.stdout)
     if not failed:
         detail = (
             decision.reason
