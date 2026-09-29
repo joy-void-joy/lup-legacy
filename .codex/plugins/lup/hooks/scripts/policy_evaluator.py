@@ -417,6 +417,15 @@ def measured_boundary(
     reads empty as "no boundary was measured" -- the fail-closed answer and
     the honest one. A session whose launcher wrote no ledger gets exactly
     what a session whose boundary failed to stand gets.
+
+    Containment is measured here rather than taken from the row. Every
+    contained launch holds its ledger's directory read-only in the container,
+    so a ledger claiming a container that this process does not read
+    through such a mount was written by something other than that launch --
+    a script in a session on the host, where the directory is writable, is
+    the case this answers. Its claim is dropped and the rest of what it says
+    stands, which is what any uncontained ledger already is: the classifier's
+    to guard, since nothing holds it.
     """
     environ = os.environ  # lup: ignore[os-environ]
     nonce = environ["LUP_BOUNDARY_NONCE"] if "LUP_BOUNDARY_NONCE" in environ else ""
@@ -436,11 +445,57 @@ def measured_boundary(
         return {}
     if not isinstance(loaded, dict):
         return {}
-    return {
+    measured = {
         name: [item for item in value if isinstance(item, str)]
         for name, value in loaded.items()
         if isinstance(name, str) and isinstance(value, list)
     }
+    if contained(measured) and not record_held((root / ledger).resolve()):
+        return {name: value for name, value in measured.items() if name != "contained"}
+    return measured
+
+
+def record_held(
+    directory: Path, mountinfo: Path = Path("/proc/self/mountinfo")
+) -> bool:
+    """Whether this process reads ``directory`` through a read-only mount of it.
+
+    Asked of this process's own mount table, which nothing a session runs
+    can change: a session on the host cannot mount, and one in a container
+    cannot unmount what the engine bound, nor move the directory holding it
+    while its parents are pinned. A table nobody can read vouches for
+    nothing, and the answer that keeps the claim out is no.
+    """
+    try:
+        table = mountinfo.read_text()
+    except OSError:
+        return False
+    return str(directory) in read_only_mount_points(table)
+
+
+def read_only_mount_points(mountinfo: str) -> list[str]:
+    """Every mount point here mounted read-only, from a ``mountinfo`` table.
+
+    The record's fields are named where they are read: proc(5) fixes the
+    fifth as the mount point and the sixth as its own options, which say
+    ``ro`` for a read-only mount whatever the filesystem beneath it allows.
+    A record too short to carry them is not a mount and is skipped.
+    """
+
+    def held(record: list[str]) -> list[str]:
+        match record:
+            case [_mount_id, _parent_id, _device, _root, mount_point, options, *_] if (
+                "ro" in next(csv.reader([options]))
+            ):
+                return [unescaped_mount_point(mount_point)]
+            case _:
+                return []
+
+    return [
+        point
+        for record in csv.reader(mountinfo.splitlines(), delimiter=" ")
+        for point in held(record)
+    ]
 
 
 def contained(measured: dict[str, list[str]]) -> bool:
@@ -2458,10 +2513,7 @@ def lent_mount_points(mountinfo: str) -> list[str]:
     def lent(record: list[str]) -> list[str]:
         match record:
             case [_mount_id, _parent_id, _device, root, mount_point, *_] if root != "/":
-                # The table escapes a space, a tab, a newline and a backslash
-                # as three octal digits and leaves every other byte as UTF-8.
-                raw = mount_point.encode("utf-8").decode("unicode_escape")
-                return [raw.encode("latin-1").decode("utf-8", "replace")]
+                return [unescaped_mount_point(mount_point)]
             case _:
                 return []
 
@@ -2470,6 +2522,16 @@ def lent_mount_points(mountinfo: str) -> list[str]:
         for record in csv.reader(mountinfo.splitlines(), delimiter=" ")
         for point in lent(record)
     ]
+
+
+def unescaped_mount_point(field: str) -> str:
+    """One ``mountinfo`` mount point as the path it names.
+
+    The table escapes a space, a tab, a newline and a backslash as three
+    octal digits and leaves every other byte as UTF-8.
+    """
+    raw = field.encode("utf-8").decode("unicode_escape")
+    return raw.encode("latin-1").decode("utf-8", "replace")
 
 
 def host_shared_roots(

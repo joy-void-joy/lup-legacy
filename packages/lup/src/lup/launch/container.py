@@ -18,7 +18,7 @@ failure mode the design forbids, so a caller that asked to be contained and
 cannot be gets a refusal naming what was missing, and the operator decides.
 """
 
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
 import hashlib
 import json
 import os
@@ -33,13 +33,19 @@ from ipaddress import IPv4Address
 from pathlib import Path
 
 import sh
+from lup.execution.shell import git
 from lup.policy.identity import POLICY_ROOT_ENV
 from pydantic import BaseModel, Field
 from rich.console import Console
 from rich.live import Live
 from rich.text import Text
 
-from lup.launch.preflight import LaunchSentinels, ROOT_VARIABLE
+from lup.launch.preflight import (
+    LaunchSentinels,
+    ROOT_VARIABLE,
+    launch_record,
+    mount_table,
+)
 from lup.harness.credential import committer, fleet_rewrites
 from lup.harness.devices import (
     Device,
@@ -51,6 +57,7 @@ from lup.harness.egress import PROXY_LABEL, SessionEgress
 from lup.harness.image import (
     ContainerEngine,
     Image,
+    SessionPrivileges,
     SessionStreams,
     detected_client,
 )
@@ -80,17 +87,22 @@ from lup.launch.config_volume import (
     swept_superseded_notice,
 )
 from lup.sandbox.attribution import WRITE_REFUSAL_MARKERS
-from lup.launch.pointer_trust import judged_roots, store_exposure
+from lup.launch.pointer_trust import judged_roots, launcher_state_exposure
+from lup.sandbox.pointers import pointer_drift, refusal
 from lup.launch.refusal import LaunchRefused
 from lup.sandbox.rail import (
     AccessibleRoot,
     Lease,
     demoted,
     fleet_lease,
+    NestedRepository,
     hold_pruning_across,
     in_repository,
+    merged,
     prepared_across,
     repository_layout,
+    rooted,
+    same_path,
     sibling_worktrees,
     worker_lease,
     working_trees,
@@ -809,8 +821,10 @@ def record_boundary(
     git directory, so a refusal under one is explained as git's rather than
     as a path to declare.
     """
-    ledger = root / ".lup" / "boundary.json"
+    ledger = mount_table(root)
     ledger.parent.mkdir(parents=True, exist_ok=True)
+    # Written in place, never replaced: a container already running in this
+    # checkout holds the file read-only by its inode.
     ledger.write_text(
         json.dumps(
             {
@@ -824,6 +838,94 @@ def record_boundary(
             indent=2,
         )
     )
+
+
+def readied_nested(root: Path, declared: Sequence[NestedRepository]) -> list[Notice]:
+    """Ready each declared repository inside the checkout for its hold, on the host.
+
+    One marked ``create`` and absent is initialized here, so no session is
+    the one that writes its configuration; one absent and unmarked is said
+    and held by nothing. Each present one has its pointers verified as every
+    worktree's are, so a ``commondir`` a session planted in it is refused
+    rather than held in place, and its ``hooks/`` made where ``git init``
+    made none, since a bind whose source is missing refuses the container.
+    Only a repository keeping its own ``.git`` directory is held: one whose
+    ``.git`` is a pointer reads its configuration from wherever that leads.
+    """
+
+    def readied(nested: NestedRepository) -> Iterator[Notice]:
+        checkout = root / nested.path
+        if not (checkout / ".git").exists():
+            if not nested.create:
+                yield Notice(
+                    text=(
+                        f"Nested repository {nested.path}: not there, so nothing "
+                        "held; a session that makes it writes its configuration "
+                        "unheld"
+                    ),
+                    urgency="boundary",
+                )
+                return
+            checkout.mkdir(parents=True, exist_ok=True)
+            git("init", "-q", str(checkout))
+            yield Notice(
+                text=f"Nested repository {nested.path}: initialized on the host",
+                urgency="boundary",
+            )
+        # Its own directory, by where it is: asking git for the repository
+        # would follow the very `commondir` a session could have planted.
+        directory = checkout / ".git"
+        if not directory.is_dir():
+            raise LaunchRefused(
+                f"Nested repository {nested.path}: {directory} is not a git "
+                "directory of its own, so nothing says where its configuration "
+                "is. Declare a repository kept with its own `.git` directory."
+            )
+        if drifts := pointer_drift(directory):
+            raise LaunchRefused(refusal(drifts))
+        (directory / "hooks").mkdir(exist_ok=True)
+
+    return [notice for nested in declared for notice in readied(nested)]
+
+
+def held_lease(
+    root: Path, lease: Lease, nested: Sequence[NestedRepository] = ()
+) -> Lease:
+    """What a container at ``root`` mounts: ``lease``, its launch record held, every hold rooted.
+
+    The launch record is :func:`~lup.launch.preflight.launch_record`: what
+    the gates believe, written only on the host. It is held only where
+    ``lease`` would let it be written, so a hold narrows what a container
+    writes and never widens what it reaches -- a lease writing nothing holds
+    nothing. Then :func:`~lup.sandbox.rail.rooted` pins the directories
+    between each hold and its writable mount, this record's and the git
+    configuration's alike, so none can be moved out from under its hold.
+
+    Only this checkout's record. A sibling's is written by the session in it,
+    and a mount inside a sibling would make it a checkout nobody can remove
+    from inside -- the landing workflow this lease keeps siblings writable
+    for.
+
+    ``nested`` are the repositories the wall declares inside the checkout,
+    each held as a plain checkout's own is -- ``config`` and ``hooks/`` --
+    where it is there to hold; :func:`readied_nested` readies them first.
+    """
+    # lup: defer: a sibling worktree's launch record stays writable here, so a
+    # contained session can rewrite the ledger a session in that sibling reads
+    # through its own hold -- its destination policies and writable roots.
+    # Holding it would pin a mount point inside the sibling; closing it needs
+    # the record kept outside the checkout, or read against what its launch
+    # handed the runtime at start
+    anchors = [
+        root / repository.path / ".git" / name
+        for repository in nested
+        for name in ("config", "hooks")
+        if (root / repository.path / ".git" / name).exists()
+    ]
+    held = [
+        path for path in [*launch_record(root), *anchors] if lease.writable_at(path)
+    ]
+    return rooted(merged([lease, Lease(read_only=same_path(held))]))
 
 
 class Spoken(BaseModel, frozen=True):
@@ -1426,6 +1528,7 @@ def build_image(
     engine: ContainerEngine,
     root: Path,
     shown: int = 4,
+    privileges: SessionPrivileges = SessionPrivileges(),
 ) -> None:
     """Build this project's image from the declaration, in the open.
 
@@ -1448,7 +1551,7 @@ def build_image(
     scratch = root / "tmp"
     scratch.mkdir(parents=True, exist_ok=True)
     dockerfile = scratch / "agent.Dockerfile"
-    rendered = image.dockerfile(manifest)
+    rendered = image.dockerfile(manifest, privileges)
     dockerfile.write_text(rendered)
     log = scratch / "agent-build.log"
     argv = [
@@ -1646,6 +1749,8 @@ def contained_argv(
     lease: Lease | None = None,
     devices: list[Device] = [],
     home_seed: HomeSeedPlaces | None = None,
+    privileges: SessionPrivileges = SessionPrivileges(),
+    nested: Sequence[NestedRepository] = (),
 ) -> list[str]:
     """The argv that opens a session in this project's container.
 
@@ -1696,6 +1801,16 @@ def contained_argv(
     a token for one editor window, holding no account and no credential -- so
     which account a session runs under and which editor it talks to are
     independent choices, and only the second decides this.
+
+    ``privileges`` is what the wall grants the session's processes, and
+    sudo among them only on a rootless engine: there the container's root is
+    an unprivileged user on the host, where on a rootful one it is the
+    host's root, held back only by the capabilities dropped -- so that grant
+    is refused before anything is built.
+
+    ``nested`` are the repositories the wall declares inside the checkout,
+    readied on the host and held as the checkout's own -- see
+    :func:`held_lease`.
     """
     said = banner if banner is not None else Banner()
     if engine is not None:
@@ -1711,6 +1826,30 @@ def contained_argv(
         if not found.drives_its_server():
             raise LaunchRefused(found.consequence())
         client = found.engine()
+    if privileges.sudo:
+        if not client.rootless():
+            raise LaunchRefused(
+                f"sudo was granted, and `{client.binary}` does not run rootless. "
+                "Root inside a rootful engine's container is the host's root, "
+                "held back only by the capabilities the container drops, so "
+                "sudo is granted only on a rootless engine: use rootless Podman "
+                "or rootless Docker, or drop sudo from the declaration. Packages "
+                "sudo installs vanish with the container either way; declare "
+                "them in the image's `tooling` to keep them."
+            )
+        said.add(
+            [
+                Notice(
+                    text=(
+                        f"sudo: the session may become root in its container, "
+                        f"which `{client.binary}` runs rootless, so an "
+                        "unprivileged user on the host. What it installs vanishes with the "
+                        "container; the image's `tooling` keeps a package."
+                    ),
+                    urgency="boundary",
+                )
+            ]
+        )
     # Every root this launch mounts, before host git reads any of them -- the
     # lease's own layout questions and the prune guard below both run git
     # there -- and before a broker is started, which a refusal would strand.
@@ -1727,8 +1866,11 @@ def contained_argv(
     # not readied -- its whole lease is read-only, and it is not ours to move.
     readied = [root, *(item.path for item in accessible if item.writable)]
     said.add(preparation_notice(prepared_across(readied, SHARED_STATE)))
-    lease = lease if lease is not None else fleet_lease(root, accessible)
-    if exposed := store_exposure(lease):
+    said.add(readied_nested(root, nested))
+    lease = held_lease(
+        root, lease if lease is not None else fleet_lease(root, accessible), nested
+    )
+    if exposed := launcher_state_exposure(lease):
         raise LaunchRefused(exposed)
     # Rebound before rendering, so the tag, the build, and the session all
     # read the same resolved copy -- and only they: the declaration the
@@ -1736,11 +1878,11 @@ def contained_argv(
     resolution = resolved_agent_clis(image)
     image = resolution.image
     said.add(resolution.said)
-    rendered = image.dockerfile(manifest)
+    rendered = image.dockerfile(manifest, privileges)
     tag = image_tag(rendered)
     built = not image_matches(tag, rendered, client)
     if built:
-        build_image(image, manifest, tag, client, root)
+        build_image(image, manifest, tag, client, root, privileges=privileges)
     name_for_checkout(tag, checkout_tag(root), client)
     # A build is what leaves an image behind, so it is the moment to sweep:
     # the checkout's own tag has just moved off whatever it ran before.
@@ -1912,6 +2054,7 @@ def contained_argv(
         devices=granted_devices.granted,
         home_seed=home_seed.seed if home_seed is not None else None,
         trust_document=login.trust_document,
+        privileges=privileges,
     )
 
 

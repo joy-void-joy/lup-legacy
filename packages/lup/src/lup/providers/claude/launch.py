@@ -667,6 +667,8 @@ def claude_opening(
         # carry, as its composition declares.
         clipboard="commands",
         forwarded=list(joined.environment),
+        privileges=config.sandbox.privileges(),
+        nested=config.sandbox.nested(),
     )
     return LaunchCommand(argv=argv, env=environment, cwd=root)
 

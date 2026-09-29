@@ -227,6 +227,68 @@ def plugin_cache_evidence(
     )
 
 
+def revision_snapshot(source_root: Path, revision: str, parent: Path) -> Path:
+    """A directory holding one installed revision's exact content, and nothing else.
+
+    What a home holds under ``revision`` is the source with its manifest's
+    version set to that name, as :func:`stage_cachebusted_marketplace`
+    stages it, so the same is written here from the source on the host.
+    Mounted over the plugin's whole cache in a home, it is the one revision
+    Codex finds there.
+
+    An automatic revision names the content it was installed from, and a
+    name for other content is refused: the source moved between the
+    preparation and this, or the preparation reported something it did not
+    install. The directory is named for the revision and the content
+    together, reused whole where present -- once its content is read back as
+    that name's, since a directory outside the container is still one
+    something on the host could have changed -- and written aside then
+    renamed into place, so an interrupted write is never mounted and a
+    session reading an older snapshot never has it rewritten under it.
+    """
+    digest = plugin_content_digest(source_root)
+    if digest is None:
+        raise FileNotFoundError(f"Codex plugin source does not exist: {source_root}")
+    if Path(revision).name != revision or Version.parse(revision).build != (
+        f"codex.{digest}"
+    ):
+        raise ValueError(
+            f"Codex revision {revision!r} does not name the plugin content at "
+            f"{source_root}. The source changed while the launch prepared it; "
+            "launch again."
+        )
+    named = hashlib.sha256(f"{revision}\n{digest}".encode()).hexdigest()
+    target = parent / named[:16]
+    if target.is_dir():
+        if plugin_content_digest(target / revision) != digest:
+            raise ValueError(
+                f"The held Codex revision at {target} no longer holds the content "
+                "it was written with. Remove it on the host and launch again."
+            )
+        return target
+    parent.mkdir(parents=True, exist_ok=True)
+    with TemporaryDirectory(prefix=".staging-", dir=parent) as area:
+        staging = Path(area) / "snapshot"
+        copied = staging / revision
+        shutil.copytree(
+            source_root, copied, ignore=shutil.ignore_patterns("__pycache__")
+        )
+        manifest = copied / ".codex-plugin" / "plugin.json"
+        document = json.loads(manifest.read_text(encoding="utf-8"))
+        document["version"] = revision
+        manifest.write_text(
+            json.dumps(document, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+        )
+        try:
+            staging.rename(target)
+        except OSError:
+            # Another launch wrote the same content first; this copy goes
+            # with the staging area.
+            if not target.is_dir():
+                raise
+    return target
+
+
 def stage_cachebusted_marketplace(
     source_root: Path,
     cwd: Path,

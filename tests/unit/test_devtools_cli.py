@@ -428,6 +428,7 @@ def test_the_session_reading_takes_its_posture_from_the_ledger(
     monkeypatch: pytest.MonkeyPatch,
     measured: dict[str, list[str]],
     effect: str,
+    launch_record_held: None,
 ) -> None:
     """What the launch measured is what the dispatcher answers by, and so this.
 

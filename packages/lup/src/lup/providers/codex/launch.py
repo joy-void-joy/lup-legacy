@@ -29,6 +29,7 @@ from lup.launch.declaration import (
     launched_sandbox,
     resumption,
 )
+from lup.launch.environments import revisions_home
 from lup.launch.foreground import between_steps, run_in_foreground
 from lup.launch.preflight import LaunchSentinels, release_ledger
 from lup.launch.refusal import LaunchRefused
@@ -61,6 +62,7 @@ from lup.providers.codex.profile import CodexAccountSettings
 from lup.providers.codex.session import (
     carry_codex_home,
     codex_login_preflight,
+    held_revision,
     prepare_codex_plugin,
     settled_codex_seed,
 )
@@ -701,21 +703,30 @@ def codex_opening(
         if home.selection.isolated and not posture.contained():
             home.store.publish(root)
 
-    def prepare(prefix: list[str], native_home: Path) -> None:
+    def prepare(prefix: list[str], native_home: Path) -> dict[Path, str]:
+        declared = CodexMarketplace.declared(offered)
         if prefix and home.settings is not None:
             state.applied.append(
                 settled_codex_seed(
                     image,
                     root,
-                    home.settings.personal_settings(
-                        CodexMarketplace.declared(offered) is not None
-                    ),
+                    home.settings.personal_settings(declared is not None),
                 )
             )
-        prepare_codex_plugin(
+        prepared = prepare_codex_plugin(
             prefix, native_home, offered, environment, force, settings=home.settings
         )
         state.installed.append(native_home)
+        # A contained session's home is a volume it writes, so the revision
+        # its hooks run from is held for it from a snapshot on the host.
+        if not prefix or declared is None:
+            return {}
+        try:
+            return held_revision(
+                prepared, declared, image.config_home, revisions_home()
+            )
+        except (ValueError, FileNotFoundError) as refused:
+            raise LaunchRefused(str(refused)) from refused
 
     argv = session_argv(
         str(config.executable),
@@ -740,6 +751,8 @@ def codex_opening(
         # bridge, as its composition declares.
         clipboard="x11",
         forwarded=list(joined.environment),
+        privileges=config.sandbox.privileges(),
+        nested=config.sandbox.nested(),
     )
     return LaunchCommand(argv=argv, env=environment, cwd=root)
 

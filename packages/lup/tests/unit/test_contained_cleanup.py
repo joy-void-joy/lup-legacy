@@ -33,6 +33,7 @@ from lup.harness.image import Image, Podman
 from lup.harness.requirements import Manifest
 from lup.providers.claude.login import CLAUDE_LOGIN
 from lup.providers.codex.login import CODEX_LOGIN
+from lup.sandbox.rail import Lease
 
 
 def test_an_environment_is_finished_once_its_claimed_checkout_is_gone(
@@ -253,8 +254,8 @@ def test_a_build_prunes_what_it_superseded_and_a_reuse_prunes_nothing(
         contained, "judged_roots", lambda *a, **k: Mock(notices=[], refusal=None)
     )
     monkeypatch.setattr(contained, "prepared_across", lambda *a, **k: [])
-    monkeypatch.setattr(contained, "fleet_lease", lambda *a, **k: Mock())
-    monkeypatch.setattr(contained, "store_exposure", lambda lease: None)
+    monkeypatch.setattr(contained, "fleet_lease", lambda *a, **k: Lease())
+    monkeypatch.setattr(contained, "launcher_state_exposure", lambda lease: None)
     monkeypatch.setattr(
         contained,
         "resolved_agent_clis",
