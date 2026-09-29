@@ -150,8 +150,9 @@ class Probe(check.TestRoot):
         workers: int,
         excluded_roots: list[str],
         foreground: bool = False,
+        integration: bool = False,
     ) -> None:
-        del paths, excluded_roots, foreground
+        del paths, excluded_roots, foreground, integration
         self.handed.append(workers)
         self.held.append(held_beside(slot_paths(self.clone, SLOTS), self.directory))
 
