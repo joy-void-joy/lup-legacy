@@ -1050,6 +1050,13 @@ fi
 if [ -n "${{{self.forge.token_variable}:-}}" ]; then
   export GH_TOKEN="${self.forge.token_variable}"
 fi
+# Each host service the launch relays: a socket the launcher listens on,
+# mounted in, bound here to the loopback port the session was told of, so the
+# service is reached by the address it is declared under and nothing else on
+# the host's loopback is. Named `socket@port`, one variable per service.
+env | sed -n 's/^LUP_HOST_SERVICE_[A-Z0-9_]*=//p' | while IFS=@ read -r relay port; do
+  socat TCP-LISTEN:"$port",bind=127.0.0.1,fork,reuseaddr UNIX-CONNECT:"$relay" &
+done
 # Started through setpriv with its inheritable and ambient sets cleared: an
 # engine hands a non-root `--user` the capabilities a run gives back as
 # ambient ones -- measured on podman -- so without this the agent itself

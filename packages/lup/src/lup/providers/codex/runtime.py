@@ -37,7 +37,7 @@ from lup.launch.compilation import (
     kept_record,
     semantic_hooks,
 )
-from lup.launch.declaration import Reopening
+from lup.launch.declaration import Reopening, loopback_relayed
 from lup.providers.codex.launch import (
     codex_account_environment,
     codex_plugin_root,
@@ -1185,6 +1185,7 @@ class CodexSessionOpener:
             root=declared.workspace(),
             runtime="codex",
             environment={**inherited_environment(), **declared.environment},
+            relayed=loopback_relayed(declared.plugin, declared.sandbox),
         )
         async with held_around(declared.companions, launch) as joined:
             for notice in joined.notices:

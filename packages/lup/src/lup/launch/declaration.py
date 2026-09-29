@@ -442,6 +442,19 @@ def declared_image(plugin: Harness | Path | None, sandbox: "SessionSandbox") -> 
     return sandbox.networked(plugin.image if isinstance(plugin, Harness) else Image())
 
 
+def loopback_relayed(plugin: Harness | Path | None, sandbox: "SessionSandbox") -> bool:
+    """Whether a session behind ``sandbox`` has a loopback of its own.
+
+    A container on any network but the host's does, so a service on the
+    host's loopback reaches it only through a relay; a session on the host,
+    or in a container sharing the host's network, reaches the service itself.
+    """
+    return (
+        sandbox.posture().contained()
+        and not declared_image(plugin, sandbox).egress.shares_host_loopback()
+    )
+
+
 def settled_sandbox(asked: LaunchSandbox | None, stated: str) -> LaunchSandbox:
     """The sandbox a launch opens under: the one asked for, or the default the host holds.
 

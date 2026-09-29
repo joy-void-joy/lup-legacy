@@ -9,6 +9,11 @@ it needs to reach it: environment variables, folders to mount, the ports it
 listens on. :class:`HostCompanion` is that seam, and the one thing a
 compilation asks of a companion is :meth:`HostCompanion.held`.
 
+A service already running on the host's loopback — a model server, a
+database — is :class:`HostService`: a container whose loopback is its own
+reaches it only through a socket the launch relays for that one port, under
+the name the service is declared by.
+
 Most companions are one process shared by many sessions, which is what
 :class:`SharedProcess` is: started by the first session that needs it, joined
 by every later one, and stopped when the last lets go. Shared per checkout,
@@ -28,8 +33,11 @@ import fcntl
 import hashlib
 import logging
 import os
+import shutil
 import signal
 import socket
+import tempfile
+import threading
 import uuid
 from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator, Callable, Iterator, Sequence
@@ -70,6 +78,14 @@ type PortName = Annotated[
 type PortNumber = Annotated[int, Field(ge=1, le=65535)]
 """One TCP port on the host's loopback."""
 
+type VariableName = Annotated[str, StringConstraints(pattern=r"^[A-Z_][A-Z0-9_]*$")]
+"""An environment variable's name, as every shell exports one."""
+
+# lup: ignore[constant-declaration] — the prefix the image's entrypoint reads
+# a relayed service under, which the launch writing it has to agree with
+RELAY_PREFIX = "LUP_HOST_SERVICE_"
+"""What each relayed host service's variable is named after, in the session's environment."""
+
 
 class CompanionLaunch(BaseModel, frozen=True, arbitrary_types_allowed=True):
     """The session a companion is held for, as the compilation opening it knows it."""
@@ -86,6 +102,11 @@ class CompanionLaunch(BaseModel, frozen=True, arbitrary_types_allowed=True):
     journal: TraceJournal | None = None
     """The run's journal, where the session is recorded; ``None`` where nothing
     is, such as a command printed rather than run."""
+
+    relayed: bool = False
+    """Whether the session's loopback is its container's own, so a service on
+    the host's loopback reaches it only through a relay: a contained session
+    on any network but the host's."""
 
 
 class Contribution(BaseModel, frozen=True):
@@ -217,6 +238,132 @@ async def held_around(
         yield joined
     finally:
         await asyncio.to_thread(stack.close)
+
+
+def piped(source: socket.socket, sink: socket.socket) -> None:
+    """Carry one direction of a relayed connection until its source ends, then end the sink's."""
+    try:
+        while data := source.recv(65536):
+            sink.sendall(data)
+    except OSError as closed:
+        logger.debug("a relayed connection closed: %s", closed)
+    try:
+        sink.shutdown(socket.SHUT_WR)
+    except OSError as closed:
+        logger.debug("a relayed connection was already gone: %s", closed)
+
+
+@contextmanager
+def relaying(listening_at: Path, port: int) -> Iterator[None]:
+    """Forward every connection to a Unix socket at ``listening_at`` to ``port`` on the host's loopback.
+
+    For as long as it is held, on threads of this process: the launcher's,
+    which outlives the session it relays for. Each connection is its own pair
+    of pipes to one fresh connection to the port, and nothing else on the
+    host's loopback is reachable through it. Let go, it stops listening and
+    closes every connection still open.
+    """
+    listening = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    listening.bind(str(listening_at))
+    listening.listen()
+    open_connections: list[socket.socket] = []
+
+    def carried(client: socket.socket) -> None:
+        try:
+            upstream = socket.create_connection(("127.0.0.1", port))
+        except OSError as refused:
+            logger.info(
+                "host service on port %s refused a relayed connection: %s",
+                port,
+                refused,
+            )
+            client.close()
+            return
+        open_connections.extend([client, upstream])
+        back = threading.Thread(target=piped, args=(upstream, client), daemon=True)
+        back.start()
+        piped(client, upstream)
+        back.join()
+        client.close()
+        upstream.close()
+
+    def accepted() -> None:
+        while True:
+            try:
+                client, _ = listening.accept()
+            except OSError:
+                return
+            threading.Thread(target=carried, args=(client,), daemon=True).start()
+
+    threading.Thread(target=accepted, daemon=True).start()
+    try:
+        yield
+    finally:
+        listening.close()
+        for connection in open_connections:
+            connection.close()
+
+
+class HostService(HostCompanion, frozen=True):
+    """A service on the host's loopback, reached from a session only through its declared name.
+
+    Nothing is started: the service is the operator's, running on the host
+    already. The session is handed its address under the variable the
+    project names. On the host that is the service's own. A container whose
+    loopback is its own cannot reach the host's, and its egress proxy refuses
+    it, so the launcher listens on a socket of this service's, mounts it into
+    the container and forwards what arrives to this one port; the image's
+    entrypoint binds the same address inside to that socket. Nothing else on
+    the host's loopback is reachable that way.
+    """
+
+    port: PortNumber
+    """Where the service listens on the host's loopback, and the port the
+    session reaches it at inside a container."""
+
+    variable: VariableName
+    """The variable the session reads the service's address from."""
+
+    scheme: str = Field(default="http", pattern=r"^[a-z][a-z0-9+.-]*$")
+    """How the address is spelled for whatever reads it: ``http``, ``postgres``."""
+
+    def address(self) -> str:
+        """Where the session reaches the service, on the host or inside its container."""
+        return f"{self.scheme}://127.0.0.1:{self.port}"
+
+    def relay_variable(self) -> str:
+        """The variable the entrypoint finds this service's socket and port in."""
+        return RELAY_PREFIX + "".join(
+            "_" if character == "-" else character.upper() for character in self.name
+        )
+
+    @contextmanager
+    def held(self, launch: CompanionLaunch) -> Iterator[Contribution]:
+        if not launch.relayed:
+            yield Contribution(environment={self.variable: self.address()})
+            return
+        directory = Path(tempfile.mkdtemp(prefix=f"lup-service-{self.name}-"))
+        listening_at = directory / f"{self.name}.sock"
+        try:
+            with relaying(listening_at, self.port):
+                yield Contribution(
+                    environment={
+                        self.variable: self.address(),
+                        self.relay_variable(): f"{listening_at}@{self.port}",
+                    },
+                    mounts=[Mount(path=directory, writable=True)],
+                    notices=[
+                        Notice(
+                            text=(
+                                f"Host service {self.name}: 127.0.0.1:{self.port} "
+                                f"relayed into the container as {self.variable}"
+                            ),
+                            urgency="detail",
+                        )
+                    ],
+                )
+        finally:
+            shutil.rmtree(directory)
 
 
 class CompanionScope(StrEnum):
