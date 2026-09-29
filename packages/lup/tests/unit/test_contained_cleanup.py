@@ -255,7 +255,7 @@ def test_a_build_prunes_what_it_superseded_and_a_reuse_prunes_nothing(
     )
     monkeypatch.setattr(contained, "prepared_across", lambda *a, **k: [])
     monkeypatch.setattr(contained, "fleet_lease", lambda *a, **k: Lease())
-    monkeypatch.setattr(contained, "store_exposure", lambda lease: None)
+    monkeypatch.setattr(contained, "launcher_state_exposure", lambda lease: None)
     monkeypatch.setattr(
         contained,
         "resolved_agent_clis",

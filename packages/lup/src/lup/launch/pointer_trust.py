@@ -18,6 +18,8 @@ from pathlib import Path
 from pydantic import BaseModel
 
 from lup.coordination.repository import RepositoryPeers
+from lup.launch.environments import revisions_home
+from lup.providers.user_config import UserConfigHome
 from lup.sandbox.known import host_side, known_repositories, remember, store_directory
 from lup.sandbox.pointers import Verdict, refusal, unvouchable, verdict, vouched_from
 from lup.sandbox.rail import Lease
@@ -37,23 +39,74 @@ class Sighting(BaseModel, frozen=True):
     withheld: str
 
 
-def store_exposure(lease: Lease) -> str:
-    """Why this lease would let a container write lup's store, or empty.
+class HostOnly(BaseModel, frozen=True):
+    """One directory the launcher keeps for itself, which no container mounts any part of."""
 
-    The store holds the repositories the host vouches for, so a mount over it
-    is a way for a contained session to add the one it built. Checked against
-    every mount, read-only ones too: a container has no reason to read it
-    either, and a mount it may not write today is one a later lease may widen.
+    path: Path
+    holds: str
+    """What it keeps, as a refusal names it."""
+
+    moved_by: str
+    """The variable that moves it, which is how an operator moves it out of a mount."""
+
+
+def host_only_directories() -> list[HostOnly]:
+    """What the launcher keeps on the host and trusts at the next launch.
+
+    Each read at the launch, since each follows a variable of the process
+    asking: the state directory, the person's lup config, and the plugin
+    revisions a contained session's hooks run from.
     """
-    store = store_directory().resolve()
-    mount = lease.answers_from(store)
-    if mount is None:
+    return [
+        HostOnly(
+            path=store_directory(),
+            holds="lup's launcher state, its store of trusted repositories among it",
+            moved_by="XDG_STATE_HOME",
+        ),
+        HostOnly(
+            path=UserConfigHome().directory(),
+            holds="your lup config, each profile's account and credentials among it",
+            moved_by="XDG_CONFIG_HOME",
+        ),
+        HostOnly(
+            path=revisions_home(),
+            holds="the plugin revisions contained sessions run their hooks from",
+            moved_by="HOME",
+        ),
+    ]
+
+
+def launcher_state_exposure(lease: Lease) -> str:
+    """Why this lease would let a container reach what the launcher keeps, or empty.
+
+    A mount at one of :func:`host_only_directories`, above one, or inside
+    one: the store holds the repositories the host vouches for, the config
+    holds the accounts a launch signs in with, the revisions the hooks a
+    contained session is judged by -- so a container reaching any part of
+    them could rewrite what the next launch trusts. Checked against every
+    mount, read-only ones too: a container has no reason to read them either,
+    and a mount it may not write today is one a later lease may widen.
+    Compared resolved, since a mount is bound where its path leads.
+    """
+
+    def relation(mount: Path, directory: Path) -> str:
+        """How a mount meets a directory the launcher keeps, or empty where it misses."""
+        if mount == directory:
+            return "which is"
+        if directory.is_relative_to(mount):
+            return "which holds"
+        if mount.is_relative_to(directory):
+            return "which lies inside"
         return ""
-    return (
-        f"This launch would mount {mount}, which holds lup's store of trusted "
-        f"repositories at {store}, so a container could add a repository of its "
-        "own to it. Set XDG_STATE_HOME outside every mounted root, or leave "
-        f"{mount} unmounted."
+
+    return "\n".join(
+        f"This launch would mount {mount}, {met} {held.holds}, at {directory}; "
+        "a container could rewrite what the next launch trusts. Set "
+        f"{held.moved_by} outside every mounted root, or leave {mount} unmounted."
+        for mount in [*lease.writable, *lease.read_only]
+        for held in host_only_directories()
+        for directory in [held.path.resolve()]
+        if (met := relation(mount.resolve(), directory))
     )
 
 

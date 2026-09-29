@@ -16,7 +16,7 @@ from types import SimpleNamespace
 import pytest
 import typer
 
-from lup.launch.pointer_trust import judged_roots, store_exposure
+from lup.launch.pointer_trust import judged_roots, launcher_state_exposure
 from lup.launch.refusal import LaunchRefused
 from lup.execution.shell import git
 from lup.harness.process import ExitStatus, LaunchRequest, ProcessLauncher
@@ -329,12 +329,12 @@ def test_the_store_honours_xdg_state_home_and_ignores_a_relative_one(
 
 
 def test_a_lease_mounting_the_store_is_refused(own_store: Path) -> None:
-    assert store_exposure(Lease()) == ""
+    assert launcher_state_exposure(Lease()) == ""
     for lease in (
         Lease(writable={own_store.parent: str(own_store.parent)}),
         Lease(read_only={own_store: str(own_store)}),
     ):
-        assert str(own_store) in store_exposure(lease)
+        assert str(own_store) in launcher_state_exposure(lease)
 
 
 def test_the_store_under_a_launched_root_is_refused_by_the_real_lease(
@@ -342,9 +342,9 @@ def test_the_store_under_a_launched_root_is_refused_by_the_real_lease(
 ) -> None:
     """Measured against the lease a launch builds, not a hand-written one."""
     side = clone / "tree" / "side"
-    assert store_exposure(fleet_lease(side)) == ""
+    assert launcher_state_exposure(fleet_lease(side)) == ""
     monkeypatch.setenv("XDG_STATE_HOME", str(side / ".state"))
-    assert store_exposure(fleet_lease(side)) != ""
+    assert launcher_state_exposure(fleet_lease(side)) != ""
 
 
 # -- where it is wired --

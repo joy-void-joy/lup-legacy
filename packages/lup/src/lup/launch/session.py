@@ -37,7 +37,7 @@ from lup.policy.boundary import BoundaryPreflight
 from lup.policy.identity import POLICY_ROOT_ENV
 from lup.policy.profiles import compile_boundary, depended_on, measured
 from lup.policy.snapshots import accept_destination_policies, destination_authorities
-from lup.launch.pointer_trust import judged_roots, store_exposure
+from lup.launch.pointer_trust import judged_roots, launcher_state_exposure
 from lup.launch.refusal import LaunchRefused
 from lup.sandbox.rail import (
     AccessibleRoot,
@@ -724,7 +724,7 @@ def settle_boundary(
     # ledger describes carries the holds the policy then refuses writes to.
     leased = fleet_lease(root, accessible=accessible)
     lease = held_lease(root, leased) if sandbox.contained() else leased
-    if exposed := store_exposure(lease):
+    if exposed := launcher_state_exposure(lease):
         raise LaunchRefused(exposed)
     boundary = compile_boundary(
         declared,

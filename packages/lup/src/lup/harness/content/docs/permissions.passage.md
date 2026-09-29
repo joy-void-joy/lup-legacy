@@ -804,6 +804,13 @@ uncontained. Only the session's own checkout is held; a sibling's record
 stays writable, since a mount point inside a sibling would stop `git worktree
 remove` of it from inside.
 
+What the launcher keeps for itself is mounted by no launch: a mount at,
+above, or inside `$XDG_STATE_HOME/lup` (the store of trusted repositories),
+`$XDG_CONFIG_HOME/lup` (each profile's account and credentials) or
+`~/.cache/lup/codex-revisions` (the hooks a contained Codex session runs)
+refuses the launch, naming the mount and the variable that moves the
+directory out of it.
+
 Every mounted repository's shared `config` and `hooks/` are held read-only,
 because git runs on the host what they name. For a linked worktree the
 container binds the shared git directory itself read-only and every directory

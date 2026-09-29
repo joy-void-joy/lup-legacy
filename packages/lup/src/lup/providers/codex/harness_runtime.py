@@ -227,18 +227,6 @@ def plugin_cache_evidence(
     )
 
 
-def codex_revisions_home(cache: Path | None = None) -> Path:
-    """Where the Codex revisions contained sessions run their hooks from are kept.
-
-    On the host and outside every checkout, beside the project environments,
-    so nothing a session reaches can rewrite one.
-    """
-    # lup: defer: one snapshot accumulates per plugin revision a contained
-    # Codex session ran, and nothing sweeps them; `harness clean` should list
-    # and remove the ones no running container holds, as it does environments
-    return cache or Path.home() / ".cache" / "lup" / "codex-revisions"
-
-
 def revision_snapshot(source_root: Path, revision: str, parent: Path) -> Path:
     """A directory holding one installed revision's exact content, and nothing else.
 
@@ -252,9 +240,11 @@ def revision_snapshot(source_root: Path, revision: str, parent: Path) -> Path:
     name for other content is refused: the source moved between the
     preparation and this, or the preparation reported something it did not
     install. The directory is named for the revision and the content
-    together, reused whole where present, and written aside then renamed
-    into place, so an interrupted write is never mounted and a session
-    reading an older snapshot never has it rewritten under it.
+    together, reused whole where present -- once its content is read back as
+    that name's, since a directory outside the container is still one
+    something on the host could have changed -- and written aside then
+    renamed into place, so an interrupted write is never mounted and a
+    session reading an older snapshot never has it rewritten under it.
     """
     digest = plugin_content_digest(source_root)
     if digest is None:
@@ -270,6 +260,11 @@ def revision_snapshot(source_root: Path, revision: str, parent: Path) -> Path:
     named = hashlib.sha256(f"{revision}\n{digest}".encode()).hexdigest()
     target = parent / named[:16]
     if target.is_dir():
+        if plugin_content_digest(target / revision) != digest:
+            raise ValueError(
+                f"The held Codex revision at {target} no longer holds the content "
+                "it was written with. Remove it on the host and launch again."
+            )
         return target
     parent.mkdir(parents=True, exist_ok=True)
     with TemporaryDirectory(prefix=".staging-", dir=parent) as area:

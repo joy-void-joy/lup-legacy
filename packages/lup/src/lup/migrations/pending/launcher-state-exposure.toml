@@ -1,0 +1,15 @@
+subjects = ["store_exposure"]
+reason = """
+the refusal of a mount over lup's store of trusted repositories became one \
+refusal of any mount at, above or inside what the launcher keeps for itself: \
+the state directory, the person's lup config, and the plugin revisions a \
+contained session's hooks run from"""
+
+[[steps]]
+instruction = """
+Call `launcher_state_exposure(lease)` from `lup.launch.pointer_trust` where \
+you called `store_exposure(lease)`; it answers the same way, empty where \
+nothing is reached and a refusal naming each mount otherwise, now over \
+`$XDG_CONFIG_HOME/lup` and `~/.cache/lup/codex-revisions` as well as \
+`$XDG_STATE_HOME/lup`."""
+command = ["uv", "run", "lup-devtools", "dev", "py", "text", "store_exposure"]

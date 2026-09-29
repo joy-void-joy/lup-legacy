@@ -86,7 +86,7 @@ from lup.launch.config_volume import (
     swept_superseded_notice,
 )
 from lup.sandbox.attribution import WRITE_REFUSAL_MARKERS
-from lup.launch.pointer_trust import judged_roots, store_exposure
+from lup.launch.pointer_trust import judged_roots, launcher_state_exposure
 from lup.launch.refusal import LaunchRefused
 from lup.sandbox.rail import (
     AccessibleRoot,
@@ -1799,7 +1799,7 @@ def contained_argv(
     lease = held_lease(
         root, lease if lease is not None else fleet_lease(root, accessible)
     )
-    if exposed := store_exposure(lease):
+    if exposed := launcher_state_exposure(lease):
         raise LaunchRefused(exposed)
     # Rebound before rendering, so the tag, the build, and the session all
     # read the same resolved copy -- and only they: the declaration the

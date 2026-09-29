@@ -29,6 +29,7 @@ from lup.launch.declaration import (
     launched_sandbox,
     resumption,
 )
+from lup.launch.environments import revisions_home
 from lup.launch.foreground import between_steps, run_in_foreground
 from lup.launch.preflight import LaunchSentinels, release_ledger
 from lup.launch.refusal import LaunchRefused
@@ -45,7 +46,6 @@ from lup.providers.codex.confinement import CODEX_CONFINEMENT
 from lup.providers.codex.harness_runtime import (
     CodexCliEvidence,
     codex_capability_probes,
-    codex_revisions_home,
 )
 from lup.providers.codex.home import (
     CodexHomeSelection,
@@ -723,7 +723,7 @@ def codex_opening(
             return {}
         try:
             return held_revision(
-                prepared, declared, image.config_home, codex_revisions_home()
+                prepared, declared, image.config_home, revisions_home()
             )
         except (ValueError, FileNotFoundError) as refused:
             raise LaunchRefused(str(refused)) from refused
