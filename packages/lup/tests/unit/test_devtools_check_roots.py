@@ -298,3 +298,19 @@ def test_a_node_id_is_found_by_the_file_it_names(tmp_path: Path) -> None:
     assert check.absent_selections([f"{tmp_path / 'gone.py'}::test_kept"]) == [
         f"{tmp_path / 'gone.py'}::test_kept"
     ]
+
+
+def test_integration_lifts_the_marker_the_configuration_deselects_by(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The suites' own configuration deselects `integration`, so an
+    # integration test named outright ran nothing; the flag is the way to run it.
+    ran: list[tuple[str, ...]] = []
+    monkeypatch.setattr(check, "uv", lambda *words, **_options: ran.append(words))
+    root = check.TestRoot(name="pytest", directory=tmp_path)
+
+    root.run(["tests/integration"], 1, [], integration=True)
+    root.run(["tests/unit"], 1, [])
+
+    assert ran[0][-2:] == ("-m", "")
+    assert "-m" not in ran[1]

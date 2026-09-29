@@ -470,6 +470,14 @@ def create_dev_app(
                 "its whole suite"
             ),
         ] = None,
+        integration: Annotated[
+            bool,
+            typer.Option(
+                "--integration",
+                help="Also run the tests marked integration, which each suite's "
+                "configuration deselects",
+            ),
+        ] = False,
     ) -> None:
         """Run named tests in the suite that installs each, one run per suite.
 
@@ -482,6 +490,7 @@ def create_dev_app(
             test_roots=declarations.test_roots,
             selections=paths or [],
             excluded_roots=check.non_code_roots(declarations.project),
+            integration=integration,
         )
 
     # -- comments command --

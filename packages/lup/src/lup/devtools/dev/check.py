@@ -503,6 +503,7 @@ class TestRoot(BaseModel):
         workers: int,
         excluded_roots: list[str],
         foreground: bool = False,
+        integration: bool = False,
     ) -> None:
         """Run this suite over these paths, or the whole of it for none.
 
@@ -512,6 +513,9 @@ class TestRoot(BaseModel):
         root and fails there, which is the only place that difference shows.
         ``foreground`` hands the runner's own output to the terminal as it
         arrives, for a caller who named one file and wants its report whole.
+        ``integration`` lifts the marker expression the suite's configuration
+        deselects by, last so it overrides the one ``addopts`` carries: an
+        integration test named outright otherwise runs nothing.
         """
         uv(
             "run",
@@ -520,6 +524,7 @@ class TestRoot(BaseModel):
             f"--basetemp={self.basetemp()}",
             *parallel_arguments(workers),
             *ignored_arguments(excluded_roots),
+            *(["-m", ""] if integration else []),
             _cwd=str(self.directory),
             _fg=foreground,
         )
@@ -565,10 +570,11 @@ class BunTestRoot(TestRoot):
         workers: int,
         excluded_roots: list[str],
         foreground: bool = False,
+        integration: bool = False,
     ) -> None:
-        # Workers and the ignored roots are pytest's vocabulary; bun runs the
-        # workspace's tests in its own way and reads neither.
-        del workers, excluded_roots
+        # Workers, the ignored roots and the marker are pytest's vocabulary;
+        # bun runs the workspace's tests in its own way and reads none of them.
+        del workers, excluded_roots, integration
         restore_dependencies(self.directory)
         BUN("test", *paths, _cwd=str(self.directory), _fg=foreground)
 
@@ -676,6 +682,7 @@ def run_selected(
     selections: list[str],
     excluded_roots: list[str],
     workers: int = TEST_WORKERS,
+    integration: bool = False,
 ) -> None:
     """Run each named path in the suite that installs it, reporting per suite.
 
@@ -694,7 +701,7 @@ def run_selected(
     a run queued behind four others says so before it waits, not after.
     The selection is read before a slot is asked for, so a path under no
     suite, or one nothing on disk answers, is refused at once rather than
-    after a wait.
+    after a wait. ``integration`` runs what the suites deselect by marker.
     """
     absent = absent_selections(selections)
     if absent:
@@ -711,7 +718,11 @@ def run_selected(
             typer.echo(f"\n{group.root.name}  ({group.root.directory})")
             try:
                 group.root.run(
-                    group.paths, admission.workers, excluded_roots, foreground=True
+                    group.paths,
+                    admission.workers,
+                    excluded_roots,
+                    foreground=True,
+                    integration=integration,
                 )
             except sh.ErrorReturnCode:
                 failed.append(group.root.name)
