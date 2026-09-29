@@ -6,6 +6,7 @@ that *went* needs a sentence somebody wrote — so the gate fails on the second
 and says nothing about the first.
 """
 
+import shlex
 from pathlib import Path
 
 import pytest
@@ -102,6 +103,14 @@ def test_a_step_carries_the_command_that_does_it_where_one_does() -> None:
     )
 
     assert step.spelled().endswith("uv run lup-devtools dev library git")
+
+
+def test_a_step_s_command_is_spelled_as_a_shell_takes_it() -> None:
+    """A word a shell would split or read as syntax is quoted, so the line runs."""
+    command = ["uv", "run", "lup-devtools", "dev", "py", "text", "def homed(", "."]
+    step = MigrationStep(instruction="Call homed.", command=command)
+
+    assert shlex.split(step.spelled().splitlines()[-1]) == command
 
 
 def test_every_declaration_this_library_holds_says_what_a_caller_does_about_it() -> (

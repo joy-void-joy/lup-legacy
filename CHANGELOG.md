@@ -479,7 +479,7 @@ reaching it through `Runtime.session_factory` was never naming it. To find
 the call sites:
 
 ```bash
-uv run lup-devtools dev py text '\.contained\('
+uv run lup-devtools dev py text '.contained(' .
 ```
 
 ### Migrating personal Claude profile callers
@@ -593,10 +593,10 @@ copied half above; both refusals carry the reading, and restating it as
 -   Declare a repository the project cannot work without on the tracked entry, with `"required": true`, and the mode a session may open it at beside it. Both keys stay written or absent, never defaulted; a tracked mount binds nothing until this machine says where the project is. A repository registered at this checkout's own origin, and a committed requirement read inside the template scaffold, are owed by nobody here.
 - Runtime.contained — `contained` named the configuration home a workspace's sessions are pointed at, while everywhere else in this library it names a container — and a session can now ask for one. The method takes the word for what it does, `homed`, and the boundary keeps the other
 -   Call `Runtime.homed(request)` where you called `Runtime.contained(request)`; nothing else about it moved. A caller reaching it through `Runtime.session_factory` was never naming it and has nothing to change.
-    uv run lup-devtools dev py text \.contained\(
+    uv run lup-devtools dev py text '.contained(' .
 - BranchBase.notice — `notice` narrated the base a worktree had already been cut from, which is advice nobody can act on without an undo. A base the command cannot guess is settled before the branch exists now, and `refusal` is what says so: a message the command exits on rather than one trailing a worktree that is already there
 -   Read `BranchBase.refusal()` where you read `BranchBase.notice()`, and exit on it: it is empty wherever the base is settled, and where it is not it names both spellings of `--base` for the caller to re-run with.
-    uv run lup-devtools dev py text \.notice\(
+    uv run lup-devtools dev py text '.notice(' .
 -   Pass `branch` when you construct a `BranchBase`, which the refusal names the contested branch by, and `ahead` from `commits_ahead(current, integration)`, which is the measurement deciding whether the two bases differ at all.
 
 ## 0.3.0 — 2026-09-19

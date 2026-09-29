@@ -33,6 +33,7 @@ without its instruction, and an adopter reads a complete record rather than a
 diligent one.
 """
 
+import shlex
 import tomllib
 from collections.abc import Collection
 from pathlib import Path
@@ -78,9 +79,14 @@ class MigrationStep(BaseModel, frozen=True, extra="forbid"):
     """
 
     def spelled(self) -> str:
-        """This step as an update reports it, with its command where it has one."""
+        """This step as an update reports it, with its command where it has one.
+
+        The command is quoted for a shell, since the line is what somebody
+        pastes: a search pattern holding a space or a parenthesis is one word
+        of the command and has to arrive as one.
+        """
         return self.instruction + (
-            f"\n    {' '.join(self.command)}" if self.command else ""
+            f"\n    {shlex.join(self.command)}" if self.command else ""
         )
 
 

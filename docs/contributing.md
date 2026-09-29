@@ -487,7 +487,7 @@ method takes the word for what it does"""
 
 [[steps]]
 instruction = "Call `Runtime.homed(request)` where you called `Runtime.contained(request)`."
-command = ["uv", "run", "lup-devtools", "dev", "py", "text", "\\.contained\\("]
+command = ["uv", "run", "lup-devtools", "dev", "py", "text", ".contained(", "."]
 ```
 
 `subjects` names every capability the one decision took, spelled as the gate
