@@ -967,7 +967,13 @@ reached through a link. The refs — `HEAD`, every `*_HEAD`, `packed-refs`,
 `refs/` — are refused to the file tools and to a command carrying the bytes
 it writes, which meets the edit gates, and keep the question a write to the
 repository earns otherwise. `git worktree add`, `move`, `remove` and `prune`,
-which write all of them, keep their own verdicts.
+which write all of them, keep their own verdicts. `git worktree lock` is
+undone by the unlock beside it, and allows; `git worktree unlock` asks on
+every placement, since it releases a hold another session may own and
+nothing here puts that hold back for its owner. `git archive` reads the tree
+it archives, and the file `-o` lands is judged where it lands; `--remote`
+and `--exec`, which fetch from another repository or run the program that
+serves it, ask.
 
 A file another repository holds, with no destination grant, meets a referral
 in place of the gates below: the edit **asks**, and the reason says that

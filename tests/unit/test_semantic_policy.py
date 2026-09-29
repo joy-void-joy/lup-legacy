@@ -1323,6 +1323,24 @@ SHELL_POLICY_CASES = [
     DecisionCase(input="sort -o ../wt/.git tmp/a", effect="deny"),
     DecisionCase(input="truncate -s0 .git/refs/heads/main", effect="ask"),
     DecisionCase(input="git worktree move ../wt ../moved", effect="allow"),
+    # Locking a worktree is undone by unlocking it; unlocking releases a hold
+    # another session may own, which nothing here can put back for it.
+    DecisionCase(input="git worktree lock ../wt", effect="allow"),
+    DecisionCase(input="git worktree lock --reason busy ../wt", effect="allow"),
+    DecisionCase(input="git worktree unlock ../wt", effect="ask"),
+    DecisionCase(input="git worktree unlock ../wt", effect="ask", sandboxed=True),
+    # An archive of a tree is a read of it, and the file `-o` lands is judged
+    # where it lands; one fetched from another repository, or produced by a
+    # program `--exec` names, asks.
+    DecisionCase(input="git archive HEAD", effect="allow"),
+    DecisionCase(input="git archive -o tmp/out.tar HEAD", effect="allow"),
+    DecisionCase(
+        input="git archive --format=zip --output=tmp/o.zip HEAD", effect="allow"
+    ),
+    DecisionCase(input="git archive HEAD > tmp/out.tar", effect="allow"),
+    DecisionCase(input="git archive -o .claude/out.tar HEAD", effect="ask"),
+    DecisionCase(input="git archive --remote=origin HEAD", effect="ask"),
+    DecisionCase(input="git archive --remote=. --exec=/bin/sh HEAD", effect="ask"),
     # A repository made in scratch is as disposable as the scratch holding it,
     # so a `git init` naming a scratch directory -- and a separate git dir
     # there too -- is a scratch write. Anywhere else, or where the work tree
