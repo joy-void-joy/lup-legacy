@@ -418,12 +418,14 @@ def create_harness_app(
     ) -> None:
         """List everything lup keeps for contained sessions, and what nothing points at.
 
-        Images, volumes, project environments and egress proxies, each with its
-        size and what points at it. A dry run unless ``--yes``: then this
-        repository's old shared config home is split into one per runtime, and
-        every image no checkout points at, every environment whose checkout is
-        gone, every stopped proxy and every sandbox workspace no container
-        holds is removed. A repository's own config home is never removed here.
+        Images, volumes, project environments, held Codex revisions and egress
+        proxies, each with its size and what points at it. A dry run unless
+        ``--yes``: then this repository's old shared config home is split into
+        one per runtime, and every image no checkout points at, every
+        environment whose checkout is gone, every Codex revision no running
+        container binds, every stopped proxy and every sandbox workspace no
+        container holds is removed. A repository's own config home is never
+        removed here.
         """
         root = project_root()
         compositions = targets.resolve(targets.every, root)

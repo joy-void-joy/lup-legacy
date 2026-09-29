@@ -844,8 +844,10 @@ What contained sessions leave on the machine is swept as it goes: a launch
 that builds an image removes the ones no checkout points at, every launch
 removes project environments whose worktree is gone and other projects'
 stopped egress proxies, and removing a worktree removes its environment.
-`harness clean` lists all of it with sizes and what points at each, and
-`harness clean --yes` removes what nothing does.
+`harness clean` lists all of it with sizes and what points at each — the
+Codex revisions contained sessions ran their hooks from among them, each kept
+while a running container binds it — and `harness clean --yes` removes what
+nothing does.
 
 A profile names one account and the configuration home it runs under. Each
 profile is a directory, with each runtime's home in the subdirectory that
