@@ -57,6 +57,7 @@ from host import (
     resolved_write_targets,
     rewritten_text,
     sibling_worktrees,
+    walked_withheld,
     record_deferral,
     record_question,
     review_hook_call,
@@ -101,6 +102,7 @@ from kernel.rows import (
     RewriteReading,
     RewrittenDocumentRow,
     UnproducedDocumentRow,
+    WithheldWalkRow,
     landing_rows,
     unproduced_cause,
 )
@@ -109,7 +111,13 @@ from kernel.words import INTERPRETERS
 from kernel.roles import displaced_targets, sibling_scratch_rows
 from kernel.shell import decide_shell, sandbox_excluded, shell_posture_targets
 from kernel.tools import decide_tool
-from kernel.withheld import withheld_edit
+from kernel.walks import shell_walked_roots
+from kernel.withheld import (
+    carries_withheld_name,
+    withheld_edit,
+    withheld_names,
+    withheld_row,
+)
 from policy_data import (
     ACCEPTANCE_GUARD,
     ALLOWANCE_GRANTS_ENV,
@@ -295,6 +303,23 @@ def bash_decision(
         # What no word may name and no builtin may print, as the project
         # declared them: the same rows the canonical policy is handed.
         refused_paths=REFUSED_PATHS,
+        # And what a recursive reader would walk into beneath a root it names,
+        # which only the filesystem can say.
+        withheld_walks=[
+            WithheldWalkRow(root=walk["path"], found=found)
+            for walk in shell_walked_roots(command, SHELL_RULES)
+            for names in [withheld_names(REFUSED_PATHS)]
+            for found in [
+                walked_withheld(
+                    walk["path"],
+                    walk["hidden"],
+                    lambda name: carries_withheld_name(name, names),
+                    lambda path: withheld_row(path, REFUSED_PATHS) is not None,
+                    cwd,
+                )
+            ]
+            if found
+        ],
         secret_variables=SECRET_VARIABLES,
         # Resolved against what this launch mounted writable, so a write into a
         # worktree cut after the container started reaches a reviewer instead of

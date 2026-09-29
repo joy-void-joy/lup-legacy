@@ -71,6 +71,20 @@ class DisplacedTargetRow(TypedDict):
     lands: str
 
 
+class WithheldWalkRow(TypedDict):
+    """One root a recursive reader walks, and a withheld path the host found in it.
+
+    A key or a login beneath a root is a fact only a filesystem has, so the
+    host walks what the reader would and names the first it meets. ``found``
+    is where the walk stopped instead, where the hook's deadline came before
+    it could finish: a root nobody finished walking is not one known to hold
+    nothing.
+    """
+
+    root: str
+    found: str
+
+
 type TargetLanding = Literal["container", "checkout", "host"]
 """Where one path an operation names lands, as the launch that holds it sees it.
 

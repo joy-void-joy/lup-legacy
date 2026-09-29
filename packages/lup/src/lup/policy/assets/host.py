@@ -28,6 +28,7 @@ from datetime import UTC, datetime, timedelta
 
 # lup: ignore[subprocess] — `sh` is third-party and this half is compiled into a bare script that has no virtual environment to resolve it from
 import subprocess
+from collections.abc import Callable
 from pathlib import Path
 from typing import Literal
 from urllib.parse import urlsplit
@@ -1351,6 +1352,69 @@ def sibling_worktrees(root: Path | None = None) -> list[str]:
                 tree = ""
 
     return [tree for tree in checkouts() if str(Path(tree).resolve()) != here]
+
+
+def walked_withheld(
+    walked: str,
+    hidden: bool,
+    named: Callable[[str], bool],
+    withheld: Callable[[str], bool],
+    root: Path | None = None,
+    reserve: float = 1.0,
+) -> str:
+    """The first withheld path a recursive read of *walked* would reach, or "".
+
+    The kernel reads which words a command walks; what lies beneath each is
+    this half's to say, since only a filesystem can. A home is spelled from
+    the home -- `~`, `$HOME` -- and every other root from where the command
+    stands. A root that is not a directory walks nothing: a file is named, and
+    judged as named.
+
+    ``named`` says whether a file or a directory could carry a withheld path
+    by its name alone, which is what keeps this from reading every pattern at
+    every file: only a file so named, or beneath a directory so named, is put
+    to ``withheld``, the kernel's whole reading. ``hidden`` false skips names
+    beginning with a dot, as `rg` does unless told otherwise.
+
+    Bounded by the hook's deadline less ``reserve``: a walk that has not
+    finished by then returns the directory it stopped in, which is withheld
+    by no pattern, and the kernel refuses a read nobody finished walking.
+    """
+    where = Path.cwd() if root is None else root
+    home = str(Path.home())
+    spelled = next(
+        (
+            home + walked.removeprefix(variable)
+            for variable in ("$HOME", "${HOME}")
+            if walked == variable or walked.startswith(f"{variable}/")
+        ),
+        str(Path(walked).expanduser()),
+    )
+    if any(mark in spelled for mark in "$*?["):
+        return ""
+    start = (where / spelled).resolve()
+    if not start.is_dir():
+        return ""
+    for directory, folders, files in start.walk():
+        if hook_seconds_left(float("inf")) < reserve:
+            return str(directory)
+        if not hidden:
+            folders[:] = [name for name in folders if not name.startswith(".")]
+        beneath = any(named(part) for part in directory.parts)
+        found = next(
+            (
+                path
+                for name in files
+                if hidden or not name.startswith(".")
+                if beneath or named(name)
+                for path in [str(directory / name)]
+                if withheld(path)
+            ),
+            "",
+        )
+        if found:
+            return found
+    return ""
 
 
 def shared_git_directory(path_text: str) -> str:

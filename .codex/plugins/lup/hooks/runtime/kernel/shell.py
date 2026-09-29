@@ -33,6 +33,7 @@ from .rows import (
     UnproducedDocumentRow,
     ShellRuleRow,
     UrlScopeRow,
+    WithheldWalkRow,
 )
 from .words import (
     BINDING_BUILTINS,
@@ -80,6 +81,7 @@ from .withheld import (
     secret_refusal,
     withheld_operand,
     withheld_redirect,
+    withheld_walk,
 )
 from .semantics import UnjudgedAmbient
 from .lex import (
@@ -200,6 +202,13 @@ class ShellContext(TypedDict):
     refused_paths: list[RefusedPathRow]
     """Paths no word of any command may name, each with what to do instead."""
 
+    withheld_walks: list[WithheldWalkRow]
+    """Roots a recursive reader walks that the host found holding a withheld path.
+
+    A fact about the disk beneath a word rather than about the word, so it
+    arrives from the host per call; absent, nothing was walked and nothing is
+    refused for what lies beneath."""
+
     secret_variables: list[str]
     """Name patterns of the variables whose values no command may print."""
 
@@ -292,6 +301,7 @@ def shell_context(
     unproduced_documents: list[UnproducedDocumentRow] | None = None,
     displaced_targets: list[DisplacedTargetRow] | None = None,
     host_ports: list[int] | None = None,
+    withheld_walks: list[WithheldWalkRow] | None = None,
 ) -> ShellContext:
     """Bundle one classification's declarations, normalizing absent lists.
 
@@ -326,6 +336,7 @@ def shell_context(
         host_ports=host_ports or [],
         unscoped_fetch=unscoped_fetch,
         refused_paths=refused_paths or [],
+        withheld_walks=withheld_walks or [],
         secret_variables=secret_variables or [],
         antipattern_rows=antipattern_rows or {},
         edit_rules=edit_rules or [],
@@ -896,6 +907,8 @@ def decide_shell_segment(
         return unjudged("shell segment has no command")
     withheld = withheld_operand(
         words, directory, context["checkout_root"], context["refused_paths"]
+    ) or withheld_walk(
+        words, directory, context["withheld_walks"], context["refused_paths"]
     )
     if withheld is not None:
         return withheld
@@ -1415,6 +1428,7 @@ def classify_shell(
     unproduced_documents: list[UnproducedDocumentRow] | None = None,
     displaced_targets: list[DisplacedTargetRow] | None = None,
     host_ports: list[int] | None = None,
+    withheld_walks: list[WithheldWalkRow] | None = None,
 ) -> KernelDecision:
     """Conservatively classify every command in one shell command line.
 
@@ -1447,6 +1461,7 @@ def classify_shell(
         checkout_root=checkout_root,
         unscoped_fetch=unscoped_fetch,
         refused_paths=refused_paths,
+        withheld_walks=withheld_walks,
         secret_variables=secret_variables,
         antipattern_rows=antipattern_rows,
         edit_rules=edit_rules,
@@ -1601,6 +1616,7 @@ def decide_shell(
     allowances: list[str] | None = None,
     rewritten_documents: list[RewrittenDocumentRow] | None = None,
     unproduced_documents: list[UnproducedDocumentRow] | None = None,
+    withheld_walks: list[WithheldWalkRow] | None = None,
 ) -> KernelDecision:
     """Classify one command, honoring an escalation marker and hinting denies.
 
@@ -1697,8 +1713,10 @@ def decide_shell(
                 # settlement's own posture below where it does not.
                 unscoped_fetch=unscoped_fetch or unjudged_ambient,
                 # What no word may name and no builtin may print, declared by
-                # the project rather than known here.
+                # the project rather than known here -- and which walks the
+                # host found reaching one without naming it.
                 refused_paths=refused_paths,
+                withheld_walks=withheld_walks,
                 secret_variables=secret_variables,
                 # The edit gates, for the verbs that rewrite a file in place.
                 # Absent, every such rewrite asks, which is the arrangement

@@ -100,6 +100,7 @@ DISPATCHER_STDLIB = (
     "hashlib",
     "time",
     "signal",
+    "collections.abc",
     "csv",
     "fcntl",
     "shlex",
@@ -152,6 +153,12 @@ never returns, the classifier on an input it spends too long on. An alarm is
 the one thing that interrupts any of them, so a hook still waiting past its
 deadline raises where it is and refuses, rather than answering nothing and
 leaving the runtime to let the call through.
+
+``collections.abc`` earns its place the same way. The host walks what a
+recursive reader would, and which names under it are withheld is the
+kernel's reading, which this half may not import -- so the walk is handed that
+reading as a predicate, and ``Callable`` is the one spelling of its type the
+checker accepts.
 
 ``csv`` earns its place the same way. Asking Git which paths a patch would
 touch answers in its tab-separated report, and this repository's own

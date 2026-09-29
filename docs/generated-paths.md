@@ -8,7 +8,7 @@ A source spelled as a dotted module is a module to open. One spelled as an ident
 
 The repository-wide artifacts written outside every runtime tree — the rule and command references, this page, and the CI workflow — belong to no recipe and are described in [harness.md](harness.md) instead.
 
-## `claude` — 124 artifacts
+## `claude` — 125 artifacts
 
 | Generated path | Compiled from |
 | --- | --- |
@@ -100,6 +100,7 @@ The repository-wide artifacts written outside every runtime tree — the rule an
 | `.claude/plugins/lup/hooks/runtime/kernel/syntax.py` | lup.policy.kernel.syntax |
 | `.claude/plugins/lup/hooks/runtime/kernel/tools.py` | lup.policy.kernel.tools |
 | `.claude/plugins/lup/hooks/runtime/kernel/typescript.py` | lup.policy.kernel.typescript |
+| `.claude/plugins/lup/hooks/runtime/kernel/walks.py` | lup.policy.kernel.walks |
 | `.claude/plugins/lup/hooks/runtime/kernel/withheld.py` | lup.policy.kernel.withheld |
 | `.claude/plugins/lup/hooks/runtime/kernel/words.py` | lup.policy.kernel.words |
 | `.claude/plugins/lup/hooks/runtime/policy_data.py` | lup.policy.bundle |
@@ -137,7 +138,7 @@ The repository-wide artifacts written outside every runtime tree — the rule an
 | `docs/template.md` | lup_template.harness.content.docs.template |
 | `docs/upstream-reports.md` | lup.harness.content.docs.upstream_reports |
 
-## `codex` — 104 artifacts
+## `codex` — 105 artifacts
 
 | Generated path | Compiled from |
 | --- | --- |
@@ -191,6 +192,7 @@ The repository-wide artifacts written outside every runtime tree — the rule an
 | `.codex/plugins/lup/hooks/runtime/kernel/syntax.py` | lup.policy.kernel.syntax |
 | `.codex/plugins/lup/hooks/runtime/kernel/tools.py` | lup.policy.kernel.tools |
 | `.codex/plugins/lup/hooks/runtime/kernel/typescript.py` | lup.policy.kernel.typescript |
+| `.codex/plugins/lup/hooks/runtime/kernel/walks.py` | lup.policy.kernel.walks |
 | `.codex/plugins/lup/hooks/runtime/kernel/withheld.py` | lup.policy.kernel.withheld |
 | `.codex/plugins/lup/hooks/runtime/kernel/words.py` | lup.policy.kernel.words |
 | `.codex/plugins/lup/hooks/runtime/policy_data.py` | lup.policy.bundle |

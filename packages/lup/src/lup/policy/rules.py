@@ -43,6 +43,7 @@ from lup.policy.assets.host import (
     resolved_write_targets,
     rewritten_text,
     sibling_worktrees,
+    walked_withheld,
     text_at,
     this_checkout_path,
     tracked_write_targets,
@@ -76,6 +77,7 @@ from lup.policy.kernel.rows import (
     RewrittenDocumentRow,
     UnproducedDocumentRow,
     UrlScopeRow,
+    WithheldWalkRow,
     landing_rows,
     unproduced_cause,
 )
@@ -85,7 +87,13 @@ from lup.policy.kernel.shell import (
     shell_context,
     shell_posture_targets,
 )
-from lup.policy.kernel.withheld import withheld_edit
+from lup.policy.kernel.walks import shell_walked_roots
+from lup.policy.kernel.withheld import (
+    carries_withheld_name,
+    withheld_edit,
+    withheld_names,
+    withheld_row,
+)
 from lup.policy.edit_rules import EditRule, erase_edit_rules
 from lup.policy.imports import ImportBoundary
 from lup.policy.refused_paths import RefusedPaths
@@ -555,6 +563,25 @@ class ShellPolicy(DecisionPolicy[ShellCommand]):
                 relayed=self.relayed,
                 unscoped_fetch=self.unscoped_fetch,
                 refused_paths=self.refused_paths,
+                # What a recursive reader would walk into beneath a root it
+                # names, walked here as the dispatchers walk it.
+                withheld_walks=[
+                    WithheldWalkRow(root=walk["path"], found=found)
+                    for walk in shell_walked_roots(event.command, self.rules)
+                    for names in [withheld_names(self.refused_paths)]
+                    for found in [
+                        walked_withheld(
+                            walk["path"],
+                            walk["hidden"],
+                            lambda name: carries_withheld_name(name, names),
+                            lambda path: (
+                                withheld_row(path, self.refused_paths) is not None
+                            ),
+                            root,
+                        )
+                    ]
+                    if found
+                ],
                 secret_variables=self.secret_variables,
                 # The same two measurements a dispatcher takes inside a
                 # container, taken wherever this composition was told it is

@@ -23,11 +23,13 @@ refusal into that question for a caller who means it.
 import posixpath
 from fnmatch import fnmatchcase
 from pathlib import PurePosixPath
+from typing import TypedDict
 
 from .decision import KernelDecision
 from .lex import placed_path, placed_redirects
-from .rows import RefusedPathRow
+from .rows import RefusedPathRow, WithheldWalkRow
 from .syntax import Redirect, Script, Word, WordPart, word_text
+from .walks import placed_root, walked_roots
 from .words import expands_to
 
 # lup: ignore[library-default] — the shell builtins that write their operands to stdout
@@ -215,7 +217,7 @@ def withheld_operand(
     is the command's grammar and there is one grammar per program: a flag's
     value, a copy's source, an archive's member, a directory to walk.
     """
-    # lup: defer: a recursive reader over an ancestor -- `grep -r x ~`,
+    # lup: solved: a recursive reader over an ancestor -- `grep -r x ~`,
     # `tar czf out ~` -- names no withheld path and walks into one anyway;
     # catching it needs which verbs recurse, since `ls ~` and `cd ~` must not
     # be refused for sitting above a key.
@@ -227,6 +229,98 @@ def withheld_operand(
             is not None
         ),
         None,
+    )
+
+
+class WithheldNames(TypedDict):
+    """The names a withheld path ends on, spelled out and globbed apart."""
+
+    literal: list[str]
+    patterned: list[str]
+
+
+def withheld_names(rows: list[RefusedPathRow]) -> WithheldNames:
+    """The name each withheld pattern ends on, which a walk looks for.
+
+    Each pattern ends on a name its files carry, or sit beneath where it ends
+    in ``**`` -- `.ssh`, `credentials`, `.env.local`. A walk looking for these
+    finds every candidate without reading every pattern at every file, and
+    :func:`withheld_row` then decides each candidate it finds. Read once per
+    command, and kept apart by whether a name is a glob, because a walk asks
+    this of every name it passes.
+    """
+    endings = list(
+        dict.fromkeys(
+            next(
+                part for part in reversed(PurePosixPath(pattern).parts) if part != "**"
+            )
+            for row in rows
+            for pattern in row["paths"]
+        )
+    )
+
+    def globbed(name: str) -> bool:
+        """Whether a name is a glob rather than the name it spells."""
+        return any(mark in name for mark in "*?[")
+
+    return WithheldNames(
+        literal=[ending for ending in endings if not globbed(ending)],
+        patterned=[ending for ending in endings if globbed(ending)],
+    )
+
+
+def carries_withheld_name(name: str, names: WithheldNames) -> bool:
+    """Whether a file or directory by this name could carry a withheld path."""
+    return name in names["literal"] or any(
+        fnmatchcase(name, pattern) for pattern in names["patterned"]
+    )
+
+
+def withheld_walk(
+    words: list[str],
+    directory: str | None,
+    walks: list[WithheldWalkRow],
+    rows: list[RefusedPathRow],
+) -> KernelDecision | None:
+    """The refusal a recursive read earns where its root holds a withheld path.
+
+    Which words the command walks is its grammar, read by
+    :func:`~kernel.walks.walked_roots`; what lies beneath each is the host's
+    to say, since only a filesystem can. A read reaching a key or a login is
+    reading it, whichever word named the directory above it, so it meets the
+    refusal naming that path would. A walk the host could not finish before
+    the hook's deadline met no answer, which is not an answer of none.
+    """
+    executable = posixpath.basename(words[0]) if words else ""
+    reached = next(
+        (
+            (root["path"], walk["found"])
+            for root in walked_roots(words)
+            for walk in walks
+            if walk["root"] == placed_root(root["path"], directory)
+        ),
+        None,
+    )
+    if reached is None:
+        return None
+    spelled, found = reached
+    row = withheld_row(found, rows)
+    if row is None:
+        return KernelDecision(
+            "deny",
+            f"{spelled}: `{executable}` reads everything beneath it, and the walk"
+            f" stopped at {found} before this hook could show none of it is a key"
+            " or a login",
+            cause="deliberate",
+            recovery="Name the directories below it that the work needs.",
+        )
+    return KernelDecision(
+        "deny",
+        f"{spelled}: `{executable}` reads everything beneath it, {found} among it,"
+        f" and {row['reason']}",
+        cause="deliberate",
+        recovery=f"{row['recovery']} Name the directories below it that the work"
+        " needs, or search with `rg`, which skips dot names unless told otherwise.",
     )
 
 

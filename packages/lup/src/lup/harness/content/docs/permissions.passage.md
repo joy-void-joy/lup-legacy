@@ -505,8 +505,22 @@ gitignored `.env.local` and `.env.<mode>.local` a project's settings keep
 its API keys in — `cat .env.local` is refused where `cat .env` and
 `cat .env.example` read. This project adds each runtime's
 own login through `ProviderLogin.withheld_logins()`: the default home's file
-and the file inside every profile's home. A directory reached only through
-an ancestor — `grep -r x ~` — names no withheld path and is not caught.
+and the file inside every profile's home.
+
+A recursive read names no withheld path and reads every one beneath its
+root, so it is judged by what lies there. `lup.policy.kernel.walks` reads
+which words a command walks, by each utility's own grammar: `grep -r`, `rg`,
+the members of an archive being written (`tar c`, `zip -r`), the sources of a
+recursive `cp`, `rsync` or `scp`, and both sides of `diff -r`. The host walks
+each root as the reader would — from the home for `~` and `$HOME`, skipping
+dot names where `rg` does — and a root holding a withheld path refuses the
+command as naming it would: `grep -r password ~`, `tar czf out.tgz ~` and
+`grep -r token .` over a checkout that keeps a runtime's login are refused,
+while `ls ~`, `grep x ~/notes.txt`, `rg password ~` and `grep -rn x src`
+read. A walk the hook's deadline cut short is refused too, since a root
+nobody finished walking is not one known to hold nothing. `find` walks as
+well, but hands its payload only what its predicates select, which the run
+alone evaluates, so its payload is judged as the command it is.
 
 `HookSet.secret_variables` names the variables no command may print, matched
 without case: `printenv NAME`, `echo`/`printf`/`print` of an expansion, and a
