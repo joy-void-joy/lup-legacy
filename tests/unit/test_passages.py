@@ -148,3 +148,14 @@ def test_a_passage_shows_the_parts_it_names_to_every_walk() -> None:
 
     assert any(part.references_arguments for part in document.walked())
     assert not any(part.references_arguments for part in document.parts)
+
+
+def test_a_value_handed_over_and_never_placed_is_refused() -> None:
+    """The mirror of a name placed and never handed over.
+
+    A value is a part, and whatever a part declares counts as said by the
+    declaration holding it — an invocation nobody renders still ties one
+    module to another, which is exactly what a declined module tripped over.
+    """
+    with pytest.raises(ValueError, match=r"is handed \['stray'\]"):
+        rendered("lup.harness.content.skills.commit", "", {"stray": "anything"})

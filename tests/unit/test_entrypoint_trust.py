@@ -23,20 +23,27 @@ def test_the_repository_root_is_trusted_beside_the_checkout() -> None:
     script = entrypoint()
 
     assert "rev-parse --path-format=absolute --git-common-dir" in script
-    assert ".projects[$here] = ((.projects[$here] // {})" in script
-    assert ".projects[$repository] = ((.projects[$repository] // {})" in script
+    assert '"$config/$trust" "$PWD" "$repository"' in script
     assert 'case "$repository" in */.git) repository=${repository%/.git} ;; esac' in (
         script
     )
 
 
-def test_trust_is_merged_on_every_start_and_the_seed_only_on_the_first() -> None:
-    """A document already in the volume is amended, never replaced or skipped."""
-    script = entrypoint()
-    seeded = script.index('cp /opt/lup/trust-seed.json "$config/$trust"')
-    merged = script.index("jq --arg here")
+def test_trust_is_recorded_on_every_start_by_the_program_holding_the_lock() -> None:
+    """For the runtime that names a trust document, never through a shared name.
 
-    assert script.index('trust="${LUP_TRUST_DOCUMENT:-}"') < seeded
-    assert script.index('[ ! -f "$config/$trust" ]') < seeded < merged
-    assert script.count("fi\n", 0, merged) >= 2
-    assert 'mv "$config/$trust.lup" "$config/$trust"' in script
+    The seed and the merge are one program's, so the document is written by
+    something that holds a lock and renames a file of its own; what it does
+    is `test_trust_seed.py`'s to exercise.
+    """
+    script = entrypoint()
+    guarded = script.index('if [ -n "$trust" ]; then')
+    recorded = script.index(
+        'python3 /opt/lup/trust-seed.py /opt/lup/trust-seed.json "$config/$trust" '
+    )
+
+    assert script.index('trust="${LUP_TRUST_DOCUMENT:-}"') < guarded < recorded
+    assert recorded < script.index("fi\n", guarded)
+    assert "$trust.lup" not in script
+    assert "cp /opt/lup/trust-seed.json" not in script
+    assert "COPY <<'TRUST' /opt/lup/trust-seed.py" in Image().dockerfile(Manifest())

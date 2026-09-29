@@ -21,12 +21,13 @@ from lup.harness.codescan.boundaries import (
     LIBRARY_ROOT,
     BoundaryBreach,
     audit_path_boundaries,
-    default_position_names,
+    declared_defaults,
     find_kernel_import_breaches,
     find_library_default_breaches,
     library_placement_path_is_audited,
 )
 from lup.devtools.dev.tracked import tracked_files
+from lup.harness.codescan.common import PythonSource, module_name
 from lup.devtools.project import DevProject
 from lup.devtools.utils import output_json
 from lup.policy.kernel.roles import path_role
@@ -73,8 +74,16 @@ def library_sources() -> list[TrackedSource]:
 def overridable_names(
     sources: list[TrackedSource],
 ) -> set[str]:  # lup: ignore[set-shape] — name identity membership
-    """Constant names a caller can replace, pooled across whole modules."""
-    return {name for source in sources for name in default_position_names(source.text)}
+    """Constants a caller can replace, pooled across modules by where each is declared."""
+    return {
+        name
+        for source in sources
+        for name in declared_defaults(
+            PythonSource(
+                path=source.path, module=module_name(source.path), text=source.text
+            )
+        )
+    }
 
 
 def scan_library_placement() -> list[FoundBreach]:
@@ -91,7 +100,9 @@ def scan_library_placement() -> list[FoundBreach]:
         FoundBreach(file=source.rel, **breach.model_dump())
         for source in sources
         if library_placement_path_is_audited(source.path)
-        for breach in find_library_default_breaches(source.text, overridable)
+        for breach in find_library_default_breaches(
+            source.text, overridable, module_name(source.path)
+        )
     ]
 
 

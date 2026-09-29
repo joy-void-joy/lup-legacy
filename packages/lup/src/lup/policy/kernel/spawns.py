@@ -1,4 +1,4 @@
-"""A spawned agent carries a name, so what lists, messages or stops it says what it is for.
+"""A spawned agent goes out named, so what lists, messages or stops it says what it is for.
 
 A runtime shows a subagent by the name it was spawned with and otherwise by
 its type, and a type is generic by construction: a session with three
@@ -6,18 +6,22 @@ general-purpose subagents running has three rows saying the same thing. The
 name is also the address a message or a stop takes, so a spawn without one
 is one nobody reaches except by the id the runtime minted.
 
-The rule is presence and spelling. Which words make a good name is the
-caller's judgement and the recovery says the shape; that the characters are
-ones every runtime here accepts is this rule's, because leaving it to the
-runtime was measured to fail quietly — one rejects a name it dislikes with
-no hook record at all, so a spawn our gate passed died where nothing could
-see it, and the caller learned the shape by guessing. The declaration names
-the characters rather than this module, since the safe set is a property of
-the runtimes a project runs on.
+The rule is presence and spelling, and both are settled here rather than
+asked of the caller. A name given in the declared shape goes as given, since
+which words make a good name is the caller's judgement. A name outside it is
+normalized rather than refused, because leaving the spelling to the runtime
+was measured to fail quietly — one rejects a name it dislikes with no hook
+record at all — and a refusal only teaches the caller the shape by retry.
+A spawn given no name takes one read the same way out of its description,
+because the schema one runtime shows the model lists no name to pass.
+The declaration names the characters rather than this module, since the safe
+set is a property of the runtimes a project runs on.
 
-A spawn carrying a name of that shape is deferred rather than allowed,
-because this kernel grants nothing it was not asked to grant: the runtime's
-own permissions still settle a call it says nothing more about.
+Only a spawn with nothing to read a name from is refused. Every other is
+deferred rather than allowed, because this kernel grants nothing it was not
+asked to grant: the runtime's own permissions still settle a call it says
+nothing more about, and the name rides beside that deferral as a rewrite of
+the call's arguments.
 """
 
 from .decision import KernelDecision
@@ -25,10 +29,77 @@ from .rows import SpawnNameRow
 from .tools import TOOL_ESCALATE_HINT, escalated_reason
 
 
+def spawn_name(given: str, description: str, row: SpawnNameRow | None) -> str:
+    """The name a spawn goes out under, or ``""`` where none can be read.
+
+    A given name of the declared shape wins as given. Anything else — a name
+    outside the shape, a blank one, none at all — is read into the shape:
+    lowercased, each run of characters other than ASCII letters and digits
+    joined by the first mark ``punctuation`` lists, and cut at a word to fit
+    the limit, so it opens with a letter or digit by construction. The given
+    name is read first and the description after it, so a name with any
+    letter or digit in it is still the caller's words.
+
+    ``None`` for the row is a project that requires no name, whose spawns
+    go out exactly as written.
+
+    Reserved words a runtime refuses whatever their shape — Claude Code's
+    ``main``, ``user``, ``system`` — are left to that runtime's validator,
+    which says so where the caller reads it rather than failing quietly.
+    """
+    if row is None:
+        return given
+    joiner = next(iter(row["punctuation"]), "")
+
+    def alphanumeric(character: str) -> bool:
+        """A letter or digit in ASCII, which is what both validators read.
+
+        Narrower than ``str.isalnum``, deliberately: a name of letters no
+        runtime here would accept is not made acceptable by Python agreeing
+        that they are letters.
+        """
+        return character.isascii() and character.isalnum()
+
+    def spelled(named: str) -> bool:
+        """Whether the name is already the shape the declaration accepts."""
+        return (
+            0 < len(named) <= row["limit"]
+            and alphanumeric(named[0])
+            and all(
+                alphanumeric(character) or character in row["punctuation"]
+                for character in named
+            )
+        )
+
+    def normalized(text: str) -> str:
+        """The text read into the declared shape, whole words while they fit."""
+        words = "".join(
+            character if alphanumeric(character) else " " for character in text.lower()
+        ).split()
+        named = ""
+        for word in words:
+            longer = f"{named}{joiner}{word}" if named else word
+            if len(longer) > row["limit"]:
+                break
+            named = longer
+        # A first word longer than the limit is cut: the limit is the
+        # runtime's contract, and a name it rejects is no name at all.
+        return named or next((word[: row["limit"]] for word in words), "")
+
+    stripped = given.strip()
+    if spelled(stripped):
+        return stripped
+    return normalized(given) or normalized(description)
+
+
 def decide_spawn(
-    name: str, values: list[str], row: SpawnNameRow | None, field: str
+    given: str,
+    description: str,
+    values: list[str],
+    row: SpawnNameRow | None,
+    field: str,
 ) -> KernelDecision:
-    """The verdict on one spawn: refused without a name, deferred with one.
+    """The verdict on one spawn: deferred under a name, refused where none can be read.
 
     ``None`` for the row is a project that requires no name, which leaves the
     call to the runtime. An escalation marker among the call's inputs turns
@@ -45,45 +116,19 @@ def decide_spawn(
     """
     if row is None:
         return KernelDecision("defer", "no spawn name is required here")
-
+    named = spawn_name(given, description, row)
+    if named:
+        return KernelDecision("defer", f"the spawn goes out named {named!r}")
     recovery = (
         f"pass the name as `{field}` in the same call, beside the agent type"
         " — the runtime takes that key whether or not the tool schema it showed"
         f" lists it: {row['recovery']}"
     )
-
-    def refused(what: str) -> KernelDecision:
-        """The denial, or the approval question an escalation marker asks for."""
-        why = escalated_reason(values)
-        if why:
-            return KernelDecision(
-                "ask", f"escalated ({why}): {what}", recovery=recovery
-            )
-        return KernelDecision("deny", what, recovery=f"{recovery} {TOOL_ESCALATE_HINT}")
-
-    def alphanumeric(character: str) -> bool:
-        """A letter or digit in ASCII, which is what both validators read.
-
-        Narrower than ``str.isalnum``, deliberately: a name of letters no
-        runtime here would accept is not made acceptable by Python agreeing
-        that they are letters.
-        """
-        return character.isascii() and character.isalnum()
-
-    def spelled(named: str) -> bool:
-        """Whether the name is the shape the declaration accepts."""
-        return (
-            len(named) <= row["limit"]
-            and alphanumeric(named[0])
-            and all(
-                alphanumeric(character) or character in row["punctuation"]
-                for character in named
-            )
+    why = escalated_reason(values)
+    if why:
+        return KernelDecision(
+            "ask", f"escalated ({why}): {row['reason']}", recovery=recovery
         )
-
-    named = name.strip()
-    if not named:
-        return refused(row["reason"])
-    if not spelled(named):
-        return refused(f"{named!r}: {row['misspelled']}")
-    return KernelDecision("defer", f"the spawn is named {named!r}")
+    return KernelDecision(
+        "deny", row["reason"], recovery=f"{recovery} {TOOL_ESCALATE_HINT}"
+    )

@@ -18,7 +18,7 @@ from lup.devtools.supervisor.projection import (
     SupervisorState,
 )
 from lup.ledger.views import ExportView, GraphView, KindsView, NodeDetail
-from lup.resolver.journal import JournalEntry
+from lup.resolver.record import JournalEntry
 from lup.web.build import Surface
 
 EXPLORER = Surface(

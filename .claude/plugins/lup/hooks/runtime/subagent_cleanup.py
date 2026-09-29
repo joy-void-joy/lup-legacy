@@ -3,20 +3,38 @@
 Shipped verbatim into the plugin's ``hooks/runtime/`` beside the kernel it
 imports, and registered under ``SubagentStart`` and ``SubagentStop``. It holds
 only what Claude Code spells for itself: the payload's keys, the transcript's
-shape, the names of the tools that arm and end background work, and the two
-output envelopes. The judgement — which listed tasks the stopping subagent
-started, and what it is told — is :mod:`kernel.subagents`'s.
+shape, the names of the tools that arm and end background work and deliver a
+report, and the two output envelopes. The judgement — which listed tasks the
+stopping subagent started, whether this stop hands its report back, and what
+it is told — is :mod:`kernel.subagents`'s.
 
 Measured on 2.1.278 rather than read from the docs, with the recordings kept
 as fixtures under ``tests/unit/fixtures/subagent_cleanup/``. At
-``SubagentStop`` the payload carries ``agent_id``, ``agent_transcript_path``,
-``stop_hook_active`` and ``background_tasks``, the last being the whole
-session's: each entry is typed ``shell`` — a Monitor and a backgrounded
-command alike — or ``subagent``, and the subagent's own entry is among them.
-A transcript line of type ``assistant`` carries the tool calls under
-``message.content`` as blocks of type ``tool_use``. A block on the first pass
-made the subagent stop its task within seconds and pass on the second, which
-the runtime flags with ``stop_hook_active``.
+``SubagentStop`` the payload carries ``agent_id``, ``agent_type``,
+``agent_transcript_path``, ``stop_hook_active`` and ``background_tasks``, the
+last being the whole session's: each entry is typed ``shell`` — a Monitor and
+a backgrounded command alike — or ``subagent``, and the subagent's own entry
+may be among them. A transcript line of type ``assistant`` carries the tool
+calls under ``message.content`` as blocks of type ``tool_use``. A block on
+the first pass made the subagent stop its task within seconds and pass on the
+second, which the runtime flags with ``stop_hook_active``.
+
+Three more readings, on 2.1.283. A fork's transcript opens with its parent's
+whole history, and each ``assistant`` line carries ``attributionAgent``, the
+type that wrote it: the parent's, or none for the main session, on inherited
+lines, and ``fork`` on the fork's own — so what the fork armed is read from
+its own lines alone. Where the session runs in auto mode, a subagent's report
+goes through ``SubagentHandback`` and the runtime places the reminder saying
+so in its transcript, as a meta line it reads back itself to tell the
+contract from its countermand; before that call a stop delivers nothing, and
+the runtime tells the caller the subagent "has not reported yet: it is
+waiting on its own background work". A fork gets no contract — it runs on its
+parent's tools, and the runtime grants one only to a spawn given its own —
+yet it inherits its parent's reminder uncountermanded, so its
+``SubagentHandback`` answers "not active for this agent. Write your report as
+plain text instead" and its plain text is what reaches the caller. That is a
+runtime limit, kept to one wasted call; reading the reminder from the fork's
+own lines is what keeps it from reading as the fork's contract here.
 
 Every failure is silence. A fold that cannot read is a report let through,
 which costs one leaked task, the same as having no fold — the opposite of a
@@ -39,11 +57,10 @@ from policy_data import VERIFICATION
 from kernel.subagents import (
     Armed,
     BackgroundTask,
-    Child,
     Leftover,
-    leftovers,
     notice,
     refusal,
+    stranded,
 )
 
 
@@ -59,12 +76,10 @@ class ListedTask(TypedDict, total=False):
 
 
 class ToolInput(TypedDict, total=False):
-    """The arguments of the three calls that start background work."""
+    """The arguments of the calls that start background work."""
 
     command: str
     run_in_background: bool
-    description: str
-    subagent_type: str
 
 
 class ToolUse(TypedDict, total=False):
@@ -80,9 +95,11 @@ class Message(TypedDict, total=False):
 
 
 class Entry(TypedDict, total=False):
-    """One line of a subagent's transcript, as far as its tool calls need."""
+    """One line of a subagent's transcript, as far as the fold reads it."""
 
     type: str
+    isMeta: bool
+    attributionAgent: str
     message: Message
 
 
@@ -91,6 +108,7 @@ class Payload(TypedDict, total=False):
 
     hook_event_name: str
     agent_id: str
+    agent_type: str
     agent_transcript_path: str
     stop_hook_active: bool
     background_tasks: list[ListedTask]
@@ -114,22 +132,16 @@ class Refusal(TypedDict):
     reason: str
 
 
-def armed(transcript: Path) -> Armed:
-    """Every background start the subagent's transcript records.
+def entries(transcript: Path) -> list[Entry]:
+    """Every line of the transcript that is a JSON object.
 
-    A `Monitor` and a `Bash` call run in the background both become shell
-    tasks, keyed by command; an `Agent` call becomes a subagent task, keyed by
-    what it was started with.
+    Claude Code's own format, read here because it is Claude Code's. A torn
+    final line is the ordinary state of a transcript the runtime is still
+    appending to, and one that will not parse must not stop the reader
+    seeing the lines around it.
     """
 
-    def entries() -> Iterator[Entry]:
-        """Every line of the transcript that is a JSON object.
-
-        Claude Code's own format, read here because it is Claude Code's. A
-        torn final line is the ordinary state of a transcript the runtime is
-        still appending to, and one that will not parse must not stop the
-        reader seeing the lines around it.
-        """
+    def parsed() -> Iterator[Entry]:
         try:
             written = transcript.read_text("utf-8")
         except OSError:
@@ -142,14 +154,50 @@ def armed(transcript: Path) -> Armed:
             if isinstance(record, dict):
                 yield record
 
-    def calls() -> Iterator[ToolUse]:
-        for entry in entries():
-            message = entry.get("message", Message())
-            content = message.get("content", [])
-            if entry.get("type") == "assistant" and not isinstance(content, str):
-                yield from (
-                    block for block in content if block.get("type") == "tool_use"
-                )
+    return list(parsed())
+
+
+def own(lines: list[Entry], agent_type: str) -> list[Entry]:
+    """The lines of the subagent's own run, without the history a fork inherits.
+
+    The run begins after the last line another agent wrote before the
+    subagent's first. A transcript attributing no line to the subagent's
+    type is taken whole, which is what a runtime without the field hands
+    over and what a subagent that inherited nothing is anyway.
+    """
+    authored = [
+        index
+        for index, entry in enumerate(lines)
+        if entry.get("type") == "assistant"
+        and entry.get("attributionAgent") == agent_type
+    ]
+    if not authored:
+        return lines
+    start = max(
+        (
+            index + 1
+            for index, entry in enumerate(lines[: authored[0]])
+            if entry.get("type") == "assistant"
+        ),
+        default=0,
+    )
+    return lines[start:]
+
+
+def calls(lines: list[Entry]) -> Iterator[ToolUse]:
+    """Every tool call these lines' assistant messages made."""
+    for entry in lines:
+        content = entry.get("message", Message()).get("content", [])
+        if entry.get("type") == "assistant" and not isinstance(content, str):
+            yield from (block for block in content if block.get("type") == "tool_use")
+
+
+def armed(lines: list[Entry]) -> Armed:
+    """Every background start these lines record, by the command it was given.
+
+    A `Monitor` and a `Bash` call run in the background both become shell
+    tasks, keyed by command.
+    """
 
     def backgrounded(block: ToolUse) -> bool:
         arguments = block.get("input", ToolInput())
@@ -160,26 +208,56 @@ def armed(transcript: Path) -> Armed:
                 return arguments.get("run_in_background", False)
         return False
 
-    started = list(calls())
     return Armed(
         commands=[
             block.get("input", ToolInput()).get("command", "")
-            for block in started
+            for block in calls(lines)
             if backgrounded(block)
-        ],
-        children=[
-            Child(
-                description=block.get("input", ToolInput()).get("description", ""),
-                agent_type=block.get("input", ToolInput()).get("subagent_type", ""),
-            )
-            for block in started
-            if block.get("name") == "Agent"
-        ],
+        ]
+    )
+
+
+def handing_back(lines: list[Entry]) -> bool:
+    """Whether this stop is the one that hands the subagent's report back.
+
+    Where the report goes through `SubagentHandback`, only a stop after that
+    call: before it the runtime delivers nothing and wakes the subagent when
+    its work completes. Elsewhere the last message is the report, so every
+    stop hands it back. Which holds is read as the runtime reads it — the
+    latest of its reminder and its countermand among the subagent's own
+    lines.
+    """
+
+    def contract(entry: Entry) -> bool | None:
+        """``True`` for the hand-back reminder, ``False`` for its countermand."""
+        content = entry.get("message", Message()).get("content", [])
+        if not entry.get("isMeta", False) or not isinstance(content, str):
+            return None
+        if content.startswith(
+            "<system-reminder>\nYour final report is delivered through SubagentHandback"
+        ):
+            return True
+        if content.startswith(
+            "<system-reminder>\nSubagentHandback is not available in this run"
+        ):
+            return False
+        return None
+
+    reports_by_call = next(
+        (
+            said
+            for said in (contract(entry) for entry in reversed(lines))
+            if said is not None
+        ),
+        False,
+    )
+    return not reports_by_call or any(
+        block.get("name") == "SubagentHandback" for block in calls(lines)
     )
 
 
 def decoded(listed: ListedTask) -> BackgroundTask | None:
-    """One listed task as the kernel reads it, or nothing for a kind it does not judge."""
+    """One listed shell task as the kernel reads it, or nothing for a kind it never names."""
     match listed.get("type"):
         case "shell":
             return BackgroundTask(
@@ -187,18 +265,11 @@ def decoded(listed: ListedTask) -> BackgroundTask | None:
                 kind="shell",
                 command=listed.get("command", ""),
             )
-        case "subagent":
-            return BackgroundTask(
-                id=listed.get("id", ""),
-                kind="subagent",
-                description=listed.get("description", ""),
-                agent_type=listed.get("agent_type", ""),
-            )
     return None
 
 
 def decided(payload: Payload) -> Context | Refusal | None:
-    """The answer to one event, or nothing where the report goes through."""
+    """The answer to one event, or nothing where the subagent goes through."""
     match payload.get("hook_event_name"):
         case "SubagentStart":
             return Context(
@@ -214,6 +285,7 @@ def decided(payload: Payload) -> Context | Refusal | None:
                                 # and each line it emits resumes the subagent
                                 # that reported.
                                 Leftover(resumes=True, refused=True),
+                                "SubagentHandback",
                             ),
                             verification_notice(**VERIFICATION),
                         ]
@@ -226,11 +298,11 @@ def decided(payload: Payload) -> Context | Refusal | None:
                 for listed in payload.get("background_tasks", [])
                 if (task := decoded(listed)) is not None
             ]
-            left = leftovers(
-                payload.get("agent_id", ""),
-                tasks,
-                armed(Path(payload.get("agent_transcript_path", ""))),
+            run = own(
+                entries(Path(payload.get("agent_transcript_path", ""))),
+                payload.get("agent_type", ""),
             )
+            left = stranded(tasks, armed(run), handing_back(run))
             if left:
                 return Refusal(decision="block", reason=refusal(left, "TaskStop"))
     return None

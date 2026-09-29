@@ -45,6 +45,7 @@ from decisions import (
     refused_tool_decision,
     session_contained,
     spawn_decision,
+    spawn_named,
     written_review,
 )
 from host import (
@@ -64,6 +65,7 @@ from host import (
     sandbox_active,
 )
 from kernel.decision import KernelDecision, sandbox_escaped
+from caller_payload import caller_of
 from policy_data import (
     AGENT_IDENTITY_ENV,
     AUTONOMOUS_AGENT_IDENTITIES,
@@ -164,21 +166,30 @@ def spent_escape(tool_input):
 
 
 def placed_input(payload):
-    """The tool arguments that land the same edit with its directives placed.
+    """The tool arguments that send the same call out in the shape the policy keeps.
 
     The correcting route rather than the refusing one: where a directive was
-    written somewhere the placement policy does not keep it, the call goes out
+    written somewhere the placement policy does not keep it, or a spawn went
+    out with no name or one no runtime here would take, the call goes out
     rewritten instead of coming back as a complaint, so nobody weighs a reason
-    against a column count while writing one. This is what `ruff --add-noqa`
-    does for its own directives, moved to the gate that already reads the
-    edit.
+    against a column count, or guesses at an argument the schema they read
+    does not list. For a directive this is what `ruff --add-noqa` does for its
+    own, moved to the gate that already reads the edit.
 
     ``None`` says place nothing. An edit can only rewrite the text it supplies,
     so a move reaching outside that text declines rather than guesses — and a
-    `replace_all` edit has no single span to read a move back out of.
+    `replace_all` edit has no single span to read a move back out of. A spawn
+    whose name goes out as given, or that no name can be read for, is left
+    to its verdict.
     """
     name = payload["tool_name"]
     tool_input = payload["tool_input"]
+    if name == "Agent":
+        given = tool_input["name"] if "name" in tool_input else ""
+        named = spawn_named(
+            given, tool_input["description"] if "description" in tool_input else ""
+        )
+        return None if named in ("", given) else {**tool_input, "name": named}
     if name not in ("Edit", "Write"):
         return None
     path = tool_input["file_path"]
@@ -223,11 +234,15 @@ def dispatch(payload):
         payload["agent_type"] if "agent_type" in payload else ""
     ) or declared_identity(AGENT_IDENTITY_ENV)
     autonomous = agent_identity in AUTONOMOUS_AGENT_IDENTITIES
+    # Which conversation of this session made the call, so what it holds and
+    # what it is asked about are its own roster row's — a subagent's where
+    # one called — read the way the caller hook reads it for the tool server.
+    caller = caller_of(payload)
     if name == "Bash":
         unsandboxed = spent_escape(tool_input)
         # A command names no file it will write, so what it changed can only
         # be read afterwards against what stood here before it ran.
-        claim_window_opened(session_directory)
+        claim_window_opened(session_directory, caller)
         return bash_decision(
             tool_input["command"],
             managed_root(),
@@ -273,6 +288,7 @@ def dispatch(payload):
             ),
             path,
             session_directory,
+            caller,
         )
     if name == "Write":
         path = tool_input["file_path"]
@@ -290,14 +306,16 @@ def dispatch(payload):
             ),
             path,
             session_directory,
+            caller,
         )
     if name == "SendMessage":
         # Every string the call carries rather than a named field, the reading
         # the refusal table already takes: which key this runtime spells a
         # recipient in is its own business, and the roster answers for all of
-        # them. A target nobody on it answers to passes through untouched,
-        # which is what leaves subagent continuation and every other session
-        # this repository does not hold working untouched.
+        # them. A target nobody on it answers to passes through untouched, and
+        # so does this session or one of its own subagents: a subagent
+        # reporting to `main` or the session steering its subagent never
+        # leaves the process, so there is no record another worktree misses.
         return peer_send_decision(
             [value for value in tool_input.values() if isinstance(value, str)],
             session_directory,
@@ -309,10 +327,11 @@ def dispatch(payload):
         return peer_listing_decision()
     if name == "Agent":
         # A spawn is judged by the one thing that makes its subagent legible
-        # and addressable: the name it carries. The runtime validates the
-        # spelling; this only insists there is one.
+        # and addressable: the name it goes out under, read out of the
+        # description every spawn here carries where none was given.
         return spawn_decision(
             tool_input["name"] if "name" in tool_input else "",
+            tool_input["description"] if "description" in tool_input else "",
             [value for value in tool_input.values() if isinstance(value, str)],
             "name",
         )
@@ -367,18 +386,25 @@ def rendered(decision, payload, placed, attached):
     and never by this runtime.
 
     The rewrite replaces the arguments rather than merging into them, so the
-    whole input is carried through. A deferral is placed nowhere, which is
+    whole input is carried through. A deferral places no sandbox, which is
     also why nothing here reads a payload a deferral may not have parsed.
 
     ``placed`` carries the other rewrite this channel can hand back: the same
-    edit with its suppression directives at their canonical placement. It
-    rides along with the verdict rather than replacing it — placing a
-    directive settles where it is written and says nothing about whether the
-    edit may happen, so an ask still asks, over the placed text, which is what
-    the approver should be reading. A denied call runs nothing, so there is
-    nothing to place. The two rewrites never contend for the one
-    ``updatedInput`` field: a directive is placed only in an ``Edit`` or
-    ``Write``, and the sandbox argument belongs only to ``Bash``.
+    edit with its suppression directives at their canonical placement, or the
+    same spawn under the name it goes out with. It rides along with the
+    verdict rather than replacing it — placing a directive or a name settles
+    how the call is spelled and says nothing about whether it may happen, so
+    an ask still asks, over the placed text, which is what the approver should
+    be reading. A deferral carries it too, as ``updatedInput`` with no
+    ``permissionDecision``, which Claude Code takes as the arguments alone and
+    leaves the permission where it was: read out of 2.1.283, whose hook result
+    yields a bare rewrite exactly when no behaviour was given, validates it
+    against the tool's full input schema, and was measured recording an
+    unnamed spawn rewritten this way under the name the hook gave it. A denied
+    call runs nothing, so there is nothing to place. The rewrites never
+    contend for the one ``updatedInput`` field: a directive is placed only in
+    an ``Edit`` or ``Write``, a name only in an ``Agent``, and the sandbox
+    argument belongs only to ``Bash``.
 
     The rewrite is how a verdict places a call, and it is the whole of what
     this field does: whether a placement leaves the boundary is the kernel's
@@ -419,7 +445,16 @@ def rendered(decision, payload, placed, attached):
         }
 
     if settled.effect == "defer":
-        return carried({})
+        return carried(
+            {}
+            if placed is None
+            else {
+                "hookSpecificOutput": {
+                    "hookEventName": "PreToolUse",
+                    "updatedInput": placed,
+                }
+            }
+        )
     answer = {
         "hookEventName": "PreToolUse",
         "permissionDecision": settled.effect,
@@ -482,7 +517,7 @@ def observe(payload):
         publish_edition(path)
         # The tier that needs no comparison: the call said which file, so the
         # claim it leaves is one another session can act on unqualified.
-        named_claim_recorded(path, session_root(payload))
+        named_claim_recorded(path, session_root(payload), caller_of(payload))
         # Repaired before checked, because the repair rewrites the file: run
         # the other way round and the diagnostics describe lines that have
         # already moved. Both reports reach the agent together, which is the
@@ -495,7 +530,7 @@ def observe(payload):
         return []
     # What the command changed, read against the snapshot its own PreToolUse
     # took, and contested where another session had a window open across it.
-    claim_window_closed(session_root(payload))
+    claim_window_closed(session_root(payload), caller_of(payload))
     return [
         *written_review(command, session_root(payload) or Path.cwd()),
         # What the boundary refused, named as the boundary rather than left

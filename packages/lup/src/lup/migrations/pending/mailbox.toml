@@ -1,0 +1,62 @@
+subjects = [
+    "ActorInbox",
+    "ActorInbox.__init__",
+    "ActorInbox.waiting",
+    "ActorInbox.standing",
+    "ActorInbox.commit",
+    "ActorInbox.take",
+    "ActorInbox.record_outstanding",
+    "create_inbox_hooks",
+    "ActorSession.collect_inbox",
+    "ActorCohort.inbox",
+    "InboxRelay",
+    "InboxRelay.root",
+    "InboxRelay.member_id",
+    "InboxRelay.interval_seconds",
+    "InboxRelay.queue_timeout_seconds",
+    "InboxRelay.receipt_path",
+    "InboxRelay.tick",
+    "InboxRelay.run",
+    "InboxOutput",
+    "InboxOutput.messages",
+    "INBOX_DIR",
+    "inbox_path",
+]
+reason = """
+what peers say to a member waits in its mailbox, and "inbox" names nothing \
+in lup, so the tool, the command, the store's directory and every type \
+holding a member's mail take the one word"""
+
+[[steps]]
+instruction = """
+Rename ActorInbox to ActorMailbox and create_inbox_hooks to \
+create_mailbox_hooks (lup.coordination.sessions), ActorCohort.inbox to \
+ActorCohort.mailbox, ActorSession.collect_inbox to \
+ActorSession.collect_mailbox, InboxRelay to MailboxRelay \
+(lup.coordination.relay), InboxOutput to MailboxOutput \
+(lup.coordination.peer_tools), INBOX_DIR to MAILBOX_DIR \
+(lup.coordination.bare.store) and inbox_path to mailbox_path \
+(lup.coordination.bare.mail). ActorSession takes `mailbox` where it took \
+`inbox`, and a hook matcher that delivers mail is tagged "mailbox" where it \
+was tagged "inbox"."""
+command = ["uv", "run", "lup-devtools", "dev", "py", "text", "-i", "inbox", "."]
+
+[[steps]]
+instruction = """
+Call the `coordination_mailbox` tool where an agent's instructions name \
+`coordination_inbox`, and `lup-devtools coordination mailbox --id <member>` \
+where a script runs `coordination inbox`."""
+
+[[steps]]
+instruction = """
+End every session in this repository, then, from the checkout, move the \
+mail still waiting in the coordination store and in each resolver run a \
+parked run will resume from, before any session starts again: \
+`for root in "$(git rev-parse --git-common-dir)/lup/coordination" \
+.lup/resolve/*; do if [ -d "$root/inbox" ] && [ ! -e "$root/mailbox" ]; \
+then mv "$root/inbox" "$root/mailbox"; fi; done`"""
+
+[[steps]]
+instruction = """
+Regenerate, so the delivery hooks each runtime ships read `mailbox/`:"""
+command = ["uv", "run", "lup-devtools", "harness", "generate", "all"]

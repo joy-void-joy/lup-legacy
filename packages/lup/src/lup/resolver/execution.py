@@ -30,7 +30,7 @@ from lup.resolver.contracts import (
     ResolverEnvironmentFault,
 )
 from lup.resolver.joins import Joiner
-from lup.resolver.journal import (
+from lup.resolver.record import (
     CriteriaCarriedEvent,
     ForeignCriteriaEvent,
     Journal,

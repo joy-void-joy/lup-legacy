@@ -8,9 +8,9 @@ it, and leaving is too.
 
 Built over the same roster, mail and journal a cohort uses, at the repository's
 own directory. That is the whole of the reuse and it is the point: a message to
-a peer and a message to a spawned worker land in the same inbox, are read by
-the same fold, and are consumed the same way, so there is one delivery path to
-get right rather than two that agree until they do not.
+a peer and a message to a spawned worker land in the same kind of mailbox, are
+read by the same fold, and are consumed the same way, so there is one delivery
+path to get right rather than two that agree until they do not.
 
 What this adds is the vocabulary a repository needs and a run does not — a
 session names itself and may rename, says what it is doing as that changes, and
@@ -30,9 +30,7 @@ store's roster lock for exactly that: long enough to read the directory and
 rename one file, and held for nothing else a member writes.
 """
 
-import fcntl
-from collections.abc import Callable, Iterator
-from contextlib import contextmanager
+from collections.abc import Callable
 from datetime import datetime, timedelta
 from functools import cached_property
 from pathlib import Path
@@ -49,14 +47,19 @@ from lup.coordination.identity import (
     member_ref,
     mint_member_id,
     session_cli_name,
-    unique_cli_name,
 )
 from lup.coordination.mail import ActorDelivery
 from lup.coordination.meeting import coordination_root
 from lup.coordination.peers import USER_KIND, user_peer
 from lup.coordination.pulse import Pulse
 from lup.coordination.refs import ActorRef
-from lup.coordination.roster import Delivery, Roster, RosterMember, folded_member
+from lup.coordination.roster import (
+    Delivery,
+    Roster,
+    RosterMember,
+    folded_member,
+    member_identity,
+)
 from lup.coordination.touches import HeldPath, folded_held_path
 from lup.coordination.wake import WakePath
 
@@ -134,6 +137,15 @@ class PeerView(BaseModel, frozen=True):
     the honest rendering of a path two members' own files both claim.
     """
 
+    subagents: list["PeerView"] = []
+    """The native subagents running inside this session, each a row of its own.
+
+    Beneath the session rather than beside it, because the relation is what a
+    reader needs first: these are conversations of that session, reached and
+    described apart from it, and gone when it is. Empty in a flat listing,
+    where each row stands alone and carries its session on its member.
+    """
+
     @computed_field
     @property
     def address(self) -> str:
@@ -156,6 +168,29 @@ class PeerView(BaseModel, frozen=True):
         nothing to say.
         """
         return self.member.description or self.member.task
+
+
+def nested(views: list[PeerView]) -> list[PeerView]:
+    """A flat listing with each subagent's row moved beneath its session's.
+
+    A subagent whose session is not in the listing stays where it is, so a
+    listing nests what it can and hides nothing.
+    """
+    sessions = [view.member.actor.id for view in views if not view.member.parent]
+    return [
+        view.model_copy(
+            update={
+                "subagents": [
+                    child
+                    for child in views
+                    if child.member.parent
+                    and child.member.parent == view.member.actor.id
+                ]
+            }
+        )
+        for view in views
+        if view.member.parent not in sessions
+    ]
 
 
 class RepositoryPeers:
@@ -210,35 +245,12 @@ class RepositoryPeers:
             description="every session working in this repository",
         )
 
-    @contextmanager
-    def naming_settled(self) -> Iterator[None]:
-        """Hold the one lock a member cannot decide its own name without.
-
-        Every other write a member makes is about itself and is taken under
-        its own lock. A name is decided against every other member's, so two
-        sessions choosing at once would both read the same directory and both
-        take the same name — which is precisely the collision the numbered
-        default exists to rule out.
-
-        Held for a read of the members directory and one rename, and released
-        whatever happens inside: a refused name must not leave the store's
-        lock standing for the next session to wait on.
-        """
-        lock = self.root / store.ROSTER_LOCK
-        lock.parent.mkdir(parents=True, exist_ok=True)
-        with lock.open("a", encoding="utf-8") as handle:
-            fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
-            try:
-                yield
-            finally:
-                fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
-
     def join(
         self,
         member_id: str,
         worktree: Path,
         cli_name: str = "",
-        delivery: Delivery = Delivery.MAILBOX,
+        delivery: Delivery = Delivery.WAITING,
         wake: WakePath = WakePath(),
     ) -> ActorRef:
         """Put this session on the roster, and hand back the address it answers to.
@@ -262,14 +274,14 @@ class RepositoryPeers:
         makes a session look is its runtime's own arrangement and this module
         is neither runtime's. Empty is the honest default and the answer for
         anything that did not ask its adapter: a member with no wake path
-        still has its inbox, and a sender is told nothing will nudge it
+        still has its mailbox, and a sender is told nothing will nudge it
         rather than told a nudge was sent.
 
         The arrival and the naming happen under the store's roster lock, so
         two sessions starting together cannot read the same set of taken names
         and both take the free one.
         """
-        with self.naming_settled():
+        with store.naming_settled(self.root):
             current = self.standing_name(member_id)
             taken = self.names_taken(except_id=member_id)
             if cli_name and cli_name != current and cli_name in taken:
@@ -285,13 +297,39 @@ class RepositoryPeers:
             chosen = (
                 cli_name
                 or current
-                or unique_cli_name(
+                or store.unique_cli_name(
                     session_cli_name() or derived_cli_name(worktree), taken
                 )
             )
             if chosen != current:
                 self.record_name(member_id, chosen)
             return peer
+
+    def join_subagent(self, member_id: str, caller: store.Caller) -> ActorRef:
+        """Put one of this session's native subagents on the roster, and hand back its row.
+
+        Beneath the session, which must already stand: a subagent is part of
+        the session it runs in, and a row with nothing above it would be one
+        no listing could place. Idempotent as a join is, so every call the
+        subagent makes may ask.
+        """
+        joined = store.joined_subagent(self.root, member_id, caller)
+        if joined is None:
+            raise LookupError(
+                f"session {member_id} has no row to hold a subagent beneath; "
+                "join it first"
+            )
+        return ActorRef(kind=store.actor_kind(joined), id=store.actor_id(joined))
+
+    def actor(self, member_id: str) -> ActorRef:
+        """The member one bare id names here: a subagent's row or a session's.
+
+        Resolved rather than assumed, so every verb taking an id — a console's
+        `--id`, a handoff's lock — reaches a subagent's row by the id the
+        roster prints for it.
+        """
+        found = store.actor_named(self.root, member_id)
+        return ActorRef(kind=store.actor_kind(found), id=store.actor_id(found))
 
     def rename(self, member_id: str, cli_name: str) -> None:
         """Record what this session is called from now on, keeping the old name.
@@ -301,7 +339,7 @@ class RepositoryPeers:
         another one claims that name. A name a live session currently answers
         to is refused, because the roster would then print one address for two.
         """
-        with self.naming_settled():
+        with store.naming_settled(self.root):
             taken = self.names_taken(except_id=member_id)
             if cli_name in taken:
                 raise NameTakenError(cli_name, taken[cli_name])
@@ -329,7 +367,7 @@ class RepositoryPeers:
         """Append one name to this member's own file, under that member's lock."""
         store.revised(
             self.root,
-            store.session_actor(member_id),
+            member_identity(self.actor(member_id)),
             lambda member: store.renamed(member, cli_name),
         )
 
@@ -342,7 +380,8 @@ class RepositoryPeers:
         because a stub beside it had one would be a session nothing addresses.
         """
         found = store.read_member(
-            store.member_path(self.root, store.session_actor(member_id)), running=True
+            store.member_path(self.root, member_identity(self.actor(member_id))),
+            running=True,
         )
         return store.current_name(found) if found is not None else ""
 
@@ -354,27 +393,33 @@ class RepositoryPeers:
         that one, which is why this is read for rendering and never for
         deciding what is free.
         """
-        member = store.member_of(self.root, store.session_actor(member_id))
+        member = store.member_of(self.root, member_identity(self.actor(member_id)))
         return store.current_name(member) if member is not None else ""
 
     def describe(self, member_id: str, description: str) -> None:
         """Record what this session is doing now, for whoever reads the roster."""
-        self.cohort.roster.describes(member_ref(member_id), description)
+        self.cohort.roster.describes(self.actor(member_id), description)
 
     def leave(self, member_id: str, summary: str = "") -> None:
         """Record that this session has stopped, so nobody addresses it again."""
-        self.cohort.roster.finished(member_ref(member_id), summary=summary)
+        self.cohort.roster.finished(self.actor(member_id), summary=summary)
 
     def address(self, spelling: str) -> ActorRef | None:
-        """The member one spelling reaches: a name, an id, or a printed label.
+        """The member one spelling reaches: an id, a printed label, or a name.
 
-        Names are resolved first and then handed to the same fold every other
-        address goes through, so a name and an id cannot reach different
-        members and a spelling one surface accepts is not one the next rejects.
-        A name resolves to the live session answering to it ahead of any that
-        has stopped, so a name reused after a departure reaches the newcomer.
+        An id first, because it is the spelling that cannot collide: a name is
+        chosen and may spell anything, another member's id included, and a
+        reader resolving a clash between names needs a spelling that always
+        reaches exactly the member it was read off. A name is then resolved
+        to the id it reaches and handed to the same fold, so a name and an id
+        cannot reach different members and a spelling one surface accepts is
+        not one the next rejects. A name resolves to the live member answering
+        to it ahead of any that has stopped, so a name reused after a
+        departure reaches the newcomer.
         """
-        return self.cohort.reaching(self.answering(spelling) or spelling)
+        return self.cohort.reaching(spelling) or self.cohort.reaching(
+            self.answering(spelling)
+        )
 
     def answering(self, cli_name: str) -> str:
         """The member id one name reaches, blank where no member claimed it.
@@ -504,6 +549,11 @@ class RepositoryPeers:
         parameter the surfaces pass and this has no record to attribute to
         them.
         """
+        # lup: defer: nothing deletes what the member-file store replaced in
+        # this directory -- `touches.jsonl`, `roster.jsonl`, `messages.jsonl`,
+        # `names.jsonl`, `delivery/`, `heartbeats/` and `resets/` stay on every
+        # clone that ran 0.2.x; the user settled that the first sweep of this
+        # store deletes them, and no sweep or migration does
         return [
             folded_member(member)
             for member in store.swept(self.root, now, self.pulse.stale_after_seconds)
@@ -551,7 +601,7 @@ class RepositoryPeers:
 
     def waiting(self, member_id: str) -> ActorDelivery:
         """What is queued for this session, consuming none of it."""
-        return self.cohort.mail.waiting(member_ref(member_id))
+        return self.cohort.mail.waiting(self.actor(member_id))
 
     def take(self, member_id: str) -> ActorDelivery:
         """Take everything queued for this session, and record it as handed over.
@@ -561,9 +611,9 @@ class RepositoryPeers:
         caller that dropped the result has lost the mail rather than deferred
         it, and the type it gets back is the one it would have peeked at.
         """
-        inbox = self.cohort.inbox(member_ref(member_id))
-        delivery = inbox.waiting()
-        inbox.commit(delivery)
+        mailbox = self.cohort.mailbox(self.actor(member_id))
+        delivery = mailbox.waiting()
+        mailbox.commit(delivery)
         return delivery
 
     def live_ids(self) -> list[str]:
@@ -577,18 +627,6 @@ class RepositoryPeers:
         return store.live_ids(
             self.root, window=self.pulse.stale_after_seconds, without=USER_KIND
         )
-
-    def woken_through(self, handle: str) -> list[str]:
-        """Every member whose declared wake path is *handle*, by what it is called.
-
-        The departed included, because the reader is one who found something
-        listening where a member said it would be: a session whose pulse has
-        lapsed while its process runs on is exactly who that is, and naming
-        it is the difference between an operator who can end it and one told
-        only that something is there.
-        """
-        rows = [row for row in self.present() if row.wake.handle == handle]
-        return [self.called(row.actor.id) or row.actor.id for row in rows]
 
     def held(self) -> list[HeldPath]:
         """Every claim a live session is holding, newest first."""
@@ -613,7 +651,8 @@ class RepositoryPeers:
         that never joined.
         """
         return (
-            store.revised(self.root, store.session_actor(member_id), revise) is not None
+            store.revised(self.root, member_identity(self.actor(member_id)), revise)
+            is not None
         )
 
     def touched(self, member_id: str, *paths: Path) -> None:
@@ -634,7 +673,7 @@ class RepositoryPeers:
             member_id, lambda member: store.claimed(member, [str(prefix)], True)
         )
         return HeldPath(
-            path=str(prefix), prefix=True, holders=[member_ref(member_id)], at=utc_now()
+            path=str(prefix), prefix=True, holders=[self.actor(member_id)], at=utc_now()
         )
 
     def holds(self, member_id: str, prefix: Path) -> bool:
@@ -672,5 +711,5 @@ def launched_member(root: Path, name: str | None = None) -> LaunchedMember:
     wanted = derived_cli_name(root) if name is None else name
     return LaunchedMember(
         member_id=mint_member_id(),
-        cli_name=unique_cli_name(wanted, peers.names_taken()),
+        cli_name=store.unique_cli_name(wanted, peers.names_taken()),
     )

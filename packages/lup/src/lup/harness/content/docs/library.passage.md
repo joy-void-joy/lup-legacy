@@ -241,7 +241,10 @@ through its dynamic tools. A runtime's own CLI starts it instead, as a stdio
 command running `python -m lup.mcp.serve` (or a composed CLI's `tools serve`)
 that carries the server's class and fields, which the subprocess validates back
 into the same declaration. That is why a served `Toolset` names module-level
-tools: an import path is what crosses the process boundary.
+tools: an import path is what crosses the process boundary. Any of them takes
+`always_load=True` for tools a session calls on most turns: Claude then offers
+them from the first turn rather than behind its tool search, and Codex, which
+names no such control, is unchanged.
 
 Typed output remains available with no built-in. On `Claude`, `allowed_tools`
 controls automatic approval within the declared tools and `disallowed_tools`
@@ -313,11 +316,12 @@ status = agent.launch("--verbose", steps=[Checkpoint()])
 | `plugin` | Claude's first plugin directory, which takes `builtin="stock"`; Codex installs the plugin its project's marketplace offers | `--plugin-dir` (Claude); installed into the launch's home (Codex). A `Harness` is compiled into the project's tree by `prepare()` |
 | `policy` | Hooks judging every call in process; unset, the plugin harness's own | The plugin's dispatcher, and the boundary the launch measures and records |
 | `tools.mcp` | Hosted in process | `--mcp-config` with `--strict-mcp-config` (Claude), `--config mcp_servers.*` (Codex): the declared roster, never the plugin's |
-| `identity` | Joins the coordination roster through the session's environment | The same, plus `--name` and the inbox socket on Claude |
+| `identity` | Joins the coordination roster through the session's environment | The same, plus `--name` and the wake socket, keyed by the member's id, on Claude |
 | `record` | The run's journal, transcript and ledger entry, kept while the session is open | The same, around the foreground CLI |
 | `resume` | `Latest()` resumes the newest session on record; `Pick()` is refused | `--continue` / `--resume` (Claude), `resume --last` / `resume` (Codex); `Reopen(session=...)` names one |
 | `max_recursive_agent` | `LUP_MAX_RECURSIVE_AGENT`, never more than this process has left | The same variable |
 | `profile`, `home` | The account's configuration home | Claude: the same home; Codex: a home derived from the account's for the worktree |
+| `companions` | Held while the session is open, their variables in its environment and their folders among its sandbox's mounts | Held around the foreground CLI, their variables carried into a container by name; `command()` holds them long enough to learn what they hand it |
 
 What a launch does not say it assumes, and a session opened here does not:
 an unset `sandbox` is the verified container wherever Docker or Podman answers
@@ -329,13 +333,30 @@ the declaration with those filled in. What only a program driving turns can
 honour — in-process `hooks`, a submission gate, `layers`, `max_turns` — a
 launch refuses in the field's own words rather than dropping.
 
+`companions` are what a session wants running on the host beside it and
+outside every wall it has: a service answering the operator, a preview
+server, a watcher. Each is a `HostCompanion` from `lup.launch.companions`,
+held around every session the declaration opens and handing it the
+environment, mounts and ports that reach it. Most are one process shared by
+many sessions — a `SharedProcess`, per checkout or per person: the first
+session to hold it starts it on its preferred ports or the next free ones,
+later sessions join it, a replacement is started where it stopped answering
+or its declaration changed, and it is stopped once the last lease goes, a
+lease whose launcher died counting as gone. Its state and output live under
+lup's own state directory, never in a checkout.
+
 `steps` are the repository's own workflow around a launch — a checkpoint, a
 base-freshness sync, a companion tree regenerated — each a `LaunchStep` with
 `before()` and `after(succeeded)`. They nest as `with` blocks do: every
 `before` in the order given, the session, then every `after` in reverse, run
-however the session ended. `Codex.prepare(force=True)` reinstalls a plugin
-whose version has not moved; Claude loads its plugin from the directory at each
-start, so its `prepare()` takes no such flag.
+however the session ended. `Codex.prepare(force=True)` and
+`Codex.launch(force=True)` reinstall a plugin whose version has not moved;
+Claude loads its plugin from the directory at each start, so it takes no such
+flag. `lup-devtools harness claude|codex` is one such caller: it builds the
+declaration from its flags and this repository's composition and launches
+it, its own workflow the steps around the session — `docs/harness.md` maps
+each flag to its field, and `examples/launch_*.py` show every field on its
+own.
 
 ## Layering
 

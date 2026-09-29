@@ -355,9 +355,9 @@ describing a directory most projects never have.
 - **pydantic-settings**: For configuration (not dotenv)
 
 Which runtimes this project drives is an extra rather than a rewrite —
-`lup[claude]`, `lup[codex]`, or both — and the same declarations render into
-each. A provider's own SDK is that adapter's dependency, never this
-application's.
+`lup-agents[claude]`, `lup-agents[codex]`, or both — and the same declarations
+render into each. A provider's own SDK is that adapter's dependency, never
+this application's.
 
 ## Model Selection
 

@@ -2603,7 +2603,7 @@ def lent_mount_points(mountinfo: str) -> list[str]:
     space-separated record per mount. A mount whose root inside its own
     filesystem is not that filesystem's top is a bind: a directory, a volume
     or a single file handed in from somewhere else -- the checkout, a cache
-    volume, the credential seed, the peer inbox. A filesystem mounted whole --
+    volume, the credential seed, the wake sockets. A filesystem mounted whole --
     the image's own root, ``proc``, a ``tmpfs`` the container made -- is the
     container's. The one whole filesystem a launch lends is a lease root at a
     disk's top, which the lease names.

@@ -22,14 +22,23 @@ the old home, a path in a comment — is not a module run in an import
 statement and is never matched; :func:`surviving_mentions` reports those for
 a human to read instead.
 
-One form is deliberately left alone: ``from package import submodule`` is the
-same tokens as importing a name from that package, and rewriting it would
-mean guessing which. The repository's conventions ask for
-``from module import symbol`` anyway, so the guess is not worth the reach —
-such a site fails the type check with an unresolved import rather than
-passing quietly, which is the outcome that gets it fixed. It is named among
-the surviving mentions as well, found by the grammar: the dotted path is
-never written whole there, so the text search that finds prose cannot see it.
+``from package import submodule`` is the same tokens as importing a name the
+package defines, and the grammar alone cannot tell the two apart. The move
+can: it names ``package.submodule`` as a module, and lup's conventions refuse
+``__init__.py`` re-exports, so no name the package binds stands between the
+statement and the module. It is respelled ``from new.package import newleaf
+as submodule`` — bound to the name it had, so every reference in the file
+still resolves — and a statement also importing names that stayed is split:
+those keep the statement and its layout, and each destination gets a
+statement of its own where the old one runs. A name that, joined to its
+package, spells no moved module is a symbol, and is left alone.
+
+A splice may cross rows, so a path continued by a backslash is respelled
+whole. What the rewrite declines is a statement it could only respell by
+dropping a comment — a parenthesized list moving whole to a top-level module,
+which bare ``import`` cannot parenthesize. That is named among the surviving
+mentions, found by the grammar: the dotted path is never written whole there,
+so the text search that finds prose cannot see it.
 """
 
 import ast
@@ -37,6 +46,7 @@ import io
 import tokenize
 from collections.abc import Collection, Iterator
 from pathlib import Path
+from typing import Self
 
 import sh
 from pydantic import BaseModel
@@ -91,40 +101,292 @@ class Relocation(BaseModel, frozen=True):
     new: list[str]
 
 
+def destination(named: list[str], moves: list[Relocation]) -> list[str] | None:
+    """Where a module path lands, if one of the moves carries it.
+
+    A move carries the module it names and every module beneath it, so
+    relocating a package takes its submodules without each being declared.
+    Where two moves match, the longer one decides: a module declared on its own
+    has its file carried to the name that move spells, and following its
+    package's move instead would point the import at a module that is not
+    there. The result may be longer or shorter than what it replaces — a move
+    into or out of a subpackage changes the path's depth.
+    """
+    carrying = [move for move in moves if named[: len(move.old)] == move.old]
+    if not carrying:
+        return None
+    move = max(carrying, key=lambda move: len(move.old))
+    return [*move.new, *named[len(move.old) :]]
+
+
 class ModuleRun(BaseModel, frozen=True):
     """The token span naming one module path, as indexes into the token list."""
 
     start: int
     end: int
 
-    def renamed(
-        self, tokens: list[tokenize.TokenInfo], moves: list[Relocation]
-    ) -> list[str] | None:
-        """The replacement name tokens for this run, if it moved.
-
-        A move matches the module it names and every module beneath it, so
-        relocating a package carries its submodules without each being
-        declared. The result may be longer or shorter than what it replaces —
-        a move into or out of a subpackage changes the path's depth.
-        """
-        named = [
+    def named(self, tokens: list[tokenize.TokenInfo]) -> list[str]:
+        """The names this run spells, without the dots between them."""
+        return [
             token.string
             for token in tokens[self.start : self.end + 1]
             if token.string != "."
         ]
-        for move in moves:
-            if named[: len(move.old)] == move.old:
-                return [*move.new, *named[len(move.old) :]]
-        return None
 
 
-class ModuleEdit(BaseModel, frozen=True):
-    """One module path to respell, as a span on one line of the source."""
+class Point(BaseModel, frozen=True):
+    """A place in the source as ``tokenize`` counts it, rows from one."""
 
     row: int
+    column: int
+
+    @classmethod
+    def before(cls, token: tokenize.TokenInfo) -> Self:
+        """Where ``token`` begins."""
+        return cls(row=token.start[0], column=token.start[1])
+
+    @classmethod
+    def after(cls, token: tokenize.TokenInfo) -> Self:
+        """Where ``token`` ends."""
+        return cls(row=token.end[0], column=token.end[1])
+
+
+class Splice(BaseModel, frozen=True):
+    """Text replacing the source between two points, which may be rows apart."""
+
+    start: Point
+    end: Point
+    text: str
+
+    def covers(self, point: Point) -> bool:
+        """Whether ``point`` lies in the span this splice replaces."""
+        return (
+            (self.start.row, self.start.column)
+            <= (point.row, point.column)
+            < (self.end.row, self.end.column)
+        )
+
+
+class Respelling(BaseModel, frozen=True):
+    """One import statement's splices, and how many module paths they repoint."""
+
+    splices: list[Splice]
+    repointed: int
+
+
+class ImportedName(BaseModel, frozen=True):
+    """One name a ``from`` statement imports, as indexes into the token list.
+
+    ``comma`` is the separator following it, where one does. Which side of a
+    name its comma sits on decides what leaves with it when it is split off.
+    """
+
+    name: str
+    alias: str | None
     start: int
     end: int
-    text: str
+    comma: int | None
+
+    def spelled(self, leaf: str) -> str:
+        """This name imported as ``leaf``, still bound to the local name it had."""
+        local = self.alias or self.name
+        return leaf if leaf == local else f"{leaf} as {local}"
+
+
+class FromImport(BaseModel, frozen=True):
+    """One absolute ``from package import names`` statement, read from its tokens.
+
+    ``end`` is its last token: the closing parenthesis, or the last name.
+    """
+
+    module: ModuleRun
+    names: list[ImportedName]
+    end: int
+
+    def home(
+        self, tokens: list[tokenize.TokenInfo], moves: list[Relocation]
+    ) -> list[str]:
+        """Where the package this statement imports from lands."""
+        package = self.module.named(tokens)
+        return destination(package, moves) or package
+
+    def landed(
+        self, tokens: list[tokenize.TokenInfo], moves: list[Relocation]
+    ) -> list[list[str]]:
+        """The module path each imported name spells once the moves are made.
+
+        A name that joined to its package spells a moved module is taken for
+        that module, and lands where its move puts it. A name no move carries
+        on its own follows its package, wherever that went.
+        """
+        package = self.module.named(tokens)
+        home = self.home(tokens, moves)
+        return [
+            destination([*package, name.name], moves) or [*home, name.name]
+            for name in self.names
+        ]
+
+    def carried(
+        self, tokens: list[tokenize.TokenInfo], moves: list[Relocation]
+    ) -> list[ImportedName]:
+        """The names a move of their own carried away from their package."""
+        home = self.home(tokens, moves)
+        return [
+            name
+            for name, target in zip(self.names, self.landed(tokens, moves), strict=True)
+            if target != [*home, name.name]
+        ]
+
+    def respelled(
+        self, tokens: list[tokenize.TokenInfo], moves: list[Relocation]
+    ) -> Respelling | None:
+        """This statement as the moves leave it, or None where it reads the same.
+
+        The names landing in one package keep the statement: those that
+        followed the package where any did, otherwise the first destination
+        named. They keep its layout, and a renamed module keeps the local name
+        it was bound to, so every reference to it still resolves. Each other
+        destination gets a statement of its own, run where this one runs: on
+        a row of its own at the same indentation where this statement has
+        its logical line to itself, and after a semicolon on the same line
+        otherwise, so no code sharing the line runs before the name is bound
+        and a one-line block keeps what it held.
+
+        A name leaves with a comma: its own, or, for the last name, the one
+        before it, unless that ends a row inside parentheses and may stay as a
+        trailing comma. A row left blank by a name that stood alone on it is
+        dropped when the splices are applied. Where every name went to a
+        top-level module there is no package to keep the statement, and bare
+        ``import`` replaces it whole.
+        """
+        package = self.module.named(tokens)
+        home = self.home(tokens, moves)
+        landed = self.landed(tokens, moves)
+        repointed = int(home != package) + len(self.carried(tokens, moves))
+        if not repointed:
+            return None
+        packages = [tuple(target[:-1]) for target in landed]
+        grouped = {
+            destination_package: [
+                name.spelled(target[-1])
+                for name, target, went in zip(self.names, landed, packages, strict=True)
+                if went == destination_package
+            ]
+            for destination_package in dict.fromkeys(packages)
+        }
+        keeper = next(
+            (
+                candidate
+                for candidate in (tuple(home), *grouped)
+                if candidate and candidate in grouped
+            ),
+            None,
+        )
+        keyword = tokens[self.module.start - 1]
+
+        def statement(destination_package: tuple[str, ...]) -> str:
+            listed = ", ".join(grouped[destination_package])
+            if not destination_package:
+                return f"import {listed}"
+            return f"from {'.'.join(destination_package)} import {listed}"
+
+        if keeper is None:
+            replaced = Splice(
+                start=Point.before(keyword),
+                end=Point.after(tokens[self.end]),
+                text=statement(()),
+            )
+            return Respelling(splices=[replaced], repointed=repointed)
+        staying = [went == keeper for went in packages]
+
+        def removal(name: ImportedName) -> Iterator[Splice]:
+            first = tokens[name.start]
+            if name.comma is not None:
+                yield Splice(
+                    start=Point.before(first),
+                    end=Point.before(tokens[name.comma + 1]),
+                    text="",
+                )
+                return
+            # Alone on its row, the name takes the space up to the comment or
+            # the row's end, as one with a comma of its own does.
+            following = tokens[name.end + 1]
+            alone = tokens[name.start - 1].type == tokenize.NL
+            reaches = alone and following.type in (tokenize.NL, tokenize.COMMENT)
+            yield Splice(
+                start=Point.before(first),
+                end=Point.before(following)
+                if reaches
+                else Point.after(tokens[name.end]),
+                text="",
+            )
+            anchor = [
+                kept for kept, stays in zip(self.names, staying, strict=True) if stays
+            ][-1]
+            if anchor.comma is not None and tokens[anchor.comma + 1].type not in (
+                tokenize.NL,
+                tokenize.COMMENT,
+            ):
+                yield Splice(
+                    start=Point.before(tokens[anchor.comma]),
+                    end=Point.before(tokens[anchor.comma + 1]),
+                    text="",
+                )
+
+        def insertion(added: list[str]) -> Splice:
+            preceding = next(
+                (
+                    tokens[index]
+                    for index in range(self.module.start - 2, -1, -1)
+                    if tokens[index].type
+                    not in (
+                        tokenize.NL,
+                        tokenize.COMMENT,
+                        tokenize.INDENT,
+                        tokenize.DEDENT,
+                    )
+                ),
+                None,
+            )
+            following = next(
+                tokens[index]
+                for index in range(self.end + 1, len(tokens))
+                if tokens[index].type != tokenize.COMMENT
+            )
+            owns_line = following.type == tokenize.NEWLINE and (
+                preceding is None or preceding.type == tokenize.NEWLINE
+            )
+            if owns_line:
+                indent = keyword.line[: keyword.start[1]]
+                at = Point.before(following)
+                text = "".join(f"\n{indent}{line}" for line in added)
+            else:
+                at = Point.after(tokens[self.end])
+                text = "".join(f"; {line}" for line in added)
+            return Splice(start=at, end=at, text=text)
+
+        def splices() -> Iterator[Splice]:
+            if keeper != tuple(package):
+                yield Splice(
+                    start=Point.before(tokens[self.module.start]),
+                    end=Point.after(tokens[self.module.end]),
+                    text=".".join(keeper),
+                )
+            for name, target, stays in zip(self.names, landed, staying, strict=True):
+                match (stays, target[-1]):
+                    case (False, _):
+                        yield from removal(name)
+                    case (True, leaf) if leaf != name.name:
+                        yield Splice(
+                            start=Point.before(tokens[name.start]),
+                            end=Point.after(tokens[name.end]),
+                            text=name.spelled(leaf),
+                        )
+            added = [statement(other) for other in grouped if other != keeper]
+            if added:
+                yield insertion(added)
+
+        return Respelling(splices=list(splices()), repointed=repointed)
 
 
 class RelocationEdit(BaseModel, frozen=True):
@@ -148,13 +410,14 @@ def dotted_run(tokens: list[tokenize.TokenInfo], start: int) -> int:
 
 
 def module_runs(tokens: list[tokenize.TokenInfo]) -> list[ModuleRun]:
-    """Every token span naming a module in an import statement.
+    """Every module path an ``import a.b, c.d`` statement names, as a token span.
 
-    A module path is named in exactly two places: after ``from``, and after
-    ``import`` where no ``from`` preceded it on that logical line — including
-    after each comma in that form, because ``import a.b, c.d`` names two.
-    Names after an ``import`` that follows a ``from`` are the imported
-    symbols, which are not module paths and must not be rewritten.
+    After ``import`` where no ``from`` preceded it in the statement, and after
+    each comma in that form, because ``import a.b, c.d`` names two. A ``from``
+    statement is read whole by :func:`from_imports` instead: where the names
+    it imports land depends on where its module went, so the two are
+    respelled together. A semicolon ends a statement as a line break does, so
+    what follows one is read afresh.
     """
 
     def run_at(index: int) -> Iterator[ModuleRun]:
@@ -167,13 +430,12 @@ def module_runs(tokens: list[tokenize.TokenInfo]) -> list[ModuleRun]:
         listing = False
         for index, token in enumerate(tokens):
             match (token.type, token.string):
-                case (tokenize.NEWLINE | tokenize.NL, _):
+                case (tokenize.NEWLINE | tokenize.NL, _) | (tokenize.OP, ";"):
                     from_seen = listing = False
                 case (tokenize.OP, ",") if listing:
                     yield from run_at(index)
                 case (tokenize.NAME, "from"):
                     from_seen = True
-                    yield from run_at(index)
                 case (tokenize.NAME, "import") if not from_seen:
                     listing = True
                     yield from run_at(index)
@@ -181,51 +443,190 @@ def module_runs(tokens: list[tokenize.TokenInfo]) -> list[ModuleRun]:
     return list(found())
 
 
-def module_edits(
-    tokens: list[tokenize.TokenInfo], moves: list[Relocation]
-) -> list[ModuleEdit]:
-    """Every module path in an import statement that one of the moves renames.
+def from_imports(tokens: list[tokenize.TokenInfo]) -> list[FromImport]:
+    """Every absolute ``from package import names`` statement, read whole.
 
-    A run continued across lines is declined rather than half-applied: the
-    splice is a span on one line, and a path broken over two is rare enough
-    that reporting it as a surviving mention beats guessing at the join.
+    A ``from`` followed by no ``import`` — ``yield from``, ``raise ... from``
+    — opens no such statement, and a relative import is not read either: its
+    package is spelled by where the importing file sits, not by a name a move
+    could match. Nor is a list that does not read as names, ``*`` among them,
+    since nothing in it is a module a move could name.
     """
 
-    def found() -> Iterator[ModuleEdit]:
-        for run in module_runs(tokens):
-            renamed = run.renamed(tokens, moves)
-            start, end = tokens[run.start].start, tokens[run.end].end
-            if renamed is None or start[0] != end[0]:
-                continue
-            yield ModuleEdit(
-                row=start[0], start=start[1], end=end[1], text=".".join(renamed)
+    def closes(token: tokenize.TokenInfo, parenthesized: bool) -> bool:
+        """Whether ``token`` is where the list of imported names ends."""
+        match (token.type, token.string):
+            case (tokenize.OP, ")") if parenthesized:
+                return True
+            case (tokenize.NEWLINE, _) | (tokenize.OP, ";") if not parenthesized:
+                return True
+            case (tokenize.ENDMARKER, _):
+                return True
+            case _:
+                return False
+
+    def imported(segment: list[int], comma: int | None) -> ImportedName | None:
+        """The name one comma-separated segment imports, if it reads as one."""
+        match [tokens[index] for index in segment]:
+            case [tokenize.TokenInfo(type=tokenize.NAME, string=name)]:
+                alias = None
+            case [
+                tokenize.TokenInfo(type=tokenize.NAME, string=name),
+                tokenize.TokenInfo(type=tokenize.NAME, string="as"),
+                tokenize.TokenInfo(type=tokenize.NAME, string=str(bound)),
+            ]:
+                alias = bound
+            case _:
+                return None
+        return ImportedName(
+            name=name, alias=alias, start=segment[0], end=segment[-1], comma=comma
+        )
+
+    def statement(at: int) -> FromImport | None:
+        """The statement a ``from`` at ``at`` opens, if it is one this reads."""
+        if tokens[at + 1].type != tokenize.NAME:
+            return None
+        module = ModuleRun(start=at + 1, end=dotted_run(tokens, at + 1))
+        keyword = tokens[module.end + 1]
+        if (keyword.type, keyword.string) != (tokenize.NAME, "import"):
+            return None
+        parenthesized = tokens[module.end + 2].string == "("
+        opening = module.end + 2 + parenthesized
+        closing = next(
+            index
+            for index in range(opening, len(tokens))
+            if closes(tokens[index], parenthesized)
+        )
+        if parenthesized and tokens[closing].string != ")":
+            return None
+        listing = [
+            index
+            for index in range(opening, closing)
+            if tokens[index].type not in (tokenize.NL, tokenize.COMMENT)
+        ]
+        trailing = (
+            listing[-1]
+            if parenthesized and listing and tokens[listing[-1]].string == ","
+            else None
+        )
+        items = listing if trailing is None else listing[:-1]
+        commas = [
+            position
+            for position, index in enumerate(items)
+            if tokens[index].string == ","
+        ]
+        read = [
+            imported(
+                items[low + 1 : high], items[high] if high < len(items) else trailing
             )
+            for low, high in zip([-1, *commas], [*commas, len(items)], strict=True)
+        ]
+        names = [name for name in read if name is not None]
+        if not names or len(names) != len(read):
+            return None
+        return FromImport(
+            module=module,
+            names=names,
+            end=closing if parenthesized else names[-1].end,
+        )
 
-    return list(found())
+    return [
+        found
+        for index, token in enumerate(tokens)
+        if (token.type, token.string) == (tokenize.NAME, "from")
+        and (found := statement(index)) is not None
+    ]
 
 
-def apply_edits(text: str, edits: list[ModuleEdit]) -> str:
-    """Splice every respelled module path into the source that named it.
+def respellings(
+    tokens: list[tokenize.TokenInfo], moves: list[Relocation]
+) -> list[Respelling]:
+    """Every import statement one of the moves repoints, as it will read.
 
-    Rightmost first, so an edit's recorded columns still address the line it
-    was read from when two imports share one.
+    A statement whose rewrite would take a comment with it is declined whole.
+    The splices own only the paths and names they respell, and a comment is
+    somebody's note about the code beside it — in practice the one such
+    statement is a parenthesized list moving whole to a top-level module,
+    which bare ``import`` cannot parenthesize. It stays for a human, named
+    among the surviving mentions.
     """
-    lines = text.splitlines(keepends=True)
-    for edit in sorted(edits, key=lambda edit: edit.start, reverse=True):
-        line = lines[edit.row - 1]
-        lines[edit.row - 1] = f"{line[: edit.start]}{edit.text}{line[edit.end :]}"
-    return "".join(lines)
+    plain = [
+        Respelling(
+            splices=[
+                Splice(
+                    start=Point.before(tokens[run.start]),
+                    end=Point.after(tokens[run.end]),
+                    text=".".join(landed),
+                )
+            ],
+            repointed=1,
+        )
+        for run in module_runs(tokens)
+        if (landed := destination(run.named(tokens), moves)) is not None
+    ]
+    named = [
+        respelled
+        for statement in from_imports(tokens)
+        if (respelled := statement.respelled(tokens, moves)) is not None
+    ]
+    comments = [
+        Point.before(token) for token in tokens if token.type == tokenize.COMMENT
+    ]
+    return [
+        respelling
+        for respelling in [*plain, *named]
+        if not any(
+            splice.covers(comment)
+            for splice in respelling.splices
+            for comment in comments
+        )
+    ]
+
+
+def apply_splices(text: str, splices: list[Splice]) -> str:
+    """Write every splice into the source it was read from.
+
+    Last first, so a splice's recorded points still address the text they
+    were read off when two share a row. A splice across rows folds them into
+    its first and leaves the others empty rather than gone, so every row
+    number read before stays true while the rest are applied; a row a
+    removal leaves blank — a name that stood alone on it inside parentheses —
+    is dropped. Rows are read by the reader the tokenizer was given, which
+    ends a line at a newline alone: ``splitlines`` also ends one at a form
+    feed, and a row counted that way is a different line from the one the
+    splice was read off.
+    """
+    lines = io.StringIO(text).readlines()
+    for splice in sorted(
+        splices,
+        key=lambda splice: (splice.start.row, splice.start.column),
+        reverse=True,
+    ):
+        first, last = splice.start.row - 1, splice.end.row - 1
+        head = lines[first][: splice.start.column]
+        tail = lines[last][splice.end.column :]
+        lines[first : last + 1] = [
+            f"{head}{splice.text}{tail}",
+            *[""] * (last - first),
+        ]
+    touched = {splice.start.row - 1 for splice in splices}
+    return "".join(
+        line for row, line in enumerate(lines) if row not in touched or line.strip()
+    )
 
 
 def relocate_in_file(path: Path, moves: list[Relocation]) -> RelocationEdit | None:
     """Repoint every import in one file, or report that none named a mover."""
     text = path.read_text(encoding="utf-8")
     tokens = list(tokenize.generate_tokens(io.StringIO(text).readline))
-    edits = module_edits(tokens, moves)
-    if not edits:
+    respelled = respellings(tokens, moves)
+    if not respelled:
         return None
-    path.write_text(apply_edits(text, edits), encoding="utf-8")
-    return RelocationEdit(path=path, imports=len(edits))
+    splices = [splice for respelling in respelled for splice in respelling.splices]
+    path.write_text(apply_splices(text, splices), encoding="utf-8")
+    return RelocationEdit(
+        path=path, imports=sum(respelling.repointed for respelling in respelled)
+    )
 
 
 def source_files(
@@ -385,15 +786,15 @@ def surviving_mentions(
 
     Not necessarily wrong — prose about where something used to live is a
     legitimate thing to write — so this reports and the reader decides. A
-    moved module imported by name from its package is reported too, though
-    it is always wrong: the rewrite leaves that spelling alone, and it is the
-    one a search for the dotted path cannot find.
+    moved module still imported by name from its package is reported too,
+    though it is always wrong: it is a statement the rewrite declined, and
+    the one a search for the dotted path cannot find.
     """
 
     def mentions(path: Path) -> Iterator[str]:
         text = path.read_text(encoding="utf-8")
         declined = {number for number in submodule_imports(text, moves)}
-        for number, line in enumerate(text.splitlines(), start=1):
+        for number, line in enumerate(io.StringIO(text).readlines(), start=1):
             if number in declined or any(".".join(move.old) in line for move in moves):
                 yield f"{path}:{number}: {line.strip()}"
 
@@ -403,27 +804,22 @@ def surviving_mentions(
 
 
 def submodule_imports(text: str, moves: list[Relocation]) -> list[int]:
-    """The lines importing a moved module by name from the package holding it.
+    """The rows importing a moved module by name from the package it left.
 
     ``from package import submodule`` never writes the module's dotted path
-    whole, so it is read by the grammar: an imported name that, joined to the
-    package it is imported from, spells a moved module. A source that does
-    not parse names nothing here, and its text mentions still are.
+    whole, so it is read by the grammar the rewrite reads it with: an
+    imported name a move of its own carried away from its package. A source
+    the tokenizer cannot read names nothing here, and its text mentions
+    still are.
     """
     try:
-        tree = ast.parse(text)
-    except SyntaxError:
+        tokens = list(tokenize.generate_tokens(io.StringIO(text).readline))
+    except (tokenize.TokenError, SyntaxError):
         return []
-    moved = [move.old for move in moves]
-
-    def named(node: ast.AST) -> Iterator[int]:
-        match node:
-            case ast.ImportFrom(module=str(module), names=names, level=0):
-                package = name_parts(module) or []
-                yield from (
-                    alias.lineno for alias in names if [*package, alias.name] in moved
-                )
-            case _:
-                return
-
-    return sorted(line for node in ast.walk(tree) for line in named(node))
+    return sorted(
+        {
+            Point.before(tokens[name.start]).row
+            for statement in from_imports(tokens)
+            for name in statement.carried(tokens, moves)
+        }
+    )

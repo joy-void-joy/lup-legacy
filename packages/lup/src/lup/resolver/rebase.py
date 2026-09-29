@@ -15,7 +15,7 @@ concerns most likely to conflict with an upstream fix are exactly the ones
 editing the files it touched.
 """
 
-from lup.resolver.journal import BaseRefreshedEvent, Journal, LeaseRefreshedEvent
+from lup.resolver.record import BaseRefreshedEvent, Journal, LeaseRefreshedEvent
 from lup.resolver.models import (
     INTEGRATION_CONCERN_ID,
     BaseRefresh,

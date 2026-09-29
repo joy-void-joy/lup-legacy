@@ -3,4 +3,4 @@
 # See docs/harness.md.
 
 command -v python3 >/dev/null 2>&1 || exit 0
-exec python3 "${0%/*}/../runtime/subagent_cleanup.py"
+exec python3 -s "${0%/*}/../runtime/subagent_cleanup.py"

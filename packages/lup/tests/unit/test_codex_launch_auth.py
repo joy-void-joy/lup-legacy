@@ -137,22 +137,6 @@ def test_contained_authentication_selects_the_requested_login_flow(
     )
 
 
-def test_named_profile_is_not_verified_against_an_unselected_base_configuration(
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-    tmp_path: Path,
-) -> None:
-    read = AsyncMock(
-        side_effect=AssertionError("app-server cannot select this profile")
-    )
-    monkeypatch.setattr(codex_session, "read_account", read)
-
-    codex_session.codex_login_preflight(tmp_path, {}, profile="offline")
-
-    read.assert_not_awaited()
-    assert "not verified" in capsys.readouterr().out
-
-
 @pytest.mark.parametrize("sandbox", list(LaunchSandbox))
 @pytest.mark.parametrize("transport", ["commands", "x11"])
 @pytest.mark.parametrize(

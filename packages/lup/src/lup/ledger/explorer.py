@@ -141,6 +141,9 @@ def export_page(view: ExportView, template: Template) -> str:
     to it is the log as JSON, which autoescape entity-escapes into the mount
     element's `data-lup-export` attribute. The app reads that attribute
     before it would fetch, so the same bundle serves both ways.
+
+    The two other shapes are the user's refusals, not open alternatives: the
+    bundle as base64 `data:` URLs, and escaping done by a substitution here.
     """
     return template.render(log=view.model_dump_json())
 

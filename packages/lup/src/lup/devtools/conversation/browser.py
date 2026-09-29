@@ -34,7 +34,7 @@ def require_playwright() -> None:
     """Refuse with the installation path instead of an import traceback."""
     if find_spec("playwright.async_api") is None:
         raise ConversationBrowserError(
-            "Conversation retention needs the `lup[conversation]` extra. "
+            "Conversation retention needs the `lup-agents[conversation]` extra. "
             "Install it, then run `uv run playwright install chromium`."
         )
 

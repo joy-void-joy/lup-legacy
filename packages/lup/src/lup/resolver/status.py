@@ -23,7 +23,7 @@ from tqdm import tqdm
 
 from lup.channels.models import utc_now
 from lup.resolver.join_desk import JoinDesk
-from lup.resolver.journal import journal_tail
+from lup.resolver.record import journal_tail
 from lup.resolver.models import (
     SETTLED_STATUSES,
     ConcernStatus,

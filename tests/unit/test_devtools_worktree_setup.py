@@ -8,6 +8,11 @@ cannot finish says which steps did not, rather than reporting the success
 that sends an agent off diagnosing phantom errors in correct code.
 """
 
+# lup: defer: tests here errored twice, and one in test_devtools_delete_branch
+# once, across four full 16-worker runs of the suite on 2026-09-19, each
+# passing alone; every fixture builds its own repository under tmp_path, so it
+# is not another session's checkout -- measure it under load if it recurs
+
 from pathlib import Path
 from unittest.mock import Mock
 
@@ -718,6 +723,15 @@ def test_a_branch_rebuilt_on_another_base_still_pushes_forward(
 
     rebuilt = repo_git(tree_dir / "topic")
     rebuilt("reset", "-q", "--hard", "other")
-    commit_file(rebuilt, tree_dir / "topic", "mine.txt", "mine\n", "feat: mine")
+    # Past the guards creation armed, as the push is: the commit is setting
+    # the scene, and the drift check it would run is a harness composed twice
+    # in a subprocess, five seconds of a test about where the push lands.
+    commit_file(
+        rebuilt.bake("-c", f"core.hooksPath={repo.parent / 'no-hooks'}"),
+        tree_dir / "topic",
+        "mine.txt",
+        "mine\n",
+        "feat: mine",
+    )
 
     rebuilt("push", "--no-verify", "-u", "origin", "topic")

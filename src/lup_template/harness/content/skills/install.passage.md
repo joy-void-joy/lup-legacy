@@ -161,17 +161,17 @@ Installing is one of two jobs this command does. The other is bringing a
 target that already has lup up to date, and the two look nothing alike — so
 decide which before reading anything else. Run
 `uv run --directory <target> lup-devtools dev library status`; where that command
-does not exist, look for a `lup` dependency in the target's `pyproject.toml`,
-for a vendored `packages/lup/`, and — the case both of those miss — for a
-`lup-devtools` entry point or lup-shaped module names with no `lup` dependency
-standing behind them.
+does not exist, look for a `lup-agents` dependency in the target's
+`pyproject.toml`, for a vendored `packages/lup/`, and — the case both of those
+miss — for a `lup-devtools` entry point or lup-shaped module names with no
+`lup-agents` dependency standing behind them.
 
 | What the target has | Do this instead of installing |
 | --- | --- |
 | Nothing | Continue with the phases below — this is a first install. |
-| A `lup` dependency resolved from an index, a repository, or a checkout | Nothing to port. Move the release it resolves forward, regenerate its harness, and report. The library arrives as a package; only the target's own declarations are its business. |
+| A `lup-agents` dependency resolved from an index, a repository, or a checkout | Nothing to port. Move the release it resolves forward, regenerate its harness, and report. The library arrives as a package; only the target's own declarations are its business. |
 | A vendored `packages/lup/` copy | Do **not** overwrite it. Port the upstream commits through {{ update_skill }}, which reviews them one at a time against a tree that has diverged on purpose. Read the fork the other way too, before porting anything: run the library placement test over what it *added*, because a downstream that solved a framework problem is holding library code, and that folds back into lup rather than staying forked forever. Then offer to end the fork, saying plainly that it is one-way and worth reviewing: pick the acquisition mode by the § How the Target Obtains Lup table below rather than defaulting to a vendored copy, which is what the fork already is. |
-| An **absorbed fork**: lup-shaped modules under the target's own package, no `packages/lup/`, no `lup` dependency, and usually a plugin renamed to the target, so its skills answer to the target's own prefix rather than lup's | The fork boundary was erased by the rename, so there is nothing to update through and no diff to read. Reconstruct the boundary before touching anything: map each forked module to the lup module that now owns it, and report that mapping with line counts as the deletion set, because those copies drifted in place for however long the fork ran, which makes a swap a behavior change rather than a move. Never delete on the strength of a name match. That same rename is what makes coexistence safe — a skill under the target's own prefix cannot collide with one under {{ skill_pattern }} — so installing beside the fork and retiring it piecewise is available, and is the better first move whenever the target is something that has to keep working. Say plainly that two plugins means two hook sets classifying the same command, and settle which one decides before installing. |
+| An **absorbed fork**: lup-shaped modules under the target's own package, no `packages/lup/`, no `lup-agents` dependency, and usually a plugin renamed to the target, so its skills answer to the target's own prefix rather than lup's | The fork boundary was erased by the rename, so there is nothing to update through and no diff to read. Reconstruct the boundary before touching anything: map each forked module to the lup module that now owns it, and report that mapping with line counts as the deletion set, because those copies drifted in place for however long the fork ran, which makes a swap a behavior change rather than a move. Never delete on the strength of a name match. That same rename is what makes coexistence safe — a skill under the target's own prefix cannot collide with one under {{ skill_pattern }} — so installing beside the fork and retiring it piecewise is available, and is the better first move whenever the target is something that has to keep working. Say plainly that two plugins means two hook sets classifying the same command, and settle which one decides before installing. |
 | An old install with no sync baseline | Baseline it first (step 9 below, against the target), so the next review lists commits rather than the entire history. |
 
 A target that already has lup is the common case after the first year, and
@@ -343,7 +343,7 @@ Steps 1-4, 6 and 7 repeat per selected tree; step 5 is tree-independent.
 2. Hook definitions and adapted hook scripts — {{ hooks_plugin_path }} (only reference hooks being installed)
 3. Marketplace registration — {{ marketplace_2 }}
 4. Selected skills — {{ skills_plugin_path }}
-5. `src/<project>/devtools/` — devtools CLI skeleton (if Python target, adapt import paths but keep `lup-devtools` as the CLI entry point name), and the `lup` requirement itself in the target's `pyproject.toml`, declared through the mode § How the Target Obtains Lup settled on
+5. `src/<project>/devtools/` — devtools CLI skeleton (if Python target, adapt import paths but keep `lup-devtools` as the CLI entry point name), and the `lup-agents` requirement itself in the target's `pyproject.toml`, declared through the mode § How the Target Obtains Lup settled on
 6. Project configuration — {{ project_settings_3 }} — create or merge
 7. Guidance file — {{ guidance_file_2 }} — section-level merge from that tree's template flavor (read template → use `<!-- section: ... -->` markers to identify merge units → adapt for target → compare sections → add missing ones → leave existing untouched)
 8. **Hand off to generation**: everything written in steps 1-4, 6 and 7 becomes a generated artifact once the target's harness runs. From here on, the target edits its declarations under `src/<project>/harness/content/` and regenerates with `uv run lup-devtools harness generate all`; the installed files are outputs, and a hand edit to one is reverted the next time generation runs. Say so explicitly in the Phase 7 report.

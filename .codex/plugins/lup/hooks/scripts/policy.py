@@ -27,6 +27,7 @@ import kernel.lex as shell_lex
 from kernel.review import copied_paths, literal_input
 from kernel.shell import auto_escape_matches
 import policy_data as declared_policy
+from caller_payload import caller_of
 from policy_data import AUTO_ESCAPE_PREFIXES
 from policy_data import AGENT_IDENTITY_ENV, AUTONOMOUS_AGENT_IDENTITIES
 from policy_data import DIAGNOSTICS_COMMAND, REPAIR_COMMAND
@@ -80,7 +81,7 @@ from kernel.rows import (
     landing_rows,
     unproduced_cause,
 )
-from kernel.spawns import decide_spawn
+from kernel.spawns import decide_spawn, spawn_name
 from kernel.words import INTERPRETERS
 from kernel.roles import displaced_targets, sibling_scratch_rows
 from kernel.shell import decide_shell, sandbox_excluded, shell_posture_targets
@@ -2689,7 +2690,7 @@ def lent_mount_points(mountinfo: str) -> list[str]:
     space-separated record per mount. A mount whose root inside its own
     filesystem is not that filesystem's top is a bind: a directory, a volume
     or a single file handed in from somewhere else -- the checkout, a cache
-    volume, the credential seed, the peer inbox. A filesystem mounted whole --
+    volume, the credential seed, the wake sockets. A filesystem mounted whole --
     the image's own root, ``proc``, a ``tmpfs`` the container made -- is the
     container's. The one whole filesystem a launch lends is a lease root at a
     disk's top, which the lease names.
@@ -3576,11 +3577,20 @@ def peer_send_decision(values: list[str], cwd: Path | None) -> KernelDecision:
     offered rather than a named field, because which field a runtime spells a
     recipient in is that runtime's business and this half answers for all of
     them.
+
+    This session and its own subagents are left out of the spellings: a send
+    between two of them never leaves the process, so it leaves nothing any
+    other worktree could have read — a subagent reporting to the session that
+    dispatched it, or the session steering one of its own.
     """
     directory = peer_directory(cwd)
-    if directory is None:
+    if PEER_POLICY is None or directory is None:
         return decide_peer_send(values, [], PEER_POLICY)
-    return decide_peer_send(values, store.addresses(directory), PEER_POLICY)
+    return decide_peer_send(
+        values,
+        store.addresses(directory, beside=declared_identity(PEER_POLICY["member_env"])),
+        PEER_POLICY,
+    )
 
 
 def peer_listing_decision() -> KernelDecision:
@@ -3588,15 +3598,28 @@ def peer_listing_decision() -> KernelDecision:
     return decide_peer_listing(PEER_POLICY)
 
 
-def spawn_decision(name: str, values: list[str], field: str) -> KernelDecision:
-    """Judge one native spawn by the name it carries, against what this project declared.
+def spawn_decision(
+    name: str, description: str, values: list[str], field: str
+) -> KernelDecision:
+    """Judge one native spawn by the name it goes out under, against what this project declared.
 
-    ``name`` is the runtime's own field for it, read by the host half that
-    knows which key that is, and ``field`` is that key, so the refusal can
-    name the argument; every string the call carries rides beside them so an
+    ``name`` is the runtime's own field for it and ``description`` the text a
+    name is read from where none was given, each read by the host half that
+    knows which key that is — a runtime whose spawn carries no description
+    passes ``""``. ``field`` is the name's key, so the refusal can name the
+    argument; every string the call carries rides beside them so an
     escalation marker in any of them is found.
     """
-    return decide_spawn(name, values, SPAWN_NAMES, field)
+    return decide_spawn(name, description, values, SPAWN_NAMES, field)
+
+
+def spawn_named(name: str, description: str) -> str:
+    """The name this project sends a spawn out under, the one the verdict judged.
+
+    What a host half writes back into the call where it differs from what
+    was given, so the rewrite and the verdict cannot come to disagree.
+    """
+    return spawn_name(name, description, SPAWN_NAMES)
 
 
 def peer_listing_attachment(cwd: Path | None) -> str:
@@ -3981,31 +4004,42 @@ def written_review(command: str, cwd: Path) -> list[str]:
     ]
 
 
-def foreign_claim_decision(path_text: str, cwd: Path | None) -> KernelDecision | None:
-    """Whether a live session other than this one is already in the named file.
+def foreign_claim_decision(
+    path_text: str, cwd: Path | None, caller: store.Caller
+) -> KernelDecision | None:
+    """Whether a live member other than this caller is already in the named file.
 
     The roster and the claim record are both live, so both are folded here and
     handed over as the names they resolve to — the kernel reads no filesystem
     and decides from what it is given.
+
+    *caller* is the conversation making the call, as its runtime's host half
+    read it off the payload: a subagent is judged as its own row, so its
+    sibling's claims are asked about and its session's are not.
     """
     directory = peer_directory(cwd)
     if PEER_POLICY is None or directory is None:
         return None
+    session = declared_identity(PEER_POLICY["member_env"])
     return decide_foreign_claim(
         path_text,
         store.claim_holders(
-            directory, path_text, declared_identity(PEER_POLICY["member_env"])
+            directory,
+            path_text,
+            store.acting_id(session, caller),
+            session=session,
         ),
         PEER_POLICY,
     )
 
 
-def claim_window_opened(cwd: Path | None) -> None:
+def claim_window_opened(cwd: Path | None, caller: store.Caller) -> None:
     """Snapshot the tree before a command whose writes no input names.
 
     Only a command needs this. Every other writing call says which file it is
     about, and a call that names its own target is attributed from the target
-    rather than from a comparison.
+    rather than from a comparison. The window is the calling row's own, so
+    two subagents' commands running at once each close their own.
     """
     if PEER_POLICY is None:
         return
@@ -4013,43 +4047,50 @@ def claim_window_opened(cwd: Path | None) -> None:
         cwd,
         PEER_POLICY["store"],
         PEER_POLICY["windows_dir"],
-        declared_identity(PEER_POLICY["member_env"]),
+        store.acting_id(declared_identity(PEER_POLICY["member_env"]), caller),
     )
 
 
-def claim_window_closed(cwd: Path | None) -> None:
+def claim_window_closed(cwd: Path | None, caller: store.Caller) -> None:
     """Attribute what a command changed, contested where nothing could tell."""
     if PEER_POLICY is None:
         return
     directory = peer_directory(cwd)
-    mine = declared_identity(PEER_POLICY["member_env"])
+    session = declared_identity(PEER_POLICY["member_env"])
     closed = close_claim_window(
-        cwd, PEER_POLICY["store"], PEER_POLICY["windows_dir"], mine
+        cwd,
+        PEER_POLICY["store"],
+        PEER_POLICY["windows_dir"],
+        store.acting_id(session, caller),
     )
     if directory is not None:
-        store.record_claims(directory, mine, closed["paths"])
+        store.record_claims(
+            directory, store.acting(directory, session, caller), closed["paths"]
+        )
 
 
-def named_claim_recorded(path_text: str, cwd: Path | None) -> None:
+def named_claim_recorded(
+    path_text: str, cwd: Path | None, caller: store.Caller
+) -> None:
     """Attribute a change to the exact file the call named.
 
     The tier that needs no comparison: the call said which file, so what this
-    leaves on the session's own member file is evidence of the state that
-    session left the path in, rather than of what a before-and-after could
-    narrow the writer down to.
+    leaves on the calling row's own file — the subagent's where one made the
+    call, joined on the way — is evidence of the state that row left the path
+    in, rather than of what a before-and-after could narrow the writer down to.
     """
     directory = peer_directory(cwd)
     if PEER_POLICY is None or directory is None or not path_text:
         return
     store.record_claims(
         directory,
-        declared_identity(PEER_POLICY["member_env"]),
+        store.acting(directory, declared_identity(PEER_POLICY["member_env"]), caller),
         [str(Path(path_text).resolve())],
     )
 
 
 def edit_claim_decision(
-    verdict: KernelDecision, path_text: str, cwd: Path | None
+    verdict: KernelDecision, path_text: str, cwd: Path | None, caller: store.Caller
 ) -> KernelDecision:
     """One edit's own verdict, settled together with any claim over its path.
 
@@ -4057,7 +4098,7 @@ def edit_claim_decision(
     answer about the same file: what the content gates decided, and whether
     somebody else is already in it, are two questions and one approval.
     """
-    return settled_with_claim(verdict, foreign_claim_decision(path_text, cwd))
+    return settled_with_claim(verdict, foreign_claim_decision(path_text, cwd, caller))
 
 
 def hook_environment():
@@ -4109,7 +4150,7 @@ def patch_changes(command, cwd):
     return changes
 
 
-def patch_decision(command, cwd, autonomous):
+def patch_decision(command, cwd, autonomous, caller):
     """Judge every decoded path, including the source of a move and peer claims."""
     return joined(
         [
@@ -4125,6 +4166,7 @@ def patch_decision(command, cwd, autonomous):
                 ),
                 change.path,
                 cwd,
+                caller,
             )
             for change in patch_changes(command, cwd)
         ]
@@ -4148,17 +4190,21 @@ def dispatch(payload, permission_request=False):
         agent_type in AUTONOMOUS_AGENT_IDENTITIES
         or declared_identity(AGENT_IDENTITY_ENV) in AUTONOMOUS_AGENT_IDENTITIES
     )
+    # Which conversation of this session made the call, so what it holds and
+    # what it is asked about are its own roster row's — a subagent's where
+    # one called — read the way the caller hook reads it for the tool server.
+    caller = caller_of(payload)
     if name == "Bash":
         envelope = literal_input(tool_input["command"], "apply_patch")
         if envelope is not None:
-            return patch_decision(envelope, session_directory, autonomous)
+            return patch_decision(envelope, session_directory, autonomous, caller)
         requested_escape = spent_escape(tool_input)
         # The snapshot a comparison afterwards is read against, taken only on
         # the event that runs immediately before the call: a permission
         # request runs before the prompt, and a window opened there would span
         # however long somebody took to answer it.
         if not permission_request:
-            claim_window_opened(session_directory)
+            claim_window_opened(session_directory, caller)
         escaped = requested_escape or auto_escape_matches(
             tool_input["command"], AUTO_ESCAPE_PREFIXES
         )
@@ -4203,14 +4249,17 @@ def dispatch(payload, permission_request=False):
         # not one per surface.
         return fetch_decision(tool_input["url"], session_directory)
     if name == "apply_patch":
-        return patch_decision(tool_input["command"], session_directory, autonomous)
+        return patch_decision(
+            tool_input["command"], session_directory, autonomous, caller
+        )
     if name == "collaborationspawn_agent":
-        # Measured on 0.155.1: the spawn carries `task_name` and `message`,
-        # and the hook names the tool this way. The runtime requires the task
-        # name on the call, so this insists on the same thing Claude's half
-        # does, and defers where it is there.
+        # Measured on 0.155.1 and 0.158.0: the spawn carries `task_name` and
+        # `message`, and the hook names the tool this way. No description to
+        # read a name out of, so a spawn with no task name is refused where
+        # Claude's half would name it, and one misspelled goes out normalized.
         return spawn_decision(
             tool_input["task_name"] if "task_name" in tool_input else "",
+            "",
             [value for value in tool_input.values() if isinstance(value, str)],
             "task_name",
         )
@@ -4225,6 +4274,26 @@ def dispatch(payload, permission_request=False):
     if refused is not None:
         return refused
     return KernelDecision("ask", f"unknown tool {name!r} is not covered by policy")
+
+
+def named_input(payload):
+    """The spawn's arguments under the name it goes out with, or ``None`` to send it as written.
+
+    The one call this half rewrites. Codex takes `updatedInput` only beside
+    `permissionDecision: "allow"`, replacing a tool's whole arguments object —
+    its hook documentation says so, and 0.158.0 measured it: a spawn the model
+    named `probe-child`, rewritten to `hooked_child` this way, went out as
+    `/root/hooked_child`, while an MCP call's rewrite with no decision was
+    dropped and the call ran as written. A spawn raises no approval
+    of its own there, so the allow that carries the name settles nothing the
+    deferral it spells would have left to anybody.
+    """
+    if payload["tool_name"] != "collaborationspawn_agent":
+        return None
+    tool_input = payload["tool_input"]
+    given = tool_input["task_name"] if "task_name" in tool_input else ""
+    named = spawn_named(given, "")
+    return None if named in ("", given) else {**tool_input, "task_name": named}
 
 
 def queued_review(payload, decision):
@@ -4392,7 +4461,7 @@ def observe(payload):
         ]
         for target in changed:
             publish_edition(target)
-            named_claim_recorded(target, directory)
+            named_claim_recorded(target, directory, caller_of(payload))
         return [
             finding
             for target in changed
@@ -4404,7 +4473,7 @@ def observe(payload):
         ]
     # What the command changed, read against the snapshot its own PreToolUse
     # took, and contested where another session had a window open across it.
-    claim_window_closed(Path(root) if root else None)
+    claim_window_closed(Path(root) if root else None, caller_of(payload))
     return [
         *written_review(command, Path(root) if root else Path.cwd()),
         *boundary_account(
@@ -4515,6 +4584,18 @@ def main():
         )
         return
     if decision.effect in ("allow", "defer"):
+        renamed = None if permission_request else named_input(payload)
+        if renamed is not None:
+            json.dump(
+                {
+                    "hookSpecificOutput": {
+                        "hookEventName": "PreToolUse",
+                        "permissionDecision": "allow",
+                        "updatedInput": renamed,
+                    }
+                },
+                sys.stdout,
+            )
         record_hook_evidence(plugin_data_root(), payload, "completed", decision.effect)
         return
     # A successful structured denial preserves the operator warning; exit 2

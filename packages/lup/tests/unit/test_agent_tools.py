@@ -361,6 +361,18 @@ def test_a_group_takes_its_builders_name_and_serves_by_its_path(
     assert launched_back(group) == group
 
 
+def test_an_always_loaded_server_crosses_to_its_subprocess_as_declared(
+    probe_echo: LupMcpTool,
+) -> None:
+    """The servers built by their own constructors take the flag too."""
+    toolset = Toolset([probe_echo], name="probe", always_load=True)
+    group = Group(probe_group, always_load=True)
+
+    assert toolset.always_load and group.always_load
+    assert launched_back(toolset) == toolset
+    assert launched_back(group) == group
+
+
 def test_an_external_server_is_its_transport_both_ways(tmp_path: Path) -> None:
     transport = RawStdioServerConfig(command="probe", args=["--stdio"])
     external = External(name="probe", server=transport)

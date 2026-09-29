@@ -20,7 +20,7 @@ from lup.policy.identity import ConcernAllowance
 from lup.policy.models import EditBatch, EditChange
 from lup.policy.rules import EditPolicy, PathRule
 from lup.resolver.grants import GrantLedger, concern_grants
-from lup.resolver.journal import Journal
+from lup.resolver.record import Journal
 from lup.coordination.mailbox import AnswerDoor, AnswerOffer, ParkRequest
 from lup.coordination.questions import QuestionAnswer
 from lup.resolver.mailbox import PendingQuestion, QuestionMailbox

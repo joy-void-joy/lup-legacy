@@ -16,7 +16,7 @@ from pathlib import Path
 
 from pydantic import BaseModel, Field
 
-from lup.coordination.bare.store import INBOX_DIR
+from lup.coordination.bare.store import MAILBOX_DIR
 from lup.coordination.mailbox import QUESTION_DIR
 from lup.coordination.questions import QuestionAnswer
 from lup.coordination.refs import ActorRef
@@ -353,18 +353,18 @@ def last_activity(run_root: Path) -> float:
 
     Each question is a directory of its own, so the questions root only
     moves when one is added. Its children carry declaring, offering, and
-    settling, which is most of what a live run does. The inboxes are read the
+    settling, which is most of what a live run does. The mailboxes are read the
     same way and for the same reason: one directory per member, whose own
     modification time moves as messages land in it and are taken out.
     """
     questions = run_root / QUESTION_DIR
-    inboxes = run_root / INBOX_DIR
+    mailboxes = run_root / MAILBOX_DIR
     watched = [
         run_root / STATE_FILE,
         questions,
-        inboxes,
+        mailboxes,
         *(questions.iterdir() if questions.is_dir() else []),
-        *(inboxes.iterdir() if inboxes.is_dir() else []),
+        *(mailboxes.iterdir() if mailboxes.is_dir() else []),
     ]
     stamps = [path.stat().st_mtime for path in watched if path.exists()]
     return max(stamps) if stamps else 0.0

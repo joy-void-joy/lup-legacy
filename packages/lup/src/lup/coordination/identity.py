@@ -38,9 +38,6 @@ argument from the adapter that knows it, and this module stays the vocabulary
 both halves share.
 """
 
-from collections.abc import Collection
-
-from itertools import count
 from pathlib import Path
 from uuid import uuid4
 
@@ -137,24 +134,6 @@ class LaunchedMember(BaseModel, frozen=True):
         return {MEMBER_ENV: self.member_id, NAME_ENV: self.cli_name}
 
 
-def unique_cli_name(wanted: str, taken: Collection[str]) -> str:
-    """*wanted* where nobody else answers to it, else the first free numbered form.
-
-    Numbered rather than refused, because the name is a default nobody chose:
-    two sessions opened in one worktree are two peers and both are called
-    after it, and the second has to be reachable by a name that is not the
-    first's. A name somebody chose is refused instead, by the caller that
-    knows it was chosen.
-    """
-    if wanted not in taken:
-        return wanted
-    return next(
-        candidate
-        for candidate in (f"{wanted}-{ordinal}" for ordinal in count(2))
-        if candidate not in taken
-    )
-
-
 class NameTakenError(ValueError):
     """Raised when a session asks for a name a live session already answers to.
 
@@ -185,7 +164,7 @@ def derived_cli_name(worktree: Path) -> str:
     actually distinguishing between — which branch is this one on — and it is
     the one fact a session has before it has done anything. Two sessions in one
     worktree want the same one, and the second is numbered by
-    :func:`unique_cli_name` when it joins, so the address a listing prints for
+    :func:`~lup.coordination.bare.store.unique_cli_name` when it joins, so the address a listing prints for
     either reaches that one and not the other.
     """
     return worktree.name

@@ -18,6 +18,20 @@ leaves — four gates of four workers rather than four of sixteen. The total
 stays near what the machine has, each run keeps its own answer, and none of
 them waits on another.
 
+A run is anything that opens the suites, which is `dev test` as much as the
+gate. `dev test` is the same suite at the same width over the files a caller
+names, and it is the half of the scoped loop a change runs while it is still
+moving — so ten agents iterating are ten suites of sixteen workers beside
+whatever gate is running, the contention this exists for arriving by the side
+door. `dev check --changed` and `dev check --no-test` take no slot. Neither
+opens a suite: what they run is ruff and a Pyright handed no `--threads`, a
+single core however long it takes. A slot either held would divide nothing of
+its own, and would narrow every run that started beside it for the whole of
+that run, since the share is fixed when a run opens — and would queue
+`--changed`, a check of seconds, behind runs of minutes. That Pyright stays on
+one core is a decision `pyright_check` records, and the day it spreads, these
+two runs open something the share has to divide.
+
 Nothing here is correctness. A slot that cannot be taken, a lock file that
 cannot be made, a holder that died without releasing: each ends in the gate
 running anyway at its full width, because a session that cannot coordinate
@@ -28,7 +42,7 @@ contention this exists to avoid — which is where every session was before.
 import fcntl
 import os
 import time
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from pathlib import Path
 
@@ -78,9 +92,11 @@ class Admission(BaseModel, frozen=True):
     said: list[Notice] = []
     """What the operator is told, empty where nothing worth saying happened.
 
-    Returned rather than printed, because this runs under a command that says
-    everything it has to say in one report, and a line written from inside
-    would land in the middle of somebody else's output.
+    Returned rather than printed, because the gate says everything it has to
+    say in one report, and a line written from inside would land in the middle
+    of somebody else's output. The whole record either way: a caller whose
+    output streams hears each notice as it arises through `admitted`'s
+    *announce* as well.
     """
 
 
@@ -131,7 +147,11 @@ def held_beside(paths: list[Path], mine: Path) -> int:
 
 @contextmanager
 def admitted(
-    root: Path, workers: int, slots: int = SLOTS, patience: float = PATIENCE
+    root: Path,
+    workers: int,
+    slots: int = SLOTS,
+    patience: float = PATIENCE,
+    announce: Callable[[Notice], None] | None = None,
 ) -> Iterator[Admission]:
     """Hold one of this clone's gate slots, and answer with this run's share.
 
@@ -139,28 +159,37 @@ def admitted(
     alone. Divided by the number of runs under way when this one starts, so
     the machine carries about what it carries for one gate however many are on
     it.
+
+    *announce* hears each notice the moment it arises, beside the record the
+    admission carries back. It is for a caller whose output streams: a run
+    that waits for a slot and says nothing until it has one reads as hung, and
+    whatever launched it — a terminal, an agent's shell with a timeout — kills
+    it as hung, never having been told it was queued.
     """
     paths = slot_paths(root, slots)
     waited = 0.0
     said: list[Notice] = []
+
+    def note(text: str) -> None:
+        notice = Notice(text=text, urgency="boundary")
+        said.append(notice)
+        if announce is not None:
+            announce(notice)
+
     while True:
         for path in paths:
             handle = taken(path)
             if handle is None:
                 continue
             try:
-                share = max(MINIMUM_WORKERS, workers // (held_beside(paths, path) + 1))
+                others = held_beside(paths, path)
+                share = max(MINIMUM_WORKERS, workers // (others + 1))
                 if share < workers:
-                    said.append(
-                        Notice(
-                            text=(
-                                f"gate admission: {share} workers per suite "
-                                f"rather than {workers} — other gates are "
-                                "running on this clone, and the machine is "
-                                "divided rather than shared"
-                            ),
-                            urgency="boundary",
-                        )
+                    note(
+                        f"gate admission: {share} workers per suite rather "
+                        f"than {workers} — {others} other run(s) hold a slot "
+                        "on this clone, and the machine is divided rather "
+                        "than shared"
                     )
                 os.ftruncate(handle, 0)
                 os.pwrite(handle, f"{root.name} (pid {os.getpid()})".encode(), 0)
@@ -169,30 +198,16 @@ def admitted(
             finally:
                 os.close(handle)
         if waited >= patience:
-            yield Admission(
-                workers=workers,
-                said=[
-                    *said,
-                    Notice(
-                        text=(
-                            f"gate admission: waited {waited:.0f}s for a slot "
-                            "and ran anyway; a holder may have died without "
-                            "releasing one"
-                        ),
-                        urgency="boundary",
-                    ),
-                ],
+            note(
+                f"gate admission: waited {waited:.0f}s for a slot and ran "
+                "anyway; a holder may have died without releasing one"
             )
+            yield Admission(workers=workers, said=said)
             return
         if not waited:
-            said.append(
-                Notice(
-                    text=(
-                        f"gate admission: all {slots} slots on this clone are "
-                        "held — waiting rather than adding to the contention"
-                    ),
-                    urgency="boundary",
-                )
+            note(
+                f"gate admission: all {slots} slots on this clone are held — "
+                "waiting rather than adding to the contention"
             )
         time.sleep(1.0)
         waited += 1.0

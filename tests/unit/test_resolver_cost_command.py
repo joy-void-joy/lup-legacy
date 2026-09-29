@@ -10,7 +10,7 @@ from lup.channels.stream import Stream
 from lup.coordination.refs import ActorRef
 from lup.devtools.resolve import cost
 from lup.resolver.cost import CostReport
-from lup.resolver.journal import ENTRY_ADAPTER, JournalEntry, RunFailedEvent
+from lup.resolver.record import ENTRY_ADAPTER, JournalEntry, RunFailedEvent
 from lup.sessions.events import (
     SessionId,
     TurnCompletedEvent,

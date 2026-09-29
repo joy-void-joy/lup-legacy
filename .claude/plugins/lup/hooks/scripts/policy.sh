@@ -12,7 +12,7 @@ if ! command -v python3 >/dev/null 2>&1; then
     printf 'Lup hook cannot start: python3 is missing. Install Python 3 or fix PATH.\n' >&2
     exit 2
 fi
-python3 "$script"
+python3 -s "$script"
 lup_hook_status=$?
 case "$lup_hook_status" in
     0|2) exit "$lup_hook_status" ;;

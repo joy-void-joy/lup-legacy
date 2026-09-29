@@ -235,38 +235,29 @@ def test_the_git_command_tree_guards_every_subcommand(
 def test_the_launcher_guards_pointers_on_the_way_in(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """`ready_to_open` refuses a redirected set before any on-the-way-in git.
+    """The pointers are verified ahead of every step of the launch that runs host git.
 
-    The one gate both launchers pass through: settling base freshness, the
-    preflight probes and status all run host git after this point, so the
-    guard precedes them. A generate-only invocation returns before the guard
-    and is not gated, since it opens no session and touches no worktree.
+    Settling base freshness, regenerating the trees, the preflight probes and
+    status all run host git after the guard, so it precedes them. A
+    generate-only invocation runs no steps and is not gated, since it opens
+    no session.
     """
-    from lup.devtools.harness import launch
+    from unittest.mock import Mock
 
-    called: list[str] = []  # lup: ignore[empty-collection] — one-flag record
-    monkeypatch.setattr(launch, "generate_with_report", lambda *a, **k: None)
-    monkeypatch.setattr(launch, "generate_targets", lambda *a, **k: None)
-    monkeypatch.setattr(
-        launch, "refuse_redirected_pointers", lambda: called.append("guarded")
-    )
-    assert (
-        launch.ready_to_open(
-            composition=None,  # type: ignore[arg-type]
-            generate_only=True,
-            sentinels=None,  # type: ignore[arg-type]
-        )
-        is None
-    )
-    assert called == []
+    from lup.devtools.harness import launch
+    from lup.harness.generate import NativeHarnessComposition
+
+    composition = Mock(spec=NativeHarnessComposition)
+    composition.recipe = Mock(root=Path("/work"))
+    generation = launch.TreesGenerated(composition=composition)
+    kinds = [type(step) for step in launch.workflow_steps("claude", generation, None)]
+
+    assert kinds.index(launch.PointersVerified) < kinds.index(launch.BaseSettled)
+    assert kinds.index(launch.BaseSettled) < kinds.index(launch.TreesGenerated)
 
     def refuse() -> None:
         raise typer.Exit(9)
 
     monkeypatch.setattr(launch, "refuse_redirected_pointers", refuse)
     with pytest.raises(typer.Exit):
-        launch.ready_to_open(
-            composition=None,  # type: ignore[arg-type]
-            generate_only=False,
-            sentinels=None,  # type: ignore[arg-type]
-        )
+        launch.PointersVerified().before()

@@ -12,6 +12,7 @@ commit hook, continuous integration, and ``dev check`` all ask
 so no tree can be stale to one of them and current to another.
 """
 
+import shutil
 from typing import NoReturn, Protocol, runtime_checkable
 from pathlib import Path
 
@@ -19,6 +20,7 @@ import typer
 from pydantic import BaseModel
 
 from lup.formats.banner import REGENERATE_COMMAND
+from lup.providers.profile_tree import profile_directory
 from lup.harness.generate import (
     DeclarationObstruction,
     DriftReport,
@@ -99,6 +101,32 @@ def settled(report: DriftReport) -> bool:
     )
 
 
+def write_machine_overlay(composition: NativeHarnessComposition) -> None:
+    """Render this machine's overlay beside the composition's tree, replacing the last.
+
+    Named from the profiles this machine keeps, the checkout's own and the
+    person's, as a launch resolves one. The directory is the overlay's alone,
+    so it is rewritten whole: a profile removed since leaves no name behind.
+    """
+    overlay = composition.overlay
+    if overlay is None:
+        return
+    root = composition.recipe.root
+    profiles = sorted(
+        {
+            profile.name
+            for profile in profile_directory(composition.login, checkout=root).entries()
+        }
+    )
+    directory = root / overlay.directory
+    if directory.exists():
+        shutil.rmtree(directory)
+    for artifact in overlay.render(profiles).artifacts:
+        target = root / artifact.path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(artifact.content, encoding="utf-8")
+
+
 def generate_with_report(
     composition: NativeHarnessComposition, in_passing: bool = False
 ) -> None:
@@ -129,6 +157,7 @@ def generate_with_report(
         raise typer.Exit(1) from error
     if not (quiet and not materialized.changed and not materialized.removed):
         report_generation(recipe.label, materialized.changed, materialized.removed)
+    write_machine_overlay(composition)
 
 
 def repository_staleness(write: RepositoryWriter) -> list[str]:

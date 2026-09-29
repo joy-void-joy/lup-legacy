@@ -327,7 +327,9 @@ def create_dev_app(
         ] = False,
         no_test: Annotated[
             bool,
-            typer.Option("--no-test", help="Skip pytest"),
+            typer.Option(
+                "--no-test", help="Skip the test suites, and hold no gate slot"
+            ),
         ] = False,
         antipatterns: Annotated[
             bool,
@@ -397,8 +399,10 @@ def create_dev_app(
             typer.Option(
                 "--changed",
                 help="Run ruff and pyright over the Python files changed since "
-                "--since (default: the integration branch) and no tests at all — "
-                "the loop while a change is moving, not the bar a commit passes",
+                "the merge base with --since (default: this branch's recorded "
+                "base), and the declared-migrations row from that base, naming "
+                "what else changed and every gate left unrun — the loop while a "
+                "change is moving, not the bar a commit passes",
             ),
         ] = False,
         base: Annotated[
@@ -418,7 +422,9 @@ def create_dev_app(
 
             check.run_changed(
                 declarations.project,
-                since if since is not None else get_integration_branch(),
+                check.change_base(since, get_integration_branch()),
+                declarations.test_roots,
+                declarations.spread,
                 fix=fix,
             )
             return
@@ -470,7 +476,12 @@ def create_dev_app(
             ),
         ] = None,
     ) -> None:
-        """Run named tests in the suite that installs each, one run per suite."""
+        """Run named tests in the suite that installs each, one run per suite.
+
+        Holds one of the clone's gate slots as `dev check` does, and spreads
+        each suite over its share of the machine; with every slot held, it
+        waits and says so.
+        """
         declarations = declared()
         check.run_selected(
             test_roots=declarations.test_roots,
@@ -662,7 +673,13 @@ def create_dev_app(
         # retiring all of them has to name the ones already retired too, or
         # the answer would silently exclude what a previous answer dropped.
         shipped = [rule.id for rule in all_rules()]
-        for line in answers.settled(catalog, shipped, project.seams):
+        try:
+            settled = answers.settled(catalog, shipped, project.seams)
+        except ValueError as refused:
+            # A seam that cannot be written into — never written down, or
+            # naming a module that is not there — says why and where.
+            raise typer.BadParameter(str(refused)) from refused
+        for line in settled:
             typer.echo(line)
 
     @app.command("refutations")
@@ -1178,7 +1195,7 @@ def create_dev_app(
     ) -> None:
         """Resolve lup from its repository, for use before a release is published."""
         scaffold = declared().scaffold
-        project = scaffold.project if scaffold is not None else library_mod.DISTRIBUTION
+        project = scaffold.project if scaffold is not None else library_mod.REGISTRATION
         source_url = library_mod.repository_url(project_root(), url, project)
         library_mod.git_library(
             library_mod.git_source(source_url, branch=branch, tag=tag, rev=rev),
@@ -1386,13 +1403,8 @@ def create_dev_app(
 
     # -- what a range asks of a project built on this one --
 
-    def surfaces_over(spelled: str) -> preservation.Divergence:
-        """The two surfaces a ``base..head`` argument names, compared.
-
-        A head is optional and its absence means the working tree, which is
-        what a gate asks about: uncommitted work is exactly where a capability
-        goes missing before anybody notices.
-        """
+    def span_over(spelled: str) -> preservation.Span:
+        """The two ends a ``base..head`` argument names, the head optional."""
         # git's own range grammar, taken as given rather than invented here.
         base, separator, head = spelled.partition("..")  # lup: ignore[string-split]
         if not separator or not base:
@@ -1400,13 +1412,7 @@ def create_dev_app(
                 f"expected <base>..<head>, or <base>.. for the working tree; "
                 f"got {spelled!r}"
             )
-        project = declared().project
-        return preservation.compare(
-            preservation.surface_at(base, project),
-            preservation.surface_at(head, project)
-            if head
-            else preservation.surface_now(project),
-        )
+        return preservation.Span(base=base, head=head)
 
     @migrate_app.command("map")
     def migrate_map_cmd(
@@ -1425,7 +1431,7 @@ def create_dev_app(
         what cannot be spelled as a pair is spelled out instead, name by
         name, for a reader to judge and repoint by hand.
         """
-        divergence = surfaces_over(over)
+        divergence = span_over(over).divergence(declared().project)
         moves = divergence.module_moves()
         unmapped = divergence.unmapped_modules()
         if not moves and not unmapped:
@@ -1462,11 +1468,13 @@ def create_dev_app(
         """What a project standing at that commit still owes, beyond the map.
 
         The declared residue: a signature that gained parameters, a refusal
-        that split. A project already past the commit that made the break has
-        applied it, and is told nothing.
+        that split. Read from every release's record and the pending window,
+        so a project crossing several releases hears each one's; a project
+        already past the commit that made a break has applied it, and is told
+        nothing.
         """
         owed = migrations.unapplied(
-            migrations.DECLARED, revision, repository or Path.cwd()
+            migrations.MigrationRecord().declared(), revision, repository or Path.cwd()
         )
         if as_json:
             output_json(
@@ -1485,13 +1493,31 @@ def create_dev_app(
     @app.command("release")
     def release_cmd(
         level: Annotated[
-            str,
-            typer.Argument(help="Which part of the version moves: patch, minor, major"),
-        ],
+            str | None,
+            typer.Argument(
+                help="Which part of the version moves: patch, minor, major. "
+                "Left out, an open series of candidates keeps its own"
+            ),
+        ] = None,
+        pre: Annotated[
+            bool,
+            typer.Option(
+                "--pre",
+                help="Cut a release candidate, vX.Y.ZrcN, published as a pre-release",
+            ),
+        ] = False,
+        direct: Annotated[
+            bool,
+            typer.Option(
+                "--direct",
+                help="Release what this branch holds rather than promote the "
+                "open candidate",
+            ),
+        ] = False,
         dry_run: DryRun = False,
         as_json: Annotated[bool, typer.Option("--json", help="Emit JSON")] = False,
     ) -> None:
-        """Cut a release: close the changelog, move the version, tag it.
+        """Cut a release or a candidate of one, or promote the newest candidate.
 
         One transaction over the files a release touches, because four prose
         steps in a skill are three steps that never run. What stays outside
@@ -1499,26 +1525,32 @@ def create_dev_app(
         entries under `## Unreleased` say — and everything downstream of
         those is arithmetic, carried out the same way each time.
 
+        With `--pre` the release goes out first as a candidate, its manifest
+        carrying the candidate's version. A plain release while the newest
+        tag is a candidate promotes it: one commit on a branch cut from the
+        candidate, changing only the version, the changelog and the record,
+        checked against the candidate before it is made, tagged, and merged
+        back into this branch — which goes on moving while a candidate
+        soaks. It is taken where the release branch still holds exactly what
+        the candidate shipped; where that moved, this says so and names both
+        ways on — another candidate, or `--direct`.
+
         Refused on a dirty tree and on an undeclared break, in that order. The
         first because a release commit should hold the release and not
         whatever somebody left lying about; the second because the gate exists
         to stop a break shipping with no instruction, and a release is the
-        moment it would ship.
+        moment it would ship. A promotion is not: it ships what its candidate
+        shipped, and checks that it does.
         """
         from lup.devtools.dev.release import (
-            ReleasePlan,
-            cleared_declarations,
-            is_level,
-            next_version,
-            published_version,
-            release_subject,
-            released,
-            with_version,
+            PendingBreaks,
+            ReleaseRefused,
+            ReleaseRequest,
+            carry_out,
+            read_state,
+            requested_level,
         )
 
-        if not is_level(level):
-            typer.echo(f"{level} is not patch, minor or major", err=True)
-            raise typer.Exit(1)
         # Only where something is about to be written. A dry run is what
         # somebody asks *while* the tree is dirty, to see what a release would
         # do before deciding what to do with the rest of it.
@@ -1533,36 +1565,36 @@ def create_dev_app(
         declarations = declared()
         spec = declarations.release
         root = project_root()
+        record = migrations.MigrationRecord()
+        pending = record.pending()
+        log = Changelog.read(root / spec.changelog)
+        try:
+            plan = read_state(spec, root, record.pending_directory()).planned(
+                ReleaseRequest(level=requested_level(level), pre=pre, direct=direct),
+                dt.date.today(),
+                log,
+                PendingBreaks(lines=migrations.rendered(pending), count=len(pending)),
+                spec,
+            )
+        except ReleaseRefused as refused:
+            typer.echo(str(refused), err=True)
+            raise typer.Exit(1) from refused
+
         base = migrations.gate_base(get_integration_branch())
         undeclared = (
-            migrations.undeclared_breaks(declarations.project, base) if base else []
+            migrations.undeclared_breaks(declarations.project, base, record)
+            if base and plan.kind != "promotion"
+            else []
         )
         if undeclared:
             for capability in undeclared:
                 typer.echo(f"undeclared break: {capability.spelled()}", err=True)
             typer.echo(
-                "a release cannot carry a break with nothing to read — declare "
-                "each in `lup.devtools.dev.migrations.DECLARED`",
+                "a release cannot carry a break with nothing to read — "
+                f"{record.instruction(root)}",
                 err=True,
             )
             raise typer.Exit(1)
-
-        manifest = root / spec.version_file
-        changelog_path = root / spec.changelog
-        previous = published_version(manifest)
-        version = next_version(previous, level)
-        today = dt.date.today()
-        pending = migrations.rendered(migrations.DECLARED)
-        log = Changelog.read(changelog_path)
-        plan = ReleasePlan(
-            previous=previous,
-            version=version,
-            date=today,
-            tag=f"{spec.tag_prefix}{version}",
-            migrations=pending,
-            breaks=len(migrations.DECLARED),
-            entries=bool(log.unreleased),
-        )
 
         if dry_run:
             if as_json:
@@ -1572,27 +1604,37 @@ def create_dev_app(
                     typer.echo(f"would release: {line}")
             return
 
-        declared_source = Path(migrations.__file__)
-        changelog_path.write_text(released(log, version, today, pending).render())
-        manifest.write_text(with_version(manifest.read_text(), version))
-        declared_source.write_text(cleared_declarations(declared_source.read_text()))
-
-        # The version is a source a generated artifact compiles from, so
-        # writing it leaves the trees that embed it behind — and the commit
-        # guard refuses exactly that, which is how a release came to be the
-        # one commit this repository could not make. Regenerating here is
-        # what the guard is asking for, and everything it writes belongs in
-        # the same commit as the bump that caused it.
-        update_mod.regenerated(root, lambda line: typer.echo(line, err=True))
-        git.add("-A")
-        git.commit("-m", release_subject(previous, version))
-        git.tag("-a", plan.tag, "-m", f"{spec.version_file} {version}")
+        # The version and the record are sources a generated artifact
+        # compiles from, so writing them leaves the trees that embed them
+        # behind — and the commit guard refuses exactly that, which is how a
+        # release came to be the one commit this repository could not make.
+        # Regenerating is what the guard is asking for, and everything it
+        # writes belongs in the same commit as the release that caused it.
+        try:
+            carry_out(
+                plan,
+                spec,
+                root,
+                log,
+                record,
+                regenerate=lambda: update_mod.regenerated(
+                    root, lambda line: typer.echo(line, err=True)
+                ),
+            )
+        except ReleaseRefused as refused:
+            typer.echo(str(refused), err=True)
+            raise typer.Exit(1) from refused
 
         if as_json:
             output_json(plan)
         else:
             for line in plan.spelled():
                 typer.echo(f"released: {line}")
+            if plan.branch:
+                typer.echo(
+                    f"{plan.branch} lands on {spec.branch} through a pull request, "
+                    "like any release"
+                )
             typer.echo(f"tagged {plan.tag} — pushing the tag is what publishes")
 
     @migrate_app.command("check")
@@ -1608,20 +1650,28 @@ def create_dev_app(
         A name declared nowhere any more is a break an adopter meets as an
         import that stopped resolving. One that moved is not, because the map
         is derived — so what fails here is the difference: something gone, and
-        nothing in this repository saying what to do about it.
+        nothing in this repository saying what to do about it. Every release's
+        record is read beside the pending window, so a range spanning a
+        release hears what that release declared.
         """
         from lup.devtools.dev.branches import detect_base_branch
 
         # The branch's own base rather than a branch named here: what this
         # change took away is measured against where it started, and creation
         # recorded that where topology can no longer recover it.
-        divergence = surfaces_over(over or f"{detect_base_branch().merge_base}..")
-        unnamed = migrations.unnamed(divergence.disappeared, migrations.DECLARED)
+        span = span_over(over or f"{detect_base_branch().merge_base}..")
+        divergence = span.divergence(declared().project)
+        record = migrations.MigrationRecord()
+        unnamed = migrations.unnamed_between(
+            divergence.disappeared, record.declared(), span.base, span.head
+        )
         if as_json:
             output_json(divergence)
         else:
             for capability in unnamed:
                 typer.echo(f"gone, undeclared: {capability.spelled()}", err=True)
+            if unnamed:
+                typer.echo(f"  {record.instruction(project_root())}", err=True)
             typer.echo(
                 f"{len(divergence.relocated)} moved, {len(divergence.arrived)} "
                 f"arrived, {len(divergence.disappeared)} gone "

@@ -1,129 +1,73 @@
-"""This repository's launch workflow, and the Claude and Codex launchers over it.
+"""This repository's launch workflow, and the declarations `harness claude|codex` make.
 
-Each launcher regenerates its target's artifacts, clears the gates this
-repository keeps before a session -- its companion trees, its base, its
-worktree pointers -- and maps its command line onto the session the
-library composes (:mod:`lup.launch.session`), handing the terminal to the
-native CLI with the non-interactive environment applied. What it reads
-only here, the registrations in `sync.json.local`, it hands the library
-as the grants a session stands on.
+`harness claude|codex` is a caller of the library's launch. Each flag becomes
+a field of a :class:`~lup.providers.claude.Claude` or
+:class:`~lup.providers.codex.Codex` declaration, and the declaration's own
+``launch()`` does the rest — preparing its home, checking the host, compiling
+and running the CLI in the foreground, and cleaning up after it — with this
+repository's workflow around it as lifecycle steps: a checkpoint, the worktree
+pointers verified, the base brought level, and every tree this repository
+generates regenerated. What it reads only here, the registrations in
+`sync.json.local`, becomes the declaration's mounts and devices.
 """
 
 import os
-import shutil
 from collections.abc import Callable, Iterator
 from contextlib import AbstractContextManager, contextmanager, nullcontext
 from pathlib import Path
-from tempfile import mkdtemp
 from typing import Protocol, runtime_checkable
 
-import sh
 import typer
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, Field, TypeAdapter, ValidationError
 
-from lup.harness.devices import Device
-from lup.providers.profile_tree import profile_directory
-from lup.providers.profiles import DefaultHomeProfile, ProfileDirectory
-from lup.providers.user_config import UserConfigFile
-from lup.launch.config_volume import HomeSeedPlaces
-from lup.providers.claude.model_choice import (
-    claude_default_effort,
-    claude_model_id,
-    claude_effort,
-    claude_effort_named,
-    listed_claude_model,
-    refuse_unsupported_effort as refuse_claude_effort,
-)
-from lup.providers.codex.model_choice import (
-    codex_default_effort,
-    codex_effort_arguments,
-    codex_effort_named,
-    codex_model_id,
-    listed_codex_model,
-    refuse_unsupported_effort as refuse_codex_effort,
-)
-from lup.providers.codex.subagents import CodexModelTiers
-from lup.providers.claude.config_home import (
-    ClaudeConfigUnreadable,
-    selected_config_home,
-)
-from lup.providers.claude.home_seed import (
-    ClaudeHomeSeed,
-)
-from lup.providers.claude.theme import settle_claude_theme
-from lup.providers.claude.harness import ClaudeSpellings
-from lup.providers.claude.transcripts import ClaudeTranscripts
-from lup.providers.codex.harness import CodexSpellings
-from lup.providers.codex.login import CODEX_LOGIN
-from lup.providers.codex.marketplace import CodexMarketplace
-from lup.providers.codex.profile import CodexProfileSettings
-from lup.providers.codex.transcripts import CodexTranscripts
-from lup.coordination.repository import launched_member
-from lup.harness.environment import non_interactive_environment
-from lup.harness.models import NativeName, Plugin, Resumption
-from lup.launch.refusal import LaunchRefused
-from lup.sandbox.rail import (
-    AccessibleRoot,
-)
-from lup.devtools.sync import accessible_roots, granted_devices
-from lup.launch.session import (
-    LaunchOpening,
-    StandingGrants,
-    ambient_config_home,
-    personal_config,
-    placed_inbox,
-    runtime_preflight,
-    session_argv,
-    start_harness_transcript,
-)
-from lup.providers.claude.session import carry_claude_home
-from lup.providers.codex.session import (
-    carry_codex_home,
-    codex_login_preflight,
-    prepare_codex_plugin,
-    settled_codex_seed,
-)
-from lup.launch.boundary import apply_sandbox_environment
-from lup.launch.declaration import LaunchSandbox, settled_sandbox
-from lup.providers.claude.launch import (
-    claude_resume_arguments,
-    claude_sandbox_arguments,
-    companion_plugin_directories,
-)
-from lup.providers.codex.launch import codex_resume_arguments, codex_sandbox_arguments
-from lup.harness.notice import Notice
-from lup.harness.process import LocalProcessLauncher
-from lup.harness.toolchain import (
-    bubblewrap_requirement,
-    socat_requirement,
-)
-from lup.observability.audit import (
-    TraceJournal,
-)
-from lup.observability.sessions import SessionRecorder
-from lup.sessions.recursion import MAX_RECURSIVE_AGENT_ENV
-from lup.types import EnvVars, JsonObject
-from lup.workspace.paths import project_root
-from lup.providers.codex.home import (
-    CodexWorktreeHomeStore,
-    select_codex_home,
-)
-from lup.devtools.harness.composition import NativeTargets
 from lup.devtools.dev.branches import settle_base_freshness
+from lup.devtools.dev.worktree import RelocationHint, refuse_redirected_pointers
+from lup.devtools.harness.composition import NativeTargets
 from lup.devtools.harness.drift import (
     RepositoryWriter,
     generate_targets,
     generate_with_report,
 )
+from lup.devtools.sync import accessible_roots, granted_devices
+from lup.harness.devices import Device
 from lup.harness.generate import NativeHarnessComposition
-from lup.launch.preflight import (
-    LaunchSentinels,
-    exclude_sandbox_placeholders,
-    release_ledger,
-    sweep_ledgers,
+from lup.harness.image import Image
+from lup.harness.models import NativeName, Plugin, Resumption
+from lup.harness.notice import Notice
+from lup.harness.process import LocalProcessLauncher
+from lup.launch.companions import CompanionLaunch, Contribution, HostCompanion
+from lup.launch.declaration import (
+    InnerSandbox,
+    LaunchSandbox,
+    LaunchStep,
+    Latest,
+    Member,
+    Mount,
+    NoSandbox,
+    OuterContainer,
+    Pick,
+    Recording,
+    Reopen,
+    Resume,
+    SessionSandbox,
+    settled_sandbox,
 )
-from lup.devtools.dev.worktree import RelocationHint, refuse_redirected_pointers
-from lup.devtools.layout import find_tree_dir
+from lup.launch.refusal import LaunchRefused
+from lup.launch.session import StandingGrants
+from lup.observability.audit import TraceJournal
+from lup.observability.sessions import SessionRecorder
+from lup.providers.claude import Claude, ClaudeTools
+from lup.providers.claude.harness import ClaudeSpellings
+from lup.providers.claude.launch import companion_plugin_directories
+from lup.providers.claude.model_choice import ClaudeModelChoice, claude_effort_named
+from lup.providers.codex import Codex, CodexTools
+from lup.providers.codex.harness import CodexSpellings
+from lup.providers.codex.model_choice import CodexModelChoice, codex_effort_named
+from lup.providers.codex.session import prepare_codex_plugin
+from lup.providers.profiles import DefaultHomeProfile, ProfileDirectory
+from lup.sessions.events import SessionId
+from lup.types import CustomModel, EnvVars
+from lup.workspace.paths import project_root
 
 
 @contextmanager
@@ -143,31 +87,14 @@ def usage_refusals() -> Iterator[None]:
 
 
 def standing_grants() -> StandingGrants:
-    """This repository's registrations, as the library asks a launch for them.
+    """This repository's registrations, as the requirements roster asks for them.
 
     Read by :mod:`lup.devtools.sync` from the registry and `sync.json.local`,
     which are this repository's bookkeeping rather than the launch's. Named
     at the call rather than captured at import, so the registry asked is the
-    one in force when the launch asks.
+    one in force when the roster asks.
     """
     return StandingGrants(roots=accessible_roots, devices=granted_devices)
-
-
-def declared_mounts(
-    writable: list[Path], read_only: list[Path]
-) -> list[AccessibleRoot]:
-    """The folders one command line asked this session to reach, as roots.
-
-    The same shape a `sync.json.local` registration resolves to, because the
-    two say the same thing at different lifetimes: a registration is standing
-    and reviewed, a flag lasts one launch. Everything downstream -- the lease,
-    the boundary declaration, each runtime's own widening -- already speaks
-    this type, so the flag costs no second path.
-    """
-    return [
-        *[AccessibleRoot(path=path) for path in writable],
-        *[AccessibleRoot(path=path, writable=False) for path in read_only],
-    ]
 
 
 def declared_devices(names: list[str]) -> list[Device]:
@@ -228,102 +155,6 @@ def relocation_hint(worktree_path: Path) -> RelocationHint:
     return RelocationHint(agent="", shell=move)
 
 
-def ready_to_open(
-    composition: NativeHarnessComposition,
-    generate_only: bool,
-    sentinels: LaunchSentinels,
-    companions: list[NativeHarnessComposition] = [],
-    repository_writers: list[RepositoryWriter] = [],
-    sandbox: LaunchSandbox | None = None,
-) -> LaunchOpening | None:
-    """Generate this target's artifacts and clear every gate standing before a session.
-
-    Both launchers reach a session through here, so a gate added once is a
-    gate every entry point makes — including one written later, which cannot
-    open a session without first generating the artifacts it opens against.
-    Answers whether to go on: a generate-only invocation has already done
-    everything it was asked for.
-
-    ``companions`` are the trees this launch does not open and regenerates
-    anyway, which is what makes launching a runtime mean what `harness
-    generate all` means. A launcher that left the other's tree behind
-    whenever a shared source moved would fail the next `dev check` on drift
-    nobody had introduced -- reported against a session that had done
-    nothing but open. They are generated in passing, so a tree that is
-    already current says nothing.
-
-    ``None`` is that answer, and the opening is the other one — including an
-    empty roster, which is why this is not a list and a truth test. What
-    those findings are *for* is the boundary preflight, which needs both
-    halves of one measurement and can only be assembled where the second
-    half is taken; carrying them out of here is what saves the launch from
-    exercising the same probes twice and reporting each of them twice.
-
-    Settling the base is one of those steps rather than a workflow's own. A
-    tree whose base has moved is self-consistent and says nothing about it, so
-    a session opened on one plans and edits against code that is no longer
-    there — which cost a planning pass over thirteen concerns on a tree ten
-    commits behind its remote, where two merged pull requests had already done
-    part of the work being planned. Being behind is not itself grounds for
-    refusing a session, so what happens here is a sync and a report: a clean
-    checkout is brought level with its own remote, and a base that has moved
-    is named on the way in.
-
-    Settling the sandbox is another. ``sandbox`` is what the command line
-    asked for, ``None`` where it named none, and :func:`settled_sandbox`
-    answers it once here, as the first thing asked of the host: the host
-    roster depends on which side of the container the session runs, and
-    everything after reads the answer off the opening. After generation, so
-    a generate-only invocation, which opens nothing, is neither probed nor
-    warned.
-
-    The two lines said here are said before their work rather than after
-    it, for the reason the fetch names itself below: these are the stretches
-    a launch spends silent when everything is current, and a line naming
-    the wait is what separates a slow one from a stopped one. A
-    generate-only invocation reports each tree anyway, so it is not told.
-    """
-    if not generate_only:
-        typer.echo("regenerating what this session opens against")
-    generate_with_report(composition, in_passing=not generate_only)
-    generate_targets(companions, repository_writers, in_passing=not generate_only)
-    if generate_only:
-        return None
-    # Before any host git runs on the way in -- base freshness, status, the
-    # preflight's own probes -- so a session a previous contained one left with
-    # a redirected worktree pointer is refused here rather than opened onto git
-    # reading the config that pointer now leads to.
-    refuse_redirected_pointers()
-    # Before anything writes one, so a launch that was killed last week does
-    # not leave its measurement standing for somebody to find. On the way in
-    # rather than only on the way out, because the launch that crashed is
-    # exactly the one that did not get to tidy up after itself.
-    sweep_ledgers(project_root())
-    # The runtime sandbox's own leavings, taken out of `git status` before a
-    # session reads it: said only when something was added, because a line
-    # repeated on every launch is read on none.
-    excluded = exclude_sandbox_placeholders(project_root())
-    if excluded:
-        typer.echo(
-            f"excluded {len(excluded)} sandbox placeholder file(s) from git "
-            f"status: {', '.join(excluded)}"
-        )
-    typer.echo("checking the host")
-    opening = LaunchOpening(sandbox=settled_sandbox(sandbox, "pass `--sandbox inner`"))
-    opening.findings = runtime_preflight(
-        composition.recipe.label,
-        composition.readiness,
-        composition.recipe.source.requirements,
-        project_root(),
-        sentinels,
-        opening,
-        opening.sandbox.contained(),
-        standing=standing_grants(),
-    )
-    settle_base_freshness(LocalProcessLauncher(), project_root())
-    return opening
-
-
 @runtime_checkable
 class LaunchSession(Protocol):
     """How a launch mode opens whatever its session needs, around one run.
@@ -353,9 +184,9 @@ class LaunchMode(BaseModel, frozen=True, arbitrary_types_allowed=True):
     A mode is the application's, never the library's: it names a flag, the
     tree generation compiles while it is in force, the model that kind of
     session runs on, where its record is kept, and what has to be open around
-    it. The launchers take one and read it; nothing here knows what any
-    particular mode is *for*, which is what keeps a downstream project's
-    vocabulary out of the framework.
+    it. Each becomes a field of the declaration the launch opens, and nothing
+    here knows what any particular mode is *for*, which is what keeps a
+    downstream project's vocabulary out of the framework.
     """
 
     name: NativeName
@@ -367,8 +198,8 @@ class LaunchMode(BaseModel, frozen=True, arbitrary_types_allowed=True):
     """What generation compiles while this mode is in force.
 
     A mode changes the tree rather than only the command line, because the
-    thing a mode usually adds — a tool server, a hook, a document — has to
-    reach the session through an artifact the runtime reads at startup."""
+    thing a mode usually adds — a skill, a hook, a tool server — has to reach
+    the session through what the runtime reads at startup."""
 
     model: Callable[[str], str | None] | None = None
     """What this kind of session runs on, given the runtime that will run it.
@@ -445,7 +276,7 @@ class LaunchMode(BaseModel, frozen=True, arbitrary_types_allowed=True):
         """Whatever this mode needs open around the run, or nothing to open.
 
         An empty environment from :func:`contextlib.nullcontext` rather than a
-        branch at the call site, so a launcher holds one shape and a mode
+        branch at the call site, so a caller holds one shape and a mode
         declaring no session costs it no conditional.
         """
         if self.session is None:
@@ -485,6 +316,29 @@ def extract_launch_mode(
         mode=chosen[0] if chosen else None,
         arguments=[word for word in arguments if word not in selected],
     )
+
+
+class ModeSession(HostCompanion, frozen=True, arbitrary_types_allowed=True):
+    """What a launch mode needs open around its session, held the way a companion is.
+
+    Held around the run with the run's journal, which is what makes the
+    mode's session findable by what the CLI spawns. A command printed rather
+    than run has no run to be found by, so it is handed nothing there.
+    """
+
+    mode: LaunchMode
+    runtime: str
+    transcribe: bool
+
+    @contextmanager
+    def held(self, launch: CompanionLaunch) -> Iterator[Contribution]:
+        if launch.journal is None:
+            yield Contribution()
+            return
+        with self.mode.opened(
+            self.runtime, launch.journal, self.transcribe
+        ) as environment:
+            yield Contribution(environment=environment)
 
 
 def announce_relaxed_rules(relaxed: bool, plugin: Plugin) -> None:
@@ -527,525 +381,462 @@ def install_codex_plugin_home(codex_home: Path, force: bool, trusted: bool) -> N
     prepare_codex_plugin([], codex_home, project_root(), {}, force, trusted)
 
 
-# It takes a composition, an account, a profile, a model and a passthrough
-# vector, and a mode is one optional argument among them; moving it onto
-# LaunchMode would make the model answerable for starting a runtime it knows
-# nothing about, and leave a project declaring no mode with no launcher at all.
-@usage_refusals()
-def launch_claude(
-    composition: NativeHarnessComposition,
-    extra_args: list[str],
-    profiles: ProfileDirectory,
-    profile: str | None,
-    model: str | None,
-    generate_only: bool,
-    mode: LaunchMode | None = None,
-    resume: Resumption = Resumption(),
-    relaxed: bool = False,
-    sandbox: LaunchSandbox | None = None,
-    checkpoint: LaunchCheckpoint | None = None,
-    max_recursive_agent: int = -1,
-    transcribe_session: bool = False,
-    companions: list[NativeHarnessComposition] = [],
-    repository_writers: list[RepositoryWriter] = [],
-    mounts: list[AccessibleRoot] = [],
-    devices: list[Device] = [],
-    recorder: SessionRecorder | None = None,
-    effort: str | None = None,
-) -> None:
-    """Generate/reconcile Claude artifacts and launch the verified local plugin.
+class LaunchRequest(BaseModel, frozen=True, arbitrary_types_allowed=True):
+    """What one `harness claude|codex` command line asked for, before it is a declaration."""
 
-    ``sandbox`` is what the command line asked for, ``None`` where it named
-    none; :func:`settled_sandbox` answers the default.
-    """
-    contradiction = resume.contradicted()
-    if contradiction is not None:
-        raise typer.BadParameter(contradiction)
-    config = UserConfigFile()
-    personal = personal_config(config)
-    # A mode's model is a default rather than a fixture: it says what this kind
-    # of session runs on when nobody said otherwise, and an explicit --model
-    # still wins, because overriding the model is why a caller passes one.
-    # Where neither names one, the person's tier does, as it does in code.
-    selected_model = (
-        model
-        or (mode.native_model("claude") if mode is not None else None)
-        or claude_model_id(personal.tier)
-    )
-    # Refused before anything is generated or checkpointed: an effort the
-    # model's catalog row lacks would be dropped by the CLI without a word.
-    # Unnamed, it is the model's default from the person's preferred rung, the
-    # one a session declared in code takes, rather than the CLI's own settings.
-    listed = None if selected_model is None else listed_claude_model(selected_model)
-    try:
-        chosen_effort = (
-            claude_default_effort(listed, personal.effort or "xhigh")
-            if effort is None
-            else claude_effort_named(effort)
+    words: list[str] = []
+    """What reaches the CLI after everything the declaration compiles to."""
+
+    model: str | None = None
+    effort: str | None = None
+    profile: str | None = None
+    resume: Resumption = Resumption()
+    sandbox: LaunchSandbox | None = None
+    """The sandbox named on the command line, or ``None`` for the default."""
+
+    mounts: list[Path] = []
+    read_only: list[Path] = []
+    devices: list[str] = []
+    max_recursive_agent: int | None = None
+    transcribe_session: bool = False
+    relaxed: bool = False
+    mode: LaunchMode | None = None
+    recorder: SessionRecorder | None = None
+
+    def allowance(self) -> int:
+        """The recursive-agent allowance: the flag's, else the mode's, else no limit."""
+        if self.mode is not None:
+            return self.mode.recursive_agent_limit(self.max_recursive_agent)
+        return -1 if self.max_recursive_agent is None else self.max_recursive_agent
+
+    def reopening(self) -> Resume | None:
+        """The session to reopen, refusing two named at once before anything runs."""
+        contradiction = self.resume.contradicted()
+        if contradiction is not None:
+            raise typer.BadParameter(contradiction)
+        if self.resume.session is not None:
+            return Reopen(session=SessionId(value=self.resume.session))
+        if self.resume.pick:
+            return Pick()
+        return Latest() if self.resume.latest else None
+
+    def named_model(self, runtime: str) -> str | None:
+        """The model named: the flag's, else the mode's for this runtime."""
+        if self.model is not None:
+            return self.model
+        return self.mode.native_model(runtime) if self.mode is not None else None
+
+    def launch_words(self, runtime: str) -> list[str]:
+        """The mode's words for this runtime, then the caller's own."""
+        mode = self.mode.command_words(runtime) if self.mode is not None else []
+        return [*mode, *self.words]
+
+    def transcribes(self, runtime: str) -> bool:
+        """Whether the native transcript is mirrored: asked for, or no mode declines it."""
+        return (
+            self.transcribe_session
+            or self.mode is None
+            or self.mode.transcribes(runtime)
         )
-        refuse_claude_effort(listed, chosen_effort)
+
+    def recording(self, runtime: str) -> Recording:
+        """What is kept of the session: its transcript, its ledger entry, the mode's root."""
+        return Recording(
+            transcript=self.transcribes(runtime),
+            ledger=self.recorder,
+            root=self.mode.transcript_root() if self.mode is not None else None,
+            mode=self.mode.name if self.mode is not None else None,
+        )
+
+    def companions(self, runtime: str) -> list[HostCompanion]:
+        """What the mode needs open around its session, held as a companion."""
+        if self.mode is None or self.mode.session is None:
+            return []
+        return [
+            ModeSession(
+                name=self.mode.name,
+                mode=self.mode,
+                runtime=runtime,
+                transcribe=self.transcribes(runtime),
+            )
+        ]
+
+    def posture(self, settle: bool) -> LaunchSandbox:
+        """The sandbox a session opens under: the one named, else the host's default.
+
+        ``settle`` asks the host for its default, which a launch does. A
+        generation that opens nothing does not: it readies the home a host
+        session opens against, and asks nobody whether an engine answers.
+        """
+        if self.sandbox is not None:
+            return self.sandbox
+        if not settle:
+            return LaunchSandbox.INNER
+        return settled_sandbox(None, "pass `--sandbox inner`")
+
+    def wall(
+        self, posture: LaunchSandbox, image: Image, escapable: bool
+    ) -> SessionSandbox:
+        """The sandbox declared: this launch's mounts, then the machine's standing ones.
+
+        The container runs ``image``. The inner sandbox lets a command ask to
+        run outside it, for the policy to judge, where the runtime has such a
+        way out: Claude Code has, Codex's envelope has none. Devices are a
+        container's: on the host, which holds its own, a flag naming one is
+        said rather than granted.
+        """
+        mounts = [
+            *[Mount(path=path, writable=True) for path in self.mounts],
+            *[Mount(path=path) for path in self.read_only],
+            *[
+                Mount(path=root.path, writable=root.writable)
+                for root in accessible_roots()
+            ],
+        ]
+        match posture:
+            case LaunchSandbox.OUTER:
+                return OuterContainer(
+                    mounts=mounts,
+                    devices=[*declared_devices(self.devices), *granted_devices()],
+                    image=image,
+                )
+            case LaunchSandbox.INNER:
+                self.say_hosted_devices()
+                return InnerSandbox(mounts=mounts, escapable=escapable)
+            case LaunchSandbox.NONE:
+                self.say_hosted_devices()
+                return NoSandbox(mounts=mounts)
+
+    def say_hosted_devices(self) -> None:
+        """Say that a device asked for is the host's own, where no container opens."""
+        if not self.devices:
+            return
+        Notice(
+            text=(
+                "Devices: "
+                + ", ".join(device.name for device in declared_devices(self.devices))
+                + " asked for; the session runs on the host, which holds its "
+                "own devices, and --device grants one inside the container."
+            ),
+            urgency="detail",
+        ).say()
+
+
+def model_choice[T](
+    spelled: str | None, choices: TypeAdapter[T]
+) -> T | CustomModel | None:
+    """A model named on a command line, as a runtime's catalog reads it.
+
+    A name the catalog does not list is the CLI's to judge rather than this
+    launcher's to refuse, so it goes through as a custom id.
+    """
+    if spelled is None:
+        return None
+    try:
+        return choices.validate_python(spelled)
+    except ValidationError:
+        return CustomModel(id=spelled)
+
+
+def effort_named[T](spelled: str | None, named: Callable[[str], T]) -> T | None:
+    """An effort named on a command line, refused in the flag's words where it is none."""
+    if spelled is None:
+        return None
+    try:
+        return named(spelled)
     except ValueError as refusal:
         raise typer.BadParameter(str(refusal)) from refusal
-    compiled_effort = None if chosen_effort is None else claude_effort(chosen_effort)
-    if checkpoint is not None and not generate_only:
-        checkpoint(provider="claude")
-    plugin = composition.recipe.source.plugins[0]
-    announce_relaxed_rules(relaxed, plugin)
-    sentinels = LaunchSentinels()
-    cleared = ready_to_open(
-        composition,
-        generate_only,
-        sentinels,
-        companions,
-        repository_writers,
-        sandbox=sandbox,
-    )
-    if cleared is None:
-        return
-    # What the gate settled on, which is the only posture read from here on.
-    sandbox = cleared.sandbox
-    arguments: list[str] = claude_resume_arguments(resume)
-    if selected_model is not None:
-        arguments.extend(["--model", selected_model])
-    if compiled_effort is not None:
-        arguments.extend(compiled_effort.arguments())
-    root = project_root()
-    # Minted here rather than where the argv is settled, because this runtime
-    # shows the name in its own chrome and the flag carrying it is built now;
-    # the same identity is handed on so the exported one agrees with it.
-    member = launched_member(root)
-    inbox = placed_inbox(composition.recipe.source.image.inboxes, root, member)
-    named = [
-        root / ".claude" / "plugins" / plugin.name,
-        *companion_plugin_directories(root, plugin.name),
-    ]
-    arguments.extend(
-        [
-            *[flag for directory in named for flag in ("--plugin-dir", str(directory))],
-            *claude_sandbox_arguments(
-                plugin.hooks,
-                sandbox=sandbox,
-                accessible=(
-                    [*mounts, *accessible_roots()]
-                    if sandbox is LaunchSandbox.INNER
-                    else []
-                ),
-                settings=(
-                    compiled_effort.settings if compiled_effort is not None else None
-                ),
-                tree=find_tree_dir(),
-            ),
-            # What this runtime shows in its own chrome, made to agree with
-            # the name the roster answers to: the same minted name is
-            # exported for the session's tool server to join under, numbered
-            # already where a live session in this worktree has the plain
-            # one. The roster's name lives in `names.jsonl` and is what
-            # addressing resolves through, so this is a display detail rather
-            # than the identity — which is why Codex, whose launch takes no
-            # such flag, loses nothing by it: a peer there is addressed by
-            # exactly the same name, and renames through the same command.
-            #
-            # Ahead of `extra_args`, so a caller who named their own session
-            # still wins.
-            "--name",
-            member.cli_name,
-            # Where this session binds the inbox a peer nudges it through;
-            # nowhere leaves the flag off and the session on its own default.
-            *(["--messaging-socket-path", inbox] if inbox is not None else []),
-            *(mode.command_words("claude") if mode is not None else []),
-            *extra_args,
-        ]
-    )
-    environment = non_interactive_environment(os.environ)  # lup: ignore[os-environ]
-    environment[MAX_RECURSIVE_AGENT_ENV] = str(max_recursive_agent)
-    apply_sandbox_environment(
-        plugin.hooks,
-        environment,
-        "claude",
-        [bubblewrap_requirement(), socat_requirement()],
-        sandbox=sandbox,
-    )
-    # A name no origin answers to reaches here from an explicit --profile, and
-    # from an active selection whose profile has since gone; a profile naming
-    # the default home arrives by either route too. Each is the caller's to
-    # fix, so none should arrive as a traceback.
+
+
+def declared[T](build: Callable[[], T]) -> T:
+    """Build a declaration, refusing what it refuses as a usage error.
+
+    A declaration validates as it is built — an effort the model's catalog
+    row lacks is refused there — and that is the command line's mistake,
+    said before anything is generated or checkpointed.
+    """
     try:
-        home = profiles.launch_home(profile)
-    except (KeyError, DefaultHomeProfile) as error:
+        return build()
+    except ValidationError as refusal:
+        raise typer.BadParameter(
+            "; ".join(str(error["msg"]) for error in refusal.errors())
+        ) from refusal
+
+
+def machine_overlay(composition: NativeHarnessComposition) -> list[Path]:
+    """This machine's overlay, where the runtime is told of it and it holds any skill.
+
+    Named whether or not it is on disk yet: the regeneration a launch runs
+    before its session renders it.
+    """
+    overlay = composition.overlay
+    plugin = composition.recipe.source.plugins[0]
+    if overlay is None or not overlay.loaded or not plugin.machine_skills():
+        return []
+    return [composition.recipe.root / overlay.directory]
+
+
+def claude_declaration(
+    composition: NativeHarnessComposition,
+    request: LaunchRequest,
+    profiles: ProfileDirectory,
+    settle: bool = True,
+) -> Claude:
+    """The Claude Code agent one command line launches, from this repository's composition.
+
+    Its plugin is the tree the composition generates, with every other plugin
+    the checkout carries beside it; its policy, requirements, image and wake
+    socket are the composition's harness's, and its servers the composition's; its
+    account is the one ``profiles`` resolves the named profile, or the
+    selected one, to. What the command line got wrong is refused before the
+    host is asked for its default sandbox, which ``settle`` asks for.
+    """
+    source = composition.recipe.source
+    root = composition.recipe.root
+    plugin = source.plugins[0]
+    try:
+        home = profiles.launch_home(request.profile)
+        selected = request.profile or profiles.active_name()
+    except (KeyError, ValueError, DefaultHomeProfile) as error:
         raise typer.BadParameter(str(error)) from error
-    if home is not None:
-        environment.update(profiles.login.environment(home))
-    # The theme is the account's, handed through its own files rather than as
-    # a launch override, which would outrank a session's /theme: filled in
-    # where the account keeps none, replaced only where the person's lup
-    # config names one. A session on the host runs in the account's own home,
-    # so what it changes there is the account's already.
     # lup: solved: a contained session runs in its repository's config volume,
     # so no theme reaches it and none it sets returns to the account; which
     # home a container's theme belongs to is the volume's question.
-    # A contained session runs in its repository's volume instead, so the
-    # account's settings are seeded into it at every start, the person's lup
-    # config winning, and what the session changed of the person's comes
-    # back when it closes.
-    account = selected_config_home(environment)
-    try:
-        seed = (
-            ClaudeHomeSeed.compose(
-                account,
-                personal,
-                model=claude_model_id(personal.tier),
-                effort=(
-                    None
-                    if personal.effort is None
-                    else claude_effort(personal.effort).level
-                ),
-            )
-            if sandbox.contained()
-            else None
+
+    def declaration(sandbox: SessionSandbox) -> Claude:
+        return Claude(
+            model=model_choice(
+                request.named_model("claude"), TypeAdapter(ClaudeModelChoice)
+            ),
+            effort=effort_named(request.effort, claude_effort_named),
+            cwd=root,
+            tools=ClaudeTools(
+                builtin="stock", mcp=composition.servers, serve=composition.serve
+            ),
+            plugin=root / ".claude" / "plugins" / plugin.name,
+            plugin_dirs=[
+                *machine_overlay(composition),
+                *companion_plugin_directories(root, plugin.name),
+            ],
+            policy=plugin.hooks,
+            requirements=source.requirements,
+            sandbox=sandbox,
+            identity=Member(wake_sockets=source.image.wake_sockets),
+            record=request.recording("claude"),
+            resume=request.reopening(),
+            max_recursive_agent=request.allowance(),
+            profile=selected,
+            home=home,
+            companions=request.companions("claude"),
         )
-        if seed is None:
-            settle_claude_theme(account, personal.theme.claude)
-    except ClaudeConfigUnreadable as error:
-        raise typer.BadParameter(str(error)) from error
-    seeded_at = Path(mkdtemp(prefix="lup-home-seed-")) if seed is not None else None
-    places = (
-        HomeSeedPlaces(
-            seed=seed.write(seeded_at / "seed"), applied=seeded_at / "applied"
-        )
-        if seed is not None and seeded_at is not None
-        else None
-    )
-    # Only a volume the seed reached is compared with it: before the
-    # container starts, the volume still holds the previous session's
-    # settings, and those read against this seed are no session's changes.
-    seed_applied = False
-    transcribing = transcribe_session or mode is None or mode.transcribes("claude")
-    transcript = start_harness_transcript(
-        "claude",
-        ClaudeTranscripts(home),
-        root,
-        model=selected_model,
-        profile=profile,
-        arguments=arguments,
-        record_root=mode.transcript_root() if mode is not None else None,
-        mode=mode.name if mode is not None else None,
-        transcribe=transcribing,
-        recorder=recorder,
-    )
-    succeeded = False
-    interrupted = False
-    try:
-        opening = (
-            nullcontext({})
-            if mode is None
-            else mode.opened("claude", transcript.journal, transcribing)
-        )
-        with opening as session:
-            environment.update(session)
-            argv = session_argv(
-                "claude",
-                arguments,
-                root,
-                composition.recipe.source.image,
-                composition.recipe.source.requirements,
-                plugin.hooks,
-                home if home is not None else ambient_config_home(profiles.login),
-                profiles.login,
-                sandbox,
-                environment,
-                transcript.journal.path,
-                sentinels,
-                cleared,
-                mounts,
-                devices,
-                member=member,
-                home_seed=places,
-                standing=standing_grants(),
-                clipboard=composition.clipboard_transport,
-            )
-            seed_applied = places is not None
-            sh.Command(argv[0])(*argv[1:], _fg=True, _env=environment)
-        succeeded = True
-    except KeyboardInterrupt:
-        interrupted = True
-        raise
-    except sh.CommandNotFound as error:
-        raise typer.BadParameter(
-            f"Cannot launch Claude Code: executable {error} was not found. Check PATH."
-        ) from error
-    except sh.ErrorReturnCode as error:
-        raise typer.Exit(error.exit_code) from error
-    finally:
-        # Taken away here rather than swept by the next launch, because a
-        # launch that swept every ledger but its own would be correct exactly
-        # once: with a second session open it removes a measurement that
-        # session's dispatcher is still reading.
-        release_ledger(project_root(), sentinels.nonce)
-        transcript.close(succeeded=succeeded, interrupted=interrupted)
-        if places is not None and seed_applied:
-            # Measured against what this launch applied, which is the
-            # seed settled against whatever a running session had changed.
-            carry_claude_home(
-                composition.recipe.source.image,
-                project_root(),
-                profiles.login,
-                ClaudeHomeSeed.applied(places.applied),
-                account,
-                config,
-                personal,
-            )
-        if seeded_at is not None:
-            shutil.rmtree(seeded_at)
-        if checkpoint is not None:
-            checkpoint(provider="claude")
+
+    declared(lambda: declaration(NoSandbox()))
+    wall = request.wall(request.posture(settle), source.image, escapable=True)
+    return declared(lambda: declaration(wall))
 
 
-# For the reason spelled at `launch_claude`: the mode is one optional argument
-# among the ones that actually decide how a runtime starts.
+def codex_declaration(
+    composition: NativeHarnessComposition,
+    request: LaunchRequest,
+    home: Path | None,
+    settle: bool = True,
+) -> Codex:
+    """The Codex agent one command line launches, from this repository's composition.
+
+    Its plugin is the one this checkout's marketplace offers, installed into
+    the launch's home: the one ``home`` names, else one derived for this
+    worktree from the named profile's account, or the selected one's. What
+    the command line got wrong is refused before the host is asked for its
+    default sandbox, which ``settle`` asks for.
+    """
+    source = composition.recipe.source
+    root = composition.recipe.root
+    plugin = source.plugins[0]
+    # lup: solved: a contained session runs in its repository's config
+    # volume, so a setting it changes there — its /theme included — never
+    # returns to the account; which home those belong to is the volume's
+    # question.
+
+    def declaration(sandbox: SessionSandbox) -> Codex:
+        return Codex(
+            model=model_choice(
+                request.named_model("codex"), TypeAdapter(CodexModelChoice)
+            ),
+            effort=effort_named(request.effort, codex_effort_named),
+            cwd=root,
+            tools=CodexTools(
+                builtin="stock", mcp=composition.servers, serve=composition.serve
+            ),
+            plugin=root,
+            policy=plugin.hooks,
+            requirements=source.requirements,
+            sandbox=sandbox,
+            identity=Member(wake_sockets=source.image.wake_sockets),
+            record=request.recording("codex"),
+            resume=request.reopening(),
+            max_recursive_agent=request.allowance(),
+            profile=request.profile,
+            home=home,
+            companions=request.companions("codex"),
+        )
+
+    declared(lambda: declaration(NoSandbox()))
+    wall = request.wall(request.posture(settle), source.image, escapable=False)
+    return declared(lambda: declaration(wall))
+
+
+class Checkpointed(BaseModel, frozen=True, arbitrary_types_allowed=True):
+    """The application's data saved before a session and again after it."""
+
+    checkpoint: LaunchCheckpoint
+    runtime: str
+
+    def before(self) -> None:
+        self.checkpoint(provider=self.runtime)
+
+    def after(self, succeeded: bool) -> None:
+        del succeeded
+        self.checkpoint(provider=self.runtime)
+
+
+class PointersVerified(BaseModel, frozen=True):
+    """Refuse a worktree whose pointer a contained session moved, before host git reads it.
+
+    Ahead of every step that runs host git, so a session a previous contained
+    one left with a redirected pointer is refused rather than opened onto git
+    reading the config that pointer now leads to.
+    """
+
+    def before(self) -> None:
+        refuse_redirected_pointers()
+
+    def after(self, succeeded: bool) -> None:
+        del succeeded
+
+
+class BaseSettled(BaseModel, frozen=True):
+    """Bring a clean checkout level with its remote, and name a base that has moved.
+
+    A tree whose base has moved is self-consistent and says nothing about it,
+    so a session opened on one plans and edits against code that is no longer
+    there — which cost a planning pass over thirteen concerns on a tree ten
+    commits behind its remote, where two merged pull requests had already done
+    part of the work being planned. Being behind is not itself grounds for
+    refusing a session, so this syncs and reports. Ahead of the regeneration,
+    so the trees the session opens against are the synced source's.
+    """
+
+    root: Path
+
+    def before(self) -> None:
+        settle_base_freshness(LocalProcessLauncher(), self.root)
+
+    def after(self, succeeded: bool) -> None:
+        del succeeded
+
+
+class TreesGenerated(BaseModel, frozen=True, arbitrary_types_allowed=True):
+    """Every tree this repository generates, regenerated before a session opens against one.
+
+    The trees the launch does not open too — ``companions`` — and every
+    generated file beside them, which is what makes launching a runtime mean
+    what `harness generate all` means: a launcher that left the other's tree
+    behind whenever a shared source moved would fail the next `dev check` on
+    drift nobody had introduced. A tree already current says nothing.
+    """
+
+    composition: NativeHarnessComposition
+    companions: list[NativeHarnessComposition] = []
+    writers: list[RepositoryWriter] = []
+
+    def generated(self, in_passing: bool) -> None:
+        """Generate every tree, reporting each unless it is ``in_passing`` and current."""
+        generate_with_report(self.composition, in_passing=in_passing)
+        generate_targets(self.companions, self.writers, in_passing=in_passing)
+
+    def before(self) -> None:
+        typer.echo("regenerating what this session opens against")
+        self.generated(in_passing=True)
+
+    def after(self, succeeded: bool) -> None:
+        del succeeded
+
+
+def workflow_steps(
+    runtime: str,
+    generation: TreesGenerated,
+    checkpoint: LaunchCheckpoint | None,
+) -> list[LaunchStep]:
+    """This repository's workflow around one session, outermost first."""
+    return [
+        *([Checkpointed(checkpoint=checkpoint, runtime=runtime)] if checkpoint else []),
+        PointersVerified(),
+        BaseSettled(root=generation.composition.recipe.root),
+        generation,
+    ]
+
+
+def exited(status: int) -> None:
+    """End this command with the session's exit status, where it failed."""
+    if status:
+        raise typer.Exit(status)
+
+
+@usage_refusals()
+def launch_claude(
+    composition: NativeHarnessComposition,
+    request: LaunchRequest,
+    profiles: ProfileDirectory,
+    generate_only: bool,
+    checkpoint: LaunchCheckpoint | None = None,
+    companions: list[NativeHarnessComposition] = [],
+    repository_writers: list[RepositoryWriter] = [],
+) -> None:
+    """Launch Claude Code on this repository's plugin, or only generate and prepare it."""
+    announce_relaxed_rules(request.relaxed, composition.recipe.source.plugins[0])
+    agent = claude_declaration(composition, request, profiles, settle=not generate_only)
+    generation = TreesGenerated(
+        composition=composition, companions=companions, writers=repository_writers
+    )
+    if generate_only:
+        generation.generated(in_passing=False)
+        agent.prepare()
+        return
+    exited(
+        agent.launch(
+            *request.launch_words("claude"),
+            steps=workflow_steps("claude", generation, checkpoint),
+        )
+    )
+
+
 @usage_refusals()
 def launch_codex(
     composition: NativeHarnessComposition,
-    extra_args: list[str],
+    request: LaunchRequest,
     codex_home: Path | None,
-    profile: str | None,
-    model: str | None,
     generate_only: bool,
     force_install: bool,
-    mode: LaunchMode | None = None,
-    resume: Resumption = Resumption(),
-    relaxed: bool = False,
-    sandbox: LaunchSandbox | None = None,
     checkpoint: LaunchCheckpoint | None = None,
-    max_recursive_agent: int = -1,
-    transcribe_session: bool = False,
     companions: list[NativeHarnessComposition] = [],
     repository_writers: list[RepositoryWriter] = [],
-    mounts: list[AccessibleRoot] = [],
-    devices: list[Device] = [],
-    recorder: SessionRecorder | None = None,
-    effort: str | None = None,
 ) -> None:
-    """Generate/reconcile Codex artifacts and launch without updating the CLI.
-
-    ``sandbox`` is read as :func:`launch_claude` reads it.
-    """
-    contradiction = resume.contradicted()
-    if contradiction is not None:
-        raise typer.BadParameter(contradiction)
-    config = UserConfigFile()
-    personal = personal_config(config)
-    named_model = model or (mode.native_model("codex") if mode is not None else None)
-    # A named profile with no model named over it chose its model and effort
-    # together, so neither the person's tier nor a default effort is sent.
-    profiled = profile is not None and named_model is None
-    selected_model = (
-        named_model
-        if named_model is not None or profiled
-        else codex_model_id(personal.tier, CodexModelTiers())
+    """Launch Codex on this repository's plugin, or only generate and install it."""
+    announce_relaxed_rules(request.relaxed, composition.recipe.source.plugins[0])
+    agent = codex_declaration(
+        composition, request, codex_home, settle=not generate_only
     )
-    # Refused before anything is generated or checkpointed: the API refuses an
-    # effort the model lacks with a 400 that names neither. Unnamed, it is the
-    # model's default from the person's preferred rung, the one a session
-    # declared in code takes, rather than whatever the home's configuration says.
-    listed = None if selected_model is None else listed_codex_model(selected_model)
-    try:
-        chosen_effort = (
-            codex_effort_named(effort)
-            if effort is not None
-            else None
-            if profiled
-            else codex_default_effort(
-                listed, CodexModelTiers(), personal.effort or "xhigh"
-            )
-        )
-        refuse_codex_effort(listed, chosen_effort, CodexModelTiers())
-    except ValueError as refusal:
-        raise typer.BadParameter(str(refusal)) from refusal
-    if checkpoint is not None and not generate_only:
-        checkpoint(provider="codex")
-    plugin = composition.recipe.source.plugins[0]
-    announce_relaxed_rules(relaxed, plugin)
-    sentinels = LaunchSentinels()
-    cleared = ready_to_open(
-        composition,
-        generate_only,
-        sentinels,
-        companions,
-        repository_writers,
-        sandbox=sandbox,
+    generation = TreesGenerated(
+        composition=composition, companions=companions, writers=repository_writers
     )
-    if cleared is None:
+    if generate_only:
+        generation.generated(in_passing=False)
+        agent.prepare(force=force_install)
         return
-    # What the gate settled on, which is the only posture read from here on.
-    sandbox = cleared.sandbox
-    environment = non_interactive_environment(os.environ)  # lup: ignore[os-environ]
-    environment[MAX_RECURSIVE_AGENT_ENV] = str(max_recursive_agent)
-    envelope = codex_sandbox_arguments(
-        plugin.hooks,
-        environment,
-        extra_args,
-        sandbox=sandbox,
-        accessible=(
-            [*mounts, *accessible_roots()] if sandbox is LaunchSandbox.INNER else []
-        ),
-        tree=find_tree_dir(),
-    )
-    # The account a worktree home is derived from, and returns its login and
-    # settings to: the selected profile, this checkout's then the global one,
-    # resolved as on Claude, else the operator's own default home.
-    try:
-        account_home = profile_directory(CODEX_LOGIN, config).launch_home(None)
-    except (KeyError, DefaultHomeProfile) as error:
-        raise typer.BadParameter(str(error)) from error
-    store = CodexWorktreeHomeStore(
-        account_home=account_home or CODEX_LOGIN.ambient_home,
-        theme=personal.theme.codex,
-        editor=personal.editor,
-        settings=personal.codex.settings,
-    )
-    # Only a volume the settings reached is compared with them: before the
-    # container's home is prepared, it still holds the previous session's.
-    installed: list[Path] = []
-    # What a contained session's volume was given, settled three ways
-    # against a session that may still be running there.
-    applied: list[JsonObject] = []
-    home = select_codex_home(codex_home, environment, project_root(), profile, store)
-    selected_home = home.path
-    selected_profile = (
-        CodexProfileSettings.capture(
-            selected_home, profile, as_base=sandbox.contained()
+    exited(
+        agent.launch(
+            *request.launch_words("codex"),
+            steps=workflow_steps("codex", generation, checkpoint),
+            force=force_install,
         )
-        if profile is not None or sandbox.contained()
-        else None
     )
-    if home.isolated:
-        typer.echo(
-            f"Using worktree-scoped Codex home: {selected_home}, derived from "
-            f"{store.account_home}"
-        )
-    # The subcommand leads, and everything the envelope carries follows it,
-    # because a word placed after a positional session id would be read as
-    # another one.
-    arguments: list[str] = [*codex_resume_arguments(resume), *envelope]
-    if selected_profile is not None and not selected_profile.as_base:
-        arguments.extend(
-            [
-                "--profile",
-                selected_profile.installed_name(),
-            ]
-        )
-    if selected_model is not None:
-        arguments.extend(["--model", selected_model])
-    if chosen_effort is not None:
-        arguments.extend(codex_effort_arguments(chosen_effort))
-    arguments.extend(mode.command_words("codex") if mode is not None else [])
-    arguments.extend(extra_args)
-    environment["CODEX_HOME"] = str(selected_home)
-    transcribing = transcribe_session or mode is None or mode.transcribes("codex")
-    transcript = start_harness_transcript(
-        "codex",
-        CodexTranscripts(selected_home),
-        project_root(),
-        model=selected_model,
-        profile=profile,
-        arguments=arguments,
-        record_root=mode.transcript_root() if mode is not None else None,
-        mode=mode.name if mode is not None else None,
-        transcribe=transcribing,
-        recorder=recorder,
-    )
-    succeeded = False
-    interrupted = False
-    opening = (
-        nullcontext({})
-        if mode is None
-        else mode.opened("codex", transcript.journal, transcribing)
-    )
-
-    def authenticate(command: list[str], native_home: Path, headless: bool) -> None:
-        codex_login_preflight(
-            native_home,
-            environment,
-            command,
-            headless=headless,
-            profile=None if sandbox.contained() else profile,
-            consent=lambda question: typer.confirm(question, default=True),
-        )
-        if home.isolated and not sandbox.contained():
-            store.publish(project_root())
-
-    def prepare(prefix: list[str], native_home: Path) -> None:
-        if prefix and selected_profile is not None:
-            applied.append(
-                settled_codex_seed(
-                    composition.recipe.source.image,
-                    project_root(),
-                    selected_profile.personal_settings(
-                        CodexMarketplace.declared(project_root()) is not None
-                    ),
-                )
-            )
-        prepare_codex_plugin(
-            prefix,
-            native_home,
-            project_root(),
-            environment,
-            force_install,
-            settings=selected_profile,
-        )
-        installed.append(native_home)
-
-    try:
-        with opening as session:
-            environment.update(session)
-            argv = session_argv(
-                "codex",
-                arguments,
-                project_root(),
-                composition.recipe.source.image,
-                composition.recipe.source.requirements,
-                plugin.hooks,
-                selected_home,
-                CODEX_LOGIN,
-                sandbox,
-                environment,
-                transcript.journal.path,
-                sentinels,
-                cleared,
-                mounts,
-                devices,
-                authenticate=authenticate,
-                prepare=prepare,
-                standing=standing_grants(),
-                clipboard=composition.clipboard_transport,
-            )
-            sh.Command(argv[0])(*argv[1:], _fg=True, _env=environment)
-        succeeded = True
-    except KeyboardInterrupt:
-        interrupted = True
-        raise
-    except sh.CommandNotFound as error:
-        raise typer.BadParameter(
-            f"Cannot launch Codex: executable {error} was not found. Check PATH."
-        ) from error
-    except sh.ErrorReturnCode as error:
-        raise typer.Exit(error.exit_code) from error
-    finally:
-        release_ledger(project_root(), sentinels.nonce)
-        transcript.close(succeeded=succeeded, interrupted=interrupted)
-        if home.isolated and store.publish(project_root()):
-            typer.echo("Returned the refreshed Codex login to the account home")
-        # lup: solved: a contained session runs in its repository's config
-        # volume, so a setting it changes there — its /theme included — never
-        # returns to the account; which home those belong to is the volume's
-        # question.
-        if home.isolated and (installed or not sandbox.contained()):
-            carry_codex_home(
-                store,
-                composition.recipe.source.image if sandbox.contained() else None,
-                project_root(),
-                config,
-                applied[0] if applied else None,
-            )
-        if checkpoint is not None:
-            checkpoint(provider="codex")

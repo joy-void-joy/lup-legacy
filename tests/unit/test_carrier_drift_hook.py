@@ -46,7 +46,7 @@ def rendered(tree: str) -> Path:
 def declared(branch: str) -> HookSet:
     """A hook set whose carriers name one branch, for a project that took one."""
     return portable_harness().declared_hooks.model_copy(
-        update={"carriers": CarrierPins(branch=branch, distribution="lup")}
+        update={"carriers": CarrierPins(branch=branch, distribution="lup-agents")}
     )
 
 
@@ -165,7 +165,7 @@ def test_the_rendered_guard_names_both_commits_when_they_have_parted(
 
     project = repository(tmp_path / "project")
     (project / "uv.lock").write_text(
-        '[[package]]\nname = "lup"\nversion = "0.2.0"\n'
+        '[[package]]\nname = "lup-agents"\nversion = "0.2.0"\n'
         'source = { git = "https://example.test/lup?branch=dev#'
         f'{"a" * 40}" }}\n',
         encoding="utf-8",

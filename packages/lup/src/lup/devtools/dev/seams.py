@@ -187,6 +187,32 @@ class UnwrittenSeam(SeamValue, frozen=True):
         )
 
 
+class MissingSeamModule(SeamValue, frozen=True):
+    """A seam naming a module that is not there, and the catalog naming it.
+
+    What a renamed package leaves behind when a seam's module was spelled as a
+    path: the declaration still exists, under the new name, and the seam goes
+    on pointing at the old one. Answered as a value rather than raised,
+    because the survey is where somebody is shown every seam at once, and one
+    whose file moved is a finding among the rest rather than a reason to show
+    none of them.
+    """
+
+    declared_in: Path
+    """The catalog whose seam roster names the missing module."""
+
+    def described(self, summary: str) -> str:
+        return (
+            f"{self.keyword} — {summary}\n"
+            f"    unreadable: {self.path} does not exist. The seam naming it is "
+            f"declared in {self.declared_in}; point its `module` at the file "
+            f"holding {self.call}(...)"
+        )
+
+    def editable(self) -> "DeclarationSite":
+        raise ValueError(self.described(f"{self.call}({self.keyword}=...)"))
+
+
 def list_literal(items: list[str], indent: int) -> str:
     """A list literal written at the depth the declaration around it is written.
 
@@ -279,9 +305,12 @@ class Seam(BaseModel, frozen=True):
         its own module is read there, and the path it names is resolved
         beside the catalog's own root.
         """
-        if self.module is None:
-            return read_seam(catalog, self.call, self.keyword)
-        return read_seam(project_root() / self.module, self.call, self.keyword)
+        written = catalog if self.module is None else project_root() / self.module
+        if not written.is_file():
+            return MissingSeamModule(
+                path=written, call=self.call, keyword=self.keyword, declared_in=catalog
+            )
+        return read_seam(written, self.call, self.keyword)
 
 
 DECLARED_SEAMS: list[Seam] = [

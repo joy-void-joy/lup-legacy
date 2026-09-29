@@ -43,20 +43,20 @@ class Delivery(StrEnum):
     that had to choose would be choosing on facts it does not have.
     """
 
-    INBOX = "inbox"
-    """Injected in front of the member's next tool call by its own hook.
+    HOOK = "hook"
+    """Handed over in front of the member's next tool call by its own hook.
 
     What a spawned agent gets, and the only mode that needs nothing running
     beside it: the hook fires because the member takes a turn, so a busy member
     cannot fail to receive and an idle one receives the moment it moves.
     """
 
-    MAILBOX = "mailbox"
-    """Left in the file for the member to read when it next looks.
+    WAITING = "waiting"
+    """Left waiting in its mailbox for the member to read when it next looks.
 
     The mode with no wake at all, and the honest answer for a peer nothing can
     reach: a headless session between invocations, a member on a machine this
-    one does not share. The file is the durable record either way — every other
+    one does not share. The mailbox is the durable record either way — every other
     mode is a wake *on top of* this one, not an alternative to it.
     """
 
@@ -128,12 +128,20 @@ class RosterMember(BaseModel, frozen=True):
     the file, while this is what nudges the member into reading it.
     """
 
-    delivery: Delivery = Delivery.INBOX
+    delivery: Delivery = Delivery.HOOK
     """How a message reaches this member.
 
     The spawned default, because a spawned member is opened with the hook that
     makes it true — mail lands in front of its next tool call whether or not it
     thinks to look. A peer says what it can actually do instead.
+    """
+
+    parent: str = ""
+    """The session this member is a native subagent of, empty for every other member.
+
+    The one relation between rows the roster keeps: a subagent is somebody
+    else to the harness, with work and holdings of its own, and still part of
+    the session it runs in — listed beneath it, and gone when it is.
     """
 
     cli_name: str = ""
@@ -200,7 +208,8 @@ def folded_member(member: store.Member) -> RosterMember:
             store.text(wake.get("home")),
             store.text(wake.get("scope")),
         ),
-        delivery=carried(store.text(member.get("delivery")), Delivery.INBOX),
+        delivery=carried(store.text(member.get("delivery")), Delivery.HOOK),
+        parent=store.parent_of(member),
         cli_name=store.current_name(member),
     )
 
@@ -229,7 +238,7 @@ class Roster:
         actor: ActorRef,
         task: str,
         liveness: str = "",
-        delivery: Delivery = Delivery.MAILBOX,
+        delivery: Delivery = Delivery.WAITING,
         worktree: str = "",
         wake: WakePath = WakePath(),
     ) -> None:
@@ -265,14 +274,14 @@ class Roster:
 
     def spawned(self, actor: ActorRef, task: str) -> None:
         """Record that a member this process started is live."""
-        self.announce(actor, task, delivery=Delivery.INBOX)
+        self.announce(actor, task, delivery=Delivery.HOOK)
 
     def joined(
         self,
         actor: ActorRef,
         task: str = "",
         liveness: str = "",
-        delivery: Delivery = Delivery.MAILBOX,
+        delivery: Delivery = Delivery.WAITING,
         worktree: str = "",
         wake: WakePath = WakePath(),
     ) -> None:

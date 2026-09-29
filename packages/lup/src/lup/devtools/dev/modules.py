@@ -12,6 +12,12 @@ The cost column is guidance bytes, because that is the only cost a module
 imposes whether or not its subject ever comes up. Skills, pages and commands
 are paid for when they are used; a paragraph in the always-loaded document is
 paid for in every session, against a ceiling that truncates rather than fails.
+
+What a row counts is the module as this project resolves it — the sections it
+retired gone, the ones it rewrote at their rewritten length, its own additions
+in — because that is what the document is assembled from. The module as it
+declares itself answers the other question the table asks, what the roster
+offers a project that turns it on and says nothing more.
 """
 
 import typer
@@ -47,10 +53,22 @@ class ModuleRow(BaseModel, frozen=True):
     """
 
     requires: list[str] = []
-    guidance_used: int = 0
+
+    guidance_resolved: int = 0
+    """The bytes of prose this project's version of the module holds.
+
+    Whether they reach the document is :attr:`loads`; a module kept quiet
+    still has prose, and a project turning it on carries exactly this.
+    """
+
+    guidance_declared: int = 0
+    """The bytes of the module's own sections, before this project changed any."""
+
     skills: int = 0
     agents: int = 0
     pages: int = 0
+    """What this project's version of the module ships, counted."""
+
     subapps: list[str] = []
     tool_groups: list[str] = []
 
@@ -65,6 +83,23 @@ class ModuleRow(BaseModel, frozen=True):
         if self.pinned:
             return f"{state} ({self.pinned})"
         return state if self.taken == self.default_on else f"{state} (against default)"
+
+    def prose(self) -> str:
+        """The prose column: this project's bytes, and the module's own where they differ.
+
+        Both where the project changed the module's prose, because the two
+        totals under the table read different ones — what the document carries
+        is summed from this project's version, what the roster offers from the
+        module's own — and a row showing one of them leaves the distance between
+        the totals unaccounted for, which is the decision a reader came to see.
+        """
+        column = f"{self.guidance_resolved:5d}b" if self.guidance_resolved else "     —"
+        quiet = "" if self.loads or not self.guidance_resolved else "  (not loaded)"
+        if self.guidance_declared == self.guidance_resolved:
+            return f"{column}{quiet}"
+        if not self.guidance_declared:
+            return f"{column}{quiet}  (module declares none)"
+        return f"{column}{quiet}  (module declares {self.guidance_declared}b)"
 
     def surfaces(self) -> str:
         """What it contributes, counted, with the empty ones left out.
@@ -97,7 +132,19 @@ def pinning(module: Module, modules: list[Module]) -> str:
 
 
 def rows(modules: list[Module], selection: ModuleSelection) -> list[ModuleRow]:
-    """Every module in the roster, in the order a composition lays it out."""
+    """Every module in the roster, in the order a composition lays it out.
+
+    ``modules`` are the roster as each module declares itself, every one of
+    them — declined ones included, since the table is where a project meets
+    what it declined. Each is resolved through ``selection`` here, the way the
+    composition resolves the modules it takes, so a row counts what this
+    project would ship and not what the library wrote.
+    """
+
+    def weight(module: Module) -> int:
+        """What a module's prose costs a session, weighed as the document is."""
+        return sum(document_byte_size(section.text) for section in module.guidance)
+
     return [
         ModuleRow(
             identity=module.spec.id,
@@ -109,16 +156,16 @@ def rows(modules: list[Module], selection: ModuleSelection) -> list[ModuleRow]:
             default_on=module.spec.default_on,
             pinned=pinning(module, modules),
             requires=module.spec.requires,
-            guidance_used=sum(
-                document_byte_size(section.text) for section in module.guidance
-            ),
-            skills=len(module.content.skills),
-            agents=len(module.content.agents),
-            pages=len(module.documents),
+            guidance_resolved=weight(resolved),
+            guidance_declared=weight(module),
+            skills=len(resolved.content.skills),
+            agents=len(resolved.content.agents),
+            pages=len(resolved.documents),
             subapps=module.spec.subapps,
             tool_groups=module.spec.tool_groups,
         )
         for module in modules
+        for resolved in [selection.resolved(module)]
     ]
 
 
@@ -129,27 +176,28 @@ def report(modules: list[Module], selection: ModuleSelection, verbose: bool) -> 
     this tree carries but the distance between that and what the roster could
     carry: a module kept quiet costs nothing here and everything to the
     project that turns it on, and that project inherits this roster.
+
+    They are summed from different figures. What the document carries is this
+    project's version of each module that loads — so a section it retired
+    costs nothing and one it added costs what it weighs — and what the roster
+    offers is every module's own sections, which is what a project taking the
+    whole roster without a word about its prose would carry.
     """
     listed = rows(modules, selection)
-    loaded = sum(row.guidance_used for row in listed if row.loads)
-    offered = sum(row.guidance_used for row in listed)
+    carried = sum(row.guidance_resolved for row in listed if row.loads)
+    offered = sum(row.guidance_declared for row in listed)
     widest = max((len(row.identity) for row in listed), default=0)
     for row in listed:
-        prose = f"{row.guidance_used:5d}b" if row.guidance_used else "     —"
-        quiet = "" if row.loads or not row.guidance_used else "  (not loaded)"
         scope = "" if row.offered else "  (scaffold only)"
-        typer.echo(
-            f"{row.identity:{widest}}  {row.standing():<24}{prose}{quiet}{scope}"
-        )
+        typer.echo(f"{row.identity:{widest}}  {row.standing():<24}{row.prose()}{scope}")
         if verbose:
             typer.echo(f"{'':{widest}}  {row.summary}")
             typer.echo(f"{'':{widest}}  {row.surfaces()}")
             if row.requires:
                 typer.echo(f"{'':{widest}}  requires {', '.join(row.requires)}")
     typer.echo(
-        f"\n{len(listed)} module(s); this document carries {loaded} of the "
-        f"{offered} prose bytes the roster offers, against a "
-        f"{GUIDANCE_BUDGET.ceiling} "
-        "ceiling. `dev check` weighs the rendered document, which is heavier by "
-        "the banner and the parts no section spells."
+        f"\n{len(listed)} module(s); this document carries {carried} prose bytes "
+        f"against a {GUIDANCE_BUDGET.ceiling} ceiling, and the roster's own "
+        f"sections come to {offered}. `dev check` weighs the rendered document, "
+        "which is heavier by the banner and the parts no section spells."
     )

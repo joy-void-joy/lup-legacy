@@ -10,7 +10,9 @@ from lup.harness.codescan.antipatterns import DOCUMENT_IN_HAND, rule_set_for
 from lup.providers.peer_delivery import delivery_artifacts, delivery_command
 from lup.providers.drift_prompt import drift_hook
 from lup.providers.subagent_cleanup import cleanup_hooks
+from lup.providers.coordination_caller import caller_hooks
 from lup.providers.roster_prompt import (
+    PromptHook,
     departure_hook,
     folded,
     prompt_hook,
@@ -28,7 +30,7 @@ from lup.harness.contracts import (
     Spelled,
     Spelling,
 )
-from lup.harness.generation import argument_text, plugin_served_tool
+from lup.harness.generation import argument_text
 from lup.harness.prompts import (
     SPAWNED_SESSION_LOSES_SHELL,
     guidance_banner,
@@ -65,7 +67,7 @@ from lup.policy.dispatcher import (
 from lup.policy.kernel.rows import PathRoleRow
 from lup.policy.refused_tools import routed_for
 from lup.providers.claude.subagents import model_alias
-from lup.types import ModelTier
+from lup.types import JsonValue, ModelTier
 
 
 class ClaudeSpellings(NativeSpellings):
@@ -289,16 +291,6 @@ class ClaudeSpellings(NativeSpellings):
             "https://docs.claude.com/ and https://code.claude.com/"
         )
 
-    def runtime_key(self) -> str:
-        return "claude"
-
-    def project_root(self) -> str:
-        # Claude Code substitutes this into a plugin-provided MCP command
-        # without needing a default, so a server reaches the repository it
-        # serves from whichever scope the plugin was installed in — the local
-        # directory a launch verifies in place, or the marketplace cache.
-        return "${CLAUDE_PROJECT_DIR}"
-
     def model_alias(self, tier: ModelTier) -> str | None:
         return model_alias(tier)
 
@@ -351,32 +343,26 @@ again needs one edit here rather than one per declaration.
 """
 
 
-def claude_granted_tools(
-    tools: Sequence[str], plugin: Plugin | None = None
-) -> list[str]:
-    """Keep only the grants this runtime can honor, spelled the way it reads them.
+# lup: ignore[constant-declaration] — where Claude Code's overlay plugin sits, a
+# layout this adapter owns and every checkout ignores
+CLAUDE_OVERLAY = Path(".claude/plugins/local")
+"""The plugin one machine renders for itself, beside the committed one.
 
-    A declaration names a tool server by the portable key it is registered
-    under — ``mcp__notes`` — which is what the server is called everywhere
-    except once it arrives inside a plugin. This runtime scopes a plugin's own
-    servers by the plugin that brought them, and the bare key then matches
-    nothing, so a grant left unscoped silently grants no tool at all: the
-    skill opens, its instruments are absent, and the declaration that listed
-    them reads as though they were there.
+Inside ``.claude/plugins`` so a launch finds it where it finds every plugin a
+checkout keeps, and ignored by git, because what it holds names this
+machine's own profiles."""
 
-    Only the plugin's own servers are rewritten. A grant naming a server the
-    project registered outside the plugin is addressed by its bare key and is
-    left as it is, which is also what a caller with no plugin in hand gets.
+
+def claude_granted_tools(tools: Sequence[str]) -> list[str]:
+    """Keep only the grants this runtime can honor.
+
+    A declaration names a tool server by the key it is registered under —
+    ``mcp__notes`` — and a launch declares every server per session under
+    that same key, so a grant is spelled as declared. What is left out is a
+    built-in the runtime does not ship, which would read as a capability the
+    agent has and grant nothing.
     """
-    served = (
-        {}
-        if plugin is None
-        else {
-            f"mcp__{server.name}": plugin_served_tool(plugin.name, server.name)
-            for server in plugin.mcp_servers
-        }
-    )
-    return [served.get(tool, tool) for tool in tools if tool not in CLAUDE_ABSENT_TOOLS]
+    return [tool for tool in tools if tool not in CLAUDE_ABSENT_TOOLS]
 
 
 class ClaudeSkillRenderer(ArtifactRenderer[Skill]):
@@ -388,7 +374,7 @@ class ClaudeSkillRenderer(ArtifactRenderer[Skill]):
         self.plugin_name = plugin.name
 
     def render(self, source: Skill) -> ArtifactTree:
-        granted = claude_granted_tools(source.tools, self.plugin)
+        granted = claude_granted_tools(source.tools)
         # A hint and a list of arguments answer the same question two ways,
         # so a skill declaring both is shown the hint it spelled itself.
         declared = [] if source.argument_hint is not None else source.arguments
@@ -473,9 +459,7 @@ class ClaudeAgentRenderer(ArtifactRenderer[Agent]):
                                         "name": source.name,
                                         "description": source.description,
                                         "tools": ", ".join(
-                                            claude_granted_tools(
-                                                source.tools, self.plugin
-                                            )
+                                            claude_granted_tools(source.tools)
                                         ),
                                         "model": alias or "",
                                         "color": source.color or "",
@@ -532,39 +516,6 @@ class ClaudePluginManifestRenderer(ArtifactRenderer[Plugin]):
         )
 
 
-class ClaudeMcpRenderer(ArtifactRenderer[Plugin]):
-    """Render a plugin's tool servers where Claude Code reads a plugin's own.
-
-    A plugin-provided configuration is the scope that follows the plugin: it
-    starts with the plugin rather than asking the project to enable it, and it
-    is the one scope whose commands substitute the project root.
-    """
-
-    def __init__(self, spellings: NativeSpellings) -> None:
-        self.spellings = spellings
-
-    def render(self, source: Plugin) -> ArtifactTree:
-        servers = {
-            server.name: {
-                "command": server.command,
-                "args": server.command_line(self.spellings),
-            }
-            for server in source.mcp_servers
-        }
-        return ArtifactTree(
-            artifacts=[
-                Artifact(
-                    path=Path(f".claude/plugins/{source.name}/.mcp.json"),
-                    content=json.dumps(
-                        {"mcpServers": servers}, indent=2, sort_keys=True
-                    ),
-                    semantic_id=source.id,
-                    banner=COMMENT_FREE.compiled_from(source.id),
-                )
-            ]
-        )
-
-
 class ClaudeGuidanceRenderer(ArtifactRenderer[Harness]):
     """Render project guidance at Claude's adapter-owned repository location."""
 
@@ -601,7 +552,7 @@ CLAUDE_DISPATCHER = DispatcherDeclaration(
     observation_event="PostToolUse",
     observed_tools=["Edit", "Write", "Bash"],
     failure="conservative_ask",
-    runtime_modules=["policy_data"],
+    runtime_modules=["caller_payload", "policy_data"],
 )
 """Everything Claude Code spells differently from every other runtime.
 
@@ -660,6 +611,26 @@ CLAUDE_SUBAGENT_CLEANUP = (
 
 # lup: ignore[constant-declaration] — the runtime's wire spelling of its own
 # event, which no project could choose differently and still be heard
+CLAUDE_CALLER_EVENT = "PreToolUse"
+"""The event Claude Code fires before a tool runs, where the caller is stamped.
+
+Documented at https://code.claude.com/docs/en/hooks under "PreToolUse" and
+measured on 2.1.283 against a probe tool server: an ``updatedInput`` returned
+with no ``permissionDecision`` replaced an MCP call's arguments before the
+server received them, and every event fired inside a subagent carried its
+``agent_id``. The runtime's own spelling of the moment, so not a value a
+project could choose.
+"""
+
+CLAUDE_CALLER_PAYLOAD = (
+    resources.files("lup.providers.claude")
+    .joinpath("assets/caller_payload.py")
+    .read_text("utf-8")
+)
+"""The host half of the caller hook, shipped verbatim for its entry and the dispatcher."""
+
+# lup: ignore[constant-declaration] — the runtime's wire spelling of its own
+# event, which no project could choose differently and still be heard
 CLAUDE_EXIT_EVENT = "SessionEnd"
 """The event Claude Code fires as a session ends, before its process exits.
 
@@ -683,14 +654,14 @@ class ClaudeHookRenderer(ArtifactRenderer[HookSet]):
         self.spellings = spellings
 
     def render(self, source: HookSet) -> ArtifactTree:
-        command = [
+        command: list[JsonValue] = [
             {
                 "type": "command",
                 "command": guarded_hook_command("CLAUDE_PLUGIN_ROOT"),
                 "timeout": source.policy_timeout,
             }
         ]
-        decided = [
+        decided: list[JsonValue] = [
             {
                 "matcher": "|".join(
                     routed_for(CLAUDE_DISPATCHER.routed_tools, source.refused_tools)
@@ -698,7 +669,7 @@ class ClaudeHookRenderer(ArtifactRenderer[HookSet]):
                 "hooks": command,
             }
         ]
-        observed = [
+        observed: list[JsonValue] = [
             {
                 "matcher": "|".join(CLAUDE_DISPATCHER.observed_tools),
                 "hooks": command,
@@ -711,7 +682,7 @@ class ClaudeHookRenderer(ArtifactRenderer[HookSet]):
         # widened one keeps those apart — every matching hook runs, and the
         # most restrictive verdict wins, so a delivery that only ever allows
         # cannot loosen what the policy decided beside it.
-        delivery = [
+        delivery: list[JsonValue] = [
             {
                 "matcher": "",
                 "hooks": [
@@ -749,14 +720,19 @@ class ClaudeHookRenderer(ArtifactRenderer[HookSet]):
         # The row that arrived under the prompt event ends under the ending
         # one, written by the session itself, so a clean exit is exact and
         # the pulse only has to answer for the exits nothing announces.
+        # A subagent's own row ends under the stop event its runtime fires for
+        # it, beside the cleanup registered there, and is told apart from the
+        # session's ending by the subagent's id in the payload.
         departure = departure_hook(
             Path(f".claude/plugins/{self.plugin_name}"),
             "CLAUDE_PLUGIN_ROOT",
             source,
             CLAUDE_EXIT_EVENT,
+            CLAUDE_SUBAGENT_STOP_EVENT,
         )
         # A subagent is told at its start what it arms is its own to stop,
-        # and refused once at its stop while any of it is still listed.
+        # and refused once at the stop handing back its report while any of
+        # it is still listed.
         cleanup = cleanup_hooks(
             Path(f".claude/plugins/{self.plugin_name}"),
             "CLAUDE_PLUGIN_ROOT",
@@ -766,25 +742,48 @@ class ClaudeHookRenderer(ArtifactRenderer[HookSet]):
             CLAUDE_SUBAGENT_START_EVENT,
             CLAUDE_SUBAGENT_STOP_EVENT,
         )
+        # Every coordination call says which conversation made it, matched to
+        # the coordination server's tools under the key a launch declares it.
+        caller = caller_hooks(
+            Path(f".claude/plugins/{self.plugin_name}"),
+            "CLAUDE_PLUGIN_ROOT",
+            source,
+            CLAUDE_CALLER_PAYLOAD,
+            "lup.providers.claude.assets.caller_payload",
+            CLAUDE_CALLER_EVENT,
+            lambda server: f"mcp__{server}__.*",
+        )
+        # Folded rather than merged, because two sources register under one
+        # event — the policy and the caller hook before a tool, the cleanup
+        # and the departure at a subagent's stop — and a merge would keep
+        # whichever was written last.
+        registered = folded(
+            [
+                PromptHook(
+                    registered={
+                        event: (
+                            observed
+                            if event == CLAUDE_DISPATCHER.observation_event
+                            else [*decided, *delivery]
+                        )
+                        for event in CLAUDE_DISPATCHER.hook_events
+                    },
+                    artifacts=[],
+                ),
+                roster,
+                departure,
+                cleanup,
+                caller,
+            ]
+        )
         hooks = {
             "description": (
-                "Lup semantic permission policy, peer delivery, the roster's "
-                "changes at each prompt, this session's departure as it ends, "
+                "Lup semantic permission policy, peer delivery, the calling "
+                "subagent on each coordination call, the roster's changes at "
+                "each prompt, a session's or subagent's departure as it ends, "
                 "and a subagent's report waiting on its background work"
             ),
-            "hooks": {
-                **{
-                    event: (
-                        observed
-                        if event == CLAUDE_DISPATCHER.observation_event
-                        else [*decided, *delivery]
-                    )
-                    for event in CLAUDE_DISPATCHER.hook_events
-                },
-                **roster.registered,
-                **departure.registered,
-                **cleanup.registered,
-            },
+            "hooks": registered.registered,
         }
         evidence = {"schemaVersion": 1, "policyIds": source.policy_ids}
         return ArtifactTree(
@@ -818,6 +817,7 @@ class ClaudeHookRenderer(ArtifactRenderer[HookSet]):
                 *roster.artifacts,
                 *departure.artifacts,
                 *cleanup.artifacts,
+                *caller.artifacts,
                 *store_artifacts(
                     Path(f".claude/plugins/{self.plugin_name}"), source.id
                 ),

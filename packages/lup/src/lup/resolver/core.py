@@ -35,7 +35,7 @@ from lup.resolver.dag import ConcernGraph
 from lup.resolver.execution import ConcernExecutor
 from lup.resolver.grants import GrantLedger
 from lup.resolver.joins import Joiner
-from lup.resolver.journal import (
+from lup.resolver.record import (
     Journal,
     LeaseDriftEvent,
     RunFailedEvent,

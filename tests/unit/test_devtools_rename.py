@@ -21,6 +21,7 @@ from lup_template.devtools.dev.init import (
     is_renamer_module,
     rename_pattern_in_file,
 )
+from tests.unit.repos import initialized_repo
 
 
 def apply_rename(tmp_path: Path, source: str, pattern: re.Pattern[str]) -> str:
@@ -90,25 +91,49 @@ class TestRenamerSelfExclusion:
         assert not is_renamer_module(Path("src/pkg/devtools/dev/app.py"))
 
 
+def checkout(tmp_path: Path) -> Path:
+    """An empty repository to rename in: the report reads what git holds."""
+    work = tmp_path / "checkout"
+    initialized_repo(work, tmp_path / "no-hooks")
+    return work
+
+
 class TestStaleReferenceReport:
     def test_reports_surviving_references_with_locations(self, tmp_path: Path) -> None:
-        module = tmp_path / "src" / "pkg" / "mod.py"
+        root = checkout(tmp_path)
+        module = root / "src" / "pkg" / "mod.py"
         module.parent.mkdir(parents=True)
         module.write_text('"""Paths live under src/lup_template/devtools/."""\n')
-        (tmp_path / "pyproject.toml").write_text('name = "x"\n')
+        (root / "pyproject.toml").write_text('name = "x"\n')
 
-        stale = find_stale_references(tmp_path)
+        stale = find_stale_references(root)
 
         assert len(stale) == 1
         assert "mod.py:1:" in stale[0]
         assert "src/lup_template/devtools/" in stale[0]
 
     def test_skips_the_renamer_module(self, tmp_path: Path) -> None:
-        renamer = tmp_path / "src" / "pkg" / "devtools" / "dev" / "init.py"
+        root = checkout(tmp_path)
+        renamer = root / "src" / "pkg" / "devtools" / "dev" / "init.py"
         renamer.parent.mkdir(parents=True)
         renamer.write_text('OLD = "lup_template"\n')
 
-        assert find_stale_references(tmp_path) == []
+        assert find_stale_references(root) == []
+
+    def test_skips_what_the_ignore_rules_keep_out(self, tmp_path: Path) -> None:
+        """A scratch tree under `src/` is nobody's to triage after a rename."""
+        root = checkout(tmp_path)
+        (root / ".gitignore").write_text("tmp/\n")
+        scratch = root / "src" / "pkg" / "tmp" / "probe.py"
+        scratch.parent.mkdir(parents=True)
+        scratch.write_text("from lup_template.agent import core\n")
+        kept = root / "tests" / "test_mod.py"
+        kept.parent.mkdir(parents=True)
+        kept.write_text('"""Exercises lup_template.agent.core."""\n')
+
+        assert find_stale_references(root) == [
+            '  tests/test_mod.py:1: """Exercises lup_template.agent.core."""'
+        ]
 
 
 class TestStaleInstallMetadata:

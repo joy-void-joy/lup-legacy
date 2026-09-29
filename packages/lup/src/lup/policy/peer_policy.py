@@ -33,8 +33,14 @@ class PeerPolicy(BaseModel, frozen=True):
     against — so a declaration restating any of them would be the second
     spelling this arrangement exists to remove. ``windows_dir`` stays because
     it is the one place under the store nothing but the dispatcher touches.
+
+    ``server`` is the tool server the coordination verbs are served from,
+    which each runtime's caller hook is matched against in that runtime's own
+    spelling of a server's tools. Read at generation and compiled into no row:
+    the dispatcher never sees a coordination call.
     """
 
+    server: str = Field(min_length=1)
     store: list[str] = Field(min_length=1)
     windows_dir: str = Field(min_length=1)
     member_env: str = Field(min_length=1)

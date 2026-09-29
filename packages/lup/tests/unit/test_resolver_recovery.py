@@ -22,7 +22,7 @@ from lup.execution.shell import git
 from lup.harness.process import LocalProcessLauncher
 from lup.resolver.core import resolver_config_digest
 from lup.resolver.join_desk import JoinDesk, JoinLanding, JoinPlan
-from lup.resolver.journal import IntegrationRecoveredEvent, Journal
+from lup.resolver.record import IntegrationRecoveredEvent, Journal
 from lup.resolver.mailbox import PendingQuestion, QuestionMailbox
 from lup.resolver.models import (
     AnswerBatch,

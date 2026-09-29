@@ -1,0 +1,14 @@
+subjects = ["return_settings", "SettingChange", "changed_settings"]
+reason = """
+a Codex session's every changed setting went back to the account, a hook or \
+its model pick included; only preferences return now, a portable one to the \
+person's lup config, and the decision lives in \
+lup.providers.codex.preferences"""
+commit = "457a1f9221466418f2b5753444919862deea290e"
+
+[[steps]]
+instruction = """
+Call return_settings(worktree, UserConfigFile(), current=...) and read what \
+moved from the CodexSettingsReturn it answers (.carried(), .withheld, \
+.session) rather than a list of names; import SettingChange and \
+changed_settings from lup.providers.codex.preferences."""

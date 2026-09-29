@@ -476,6 +476,11 @@ def build_session_factory(
     bare_prompt: bool = False,
 ) -> SessionBuild:
     """Assemble tools and return a fully configured neutral factory."""
+    # lup: defer: this factory and `provider_factory` are the half of the
+    # composition root still copied: the user settled that both become library
+    # code taking a declaration of the adopter's tool groups and kinds, so an
+    # update reaches them by the library pin rather than by a hand-port;
+    # `lup.tools.toolsets.assembled` moved, these two did not
     from lup.policy.hooks import (
         create_permission_hooks,
         create_tool_allowlist_hook,
@@ -618,7 +623,11 @@ def build_session_factory(
                 environment=environment,
             )
             mcp = [
-                External(name=server.name, server=server.launched(launch))
+                External(
+                    name=server.name,
+                    server=server.launched(launch),
+                    always_load=server.always_load,
+                )
                 for server in declared_tool_servers()
                 if server.name in served
             ]
@@ -847,8 +856,13 @@ async def run_persistent_agent(
     *,
     session_id: str | None = None,
     on_reply: Callable[[str], Awaitable[None]] | None = None,
+    missing_sleep_message: str | None = None,
 ) -> PersistentSessionResult:
-    """Run the relay over the same ``Session`` contract as ordinary turns."""
+    """Run the relay over the same ``Session`` contract as ordinary turns.
+
+    ``missing_sleep_message`` is the nudge a turn ending without sleep gets;
+    unset is this domain's own, from the realtime tools.
+    """
     from lup.orchestration.realtime.relay import (
         REALTIME_DIRNAME,
         RealtimeMailbox,
@@ -876,7 +890,7 @@ async def run_persistent_agent(
             scheduler=scheduler,
             mailbox=mailbox,
             initial_prompt=task,
-            missing_sleep_message=MISSING_SLEEP_MESSAGE,
+            missing_sleep_message=missing_sleep_message or MISSING_SLEEP_MESSAGE,
             gate=relay_gate,
             trace_logger=build.trace_logger,
         )

@@ -16,7 +16,7 @@ rather than from the beginning.
 import asyncio
 from collections.abc import AsyncGenerator
 
-from lup.resolver.journal import Journal, JournalEntry
+from lup.resolver.record import Journal, JournalEntry
 
 HEARTBEAT_SECONDS = 15.0
 RETRY_MILLISECONDS = 3000

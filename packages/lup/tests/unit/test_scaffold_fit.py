@@ -86,7 +86,7 @@ def pinned_at(root: Path, commit: str) -> None:
     wrote(
         root,
         "uv.lock",
-        'version = 1\n\n[[package]]\nname = "lup"\nversion = "0.3.0"\n'
+        'version = 1\n\n[[package]]\nname = "lup-agents"\nversion = "0.3.0"\n'
         f'source = {{ git = "https://example.test/lup?branch=dev#{commit}" }}\n',
     )
 
@@ -351,7 +351,7 @@ def test_an_update_before_adoption_says_so_and_moves_nothing(
     said: list[str] = []  # lup: ignore[empty-collection] — collected by callback
 
     with pytest.raises(typer.Exit):
-        update.updated(adopter, SOURCE, PACKAGE, "", "lup", said.append)
+        update.updated(adopter, SOURCE, PACKAGE, "", "lup-agents", said.append)
 
     assert "dev scaffold adopt --base <commit>" in said[0]
     assert branch_head(adopter, SOURCE.branch) == ""

@@ -17,6 +17,7 @@ import pytest
 import lup.launch.declaration as declaration
 import lup.providers.claude.runtime as claude_runtime
 from lup.coordination.identity import MEMBER_ENV, NAME_ENV, LaunchedMember
+from lup.harness.environment import tool_server_env
 from lup.harness.image import ContainerClient
 from lup.harness.models import HookSandbox, HookSet
 from lup.launch.compilation import allowance_environment
@@ -62,6 +63,7 @@ from lup.providers.codex.launch import (
 from lup.providers.codex.login import CODEX_HOME
 from lup.sessions.events import SessionId, SessionSummary
 from lup.sessions.recursion import MAX_RECURSIVE_AGENT_ENV
+from lup.tools.mcp import RawStdioServerConfig
 
 MEMBER = LaunchedMember(member_id="member-1", cli_name="reviewer")
 
@@ -282,7 +284,7 @@ def test_an_identity_joins_the_roster_in_both_outputs(
     monkeypatch.setattr(
         claude_runtime, "launched_member", lambda _root, _name=None: MEMBER
     )
-    agent = Claude(cwd=tmp_path, identity=Member(name="reviewer", inboxes=None))
+    agent = Claude(cwd=tmp_path, identity=Member(name="reviewer", wake_sockets=None))
     compiled = ClaudeSessionOpener(agent).compiled()
     arguments = claude_arguments(agent, MEMBER, None, [])
 
@@ -375,6 +377,92 @@ def test_declared_servers_are_the_launched_sessions_whole_roster() -> None:
     )
 
 
+def test_a_launched_codex_hands_the_servers_lup_hosts_what_its_launcher_exported() -> (
+    None
+):
+    """Codex starts a stdio server under a fixed base environment, forwarding nothing else.
+
+    So a server lup hosts names the roster identity and recursion allowance in
+    ``env_vars``, or its coordination server joins the roster under no id and
+    a nested agent its tools open spends no allowance. A server passed through
+    as declared is handed none of it.
+    """
+    from lup.mcp import Coordination, External
+
+    words = codex_arguments(
+        Codex(
+            tools=CodexTools(
+                mcp=[
+                    Coordination(),
+                    External(name="other", server=RawStdioServerConfig(command="x")),
+                ]
+            )
+        ),
+        [],
+        [],
+    )
+
+    assert set(tool_server_env()) == {MEMBER_ENV, NAME_ENV, MAX_RECURSIVE_AGENT_ENV}
+    assert f"mcp_servers.coordination.env_vars={json.dumps(tool_server_env())}" in words
+    assert not any(word.startswith("mcp_servers.other.env_vars=") for word in words)
+
+
+def test_an_always_loaded_server_skips_tool_search_in_both_claude_outputs() -> None:
+    """A server a session calls on most turns should not cost a search each time.
+
+    Claude Code defers MCP tools behind its tool search and exempts a server
+    whose config says ``alwaysLoad``, whatever its transport. A session opened
+    here says it in the SDK's options, which hand Claude Code each server but
+    its instance, and a launched one in ``--mcp-config``. Codex names no such
+    control, so its launch carries nothing for it.
+    """
+    from lup.mcp import Coordination, External
+    from lup.tools.mcp import (
+        RawHttpServerConfig,
+        RawStdioServerConfig,
+        create_mcp_server,
+    )
+
+    remote = RawHttpServerConfig(type="http", url="https://tools.example/mcp")
+    quiet = RawStdioServerConfig(command="quiet")
+    declared = [
+        Coordination(always_load=True),
+        External(name="remote", server=remote, always_load=True),
+        External(name="quiet", server=quiet),
+    ]
+    agent = Claude(tools=ClaudeTools(mcp=declared))
+    opened = build_claude_options(
+        agent,
+        servers={
+            "coordination": create_mcp_server("coordination"),
+            "remote": remote,
+            "quiet": quiet,
+        },
+        binding=lambda: None,
+        resume=None,
+        session_id="s",
+    )
+    assert isinstance(opened.mcp_servers, dict)
+    handed = json.loads(
+        json.dumps(
+            {
+                name: {key: value for key, value in server.items() if key != "instance"}
+                for name, server in opened.mcp_servers.items()
+            }
+        )
+    )
+    words = claude_arguments(agent, MEMBER, None, [])
+    launched = json.loads(words[words.index("--mcp-config") + 1])["mcpServers"]
+    codex_words = codex_arguments(Codex(tools=CodexTools(mcp=declared)), [], [])
+
+    assert handed["coordination"]["type"] == "sdk"
+    for servers in (handed, launched):
+        assert servers["coordination"]["alwaysLoad"] is True
+        assert servers["remote"]["alwaysLoad"] is True
+        assert "alwaysLoad" not in servers["quiet"]
+    assert [word for word in codex_words if "alwaysLoad" in word] == []
+
+
 class Step:
     """A lifecycle step that writes down when it ran."""
 
@@ -452,3 +540,40 @@ def test_a_missing_cli_is_a_refusal_naming_it(tmp_path: Path) -> None:
 
     with pytest.raises(LaunchRefused, match="definitely-not-a-cli"):
         run_in_foreground(command)
+
+
+def test_a_plugin_built_elsewhere_names_what_the_harness_would_have() -> None:
+    """A built plugin carries no roster and no image; a declaration names them beside it.
+
+    Unnamed, the harness's own are read where the plugin is one, and nothing
+    beyond the runtime's own probes and lup's default image where it is not.
+    """
+    from lup.harness.image import Image
+    from lup.harness.requirements import Manifest
+    from lup.launch.declaration import declared_image, declared_requirements
+    from lup_template.harness.catalog import portable_harness
+
+    harness = portable_harness()
+    image = Image().model_copy(update={"config_home": "/elsewhere"})
+    built = Path("/plugins/built")
+
+    assert declared_requirements(harness, None) == harness.requirements
+    assert declared_requirements(built, None) == Manifest()
+    assert declared_requirements(harness, Manifest()) == Manifest()
+    assert declared_image(harness, OuterContainer()) == harness.image
+    assert declared_image(built, OuterContainer()) == Image()
+    assert declared_image(harness, OuterContainer(image=image)) == image
+    assert declared_image(harness, InnerSandbox()) == harness.image
+
+
+@pytest.mark.parametrize("wall", [OuterContainer(), InnerSandbox(), NoSandbox()])
+def test_every_wall_reaches_its_mounts_and_widens_to_more(
+    wall: OuterContainer | InnerSandbox | NoSandbox,
+) -> None:
+    """The policy reads a mount as the session's own whichever wall it opens behind."""
+    declared = Mount(path=Path("/work/other"), writable=True)
+    added = Mount(path=Path("/work/answers"))
+    mounted = wall.model_copy(update={"mounts": [declared]})
+
+    assert mounted.roots() == [declared.root()]
+    assert mounted.widened([added]).roots() == [declared.root(), added.root()]

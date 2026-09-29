@@ -1,0 +1,12 @@
+subjects = ["shell_patch", "patch_review"]
+reason = """
+Native hook reviews bind captured documents and policy bytes; Codex approvals \
+remain single-use."""
+commit = "f9074c2ff28da8af3abf1087e3a04a5c96cccee8"
+
+[[steps]]
+instruction = """
+Regenerate both native plugins. Replace direct shell_patch callers with \
+lup.policy.kernel.review.literal_input(command, 'apply_patch'). Pass captured \
+preconditions and the shell flag to patch_review; never re-read the working \
+tree for a parked review."""

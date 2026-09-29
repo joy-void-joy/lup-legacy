@@ -19,7 +19,7 @@ from fastapi.responses import StreamingResponse
 
 from lup.providers.harness import AdapterName
 from lup.channels.models import utc_now
-from lup.resolver.journal import Journal, JournalEntry
+from lup.resolver.record import Journal, JournalEntry
 from lup.coordination.mailbox import (
     AnswerDoor,
     AnswerOffer,
@@ -262,7 +262,7 @@ def create_supervisor(
         """Say something to one actor, or stop all of them, without deciding.
 
         A message settles nothing, so this can never park a run — which is
-        the whole reason messages ride an inbox and decisions ride slots. A
+        the whole reason messages ride a member's mailbox and decisions ride slots. A
         redirect settles nothing either: it refuses one tool call and states
         why, which retargets the actor without ending the turn it is in.
 

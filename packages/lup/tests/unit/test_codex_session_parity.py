@@ -460,6 +460,27 @@ async def test_session_close_cancels_a_pending_submission_gate(
         await pending
 
 
+async def test_exiting_a_session_mid_turn_aborts_that_turn(
+    tmp_path: Path, scripted_codex: ScriptedCodex
+) -> None:
+    """The native turn is interrupted before its transport closes, as Claude's is.
+
+    The caller still awaiting it is released by the session's own close.
+    """
+    scripted_codex.answers.append(None)
+    async with Codex(cwd=tmp_path).open() as session:
+        pending = asyncio.ensure_future(session.ask("answer"))
+        assert await asyncio.wait_for(scripted_codex.started.get(), timeout=1) == (
+            "turn-1"
+        )
+    assert (
+        "turn/interrupt",
+        {"threadId": "thread-1", "turnId": "turn-1"},
+    ) in scripted_codex.requests
+    with pytest.raises(asyncio.CancelledError):
+        await asyncio.wait_for(pending, timeout=1)
+
+
 @pytest.mark.parametrize("limit", ["max_turns", "max_thinking_tokens"])
 def test_native_unavailable_numeric_limits_are_never_silently_dropped(
     tmp_path: Path, limit: str

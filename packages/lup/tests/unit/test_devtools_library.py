@@ -24,7 +24,7 @@ from lup.types import JsonValue
 VENDORED_PYPROJECT = """\
 [project]
 name = "demo"
-dependencies = ["fastapi>=0.139.0", "lup[claude,codex,docker]", "typer>=0.21.1"]
+dependencies = ["fastapi>=0.139.0", "lup-agents[claude,codex,docker]", "typer>=0.21.1"]
 
 [tool.uv]
 exclude-newer = "3 days"
@@ -33,7 +33,7 @@ exclude-newer = "3 days"
 members = ["packages/*"]
 
 [tool.uv.sources]
-lup = { workspace = true }
+lup-agents = { workspace = true }
 
 [tool.pytest.ini_options]
 pythonpath = ["src", "packages/lup/src"]
@@ -68,7 +68,7 @@ def project(tmp_path: Path) -> Path:
     (tmp_path / "pyproject.toml").write_text(VENDORED_PYPROJECT, encoding="utf-8")
     (tmp_path / library.VENDORED_ROOT).mkdir(parents=True)
     (tmp_path / library.VENDORED_ROOT / "pyproject.toml").write_text(
-        '[project]\nname = "lup"\n', encoding="utf-8"
+        '[project]\nname = "lup-agents"\n', encoding="utf-8"
     )
     return tmp_path
 
@@ -111,7 +111,7 @@ def test_publishing_drops_every_path_that_stops_resolving(project: Path) -> None
     library.set_mode(project, library.LibraryMode.PUBLISHED, version="0.3.0")
 
     assert library.read_mode(project) is library.LibraryMode.PUBLISHED
-    assert "lup[claude,codex,docker]>=0.3.0" in strings(
+    assert "lup-agents[claude,codex,docker]>=0.3.0" in strings(
         project, "project", "dependencies"
     )
     assert at(project, "tool", "uv", "workspace") is None
@@ -167,9 +167,14 @@ def test_a_git_project_reads_as_git_and_names_where_it_resolves(project: Path) -
     assert library.read_mode(project) is library.LibraryMode.GIT
     assert library.read_git_source(project) == source
     # The distribution sits inside the repository, not at its root.
-    assert at(project, "tool", "uv", "sources", "lup", "subdirectory") == "packages/lup"
+    assert (
+        at(project, "tool", "uv", "sources", "lup-agents", "subdirectory")
+        == "packages/lup"
+    )
     # A source override supplies the version, so no bound is restated.
-    assert "lup[claude,codex,docker]" in strings(project, "project", "dependencies")
+    assert "lup-agents[claude,codex,docker]" in strings(
+        project, "project", "dependencies"
+    )
 
 
 def test_git_un_vendors_exactly_as_publishing_does(project: Path) -> None:
@@ -192,7 +197,7 @@ def test_each_kind_of_ref_is_written_under_its_own_key(project: Path) -> None:
         )
         library.set_mode(project, library.LibraryMode.GIT, git=source)
 
-        assert at(project, "tool", "uv", "sources", "lup", kind) == "something"
+        assert at(project, "tool", "uv", "sources", "lup-agents", kind) == "something"
         assert library.read_git_source(project) == source
 
 

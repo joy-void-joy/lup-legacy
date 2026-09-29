@@ -20,7 +20,7 @@ Examples::
 import re
 import shutil
 from collections.abc import Iterator
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 import tomlkit
 from tomlkit.container import Container
 from tomlkit.items import Comment
@@ -28,7 +28,11 @@ import typer
 from pydantic import BaseModel
 
 from lup.workspace.paths import project_root
+from lup.devtools.dev.documented import generated_files
+from lup.devtools.dev.library import VENDORED_ROOT
 from lup.devtools.dev.plugin import set_marketplace_name
+from lup.devtools.dev.scaffold import ScaffoldFile, ScaffoldSource
+from lup.devtools.dev.tracked import tracked_files
 from lup_template.harness.catalog import declared_plugin
 from lup.execution.shell import git
 
@@ -78,20 +82,27 @@ def is_renamer_module(path: Path) -> bool:
     return path.as_posix().endswith("devtools/dev/init.py")
 
 
-INITIALIZATION_MODULES = ["devtools/dev/init.py", "devtools/dev/app.py"]
-"""Where initialization's own vocabulary is written down, for a caller that
-does not say. A module that names what initialization removes says the name
-because that is its subject, so a scan reporting lines still naming a deleted
-path skips these for the same reason the rename skips the renamer: its
-literals are the command rather than a reference the command left dangling."""
+INITIALIZATION_FILES = [
+    "devtools/dev/init.py",
+    "devtools/dev/app.py",
+    "harness/content/skills/init.passage.md",
+    "harness/content/skills/install.passage.md",
+    "harness/content/modules/examples.py",
+    "tests/unit/test_devtools_drop_examples.py",
+]
+"""Where what initialization removes is the subject, for a caller that does not
+say: the commands removing it, the skill running them, the install guidance
+leaving the same trees behind, the module declaring the demonstrations, and the
+tests driving their removal. Each names a removed path because that is what it
+is about, so a scan reporting lines still naming one skips these for the same
+reason the rename skips the renamer: their literals are the subject rather
+than a reference the command left dangling."""
 
 
-def declares_initialization(
-    path: Path, modules: list[str] = INITIALIZATION_MODULES
-) -> bool:
-    """Whether ``path`` is one of initialization's own declaring modules."""
+def about_initialization(path: Path, files: list[str] = INITIALIZATION_FILES) -> bool:
+    """Whether ``path`` is one of the files whose subject is what initialization removes."""
     spelled = path.as_posix()
-    return any(spelled.endswith(module) for module in modules)
+    return any(spelled.endswith(file) for file in files)
 
 
 def rename_match(matched: str, new_name: str) -> str:
@@ -185,9 +196,9 @@ def rename_in_pyproject(
     ``[project.scripts]`` to ``[project.entry-points."lup.devtools"]``, and
     matching the whole old line went on silently succeeding at nothing. A
     renamed project kept an entry point naming a package that no longer
-    existed — failing later as ``must register exactly one 'lup.devtools'
-    application entry point; found 2``, which names neither the manifest nor
-    the rename — and shipped none of its package data, which was never matched
+    existed — failing later where ``lup-devtools`` refuses two registered
+    applications, far from the manifest line that left the second one — and
+    shipped none of its package data, which was never matched
     at all.
 
     A key that moves tables keeps its value, so the value is what is matched.
@@ -284,7 +295,7 @@ def drop_stale_metadata(
     under the new name without removing the old. Both sit on the import path
     the editable install adds, so ``importlib.metadata`` reads two
     distributions each registering the ``lup.devtools`` application, and
-    every `lup-devtools` command refuses with "found 2" until the stale one
+    every `lup-devtools` command refuses, naming both, until the stale one
     goes. It is an ignored build product, so nothing tracked goes with it.
     """
     stale = root / "src" / f"{distribution.replace('-', '_')}.egg-info"
@@ -316,13 +327,18 @@ def find_stale_references(root: Path) -> list[str]:
     Covers reference forms the rewriting passes deliberately leave alone —
     docstring prose, path fragments, generated-content templates — so
     nothing dangles silently after a rename.
+
+    Read over what the checkout holds under ``src/`` and ``tests/``, tracked
+    or not yet added, and never what its ignore rules keep out: a scratch
+    tree or a runtime's write journal is nobody's to triage, and a line
+    reported from one sits in front of the lines somebody has to repair.
     """
     scan_files = [
         path
-        for search_dir in [root / "src", root / "tests"]
-        if search_dir.is_dir()
-        for path in sorted(search_dir.rglob("*.py"))
-        if not is_renamer_module(path)
+        for rel in sorted(tracked_files(others=True, suffixes=(".py",), root=root))
+        if PurePosixPath(rel).parts[0] in ["src", "tests"]
+        and (path := root / rel).is_file()
+        and not is_renamer_module(path)
     ]
     pyproject = root / "pyproject.toml"
     if pyproject.is_file():
@@ -351,11 +367,17 @@ these but a directory name. A fork shipping different demonstrations passes
 its own list rather than editing this one."""
 
 SKIPPED_TREES = ["fixtures"]
-"""Directory names a mention scan never descends into, beside the obvious, for
-a caller that does not say. The version-controlled, virtual-environment, and
-bytecode trees are skipped because nothing in them is prose anyone repairs. A
-fixture tree is skipped for the opposite reason: it says `examples/` on
-purpose, as the data a test drives."""
+"""Directory names a mention scan never descends into, for a caller that does
+not say. A fixture tree is held by git like any other and skipped all the
+same, because it says `examples/` on purpose, as the data a test drives. What
+the ignore rules keep out — an environment, a dependency tree, a build's
+output — needs no entry here: the scan reads only what the checkout holds."""
+
+UPSTREAM_TREES = [VENDORED_ROOT]
+"""Trees whose text is upstream's rather than this project's, for a caller that
+does not say: the library, where it is vendored beside the application. What
+it names is repaired where upstream writes it, and the next update replaces
+the copy here whole."""
 
 
 def drop_scaffold_demonstrations(
@@ -381,6 +403,32 @@ def drop_scaffold_demonstrations(
     return [f"  {path.as_posix()}: removed" for path in present]
 
 
+def undeclined_copies(
+    removed: list[Path], source: ScaffoldSource, package: str
+) -> list[str]:
+    """Each removed path the copied half still carries, spelled as a decline is.
+
+    `dev update` merges upstream's copied half, so a file this project deleted
+    that the scaffold still compiles comes back as a conflict the first time
+    upstream changes it. Declined in the scaffold declaration, it is absent
+    from every scaffold commit instead, and nothing is offered back. A path
+    outside every copied root — `examples/` itself — is this project's own from
+    its first day and has nothing to decline.
+    """
+    return [
+        copied.upstream().as_posix()
+        for path in removed
+        for root in source.roots
+        if PurePosixPath(path).is_relative_to(root.resolved(package))
+        and not source.declines(
+            copied := ScaffoldFile(
+                root=root,
+                relative=PurePosixPath(path).relative_to(root.resolved(package)),
+            )
+        )
+    ]
+
+
 def mention_pattern(path: Path) -> re.Pattern[str]:
     """How a line names this path, in each spelling one can take.
 
@@ -399,7 +447,10 @@ def mention_pattern(path: Path) -> re.Pattern[str]:
 
 
 def surviving_mentions(
-    root: Path, removed: list[Path], skipped_trees: list[str] = SKIPPED_TREES
+    root: Path,
+    removed: list[Path],
+    skipped_trees: list[str] = SKIPPED_TREES,
+    upstream_trees: list[str] = UPSTREAM_TREES,
 ) -> list[str]:
     """Every line still naming something that was just removed.
 
@@ -411,16 +462,31 @@ def surviving_mentions(
     A file inside what was removed is not scanned. It names its own siblings
     constantly and is going with them, so reporting it would bury the handful
     of lines somebody actually has to repair.
+
+    Nor is anything the checkout does not hold. What is scanned is what git
+    lists — tracked, or untracked and not ignored — because the trees its
+    ignore rules keep out are exactly the ones naming a removed directory
+    most often and owned by nobody: a virtual environment's installed
+    packages, a frontend's dependencies, whatever a build left behind.
+
+    Nor what the checkout holds on somebody else's behalf. A generated file is
+    repaired at its source, which the scan reads where that source is this
+    project's, and regenerated after; the library's own tree is upstream's
+    prose about upstream's examples. Either would be a line reported to
+    somebody who is not the one to repair it.
     """
-    skipped = {".git", ".venv", "__pycache__", *skipped_trees}
     patterns = [mention_pattern(path) for path in removed]
+    generated = generated_files(root)
     scanned = [
         path
-        for path in sorted(root.rglob("*"))
-        if path.is_file()
-        and path.suffix in [".py", ".md", ".toml"]
-        and not skipped.intersection(path.parts)
-        and not declares_initialization(path)
+        for rel in sorted(
+            tracked_files(others=True, suffixes=(".py", ".md", ".toml"), root=root)
+        )
+        if (path := root / rel).is_file()
+        and rel not in generated
+        and not any(PurePosixPath(rel).is_relative_to(tree) for tree in upstream_trees)
+        and not any(part in skipped_trees for part in PurePosixPath(rel).parts)
+        and not about_initialization(path)
         and not any(path.is_relative_to(root / going) for going in removed)
     ]
     return [

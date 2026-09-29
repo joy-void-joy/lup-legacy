@@ -10,8 +10,9 @@ case "$shared" in
     *) shared="$PWD/$shared" ;;
 esac
 root="$shared/lup/coordination"
-inbox="$root/inbox/session-$LUP_COORDINATION_MEMBER"
-[ -d "$inbox" ] || exit 0
-set -- "$inbox"/*.json
-[ -e "$1" ] || exit 0
-exec python3 "${0%/*}/../runtime/coordination_delivery.py" "$root" "$LUP_COORDINATION_MEMBER"
+set -- "$root/mailbox/session-$LUP_COORDINATION_MEMBER"/*.json "$root/mailbox/subagent-$LUP_COORDINATION_MEMBER-"*/*.json
+for waiting do
+    [ -e "$waiting" ] || continue
+    exec python3 -s "${0%/*}/../runtime/coordination_delivery.py" "$root" "$LUP_COORDINATION_MEMBER"
+done
+exit 0

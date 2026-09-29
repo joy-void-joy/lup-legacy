@@ -13,6 +13,7 @@ from lup.providers.codex.subagents import CodexModelTiers
 from lup.providers.drift_prompt import drift_hook
 from lup.providers.peer_delivery import delivery_artifacts, delivery_command
 from lup.providers.roster_prompt import (
+    PromptHook,
     departure_hook,
     folded,
     prompt_hook,
@@ -20,7 +21,8 @@ from lup.providers.roster_prompt import (
     wake_hook,
 )
 from lup.providers.subagent_cleanup import cleanup_hooks
-from lup.types import ModelTier
+from lup.providers.coordination_caller import caller_hooks
+from lup.types import JsonValue, ModelTier
 from lup.harness.codescan.antipatterns import DOCUMENT_IN_HAND, rule_set_for
 from lup.formats.markdown import MarkdownDocument, Prose
 from lup.formats.toml import TomlDocument, TomlEntry, TomlScalar
@@ -309,17 +311,6 @@ class CodexSpellings(NativeSpellings):
             "https://learn.chatgpt.com/"
         )
 
-    def runtime_key(self) -> str:
-        return "codex"
-
-    def project_root(self) -> str:
-        # Codex substitutes nothing into a server command, but it reads this
-        # config only for the project the config sits in, so the launch
-        # directory is that project by construction. Naming it explicitly is
-        # what makes a server started anywhere else fail instead of resolving
-        # up the tree into a neighbouring checkout.
-        return "."
-
     def model_alias(self, tier: ModelTier) -> str | None:
         return codex_model_id(tier, CodexModelTiers())
 
@@ -355,6 +346,14 @@ class CodexSpellings(NativeSpellings):
                 return Atom(f"{root}/hooks/")
             case "guidance_template":
                 return Atom(f"{root}/TEMPLATE_AGENTS.md")
+
+
+# lup: ignore[constant-declaration] — where Codex reads a checkout's own skills,
+# the runtime's layout rather than a choice made here
+CODEX_OVERLAY = Path(".codex/skills")
+"""The skills one machine renders for itself, where Codex reads a project's own.
+
+Ignored by git, because what they hold names this machine's own profiles."""
 
 
 class CodexSkillRenderer(ArtifactRenderer[Skill]):
@@ -483,63 +482,20 @@ class CodexPluginManifestRenderer(ArtifactRenderer[Plugin]):
         )
 
 
-def codex_project_config(
-    source: Harness,
-    spellings: NativeSpellings,
-    budget: GuidanceBudget = GUIDANCE_BUDGET,
-) -> str:
-    """Render the project config: enabled features, then every tool server.
-
-    Codex keeps a project's servers in the same file as the rest of its
-    project configuration, so this is one document rather than the separate
-    artifact the other runtime reads.
+def codex_project_config(budget: GuidanceBudget = GUIDANCE_BUDGET) -> str:
+    """Render the project config: the features a session needs, and its guidance budget.
 
     The guidance ceiling generation already enforces is restated here as
     ``project_doc_max_bytes``: the runtime truncates project guidance at its
     own default, so a document that passed generation would still reach the
-    model short if the two disagreed.
-
-    ``env_vars`` is rendered here and nowhere else because only this runtime
-    needs telling. Codex starts a stdio server under a fixed base environment
-    and forwards nothing else it was not asked for, so a server whose session
-    relay or credential arrives as an environment variable gets neither
-    unless the config names it; the other runtime hands its servers the whole
-    environment and the same declaration is already satisfied there.
-
-    ``default_tools_approval_mode`` grants every declared server outright,
-    which is the same decision the other runtime's settings artifact already
-    compiles into its served-tool grants, derived from the same fact: a
-    server named in a plugin here is this project's own code, wired in
-    deliberately, so asking per call would make the declaration a suggestion.
-    Undeclared, the two runtimes disagree on it — a session opened with no
-    operator to ask holds every server it was given and can call none
-    of them, refusing each with its approval policy rather than with anything
-    naming the servers.
-
-    ``startup_timeout_sec`` is where a declared deadline lands, in this
-    runtime's own unit. It renders only when the declaration names one, so a
-    server that says nothing keeps the runtime's default instead of being
-    given this file's opinion of one.
+    model short if the two disagreed. The tool servers a session carries are
+    no part of it: a launch declares them per session.
     """
     document = tomlkit.document()
     features = tomlkit.table()
     features["hooks"] = True
     document["features"] = features
     document["project_doc_max_bytes"] = budget.ceiling
-    servers = tomlkit.table(is_super_table=True)
-    for plugin in source.plugins:
-        for server in plugin.mcp_servers:
-            entry = tomlkit.table()
-            entry["command"] = server.command
-            entry["args"] = server.command_line(spellings)
-            if server.env_vars:
-                entry["env_vars"] = server.env_vars
-            if server.startup_timeout_seconds is not None:
-                entry["startup_timeout_sec"] = server.startup_timeout_seconds
-            entry["default_tools_approval_mode"] = "approve"
-            servers[server.name] = entry
-    if servers:
-        document["mcp_servers"] = servers
     return tomlkit.dumps(document)
 
 
@@ -567,7 +523,7 @@ class CodexGuidanceRenderer(ArtifactRenderer[Harness]):
                 ),
                 Artifact.generated(
                     path=Path(".codex/config.toml"),
-                    body=codex_project_config(source, self.spellings, self.budget),
+                    body=codex_project_config(self.budget),
                     semantic_id="harness.project-config",
                     banner=GeneratedBanner(
                         source=__name__,
@@ -594,7 +550,7 @@ CODEX_DISPATCHER = DispatcherDeclaration(
     observation_event="PostToolUse",
     observed_tools=["apply_patch", "Bash"],
     failure="stderr_exit",
-    runtime_modules=["codex_patch", "policy_data"],
+    runtime_modules=["caller_payload", "codex_patch", "policy_data"],
 )
 """Everything Codex spells differently from every other runtime.
 
@@ -661,6 +617,40 @@ No stop event travels with it. Measured on 0.155.1: a subagent's session
 outlives its report, and output forced onto that session afterwards resumes
 nobody — so the sentence is owed and the refusal is not.
 """
+
+# lup: ignore[constant-declaration] — the runtime's wire spelling of its own
+# event, which no project could choose differently and still be heard
+CODEX_SUBAGENT_STOP_EVENT = "SubagentStop"
+"""The event Codex fires as a subagent's turn ends, carrying its id.
+
+Documented at https://learn.chatgpt.com/docs/hooks among the events fired
+during a turn, and measured on 0.155.1 in user-run sessions whose payloads are
+kept as fixtures: it carried the subagent's `agent_id` and `agent_type` and
+the parent's `session_id`. Registered for the roster alone — the subagent's
+row ends there — and never to refuse, which the cleanup fold does not here.
+The runtime's own spelling of the moment, so not a value a project could
+choose.
+"""
+
+# lup: ignore[constant-declaration] — the runtime's wire spelling of its own
+# event, which no project could choose differently and still be heard
+CODEX_CALLER_EVENT = "PreToolUse"
+"""The event Codex fires before a tool runs, where the caller is stamped.
+
+Documented at https://learn.chatgpt.com/docs/hooks, which lists MCP tools
+among the calls it fires for, matched by the tool's `mcp__<server>__<tool>`
+name. Measured on 0.155.1: a subagent's events carry its `agent_id`. How a
+rewrite is applied is read out of the 0.158.0 source rather than measured —
+see the host half. The runtime's own spelling of the moment, so not a value a
+project could choose.
+"""
+
+CODEX_CALLER_PAYLOAD = (
+    resources.files("lup.providers.codex")
+    .joinpath("assets/caller_payload.py")
+    .read_text("utf-8")
+)
+"""The host half of the caller hook, shipped verbatim for its entry and the dispatcher."""
 
 CODEX_PATCH_RUNTIME = (
     resources.files("lup.providers.codex").joinpath("patch.py").read_text("utf-8")
@@ -807,13 +797,13 @@ class CodexHookRenderer(ArtifactRenderer[HookSet]):
         self.spellings = spellings
 
     def render(self, source: HookSet) -> ArtifactTree:
-        policy_hook = {
+        policy_hook: JsonValue = {
             "type": "command",
             "command": guarded_hook_command("PLUGIN_ROOT"),
             "statusMessage": "Checking Lup policy",
             "timeout": source.policy_timeout,
         }
-        decided = [
+        decided: list[JsonValue] = [
             {
                 "matcher": "|".join(
                     routed_for(CODEX_DISPATCHER.routed_tools, source.refused_tools)
@@ -821,13 +811,13 @@ class CodexHookRenderer(ArtifactRenderer[HookSet]):
                 "hooks": [policy_hook],
             }
         ]
-        observed = [
+        observed: list[JsonValue] = [
             {
                 "matcher": "|".join(CODEX_DISPATCHER.observed_tools),
                 "hooks": [policy_hook],
             }
         ]
-        delivery = [
+        delivery: list[JsonValue] = [
             {
                 "matcher": "",
                 "hooks": [
@@ -867,11 +857,15 @@ class CodexHookRenderer(ArtifactRenderer[HookSet]):
                 ),
             ]
         )
+        # A subagent's own row ends under the stop event this runtime fires
+        # for it, told apart from the session's ending by the subagent's id in
+        # the payload. Registered for the roster alone: nothing refuses there.
         departure = departure_hook(
             Path(f".codex/plugins/{self.plugin_name}"),
             "PLUGIN_ROOT",
             source,
             CODEX_EXIT_EVENT,
+            CODEX_SUBAGENT_STOP_EVENT,
         )
         # A subagent is told at its start what it opens is its own to close.
         # It is not refused at its stop: measured on 0.155.1, the session it
@@ -885,23 +879,43 @@ class CodexHookRenderer(ArtifactRenderer[HookSet]):
             CODEX_SUBAGENT_START_EVENT,
             None,
         )
-        hooks = {
-            "hooks": {
-                **{
-                    event: (
-                        observed
-                        if event == CODEX_DISPATCHER.observation_event
-                        else [*decided, *delivery]
-                        if event == "PreToolUse"
-                        else decided
-                    )
-                    for event in CODEX_DISPATCHER.hook_events
-                },
-                **roster.registered,
-                **departure.registered,
-                **cleanup.registered,
-            }
-        }
+        # Every coordination call says which conversation made it, matched to
+        # the coordination server's tools under the bare key Codex declares
+        # each server by.
+        caller = caller_hooks(
+            Path(f".codex/plugins/{self.plugin_name}"),
+            "PLUGIN_ROOT",
+            source,
+            CODEX_CALLER_PAYLOAD,
+            "lup.providers.codex.assets.caller_payload",
+            CODEX_CALLER_EVENT,
+            lambda server: f"mcp__{server}__.*",
+        )
+        # Folded rather than merged, because two sources register under one
+        # event — the policy, delivery and the caller hook before a tool — and
+        # a merge would keep whichever was written last.
+        registered = folded(
+            [
+                PromptHook(
+                    registered={
+                        event: (
+                            observed
+                            if event == CODEX_DISPATCHER.observation_event
+                            else [*decided, *delivery]
+                            if event == "PreToolUse"
+                            else decided
+                        )
+                        for event in CODEX_DISPATCHER.hook_events
+                    },
+                    artifacts=[],
+                ),
+                roster,
+                departure,
+                cleanup,
+                caller,
+            ]
+        )
+        hooks = {"hooks": registered.registered}
         evidence = {
             "schemaVersion": 1,
             "policyIds": source.policy_ids,
@@ -947,6 +961,7 @@ class CodexHookRenderer(ArtifactRenderer[HookSet]):
                 ),
                 *departure.artifacts,
                 *cleanup.artifacts,
+                *caller.artifacts,
                 *store_artifacts(Path(f".codex/plugins/{self.plugin_name}"), source.id),
                 *[
                     Artifact(

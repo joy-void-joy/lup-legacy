@@ -11,6 +11,7 @@ the same setting the person's wins and is named.
 """
 
 import json
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import pytest
@@ -29,6 +30,7 @@ from lup.harness.assets.home_seed import (
     read_tree,
     three_way,
 )
+from lup.harness.assets.trust_seed import record_trust
 from lup.harness.image import Podman
 from lup.providers.claude.config_home import ClaudeConfigHome
 from lup.providers.claude.home_seed import ClaudeHomeReturn, ClaudeHomeSeed
@@ -212,3 +214,56 @@ def test_a_contained_codex_home_keeps_a_running_sessions_theme(tmp_path: Path) -
     assert overridden.settings["tui"] == {"theme": "monokai", "animations": True}
     assert overridden.conflicts == ["tui.theme"]
     assert first.settings == installed and first.conflicts == []
+
+
+def test_containers_starting_at_once_neither_tear_nor_drop_the_trust_document(
+    tmp_path: Path,
+) -> None:
+    """Every container on a home records trust and applies the seed, several at once.
+
+    Both programs read ``.claude.json``, merge into it and write it back. A
+    staging name they shared was measured publishing a document whose front
+    was NUL bytes, and a merge interleaved with the other's drops what that
+    one added -- so each holds the lock the other takes, and stages through a
+    file of its own.
+    """
+    home = tmp_path / "config"
+    home.mkdir()
+    document = home / ".claude.json"
+    cached: JsonObject = {
+        f"/cached/{number}": {"lastCost": number} for number in range(2000)
+    }
+    document.write_text(json.dumps({"projects": cached}), encoding="utf-8")
+    seed = tmp_path / "seed"
+    (seed / "merge").mkdir(parents=True)
+    (seed / "managed").write_text("", encoding="utf-8")
+    (seed / "merge" / ".claude.json").write_text(
+        json.dumps({"autoUpdates": False}), encoding="utf-8"
+    )
+    trust_seed = tmp_path / "trust-seed.json"
+    trust_seed.write_text(json.dumps({"projects": {}}), encoding="utf-8")
+    checkouts = [f"/w/tree/{number}" for number in range(16)]
+
+    with ThreadPoolExecutor(max_workers=2 * len(checkouts)) as pool:
+        started = [
+            *(
+                pool.submit(record_trust, document, trust_seed, [checkout])
+                for checkout in checkouts
+            ),
+            *(pool.submit(apply, seed, home) for _ in checkouts),
+        ]
+        for start in started:
+            start.result()
+
+    content = json.loads(document.read_text(encoding="utf-8"))
+    assert content["autoUpdates"] is False
+    assert len(content["projects"]) == len(cached) + len(checkouts)
+    assert all(
+        content["projects"][checkout]["hasTrustDialogAccepted"] is True
+        for checkout in checkouts
+    )
+    assert sorted(path.name for path in home.iterdir()) == [
+        ".claude.json",
+        ".lup-seed",
+        ".lup-trust.lock",
+    ]

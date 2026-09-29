@@ -11,7 +11,7 @@ from lup.coordination.cohort import SESSION_DIR
 from lup.coordination.refs import ActorRef
 from lup.coordination.sessions import ActorRecord, ActorSchemaChangedError, ActorSession
 from lup.resolver.actor_recovery import retire_actor_binding
-from lup.resolver.journal import ActorBindingRetiredEvent, Journal
+from lup.resolver.record import ActorBindingRetiredEvent, Journal
 from lup.resolver.state import ResolverStateRepository, StateTransitionError
 from lup.sessions.events import (
     SessionId,

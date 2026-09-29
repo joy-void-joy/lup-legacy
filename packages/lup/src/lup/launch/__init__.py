@@ -11,6 +11,9 @@ module per concern.
   (the sandbox and its mounts, the coordination identity, the recording, the
   session a launch reopens), the command a launch compiles to, and the
   lifecycle steps a repository runs around it.
+- :mod:`lup.launch.companions` — what a session wants running on the host
+  beside it, held around every session a declaration opens, and the leases
+  one process shared by several sessions is kept alive by.
 - :mod:`lup.launch.compilation` — the fields every runtime compiles alike
   for either output: the recursive-agent allowance, the declared policy as
   in-process hooks, the environment a launched CLI inherits.

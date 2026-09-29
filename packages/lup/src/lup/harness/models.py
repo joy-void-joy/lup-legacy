@@ -9,6 +9,7 @@ beside its managing module instead (see the package docstring).
 
 import re  # lup: ignore[import-re] — prose has no parser; its shape is the rule
 from abc import ABC, abstractmethod
+from collections.abc import Sequence
 from itertools import dropwhile
 from json import dumps
 from pathlib import Path, PurePath, PurePosixPath
@@ -995,6 +996,29 @@ class BashGrant(BaseModel, frozen=True):
         return cls(prefixes=[scope.strip().removesuffix(":*") for scope in specifiers])
 
 
+class ProfileHint(BaseModel, frozen=True):
+    """An argument hint naming the profiles one machine keeps, spelled on that machine.
+
+    A skill acting on an account is invoked with a profile's name, and which
+    names answer is a fact about the machine: a hint written into a committed
+    tree would name one machine's accounts to every other, or none of them.
+    So the verbs are declared, and the names are filled in where they are
+    known.
+    """
+
+    alone: list[NativeName] = []
+    """Verbs taken with no profile."""
+
+    naming: list[NativeName] = []
+    """Verbs taking one profile's name."""
+
+    def spelled(self, profiles: Sequence[str]) -> str:
+        """The hint on a machine keeping ``profiles``, a placeholder where it keeps none."""
+        chosen = "|".join(profiles) if profiles else "name"
+        verbs = [*self.alone, *(f"{verb} <{chosen}>" for verb in self.naming)]
+        return f"[{' | '.join(verbs)}]"
+
+
 class Skill(SelectableRule, frozen=True):
     id: str
     name: NativeName
@@ -1002,6 +1026,11 @@ class Skill(SelectableRule, frozen=True):
     arguments: list[Argument] = []
     tools: list[ToolGrant] = []
     argument_hint: PortableText | None = None
+    machine_hint: ProfileHint | None = None
+    """Where set, this skill is the machine's: rendered with this hint, naming
+    the profiles the machine keeps, into a gitignored overlay every launch
+    loads — never into the committed tree."""
+
     prompt: PromptDocument
 
     def selection_id(self) -> str:
@@ -1010,6 +1039,16 @@ class Skill(SelectableRule, frozen=True):
     def given(self, taken: list[str]) -> "Skill":
         """This skill as a project that took *taken* modules reads it."""
         return self.model_copy(update={"prompt": self.prompt.given(taken)})
+
+    @model_validator(mode="after")
+    def one_hint(self) -> "Skill":
+        """Refuse a fixed hint beside the machine's, which would never be shown."""
+        if self.argument_hint is not None and self.machine_hint is not None:
+            raise ValueError(
+                f"skill {self.id!r} declares an argument_hint and a machine_hint; "
+                "the machine's is the one shown, so drop argument_hint"
+            )
+        return self
 
     @model_validator(mode="after")
     def coherent_arguments(self) -> "Skill":
@@ -1263,105 +1302,6 @@ class ContentRoster(BaseModel, frozen=True):
         )
 
 
-class McpWord(BaseModel, ABC, frozen=True):
-    """One word of the command line that starts an MCP server.
-
-    A server the harness offers has to be reachable from wherever the runtime
-    spawns it, and each runtime hands a spawned process a different way of
-    naming the repository it belongs to. Declaring the words as parts rather
-    than as a string keeps that difference in the adapters, the way a prompt
-    keeps every other native spelling there.
-    """
-
-    @abstractmethod
-    def spell_in(self, runtime: "NativeSpellings") -> str:
-        """Spell this word in one runtime's own vocabulary."""
-
-
-class LiteralWord(McpWord, frozen=True):
-    """One word every runtime spells identically."""
-
-    type: Literal["literal"] = "literal"
-    text: str = Field(min_length=1)
-
-    def spell_in(self, runtime: "NativeSpellings") -> str:
-        return self.text
-
-
-class ProjectRootWord(McpWord, frozen=True):
-    """The repository root, as the runtime spawning the server can name it."""
-
-    type: Literal["project_root"] = "project_root"
-
-    def spell_in(self, runtime: "NativeSpellings") -> str:
-        return runtime.project_root()
-
-
-class RuntimeWord(McpWord, frozen=True):
-    """The engine that owns the tool server, independent of ambient settings."""
-
-    type: Literal["runtime"] = "runtime"
-
-    def spell_in(self, runtime: "NativeSpellings") -> str:
-        return runtime.runtime_key()
-
-
-type McpCommandWord = Annotated[
-    LiteralWord | ProjectRootWord | RuntimeWord, Discriminator("type")
-]
-
-
-class McpServer(BaseModel, frozen=True):
-    """One tool server a native tree offers the agent that reads it.
-
-    The application owns which tools exist and how they are grouped; this
-    declares only how a runtime starts one group and what to call it, so the
-    same registry reaches an in-process session and a native harness session
-    without either learning the other's assembly.
-    """
-
-    id: str
-    name: NativeName
-    description: PortableText = Field(min_length=1, max_length=1024)
-    command: str = Field(min_length=1)
-    arguments: list[McpCommandWord] = []
-
-    env_vars: list[str] = []
-    """Environment variable names that must reach this server from the launch.
-
-    Names, never values: this is compiled into a committed tree, and a value
-    belongs to one machine and one run. Which runtimes have to be told is a
-    rendering decision, and they differ. One spawns a server as its own child
-    and hands it the whole environment, so naming a variable changes nothing
-    there. The other hands a spawned server a fixed base environment — a
-    shell's worth of HOME and PATH and no more — and forwards exactly the
-    names it was given, so a server needing a session relay, a credential or
-    a configuration home reaches none of them unless they are named here.
-    """
-
-    startup_timeout_seconds: float | None = None
-    """How long this server gets to come up before a runtime abandons it.
-
-    Declared per server because the answer belongs to the server and not to
-    the machine: a group that resolves its package before importing anything
-    is slow on a cold checkout and instant on a warm one, while a runtime's
-    own default is chosen for a server already installed. Unset leaves that
-    default in force, which is right for a server whose start costs nothing.
-
-    Both runtimes spawn under a deadline; what differs is the spelling. One
-    offers it per server and receives this number as written; the other reads
-    a single environment variable covering every server it starts, so its
-    settings artifact renders the widest declared deadline and nothing per
-    server. What makes the deadline worth declaring is the shape of missing
-    it — the server is dropped and the session keeps the rest, so it arrives
-    as a group that is simply absent rather than as an error naming a limit.
-    """
-
-    def command_line(self, runtime: "NativeSpellings") -> list[str]:
-        """Spell every argument for the runtime that will spawn this server."""
-        return [argument.spell_in(runtime) for argument in self.arguments]
-
-
 class HookUrlScope(BaseModel, frozen=True):
     """Portable generated-hook URL scope configured by the application."""
 
@@ -1450,17 +1390,27 @@ class AcceptanceGuard(BaseModel, frozen=True):
 
 
 class SpawnNames(BaseModel, frozen=True):
-    """A project's decision that every subagent it spawns is named.
+    """A project's decision that every subagent it spawns goes out named.
 
     A runtime lists, addresses and stops a subagent by the name it was
     spawned with, and shows its type where none was given — a generic word
     such as the default agent's, which says nothing about what the subagent
-    is doing. Declaring this refuses a spawn that carries no name, with a
-    recovery giving the shape, so the caller passes one and the listing says
-    what each subagent is for.
+    is doing. Declaring this sends every spawn out under a name of the shape
+    below: one given in that shape goes as given, one outside it is
+    normalized, and a spawn given none takes one read out of its description.
 
-    It refuses a name outside the shape too, because leaving the spelling to
-    the runtime was measured to fail quietly. Claude Code 2.1.278 validates it
+    The caller is not asked for it, because the schema it reads may not list
+    the argument. Claude Code 2.1.280 and 2.1.283 show the model an `Agent`
+    schema with no `name`, `additionalProperties` false, and take a `name`
+    all the same; a session refused with "pass a name beside the agent type"
+    put it in `description` twice before trying the key the schema did not
+    list, and sessions refused that way were the commonest spawn friction.
+    The description is the argument every spawn there carries, so the name
+    is read out of it and handed back as a rewrite of the call — measured on
+    2.1.283, where the runtime recorded the rewritten spawn under that name.
+
+    The spelling is settled here rather than left to the runtime, because
+    leaving it was measured to fail quietly. Claude Code 2.1.278 validates it
     and says so — "name must start with a letter or digit and contain only
     letters, digits, underscores, or hyphens (max 64 chars)", read out of the
     shipped binary. Codex 0.155.1 rejects a hyphen with no hook record at all:
@@ -1470,16 +1420,12 @@ class SpawnNames(BaseModel, frozen=True):
     written into portable guidance needs: a project running on one runtime
     alone may widen `punctuation` to what that runtime takes.
 
-    The refusal is the only thing that tells a caller which argument the name
-    is. Claude Code 2.1.280 shows the model an `Agent` schema with no `name`
-    in it, `additionalProperties` false, and accepts a `name` all the same;
-    a session refused with "pass a name beside the agent type" put it in
-    `description` twice before trying the key the schema did not list. So
-    ``recovery`` states the shape alone and the kernel opens it with the key
-    the dispatcher read, `name` on Claude Code and `task_name` on Codex.
+    Only a spawn with nothing to read a name from is refused, and then
+    ``recovery`` states the shape alone while the kernel opens it with the
+    key the dispatcher read, `name` on Claude Code and `task_name` on Codex.
 
-    On by default, since the cost is one argument per spawn and the gain is
-    every listing, message and stop naming the work rather than the type.
+    On by default, since it costs the caller nothing and every listing,
+    message and stop then names the work rather than the type.
     """
 
     reason: str = (
@@ -1495,14 +1441,11 @@ class SpawnNames(BaseModel, frozen=True):
     reads it from is that runtime's, and the kernel opens the recovery with the
     one the dispatcher read, so the sentence a caller meets names the argument
     whether or not the tool schema they were shown did."""
-    misspelled: str = (
-        "a name outside that shape is rejected by one runtime or another, one"
-        " of them silently, so the spawn dies where nothing records it"
-    )
     punctuation: str = "_"
     """What a name may carry beside letters and digits: the intersection of
     what every runtime this project runs on accepts, a hyphen being one
-    runtime's alone."""
+    runtime's alone. The first mark is what a normalized name joins its
+    words with."""
     limit: int = 64
     """The longest name accepted, which is the shorter of the two limits."""
 
@@ -1511,22 +1454,22 @@ class SpawnNames(BaseModel, frozen=True):
         return SpawnNameRow(
             reason=self.reason,
             recovery=self.recovery,
-            misspelled=self.misspelled,
             punctuation=self.punctuation,
             limit=self.limit,
         )
 
 
 class SubagentCleanup(BaseModel, frozen=True):
-    """A project's decision that a subagent reports only after its background work stops.
+    """A project's decision that a subagent hands back its report only after its background work stops.
 
     Declaring one registers the fold under the runtime's subagent events: as a
     subagent starts it is told that what it arms in the background is its own
-    to stop, and as it is about to report, while any task it started is still
-    listed, the report is refused once with a reason naming each task and the
-    call that ends it. Undeclared, a subagent's report goes through with its
-    watches running, and each line they emit resumes it — the leak this
-    exists to close.
+    to stop, and at the stop that hands its report back, while any shell work
+    its own run started is still listed, that stop is refused once with a
+    reason naming each task and the call that ends it. A stop that only waits
+    on that work goes through, and a subagent it started is never named.
+    Undeclared, a subagent's report goes through with its watches running,
+    and each line they emit resumes it — the leak this exists to close.
 
     On by default, because every project delegating to subagents that wait on
     pushed output meets the same leak; the main agent is never gated, since
@@ -1538,11 +1481,10 @@ class SubagentCleanup(BaseModel, frozen=True):
     """Whether the subagent is told at its start; the stop-time refusal is the
     declaration itself."""
 
-    gate: str = "`uv run lup-devtools dev check`"
     scoped: str = "`uv run lup-devtools dev check --changed`"
-    record: str = "your report"
-    """How this project spells the gate, its scoped form, and where a delegated
-    agent names what it could not check.
+    tests: str = "`uv run lup-devtools dev test`"
+    """How this project spells the scoped check and the runner a delegated
+    agent points at the tests its change reaches.
 
     Declared rather than written into the notice, because the notice ships
     into a project that named its own devtools CLI and would otherwise read
@@ -1747,9 +1689,9 @@ class HookSet(BaseModel, frozen=True):
         description=(
             "Whether a subagent's report waits for the background work it "
             "started: told at its start that what it arms is its own to stop, "
-            "and refused once at its stop while any of it is still listed. "
-            "None declines, and leaves a subagent's leftovers to whoever "
-            "notices them"
+            "and refused once at the stop that hands its report back while "
+            "any of it is still listed. None declines, and leaves a "
+            "subagent's leftovers to whoever notices them"
         ),
     )
     peer_policy: PeerPolicy | None = Field(
@@ -1996,20 +1938,24 @@ class Plugin(BaseModel, frozen=True):
     description: PortableText = Field(min_length=1, max_length=1024)
     skills: list[Skill]
     agents: list[Agent]
-    mcp_servers: list[McpServer] = []
     hooks: HookSet | None = None
+
+    def committed_skills(self) -> list[Skill]:
+        """The skills every checkout's tree carries: all but the machine's own."""
+        return [skill for skill in self.skills if skill.machine_hint is None]
+
+    def machine_skills(self) -> list[Skill]:
+        """The skills each machine renders for itself, naming what it keeps."""
+        return [skill for skill in self.skills if skill.machine_hint is not None]
 
     @model_validator(mode="after")
     def unique_effective_names(self) -> "Plugin":
         skill_names = [skill.name for skill in self.skills]
         agent_names = [agent.name for agent in self.agents]
-        server_names = [server.name for server in self.mcp_servers]
         if len(skill_names) != len(dict.fromkeys(skill_names)):
             raise ValueError(f"plugin {self.id!r} has duplicate skill names")
         if len(agent_names) != len(dict.fromkeys(agent_names)):
             raise ValueError(f"plugin {self.id!r} has duplicate agent names")
-        if len(server_names) != len(dict.fromkeys(server_names)):
-            raise ValueError(f"plugin {self.id!r} has duplicate MCP server names")
         return self
 
 
@@ -2093,26 +2039,16 @@ class Harness(BaseModel, frozen=True):
         into files. Each id is what a rendered artifact carries back, so this
         is the one list both trees can be measured against — which is how a
         target that silently renders one fewer skill than another is caught
-        without either tree's own path shapes entering the comparison.
-
-        The tool servers are absent because they are not rendered as
-        artifacts: each target writes its whole server table into one shared
-        configuration file, which carries that file's own id. So a dropped
-        server is a difference in an artifact's content rather than a missing
-        artifact, and asking for one by id would report every server missing
-        from every tree.
-
-        That difference is answered where the format is known, by one test
-        per adapter reading the whole table back out of the artifact it was
-        written into. Asking it here instead would mean parsing both formats,
-        which is the runtime spelling this list exists to stay clear of.
+        without either tree's own path shapes entering the comparison. A
+        machine's own skill is absent: no committed tree renders it, each
+        machine's overlay does.
         """
         return [
             declaration_id
             for plugin in self.plugins
             for declaration_id in [
                 plugin.id,
-                *[skill.id for skill in plugin.skills],
+                *[skill.id for skill in plugin.committed_skills()],
                 *[agent.id for agent in plugin.agents],
             ]
         ]
@@ -2133,7 +2069,6 @@ class Harness(BaseModel, frozen=True):
                 plugin.id,
                 *[skill.id for skill in plugin.skills],
                 *[agent.id for agent in plugin.agents],
-                *[server.id for server in plugin.mcp_servers],
             ]
         ]
 

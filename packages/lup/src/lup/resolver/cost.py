@@ -13,7 +13,7 @@ from pydantic import BaseModel, Field, computed_field
 
 from lup.channels.stream import Stream
 from lup.coordination.refs import ActorRef
-from lup.resolver.journal import (
+from lup.resolver.record import (
     ENTRY_ADAPTER,
     JOURNAL_FILE,
     JournalEntry,

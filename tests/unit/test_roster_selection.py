@@ -290,7 +290,7 @@ def test_a_retired_subapp_is_never_built_at_all() -> None:
     the conversation sub-app drives a browser — so building one a project
     declined makes that project carry a dependency for a command it does not
     serve. Measured: a project retiring `dashboard` still could not start its
-    CLI without `lup[web]`, because the roster built the app before the
+    CLI without `lup-agents[web]`, because the roster built the app before the
     selection ever saw it.
     """
     built: list[str] = []

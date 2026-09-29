@@ -35,7 +35,7 @@ Run any of them with `uv run lup-devtools <command>`, and add `--help` for its a
 | `coordination notice` | State something true for every session, now and for whoever starts next. |
 | `coordination notices` | Everything standing over this repository, with the id that takes one down. |
 | `coordination unnotice` | Take one standing fact down, so no later prompt reads it. |
-| `coordination inbox` | Read what is queued for one session, consuming it only when asked. |
+| `coordination mailbox` | Read what is queued for one session, consuming it only when asked. |
 | `coordination holdings` | List what each live session in this repository is holding. |
 | `coordination lock` | Take everything beneath a prefix, before having touched any of it. |
 | `coordination release` | Give a prefix back, refusing where this session does not hold it. |
@@ -65,7 +65,7 @@ Run any of them with `uv run lup-devtools <command>`, and add `--help` for its a
 | `dev guidance` | Report what each section of the always-loaded guidance costs. |
 | `dev relocate` | Move a module and repoint every import of it. |
 | `dev update` | Move the library, the native trees, and the copied half to one commit. |
-| `dev release` | Cut a release: close the changelog, move the version, tag it. |
+| `dev release` | Cut a release or a candidate of one, or promote the newest candidate. |
 | `dev policy` | Show what the declared permission policy decides about an input, and why. |
 | `dev vocabulary` | Show every shell form the declared vocabulary judges, and how. |
 | `dev env status` | Where this project&#x27;s environment is, and who is installed in it. |
@@ -108,6 +108,7 @@ Run any of them with `uv run lup-devtools <command>`, and add `--help` for its a
 | `dev py info` | Inspect a Python object — adapts to modules, classes, functions, values. |
 | `dev py source` | View source code for a Python object, or a package file tree with --tree. |
 | `dev py imports` | Show what a module imports, or what imports it (--reverse). |
+| `dev py layers` | Show how a package&#x27;s top-level entries import each other, and which pairs close. |
 | `dev py text` | Search literal source text within explicitly selected Python paths. |
 | `dev py search` | Search project source and installed package exports by name. |
 | `dev usage claude` | Show live Claude Code usage with pacing bars (Anthropic OAuth). |
@@ -144,6 +145,8 @@ Run any of them with `uv run lup-devtools <command>`, and add `--help` for its a
 | `git freshness` | Report how far this checkout sits behind its own remote and its base. |
 | `git pr-body` | Generate a PR body (summary, commits, test plan) from branch commits. |
 | `git survey` | Full branch inventory: containment, PRs, unique commits, diff sizes. |
+| `git preview` | Say what landing each branch would change, conflict on, and share. |
+| `git settle` | Regenerate over the merge commit HEAD just became, and fold it in. |
 | `git merge-driver` | Register the ownership-manifest merge driver `.gitattributes` names. |
 | `git delete` | Delete a branch and its worktree, and origin&#x27;s copy if it is spent. |
 | `git retire` | Retire a branch through a pull request, so its commits outlive it. |
@@ -161,6 +164,7 @@ Run any of them with `uv run lup-devtools <command>`, and add `--help` for its a
 | `git conflict list` | Show conflicted files with scope classification (in-scope vs out-of-scope). |
 | `git conflict status` | Detect conflict state, list files, and show both sides&#x27; history. |
 | `git conflict audit` | Post-resolution deletion audit: check for accidentally dropped code. |
+| `git conflict union` | Settle a conflict where both sides inserted at one place, keeping both. |
 | `git conflict complete` | Finalize the merge/rebase/cherry-pick after all conflicts are resolved. |
 | `git hooks install` | Install every git hook this repository declares. |
 | `git hooks status` | Report what this clone refuses, at every moment a hook sits at. |
@@ -271,6 +275,7 @@ Run any of them with `uv run lup-devtools <command>`, and add `--help` for its a
 | Command | What it does |
 | --- | --- |
 | `sync upstream` | Print a measured upstream defect, or list the ones declared. |
+| `sync usage` | Show what each tracked project imports from a package, name by name. |
 | `sync status` | Show tracked projects and their sync status (read-only). |
 | `sync fetch` | Clone missing repos and fetch cached ones (network + writes). |
 | `sync log` | List commits to review: everything upstream added since the last sync. |

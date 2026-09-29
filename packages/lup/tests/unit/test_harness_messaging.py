@@ -1,12 +1,14 @@
-"""Where a session's inbox is placed, and the three ways placement silently fails.
+"""Where a session's wake socket is placed, and the ways placement silently fails.
 
-All three look like success from the launcher's side. A bind mount whose
-source does not exist takes the whole container down with an engine error
-naming neither the directory nor the session. A mount whose target renames
-its source produces a session that binds cleanly and publishes a path no peer
-can open. And a directory the runtime refuses -- because it is a symlink, is
-not ours, or is not private -- produces a session with no inbox at all, which
-reads exactly like a peer that is merely busy.
+Each looks like success from the launcher's side. A bind mount whose source
+does not exist takes the whole container down with an engine error naming
+neither the directory nor the session. A mount whose target renames its source
+produces a session that binds cleanly and publishes a path no peer can open. A
+directory the runtime refuses -- because it is a symlink, is not ours, or is
+not private -- produces a session with no wake socket at all, which reads
+exactly like a peer that is merely busy. And a path keyed by anything that is
+not the member's id collides with an earlier session's socket, or moves when
+the session renames itself.
 """
 
 import json
@@ -17,9 +19,10 @@ from pathlib import Path
 
 import pytest
 
+from lup.coordination.identity import mint_member_id
 from lup.coordination.wake import WakePath, wake
 from lup.harness.image import Image
-from lup.harness.messaging import SessionInboxes, cleared
+from lup.harness.messaging import WakeSockets
 
 # The four directories Claude Code will scan for peers, as its own binary
 # spells them. Written out rather than imported because they are the runtime's
@@ -40,6 +43,9 @@ ADDRESS_LIMIT = 104
 # beside it spells one: what the launcher hands the placement.
 LUP = Path("/home/me/lup.git")
 
+# A member id as the launcher mints one.
+MEMBER = "3f2a9c1d0e4b"
+
 
 def test_the_directory_is_made_rather_than_left_to_the_engine(tmp_path: Path) -> None:
     """A bind mount whose source is absent is one the engine refuses entirely.
@@ -48,8 +54,8 @@ def test_the_directory_is_made_rather_than_left_to_the_engine(tmp_path: Path) ->
     outside a container has never had anything create this directory, so the
     first contained launch is the one that would fail.
     """
-    directory = tmp_path / "lup-inbox"
-    served = SessionInboxes(directory=str(directory)).serve()
+    directory = tmp_path / "lup-wake"
+    served = WakeSockets(directory=str(directory)).serve()
 
     assert served == directory
     assert directory.is_dir()
@@ -62,12 +68,12 @@ def test_the_directory_is_made_private_because_the_runtime_checks(
 
     Refused there rather than here, which is the reason this is pinned: a
     directory left at the umask's mode produces a session that starts, reports
-    nothing unusual, and has no inbox for anyone to nudge.
+    nothing unusual, and has no wake socket for anyone to nudge.
     """
-    directory = tmp_path / "lup-inbox"
+    directory = tmp_path / "lup-wake"
     directory.mkdir(mode=0o755)
 
-    served = SessionInboxes(directory=str(directory)).serve()
+    served = WakeSockets(directory=str(directory)).serve()
 
     assert served == directory
     assert stat.S_IMODE(directory.stat().st_mode) == 0o700
@@ -83,54 +89,61 @@ def test_serving_twice_is_the_second_session_arriving_rather_than_an_error(
     their own reasons, too: the mount needs the source to exist on the host,
     and an uncontained session needs the same directory with no mount at all.
     """
-    directory = tmp_path / "lup-inbox"
-    inboxes = SessionInboxes(directory=str(directory))
+    directory = tmp_path / "lup-wake"
+    sockets = WakeSockets(directory=str(directory))
 
-    assert inboxes.serve() == directory
-    assert inboxes.serve() == directory
+    assert sockets.serve() == directory
+    assert sockets.serve() == directory
 
 
 def test_a_directory_declared_empty_serves_nothing(tmp_path: Path) -> None:
     """Emptying it is how an adopter declines the nudge.
 
     The posture every launch had before placement existed, kept reachable
-    rather than removed: a session nobody can nudge still has its durable
-    inbox, and nothing about the launch fails.
+    rather than removed: a session nobody can nudge still reads its mail, and
+    nothing about the launch fails.
     """
-    assert SessionInboxes(directory="").serve() is None
+    assert WakeSockets(directory="").serve() is None
 
 
-def test_a_member_is_named_by_the_member_rather_than_its_process() -> None:
-    """A pid is the one name that does not survive the boundary this crosses.
+def test_a_member_s_socket_is_keyed_by_its_id() -> None:
+    """The id is the one name that never moves and never repeats.
 
-    Two sessions in sibling containers are each pid 7 in their own namespace,
-    so a pid-named socket has two owners and one path. The launcher already
-    disambiguates a member's name between live sessions in a worktree, which
-    makes it the name that means one session everywhere it is read.
+    A pid does not survive the container boundary this crosses -- two sessions
+    in sibling containers are each pid 7 in their own namespace -- and a
+    display name repeats by design and changes at will. The id is minted once
+    per member, so a path keyed by it has one owner for as long as it exists.
     """
-    placed = SessionInboxes(directory="/tmp/lup-inbox").socket(LUP, "dev-6")
+    placed = WakeSockets(directory="/tmp/lup-wake").socket(LUP, MEMBER)
 
-    assert Path(placed).parent == Path("/tmp/lup-inbox")
+    assert Path(placed).parent == Path("/tmp/lup-wake")
     assert Path(placed).name.startswith("lup-")
-    assert Path(placed).name.endswith("--dev-6.sock")
+    assert Path(placed).name.endswith(f"--{MEMBER}.sock")
 
 
-def test_two_repositories_with_one_worktree_name_bind_two_inboxes() -> None:
-    """A name is unique on its repository's roster and nowhere else.
+def test_the_default_directory_is_named_for_the_wake() -> None:
+    """The socket is what wakes a session, and the directory says so.
 
-    Measured: a session launched in another repository's ``main`` worktree was
-    refused by the runtime because this machine's ``main`` already listened at
-    the one path both minted. The repository in the name is what makes the
-    directory's files one member's each; its readable part is the same for two
-    checkouts of one project, so the digest of the git directory's path is
-    what tells them apart.
+    A session's mail waits in its mailbox in the coordination store, and
+    nothing in this directory holds any of it.
     """
-    inboxes = SessionInboxes()
+    assert WakeSockets().directory == "/tmp/lup-wake"
+
+
+def test_two_repositories_key_one_id_apart() -> None:
+    """The directory is the machine's, and a roster is one repository's.
+
+    The repository leads the name -- its shared git directory's name and a
+    digest of that directory's path -- so a file says which roster to ask about
+    its owner. Its readable part is the same for two checkouts of one project,
+    so the digest is what tells them apart.
+    """
+    sockets = WakeSockets()
 
     placed = {
-        inboxes.socket(Path("/home/me/nori/.git"), "main"),
-        inboxes.socket(Path("/home/me/lup.git"), "main"),
-        inboxes.socket(Path("/srv/elsewhere/nori/.git"), "main"),
+        sockets.socket(Path("/home/me/nori/.git"), MEMBER),
+        sockets.socket(Path("/home/me/lup.git"), MEMBER),
+        sockets.socket(Path("/srv/elsewhere/nori/.git"), MEMBER),
     }
 
     assert len(placed) == 3
@@ -141,32 +154,43 @@ def test_two_repositories_with_one_worktree_name_bind_two_inboxes() -> None:
     ]
 
 
-def test_sessions_of_one_repository_still_bind_one_inbox_each() -> None:
-    """The roster numbers a second ``main`` into ``main-2``, and that survives."""
-    inboxes = SessionInboxes()
+def test_two_members_of_one_repository_bind_one_socket_each() -> None:
+    """Two ids are two sockets, and one id is always the same one."""
+    sockets = WakeSockets()
+    other = mint_member_id()
 
-    assert inboxes.socket(LUP, "main") != inboxes.socket(LUP, "main-2")
-    assert inboxes.socket(LUP, "main") == inboxes.socket(LUP, "main")
+    assert sockets.socket(LUP, MEMBER) != sockets.socket(LUP, other)
+    assert sockets.socket(LUP, MEMBER) == sockets.socket(LUP, MEMBER)
 
 
 def test_a_placed_address_stays_inside_what_a_unix_socket_holds() -> None:
     """Past about 104 bytes the runtime refuses the address and binds nothing.
 
     Which is why this directory is short and shallow rather than living beside
-    the checkout it serves. A repository and member name that would run past
-    it keep what fits and end in a digest of the whole, so the cap never costs
-    two members their difference -- including two whose names only differ past
-    the point where the cut falls.
+    the checkout it serves. A repository name that would run past it is cut,
+    and the id and the digest never are: the id is what addresses the member,
+    so a cut through it would hand two members one path.
     """
     deep = Path("/home/someone/" + "a-very-long-project-name-" * 4 + ".git")
-    long_name = "feat-" + "an-extremely-descriptive-branch-" * 3
+    ids = [mint_member_id() for _ in range(2)]
 
-    placed = [SessionInboxes().socket(deep, long_name + suffix) for suffix in "12"]
+    placed = [WakeSockets().socket(deep, member_id) for member_id in ids]
 
-    assert len(SessionInboxes().socket(LUP, "dev-6").encode()) < ADDRESS_LIMIT
+    assert len(WakeSockets().socket(LUP, MEMBER).encode()) < ADDRESS_LIMIT
     assert all(len(path.encode()) < ADDRESS_LIMIT for path in placed)
-    assert placed[0] != placed[1]
+    assert all(
+        Path(path).name.endswith(f"--{member_id}.sock")
+        for path, member_id in zip(placed, ids, strict=True)
+    )
     assert Path(placed[0]).name.startswith("a-very-long-project-name-")
+
+
+def test_a_directory_too_long_to_hold_an_id_is_refused() -> None:
+    """A path that cannot carry the whole id is one no member can own alone."""
+    sockets = WakeSockets(directory="/tmp/" + "d" * 90)
+
+    with pytest.raises(ValueError, match="wake socket"):
+        sockets.socket(LUP, MEMBER)
 
 
 def test_the_default_is_not_a_directory_the_runtime_scans_for_peers() -> None:
@@ -178,7 +202,7 @@ def test_the_default_is_not_a_directory_the_runtime_scans_for_peers() -> None:
     a session launched into this directory left the runtime's own holding only
     the launcher's socket.
     """
-    directory = SessionInboxes().directory
+    directory = WakeSockets().directory
 
     assert not [scanned for scanned in RUNTIME_SCANNED if re.match(scanned, directory)]
 
@@ -200,10 +224,10 @@ def test_the_mount_keeps_the_path_it_had_outside() -> None:
         read_only={},
         state_volume="lup-cfg-x",
         config_home_env="CLAUDE_CONFIG_DIR",
-        inbox_directory=Path("/tmp/lup-inbox"),
+        wake_directory=Path("/tmp/lup-wake"),
     )
 
-    assert "/tmp/lup-inbox:/tmp/lup-inbox:rw" in started
+    assert "/tmp/lup-wake:/tmp/lup-wake:rw" in started
 
 
 def test_a_launch_that_placed_nothing_mounts_nothing() -> None:
@@ -224,7 +248,7 @@ def test_a_launch_that_placed_nothing_mounts_nothing() -> None:
         config_home_env="CLAUDE_CONFIG_DIR",
     )
 
-    assert not [argument for argument in started if "lup-inbox" in argument]
+    assert not [argument for argument in started if "lup-wake" in argument]
 
 
 def test_an_operator_is_told_which_way_it_went() -> None:
@@ -234,72 +258,127 @@ def test_an_operator_is_told_which_way_it_went() -> None:
     person; one who does not know it failed reads a peer that never looks as
     the coordination store being broken, and goes looking in the wrong half.
     """
-    inboxes = SessionInboxes()
-    placed = inboxes.notice(True)
-    absent = inboxes.notice(False)
+    sockets = WakeSockets()
+    placed = sockets.notice(True)
+    absent = sockets.notice(False)
 
     assert placed and absent
     assert [said.text for said in placed] != [said.text for said in absent]
 
 
-def test_a_nudge_reaches_the_member_of_its_own_repository(tmp_path: Path) -> None:
-    """Two repositories' ``main`` sessions listen side by side, and a wake picks one.
+@pytest.mark.usefixtures("unix_socket")
+def test_a_nudge_reaches_the_member_it_is_keyed_to(wake_sockets: WakeSockets) -> None:
+    """Two members listen side by side, and a wake picks the one it names.
 
     Real sockets bound at the placed paths, because what is under test is that
     the path a member declares is the one its own session binds and no other
-    session does: the frame lands in the repository it was addressed to, and
-    the other ``main`` has nothing waiting.
+    session does: the frame lands with the member it was addressed to, and the
+    other has nothing waiting.
     """
-    inboxes = SessionInboxes(directory=str(tmp_path / "in"))
-    inboxes.serve()
-    nori = inboxes.socket(Path("/home/me/nori/.git"), "main")
-    lup = inboxes.socket(LUP, "main")
+    wake_sockets.serve()
+    wanted = wake_sockets.socket(LUP, MEMBER)
+    beside = wake_sockets.socket(LUP, mint_member_id())
 
     with (
-        socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as nori_inbox,
-        socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as lup_inbox,
+        socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as wanted_socket,
+        socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as beside_socket,
     ):
-        for listener, path in [(nori_inbox, nori), (lup_inbox, lup)]:
+        for listener, path in [(wanted_socket, wanted), (beside_socket, beside)]:
             listener.bind(path)
             listener.listen(1)
             listener.setblocking(False)
-        roused = wake(WakePath(runtime="claude", handle=nori), "look at your inbox")
-        connection, _ = nori_inbox.accept()
+        roused = wake(WakePath(runtime="claude", handle=wanted), "read your mail")
+        connection, _ = wanted_socket.accept()
         with connection:
             frame = json.loads(connection.recv(4096))
         with pytest.raises(BlockingIOError):
-            lup_inbox.accept()
+            beside_socket.accept()
 
     assert roused.reached, roused.reason
-    assert frame["message"]["content"] == "look at your inbox"
+    assert frame["message"]["content"] == "read your mail"
 
 
-def test_a_socket_whose_session_is_gone_is_cleared(tmp_path: Path) -> None:
+@pytest.mark.usefixtures("unix_socket")
+def test_a_departed_member_s_socket_nothing_answers_on_is_retired(
+    wake_sockets: WakeSockets,
+) -> None:
     """A crashed session leaves its socket file behind, bound by nobody.
 
-    The next session placed there would meet it, so it is removed before the
-    launch names the path -- which is only safe because nothing answers on it.
+    Retired only once the roster has said its owner is gone, which is the
+    caller's to ask; what is checked here is the rest -- that the file is that
+    member's own, and that nothing still answers on it.
     """
-    address = tmp_path / "gone.sock"
+    wake_sockets.serve()
+    address = wake_sockets.socket(LUP, MEMBER)
     with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as crashed:
-        crashed.bind(str(address))
+        crashed.bind(address)
 
-    assert address.is_socket()
-    assert cleared(address)
-    assert not address.exists()
+    assert Path(address).is_socket()
+    assert wake_sockets.retire(LUP, MEMBER, address)
+    assert not Path(address).exists()
 
 
-def test_a_socket_a_session_listens_on_is_left_to_it(tmp_path: Path) -> None:
-    """Removing a live inbox would cut its session off from every nudge, silently."""
-    address = tmp_path / "live.sock"
+@pytest.mark.usefixtures("unix_socket")
+def test_a_socket_something_still_answers_on_is_left(wake_sockets: WakeSockets) -> None:
+    """A roster that reads every pulse as lapsed is a machine back from sleep.
+
+    Every session's beat is minutes stale until its next one, so the roster
+    calls them gone while each still listens. Removing the file would leave
+    that session answering on nothing a peer can open, for the rest of its
+    life, so a socket something answers on is never retired.
+    """
+    wake_sockets.serve()
+    address = wake_sockets.socket(LUP, MEMBER)
     with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as live:
-        live.bind(str(address))
+        live.bind(address)
         live.listen(1)
 
-        assert not cleared(address)
-        assert address.is_socket()
+        assert not wake_sockets.retire(LUP, MEMBER, address)
+        assert Path(address).is_socket()
 
 
-def test_a_path_nothing_is_at_is_clear(tmp_path: Path) -> None:
-    """The ordinary case: the first session to be placed there."""
-    assert cleared(tmp_path / "fresh.sock")
+@pytest.mark.usefixtures("unix_socket")
+def test_a_handle_that_is_not_the_member_s_own_path_is_never_touched(
+    tmp_path: Path, wake_sockets: WakeSockets
+) -> None:
+    """A session nothing placed declares the runtime's pid-named default.
+
+    That path is keyed by a pid, which another session reuses in its own
+    namespace, so the file there is not provably the departed member's.
+    """
+    wake_sockets.serve()
+    foreign = tmp_path / "7.sock"
+    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as crashed:
+        crashed.bind(str(foreign))
+
+    assert not wake_sockets.retire(LUP, MEMBER, str(foreign))
+    assert foreign.is_socket()
+
+
+def test_a_member_with_no_socket_left_retires_nothing(
+    wake_sockets: WakeSockets,
+) -> None:
+    """The ordinary departure: the runtime removed its own socket as it left."""
+    wake_sockets.serve()
+
+    assert not wake_sockets.retire(LUP, MEMBER, wake_sockets.socket(LUP, MEMBER))
+
+
+@pytest.mark.usefixtures("unix_socket")
+def test_a_process_refused_a_socket_leaves_the_file_it_could_not_ask_about(
+    wake_sockets: WakeSockets, request: pytest.FixtureRequest
+) -> None:
+    """Neither answer is safe unasked, and leaving the file costs nothing.
+
+    An id is never minted twice, so a socket left in place blocks no launch:
+    it waits for a launcher that may ask. The socket is bound before the
+    refusal starts, as a crashed session's was before this shell existed.
+    """
+    wake_sockets.serve()
+    address = wake_sockets.socket(LUP, MEMBER)
+    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as crashed:
+        crashed.bind(address)
+    request.getfixturevalue("socket_refused")
+
+    assert not wake_sockets.retire(LUP, MEMBER, address)
+    assert Path(address).is_socket()

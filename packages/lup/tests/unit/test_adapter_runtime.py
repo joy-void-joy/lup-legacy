@@ -36,6 +36,7 @@ from lup.providers.codex.runtime import (
     CodexSteer,
     CodexTurnChannel,
     CodexTurnToolBinder,
+    DynamicToolCall,
     McpElicitationRequest,
     decode_completed_item,
     decode_usage,
@@ -1826,6 +1827,50 @@ def test_the_usage_breakdown_maps_every_native_count() -> None:
 def test_a_usage_breakdown_missing_a_count_is_refused() -> None:
     with pytest.raises(ValidationError):
         decode_usage({"inputTokens": 120, "outputTokens": 8})
+
+
+def test_a_dynamic_tool_call_reads_the_native_call_identity() -> None:
+    call = DynamicToolCall.model_validate(
+        {
+            "threadId": "thread-1",
+            "turnId": "turn-1",
+            "callId": "call-1",
+            "tool": "lup_app_app__record",
+            "arguments": {"value": "x"},
+        }
+    )
+
+    assert call.thread_id == "thread-1"
+    assert call.turn_id == "turn-1"
+    assert call.call_id == "call-1"
+    assert call.tool == "lup_app_app__record"
+    assert call.arguments == {"value": "x"}
+
+
+def test_a_dynamic_tool_call_missing_the_call_it_answers_is_refused() -> None:
+    with pytest.raises(ValidationError):
+        DynamicToolCall.model_validate(
+            {
+                "threadId": "thread-1",
+                "turnId": "turn-1",
+                "tool": "lup_app_app__record",
+                "arguments": {"value": "x"},
+            }
+        )
+
+
+def test_a_dynamic_tool_call_spelled_in_snake_case_is_refused() -> None:
+    """The wire spelling is the vendor's, so only the vendor's is accepted."""
+    with pytest.raises(ValidationError):
+        DynamicToolCall.model_validate(
+            {
+                "thread_id": "thread-1",
+                "turn_id": "turn-1",
+                "call_id": "call-1",
+                "tool": "lup_app_app__record",
+                "arguments": {"value": "x"},
+            }
+        )
 
 
 def test_an_elicitation_reads_the_server_it_names() -> None:

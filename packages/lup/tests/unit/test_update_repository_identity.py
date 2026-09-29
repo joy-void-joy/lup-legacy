@@ -14,8 +14,8 @@ def test_a_revision_uses_the_selected_scaffold_registration(
 ) -> None:
     manifest = tmp_path / "pyproject.toml"
     manifest.write_text(
-        '[project]\nname = "consumer"\ndependencies = ["lup"]\n'
-        "[tool.uv.sources]\nlup = { workspace = true }\n"
+        '[project]\nname = "consumer"\ndependencies = ["lup-agents"]\n'
+        "[tool.uv.sources]\nlup-agents = { workspace = true }\n"
     )
     (tmp_path / "sync.json.local").write_text(
         '{"projects":[{"name":"framework","url":"https://forge.example/team/library"}]}'
@@ -26,27 +26,27 @@ def test_a_revision_uses_the_selected_scaffold_registration(
 
     assert (
         update.resolved_pin(
-            tmp_path, "lup", "revision", lambda _line: None, project="framework"
+            tmp_path, "lup-agents", "revision", lambda _line: None, project="framework"
         )
         == "resolved"
     )
     assert library.read_git_source(tmp_path) == library.GitSource(
         url="https://forge.example/team/library", ref_kind="rev", ref="revision"
     )
-    assert calls == [("lock", "--upgrade-package", "lup")]
+    assert calls == [("lock", "--upgrade-package", "lup-agents")]
 
 
 def test_an_unconfigured_revision_refuses_before_mutating_the_pin(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     manifest = tmp_path / "pyproject.toml"
-    original = '[project]\nname = "consumer"\ndependencies = ["lup"]\n'
+    original = '[project]\nname = "consumer"\ndependencies = ["lup-agents"]\n'
     manifest.write_text(original)
     calls: list[tuple[str, ...]] = []
     monkeypatch.setattr(update, "uv", lambda *args, **_kwargs: calls.append(args))
 
     with pytest.raises(typer.BadParameter, match="No repository is configured"):
-        update.resolved_pin(tmp_path, "lup", "revision", lambda _line: None)
+        update.resolved_pin(tmp_path, "lup-agents", "revision", lambda _line: None)
     assert manifest.read_text() == original
     assert calls == []
 
@@ -57,13 +57,15 @@ def test_deleted_branch_refuses_before_relocking(
     remote = tmp_path / "remote"
     sh.git("init", "--bare", str(remote))
     manifest = tmp_path / "pyproject.toml"
-    original = f'[tool.uv.sources]\nlup = {{git = "{remote}", branch = "deleted"}}\n'
+    original = (
+        f'[tool.uv.sources]\nlup-agents = {{git = "{remote}", branch = "deleted"}}\n'
+    )
     manifest.write_text(original)
     calls: list[tuple[str, ...]] = []
     monkeypatch.setattr(update, "uv", lambda *args, **_kwargs: calls.append(args))
 
     with pytest.raises(typer.BadParameter, match="--branch <replacement>"):
-        update.resolved_pin(tmp_path, "lup", "", lambda _line: None)
+        update.resolved_pin(tmp_path, "lup-agents", "", lambda _line: None)
 
     assert calls == []
     assert manifest.read_text() == original
@@ -96,7 +98,7 @@ def test_update_diagnoses_deleted_pin_before_materializing_its_worktree(
     remote = tmp_path / "remote"
     sh.git("init", "--bare", str(remote))
     (tmp_path / "pyproject.toml").write_text(
-        f'[tool.uv.sources]\nlup = {{git = "{remote}", branch = "deleted"}}\n'
+        f'[tool.uv.sources]\nlup-agents = {{git = "{remote}", branch = "deleted"}}\n'
     )
 
     def unexpected_checkout(*_args) -> Path:
@@ -110,6 +112,6 @@ def test_update_diagnoses_deleted_pin_before_materializing_its_worktree(
             scaffold.ScaffoldSource(),
             "consumer",
             "",
-            "lup",
+            "lup-agents",
             lambda _line: None,
         )

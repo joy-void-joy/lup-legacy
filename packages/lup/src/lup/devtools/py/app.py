@@ -21,6 +21,7 @@ from lup.devtools.py.imports import (
     find_reverse_imports,
     format_import_entry,
 )
+from lup.devtools.py.layers import Layers, Move, layers
 from lup.devtools.py.info import (
     show_callable_info,
     show_class,
@@ -240,6 +241,73 @@ def imports_cmd(
         current_modules = next_modules
 
 
+def show_layers(measured: Layers, sites: bool) -> None:
+    """Print each entry's size and reach, then every pair that imports both ways."""
+    typer.echo(f"{len(measured.entries)} entries in {measured.package}:\n")
+    for entry in measured.entries:
+        typer.echo(f"  {entry.name}  ({entry.modules} modules, {entry.lines} lines)")
+        typer.echo(f"      imports:     {', '.join(entry.imports) or '-'}")
+        typer.echo(f"      imported by: {', '.join(entry.imported_by) or '-'}")
+    typer.echo(f"\n{len(measured.two_way)} pair(s) importing each other:")
+    for pair in measured.two_way:
+        closes = "closes at load" if pair.at_load() else "one side deferred or typing"
+        typer.echo(
+            f"  {pair.forward.importer} <-> {pair.forward.imported}  ({closes}): "
+            f"{pair.forward.spelled()} one way, {pair.back.spelled()} back"
+        )
+        if not sites:
+            continue
+        for site in [*pair.forward.sites, *pair.back.sites]:
+            typer.echo(
+                f"      {site.importer} -> {site.imported}  "
+                f"{site.path}:{site.line} ({site.kind})"
+            )
+
+
+@app.command("layers")
+def layers_cmd(
+    package: Annotated[
+        str, typer.Argument(help="The package to measure, by import name")
+    ],
+    move: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--move",
+            help="Read module.prefix=entry as already moved there (repeatable)",
+        ),
+    ] = None,
+    sites: Annotated[
+        bool,
+        typer.Option("--sites", help="List every statement behind each two-way pair"),
+    ] = False,
+    as_json: Annotated[bool, typer.Option("--json", help="Output as JSON")] = False,
+) -> None:
+    """Show how a package's top-level entries import each other, and which pairs close.
+
+    Each import is read with where it runs — when its module loads, when a
+    function is called, or only under a type checker — and the kinds are
+    counted apart, since whether a deferred import is an edge is the question
+    a layering rule has to settle first. ``--move`` measures a relocation
+    before it is made, reading a module prefix as belonging to another entry.
+    """
+
+    def parsed(spelled: str) -> Move:
+        # This CLI's own flag grammar, not structured data with a parser.
+        prefix, separator, entry = spelled.partition("=")  # lup: ignore[string-split]
+        if not separator or not prefix or not entry:
+            fail(f"expected module.prefix=entry; got {spelled!r}")
+        return Move(prefix=prefix, entry=entry)
+
+    source = find_module_path(package)
+    if source is None or source.name != "__init__.py":
+        fail(f"{package!r} is not an importable package")
+    measured = layers(source.parent, [parsed(spelled) for spelled in move or []])
+    if as_json:
+        typer.echo(measured.model_dump_json(indent=2))
+        return
+    show_layers(measured, sites)
+
+
 @app.command("text")
 def text_cmd(
     pattern: Annotated[str, typer.Argument(help="Literal text to find")],
@@ -250,10 +318,21 @@ def text_cmd(
         bool,
         typer.Option("--ignore-case", "-i", help="Match without case sensitivity"),
     ] = False,
+    prose: Annotated[
+        bool,
+        typer.Option(
+            "--prose",
+            help="Search only docstrings and comments, as the prose rules read them",
+        ),
+    ] = False,
 ) -> None:
-    """Search literal source text within explicitly selected Python paths."""
+    """Search literal source text within explicitly selected Python paths.
+
+    ``--prose`` narrows the search to what a person reads as a sentence, which
+    is how a candidate for a prose rule is found before the rule is written.
+    """
     try:
-        matches = source_text_matches(pattern, paths, ignore_case)
+        matches = source_text_matches(pattern, paths, ignore_case, prose)
     except (OSError, UnicodeError, ValueError) as error:
         fail(str(error))
     for match in matches:

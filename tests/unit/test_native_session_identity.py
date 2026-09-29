@@ -12,9 +12,15 @@ import pytest
 
 from lup.coordination.identity import MEMBER_ENV
 from lup.coordination.peer_tools import RosterPulse
-from lup.coordination.relay import InboxRelay
+from lup.coordination.relay import MailboxRelay
 from lup.mcp import Coordination
-from lup.mcp.serve import context_needs, harness_session_context, serve_command
+from lup.coordination.bare.runtime import stdin_runtime
+from lup.mcp.serve import (
+    context_needs,
+    harness_session_context,
+    resolved_needs,
+    serve_command,
+)
 from lup.providers.claude.identity import CLAUDE_SESSION_ENV
 from lup.providers.identity import native_session_id
 from lup.tools.mcp import ServerCompanion
@@ -68,7 +74,7 @@ def test_a_native_server_joins_under_the_id_its_runtime_gave_the_process(
 
     assert isinstance(pulse, RosterPulse)
     assert pulse.member_id == "abc-123"
-    assert isinstance(relay, InboxRelay)
+    assert isinstance(relay, MailboxRelay)
     assert relay.member_id == "abc-123"
 
 
@@ -95,7 +101,7 @@ def test_the_launcher_s_id_outranks_the_runtime_s(
 
     assert isinstance(pulse, RosterPulse)
     assert pulse.member_id == "launched1"
-    assert isinstance(relay, InboxRelay)
+    assert isinstance(relay, MailboxRelay)
     assert relay.member_id == "launched1"
 
 
@@ -130,3 +136,21 @@ def test_serving_for_claude_lists_the_coordination_verbs_under_the_runtime_s_id(
 
     assert "coordination_peers" in with_identity
     assert without == ""
+
+
+def test_a_served_pulse_answers_for_the_process_feeding_the_server(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The server serves the session; the runtime at the other end of its input is it."""
+    unlaunched(monkeypatch)
+    monkeypatch.setenv(CLAUDE_SESSION_ENV, "abc-123")
+    needs = resolved_needs(HARNESS_SESSION, "claude")
+    assert needs is not None
+    server = Coordination().hosted(needs)
+    assert server is not None
+
+    [pulse, _] = server.companions
+
+    assert isinstance(pulse, RosterPulse)
+    assert pulse.runtime == stdin_runtime()
+    assert needs.runtime == stdin_runtime()

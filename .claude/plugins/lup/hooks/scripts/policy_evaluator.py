@@ -61,7 +61,7 @@ from kernel.rows import (
     landing_rows,
     unproduced_cause,
 )
-from kernel.spawns import decide_spawn
+from kernel.spawns import decide_spawn, spawn_name
 from kernel.words import INTERPRETERS
 from kernel.roles import displaced_targets, sibling_scratch_rows
 from kernel.shell import decide_shell, sandbox_excluded, shell_posture_targets
@@ -2670,7 +2670,7 @@ def lent_mount_points(mountinfo: str) -> list[str]:
     space-separated record per mount. A mount whose root inside its own
     filesystem is not that filesystem's top is a bind: a directory, a volume
     or a single file handed in from somewhere else -- the checkout, a cache
-    volume, the credential seed, the peer inbox. A filesystem mounted whole --
+    volume, the credential seed, the wake sockets. A filesystem mounted whole --
     the image's own root, ``proc``, a ``tmpfs`` the container made -- is the
     container's. The one whole filesystem a launch lends is a lease root at a
     disk's top, which the lease names.
@@ -3557,11 +3557,20 @@ def peer_send_decision(values: list[str], cwd: Path | None) -> KernelDecision:
     offered rather than a named field, because which field a runtime spells a
     recipient in is that runtime's business and this half answers for all of
     them.
+
+    This session and its own subagents are left out of the spellings: a send
+    between two of them never leaves the process, so it leaves nothing any
+    other worktree could have read — a subagent reporting to the session that
+    dispatched it, or the session steering one of its own.
     """
     directory = peer_directory(cwd)
-    if directory is None:
+    if PEER_POLICY is None or directory is None:
         return decide_peer_send(values, [], PEER_POLICY)
-    return decide_peer_send(values, store.addresses(directory), PEER_POLICY)
+    return decide_peer_send(
+        values,
+        store.addresses(directory, beside=declared_identity(PEER_POLICY["member_env"])),
+        PEER_POLICY,
+    )
 
 
 def peer_listing_decision() -> KernelDecision:
@@ -3569,15 +3578,28 @@ def peer_listing_decision() -> KernelDecision:
     return decide_peer_listing(PEER_POLICY)
 
 
-def spawn_decision(name: str, values: list[str], field: str) -> KernelDecision:
-    """Judge one native spawn by the name it carries, against what this project declared.
+def spawn_decision(
+    name: str, description: str, values: list[str], field: str
+) -> KernelDecision:
+    """Judge one native spawn by the name it goes out under, against what this project declared.
 
-    ``name`` is the runtime's own field for it, read by the host half that
-    knows which key that is, and ``field`` is that key, so the refusal can
-    name the argument; every string the call carries rides beside them so an
+    ``name`` is the runtime's own field for it and ``description`` the text a
+    name is read from where none was given, each read by the host half that
+    knows which key that is — a runtime whose spawn carries no description
+    passes ``""``. ``field`` is the name's key, so the refusal can name the
+    argument; every string the call carries rides beside them so an
     escalation marker in any of them is found.
     """
-    return decide_spawn(name, values, SPAWN_NAMES, field)
+    return decide_spawn(name, description, values, SPAWN_NAMES, field)
+
+
+def spawn_named(name: str, description: str) -> str:
+    """The name this project sends a spawn out under, the one the verdict judged.
+
+    What a host half writes back into the call where it differs from what
+    was given, so the rewrite and the verdict cannot come to disagree.
+    """
+    return spawn_name(name, description, SPAWN_NAMES)
 
 
 def peer_listing_attachment(cwd: Path | None) -> str:
@@ -3962,31 +3984,42 @@ def written_review(command: str, cwd: Path) -> list[str]:
     ]
 
 
-def foreign_claim_decision(path_text: str, cwd: Path | None) -> KernelDecision | None:
-    """Whether a live session other than this one is already in the named file.
+def foreign_claim_decision(
+    path_text: str, cwd: Path | None, caller: store.Caller
+) -> KernelDecision | None:
+    """Whether a live member other than this caller is already in the named file.
 
     The roster and the claim record are both live, so both are folded here and
     handed over as the names they resolve to — the kernel reads no filesystem
     and decides from what it is given.
+
+    *caller* is the conversation making the call, as its runtime's host half
+    read it off the payload: a subagent is judged as its own row, so its
+    sibling's claims are asked about and its session's are not.
     """
     directory = peer_directory(cwd)
     if PEER_POLICY is None or directory is None:
         return None
+    session = declared_identity(PEER_POLICY["member_env"])
     return decide_foreign_claim(
         path_text,
         store.claim_holders(
-            directory, path_text, declared_identity(PEER_POLICY["member_env"])
+            directory,
+            path_text,
+            store.acting_id(session, caller),
+            session=session,
         ),
         PEER_POLICY,
     )
 
 
-def claim_window_opened(cwd: Path | None) -> None:
+def claim_window_opened(cwd: Path | None, caller: store.Caller) -> None:
     """Snapshot the tree before a command whose writes no input names.
 
     Only a command needs this. Every other writing call says which file it is
     about, and a call that names its own target is attributed from the target
-    rather than from a comparison.
+    rather than from a comparison. The window is the calling row's own, so
+    two subagents' commands running at once each close their own.
     """
     if PEER_POLICY is None:
         return
@@ -3994,43 +4027,50 @@ def claim_window_opened(cwd: Path | None) -> None:
         cwd,
         PEER_POLICY["store"],
         PEER_POLICY["windows_dir"],
-        declared_identity(PEER_POLICY["member_env"]),
+        store.acting_id(declared_identity(PEER_POLICY["member_env"]), caller),
     )
 
 
-def claim_window_closed(cwd: Path | None) -> None:
+def claim_window_closed(cwd: Path | None, caller: store.Caller) -> None:
     """Attribute what a command changed, contested where nothing could tell."""
     if PEER_POLICY is None:
         return
     directory = peer_directory(cwd)
-    mine = declared_identity(PEER_POLICY["member_env"])
+    session = declared_identity(PEER_POLICY["member_env"])
     closed = close_claim_window(
-        cwd, PEER_POLICY["store"], PEER_POLICY["windows_dir"], mine
+        cwd,
+        PEER_POLICY["store"],
+        PEER_POLICY["windows_dir"],
+        store.acting_id(session, caller),
     )
     if directory is not None:
-        store.record_claims(directory, mine, closed["paths"])
+        store.record_claims(
+            directory, store.acting(directory, session, caller), closed["paths"]
+        )
 
 
-def named_claim_recorded(path_text: str, cwd: Path | None) -> None:
+def named_claim_recorded(
+    path_text: str, cwd: Path | None, caller: store.Caller
+) -> None:
     """Attribute a change to the exact file the call named.
 
     The tier that needs no comparison: the call said which file, so what this
-    leaves on the session's own member file is evidence of the state that
-    session left the path in, rather than of what a before-and-after could
-    narrow the writer down to.
+    leaves on the calling row's own file — the subagent's where one made the
+    call, joined on the way — is evidence of the state that row left the path
+    in, rather than of what a before-and-after could narrow the writer down to.
     """
     directory = peer_directory(cwd)
     if PEER_POLICY is None or directory is None or not path_text:
         return
     store.record_claims(
         directory,
-        declared_identity(PEER_POLICY["member_env"]),
+        store.acting(directory, declared_identity(PEER_POLICY["member_env"]), caller),
         [str(Path(path_text).resolve())],
     )
 
 
 def edit_claim_decision(
-    verdict: KernelDecision, path_text: str, cwd: Path | None
+    verdict: KernelDecision, path_text: str, cwd: Path | None, caller: store.Caller
 ) -> KernelDecision:
     """One edit's own verdict, settled together with any claim over its path.
 
@@ -4038,7 +4078,7 @@ def edit_claim_decision(
     answer about the same file: what the content gates decided, and whether
     somebody else is already in it, are two questions and one approval.
     """
-    return settled_with_claim(verdict, foreign_claim_decision(path_text, cwd))
+    return settled_with_claim(verdict, foreign_claim_decision(path_text, cwd, caller))
 
 
 def main() -> None:

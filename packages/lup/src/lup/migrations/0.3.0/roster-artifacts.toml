@@ -1,0 +1,14 @@
+subjects = ["roster_artifacts", "DEPARTURE_ORIGIN", "DEPARTURE_SOURCE"]
+reason = """
+a plugin carries the coordination half as one package rather than a loose \
+file per hook, because the two hooks and the dispatcher all stand on the same \
+fold"""
+commit = "9aa0dccf21e244fea62e5f713d85a98a4fab8a07"
+
+[[steps]]
+instruction = """
+`roster_artifacts` is gone. `store_artifacts(plugin_root, semantic_id)` \
+places the package under `hooks/runtime/coordination/`, and is called \
+unconditionally: it takes no hook set, because the dispatcher imports the \
+package whatever a project declared about rosters. `hook_artifacts(...)` \
+places one event's guard and the entry beside the package that it runs."""

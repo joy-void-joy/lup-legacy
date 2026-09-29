@@ -425,6 +425,6 @@ the same question in both directions: *would another project built on lup want
 this?* If yes it belongs in `packages/lup/`; if it only makes sense for this
 application it belongs here.
 
-`lup[claude,codex,docker]` is declared as a workspace dependency in the root
-`pyproject.toml`, so a checkout resolves the library from source and an edit to
-either half is immediately live in the other.
+`lup-agents[claude,codex,conversation,docker,web]` is declared as a workspace
+dependency in the root `pyproject.toml`, so a checkout resolves the library
+from source and an edit to either half is immediately live in the other.

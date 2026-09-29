@@ -47,6 +47,16 @@
           }
         ],
         "matcher": ""
+      },
+      {
+        "hooks": [
+          {
+            "command": "sh \"$PLUGIN_ROOT/hooks/scripts/coordination_caller.sh\" || exit 0",
+            "timeout": 10,
+            "type": "command"
+          }
+        ],
+        "matcher": "mcp__coordination__.*"
       }
     ],
     "SessionEnd": [
@@ -76,6 +86,17 @@
         "hooks": [
           {
             "command": "sh \"$PLUGIN_ROOT/hooks/scripts/subagent_cleanup.sh\" || exit 0",
+            "timeout": 10,
+            "type": "command"
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [
+          {
+            "command": "sh \"$PLUGIN_ROOT/hooks/scripts/coordination_departure.sh\" || exit 0",
             "timeout": 10,
             "type": "command"
           }

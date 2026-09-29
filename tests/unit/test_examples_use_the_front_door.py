@@ -14,14 +14,19 @@ legitimately reaches into `lup.policy`. What none of them may do is reach past
 the root for `Claude` or `InnerSandbox`, because a reader who has to know
 `lup.providers.claude` or `lup.launch.declaration` exists to declare an agent
 has already been failed.
+
+And every field a launch adds to an agent has an example of its own, taking
+its agent from the root, so the corpus demonstrates each capability
+`harness claude|codex` has as the declaration a program writes.
 """
 
 import ast
 from pathlib import Path
 
 import pytest
+from pydantic import BaseModel
 
-from lup import DEFERRED
+from lup import LAZY_EXPORTS
 
 EXAMPLES = Path(__file__).resolve().parents[2] / "examples"
 
@@ -48,12 +53,12 @@ def imported_names(tree: ast.Module) -> list[tuple[str, str]]:
 
 
 @pytest.mark.parametrize("path", example_sources(), ids=lambda p: p.name)
-def test_a_deferred_name_is_taken_from_the_package_root(path: Path) -> None:
+def test_a_lazy_export_is_taken_from_the_package_root(path: Path) -> None:
     imported = imported_names(ast.parse(path.read_text(encoding="utf-8")))
     reached = [
         (module, name)
         for module, name in imported
-        if name in DEFERRED and module != "lup"
+        if name in LAZY_EXPORTS and module != "lup"
     ]
 
     assert not reached, (
@@ -139,3 +144,105 @@ def test_every_example_that_runs_a_turn_names_the_root() -> None:
         f"every agent the root exports needs one — missing "
         f"{sorted(AGENTS - reached)}"
     )
+
+
+class FieldExample(BaseModel, frozen=True):
+    """Where one field a launch adds to an agent is demonstrated, and how it is spelled."""
+
+    example: str
+    """The example module's file name."""
+
+    call: str
+    """The constructor the field is declared in."""
+
+    keyword: str | None = None
+    """The keyword naming the field in that call, or none where the call is the field."""
+
+
+# The capabilities `harness claude|codex` has, each a declaration field both
+# compilations honour — decision 16 of the DX overhaul — and the host companions
+# the launch declaration gained beside them.
+LAUNCH_FIELDS = {
+    "plugin": FieldExample(example="launch_plugin.py", call="Claude", keyword="plugin"),
+    "policy hooks": FieldExample(
+        example="launch_policy.py", call="Claude", keyword="policy"
+    ),
+    "MCP": FieldExample(
+        example="launch_tool_servers.py", call="ClaudeTools", keyword="mcp"
+    ),
+    "inner sandbox": FieldExample(
+        example="launch_inner_sandbox.py", call="InnerSandbox"
+    ),
+    "outer container": FieldExample(
+        example="launch_outer_container.py", call="OuterContainer"
+    ),
+    "coordination identity and wake socket": FieldExample(
+        example="launch_identity.py", call="Member", keyword="wake_sockets"
+    ),
+    "profile": FieldExample(
+        example="launch_profile.py", call="Claude", keyword="profile"
+    ),
+    "config home": FieldExample(example="launch_home.py", call="Codex", keyword="home"),
+    "transcript and ledger recording": FieldExample(
+        example="launch_recording.py", call="Recording", keyword="ledger"
+    ),
+    "resume": FieldExample(example="launch_resume.py", call="Claude", keyword="resume"),
+    "recursion allowance": FieldExample(
+        example="launch_recursion.py", call="Claude", keyword="max_recursive_agent"
+    ),
+    "mounts": FieldExample(example="launch_mounts.py", call="Mount"),
+    "devices": FieldExample(
+        example="launch_devices.py", call="OuterContainer", keyword="devices"
+    ),
+    "host companions": FieldExample(
+        example="launch_companions.py", call="Claude", keyword="companions"
+    ),
+}
+
+
+def calls(tree: ast.Module) -> list[ast.Call]:
+    """Every call the example makes, by the name it calls."""
+    return [node for node in ast.walk(tree) if isinstance(node, ast.Call)]
+
+
+def called(node: ast.Call) -> str:
+    match node.func:
+        case ast.Name(id=name) | ast.Attribute(attr=name):
+            return name
+        case _:
+            return ""
+
+
+@pytest.mark.parametrize("field", list(LAUNCH_FIELDS), ids=str)
+def test_every_launch_field_has_an_example_declaring_it(field: str) -> None:
+    """One example per field, so each is demonstrated where a reader copies from.
+
+    Checked by pyright as the rest of the corpus is — the examples are in the
+    workspace's include — so an example declaring a field wrongly fails the
+    build rather than the reader.
+    """
+    wanted = LAUNCH_FIELDS[field]
+    path = EXAMPLES / wanted.example
+    assert path.is_file(), f"no example for {field}: {wanted.example}"
+    declared = [
+        node
+        for node in calls(ast.parse(path.read_text(encoding="utf-8")))
+        if called(node) == wanted.call
+        and (
+            wanted.keyword is None
+            or any(keyword.arg == wanted.keyword for keyword in node.keywords)
+        )
+    ]
+
+    assert declared, f"{wanted.example} declares no {wanted.call}" + (
+        f"({wanted.keyword}=...)" if wanted.keyword else "()"
+    )
+
+
+@pytest.mark.parametrize(
+    "path", [EXAMPLES / wanted.example for wanted in LAUNCH_FIELDS.values()], ids=str
+)
+def test_a_launch_example_takes_its_agent_from_the_root(path: Path) -> None:
+    imported = imported_names(ast.parse(path.read_text(encoding="utf-8")))
+
+    assert any(module == "lup" and name in AGENTS for module, name in imported)

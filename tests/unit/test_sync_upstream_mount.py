@@ -14,6 +14,7 @@ the transport rewrite a contained session gets is computed from.
 """
 
 import json
+from typing import Any
 import os
 import shlex
 import shutil
@@ -27,7 +28,9 @@ from lup.devtools import sync
 from lup.devtools.dev.policy_explain import verdict_for
 import lup.launch.session as launch_session
 from lup.launch.declaration import LaunchSandbox
-from lup.providers.claude.launch import claude_sandbox_arguments
+from lup.launch.declaration import InnerSandbox, Mount
+from lup.providers.claude import Claude
+from lup.providers.claude.launch import claude_settings
 from lup.providers.codex.launch import writable_root_arguments
 from lup.devtools.harness.policy_refresh import refresh_destination_policy
 from lup.launch.preflight import (
@@ -56,6 +59,11 @@ SHIPPED = sync.load_json(Path("sync.json"))
 
 LAYOUTS = ["bare", "plain"]
 """The two ways a project generated from the template is cloned."""
+
+
+def settings_read(agent: Claude, tree: Path) -> dict[str, Any]:
+    """The settings document a launch of ``agent`` carries, read back as a CLI reads it."""
+    return json.loads(json.dumps(claude_settings(agent, tree)))
 
 
 def shipped_lup() -> sync.ProjectEntry:
@@ -475,7 +483,7 @@ def test_the_library_registration_follows_its_git_pin(
         SHIPPED,
         manifest=(
             '[tool.lup]\nagent_version = "0.1.0"\n\n'
-            f'[tool.uv.sources]\nlup = {{ git = "{pinned}", branch = "dev" }}\n'
+            f'[tool.uv.sources]\nlup-agents = {{ git = "{pinned}", branch = "dev" }}\n'
         ),
     )
     standing_in(monkeypatch, checkout)
@@ -496,7 +504,8 @@ def test_a_registration_nothing_places_falls_back_to_its_distribution(
 
     Root files are the project's own from the first day, so its `sync.json`
     never receives the url; the installed library says where it comes from
-    instead. A registration this machine placed keeps its own answer.
+    instead -- asked under the distribution's name, which is not the
+    registration's. A registration this machine placed keeps its own answer.
     """
     checkout = project(
         tmp_path,
@@ -505,7 +514,8 @@ def test_a_registration_nothing_places_falls_back_to_its_distribution(
     )
     standing_in(monkeypatch, checkout)
     no_rewrites(monkeypatch)
-    monkeypatch.setattr(sync, "distribution_repository", lambda name: str(upstream))
+    declared = {"lup-agents": str(upstream)}
+    monkeypatch.setattr(sync, "distribution_repository", lambda name: declared[name])
 
     assert sync.find_project("lup").get("url") == str(upstream)
     assert [root.path for root in sync.accessible_roots(lambda _said: None)] == [
@@ -796,14 +806,18 @@ def test_neither_runtime_s_host_sandbox_can_write_the_clone_s_config_or_hooks(
     """
     checkout, clone, roots = mounted_clone(tmp_path, monkeypatch, upstream, cache)
     tree = checkout / "tree"
-    claude = claude_sandbox_arguments(
-        declared_hook_set(), LaunchSandbox.INNER, roots, tree=tree
+    claude = settings_read(
+        Claude(
+            policy=declared_hook_set(),
+            sandbox=InnerSandbox(
+                mounts=[Mount(path=root.path, writable=root.writable) for root in roots]
+            ),
+        ),
+        tree,
     )
     codex = writable_root_arguments(roots, tree)
 
-    filesystem = json.loads(claude[claude.index("--settings") + 1])["sandbox"][
-        "filesystem"
-    ]
+    filesystem = claude["sandbox"]["filesystem"]
     assert str(clone) in filesystem["allowWrite"]
     assert sorted(filesystem["denyWrite"]) == [
         str(clone / "config"),

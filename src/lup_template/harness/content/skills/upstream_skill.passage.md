@@ -100,7 +100,8 @@ allows an edit; its checks also cover the completed branch.
 Two conventions of lup's that are easy to miss from outside it:
 
 - A capability that goes needs a migration declaring what a caller does about
-  it, or lup's own gate refuses the branch.
+  it — one TOML file under `packages/lup/src/lup/migrations/pending/` — or
+  lup's own gate refuses the branch.
 - Generated trees are regenerated, never hand-edited:
   `harness generate all` before the gate.
 

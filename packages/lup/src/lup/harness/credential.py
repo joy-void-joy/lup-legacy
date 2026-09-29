@@ -28,12 +28,14 @@ rather than implying a stronger boundary than exists.
 unbounded: ``git@host:``, ``ssh://``, an ssh config alias, an ``insteadOf``
 already in play, a non-GitHub host entirely. So the rewrite cannot match on
 spelling -- it has to resolve each remote to a URL and rewrite by resolved
-host. But resolving means reading ``.git/config``, and inside the container
-that file is writable by the thing being confined: it carries
+host. But resolving means reading ``.git/config``, which carries
 ``core.sshCommand``, ``diff.external`` and ``url.*.insteadOf`` pointing at
-``ext::sh -c``, so a container that could decide its own rewrite could decide
-to have none. The resolution happens on the host, before the container
-starts, and arrives as configuration the container cannot reach behind.
+``ext::sh -c`` -- the entries naming what reaching a remote runs, which is
+why the boundary holds the shared ``config`` read-only. A rewrite resolved
+inside would still be the confined thing's to compute, and a container that
+could decide its own rewrite could decide to have none. The resolution
+happens on the host, before the container starts, and arrives as
+configuration the container cannot reach behind.
 
 **Which direction it rewrites is the selected credential's to say.** A token
 reaches HTTPS and nothing else, so ssh spellings are rewritten toward HTTPS;
@@ -529,9 +531,9 @@ def remote_rewrites(
 ) -> list[RemoteRewrite]:
     """Each spelling this checkout's remotes use that the session cannot reach.
 
-    Resolved here, on the host, and never inside: the file that answers this
-    question is ``.git/config``, which the container can write. A rewrite
-    computed in there is a rewrite the confined thing chose.
+    Resolved here, on the host, and never inside: a rewrite computed in there
+    is one the confined thing chose, even over a ``.git/config`` the boundary
+    holds read-only.
 
     Decided on the *resolved* host rather than on the URL's spelling, which
     is the whole of what remote spellings being unbounded meant. A first

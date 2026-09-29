@@ -17,7 +17,7 @@ from lup.channels.models import utc_now
 from lup.policy.identity import ConcernAllowance
 from lup.resolver.contracts import ResolverAwaitingAnswers
 from lup.resolver.grants import GrantLedger
-from lup.resolver.journal import (
+from lup.resolver.record import (
     AnswerSettledEvent,
     Journal,
     QuestionAskedEvent,

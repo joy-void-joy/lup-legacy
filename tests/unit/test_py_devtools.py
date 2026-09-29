@@ -39,6 +39,21 @@ def test_source_text_search_keeps_complete_matching_lines(tmp_path: Path) -> Non
     assert matches[0].text == complete_line
 
 
+def test_prose_search_reads_docstrings_and_comments_only(tmp_path: Path) -> None:
+    """The reading a prose rule judges by: sentences, not identifiers or data."""
+    source = tmp_path / "prose.py"
+    source.write_text(
+        '"""A module that used to do more."""\n'
+        'used_to = "used to"\n'
+        "value = 1  # it used to be two\n"
+    )
+
+    matches = source_text_matches("used to", [source], prose=True)
+
+    assert [match.line_number for match in matches] == [1, 3]
+    assert matches[1].text == "value = 1  # it used to be two"
+
+
 def test_text_command_reports_path_and_line(tmp_path: Path) -> None:
     source = tmp_path / "example.py"
     source.write_text("first = 1\nassignment = 'constant'\n")

@@ -77,7 +77,7 @@ def test_unbranched_library_registration_follows_consumed_branch(
     clone = tmp_path / "clone"
     sh.git("clone", str(upstream), str(clone))
     (registry / "pyproject.toml").write_text(
-        f'[tool.uv.sources]\nlup = {{git = "{upstream}", branch = "dev"}}\n'
+        f'[tool.uv.sources]\nlup-agents = {{git = "{upstream}", branch = "dev"}}\n'
     )
 
     found = sync.registered_upstream({"name": "lup", "path": str(clone)}, clone)
@@ -157,7 +157,7 @@ def test_explicit_branch_mismatch_is_reported(
     git = initialized_repo(repo, tmp_path / "hooks")
     commit_file(git, repo, "file", "base", "base")
     (registry / "pyproject.toml").write_text(
-        f'[tool.uv.sources]\nlup = {{git = "{repo}", branch = "dev"}}\n'
+        f'[tool.uv.sources]\nlup-agents = {{git = "{repo}", branch = "dev"}}\n'
     )
 
     branch = sync.review_branch(

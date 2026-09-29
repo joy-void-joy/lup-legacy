@@ -34,15 +34,23 @@ it is not is owed on every commit, and treating it as owed is how several
 agents sharing one working tree each start the whole suite at once. Over a tree
 still being edited that answer is about a state that never existed, and a
 failure in it cannot be attributed to whoever caused it — so a delegated agent
-runs the scoped pair, names what it could not check, and leaves the gate and
-the commit to whoever dispatched it.
+runs the scoped pair over what its change reaches and leaves the full gate to
+whoever lands it. Whether it commits follows the tree it works in: in a
+worktree of its own it commits its work, and in a checkout it shares it leaves
+the commit to whoever dispatched it, since a commit there would carry what the
+others left half-edited beside its change.
 
 The other two are the loop while a change is still moving. `dev check
---changed` runs ruff and pyright over the Python files changed since the
-integration branch, in seconds — those are the two checks a scope narrows
-*exactly*, because each answers about the files it is handed and Pyright
-resolves their imports itself. It runs **no tests**, and says so every time.
-`dev test` runs the test files you name, in the suite that installs each.
+--changed` runs ruff and pyright over the Python files changed since the merge
+base with your branch's recorded base (or with `--since <ref>`), in seconds —
+those are the two checks a scope narrows *exactly*, because each answers about
+the files it is handed and Pyright resolves their imports itself. The merge
+base rather than the base's tip, so a branch answers for its own commits and
+not for what the base took since the cut. It also runs the declared-migrations
+row from that base, since a public name removed without a migration is a
+one-file mistake. It runs **no tests** and no other whole-tree sweep, and every
+run names them, beside each changed file it did not read. `dev test` runs the
+test files you name, in the suite that installs each.
 
 Which tests reach a change is deliberately left to you. It is a question about
 the import graph, and modules reached through `importlib` are invisible to any
@@ -50,9 +58,19 @@ static reading of it — so a suite narrowed automatically could report green
 while skipping the one test the change breaks. A gate that is trusted and
 wrong costs more than one that is slow.
 
-Run one at a time. Two gates at once are slower than the same two in
-sequence, because each already spreads itself across every core the machine
-has — and a suite reading a repository whose branches another command is
+Running several at once is held to the machine by the commands themselves,
+because each suite alone would spread itself across every core there is.
+`dev check` and `dev test` each hold one of four slots the clone keeps under
+its shared git directory, across every worktree, and spread their suites over
+the share of the cores that the runs already under way leave — four runs of
+four workers rather than four of sixteen. A fifth waits for a slot and says so
+as its wait begins, so a run that seems to hang with that line above it is
+queued rather than stuck; after half an hour it goes ahead at full width, in
+case a holder died without releasing its slot. `dev check --changed` and
+`dev check --no-test` hold none: neither runs a suite, and Pyright checks on one
+core, so a slot either held would divide nothing of its own and narrow every
+run opening beside it for the whole of that run. What the slots do not divide
+is the repository — a suite reading one whose branches another command is
 moving fails on that rather than on the code.
 
 `uv` is the package manager: use `uv add <package>`, never edit
@@ -316,6 +334,7 @@ Commit early, commit often, and keep commits atomic — if the message needs an
 | `chore` | Maintenance — dependencies, build config |
 | `meta` | Harness content and the trees it generates: guidance, settings, skills, hooks |
 | `data` | Generated data and outputs |
+| `release` | What `dev release` commits for a release or a candidate of one — never written by hand |
 
 
 A `data` commit of generated outputs may go straight to `dev`; code never
@@ -367,6 +386,12 @@ Cleanup checks the live coordination roster as well as Git worktree locks.
 A clean checkout owned by a live session remains protected even with
 `--force`; removal becomes available after the session departs or its pulse
 expires. Cleanup rechecks ownership immediately before removing the tree.
+A session owns a checkout it was launched in, and one it created: `git
+worktree create` locks the new checkout with the creating session's roster id
+as the reason, since that session usually writes there by absolute path from
+another checkout. Only another live session is refused by that hold; the
+creator removes its own, and once it leaves the roster the hold is dropped
+by whichever removal comes next.
 
 Undo snapshots publish and retire duplicate refs in one fsynced Git reference
 transaction. `dev undo` also reports empty or null loose undo refs, which Git
@@ -440,6 +465,46 @@ Two conventions catch most first-time review comments:
 [rules.md](rules.md) indexes every executable rule with its matching shape and
 the module that enforces it. A denial names its rule id, so you rarely need to
 read it first.
+
+### A break declares what to do about it
+
+In a repository other projects build on — one declaring a `spread`, as lup
+does — `dev check` also reads what the change took away. A module that moved
+or a name that was renamed needs nothing written down: `dev migrate map`
+derives the relocation from the two trees. A capability that is gone, or a
+signature a caller can no longer satisfy, needs a sentence somebody wrote,
+and the `declared migrations` row fails until one exists.
+
+Declare it in the commit that makes the break, as one TOML file under the
+library's `migrations/pending/` (`packages/lup/src/lup/migrations/pending/`
+in lup's own checkout), named for the break:
+
+```toml
+subjects = ["Runtime.contained"]
+reason = """
+`contained` named the configuration home rather than a container, so the \
+method takes the word for what it does"""
+
+[[steps]]
+instruction = "Call `Runtime.homed(request)` where you called `Runtime.contained(request)`."
+command = ["uv", "run", "lup-devtools", "dev", "py", "text", "\\.contained\\("]
+```
+
+`subjects` names every capability the one decision took, spelled as the gate
+spells them; `reason` is what the changelog carries; each step is a sentence
+a caller acts on, with the `command` that does it where one does. Leave
+`commit` out. A file per break is what lets parallel branches each declare
+one without meeting in a merge.
+
+`dev release` moves the pending files into `migrations/<version>/`, fills in
+the commit each break landed in, and renders their prose into the section it
+closes. A release candidate (`dev release --pre`) renders them and moves
+nothing — they belong to the release — and promoting it moves only the files
+its commit held, since a break declared after the candidate is not in it. The
+files stay: `dev migrate pending <commit>` tells a project crossing several
+releases what each one asks of it, and `dev migrate check --over
+<base>..<head>` judges any range against every release's record as well as
+the pending one.
 
 ### The `# lup: ignore` escape hatch
 

@@ -500,6 +500,10 @@ def worker_lease(worktree: Path) -> Lease:
     :func:`lease_for` gives: the policy asks about a write to one, and a
     mount cannot.
     """
+    # lup: defer: unverified live -- no session with a container engine has run
+    # a resolver with two concerns and seen each worker hold its own worktree
+    # writable and its siblings read-only, nor a write into a sibling refused
+    # naming this lease rather than an errno; needs a host terminal with podman
     layout = repository_layout(worktree)
     writable = [worktree]
     read_only = siblings_of(worktree, layout)

@@ -91,6 +91,11 @@ class CoordinatorResult(BaseModel, frozen=True):
         return self.stage in ("settled", "prepared") and self.decision.effect == "allow"
 
 
+# lup: defer: only tests construct this, `RecoveryCoordinator` and
+# `WorktreeLease` in `lup.policy.checkpoints`, or `AuditLog` in
+# `lup.policy.audit`, and the host executor they would hand work to has no
+# transport (the catalog declares `hostexec` capability-blocked); neither
+# dispatcher runs through them. Wire them in or delete them -- the user's call
 class OperationCoordinator:
     """Owns the lifecycle: settle, park, revalidate, capture, settle again.
 

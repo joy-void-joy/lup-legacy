@@ -75,6 +75,29 @@ def document(
                     # the same reason every other derived piece is one.
                     "statement_tag": models.code("{%"),
                     "comment_tag": models.code("{#"),
+                    "machine_profile": models.WhereTaken(
+                        module="setup",
+                        parts=[
+                            models.TextPart(text="`"),
+                            models.SkillInvocation(plugin="lup", skill="profile"),
+                            models.TextPart(
+                                text=(
+                                    "` is the machine's own: its hint names the "
+                                    "profiles this machine keeps, which no "
+                                    "committed file may, so it is in neither "
+                                    "tree. `harness generate` and every launch "
+                                    "render it from the registry into a "
+                                    "gitignored overlay beside each tree — "
+                                    "`.claude/plugins/local/`, which a Claude "
+                                    "launch loads after the committed plugin, "
+                                    "and `.codex/skills/`, which Codex reads "
+                                    "where it stands — rewritten whole each "
+                                    "time, so a profile added since is named at "
+                                    "the next launch and one removed is gone.\n"
+                                )
+                            ),
+                        ],
+                    ),
                 },
             ),
         ],

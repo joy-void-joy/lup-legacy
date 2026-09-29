@@ -70,15 +70,10 @@ Summarize:
 ### 4. Predict conflict severity
 
 ```bash
-# Dry-run merge to see what would conflict
-git merge --no-commit --no-ff <branch> 2>&1 || true
-
-# If conflicts arose, list them
-git diff --name-only --diff-filter=U 2>/dev/null
-
-# Abort the trial merge
-git merge --abort 2>/dev/null || true
+uv run lup-devtools git preview <branch> --into HEAD
 ```
+
+It merges in memory, touching neither the index nor this working tree, and names the files that would conflict — or, where nothing would, every file the merge changes and by how many lines. `nothing new` means the current branch already holds every line the source carries, however its commits were rewritten.
 
 Classify the merge into one of:
 
@@ -90,7 +85,7 @@ Show the conflict prediction and recommend a strategy, then Ask the user with th
 
 ### 5a. Standard merge (clean or light conflicts)
 
-Which spelling to use depends on whether the target already carries this branch. Where it does -- `sync-base` pulled the integration branch in before the rebase, which is the route `/lup:land` arrives by -- the join already happened in the branch's own worktree, and recording it again here would put a merge commit in an integration branch whose history is otherwise linear:
+Which spelling to use depends on whether this branch already carries the target. Where it does -- `sync-base` pulled the integration branch in before the rebase, which is the route `/lup:land` arrives by -- the join already happened in the branch's own worktree, so the target is an ancestor of the branch, and a merge commit here would record a second join of two lines that no longer diverge:
 
 ```bash
 git merge --ff-only <branch>
@@ -256,7 +251,7 @@ Classify each conflict hunk against the branch scopes:
 
 #### Auto-resolve (no user input needed)
 
-- **Non-overlapping additions** — Both sides add different content. **Combine both.**
+- **Non-overlapping additions** — Both sides add different content. **Combine both.** Where a file's every hunk is both sides inserting at one place — two entries prepended to one declared list, the shape a changelog or a registry conflicts in — `.venv/bin/lup-devtools git conflict union <file>` rebuilds it from the three index stages with both insertions kept, ours first unless `--theirs-first`, and stages it. It refuses, leaving the file as git left it, where both sides changed the same lines.
 - **Clear superset** — One side is a strict superset. Take the superset.
 - **Whitespace / formatting only** — Take either side consistently.
 - **Identical intent** — Same change, trivially different wording. Take either.

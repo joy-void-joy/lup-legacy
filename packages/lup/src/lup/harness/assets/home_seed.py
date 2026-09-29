@@ -26,13 +26,20 @@ so the launch can say what it overrode and knows what it applied.
 """
 
 import argparse
+import fcntl
 import json
+import os
 import sys
+import tempfile
 from pathlib import Path
 
 # lup: ignore[constant-declaration] — where a home keeps what it was last seeded
 # with, a name the host reading it back and this program both have to use
 RECORD = ".lup-seed"
+
+# lup: ignore[constant-declaration] — the lock trust-seed.py takes in the same
+# home before it amends the trust document, a name both programs have to use
+LOCK = ".lup-trust.lock"
 
 
 class Absent:
@@ -224,42 +231,63 @@ def read_tree(directory: Path) -> list[SeedFile]:
 
 
 def write(path: Path, text: str | None) -> None:
-    """Write a file atomically, or remove it where the text is ``None``."""
+    """Write a file atomically, or remove it where the text is ``None``.
+
+    Staged in a temporary file of this writer's own rather than under a fixed
+    name: containers start on one home at once, and a staging name they
+    shared is truncated by the next writer while the first is still filling
+    it, whose rename then publishes a document whose front is NUL bytes.
+    """
     if text is None:
         path.unlink(missing_ok=True)
         return
     path.parent.mkdir(parents=True, exist_ok=True)
-    staged = path.with_name(path.name + ".lup")
-    staged.write_text(text, encoding="utf-8")
-    staged.replace(path)
+    descriptor, staged = tempfile.mkstemp(prefix=f"{path.name}.lup-", dir=path.parent)
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+            handle.write(text)
+            handle.flush()
+            os.fsync(handle.fileno())
+        Path(staged).replace(path)
+    finally:
+        Path(staged).unlink(missing_ok=True)
 
 
 def apply(seed_dir: Path, home: Path) -> list[str]:
-    """Merge the seed at ``seed_dir`` into ``home`` and record it, answering conflicts."""
+    """Merge the seed at ``seed_dir`` into ``home`` and record it, answering conflicts.
+
+    Under the lock trust-seed.py takes in the same home, since both read a
+    document there, merge into it and write it back: interleaved by two
+    containers starting at once, whichever renames second drops what the
+    other added.
+    """
     managed_file = seed_dir / "managed"
     if not managed_file.is_file():
         return []
-    managed = managed_file.read_text(encoding="utf-8").split()
-    seed = read_tree(seed_dir)
-    record = read_tree(home / RECORD)
-    held = [
-        *(
-            SeedFile(name, (home / name).read_text(encoding="utf-8"))
-            for name in [*managed, *merged_names(seed)]
-            if (home / name).is_file()
-        ),
-        *(SeedFile(f"{RECORD}/{item.name}", item.text) for item in record),
-    ]
-    settled = settle(seed, held, managed)
-    for outcome in settled:
-        write(home / outcome.file.name, outcome.file.text)
-    seeded = [item.name for item in seed]
-    for stale in record:
-        if stale.name not in seeded:
-            write(home / RECORD / stale.name, None)
-    for item in seed:
-        write(home / RECORD / item.name, item.text)
-    return [conflict for outcome in settled for conflict in outcome.conflicts]
+    home.mkdir(parents=True, exist_ok=True)
+    with (home / LOCK).open("a") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        managed = managed_file.read_text(encoding="utf-8").split()
+        seed = read_tree(seed_dir)
+        record = read_tree(home / RECORD)
+        held = [
+            *(
+                SeedFile(name, (home / name).read_text(encoding="utf-8"))
+                for name in [*managed, *merged_names(seed)]
+                if (home / name).is_file()
+            ),
+            *(SeedFile(f"{RECORD}/{item.name}", item.text) for item in record),
+        ]
+        settled = settle(seed, held, managed)
+        for outcome in settled:
+            write(home / outcome.file.name, outcome.file.text)
+        seeded = [item.name for item in seed]
+        for stale in record:
+            if stale.name not in seeded:
+                write(home / RECORD / stale.name, None)
+        for item in seed:
+            write(home / RECORD / item.name, item.text)
+        return [conflict for outcome in settled for conflict in outcome.conflicts]
 
 
 def main() -> None:

@@ -10,4 +10,4 @@ case "$shared" in
 esac
 root="$shared/lup/coordination"
 [ -d "$root/members" ] || exit 0
-exec python3 "${0%/*}/../runtime/coordination_departure.py" "$root" "$LUP_COORDINATION_MEMBER" "SessionEnd"
+exec python3 -s "${0%/*}/../runtime/coordination_departure.py" "$root" "$LUP_COORDINATION_MEMBER" "SessionEnd"

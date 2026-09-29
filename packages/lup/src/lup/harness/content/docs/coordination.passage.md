@@ -22,8 +22,8 @@ removing a worktree does not take the roster with it.
 Both are the same roster, mail and journal over different directories. That is
 the whole of the reuse and it is the point: a message to a peer and a message
 to a spawned worker travel one stream, fold through one set of records, and
-are read by one inbox — so there is one delivery path to get right rather than
-two that agree until they do not.
+wait in one kind of mailbox — so there is one delivery path to get right
+rather than two that agree until they do not.
 
 Different repositories are structurally disjoint. There is no global registry
 to collide in, no daemon to elect, and no way for a session in one project to
@@ -40,7 +40,7 @@ queued is still the mail's, because those move and this does not.
 
 ## The person is a member
 
-The user joins as `user`, with an inbox and no session, addressed by the verbs
+The user joins as `user`, with a mailbox and no session, addressed by the verbs
 that address an agent. A report is a message to `user`; a question is a
 message to `user` carrying a slot id, and the reply settles the slot. Messages
 park nobody; questions park, because the slot parks.
@@ -73,6 +73,32 @@ live does it reach the last claimant of all, so that a message to a session
 that has stopped is refused with when it left and what it concluded rather
 than queued for nobody. A message to one's own address is refused too.
 
+**An id always reaches its row.** A name is chosen and may spell anything,
+another member's id included, so an address is resolved as an id first and as
+a name only where no member carries it; `coordination roster` prints the id
+beside every name. That is what settles two rows a reader cannot tell apart by
+name, and every verb taking an id — a console's `--id`, a lock, a handoff —
+reaches a subagent's row by it as readily as a session's.
+
+**A native subagent is a row of its own**, beneath its session's. Nothing a
+tool server starts with tells a session's conversations apart — on Claude Code
+they share one, and on Codex each subagent's calls reach a copy started under
+the session's environment — so which of them made a coordination call is
+carried by the call: a hook both runtimes fire before a coordination
+tool runs writes the calling subagent's id into it, read off the runtime's own
+payload, and the verbs act on that subagent's row — its description, its
+name, its locks, its mailbox — and leave the session's alone. The row is keyed
+by the runtime's subagent id under the session's, named what the spawn called
+it — which Claude Code records beside the session's transcript and Codex atop
+the subagent's own rollout — numbered like any default name, and live
+while its session is: it ends when the subagent stops, forwarding whatever it
+never read to its session, and with its session in any case. A subagent
+reaches the session that dispatched it at that session's address. What a
+subagent's calls change is held on its row, so a sibling writing there is
+asked, and the session writing under a subagent it has running is asked too;
+a subagent is not asked about its own session's claims, since the session
+dispatched it into that work.
+
 A launcher mints both halves and exports them as `LUP_COORDINATION_MEMBER` and
 `LUP_COORDINATION_NAME`, and can prove them, the way `LUP_AGENT_IDENTITY` is
 proven: a hook is spawned by the runtime CLI with the CLI's own environment, so
@@ -99,10 +125,10 @@ it and a sender is told which mode it got:
 
 | Mode | What it means |
 | --- | --- |
-| `inbox` | Its own hook puts the message in front of its next tool call, so a working recipient cannot fail to read it |
-| `mailbox` | The message waits in the file until the recipient next looks, and nothing wakes it |
+| `hook` | Its own hook puts the message in front of its next tool call, so a working recipient cannot fail to read it |
+| `waiting` | The message waits in its mailbox until the recipient next looks, and nothing wakes it |
 
-File mail is the durable record either way; every other mode is a wake *on top
+The mailbox is the durable record either way; every other mode is a wake *on top
 of* it rather than an alternative. A sender told only that the mail accepted a
 message cannot tell a hook from a file nobody is watching, which is why
 `spawn_say` reports the mode rather than asserting delivery.
@@ -287,11 +313,13 @@ can reach the peer, is reported rather than silently skipped.
 The handle a peer is woken by is **declared when it joins**, and declared by
 the adapter for the runtime that would use it — because what a handle even is
 differs by runtime, and a neutral answer would be right for at most one of
-them. On Claude it is the path of the session's own inbox socket, which the
+them. On Claude it is the path of the session's own wake socket, which the
 runtime names to the processes that session starts, so a tool server reports
 where its session listens without being told; the wake is a frame written
-there, carrying the member's session id so an inbox that is not theirs drops
-it, and the library makes it. On Codex it is the thread `codex queue` takes,
+there, carrying the member's session id so a socket that is not theirs drops
+it, and the library makes it. The socket holds no mail — a message is the
+store's, read whether or not anything woke its reader — which is why it is a
+wake socket and not a mailbox. On Codex it is the thread `codex queue` takes,
 which nothing hands a server Codex starts, so that adapter declares nothing —
 an outcome reported rather than skipped.
 
@@ -299,7 +327,10 @@ Declaring it is not enough to reach anybody. A path is only good to a process
 that can open it, and a contained session's filesystem is its own — so the
 launcher places these sockets in one directory every session it starts can
 reach, mounted under the path it has outside, because the path is what a
-member publishes and another container reads back. Reachability of that path
+member publishes and another container reads back. Each is keyed by the
+member's id, never its name: a name repeats and changes at a rename, and the
+id is what addresses. A socket file is removed only where the roster says its
+owner left and nothing still answers on it. Reachability of that path
 is the whole of the credential: the frame carries no token, so the directory
 those sockets live in is the boundary, and widening it widens who can put text
 into a session. It is deliberately not a directory the runtime scans for
@@ -323,16 +354,45 @@ own processes, and every relation between members derived at the read:
 
 | Question | What answers it |
 | --- | --- |
-| Is this member still here? | Its own file's modification time — the owner touches it while it lives |
+| Is this member still here? | The runtime process its file names, where the reader can ask it; else the pulse its tool server holds; else its file's modification time |
 | Does this claim still hold? | A stat of the path, against the time the claim recorded |
 | Do two sessions contest a path? | Their two files both claiming it |
 | What is this member called? | The names on its file, newest last |
-| What is waiting for it? | The files in its inbox |
+| What is waiting for it? | The files in its mailbox |
 
 Nothing is folded and nothing is replayed, so what the store holds is bounded
 by the population rather than by its history: a member that stops takes its
 file to `departed/`, and the sweep deletes that after the retention window.
 Nothing here needs compaction.
+
+**Presence is the runtime's process, not a beat.** A session is the Claude
+Code or Codex process somebody started, and its row names that process — its
+id, its start time, and the pid namespace both belong to, since an id alone is
+reused and means nothing in another container. A reader in that namespace asks
+the process: present however long the file was quiet, which is what a machine
+that slept leaves every file, and gone the moment it stops. A reader in
+another container cannot see it, so the session's tool server holds a lock on
+the row's pulse for as long as it answers for the session; the kernel lets it
+go when the server ends however it ends, and nothing about it lapses in a
+sleep. Only where neither speaks — a server that died without a word, behind
+a namespace the reader cannot see into — does the file's modification time
+decide, against the two-minute window.
+
+A beat answers for the runtime rather than for the server beating it. The
+server names its runtime as the process feeding its input, through any
+`uv run` or shell between them, and beats only for a row naming that runtime,
+and only while holding the pulse — which one server of a runtime holds at a
+time, so the server Codex starts for each subagent, and keeps after the
+subagent stops, answers for the session only where the session's own stopped
+while the runtime runs on. Each tick asks the runtime first, and one that
+stopped ends the row, saying so; a server stopping after its runtime went does
+the same, which is what a runtime killed outright does to its servers' input.
+A runtime started from a session's own shell inherits the session's id and
+can outlive it: measured with real tool servers under stand-in runtimes, one
+put a cleanly ended session back on the roster within a tick and beat for it
+for as long as it lived, and one freeze past the window took a live session's
+description off its row at the next sweep. Neither can happen to a row naming
+another runtime, or answered for by a pulse somebody holds.
 
 **The one place this spends more is the stat**, because settling a claim means
 asking the filesystem rather than reading a record. Measured on 2026-09-19
@@ -353,7 +413,7 @@ made against every other member's file.
 
 Both of those were raced in real processes on 2026-09-19 rather than reasoned
 about: twelve sessions joining one worktree at once took twelve distinct
-names, and twelve senders writing into one inbox at once all landed and all
+names, and twelve senders writing into one mailbox at once all landed and all
 consumed. That is `flock` and `rename` on one Linux filesystem. Whether they
 hold across a bind mount on Docker Desktop's virtiofs is the assumption this
 store hands its adopters, and the reason it needs neither a daemon nor SQLite
@@ -363,7 +423,7 @@ to be wrong about.
 
 Two things reach a member and only one of them is mail.
 
-**A message is addressed and consumed.** It is one file in one member's inbox,
+**A message is addressed and consumed.** It is one file in one member's mailbox,
 written by the sender and deleted by that member once it has been handed over,
 so "what is waiting for me" is a directory listing. There is no position for
 anybody to keep: nothing to commit after a crash but what was never handed
@@ -443,8 +503,8 @@ Everything here is an append-only file, and nothing pushes: a session folds
 the files again on its own next call, which serves a session and nobody else.
 `coordination watch` is the fold run on a clock, saying only what is different
 from the last look — who arrived and left, what a session now says it is on,
-and what reached whose inbox. It consumes nothing: mail is read the way a peek
-reads it, so a person watching a peer's inbox is never the reason the peer did
+and what reached whose mailbox. It consumes nothing: mail is read the way a peek
+reads it, so a person watching a peer's mailbox is never the reason the peer did
 not see a message. The first look is a baseline rather than a replay, the same
 convention a run follower keeps when attaching to work already under way.
 
@@ -470,9 +530,10 @@ saying how many others are here and where the listing is. A quiet roster costs
 no context at all, and a broken one costs the prompt nothing, because the hook
 fails open.
 
-The same hook beats for the session, which is the pulse its row is present
-by: a running row nothing has heard from within the window reads as gone, and
-a sweep retires it. And it is where a rewind is noticed. A runtime that
+The same hook beats for the session, which a reader who can ask neither its
+runtime nor its pulse reads it present by: a running row nobody vouches for
+within the window reads as gone, and a sweep retires it. And it is where a
+rewind is noticed. A runtime that
 rewinds or clears a conversation keeps the process, the session id and the
 tool server, and signals none of it — so the row would go on saying what the
 discarded conversation was doing, under a pulse the same server keeps beating.
@@ -508,8 +569,11 @@ durable record every worktree folds and every later session can read; a native
 send is a call whose text exists only inside whichever process received it. So
 where both would reach the same member the native send is stopped and told
 where the durable one is, and where it reaches somebody the roster has never
-heard of nothing happens at all — a subagent this session started is on no
-repository roster, so continuing one goes through untouched.
+heard of nothing happens at all. A send between two conversations of one
+session goes through untouched as well — a subagent reporting to the session
+that dispatched it, or the session steering or continuing one of its own —
+because it never leaves the process, so there is no record another worktree
+could have read.
 
 A native *listing* of who can be reached is the different case, and refusing it
 would be wrong rather than merely strict. Measured against a live account, most
@@ -579,7 +643,7 @@ and the turn's own failure path finishes the agent before the wave is ever
 consulted. Which failures suspend is a fact about the consumer's vocabulary,
 and a consumer has one.
 
-**The cohort owns the wiring.** Delivery works only if the inbox hook is in
+**The cohort owns the wiring.** Delivery works only if the mailbox hook is in
 the options the session opened with, so callers pass an `ActorRecipe`
 (`(ActorRef, LupHooksConfig) -> Agent`) and the cohort hands it the hooks. A
 recipe that had to fetch them could be written once without them, producing an
@@ -609,5 +673,5 @@ the same storage; messages ride a stream and never park anything, which is why
 "a message stalled the run" is not expressible rather than merely avoided.
 
 A person reaches the same roster through `coordination roster`, `send`,
-`inbox`, `describe` and `rename`. They drive the same files, so what a console
+`mailbox`, `describe` and `rename`. They drive the same files, so what a console
 says is here is what a session addressing it will reach.

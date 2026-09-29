@@ -2194,6 +2194,10 @@ PATH_ROLES: list[PathRoleRow] = [
         "role": "scratch",
     },
     {
+        "root": "packages/lup/src/lup/migrations/pending",
+        "role": "data",
+    },
+    {
         "root": "packages/lup/web/**/*.test.js",
         "role": "test",
     },
@@ -2264,15 +2268,13 @@ ACCEPTANCE_GUARD: AcceptanceGuardRow | None = None
 SPAWN_NAMES: SpawnNameRow | None = {
     "reason": "a subagent spawned without a name is listed, addressed and stopped by its type alone, which says nothing about what it is doing",
     "recovery": "the task in two or three words, starting with a letter or digit and carrying only letters, digits and underscores, at most 64 characters \u2014 it is what the listing shows and what a message or a stop addresses",
-    "misspelled": "a name outside that shape is rejected by one runtime or another, one of them silently, so the spawn dies where nothing records it",
     "punctuation": "_",
     "limit": 64,
 }
 
 VERIFICATION: VerificationRow = {
-    "gate": "`uv run lup-devtools dev check`",
     "scoped": "`uv run lup-devtools dev check --changed`",
-    "record": "your report",
+    "tests": "`uv run lup-devtools dev test`",
 }
 
 SHELL_RULES: list[ShellRuleRow] = [
@@ -28175,11 +28177,11 @@ REFUSED_PATHS: list[RefusedPathRow] = [
     },
     {
         "paths": [
-            "/tmp/lup-inbox/**",
+            "/tmp/lup-wake/**",
         ],
         "exempt": [],
-        "reason": "a session's inbox socket is its wake handle, and a frame written to it starts that session's turn with text no roster records",
-        "recovery": "Reach the peer with `coordination_send` instead: it records the message where every session in this clone can read it, and wakes the peer through this inbox itself.",
+        "reason": "a session's wake socket is its wake handle, and a frame written to it starts that session's turn with text no roster records",
+        "recovery": "Reach the peer with `coordination_send` instead: it records the message where every session in this clone can read it, and wakes the peer through this socket itself.",
     },
 ]
 

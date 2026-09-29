@@ -88,21 +88,35 @@ def init_drop_examples_cmd(
     a directory it will never run and a suite it has to keep green.
 
     Lines still naming what went are reported rather than rewritten: a link in
-    a README its human owner is already rewriting is theirs to remove.
+    a README its human owner is already rewriting is theirs to remove. So are
+    the removed test modules the scaffold declaration does not yet decline,
+    which the next `dev update` would otherwise offer back as conflicts.
     """
     root = project_root()
     removed = init.drop_scaffold_demonstrations(root, dry_run)
-    if not removed:
-        typer.echo("no scaffold demonstrations left to remove")
-        return
-    typer.echo("Would remove:" if dry_run else "Removed:")
-    for line in removed:
-        typer.echo(line)
-    mentions = init.surviving_mentions(root, init.SCAFFOLD_DEMONSTRATIONS)
-    if mentions:
-        typer.echo(f"\nStill named in {len(mentions)} line(s) — review manually:")
-        for line in mentions:
+    if removed:
+        typer.echo("Would remove:" if dry_run else "Removed:")
+        for line in removed:
             typer.echo(line)
+        mentions = init.surviving_mentions(root, init.SCAFFOLD_DEMONSTRATIONS)
+        if mentions:
+            typer.echo(f"\nStill named in {len(mentions)} line(s) — review manually:")
+            for line in mentions:
+                typer.echo(line)
+    else:
+        typer.echo("no scaffold demonstrations left to remove")
+    undeclined = init.undeclined_copies(
+        init.SCAFFOLD_DEMONSTRATIONS,
+        catalog.declared_scaffold(),
+        catalog.dev_project().package,
+    )
+    if undeclined:
+        typer.echo(
+            "\nThe copied half still carries these; add them to `declined` in "
+            "declared_scaffold(), or `dev update` offers each back as a conflict:"
+        )
+        for path in undeclined:
+            typer.echo(f"  {path}")
 
 
 @init_app.command("upstream")

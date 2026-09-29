@@ -1,0 +1,21 @@
+subjects = [
+    "PeerPolicy.roster_file",
+    "PeerPolicy.names_file",
+    "PeerPolicy.touches_file",
+    "PeerPolicy.member_kind",
+    "PeerPolicy.heartbeats_dir",
+    "PeerPolicy.stale_after_seconds",
+]
+reason = """
+the compiled dispatcher imports the shipped fold, which owns every file name \
+the store is made of, so a policy restating them was the second spelling that \
+could drift"""
+commit = "9aa0dccf21e244fea62e5f713d85a98a4fab8a07"
+
+[[steps]]
+instruction = """
+Drop those six from any `PeerPolicy(...)` you build. What is left is what the \
+fold cannot know: `store`, the path parts beneath the shared git directory; \
+`windows_dir`, the dispatcher's own snapshots; `member_env`; and the five \
+lines a stopped caller reads. A project that moved its store still says so \
+with `store`."""

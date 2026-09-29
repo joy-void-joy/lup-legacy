@@ -10,10 +10,14 @@ launched has no identity its tool server can join the roster under, and such
 a session is not on the roster: its hooks fold the record and beat without
 ever joining a row, and its departure writer finds no standing row to end.
 
-The launched case is unaffected: the launcher mints a member id and exports
-it, and every session this repository starts is launched. The difference
-from Claude Code, whose runtime does set a session id in its servers'
-environment, is stated on the parity page rather than papered over here.
+The launched case is covered: the launcher mints a member id and exports it,
+and every session this repository starts is launched. It reaches the tool
+server only because the server names it in ``env_vars`` —
+:func:`lup.harness.environment.tool_server_env` — since Codex starts a stdio
+server under a fixed base environment and forwards nothing else. The
+difference from Claude Code, whose runtime does set a session id in its
+servers' environment, is stated on the parity page rather than papered over
+here.
 """
 
 from lup.coordination.wake import WakePath

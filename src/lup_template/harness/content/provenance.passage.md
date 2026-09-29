@@ -10,9 +10,10 @@ standing there before you go on.
 
 
 <!-- passage: library-as-a-package -->
-A project depends on `lup` as a package rather than keeping a copy of the
-library's source. Half the answer is a fact to look up rather than a
-preference — whether a release exists at all, and which:
+A project depends on lup as a package — the `lup-agents` distribution,
+imported as `lup` — rather than keeping a copy of the library's source. Half
+the answer is a fact to look up rather than a preference — whether a release
+exists at all, and which:
 
 ```
 {{ project_devtools }} dev library release
@@ -20,7 +21,10 @@ preference — whether a release exists at all, and which:
 
 It reports the released version, or that none is published yet, and prints the
 command that declares what it found — so the release number is read from the
-index rather than guessed at.
+index rather than guessed at. A release candidate newer than the release is
+named beside it and never offered in its place: a candidate is taken on
+purpose, by naming it (`--version X.Y.ZrcN`, or `dev library git --tag
+vX.Y.ZrcN`), and only when the user asks to try one.
 
 The other half is a judgement about what this project is to lup, and the
 look-up does not make it. Ask the user which of these describes them:
@@ -50,7 +54,7 @@ The git mode resolves `subdirectory = "packages/lup"`, because the distribution 
 
 The extras come from what the project runs: `claude` and/or `codex` for the
 adapters it drives, `docker` for the code-execution sandbox, `web` for the
-session API. Name them in the requirement (`lup[claude,codex,docker]`).
+session API. Name them in the requirement (`lup-agents[claude,codex,docker]`).
 
 
 <!-- passage: upstream-checkpoint -->

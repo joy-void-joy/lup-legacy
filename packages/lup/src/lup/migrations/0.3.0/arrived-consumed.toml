@@ -1,0 +1,33 @@
+subjects = [
+    "Arrived.consumed",
+    "Arrived.messages",
+    "DELIVERY_DIR",
+    "EVERYONE",
+    "MESSAGE_FILE",
+    "Message.to_actor",
+    "committed_offset",
+    "framed",
+    "reaches",
+    "reader_name",
+]
+reason = """
+the peer delivery reader stands on the shipped store package instead of \
+restating the format it reads, so it moved beside the compiled dispatcher — \
+the other file type-checked against the generated tree it is shipped into — \
+and the maildir left it with no position to keep and no address to match"""
+commit = "1e56496618db07576be351386786e1a32f93e43c"
+
+[[steps]]
+instruction = """
+Import `lup.providers.claude.assets.peer_delivery_runtime` for \
+`lup.providers.claude.peer_delivery_runtime`, and run the emitted copy under \
+`hooks/runtime/` rather than the module: it names its own directory as a \
+search path and imports `coordination.mail` as a sibling, which resolves only \
+there."""
+
+[[steps]]
+instruction = """
+The inbox is the position, so `committed_offset`, `framed`, `Arrived` and \
+`reader_name` are gone, and `reaches` with them — one directory per member \
+means there is no address left to match. `deliver(root, member_id)` keeps its \
+signature and its fail-open contract."""

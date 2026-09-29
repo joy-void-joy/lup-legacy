@@ -17,7 +17,7 @@ import asyncio
 
 from lup.channels.models import utc_now
 from lup.resolver.contracts import ResolverObserver
-from lup.resolver.journal import (
+from lup.resolver.record import (
     ConcernProgressedEvent,
     Journal,
     PhaseChangedEvent,

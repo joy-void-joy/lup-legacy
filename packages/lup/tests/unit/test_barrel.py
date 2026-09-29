@@ -16,6 +16,7 @@ import subprocess
 import sys
 
 import lup
+import lup.launch.companions as companions
 import lup.launch.declaration as declaration
 
 AGENTS = {"Claude", "Codex"}
@@ -30,6 +31,16 @@ LAUNCH_VOCABULARY = {
     "Pick",
     "Recording",
     "Reopen",
+}
+
+COMPANION_VOCABULARY = {
+    "CompanionLaunch",
+    "CompanionPlace",
+    "CompanionProcess",
+    "CompanionScope",
+    "Contribution",
+    "HostCompanion",
+    "SharedProcess",
 }
 
 
@@ -60,10 +71,17 @@ def test_root_exports_only_portable_runtime_conveniences() -> None:
         "Agent",
         "Claude",
         "Codex",
+        # What a launch keeps running on the host beside a session.
+        "CompanionLaunch",
+        "CompanionPlace",
+        "CompanionProcess",
+        "CompanionScope",
+        "Contribution",
         "Conversation",
         # The one way to name a model no catalog lists, which every model
         # argument a root agent takes accepts.
         "CustomModel",
+        "HostCompanion",
         # The fields a launch adds to an agent's declaration.
         "InnerSandbox",
         "Latest",
@@ -76,6 +94,7 @@ def test_root_exports_only_portable_runtime_conveniences() -> None:
         "Reopen",
         "SessionId",
         "SessionSummary",
+        "SharedProcess",
         "Turn",
         "TurnId",
         "TurnInput",
@@ -143,10 +162,16 @@ def test_each_launch_field_is_the_class_its_declaration_module_defines() -> None
         for name in sorted(LAUNCH_VOCABULARY)
         if getattr(lup, name) is not getattr(declaration, name)
     ] == []
+    assert COMPANION_VOCABULARY <= set(lup.__all__)
+    assert [
+        name
+        for name in sorted(COMPANION_VOCABULARY)
+        if getattr(lup, name) is not getattr(companions, name)
+    ] == []
 
 
 def test_importing_lup_loads_no_launch_machinery() -> None:
-    """The launch vocabulary is deferred for the same reason the agents are.
+    """The launch vocabulary resolves lazily for the same reason the agents do.
 
     Its declaration module stands beside the harness, policy and sandbox
     machinery a launch composes, several hundred modules deep; a caller who

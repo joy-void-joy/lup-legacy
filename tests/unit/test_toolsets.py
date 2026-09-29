@@ -16,7 +16,7 @@ import pytest
 
 from lup.coordination.identity import MEMBER_ENV
 from lup.coordination.peer_tools import RosterPulse
-from lup.coordination.relay import InboxRelay
+from lup.coordination.relay import MailboxRelay
 from lup.orchestration.reflection import ReviewGate
 from lup.sandbox.container import Sandbox
 from lup.tools.policy import BaseToolPolicy
@@ -123,7 +123,7 @@ def test_the_coordination_server_beats_for_the_session_it_serves(
     [companion, relay] = toolset.companions["coordination"]
 
     assert isinstance(companion, RosterPulse)
-    assert isinstance(relay, InboxRelay)
+    assert isinstance(relay, MailboxRelay)
     assert relay.member_id == "toolset-test"
     assert companion.member_id == "toolset-test"
     assert set(toolset.companions) == {"coordination"}

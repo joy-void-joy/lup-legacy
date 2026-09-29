@@ -12,9 +12,9 @@ disagree, the guidance is the statement of intent and this is only its index.
 | [pydantic](https://docs.pydantic.dev/) | Validation, and every model we declare. |
 | [pydantic-settings](https://docs.pydantic.dev/latest/concepts/pydantic_settings/) | Configuration, in place of dotenv. |
 
-A provider's SDK is one adapter's dependency behind an extra — `lup[claude]`,
-`lup[codex]` — and never the application's. Importing one here pins the
-application to a single runtime and trips `seam-boundary` outside a
+A provider's SDK is one adapter's dependency behind an extra —
+`lup-agents[claude]`, `lup-agents[codex]` — and never the application's.
+Importing one here pins the application to a single runtime and trips `seam-boundary` outside a
 composition root that names it, which is why no module under the application
 package imports one.
 

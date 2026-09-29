@@ -5,8 +5,8 @@ imports its subject inside the call rather than at module scope, so importing
 this catalog — which a listing, a requirement check, and every ``--help`` line
 does — pulls in the type and the specs and no skill, no page, and no optional
 extra. A project that declined the resolver never imports the resolver's
-declarations, and one that declined a module whose builder needs ``lup[web]``
-never needs ``lup[web]``.
+declarations, and one that declined a module whose builder needs
+``lup-agents[web]`` never needs ``lup-agents[web]``.
 
 That is the same arrangement :data:`~lup.devtools.roster.LIBRARY_ROSTER` uses
 for sub-apps, and it exists here for a stronger reason: a sub-app's builder

@@ -324,13 +324,17 @@ def test_every_field_an_arrival_carries_reaches_the_member_it_becomes(
     every reader of the store shares: what is asserted is that what the typed
     writer put down survives being read back by a half that imports none of
     its types. The exempt set is the fields nothing an arrival says carries —
-    a description a session has not given, an outcome it has not reached, and
-    the presence the file's own modification time answers for.
+    a description a session has not given, an outcome it has not reached, the
+    presence the file's own modification time answers for, and the session a
+    native subagent runs in. That last one only the subagent's own join in
+    the shipped store writes: an arrival here is a session's or a spawned
+    member's, which runs inside nobody, and what that join writes is read
+    back through this fold by the subagent roster's own tests.
     """
     written = {
         "task": "working",
         "liveness": "watcher",
-        "delivery": Delivery.INBOX,
+        "delivery": Delivery.HOOK,
         "worktree": "/tmp/tree",
         "wake": WakePath(runtime="codex", handle="thread-1"),
     }
@@ -340,7 +344,15 @@ def test_every_field_an_arrival_carries_reaches_the_member_it_becomes(
 
     member = next(iter(roster.standing()))
 
-    derived = {"running", "heard", "arrived", "description", "summary", "error"}
+    derived = {
+        "running",
+        "heard",
+        "arrived",
+        "description",
+        "summary",
+        "error",
+        "parent",
+    }
     assert shared - set(written) == derived, (
         "a field the member file carries and the model reads, written by "
         "neither this arrival nor anything derived at the read: fold it, or "

@@ -419,3 +419,40 @@ def test_only_a_defer_note_can_carry_a_condition_at_all() -> None:
             kind=NoteKind.note,
             condition="branch:whatever",
         )
+
+
+def test_a_note_the_working_tree_answered_as_solved_stays_answered(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The documented resolution, read where the branch wrote it.
+
+    Resolving a woken deferral is rewriting it as `solved:` with its words
+    unchanged. The branch it names does that in its own tree, while the
+    integration branch keeps the deferral until the branch lands — so a gate
+    reading only the integration copy stayed red on the one branch that had
+    done what the note asked, with no way to clear it from there.
+    """
+    root = tmp_path / "planted"
+    planted_deferral(root, "elsewhere")
+    (root / "sample.py").write_text(
+        "# lup: solved: waits on the branch it names\nvalue = 1\n", encoding="utf-8"
+    )
+    monkeypatch.setattr(gates, "project_root", lambda: root)
+
+    assert inbound_notes("elsewhere", "HEAD") == []
+
+
+def test_a_solved_claim_in_other_words_leaves_the_note_standing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A claim answers the note whose words it carries, not whichever is near."""
+    root = tmp_path / "planted"
+    planted_deferral(root, "elsewhere")
+    (root / "sample.py").write_text(
+        "# lup: solved: some other note entirely\nvalue = 1\n", encoding="utf-8"
+    )
+    monkeypatch.setattr(gates, "project_root", lambda: root)
+
+    assert [note.text for note in inbound_notes("elsewhere", "HEAD")] == [
+        "waits on the branch it names"
+    ]

@@ -87,3 +87,46 @@ def test_others_adds_the_untracked_files_the_ignore_rules_keep(
         "src/pkg/fresh.py",
         "src/pkg/mod.py",
     ]
+
+
+def test_a_checkout_named_by_path_is_listed_relative_to_itself(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A caller holding a checkout by path reads it from wherever it runs.
+
+    A command can be invoked from a subdirectory, where git answers for that
+    subtree alone, so a scan over a project root it was handed names the root
+    rather than trusting the working directory to be it.
+    """
+    work = tmp_path / "repo"
+    build_conflicted_checkout(work)
+    (work / ".gitignore").write_text("ignored/\n", encoding="utf-8")
+    (work / "ignored").mkdir()
+    (work / "ignored/mod.py").write_text("IGNORED = 1\n", encoding="utf-8")
+    monkeypatch.chdir(work / "src")
+
+    assert sorted(tracked_files(others=True, suffixes=(".py",), root=work)) == [
+        "src/pkg/mod.py"
+    ]
+    assert tracked_files(suffixes=(".py",)) == ["pkg/mod.py"]
+
+
+def test_a_path_holding_a_non_ascii_byte_is_listed_as_it_is_spelled(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A line listing quotes such a path, and a sweep would then skip it.
+
+    `git ls-files` without `-z` writes `"docs/caf\\303\\251.md"`, quotes and
+    octal escapes included, which matches no suffix and opens no file.
+    """
+    work = tmp_path / "repo"
+    build_conflicted_checkout(work)
+    accented = work / "docs" / "café.md"
+    accented.parent.mkdir()
+    accented.write_text("# Café\n", encoding="utf-8")
+    monkeypatch.chdir(work)
+
+    listed = tracked_files(others=True, suffixes=(".md",))
+
+    assert "docs/café.md" in listed
+    assert (work / listed[listed.index("docs/café.md")]).is_file()

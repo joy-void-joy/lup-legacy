@@ -11,7 +11,7 @@ from pathlib import Path
 import pytest
 
 from lup.harness.models import ResolveSpec, SkillInvocation
-from lup.resolver.journal import Journal
+from lup.resolver.record import Journal
 from lup.resolver.models import (
     AcceptanceCriterion,
     Concern,

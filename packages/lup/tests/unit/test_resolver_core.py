@@ -65,7 +65,7 @@ from lup.resolver.core import (
 )
 from lup.channels.models import utc_now
 from lup.resolver.run import ResolveRun, ResolverInvariantError
-from lup.resolver.journal import Journal, LeaseDriftEvent
+from lup.resolver.record import Journal, LeaseDriftEvent
 from lup.resolver.models import (
     AdmissionRequest,
     AnswerBatch,

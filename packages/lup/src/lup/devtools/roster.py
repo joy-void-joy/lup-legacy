@@ -86,8 +86,14 @@ class DevtoolsDeclarations(BaseModel, frozen=True, arbitrary_types_allowed=True)
     that reads it, which is the honest answer for a roster composed without a
     root to walk."""
 
-    prompt: Callable[[], AgentPrompt]
-    """This project's system prompt, as the health report weighs it."""
+    prompt: Callable[[], AgentPrompt] | None = None
+    """This project's system prompt, as the health report weighs it.
+
+    Read by the ``feedback`` sub-app alone, so a project that does not serve
+    it — one with no agent of its own to prompt, having declined the feedback
+    loop — declares none rather than inventing one. Serving the sub-app
+    without it is refused where the roster is built.
+    """
 
     relocate_roots: list[Path] = [Path("src"), Path("tests")]
     """Where `dev relocate` may move a module, for a project laid out that way."""
@@ -171,7 +177,7 @@ class DevtoolsDeclarations(BaseModel, frozen=True, arbitrary_types_allowed=True)
         optional extra, so constructing an app a project declined makes that
         project carry a dependency for a command it does not serve. Measured —
         a project retiring ``dashboard`` still could not start its CLI without
-        ``lup[web]``, because the roster built the dashboard before the
+        ``lup-agents[web]``, because the roster built the dashboard before the
         selection ever saw it.
 
         Defaulting to none keeps every existing caller correct: a project that
@@ -237,6 +243,26 @@ def conversation_app(declared: "DevtoolsDeclarations") -> typer.Typer:
     return create_conversation_app(declared.profiles)
 
 
+def feedback_app(declared: "DevtoolsDeclarations") -> typer.Typer:
+    """The feedback sub-app, over the prompt its health report weighs.
+
+    Refused rather than built without one. Every other feedback command reads
+    records any project's loop writes the same way, but ``prompt-health``
+    weighs the one thing only the application assembles, so a sub-app served
+    without it carries a command that can do nothing but fail — and fail long
+    after the composition that could have said why. Both ways out are named,
+    because which is right depends on whether the project has an agent at all.
+    """
+    if declared.prompt is None:
+        raise ValueError(
+            "the `feedback` sub-app weighs this project's agent prompt, and "
+            "DevtoolsDeclarations declares none: pass `prompt=` a callable "
+            "returning its AgentPrompt, or stop serving `feedback` — declining "
+            "the feedback-loop module retires it"
+        )
+    return create_feedback_app(declared.prompt)
+
+
 # lup: ignore[library-default] — the sub-apps this library authors, so the table
 # is what it ships rather than a choice made for an adopter
 LIBRARY_ROSTER = [
@@ -282,7 +308,7 @@ LIBRARY_ROSTER = [
     ),
     RosterEntry(
         spec=SubAppSpec(name="feedback", help="Feedback state, metrics, and commits"),
-        build=lambda declared: create_feedback_app(declared.prompt),
+        build=lambda declared: feedback_app(declared),
     ),
     RosterEntry(
         spec=SubAppSpec(

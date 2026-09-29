@@ -1,0 +1,11 @@
+subjects = ["default_config_home"]
+reason = """
+three places computed Claude's default configuration home each on their own; \
+the login declaration is the one that says it"""
+commit = "b182e13bf47ce85c0c9f0a10dd925839008dc931"
+
+[[steps]]
+instruction = """
+Read CLAUDE_LOGIN.ambient_home, from lup.providers.claude.login, wherever \
+default_config_home() was called: the same directory, joined onto this \
+process's home rather than a HOME a session carries."""

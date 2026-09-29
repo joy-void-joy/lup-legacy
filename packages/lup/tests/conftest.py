@@ -6,6 +6,9 @@ the library ships.
 """
 
 import os
+import shutil
+import socket
+import tempfile
 import warnings
 from collections.abc import Iterator
 from functools import cache
@@ -13,12 +16,14 @@ from pathlib import Path
 
 import pytest
 
-import lup.devtools.harness.launch as launch
+import lup.providers.claude.launch as claude_launch
 import lup.providers.profile_tree as profile_tree
 from lup.devtools.gitguard import TEST_IDENTITY, GuardVerdict, RepositoryWatch
 from lup.harness.environment import launcher_decided_names
+from lup.harness.messaging import WakeSockets
 from lup.providers.claude.config_home import ClaudeConfigHome, selected_config_home
 from lup.providers.claude.login import CLAUDE_CONFIG_DIR
+from lup.providers.codex.login import CODEX_HOME
 from lup.providers.identity import RUNTIME_DECIDED_ENV
 from lup.types import EnvVars
 
@@ -109,13 +114,16 @@ def checkout_profiles_withheld(
 def personal_claude_account_withheld(
     tmp_path_factory: pytest.TempPathFactory,
 ) -> Iterator[None]:
-    """Keep every launch under test out of the developer's own Claude account.
+    """Keep every launch under test out of the developer's own accounts.
 
     A host launch settles its theme into the account it runs as, and a launch
     naming no profile runs as the operator's default home — fixed when the
-    login is imported, so no ``HOME`` a test sets moves it. The home a launch
-    reads when none is named is bound to an empty directory for the whole
-    suite; one a test names outright is still the one it named.
+    login is imported, so no ``HOME`` a test sets moves it — or as whatever
+    home this process's environment names, which inside a session is that
+    session's own. So the homes this suite's environment names are taken
+    away, and the home a launch reads when none is named is bound to an
+    empty directory for the whole suite; one a test names outright is still
+    the one it named.
     """
     account = tmp_path_factory.mktemp("claude-account")
 
@@ -127,7 +135,9 @@ def personal_claude_account_withheld(
         )
 
     with pytest.MonkeyPatch.context() as patched:
-        patched.setattr(launch, "selected_config_home", withheld)
+        patched.delenv(CLAUDE_CONFIG_DIR, raising=False)
+        patched.delenv(CODEX_HOME, raising=False)
+        patched.setattr(claude_launch, "selected_config_home", withheld)
         yield
 
 
@@ -183,3 +193,49 @@ def settled(verdict: GuardVerdict) -> None:
         warnings.warn(verdict.notice, stacklevel=2)
     if verdict.failure:
         pytest.fail(verdict.failure, pytrace=False)
+
+
+@pytest.fixture
+def unix_socket() -> None:
+    """Skip, saying why, where this process may not open a Unix socket at all.
+
+    A test measuring delivery through a real socket has nothing to measure
+    where the socket itself is refused — a Claude Code Bash sandbox refuses
+    ``socket(AF_UNIX)`` with EPERM — and failing there would report a defect
+    the code does not have. Any other failure a socket meets stays a failure.
+    """
+    try:
+        socket.socket(socket.AF_UNIX, socket.SOCK_STREAM).close()
+    except PermissionError as refused:
+        pytest.skip(
+            f"this process may not open a Unix socket ({refused}); delivery "
+            "through one cannot be measured here"
+        )
+
+
+@pytest.fixture
+def wake_sockets() -> Iterator[WakeSockets]:
+    """Wake sockets placed in a directory short enough to key a whole member id.
+
+    Beside ``/tmp`` rather than under pytest's own temporary path, whose depth
+    leaves too few of a Unix socket address's bytes for a repository, a digest
+    and an id -- which the placement refuses rather than cuts.
+    """
+    directory = Path(tempfile.mkdtemp(prefix="lupw", dir="/tmp"))
+    yield WakeSockets(directory=str(directory))
+    shutil.rmtree(directory, ignore_errors=True)
+
+
+@pytest.fixture
+def socket_refused(monkeypatch: pytest.MonkeyPatch) -> None:
+    """This process is refused ``socket(AF_UNIX)``, as a Claude Code Bash sandbox is.
+
+    Refused at construction with EPERM, before any path is tried, which is
+    the one thing the code under test has to tell apart from a peer that is
+    not listening.
+    """
+
+    def refused(*_arguments: int) -> socket.socket:
+        raise PermissionError(1, "Operation not permitted")
+
+    monkeypatch.setattr(socket, "socket", refused)

@@ -1,0 +1,13 @@
+subjects = ["stale_window"]
+reason = """
+a claim window is this session's own before-and-after and nobody else's \
+reader, because a change it cannot attribute is one each session records for \
+itself and a reader derives the contest from"""
+commit = "1e56496618db07576be351386786e1a32f93e43c"
+
+[[steps]]
+instruction = """
+`close_claim_window(root, store, windows_dir, mine)` answers `{\"paths\": \
+[...]}` and takes no `stale_after_seconds`: it no longer reads anybody else's \
+window, so `stale_window` has nothing to judge. `store.record_claims(root, \
+mine, paths)` takes the three arguments that are left."""

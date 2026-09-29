@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-from lup import DEFERRED
+from lup import LAZY_EXPORTS
 from lup.devtools.dev.boundaries import library_sources
 from lup.execution.shell import git
 from lup.harness.codescan.boundaries import (
@@ -227,7 +227,7 @@ def test_the_live_library_reads_nothing_through_its_front_door(
     assert [f"{item.path}:{item.line} {item.message}" for item in findings] == []
 
 
-def test_the_live_root_names_each_deferred_name_where_its_table_resolves_it(
+def test_the_live_root_names_each_lazy_export_where_its_table_resolves_it(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """The table the module hook reads and the block a checker reads are one list.
@@ -243,5 +243,5 @@ def test_the_live_root_names_each_deferred_name_where_its_table_resolves_it(
     exports = front_door_exports(root.text)
 
     assert {
-        name: module for name, module in exports.items() if name in DEFERRED
-    } == DEFERRED
+        name: module for name, module in exports.items() if name in LAZY_EXPORTS
+    } == LAZY_EXPORTS

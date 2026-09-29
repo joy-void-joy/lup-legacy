@@ -99,7 +99,7 @@ def resolved_pin(
     distribution: str,
     commit: str,
     report: Callable[[str], None],
-    project: str = library.DISTRIBUTION,
+    project: str = library.REGISTRATION,
 ) -> str:
     """Move the pin, and hand back the commit the lock resolved it to.
 

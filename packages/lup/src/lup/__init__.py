@@ -14,9 +14,10 @@ the rest of that ecosystem. Nor is the **launch vocabulary**: the fields a
 launch adds to an agent's declaration -- the wall its session opens behind
 (`OuterContainer`, `InnerSandbox`, `NoSandbox`), a folder outside the working
 tree it reaches (`Mount`), its coordination identity (`Member`), what is kept
-of it (`Recording`), and the session it reopens (`Latest`, `Pick`, `Reopen`)
--- defined beside the harness, policy and sandbox machinery a launch
-composes. Bound here, either would have `import lup` pull several hundred
+of it (`Recording`), the session it reopens (`Latest`, `Pick`, `Reopen`),
+and what it keeps running on the host beside it (`HostCompanion`, most often
+a `SharedProcess`, with the values one is written in) -- defined beside the
+harness, policy and sandbox machinery a launch composes. Bound here, either would have `import lup` pull several hundred
 modules on behalf of a caller who may have wanted a type annotation.
 
 So both resolve on first access, through one table naming the module each is
@@ -50,6 +51,15 @@ from lup.sessions.surface import Agent, Conversation, Turn
 from lup.types import CustomModel
 
 if TYPE_CHECKING:
+    from lup.launch.companions import (
+        CompanionLaunch,
+        CompanionPlace,
+        CompanionProcess,
+        CompanionScope,
+        Contribution,
+        HostCompanion,
+        SharedProcess,
+    )
     from lup.launch.declaration import (
         InnerSandbox,
         Latest,
@@ -64,7 +74,7 @@ if TYPE_CHECKING:
     from lup.providers.claude import Claude
     from lup.providers.codex import Codex
 
-# Where each deferred name is defined, so the resolution below is a lookup
+# Where each lazy export is defined, so the resolution below is a lookup
 # rather than a branch per name -- a third adapter, or another launch field,
 # is one row.
 # lup: ignore[library-default] — the names this library defines and the
@@ -72,9 +82,15 @@ if TYPE_CHECKING:
 # choice made for an adopter: a provider arrives here as an adapter, and a row
 # an adopter replaced would point `from lup import Claude` at something lup
 # never wrote.
-DEFERRED = {
+LAZY_EXPORTS = {
     "Claude": "lup.providers.claude",
     "Codex": "lup.providers.codex",
+    "CompanionLaunch": "lup.launch.companions",
+    "CompanionPlace": "lup.launch.companions",
+    "CompanionProcess": "lup.launch.companions",
+    "CompanionScope": "lup.launch.companions",
+    "Contribution": "lup.launch.companions",
+    "HostCompanion": "lup.launch.companions",
     "InnerSandbox": "lup.launch.declaration",
     "Latest": "lup.launch.declaration",
     "Member": "lup.launch.declaration",
@@ -84,6 +100,7 @@ DEFERRED = {
     "Pick": "lup.launch.declaration",
     "Recording": "lup.launch.declaration",
     "Reopen": "lup.launch.declaration",
+    "SharedProcess": "lup.launch.companions",
 }
 
 
@@ -92,6 +109,12 @@ def __getattr__(
 ) -> type[
     Claude
     | Codex
+    | CompanionLaunch
+    | CompanionPlace
+    | CompanionProcess
+    | CompanionScope
+    | Contribution
+    | HostCompanion
     | InnerSandbox
     | Latest
     | Member
@@ -101,25 +124,32 @@ def __getattr__(
     | Pick
     | Recording
     | Reopen
+    | SharedProcess
 ]:
-    """Resolve a deferred name on first access, and nothing else.
+    """Resolve a lazy export on first access, and nothing else.
 
     PEP 562's module hook, used for exactly the names above. Anything else
     raises the ``AttributeError`` Python would have raised anyway, in the same
     words, so a typo at the front door reads as a typo rather than as an import
     failure somewhere inside an adapter or the launch machinery.
     """
-    if name not in DEFERRED:
+    if name not in LAZY_EXPORTS:
         raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
-    return getattr(import_module(DEFERRED[name]), name)
+    return getattr(import_module(LAZY_EXPORTS[name]), name)
 
 
 __all__ = [  # lup: ignore[all-export] -- the package-root public API
     "Agent",
     "Claude",
     "Codex",
+    "CompanionLaunch",
+    "CompanionPlace",
+    "CompanionProcess",
+    "CompanionScope",
+    "Contribution",
     "Conversation",
     "CustomModel",
+    "HostCompanion",
     "InnerSandbox",
     "Latest",
     "Member",
@@ -131,6 +161,7 @@ __all__ = [  # lup: ignore[all-export] -- the package-root public API
     "Reopen",
     "SessionId",
     "SessionSummary",
+    "SharedProcess",
     "Turn",
     "TurnId",
     "TurnInput",

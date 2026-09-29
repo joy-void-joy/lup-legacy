@@ -325,7 +325,7 @@ def test_the_library_pin_is_the_commit_the_lock_resolved(tmp_path: Path) -> None
         "uv.lock",
         "version = 1\n\n"
         '[[package]]\nname = "other"\nversion = "1.0"\n\n'
-        '[[package]]\nname = "lup"\nversion = "0.2.0"\n'
+        '[[package]]\nname = "lup-agents"\nversion = "0.2.0"\n'
         'source = { git = "https://example.test/lup?'
         'subdirectory=packages%2Flup&branch=dev#9f1c2d3e4a5b6c7d8e9f" }\n',
     )
@@ -336,6 +336,6 @@ def test_the_library_pin_is_the_commit_the_lock_resolved(tmp_path: Path) -> None
 def test_a_project_resolving_no_git_source_pins_no_commit(tmp_path: Path) -> None:
     """Every mode but git answers nothing here, and nothing is the honest answer."""
     root = tmp_path / "project"
-    wrote(root, "uv.lock", 'version = 1\n\n[[package]]\nname = "lup"\n')
+    wrote(root, "uv.lock", 'version = 1\n\n[[package]]\nname = "lup-agents"\n')
 
     assert pinned_commit(root) == ""

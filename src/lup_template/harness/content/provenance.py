@@ -98,7 +98,6 @@ def sync_baseline(spelling: Provenance) -> list[models.PromptPart]:
             module=__name__,
             name="upstream-checkpoint",
             values={
-                "update_skill": models.SkillInvocation(plugin="lup", skill="update"),
                 "project_devtools": models.plain(spelling.project_devtools),
                 "library_checkout": models.plain(spelling.library_checkout),
             },

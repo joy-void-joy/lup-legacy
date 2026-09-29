@@ -53,7 +53,7 @@ Examples:
         ...         scheduler=scheduler,
         ...         mailbox=mailbox,
         ...         initial_prompt="[Session started — read context and engage]",
-        ...         build_state=lambda: RelayState(unread_events=inbox.unread()),
+        ...         build_state=lambda: RelayState(unread_events=events.unread()),
         ...     )
 """
 
@@ -652,7 +652,7 @@ async def run_relay_session(
         build_state: Builds the state snapshot published before each
             turn (unread counts, domain context).
         on_event: Optional domain hook invoked after each applied event
-            (e.g. mark inbox messages read for an event reporting
+            (e.g. mark domain events read for an event reporting
             ``events_read``).
         on_turn_complete: Optional durable-checkpoint hook invoked after every
             completed turn with the cumulative turn count.

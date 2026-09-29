@@ -1,5 +1,261 @@
 # Changelog
 
+## Unreleased
+
+### `harness claude|codex` launches the declaration its flags make
+
+The command no longer runs a launch of its own beside the library's: it
+builds a `Claude(...)` or `Codex(...)` from this repository's composition and
+its flags and calls `launch()`, so `command()` on the same declaration is
+exactly the process it runs. Each flag is a field — `--sandbox inner` an
+`InnerSandbox`, `--mount`, `--mount-ro` and `sync.json.local` registrations
+`Mount`s, `--device` the container's devices, `--continue`/`--resume`/
+`--session` `Latest()`/`Pick()`/`Reopen(...)`, `--generate-only` a
+regeneration and `prepare()` — and the repository's checkpoint, worktree
+pointers, base sync and regeneration are the launch's `steps=`.
+`harness codex --profile` now names the account, as on Claude Code; a Codex
+configuration overlay is gone, every setting one held being a `Codex(...)`
+field. `docs/harness.md` maps every flag, and `examples/launch_*.py` show
+every field on its own.
+
+### Each launch declares the tool servers its session carries
+
+Claude Code drops a plugin's own MCP servers under `--strict-mcp-config`, so
+the generated plugin carries skills, agents and hooks, and every launch
+declares its servers per session — `--mcp-config` on Claude Code,
+`--config mcp_servers.*` on Codex — from the declaration's `tools.mcp`. A
+server's tools are now named `mcp__<server>__<tool>` on Claude Code rather
+than under the plugin's scope; the settings grants and the coordination
+caller hook follow. The startup deadline moves to `ServeLaunch`.
+
+### Host companions, held around every session a declaration opens
+
+`companions=` on `Claude` and `Codex` takes services a session wants running
+on the host beside it: each is held for as long as the session is open —
+launched, printed as a command, or opened in process — and hands it
+environment, mounts and ports. `SharedProcess` is one process shared per
+checkout or per person, started by the first session, joined by the rest and
+stopped with the last lease.
+
+### `/lup:profile` names this machine's profiles
+
+The command's hint lists the profiles the machine keeps, so it is in neither
+committed tree: `harness generate` and every launch render it into a
+gitignored overlay — `.claude/plugins/local/` and `.codex/skills/`.
+
+### A member's messages wait in its mailbox
+
+What peers say to a session waited in its "inbox". It is the session's
+mailbox, and "inbox" names nothing in lup: the `coordination_inbox` tool is
+`coordination_mailbox`, `lup-devtools coordination inbox` is
+`coordination mailbox`, and the coordination store keeps each member's
+mail under `mailbox/` rather than `inbox/`. `ActorInbox` is
+`ActorMailbox`, `create_inbox_hooks` is `create_mailbox_hooks`,
+`ActorCohort.inbox` is `ActorCohort.mailbox`, `InboxRelay` is
+`MailboxRelay`, `INBOX_DIR` is `MAILBOX_DIR`, `inbox_path` is
+`mailbox_path`, and the hook matcher that delivers mail is tagged
+`mailbox`. End every session before regenerating, and move the mail still
+waiting as the migration says.
+
+The two ways mail reaches a member were called `inbox` and `mailbox`,
+though mail waits in the member's mailbox either way. Each is named for
+what hands the message over: `hook` (`Delivery.HOOK`), where the member's
+own hook puts it in front of its next tool call, and `waiting`
+(`Delivery.WAITING`), where it waits until the member next looks and
+nothing wakes it. `coordination_send` and `spawn_say` report those
+spellings, and the member files the store keeps are respelled by the
+migration's step.
+
+### A session's wake socket is keyed by its member id
+
+The Unix socket a peer writes to so an idle Claude session takes a turn
+was named after the session's display name, which repeats by design and
+changes at a rename: a launch met the stale socket of an earlier session
+called the same, and a rename left peers holding a path to nothing. It is
+now `<dir>/<repository>-<digest>--<member id>.sock`, at most 103 bytes. A
+file at a member's own path is replaced rather than refused, and a
+departed member's socket is removed only where the roster says it left and
+nothing answers on it.
+
+It is also called what it is. This socket holds no mail, so it is the
+session's wake socket, in `/tmp/lup-wake` rather than `/tmp/lup-inbox`.
+`SessionInboxes` is `WakeSockets`,
+`placed_inbox` is `placed_wake_socket`, `Image.inboxes` and
+`Member.inboxes` are `wake_sockets`, and `inbox_refusal` is
+`wake_socket_refusal`; `cleared`, `UnixSocketRefused` and
+`RepositoryPeers.woken_through` are gone. Regenerate so the compiled
+policy withholds the new directory.
+
+### A native subagent is a roster row of its own
+
+A session's native subagents inherited its coordination identity, so a
+subagent's `coordination_describe` replaced its orchestrator's row, a lock
+held a file for the whole session, and a subagent could not reach the
+session that dispatched it (#505). Each subagent is now a row of its own
+beneath its session's, keyed by the runtime's subagent id under the
+session's, named from its spawn — on Claude Code from the spawn's meta
+file, on Codex from the `agent_path` atop the subagent's own rollout — and
+live while its session is.
+
+A new `PreToolUse` hook on each runtime, matched to the coordination
+server's tools, writes the calling conversation into the call's hidden
+`lup_caller` argument, so `describe`, `rename`, `lock`, `release` and
+`mailbox` act on the calling subagent's row and `coordination_peers` lists
+subagents beneath their session. A subagent's edits are held on its row: a
+sibling writing there is asked, its own session's claims are not. A native
+send between conversations of one session is no longer redirected, and an
+address resolves as an id before a name. `PeerPolicy` gains a required
+`server`, the tool server the coordination verbs are served from, which
+`lup.coordination.policy.peer_policy` fills with `COORDINATION_SERVER`.
+
+### A session is present while its runtime runs
+
+A stopped session read as running (#503). A runtime started from a
+session's own shell inherits its coordination id, and its tool server joined
+under it like any other: it put a cleanly ended session's row back within
+one tick and beat for it for as long as that runtime lived. A session's row
+now names its runtime process — the one feeding its tool server's input, by
+pid, start time and pid namespace — and a server beats only for a row
+naming its own runtime, never puts back a departure written under another,
+and ends its row with `its runtime stopped` once that runtime has gone.
+
+Readers ask the runtime itself where they share its namespace, so a killed
+session reads as gone at once and a live one stays present, claims and
+description whole, across a suspended machine. A reader in another container
+tests the `<member>.pulse` lock the answering server holds, and falls back
+to the two-minute window only where neither speaks. One server of a runtime
+holds the pulse at a time, so the server Codex keeps for each subagent
+answers for the session only where the session's own stopped while the
+runtime runs on. `SessionNeeds.runtime` and `RosterPulse.runtime` carry the
+process, and `create_peer_tools` takes it as `runtime=`.
+
+### `dev check --changed` reads a branch from where it left its base
+
+It diffed against the integration branch's tip, so a feature branch answered
+for every commit that branch took after the cut — 108 files for an author
+who had touched a handful — and it named only Python files, so a change of
+Markdown and CSS reported nothing at all. It now reads from the merge base
+with the base the branch records (or with `--since <ref>`), answers for
+uncommitted work on the integration branch itself, lists every changed file
+no scoped check read, and names the test suites and whole-tree sweeps it
+left to `dev check`. It also runs the declared-migrations row from that same
+base: two public names removed without a migration had reached the whole
+gate because the narrowed run never asked.
+
+### Claude asks natively; only Codex parks a review
+
+0.4.0's note on native approval authority says a call parks in
+`.lup/questions.jsonl` until an operator's single-use answer releases it.
+That is Codex alone, whose pre-tool boundary has no ask effect. Claude has
+rendered every policy ask as a native permission request since 0.4.0 itself,
+carrying the reason that earned it, and parks nothing, so `dev questions`
+never lists a Claude call.
+
+What a rendered ask rests on is the session answering to a person. An
+autonomy mode answers it on the session's behalf, the operations the
+`human_only` reviewer reserves included, and the hook payload carries no
+field telling that answer from a person's. Observed execution still grants
+nothing on either runtime; `docs/permissions.md` ("Where a native ask is
+put") states both channels.
+
+### The library is published as `lup-agents`
+
+PyPI refuses `lup` as too close to an existing project, so the library's
+distribution is `lup-agents`. It is still imported as `lup`, and
+`packages/lup/`, `lup-devtools` and the `lup` registration in `sync.json`
+keep their names.
+
+A project built on lup renames its requirement by hand, once. No command does
+it: the `lup-devtools` a project runs is the library it is about to replace.
+In `pyproject.toml`, rename `lup[...]` to `lup-agents[...]` in
+`[project].dependencies`, and the `lup` key under `[tool.uv.sources]` to
+`lup-agents` — whether it pins a repository or the vendored copy under
+`packages/lup`. Until then uv refuses the library. A repository pin moved to a
+renamed commit, the way `dev update` moves it, fails with:
+
+```
+  × Failed to download and build `lup @
+  │ git+https://github.com/joy-void-joy/lup@<commit>#subdirectory=packages/lup`
+  ╰─▶ Package metadata name `lup-agents` does not match given name `lup`
+```
+
+and a vendored copy renamed under a root that still requires `lup`, on
+`uv lock`, `uv sync` or `uv run`, with:
+
+```
+  ├─▶ Failed to parse entry: `lup`
+  ╰─▶ `lup` references a workspace in `tool.uv.sources` (e.g., `lup = {
+      workspace = true }`), but is not a workspace member
+```
+
+After the rename, `uv sync` installs `lup-agents`, and a project pinned at a
+repository runs `uv run lup-devtools dev update` to bring the generated trees
+and the copied half to the commit it now resolves. A vendored copy's editable
+install leaves `packages/lup/src/lup.egg-info` beside the new metadata; delete
+it, or `importlib.metadata` goes on answering for `lup`.
+
+`DISTRIBUTION` in `lup.devtools.dev.library` spells only the distribution; a
+caller that passed it as the sync registration's name passes `REGISTRATION`.
+
+### A migration is one file, and a release keeps its own
+
+A break two trees cannot describe is declared as one TOML file under
+`packages/lup/src/lup/migrations/pending/`, where it was an entry in
+`lup.devtools.dev.migrations.DECLARED`: every branch appended to that list at
+one position, so any two that each broke something conflicted there.
+`dev release` moves the pending files into `migrations/<version>/`, stamped
+with the commit each break landed in, and keeps them rather than emptying a
+list; 0.3.0's and 0.4.0's migrations are recovered into records of their own.
+
+`dev migrate pending` reads every release's record beside the pending one, so
+a project updating across several releases hears what each asks of it, and
+`dev migrate check` and the `declared migrations` gate read them too, so a
+range spanning a release finds what that release declared. A released
+migration speaks only for a range its commit landed in: a name an old release
+retired, reused and dropped again, is a break of its own, and so is a
+project's name that a library release happened to retire too.
+`docs/contributing.md` shows a file. `MigrationRecord` reads the record where
+`DECLARED` was read, and `undeclared_breaks` takes one as `record`.
+
+### A release can go out as candidates first
+
+`dev release <level> --pre` (`/lup:release --pre`) cuts a release candidate,
+tagged `vX.Y.ZrcN`: a PEP 440 pre-release, published to the index and the
+forge as one, whose commit's manifest says `X.Y.ZrcN` — so a project pinned
+to it by git is told it holds the candidate. N counts on from the tags
+already spent on that version, and a
+later `--pre` keeps the series' level unless another one is named. The
+changelog section stays open, headed by the version the series is heading
+for and listing each candidate; work landing after a candidate gathers under
+a fresh `## Unreleased` above it until the next candidate folds it in, and
+the pending breaks stay pending until the release.
+
+A plain `dev release` while the newest tag is a candidate promotes it, with a
+release commit on a branch cut from the candidate's tag (`release-X.Y.Z`)
+that changes only the version (`X.Y.ZrcN` to `X.Y.Z`), the changelog section
+it closes, and the record of the breaks the candidate carried. Before
+anything is committed, every file it changes is checked against the
+candidate's tag; anything more is named, undone, and refused, so what ships
+is what was tested. The branch is tagged `vX.Y.Z`, lands on the release
+branch through a pull request like any release, and is merged back into the
+integration branch — which goes on taking work while a candidate soaks, and
+keeps it. Where the release branch has moved past the candidate, the command
+says so and names the two ways on — another candidate with `--pre`, or the
+release of what the integration branch holds with `--direct`.
+
+Nothing takes a candidate by accident. A project opts in by naming it:
+`dev library git --tag vX.Y.ZrcN`, or `dev library use published --version
+X.Y.ZrcN`, whose requirement naming a pre-release is what lets the installer
+take one. `dev library release` names a candidate newer than the release
+beside it and never offers it as the version to pin.
+
+The publishing workflow builds the tree a tag names as it stands, and a
+second job records each release on GitHub, marked prerelease for a
+candidate; it holds `contents: write` and not the index's identity.
+`PublishSpec` takes `tag_prefix` in place of `tags`, and
+`Changelog.released_as` takes the asks as rendered lines where `released()`
+took them.
+
 ## 0.4.0 — 2026-09-22
 
 ### Native execution carries no reusable approval authority
@@ -285,6 +541,7 @@ copied half above; both refusals carry the reading, and restating it as
 -   Read `BranchBase.refusal()` where you read `BranchBase.notice()`, and exit on it: it is empty wherever the base is settled, and where it is not it names both spellings of `--base` for the caller to re-run with.
     uv run lup-devtools dev py text \.notice\(
 -   Pass `branch` when you construct a `BranchBase`, which the refusal names the contested branch by, and `ahead` from `commits_ahead(current, integration)`, which is the measurement deciding whether the two bases differ at all.
+
 ## 0.3.0 — 2026-09-19
 
 Breaking reorganisation of the library's top level. Thirty-four entries became

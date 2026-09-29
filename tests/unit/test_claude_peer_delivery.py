@@ -1,6 +1,6 @@
-"""Mail reaching a session through the plugin, where no live inbox exists.
+"""Mail reaching a session through the plugin, where no live mailbox exists.
 
-The in-process hook closes over an `ActorInbox`, so it reaches only sessions
+The in-process hook closes over an `ActorMailbox`, so it reaches only sessions
 lup opened itself. This reader is what a person's own session has instead: a
 directory of files and a script that reads them through the store package
 shipped beside it.
@@ -20,16 +20,16 @@ arrives once, a redirect stops the call it arrived before, and a store that is
 not there stops nothing.
 """
 
-import importlib.util
 import json
 from pathlib import Path
 from types import ModuleType
 
 from lup.channels.models import Door
-from lup.coordination.bare.mail import new_message, post
+from lup.coordination.bare.mail import mailbox_path, new_message, post
 from lup.coordination.identity import member_ref
 from lup.coordination.mail import ActorMail
 from lup.types import JsonObject
+from tests.unit.bundled import bundled
 
 RUNTIME = Path(".claude/plugins/lup/hooks/runtime/coordination_delivery.py")
 """Where the plugin carries the reader, and the only place its imports resolve."""
@@ -43,22 +43,16 @@ def bundled_delivery() -> ModuleType:
     the store package as a sibling: in the workspace there is no such sibling,
     and in the plugin there is.
     """
-    spec = importlib.util.spec_from_file_location(
-        "bundled_coordination_delivery", RUNTIME.resolve()
-    )
-    assert spec is not None and spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
+    return bundled("bundled_coordination_delivery", RUNTIME)
 
 
 def handed(root: Path, member_id: str) -> JsonObject | None:
-    """What the emitted reader hands one member, taking it out of their inbox."""
+    """What the emitted reader hands one member, taking it out of their mailbox."""
     return bundled_delivery().deliver(root, member_id)
 
 
 def queued(root: Path, member_id: str, text: str, redirect: bool = False) -> None:
-    """Put one message in a member's inbox, the way a sender leaves it.
+    """Put one message in a member's mailbox, the way a sender leaves it.
 
     Under the conversation key the typed sender writes to, spelled by the ref
     rather than assembled here — a directory only the test could name would
@@ -95,7 +89,7 @@ def carried(answer: JsonObject | None) -> str:
     )
 
 
-def test_the_reader_and_the_typed_writer_meet_in_one_inbox(tmp_path: Path) -> None:
+def test_the_reader_and_the_typed_writer_meet_in_one_mailbox(tmp_path: Path) -> None:
     """The import a verbatim copy cannot have, had: both reach one directory.
 
     The typed sender and the bare reader agree because they call the same
@@ -107,7 +101,7 @@ def test_the_reader_and_the_typed_writer_meet_in_one_inbox(tmp_path: Path) -> No
     assert "from the typed half" in carried(handed(tmp_path, "abc123"))
 
 
-def test_mail_is_delivered_once_and_leaves_the_inbox(tmp_path: Path) -> None:
+def test_mail_is_delivered_once_and_leaves_the_mailbox(tmp_path: Path) -> None:
     """The ordinary path: what is addressed here arrives, and arrives once.
 
     Consumed by deleting the files handed over, so there is no position to
@@ -125,7 +119,7 @@ def test_mail_is_delivered_once_and_leaves_the_inbox(tmp_path: Path) -> None:
 
 
 def test_another_member_s_mail_is_left_where_it_is(tmp_path: Path) -> None:
-    """One inbox per member, so there is nothing to address-match and get wrong."""
+    """One mailbox per member, so there is nothing to address-match and get wrong."""
     queued(tmp_path, "abc124", "theirs")
 
     assert handed(tmp_path, "abc123") is None
@@ -154,8 +148,8 @@ def test_a_message_still_being_written_is_left_for_the_next_call(
     the messages around it.
     """
     queued(tmp_path, "abc123", "whole")
-    inbox = tmp_path / "inbox" / member_ref("abc123").conversation()
-    (inbox / "half.json").write_text('{"id": "half", "text": "half', encoding="utf-8")
+    mailbox = mailbox_path(tmp_path, member_ref("abc123").conversation())
+    (mailbox / "half.json").write_text('{"id": "half", "text": "half', encoding="utf-8")
 
     delivered = carried(handed(tmp_path, "abc123"))
 

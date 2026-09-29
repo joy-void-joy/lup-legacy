@@ -33,6 +33,7 @@ from tempfile import TemporaryDirectory
 import sh
 from pydantic import BaseModel
 
+from lup.devtools.dev.library import DISTRIBUTION
 from lup.execution.shell import LazyCommand
 from lup.formats.banner import REGENERATE_COMMAND, VERBATIM_COPY
 from lup.harness.materialization import AtomicMaterializer
@@ -219,7 +220,7 @@ def bundle_manifest(workspace: Path, desired: ArtifactTree) -> OwnershipManifest
     """The proof a materialization of these bundles writes and a check reads."""
     return OwnershipManifest(
         schema_version=1,
-        generator_version=version("lup"),
+        generator_version=version(DISTRIBUTION),
         source_digest=source_digest(workspace),
         target_requirements=["bun"],
         files=[
@@ -246,7 +247,7 @@ def proof_holds(prior: OwnershipManifest, base: Path, workspace: Path) -> bool:
     """
     if prior.source_digest != source_digest(workspace):
         return False
-    if prior.generator_version != version("lup"):
+    if prior.generator_version != version(DISTRIBUTION):
         return False
     owned = [item.path for item in prior.files]
     current = FilesystemCurrentTreeReader(prior, managed_paths=owned).read(base)

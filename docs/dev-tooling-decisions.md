@@ -221,8 +221,8 @@ skips it outright. Both reach CI, where the same command refuses them.
 
 Context: `lup` is a published dependency and `src/<project>` is a copied,
 renamed template, so the two halves reach a downstream project by different
-routes: a library change arrives through `uv lock --upgrade-package lup`,
-while a template change arrives only through a hand-reviewed replay of
+routes: a library change arrives through
+`uv lock --upgrade-package lup-agents`, while a template change arrives only through a hand-reviewed replay of
 upstream commits onto a diverged copy. The devtools CLI grew entirely on the
 template side without that difference ever being decided — thirteen prior
 records govern generation, policy, and the resolver, and none of them

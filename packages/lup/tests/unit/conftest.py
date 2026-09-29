@@ -41,6 +41,29 @@ def tmp_lup_project(tmp_path: Path) -> Iterator[Path]:
     paths.configure(root=old_root)
 
 
+@pytest.fixture(autouse=True)
+def codex_home(
+    tmp_path_factory: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch
+) -> Path:
+    """A Codex home of each test's own, in place of whoever runs the suite.
+
+    Opening a session with no home named selects the user's: it is created,
+    the project's policy is installed into it, and the model catalog is
+    written beside it. A test that did that would change a real home on the
+    machine that ran it, and fail outright where that home is read-only —
+    which is how ten session tests were found, failing in a session whose
+    sandbox kept its home read-only and passing everywhere else.
+
+    Autouse for the reason the model catalog above is: no test can be asked
+    to notice. Outside the test's own ``tmp_path``, which tests inspect and
+    lay their own homes out in; a test naming a home of its own names it
+    over this one.
+    """
+    home = tmp_path_factory.mktemp("codex-home")
+    monkeypatch.setenv(CODEX_HOME, str(home))
+    return home
+
+
 @pytest.fixture
 def fake_app_server(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> FakeAppServer:
     """A scriptable app-server child, rooted in this test's temporary directory."""

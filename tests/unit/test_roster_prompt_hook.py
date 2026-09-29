@@ -159,7 +159,9 @@ def test_a_project_without_a_roster_registers_nothing_and_carries_nothing() -> N
     )
 
     quiet = prompt_hook(Path("plugin"), "PLUGIN_ROOT", undeclared, "UserPromptSubmit")
-    silent = departure_hook(Path("plugin"), "PLUGIN_ROOT", undeclared, "SessionEnd")
+    silent = departure_hook(
+        Path("plugin"), "PLUGIN_ROOT", undeclared, "SessionEnd", "SubagentStop"
+    )
 
     assert quiet.registered == {}
     assert quiet.artifacts == []

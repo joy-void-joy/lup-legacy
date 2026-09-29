@@ -8,33 +8,3 @@ project_doc_max_bytes = 32768
 
 [features]
 hooks = true
-
-[mcp_servers.notes]
-command = "uv"
-args = ["run", "--directory", ".", "lup-devtools", "tools", "serve", "--runtime", "codex", "--session", "harness", "--needs", "lup_template.agent.toolsets.session_needs", "lup.mcp:Group", "{\"name\":\"notes\",\"builder\":\"lup_template.agent.toolsets.notes_group\"}"]
-startup_timeout_sec = 60.0
-default_tools_approval_mode = "approve"
-
-[mcp_servers.sandbox]
-command = "uv"
-args = ["run", "--directory", ".", "lup-devtools", "tools", "serve", "--runtime", "codex", "--session", "harness", "--needs", "lup_template.agent.toolsets.session_needs", "lup.mcp:Group", "{\"name\":\"sandbox\",\"builder\":\"lup.tools.toolsets.sandbox_group\"}"]
-startup_timeout_sec = 60.0
-default_tools_approval_mode = "approve"
-
-[mcp_servers.codeintel]
-command = "uv"
-args = ["run", "--directory", ".", "lup-devtools", "tools", "serve", "--runtime", "codex", "--session", "harness", "--needs", "lup_template.agent.toolsets.session_needs", "lup.mcp:CodeIntel"]
-startup_timeout_sec = 60.0
-default_tools_approval_mode = "approve"
-
-[mcp_servers.coordination]
-command = "uv"
-args = ["run", "--directory", ".", "lup-devtools", "tools", "serve", "--runtime", "codex", "--session", "harness", "--needs", "lup_template.agent.toolsets.session_needs", "lup.mcp:Coordination"]
-startup_timeout_sec = 60.0
-default_tools_approval_mode = "approve"
-
-[mcp_servers.ledger]
-command = "uv"
-args = ["run", "--directory", ".", "lup-devtools", "tools", "serve", "--runtime", "codex", "--session", "harness", "--needs", "lup_template.agent.toolsets.session_needs", "lup.mcp:Ledger", "{\"nodes\":[\"lup.coordination.tasks.Task\",\"lup.coordination.handoffs.Handoff\",\"lup.observability.sessions.Session\",\"lup.observability.sessions.Output\"],\"edges\":[\"lup.coordination.tasks.Blocks\",\"lup.coordination.handoffs.Transfers\",\"lup.observability.sessions.OutputOf\"],\"layout\":{\"committed\":{},\"placements\":{\"lup.coordination.tasks.Task\":\"committed\",\"lup.coordination.handoffs.Handoff\":\"committed\"}}}"]
-startup_timeout_sec = 60.0
-default_tools_approval_mode = "approve"

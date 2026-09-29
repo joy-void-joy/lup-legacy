@@ -1,0 +1,19 @@
+subjects = ["claude_session", "codex_session", "ConfiguredFactory"]
+reason = """
+a rendered request is already the agent that opens its sessions, so no \
+factory step follows rendering, and a profile selector applies its profile to \
+that agent rather than building one"""
+commit = "eca60905d6e5e77d9e365f97345bd7553abe719f"
+
+[[steps]]
+instruction = """
+Render with claude_config(request) from lup.providers.claude.selection or \
+codex_config(request) from lup.providers.codex.selection, which return the \
+Claude or Codex that claude_session and codex_session wrapped; \
+runtime.session_factory(request) still renders for a selected Runtime."""
+
+[[steps]]
+instruction = """
+Construct ProfileSelector(resolver) without a build function: \
+selector.session_factory(base, name) returns base, the agent, with the \
+selected profile applied."""

@@ -29,6 +29,7 @@ rule refused exactly that arm and offered a fix that could not be carried out.
 """
 
 import ast
+from collections import Counter
 from collections.abc import Iterator
 
 from lup.harness.codescan.common import PythonSource, RuleExample
@@ -145,16 +146,19 @@ def dispatched_models(
     patterns. The base of a family is not itself a variant: matching it
     narrows to the whole family, which a new member joins rather than escapes.
     """
-    families = {
-        parent: {name for name, symbol in symbols.items() if parent in symbol.bases}
-        for parent in symbols
-    }
+    # Each declared class's children, counted in one pass over the index:
+    # asking every class about every other was quadratic in a tree of
+    # thousands, and the slowest thing the rule did.
+    children = Counter(
+        base
+        for symbol in symbols.values()
+        for base in set(symbol.bases)
+        if base in symbols
+    )
     with_siblings = {
         name
         for name in models
-        if any(
-            len(families[base]) > 1 for base in symbols[name].bases if base in families
-        )
+        if any(children[base] > 1 for base in symbols[name].bases)
     }
 
     def unioned() -> Iterator[str]:
@@ -187,15 +191,19 @@ def dispatched_models(
     return with_siblings | set(unioned())
 
 
-def audit_own_model_dispatch(sources: list[PythonSource]) -> list[RuleFinding]:
+def audit_own_model_dispatch(
+    sources: list[PythonSource], model_bases: set[str] = MODEL_BASES
+) -> list[RuleFinding]:
     """Build the project index, enforce the rule, and audit its suppressions.
 
     The index resolves through the library's classes as well, so a walk in a
     project built on this one that branches on a library variant -- a
     ``TextPart`` among the parts -- is reported there as it is here.
+    ``model_bases`` are the roots whose descendants count as the project's
+    own models.
     """
     symbols = project_index(sources)
-    models = descendants_of(symbols, MODEL_BASES)
+    models = descendants_of(symbols, model_bases)
     violations = dispatch_violations(
         sources, dispatched_models(sources, symbols, models)
     )

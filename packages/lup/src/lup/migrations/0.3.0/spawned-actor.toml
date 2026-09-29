@@ -1,0 +1,29 @@
+subjects = [
+    "SpawnedActor",
+    "SpawnedActor.actor",
+    "SpawnedActor.address",
+    "SpawnedActor.arrived",
+    "SpawnedActor.delivery",
+    "SpawnedActor.description",
+    "SpawnedActor.error",
+    "SpawnedActor.heard",
+    "SpawnedActor.kind",
+    "SpawnedActor.liveness",
+    "SpawnedActor.running",
+    "SpawnedActor.summary",
+    "SpawnedActor.task",
+    "SpawnedActor.wake",
+    "SpawnedActor.worktree",
+]
+reason = """
+a repository peer is a session somebody started in a checkout, which nothing \
+here spawned: the word belonged to a cohort's workers and read as false on \
+the roster that carries most of these rows, where the fold's own source is a \
+member file"""
+commit = "4ab3f9768750b4bcafbaeef2118f8e4d18ee33bd"
+
+[[steps]]
+instruction = """
+Import `RosterMember` from `lup.coordination.roster` where `SpawnedActor` was \
+imported. Every field keeps its name and its meaning; only the type is \
+spelled for what it folds, which is `store.Member`."""

@@ -4,6 +4,9 @@ Lup is a typed capability-composition library for Claude Code and Codex
 agents: declare an agent, ask it for a Pydantic type, and get back a validated
 value. Importing `lup` loads no provider SDK.
 
+It is published as `lup-agents` and imported as `lup`:
+`uv add lup-agents`, or `pip install lup-agents`.
+
 ```python
 import asyncio
 
@@ -28,8 +31,8 @@ async def main() -> None:
 asyncio.run(main())
 ```
 
-It needs the `claude` extra (`lup[claude]`) and a logged-in Claude Code on the
-machine. `Codex(model="gpt-5.5")` in place of `Claude(...)` drives the Codex
+It needs the `claude` extra (`lup-agents[claude]`) and a logged-in Claude Code
+on the machine. `Codex(model="gpt-5.5")` in place of `Claude(...)` drives the Codex
 app-server instead, with the `codex` CLI on `PATH`.
 
 ## The surface

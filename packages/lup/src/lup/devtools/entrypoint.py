@@ -17,16 +17,38 @@ import typer
 
 def project_application() -> typer.Typer:
     """Load the one project application registered for this environment."""
-    applications = list(entry_points(group="lup.devtools", name="application"))
-    if len(applications) != 1:
-        typer.echo(
-            "The environment must register exactly one 'lup.devtools' "
-            f"application entry point; found {len(applications)}.",
-            err=True,
-        )
-        raise typer.Exit(1)
+    match list(entry_points(group="lup.devtools", name="application")):
+        case [registered]:
+            application = registered.load()
+        case []:
+            typer.echo(
+                "No installed distribution registers a 'lup.devtools' application, "
+                "so there is no project CLI to run: `uv sync` in the project "
+                "installs it.",
+                err=True,
+            )
+            raise typer.Exit(1)
+        case registrations:
+            named = "\n".join(
+                f"  {entry.value}, from {entry.dist.name} in {entry.dist.locate_file('')}"
+                if entry.dist
+                else f"  {entry.value}"
+                for entry in registrations
+            )
+            typer.echo(
+                "More than one distribution registers a 'lup.devtools' application, "
+                f"where a project's environment holds one:\n{named}\n"
+                "The one the project no longer declares, its package under a name it "
+                "had before a rename, is one of two leftovers. In the package "
+                "source's folder, it is a build's `<name>.egg-info`, which the "
+                "editable install reads: delete that folder. In the environment, "
+                "`uv run` kept it, since it only adds: `uv sync --reinstall-package "
+                "<the project's name>` removes it and keeps the `lup-devtools` "
+                "script both installed, which a plain `uv sync` removes with it.",
+                err=True,
+            )
+            raise typer.Exit(1)
 
-    application = applications[0].load()
     if not isinstance(application, typer.Typer):
         typer.echo(
             "The 'lup.devtools' application entry point must resolve to a "

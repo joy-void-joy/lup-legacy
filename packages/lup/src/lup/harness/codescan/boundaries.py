@@ -793,6 +793,45 @@ def default_position_names(
     }
 
 
+def declared_defaults(
+    source: PythonSource,
+) -> set[str]:  # lup: ignore[set-shape] — qualified name identity membership
+    """The constants one module reaches as a caller-replaceable default, by where each is declared.
+
+    A name is the module's own unless a ``from ... import`` brought it in, in
+    which case it is the imported module's — so two modules each declaring a
+    constant under one name are kept apart, where pooling bare names let one
+    module's default excuse the other's constant. Relative imports resolve
+    against the module's own package. A name reached through a module that
+    re-exported it names that module, which is where the convention of
+    importing from the defining module already sends it.
+    """
+    tree = python_tree(source.text)
+    if tree is None:
+        return set()  # lup: ignore[set-shape] — an unparseable module names nothing
+    # lup: ignore[string-split] — a dotted module name is Python's own grammar
+    parts = source.module.split(".") if source.module else []
+    package = parts if source.path.name == "__init__.py" else parts[:-1]
+
+    def origin(node: ast.ImportFrom) -> str:
+        """The dotted module an import names, relative ones resolved here."""
+        if node.level == 0:
+            return node.module or ""
+        base = package[: len(package) - (node.level - 1)]
+        return ".".join([*base, *([node.module] if node.module else [])])
+
+    imported = {
+        alias.asname or alias.name: f"{origin(node)}.{alias.name}"
+        for node in python_nodes(tree)
+        if isinstance(node, ast.ImportFrom)
+        for alias in node.names
+    }
+    return {
+        imported[name] if name in imported else f"{source.module}.{name}"
+        for name in default_position_names(source.text)
+    }
+
+
 # lup: ignore[library-default] — the string methods that carve a value out of
 # text, a set the language fixes rather than this project
 CARVING_CALLS = (
@@ -840,8 +879,14 @@ def carved_names(
 def library_default_violations(
     text: str,
     overridable: Collection[str],
+    module: str,
 ) -> list[SourceViolation]:
-    """Find declared library tables no caller can replace with their own."""
+    """Find declared library tables no caller can replace with their own.
+
+    ``overridable`` names each constant as ``module.NAME``, where it is
+    declared, as :func:`declared_defaults` resolves a default to; ``module``
+    is the one ``text`` is.
+    """
     return [
         SourceViolation(
             line=constant.line,
@@ -853,7 +898,7 @@ def library_default_violations(
             ),
         )
         for constant in constant_declarations(text)
-        if constant.name not in overridable
+        if f"{module}.{constant.name}" not in overridable
         and constant.judging_rule(library_module=True) == RuleId.LIBRARY_DEFAULT
     ]
 
@@ -863,9 +908,14 @@ def constant_declaration_violations(
     text: str,
     overridable: Collection[str],
     carved: Collection[str],
+    module: str,
     application: ApplicationRoots = NO_APPLICATION,
 ) -> list[SourceViolation]:
-    """Find frozen constants at one path that no caller can replace."""
+    """Find frozen constants at one path that no caller can replace.
+
+    ``overridable`` holds module-qualified names, as
+    :func:`library_default_violations` reads them.
+    """
     if application.renders(rel_path):
         return []
     library_module = library_placement_path_is_audited(rel_path)
@@ -877,7 +927,7 @@ def constant_declaration_violations(
             message=constant.judgement(constant.name in carved),
         )
         for constant in constant_declarations(text)
-        if constant.name not in overridable
+        if f"{module}.{constant.name}" not in overridable
         and constant.judging_rule(library_module) == RuleId.CONSTANT_DECLARATION
     ]
 
@@ -899,9 +949,12 @@ def audit_constant_declarations(
     written, and reporting the copy would ask for a second one nothing can act
     on.
     """
-    overridable = {
-        name for source in sources for name in default_position_names(source.text)
-    }
+    # lup: solved: pooled by bare name, so one module's parameter default
+    # named MANIFEST made an unrelated MANIFEST in devtools/dev/conflicts.py
+    # read as caller-replaceable, and its reasoned ignore as spurious; a
+    # module-qualified name (where the default resolves to) would keep two
+    # modules' constants apart
+    overridable = {name for source in sources for name in declared_defaults(source)}
     carved = {name for source in sources for name in carved_names(source.text)}
     authored = [source for source in sources if not application.renders(source.path)]
     violations = [
@@ -912,7 +965,7 @@ def audit_constant_declarations(
         )
         for source in authored
         for violation in constant_declaration_violations(
-            source.path, source.text, overridable, carved, application
+            source.path, source.text, overridable, carved, source.module, application
         )
     ]
     return audit_suppressions(authored, violations, RuleId.CONSTANT_DECLARATION)
@@ -1063,12 +1116,13 @@ def audit_kernel_imports(text: str) -> list[BoundaryAuditFinding]:
 def audit_library_defaults(
     text: str,
     overridable: Collection[str],
+    module: str,
 ) -> list[BoundaryAuditFinding]:
     """Audit one library module's tables against the names callers can replace."""
     return audit_rule(
         text,
         RuleId.LIBRARY_DEFAULT,
-        library_default_violations(text, overridable),
+        library_default_violations(text, overridable, module),
     )
 
 
@@ -1097,11 +1151,12 @@ def find_native_spelling_breaches(text: str) -> list[BoundaryBreach]:
 def find_library_default_breaches(
     text: str,
     overridable: Collection[str],
+    module: str,
 ) -> list[BoundaryBreach]:
     """Find unsuppressed baked-in library tables, honoring suppressions."""
     return [
         BoundaryBreach(line=item.line, module=item.module, text=item.text)
-        for item in audit_library_defaults(text, overridable)
+        for item in audit_library_defaults(text, overridable, module)
         if item.kind == "missing"
     ]
 
@@ -1217,14 +1272,12 @@ def library_default_findings(audited: AuditedProject) -> list[RuleFinding]:
         for source in audited.sources
         if source.path.as_posix().startswith(LIBRARY_ROOT)
     ]
-    overridable = {
-        name for source in library for name in default_position_names(source.text)
-    }
+    overridable = {name for source in library for name in declared_defaults(source)}
     return [
         rule_finding(source.path, finding)
         for source in library
         if library_placement_path_is_audited(source.path)
-        for finding in audit_library_defaults(source.text, overridable)
+        for finding in audit_library_defaults(source.text, overridable, source.module)
     ]
 
 

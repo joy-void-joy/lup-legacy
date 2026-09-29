@@ -35,6 +35,7 @@ from urllib.parse import urlsplit
 import sh
 from pydantic import BaseModel
 
+from lup.devtools.dev.library import DISTRIBUTION
 from lup.devtools.utils import short_sha
 from lup.execution.shell import git
 from lup.harness.passages import PASSAGE_SUFFIX, prose_beside
@@ -699,6 +700,11 @@ def merged(root: Path, source: ScaffoldSource) -> MergeOutcome:
     conflict in this repository is, and concluded by the update that started
     it rather than by hand.
     """
+    # lup: defer: unmeasured -- whether git's rename detection carries an
+    # adopter's moved copies of scaffold files through this merge, rather than
+    # reading each as a delete plus an add; the divergence probe that sized
+    # this merge paired files by path only. An adopter that moved its copied
+    # half around (nori did) is the case to try it on
     plan = planned(root, source.branch)
     git(
         "-C",
@@ -738,7 +744,7 @@ def locked_git_source(root: Path, distribution: str) -> str:
     return ""
 
 
-def pinned_commit(root: Path, distribution: str = "lup") -> str:
+def pinned_commit(root: Path, distribution: str = DISTRIBUTION) -> str:
     """Which commit of the library this project currently resolves.
 
     The fragment of the lock's git URL, which is where uv writes the commit it

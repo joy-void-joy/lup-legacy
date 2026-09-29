@@ -1,0 +1,31 @@
+subjects = [
+    "capture",
+    "operations",
+    "CAPTURE_FILE",
+    "CapabilityKind",
+    "CapabilityKind.COMMAND",
+    "CapabilityKind.EXPORT",
+    "Capability.kind",
+    "SurfaceCapture.commands",
+    "SurfaceCapture.read",
+    "SurfaceCapture.write",
+]
+reason = """
+a surface stored in the tree ages against the walker that reads it — the \
+checked-in one had already stopped seeing type aliases — while git holds \
+every revision, so both ends of a range are read rather than remembered"""
+commit = "2a696790a46fdd2d007e6978d8844a9af0f9f9b1"
+
+[[steps]]
+instruction = """
+`dev preserve capture` and its fixture are gone: nothing is stored. `dev \
+migrate map <base>..<head>` derives the relocation, `dev migrate check` \
+refuses a capability that went undeclared, and both read the surface out of \
+git."""
+command = ["uv", "run", "lup-devtools", "dev", "migrate", "map", "<base>.."]
+
+[[steps]]
+instruction = """
+A command is no longer walked as a capability of its own. It is declared by a \
+function whose name is in the surface already, so a command that goes takes \
+its declaration with it."""

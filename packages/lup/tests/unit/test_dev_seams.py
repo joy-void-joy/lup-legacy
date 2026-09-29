@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 
-from lup.devtools.dev.seams import Answers, DeclarationSite, read_seam, survey
+from lup.devtools.dev.seams import Answers, DeclarationSite, Seam, read_seam, survey
 
 CATALOG = '''"""A project's declarations."""
 
@@ -123,3 +123,29 @@ def test_the_file_still_parses_after_every_answer(catalog: Path) -> None:
 def test_a_project_declaring_no_catalog_is_told_rather_than_reported_empty() -> None:
     """An empty survey would read as "you have decided nothing"."""
     assert "declares no catalog path" in survey(None)[0]
+
+
+def test_a_seam_whose_module_is_gone_says_which_and_where_it_is_declared(
+    catalog: Path,
+) -> None:
+    """What a renamed package leaves: a seam spelled at the old path.
+
+    The survey shows every seam at once, so one whose file moved is a finding
+    beside the rest rather than a traceback that hides them all — and writing
+    into it is refused with the same words, naming the seam's own catalog.
+    """
+    moved = Seam(
+        call="Image",
+        keyword="tooling",
+        summary="programs the image carries",
+        module=Path("src/renamed_away/harness/content/image.py"),
+    )
+
+    lines = survey(catalog, [moved])
+    value = moved.read(catalog)
+
+    assert len(lines) == 1
+    assert "src/renamed_away/harness/content/image.py does not exist" in lines[0]
+    assert f"declared in {catalog}" in lines[0]
+    with pytest.raises(ValueError, match="does not exist"):
+        value.editable()

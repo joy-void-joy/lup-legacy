@@ -1,5 +1,5 @@
 {
-  "description": "Lup semantic permission policy, peer delivery, the roster's changes at each prompt, this session's departure as it ends, and a subagent's report waiting on its background work",
+  "description": "Lup semantic permission policy, peer delivery, the calling subagent on each coordination call, the roster's changes at each prompt, a session's or subagent's departure as it ends, and a subagent's report waiting on its background work",
   "hooks": {
     "PostToolUse": [
       {
@@ -33,6 +33,16 @@
           }
         ],
         "matcher": ""
+      },
+      {
+        "hooks": [
+          {
+            "command": "sh \"$CLAUDE_PLUGIN_ROOT/hooks/scripts/coordination_caller.sh\" || exit 0",
+            "timeout": 10,
+            "type": "command"
+          }
+        ],
+        "matcher": "mcp__coordination__.*"
       }
     ],
     "SessionEnd": [
@@ -58,6 +68,15 @@
       }
     ],
     "SubagentStop": [
+      {
+        "hooks": [
+          {
+            "command": "sh \"$CLAUDE_PLUGIN_ROOT/hooks/scripts/coordination_departure.sh\" || exit 0",
+            "timeout": 10,
+            "type": "command"
+          }
+        ]
+      },
       {
         "hooks": [
           {

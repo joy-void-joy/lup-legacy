@@ -21,7 +21,6 @@ from lup.providers.harness import (
     codex_prompt_renderer,
     compile_claude,
     compile_codex,
-    startup_deadline_settings,
 )
 from lup.formats.banner import (
     COMMENT_FREE,
@@ -43,6 +42,7 @@ from lup.harness.models import (
     Harness,
     PromptDocument,
 )
+from lup.mcp import ServeLaunch, ToolServer
 from lup.types import JsonObject
 from lup.workspace.paths import declared_project_root
 from lup.harness.ownership import (
@@ -94,6 +94,17 @@ class ProjectContent(BaseModel, frozen=True):
     settings: JsonObject = {}
     """Native settings for the runtime that reads a settings file."""
 
+    servers: list[ToolServer] = []
+    """The tool servers every session this project launches carries.
+
+    Declared per session by the launch rather than carried in the tree it
+    compiles: a runtime reading a strict roster drops a plugin's own, so the
+    session's command line is the one place a server reaches it from.
+    """
+
+    serve: ServeLaunch = ServeLaunch()
+    """How a launched session starts the servers lup hosts, for this project."""
+
     settings_source: str = ""
     """The module declaring those settings, and where a reader edits them.
 
@@ -117,6 +128,25 @@ class GenerationRecipe(BaseModel, frozen=True, arbitrary_types_allowed=True):
     target_requirements: list[str]
 
 
+class MachineOverlay(BaseModel, frozen=True, arbitrary_types_allowed=True):
+    """What one runtime renders per machine beside its committed tree, and where.
+
+    Its directory is the overlay's alone: rewritten whole each time it is
+    rendered, ignored by git, and in no ownership manifest, because what it
+    holds names this machine's own facts, which no committed file may.
+    """
+
+    directory: Path
+    """Where it is written, relative to the project root."""
+
+    render: Callable[[Sequence[str]], ArtifactTree]
+    """The overlay for a machine keeping these profiles."""
+
+    loaded: bool = False
+    """Whether a launch names the directory to its runtime, which otherwise
+    reads it where it stands."""
+
+
 type RuntimeReadiness = Callable[[], Sequence[CapabilityReport]]
 """How a composition asks its runtime whether it is actually installed."""
 
@@ -135,6 +165,15 @@ class NativeHarnessComposition(BaseModel, frozen=True, arbitrary_types_allowed=T
     login: ProviderLogin
     default_config_home: Path
     clipboard_transport: ClipboardTransport = "commands"
+    servers: list[ToolServer] = []
+    """The tool servers a session launched on this composition carries."""
+
+    serve: ServeLaunch = ServeLaunch()
+    """How that session starts the servers lup hosts."""
+
+    overlay: MachineOverlay | None = None
+    """What this runtime renders per machine beside the tree, where it renders any."""
+
     wire_contracts: list[WireContract] = []
     """Reply shapes this runtime's adapter reads fields off by name.
 
@@ -413,11 +452,7 @@ def claude_generation_recipe(
         *verbatim,
         Artifact(
             path=Path(".claude/settings.json"),
-            content=json.dumps(
-                startup_deadline_settings(content.settings, source.plugins[0]),
-                indent=2,
-                sort_keys=True,
-            ),
+            content=json.dumps(content.settings, indent=2, sort_keys=True),
             semantic_id="harness.project-settings",
             banner=COMMENT_FREE.compiled_from(content.settings_source),
         ),

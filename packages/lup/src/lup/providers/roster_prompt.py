@@ -110,25 +110,35 @@ def store_artifacts(plugin_root: Path, semantic_id: str) -> list[Artifact]:
     ]
 
 
+# lup: defer: the hand-written host halves still name their own search path —
+# both `subagent_cleanup` halves, `peer_delivery_runtime`, `policy_evaluator`
+# and both policy dispatchers — where the caller hook's is named here, by the
+# generated entry alone. Moving them is its own branch: the dispatchers are
+# compiled from their halves into one script beside no module to import.
 def entry_body(module: str) -> str:
     """The script a guard runs, which is one import and one call.
 
     It exists to name its own directory as a search path before importing,
     which is what the compiled dispatcher beside it does and for the same
     reason: a hook is launched as a bare script and promised no working
-    directory, no ``PYTHONPATH`` and no interpreter environment. Running the
-    package's module directly with ``-m`` would work today and stop working
-    under any of ``-I``, ``-P`` or ``PYTHONSAFEPATH``, because all three take
-    away the one search path that form depends on — and this hook fails open,
-    so what it would cost is a roster that silently stops answering.
+    directory, no ``PYTHONPATH`` and no interpreter environment. Python puts a
+    script's own directory on the path by itself, and stops under any of
+    ``-I``, ``-P`` or ``PYTHONSAFEPATH`` — the same three that break running
+    the module directly with ``-m`` — and every hook here fails open, so what
+    that would cost is a roster that silently stops answering.
+
+    *module* is dotted from ``hooks/runtime/``: a module of the shipped store
+    package, or a runtime's own host half shipped beside it. Generated rather
+    than written into each, so the search path is named here once and no
+    hand-written module carries it.
     """
-    return f'''"""Entry point for {STORE_PACKAGE}.{module}, run as a bare script."""
+    return f'''"""Entry point for {module}, run as a bare script."""
 
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
-from {STORE_PACKAGE}.{module} import main
+from {module} import main
 
 main()
 '''
@@ -171,7 +181,7 @@ case "$shared" in
 esac
 root="$shared/{STORE_DIR}/{COORDINATION_DIR}"
 [ -d "$root/{MEMBERS_DIR}" ] || exit 0
-exec python3 "${{0%/*}}/../runtime/{entry}" "$root" "${MEMBER_ENV}" "{event}"{home_argument}{event_arguments}
+exec python3 -s "${{0%/*}}/../runtime/{entry}" "$root" "${MEMBER_ENV}" "{event}"{home_argument}{event_arguments}
 """
 
 
@@ -194,6 +204,10 @@ def hook_entry(plugin_root_env: str, guard_script: str) -> JsonObject:
     session is better off without for this prompt. An ending runs under a
     budget of its own that the same figure raises to fit.
     """
+    # lup: defer: Codex 0.158.0 clamps a SessionEnd hook's timeout to 3s and
+    # says so in hooks/list ("clamping SessionEnd hook timeout to 3s"), so on
+    # Codex the ending does not get the 10s this raises its budget to; seen as
+    # the warning the hook discovery of a Codex prepare() reports
     return {
         "type": "command",
         "command": guard_command(plugin_root_env, guard_script),
@@ -255,19 +269,30 @@ def prompt_hook(
 
 
 def departure_hook(
-    plugin_root: Path, plugin_root_env: str, source: HookSet, event: str
+    plugin_root: Path,
+    plugin_root_env: str,
+    source: HookSet,
+    event: str,
+    subagent_event: str,
 ) -> PromptHook:
-    """The hooks entry under the runtime's ending event, and the guard behind it.
+    """The hooks entry under the runtime's ending events, and the guard behind it.
 
     Declared by the same ``peer_policy`` as the prompt-time hook: a session
     on a roster is one whose row has to end when it does, and a project that
     declined the roster has no row to end.
+
+    One guard under two events — the session's ending, and the stop the
+    runtime fires for one of its subagents — because the reader tells them
+    apart by the subagent's id in the payload rather than by which event
+    passed it, and the event the guard names is the session's, read by
+    nobody.
     """
     if source.peer_policy is None:
         return PromptHook(registered={}, artifacts=[])
     return PromptHook(
         registered={
-            event: [{"hooks": [hook_entry(plugin_root_env, DEPARTURE_SCRIPT)]}]
+            ending: [{"hooks": [hook_entry(plugin_root_env, DEPARTURE_SCRIPT)]}]
+            for ending in (event, subagent_event)
         },
         artifacts=hook_artifacts(
             plugin_root,
@@ -301,7 +326,7 @@ def hook_artifacts(
         ),
         Artifact.generated(
             path=plugin_root / "hooks" / "runtime" / entry,
-            body=entry_body(module),
+            body=entry_body(f"{STORE_PACKAGE}.{module}"),
             semantic_id=semantic_id,
             banner=GeneratedBanner(source=__name__, command=REGENERATE_COMMAND),
         ),

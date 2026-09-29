@@ -39,6 +39,8 @@ from lup.policy.vocabulary import (
 )
 from lup.seams import Selection
 
+# lup: ignore[constant-declaration] — the branches this repository integrates
+# and lands on, an identity it defines
 INTEGRATION_BRANCHES = ("main", "dev")
 """The branches other people build on here: `dev` integrates, `main` lands.
 

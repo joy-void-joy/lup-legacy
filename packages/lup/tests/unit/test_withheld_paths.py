@@ -24,7 +24,7 @@ from lup.providers.login import ProviderLogin
 ROWS: list[RefusedPathRow] = [
     credential_files().erased(),
     RefusedPaths(
-        paths=["/tmp/inbox/**"], reason="an inbox", recovery="Use the tool."
+        paths=["/tmp/lup-wake/**"], reason="a wake socket", recovery="Use the tool."
     ).erased(),
 ]
 
@@ -54,8 +54,8 @@ ROWS: list[RefusedPathRow] = [
         ("**/.env.*.local", ".env", False),
         ("/proc/*/environ", "/proc/self/environ", True),
         ("/proc/*/environ", "proc/self/environ", False),
-        ("/tmp/inbox/**", "/tmp/inbox/dev.sock", True),
-        ("/tmp/inbox/**", "/var/tmp/inbox/dev.sock", False),
+        ("/tmp/lup-wake/**", "/tmp/lup-wake/dev.sock", True),
+        ("/tmp/lup-wake/**", "/var/tmp/lup-wake/dev.sock", False),
     ],
 )
 def test_a_pattern_reaches_what_its_anchor_says(
@@ -73,10 +73,10 @@ def test_a_pattern_reaches_what_its_anchor_says(
         ("~/.ssh/*", "", True),
         ("--file=~/.netrc", "", True),
         (".ssh/id_rsa", "/home/u", True),
-        ("../../tmp/inbox/dev.sock", "", True),
-        ("inbox/dev.sock", "/tmp", True),
-        ("inbox/dev.sock", None, False),
-        ("UNIX-CONNECT:/tmp/inbox/dev.sock,retry=3", "", True),
+        ("../../tmp/lup-wake/dev.sock", "", True),
+        ("lup-wake/dev.sock", "/tmp", True),
+        ("lup-wake/dev.sock", None, False),
+        ("UNIX-CONNECT:/tmp/lup-wake/dev.sock,retry=3", "", True),
         ("host:~/.ssh/id_rsa", "", True),
         ("HEAD:README.md", "", False),
         ("README.md", "", False),

@@ -36,7 +36,9 @@ are the ones the declaration promised.
 """
 
 import ast
+from functools import cache
 from importlib import resources
+from io import StringIO
 from pathlib import Path, PurePath
 from typing import Literal
 
@@ -222,6 +224,11 @@ def hook_guard_artifact(plugin_root: Path, semantic_id: str) -> Artifact:
     Native runtimes can display the registered command with a hook error.
     Keeping recovery text in this script makes it visible only when needed.
     The inline command still refuses if this script or its shell is missing.
+
+    The interpreter is started with ``-s``, as every generated hook's is:
+    the dispatcher reaches only the standard library and the runtime beside
+    it, so the user's own site directory -- under a home the session writes
+    -- has nothing it needs and is never read.
     """
     return Artifact.generated(
         path=plugin_root / "hooks" / "scripts" / GUARD_SCRIPT,
@@ -236,7 +243,7 @@ if ! command -v python3 >/dev/null 2>&1; then
     printf 'Lup hook cannot start: python3 is missing. Install Python 3 or fix PATH.\\n' >&2
     exit {REFUSAL_STATUS}
 fi
-python3 "$script"
+python3 -s "$script"
 lup_hook_status=$?
 case "$lup_hook_status" in
     0|{REFUSAL_STATUS}) exit "$lup_hook_status" ;;
@@ -331,11 +338,28 @@ class SourceHalf(BaseModel, frozen=True, arbitrary_types_allowed=True):
         return [name for node in self.tree.body for name in top_level_names(node)]
 
     def source_of(self, node: ast.FunctionDef) -> str:
-        """The exact source of one function, comments and docstring intact."""
-        segment = ast.get_source_segment(self.text, node)
-        if segment is None:
+        """The exact source of one function, comments and docstring intact.
+
+        Sliced as ``ast.get_source_segment`` slices it, from lines split once
+        per half: that function splits the text again on every call, in
+        Python, and the compiler asks it for every function of every half of
+        every dispatcher a composition compiles.
+        """
+        if node.end_lineno is None or node.end_col_offset is None:
             raise ValueError(f"{self.module} has no source for {node.name}")
-        return segment
+        lines = source_lines(self.text)
+        # Column offsets count UTF-8 bytes, as the parser reports them.
+        first = lines[node.lineno - 1].encode()
+        last = lines[node.end_lineno - 1].encode()
+        if node.lineno == node.end_lineno:
+            return first[node.col_offset : node.end_col_offset].decode()
+        return "".join(
+            [
+                first[node.col_offset :].decode(),
+                *lines[node.lineno : node.end_lineno - 1],
+                last[: node.end_col_offset].decode(),
+            ]
+        )
 
     def spliced_prologue(self, emitted: str) -> list[str]:
         """This half's own imports, less its links and what is already there.
@@ -451,6 +475,18 @@ class SourceHalf(BaseModel, frozen=True, arbitrary_types_allowed=True):
                 ],
             }
         )
+
+
+@cache
+def source_lines(text: str) -> tuple[str, ...]:
+    """One source text's lines, ends kept, split where the parser counts lines.
+
+    At ``\\n``, ``\\r`` and ``\\r\\n`` alone, which is what a node's line
+    numbers count; ``str.splitlines`` also splits at a form feed and would
+    number every line after one differently. Held per text, since a half is
+    sliced once per function it defines.
+    """
+    return tuple(StringIO(text, newline="").readlines())
 
 
 def source_half(package: str, member: str) -> SourceHalf:

@@ -1,0 +1,115 @@
+"""Claude Code's half of the caller hook: which conversation made a tool call.
+
+Shipped verbatim into the plugin's ``hooks/runtime/``, where the caller hook's
+generated entry runs it and the compiled permission dispatcher imports it. It
+holds only what Claude Code spells for itself: the ``PreToolUse`` event, the
+payload's keys, where the runtime keeps what a spawn was called, and the
+output envelope. What a caller is and how it rides in a call are the store's.
+
+One tool server serves every conversation of a session — its own and each
+native subagent it dispatches — so a coordination call arriving there says
+nothing about who made it. The payload does. Measured on 2.1.283 with a probe
+tool server logging each call it received, and a hook returning
+``updatedInput`` and no ``permissionDecision``:
+
+- the parent's and a subagent's calls reached the one server process, and
+  the request's ``_meta`` carried only ``claudecode/toolUseId`` and a
+  progress token, never the caller;
+- every tool event fired inside the subagent carried its ``agent_id`` and
+  ``agent_type``, and the parent's carried neither;
+- the rewrite reached the server for both, even for a tool whose schema sets
+  ``additionalProperties: false``, so no decision needs to ride with it and
+  the call keeps whatever permission the project's settings gave it.
+
+What the spawn called the subagent is in no payload. Claude Code writes it to
+``<transcript without .jsonl>/subagents/agent-<agent_id>.meta.json`` under
+``name``, beside the spawn's ``description``, ``agentType`` and
+``toolUseId`` — measured on 2.1.283, where the file was absent at
+``SubagentStart`` and present from the subagent's first tool call, and where a
+spawn carrying no ``name`` wrote none. ``transcript_path`` names the parent's
+transcript in every subagent event, which is what the path is read from.
+
+Every failure is silence: a call left unstamped acts as the session, which is
+what every call did before there was anything to stamp.
+"""
+
+import json
+import sys
+from pathlib import Path
+from typing import TypedDict
+
+from coordination.store import Caller, called_by, loaded, text
+from kernel.policy_protocol import WireValue
+
+
+class Payload(TypedDict, total=False):
+    """What a tool event hands a hook, as far as the caller is read from it."""
+
+    hook_event_name: str
+    tool_input: dict[str, WireValue]
+    transcript_path: str
+    agent_id: str
+    agent_type: str
+    cwd: str
+
+
+class Spawned(TypedDict, total=False):
+    """What the runtime recorded about one subagent's spawn, as far as this reads."""
+
+    name: str
+
+
+class Rewritten(TypedDict):
+    hookEventName: str
+    updatedInput: dict[str, WireValue | Caller]
+
+
+class Rewrite(TypedDict):
+    """The answer: the same call with its caller written in, deciding nothing."""
+
+    hookSpecificOutput: Rewritten
+
+
+def spawned_name(transcript: str, agent: str) -> str:
+    """What the spawn called this subagent, blank where nothing recorded one."""
+    if not transcript or not agent:
+        return ""
+    recorded = loaded(
+        Path(transcript).with_suffix("") / "subagents" / f"agent-{agent}.meta.json",
+        Spawned,
+    )
+    return text(recorded.get("name")) if recorded is not None else ""
+
+
+def caller_of(payload: Payload) -> Caller:
+    """The conversation one tool event came from, blank for the session's own."""
+    agent = text(payload.get("agent_id"))
+    return Caller(
+        agent_id=agent,
+        agent_type=text(payload.get("agent_type")),
+        cwd=text(payload.get("cwd")),
+        name=spawned_name(text(payload.get("transcript_path")), agent),
+    )
+
+
+def decided(payload: Payload) -> Rewrite | None:
+    """The rewritten call, or nothing for an event this hook has no answer to."""
+    if payload.get("hook_event_name") != "PreToolUse":
+        return None
+    return Rewrite(
+        hookSpecificOutput=Rewritten(
+            hookEventName="PreToolUse",
+            updatedInput=called_by(payload.get("tool_input", {}), caller_of(payload)),
+        )
+    )
+
+
+def main() -> None:
+    """Answer the event on stdin, or say nothing and let the call through as it was."""
+    try:
+        payload: Payload = json.load(sys.stdin)
+        answer = decided(payload)
+    except Exception:
+        return
+    if answer is not None:
+        print(json.dumps(answer))

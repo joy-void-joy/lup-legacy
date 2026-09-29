@@ -151,6 +151,11 @@ def report(
     notes: list[CarrierNote] = CARRIER_NOTES,
 ) -> None:
     """Print how the window's work reached an adopter, and what it cost them."""
+    # lup: defer: this only reports; the user's success measure was the split
+    # count per year trending to zero and copied-half churn staying under a
+    # ceiling, as a gate -- which needs a threshold nobody has chosen. Watch
+    # `harness/catalog.py` in the costliest list too: moving composition into
+    # the library is wrong if it only relocates the churn there
     reached = carried(window, spread)
     total = sum(reached.counted.values())
     typer.echo(f"{total} commits since {window}, by what carries each one:")

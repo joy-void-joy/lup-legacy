@@ -164,7 +164,7 @@ def test_the_trust_seed_names_no_host_path() -> None:
     """
     rendered = Image().dockerfile(Manifest())
     assert '"projects": {}' in rendered
-    assert ".projects[$here]" in rendered
+    assert '/opt/lup/trust-seed.json "$config/$trust" "$PWD"' in rendered
 
 
 def test_a_script_package_still_renders_when_an_adopter_declares_one() -> None:

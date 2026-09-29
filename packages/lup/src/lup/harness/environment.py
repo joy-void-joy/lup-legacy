@@ -13,7 +13,8 @@ the child project must select its own environment from its working directory.
 
 from collections.abc import Mapping
 
-from lup.coordination.identity import MEMBER_ENV, NAME_ENV
+from lup.coordination.identity import MEMBER_ENV, NAME_ENV, MemberEnv
+from lup.sessions.recursion import RecursiveAgentSettings
 from lup.types import EnvVars
 
 # lup: ignore[library-default] — each pair is the variable and off-value git, ssh, gh, and keyring document
@@ -68,6 +69,32 @@ declaration can name a program rather than a layout. Taking it away would not
 make a suite posture-independent -- it would make it measure a machine it is
 not running on, and the gate that resolves a bare name would resolve nothing.
 """
+
+
+def tool_server_env() -> list[str]:
+    """What a launched session's tool servers read from the environment its launcher made.
+
+    The coordination pair is who the session is on the roster, which a server
+    joins under and answers to; the recursion allowance is how many more agent
+    levels its tools may open. A server that sees none of them serves a session
+    nobody can address and opens agents without limit, and neither says so.
+
+    Read off the settings that read them rather than listed beside them, so a
+    variable either grows is forwarded with nobody remembering to. Declared as
+    each such server's ``env_vars`` rather than trusted to arrive, because one
+    runtime does not pass them on. Measured on Codex 0.155.1: a stdio server it
+    starts sees ``HOME``, ``LANG``, ``LC_ALL``, ``LOGNAME``, ``PATH``,
+    ``SHELL``, ``TERM``, ``TMPDIR`` and ``USER`` and nothing else, with these
+    exported in Codex's own environment — and all of them once ``env_vars``
+    names them. Claude Code hands a server its whole environment, so the
+    declaration changes nothing there.
+    """
+    return [
+        field.validation_alias
+        for settings in (MemberEnv, RecursiveAgentSettings)
+        for field in settings.model_fields.values()
+        if isinstance(field.validation_alias, str)
+    ]
 
 
 def launcher_decided_names(

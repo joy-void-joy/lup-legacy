@@ -1,11 +1,11 @@
 ---
-description: Initialize the self-improvement loop for a specific domain
+description: Make this checkout a project for one domain — choose its modules, settle its seams, rename and scaffold it
 allowed-tools: Bash(git:*, uv run lup-devtools:*, uv sync:*, uv run pyright:*, uv run ruff:*, uv run pytest:*), Read, Edit, Write, AskUserQuestion
 ---
 
-# Initialize Self-Improvement Loop
+# Initialize a Project
 
-This command sets up the project identity, renames the source package, and customizes the feedback collection, metrics, and trace analysis for your specific agent domain.
+This command makes this checkout a project for one agent domain: it settles the project's identity, chooses the modules the project takes, puts each seam the library ships at a default to the user, renames the source package, and generates the scaffolding for the domain.
 
 **This project builds on an agent SDK, not raw model API calls.** The SDK is the default and expected framework. If the user wants bare API calls instead, ask them to explain why -- the SDK provides structured outputs, tool use, subagents, and hooks out of the box.
 
@@ -162,10 +162,14 @@ uv run lup-devtools dev init drop-examples --dry-run
 uv run lup-devtools dev init drop-examples
 ```
 
-It reports the handful of lines still naming what went — a README link, two
-docstring citations, and the `"examples/"` composition root in the catalog,
-which is dead once the directory is. Fix those; the README is human-owned, so
-propose that edit rather than making it.
+It reports the handful of lines still naming what went — the `"examples/"`
+roots in the catalog, which are dead once the directory is, and whatever else
+of this project's still names it, such as a README link or a test case running
+an example module. Fix those; the README is human-owned, so propose that edit
+rather than making it. It also names the removed test modules the scaffold
+declaration does not decline yet: add them to `declined` in
+`declared_scaffold()`, so the next `dev update` leaves them out rather than
+offering each back as a conflict.
 
 Now the decisions, and there is one kind of them. Everything lup ships belongs
 to a **module** — a subject as one value, carrying its skills, its agents, its
@@ -270,9 +274,10 @@ refuses to un-vendor while `src/lup_template/` is present, because an
 uninitialized template and the lup repository are the same bytes and nothing
 else separates them.
 
-A project depends on `lup` as a package rather than keeping a copy of the
-library's source. Half the answer is a fact to look up rather than a
-preference — whether a release exists at all, and which:
+A project depends on lup as a package — the `lup-agents` distribution,
+imported as `lup` — rather than keeping a copy of the library's source. Half
+the answer is a fact to look up rather than a preference — whether a release
+exists at all, and which:
 
 ```
 uv run lup-devtools dev library release
@@ -280,7 +285,10 @@ uv run lup-devtools dev library release
 
 It reports the released version, or that none is published yet, and prints the
 command that declares what it found — so the release number is read from the
-index rather than guessed at.
+index rather than guessed at. A release candidate newer than the release is
+named beside it and never offered in its place: a candidate is taken on
+purpose, by naming it (`--version X.Y.ZrcN`, or `dev library git --tag
+vX.Y.ZrcN`), and only when the user asks to try one.
 
 The other half is a judgement about what this project is to lup, and the
 look-up does not make it. Ask the user which of these describes them:
@@ -310,7 +318,7 @@ The git mode resolves `subdirectory = "packages/lup"`, because the distribution 
 
 The extras come from what the project runs: `claude` and/or `codex` for the
 adapters it drives, `docker` for the code-execution sandbox, `web` for the
-session API. Name them in the requirement (`lup[claude,codex,docker]`).
+session API. Name them in the requirement (`lup-agents[claude,codex,docker]`).
 
 The command prints the `uv sync` and the regeneration it wants next. Run both
 before anything reads the project's types.
@@ -434,9 +442,9 @@ proposes rather than writes. The template ships `README.md` that way, which is
 right for a file whose words are the author's and wrong for a project that
 wants its README kept current by the agent.
 
-Ask the user with the AskUserQuestion tool, offering concrete options plus a free-text choice: which files the human author owns, starting from whether README.md stays locked — then apply the answer with `--lock` / `--unlock` on that same command,
-which rewrites the declaration and regenerates the native trees. Never
-hand-edit `human_owned_files` in the catalog.
+Ask the user with the AskUserQuestion tool, offering concrete options plus a free-text choice: which files the human author owns, starting from whether README.md stays human-owned — then apply the answer with `uv run lup-devtools dev seams --own <path>`
+or `--disown <path>`, which rewrites the declaration for the regeneration below to
+compile. Never hand-edit `human_owned_files` in the catalog.
 
 ### 3. What each path role means here
 

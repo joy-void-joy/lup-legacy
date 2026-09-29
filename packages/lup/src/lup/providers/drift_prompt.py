@@ -61,7 +61,7 @@ def guard_body(event: str, runtime_module: str, branch: str, distribution: str) 
     return f"""#!/bin/sh
 command -v python3 >/dev/null 2>&1 || exit 0
 git rev-parse --verify --quiet "refs/heads/{branch}" >/dev/null 2>&1 || exit 0
-exec python3 "${{0%/*}}/../runtime/{runtime_module}" \
+exec python3 -s "${{0%/*}}/../runtime/{runtime_module}" \
 "{branch}" "{distribution}" "{event}"
 """
 

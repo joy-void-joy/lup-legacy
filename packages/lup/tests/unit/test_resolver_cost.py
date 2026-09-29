@@ -8,7 +8,7 @@ import pytest
 from lup.channels.stream import Stream
 from lup.coordination.refs import ActorRef
 from lup.resolver.cost import cost_report, read_cost
-from lup.resolver.journal import (
+from lup.resolver.record import (
     ENTRY_ADAPTER,
     JOURNAL_FILE,
     JournalEntry,

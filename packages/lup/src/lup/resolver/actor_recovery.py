@@ -3,7 +3,7 @@
 from lup.channels.models import publish_atomic
 from lup.coordination.cohort import SESSION_DIR
 from lup.coordination.sessions import ActorRecord
-from lup.resolver.journal import ActorBindingRetiredEvent, Journal
+from lup.resolver.record import ActorBindingRetiredEvent, Journal
 from lup.resolver.state import ResolverStateRepository, StateTransitionError
 
 

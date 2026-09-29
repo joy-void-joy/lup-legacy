@@ -1,0 +1,20 @@
+subjects = ["dynamic_tool", "SUBMISSION_TOOL"]
+reason = """
+Codex typed output uses a per-turn native schema and portable validation, so \
+submission no longer installs a thread-lifetime dynamic tool. The \
+dynamic-tool channel carries declared application tools only."""
+commit = "ef235a0fc4633525a76f3c8ae2672e1a4cc51829"
+
+[[steps]]
+instruction = """
+Pass the output model and submission gate through TurnRequest. Remove direct \
+dynamic_tool use for submission; declare application tools in \
+CodexSessionConfig.application_tools, which DynamicToolCall still carries. \
+Untyped turns and changed output schemas need no fresh thread, so \
+CodexSchemaRebindingError now reports application-tool drift alone."""
+
+[[steps]]
+instruction = """
+Configure correction on CodexSessionConfig to bound validation retries. \
+Handle StructuredOutputError for exhausted output validation, and \
+UnsupportedCapability for native controls that cannot be enforced."""

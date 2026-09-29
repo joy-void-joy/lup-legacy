@@ -1,22 +1,19 @@
-"""What a release does to the four files it touches, each checked on its own.
+"""What a release does to the files it touches, each checked on its own.
 
-Every step here had been carried as prose in the bump skill, and three of them
-had never run in this repository: the changelog's open section was never
-closed, the published version never moved, and the declarations never emptied.
-Prose does not fail a test, so these are what replaces it.
+A release closes the changelog's open section and moves the published version;
+what it does to the migration record is pinned beside the record, in the
+library's own suite. Prose does not fail a test, so these are what holds each
+step to what it says.
 """
 
-import ast
 import datetime as dt
 
 import pytest
 
 from lup.devtools.changelog import Changelog, ReleaseNote, release_heading
 from lup.devtools.dev.release import (
-    cleared_declarations,
     is_level,
     next_version,
-    released,
     with_version,
 )
 
@@ -27,30 +24,6 @@ name = "thing"
 version = "1.4.2"
 description = "a thing"
 """
-
-MODULE = '''\
-"""What this module is for, which outlives every release."""
-
-from lup.devtools.dev.migrations import Migration
-
-
-class Keep:
-    """Nothing here is the list."""
-
-
-DECLARED = [
-    Migration(
-        subjects=["gone"],
-        # a bracket ] and a quote " inside prose, which is the point
-        reason="a reason with ] and \\" in it",
-        steps=[],
-    ),
-]
-
-
-def also_keep() -> int:
-    return 1
-'''
 
 DAY = dt.date(2026, 9, 19)
 
@@ -83,56 +56,9 @@ def test_moving_a_version_leaves_the_rest_of_the_manifest_alone() -> None:
     assert 'name = "thing"' in moved
 
 
-def test_emptying_the_declarations_keeps_everything_that_is_not_the_list() -> None:
-    """The window of unshipped breaks goes; the module explaining it stays."""
-    emptied = cleared_declarations(MODULE)
-    assert "DECLARED: list[Migration] = []" in emptied
-    assert '"""What this module is for, which outlives every release."""' in emptied
-    assert "class Keep:" in emptied
-    assert "def also_keep()" in emptied
-    assert "a reason with" not in emptied
-
-
-def test_the_emptied_module_still_parses() -> None:
-    """The one failure this cannot leave behind, whatever the prose contained.
-
-    The fixture's reason holds a bracket and an escaped quote on purpose: a
-    replacement that matched text rather than the tree would cut the span in
-    the wrong place and leave a file that no longer imports.
-    """
-    assert ast.parse(cleared_declarations(MODULE)) is not None
-
-
-def test_what_a_release_writes_is_what_the_next_one_can_empty() -> None:
-    """The round trip, which is the only thing that catches a self-inflicted break.
-
-    This writes the annotated spelling and read only the bare one, so the
-    release that emptied the list left behind a module the *next* release
-    could not read — a crash arriving exactly one release late, past every
-    test that fed it a hand-written fixture in the form it already knew.
-
-    Emptying twice is the property: a release's own output is a module the
-    release after it can empty again, whatever shape it happens to write.
-    """
-    once = cleared_declarations(MODULE)
-    refilled = once.replace(
-        "DECLARED: list[Migration] = []",
-        'DECLARED: list[Migration] = [\n    Migration(subjects=["later"], reason="x", steps=[]),\n]',
-    )
-
-    assert "DECLARED: list[Migration] = []" in cleared_declarations(refilled)
-    assert "later" not in cleared_declarations(refilled)
-    assert ast.parse(cleared_declarations(refilled)) is not None
-
-
-def test_a_module_with_no_declarations_says_so() -> None:
-    with pytest.raises(KeyError):
-        cleared_declarations("value = 1\n")
-
-
 def test_closing_the_open_section_renames_it_and_keeps_its_entries() -> None:
     log = Changelog.parse("# Changelog\n\n## Unreleased\n\n- something landed\n")
-    closed = released(log, "0.3.0", DAY, migrations=[])
+    closed = log.released_as("0.3.0", DAY, [])
     rendered = closed.render()
 
     assert "## 0.3.0 — 2026-09-19" in rendered
@@ -144,7 +70,7 @@ def test_closing_the_open_section_renames_it_and_keeps_its_entries() -> None:
 def test_pending_migrations_are_folded_in_under_their_own_heading() -> None:
     """What a reader has to act on is not mixed in with what changed."""
     log = Changelog.parse("# Changelog\n\n## Unreleased\n\n- something landed\n")
-    closed = released(log, "0.3.0", DAY, migrations=["call this instead"])
+    closed = log.released_as("0.3.0", DAY, ["call this instead"])
     rendered = closed.render()
 
     assert "### What this release asks of a caller" in rendered
@@ -189,8 +115,8 @@ def test_one_writer_spells_every_heading() -> None:
     happened to write it.
     """
     note = ReleaseNote(version="0.3.0", date=DAY, summary="s")
-    closed = released(
-        Changelog.parse("# C\n\n## Unreleased\n\n- e\n"), "0.3.0", DAY, migrations=[]
+    closed = Changelog.parse("# C\n\n## Unreleased\n\n- e\n").released_as(
+        "0.3.0", DAY, []
     )
 
     assert note.heading() == release_heading("0.3.0", DAY)

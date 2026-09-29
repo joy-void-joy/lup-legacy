@@ -4,6 +4,7 @@ Add fixtures here that are used across multiple test files.
 """
 
 import os
+import socket
 import warnings
 from collections.abc import Iterator
 from functools import cache
@@ -148,3 +149,21 @@ def settled(verdict: GuardVerdict) -> None:
         warnings.warn(verdict.notice, stacklevel=2)
     if verdict.failure:
         pytest.fail(verdict.failure, pytrace=False)
+
+
+@pytest.fixture
+def unix_socket() -> None:
+    """Skip, saying why, where this process may not open a Unix socket at all.
+
+    A test measuring delivery through a real socket has nothing to measure
+    where the socket itself is refused — a Claude Code Bash sandbox refuses
+    ``socket(AF_UNIX)`` with EPERM — and failing there would report a defect
+    the code does not have. Any other failure a socket meets stays a failure.
+    """
+    try:
+        socket.socket(socket.AF_UNIX, socket.SOCK_STREAM).close()
+    except PermissionError as refused:
+        pytest.skip(
+            f"this process may not open a Unix socket ({refused}); delivery "
+            "through one cannot be measured here"
+        )

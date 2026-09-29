@@ -24,7 +24,7 @@ from httpx import ASGITransport, AsyncClient
 from lup.providers.harness import AdapterName
 from lup.harness.models import ResolveSpec, SkillInvocation
 from lup.channels.models import utc_now
-from lup.resolver.journal import Journal, JournalEntry, PhaseChangedEvent, RunEvent
+from lup.resolver.record import Journal, JournalEntry, PhaseChangedEvent, RunEvent
 from lup.sessions.events import TurnEvent
 from lup.coordination.mailbox import AnswerDoor, RecordedAnswer
 from lup.coordination.questions import QuestionAnswer
@@ -302,10 +302,11 @@ async def test_a_message_reaches_an_actor_without_parking_the_run(
 ) -> None:
     """A message settles nothing, so no amount of messaging can park a run.
 
-    That is the whole reason messages ride an inbox and decisions ride slots.
-    The recipient is spawned first because an inbox belongs to a member: the
-    address is resolved against the population, and a spelling this run never
-    recorded is reported rather than written into a directory nobody reads.
+    That is the whole reason messages ride a member's mailbox and decisions
+    ride slots. The recipient is spawned first because a mailbox belongs to a
+    member: the address is resolved against the population, and a spelling
+    this run never recorded is reported rather than written into a directory
+    nobody reads.
     """
     mailbox = build_run(tmp_path)
     cohort = run_cohort(mailbox, "run-1")

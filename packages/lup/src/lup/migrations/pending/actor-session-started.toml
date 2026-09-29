@@ -1,0 +1,19 @@
+subjects = ["ActorSession.started", "StateToRequest"]
+reason = """
+the actor and background loops take a Conversation and ask it, so the names \
+built on starting a TurnRequest went with that verb"""
+commit = "eca60905d6e5e77d9e365f97345bd7553abe719f"
+
+[[steps]]
+instruction = """
+Take an actor's turn with ActorSession.turn(prompt, Output), which reopens on \
+a fresh conversation where the recorded one is lost, as started did; \
+ActorSession.taken(conversation, prompt, Output, seen) is one attempt on a \
+given conversation."""
+
+[[steps]]
+instruction = """
+Construct BackgroundAgent(agent, state_to_turn, ...) with a StateToTurn from \
+lup.orchestration.background: where a StateToRequest returned \
+turn_request(prompt_for(state), Output), the StateToTurn is lambda session, \
+state: session.ask(prompt_for(state), Output)."""

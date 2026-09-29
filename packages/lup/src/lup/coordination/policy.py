@@ -20,6 +20,15 @@ from lup.coordination.identity import MEMBER_ENV
 from lup.policy.peer_policy import PeerPolicy
 from lup.policy.refused_paths import RefusedPaths
 
+COORDINATION_SERVER = "coordination"
+"""The tool server a session's coordination verbs are served from.
+
+The one name the server's declaration and the hook stamping each call's
+caller have to agree on: a runtime addresses a tool by the server carrying it,
+so a hook matched against any other name stamps nothing and every subagent
+acts as its session again.
+"""
+
 SEND_REDIRECT = (
     "a native send to a session on this repository's roster leaves no record"
     " any other worktree can read"
@@ -79,9 +88,11 @@ def peer_policy(
     claim_reason: str = CLAIM_HELD,
     send_recovery: str = SEND_RECOVERY,
     claim_recovery: str = CLAIM_RECOVERY,
+    server: str = COORDINATION_SERVER,
 ) -> PeerPolicy:
     """This repository's sessions, as the compiled permission hook reads them."""
     return PeerPolicy(
+        server=server,
         store=[STORE_DIR, COORDINATION_DIR],
         windows_dir=WINDOWS_DIR,
         member_env=MEMBER_ENV,
@@ -93,31 +104,33 @@ def peer_policy(
     )
 
 
-INBOX_REACHED = (
-    "a session's inbox socket is its wake handle, and a frame written to it"
+WAKE_SOCKET_REACHED = (
+    "a session's wake socket is its wake handle, and a frame written to it"
     " starts that session's turn with text no roster records"
 )
-"""Why a command connecting to a peer's inbox was stopped, in one line."""
+"""Why a command connecting to a peer's wake socket was stopped, in one line."""
 
-INBOX_RECOVERY = (
+WAKE_SOCKET_RECOVERY = (
     "Reach the peer with `coordination_send` instead: it records the message"
     " where every session in this clone can read it, and wakes the peer"
-    " through this inbox itself."
+    " through this socket itself."
 )
 """What reaches the same peer and leaves the record a raw frame does not."""
 
 
-def inbox_refusal(
-    directory: str, reason: str = INBOX_REACHED, recovery: str = INBOX_RECOVERY
+def wake_socket_refusal(
+    directory: str,
+    reason: str = WAKE_SOCKET_REACHED,
+    recovery: str = WAKE_SOCKET_RECOVERY,
 ) -> list[RefusedPaths]:
-    """The directory sessions bind their inboxes in, withheld from every command.
+    """The directory sessions bind their wake sockets in, withheld from every command.
 
-    ``directory`` is the launch's own declaration of where inboxes go, passed
-    rather than spelled here, so a project that moves it moves the refusal
-    with it. Every spelling of a connection the kernel reads names the path --
-    a socat address, `nc -U`, `curl --unix-socket`, a redirection -- so the
-    path is refused rather than each program. Empty declares no inbox
-    directory, and refuses nothing.
+    ``directory`` is the launch's own declaration of where wake sockets go,
+    passed rather than spelled here, so a project that moves it moves the
+    refusal with it. Every spelling of a connection the kernel reads names the
+    path -- a socat address, `nc -U`, `curl --unix-socket`, a redirection -- so
+    the path is refused rather than each program. Empty declares no wake
+    socket directory, and refuses nothing.
     """
     if not directory:
         return []

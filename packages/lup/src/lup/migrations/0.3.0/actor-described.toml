@@ -1,0 +1,35 @@
+subjects = [
+    "ActorDescribed",
+    "ActorDescribed.description",
+    "ActorDescribed.type",
+    "ActorFinished",
+    "ActorFinished.error",
+    "ActorFinished.summary",
+    "ActorFinished.type",
+    "ActorJoined",
+    "ActorJoined.delivery",
+    "ActorJoined.liveness",
+    "ActorJoined.task",
+    "ActorJoined.type",
+    "ActorJoined.wake",
+    "ActorJoined.worktree",
+    "ActorSpawned",
+    "ActorSpawned.task",
+    "ActorSpawned.type",
+    "RosterRecord",
+    "RosterRecord.actor",
+    "RosterRecord.at",
+]
+reason = """
+a member is a file rather than a fold of arrival, description and departure \
+records, so the records have nothing left to be: announcing twice finds the \
+first file standing and leaves it, which is what the fold's idempotence was \
+for"""
+commit = "1e56496618db07576be351386786e1a32f93e43c"
+
+[[steps]]
+instruction = """
+Construct `Roster(directory)` rather than `Roster(root / ROSTER_FILE)`: it \
+holds the store's directory now, not one file inside it. `joined`, `spawned`, \
+`describes`, `finished` and `beat` keep their signatures; `Roster.stream` and \
+the record types it carried are gone."""

@@ -94,8 +94,6 @@ def report(
         match decision.sandbox:
             case "ambient":
                 pass
-            case "escalable":
-                typer.echo("       runs inside the sandbox, and may be taken out")
             case placement:
                 typer.echo(f"       runs {placement} the sandbox")
         if decision.reason:

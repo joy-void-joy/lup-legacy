@@ -60,8 +60,8 @@ def test_a_requirements_file_and_an_env_file_are_each_named() -> None:
 
 
 def test_a_uv_add_question_names_the_packages_past_the_valued_flags() -> None:
-    """`--package lup` names where the dependency goes, not what it is."""
-    asked = verdict('uv add --package lup "mcp>=2.1.1,<3" jinja2 --dev')
+    """`--package lup-agents` names where the dependency goes, not what it is."""
+    asked = verdict('uv add --package lup-agents "mcp>=2.1.1,<3" jinja2 --dev')
 
     assert asked.effect == "ask"
     assert (

@@ -43,6 +43,7 @@ Nothing here needs the repository to exist: a suite running outside a checkout
 gets an empty snapshot both times and never fails.
 """
 
+from collections.abc import Iterator
 from pathlib import Path
 
 import sh
@@ -217,7 +218,7 @@ def repository_state(root: Path, namespace: str = "") -> dict[str, str]:
     :func:`~lup.policy.assets.host.undo_snapshot` takes, so a suite testing
     snapshots against a namespace of its own is still watched in the real one.
     """
-    written = (namespace or undo_namespace(), preflight_namespace())
+    written = unwatched_namespaces(namespace)
     return {
         **{
             name: value
@@ -226,6 +227,112 @@ def repository_state(root: Path, namespace: str = "") -> dict[str, str]:
         },
         **watched_config(root),
     }
+
+
+def unwatched_namespaces(namespace: str = "") -> tuple[str, ...]:
+    """The ref namespaces written by design while a suite runs, which the guard skips.
+
+    One answer for both readings of the repository — the refs git lists and
+    the files it keeps them in — so the cheap reading cannot vouch for a
+    namespace the full one watches. :func:`repository_state` says why each
+    is skipped.
+    """
+    return (namespace or undo_namespace(), preflight_namespace())
+
+
+class FileStamp(BaseModel, frozen=True):
+    """One file git reads refs or config from, as the filesystem describes it."""
+
+    path: str
+    inode: int
+    size: int
+    modified: int
+    """``st_mtime_ns``: coarse on many kernels, so the inode is what decides."""
+
+
+class RefStore(BaseModel, frozen=True):
+    """Where git keeps what the guard watches, so a quiet test costs no process.
+
+    Reading the state is two git processes, forked from a test worker whose
+    whole heap the fork copies the page tables of — some twenty milliseconds
+    after every test, and a tenth of what the suites cost. Git writes every
+    file behind that state the same way: a lock file beside it, renamed over
+    it. A ref, the packed list, the config — each write lands under a new
+    inode, however coarse the clock, and a ref created or deleted adds or
+    removes a file. So when no file here changed, nothing git would list
+    changed either, and the processes are only asked when one did.
+    """
+
+    common: Path
+    """The git directory every worktree of the repository shares."""
+
+    own: Path
+    """This checkout's own git directory, where its per-worktree refs live."""
+
+    @classmethod
+    def located(cls, root: Path) -> "RefStore | None":
+        """The store behind the checkout enclosing ``root``, or ``None`` outside one."""
+        try:
+            listed = sh.Command("git")(
+                "-C",
+                str(root),
+                "rev-parse",
+                "--path-format=absolute",
+                "--git-common-dir",
+                "--git-dir",
+                _tty_out=False,
+            )
+        except (sh.ErrorReturnCode, sh.CommandNotFound):
+            return None
+        match str(listed).splitlines():
+            case [common, own]:
+                return cls(common=Path(common), own=Path(own))
+            case _:
+                return None
+
+    def stamps(self, skipped: tuple[str, ...]) -> list[FileStamp] | None:
+        """Every file the watched state is read from, or ``None`` mid-write.
+
+        ``skipped`` are namespaces the state leaves out, whose directories are
+        not walked either: a snapshot written in front of every command would
+        otherwise send every test to the processes this exists to spare. A
+        file vanishing between listing and reading is a write in progress,
+        and answering nothing makes the caller read the state itself.
+        """
+
+        def listed(top: Path) -> Iterator[Path]:
+            for directory, subdirectories, names in top.walk(follow_symlinks=True):
+                subdirectories[:] = [
+                    name
+                    for name in subdirectories
+                    if (directory / name).relative_to(top.parent).as_posix()
+                    not in skipped
+                ]
+                yield from (directory / name for name in names)
+
+        tops = dict.fromkeys(
+            [self.common / "refs", self.common / "reftable", self.own / "refs"]
+        )
+        files = [
+            *(self.common / name for name in ("packed-refs", "config")),
+            *(path for top in tops for path in listed(top)),
+        ]
+        try:
+            described = [(path, path.stat()) for path in files if path.exists()]
+        except FileNotFoundError:
+            return None
+        return sorted(
+            (
+                FileStamp(
+                    path=str(path),
+                    inode=found.st_ino,
+                    size=found.st_size,
+                    modified=found.st_mtime_ns,
+                )
+                for path, found in described
+            ),
+            key=lambda stamp: stamp.path,
+        )
 
 
 def moved_refs(before: dict[str, str], after: dict[str, str]) -> list[str]:
@@ -548,14 +655,28 @@ class RepositoryWatch(BaseModel):
     baseline: dict[str, str]
     """The state every later reading is compared against, moving with each."""
 
+    store: RefStore | None
+    """Where that state is kept, or ``None`` outside a repository."""
+
+    stamps: list[FileStamp] | None
+    """The store's files as they stood before ``baseline`` was read.
+
+    ``None`` vouches for nothing, so the next settlement reads the state."""
+
     @classmethod
     def armed(cls, root: Path, worker: str) -> "RepositoryWatch":
         """A watch reading the repository as it stands before the first test."""
+        store = RefStore.located(root)
+        # The files before the state, for the reason `after` gives.
+        stamps = store.stamps(unwatched_namespaces()) if store else None
+        baseline = repository_state(root)
         return cls(
             root=root,
             worker=worker,
             foreign=ForeignCheckouts.beside(root),
-            baseline=repository_state(root),
+            store=store,
+            stamps=stamps,
+            baseline=baseline,
         )
 
     def after(self, test: str) -> GuardVerdict:
@@ -563,10 +684,19 @@ class RepositoryWatch(BaseModel):
 
         The sibling map is re-read only when something moved: a worktree cut
         mid-run is found then, at the cost of one listing per change rather
-        than per test, and the quiet case — every test of every run — costs
-        the state read alone.
+        than per test. The state itself is read only when a file behind it
+        changed (see :class:`RefStore`), so the quiet case — every test of
+        every run — costs a walk of a few directories. The files are read
+        before the state, never after: a write landing between the two is
+        then in the state already or in the next reading of the files, and
+        a change the state has not seen can never hide behind files that
+        already show it.
         """
+        stamps = self.store.stamps(unwatched_namespaces()) if self.store else None
+        if stamps is not None and stamps == self.stamps:
+            return GuardVerdict()
         current = repository_state(self.root)
+        self.stamps = stamps
         if current == self.baseline:
             return GuardVerdict()
         self.foreign = self.foreign.joined(ForeignCheckouts.beside(self.root))

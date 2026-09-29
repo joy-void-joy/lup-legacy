@@ -121,7 +121,7 @@ from pydantic import (
 )
 
 from lup.workspace.paths import is_template_scaffold, project_root
-from lup.devtools import sync_state
+from lup.devtools import sync_state, sync_usage
 from lup.devtools.dev.records import log_ref_updates
 from lup.harness.credential import remote_url, same_repository
 import lup.harness.content.docs.upstream_reports as upstream_reports
@@ -486,16 +486,27 @@ def pinned_source(name: str, root: Path | None = None) -> "GitSource | None":
     """The git pin a registration of this name follows, where the project has one.
 
     Only the library's own registration follows one: ``[tool.uv.sources]``
-    pins the ``lup`` distribution, and the registration of that name is the
+    pins the library's distribution, and that registration names the
     repository the project consumes it from. Imported where it is asked
     rather than at the top, because the library module reads this module's
     registrations to decide where to pin from, and so imports it first.
     """
-    from lup.devtools.dev.library import DISTRIBUTION, read_git_source
+    from lup.devtools.dev.library import REGISTRATION, read_git_source
 
-    if name != DISTRIBUTION:
+    if name != REGISTRATION:
         return None
     return read_git_source(root if root is not None else project_root())
+
+
+def installed_as(name: str) -> str:
+    """The distribution a registration of this name is installed as.
+
+    The same name for every registration but the library's own, whose
+    repository is registered as ``lup`` and published under another name.
+    """
+    from lup.devtools.dev.library import DISTRIBUTION, REGISTRATION
+
+    return DISTRIBUTION if name == REGISTRATION else name
 
 
 def completed(entry: ProjectEntry, root: Path) -> ProjectEntry:
@@ -516,7 +527,7 @@ def completed(entry: ProjectEntry, root: Path) -> ProjectEntry:
         return PROJECT_ENTRY_ADAPTER.validate_python({**entry, "url": pinned.url})
     if "url" in entry or "remote" in entry or "path" in entry:
         return entry
-    declared = distribution_repository(entry["name"])
+    declared = distribution_repository(installed_as(entry["name"]))
     if not declared:
         return entry
     return PROJECT_ENTRY_ADAPTER.validate_python({**entry, "url": declared})
@@ -1484,6 +1495,56 @@ def resolved_checkpoint(path: str, ref: str, tip: str = "HEAD") -> str:
         return git_in(path, "rev-parse", "--verify", f"{ref}^{{commit}}")
     except sh.ErrorReturnCode as error:
         raise typer.BadParameter(f"{ref!r} does not name a commit in {path}") from error
+
+
+@app.command("usage")
+def usage_cmd(
+    names: Annotated[
+        list[str] | None,
+        typer.Argument(help="Tracked projects to read (default: every one owed here)"),
+    ] = None,
+    package: Annotated[
+        str, typer.Option("--package", help="The package whose imports are counted")
+    ] = "lup",
+    as_json: Annotated[bool, typer.Option("--json", help="Output as JSON")] = False,
+) -> None:
+    """Show what each tracked project imports from a package, name by name.
+
+    The reach a removal, rename or move has, read from each project's own
+    tracked files where this machine keeps a checkout — without cloning or
+    fetching, so it answers about the checkouts as they stand. A project
+    with no checkout here is named as unread rather than counted as unused.
+    """
+    wanted = [
+        proj
+        for proj in load_projects()
+        if (
+            proj["name"] in names
+            if names
+            else owed_here(proj) and not proj.get("ignore")
+        )
+    ]
+    located = [(proj["name"], existing_upstream(proj)) for proj in wanted]
+    report = sync_usage.usage_report(
+        [
+            sync_usage.usage_in(name, found.checkout, package)
+            for name, found in located
+            if found is not None
+        ],
+        [name for name, found in located if found is None],
+        package,
+    )
+    if as_json:
+        typer.echo(report.model_dump_json(indent=2))
+        return
+    for reach in report.reach:
+        typer.echo(f"{reach.module}  ({', '.join(reach.projects)})")
+        if reach.names:
+            typer.echo(f"    {', '.join(reach.names)}")
+    for name in report.unlocated:
+        typer.echo(
+            f"{name}: no checkout on this machine; `sync fetch {name}` clones it"
+        )
 
 
 @app.command("status")

@@ -1796,10 +1796,10 @@ def contained_argv(
     # that cannot listen is a session without a clipboard rather than a launch
     # that fails, and the notice says which happened either way.
     copying = image.clipboard.serve()
-    nudging = image.inboxes.serve()
+    nudging = image.wake_sockets.serve()
     handing = image.browser.serve()
     said.add(image.clipboard.notice(copying is not None))
-    said.add(image.inboxes.notice(nudging is not None))
+    said.add(image.wake_sockets.notice(nudging is not None))
     said.add(
         image.browser.notice(handing is not None, image.egress.shares_host_loopback())
     )
@@ -1824,10 +1824,9 @@ def contained_argv(
             if in_repository(path)
         ],
     )
-    # Read on the host and passed in, never resolved inside: the file that
-    # answers "where does this remote point" is `.git/config`, which the
-    # container can write, so a rewrite decided in there is a rewrite the
-    # confined thing chose for itself.
+    # Read on the host and passed in, never resolved inside: a rewrite decided
+    # in there is a rewrite the confined thing chose for itself, even over a
+    # `.git/config` the boundary holds read-only.
     environ = os.environ  # lup: ignore[os-environ]
     # The credential is selected here, on the host, for the third time in this
     # function and for the same reason as the other two: everything it reads --
@@ -1903,7 +1902,7 @@ def contained_argv(
         identity=identity,
         browser_directory=handing,
         clipboard_directory=copying,
-        inbox_directory=nudging,
+        wake_directory=nudging,
         terminal=terminal.environment,
         streams=streams,
         proxy_address=reached_at,

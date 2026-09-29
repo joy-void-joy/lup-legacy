@@ -1221,7 +1221,7 @@
     },
     "MessageOutstandingEvent": {
       "additionalProperties": false,
-      "description": "A message still in a member's inbox as its session is being closed.\n\nRecorded because the sender was told the message was sent, and the inbox\nalone cannot say whether anyone read it. On a park this is a message that\nwill land at the head of the resumed turn; on a run that ended it is one\nthat reached nobody, and a redirect nobody read is the failure of an\noperation somebody performed to stop something.",
+      "description": "A message still in a member's mailbox as its session is being closed.\n\nRecorded because the sender was told the message was sent, and the mailbox\nalone cannot say whether anyone read it. On a park this is a message that\nwill land at the head of the resumed turn; on a run that ended it is one\nthat reached nobody, and a redirect nobody read is the failure of an\noperation somebody performed to stop something.",
       "properties": {
         "door": {
           "title": "Door",

@@ -8,14 +8,13 @@ A source spelled as a dotted module is a module to open. One spelled as an ident
 
 The repository-wide artifacts written outside every runtime tree — the rule and command references, this page, and the CI workflow — belong to no recipe and are described in [harness.md](harness.md) instead.
 
-## `claude` — 125 artifacts
+## `claude` — 127 artifacts
 
 | Generated path | Compiled from |
 | --- | --- |
 | `.claude/CLAUDE.md` | lup_template.harness.content.guidance |
 | `.claude/plugins/.claude-plugin/marketplace.json` | plugin.lup |
 | `.claude/plugins/lup/.claude-plugin/plugin.json` | plugin.lup |
-| `.claude/plugins/lup/.mcp.json` | plugin.lup |
 | `.claude/plugins/lup/TEMPLATE_CLAUDE.md` | lup_template.harness.content.template_claude |
 | `.claude/plugins/lup/agents/tdd-implementer.md` | lup.harness.content.agents.tdd_implementer |
 | `.claude/plugins/lup/agents/trace-explorer.md` | lup.harness.content.agents.trace_explorer |
@@ -48,7 +47,6 @@ The repository-wide artifacts written outside every runtime tree — the rule an
 | `.claude/plugins/lup/commands/meta.md` | lup_template.harness.content.skills.meta |
 | `.claude/plugins/lup/commands/modify-command.md` | lup.harness.content.skills.modify_command |
 | `.claude/plugins/lup/commands/principle.md` | lup.harness.content.skills.principle |
-| `.claude/plugins/lup/commands/profile.md` | lup.harness.content.skills.profile |
 | `.claude/plugins/lup/commands/rebase.md` | lup.harness.content.skills.rebase |
 | `.claude/plugins/lup/commands/refactor-tools.md` | lup.harness.content.skills.refactor_tools |
 | `.claude/plugins/lup/commands/refactor.md` | lup.harness.content.skills.refactor |
@@ -61,14 +59,17 @@ The repository-wide artifacts written outside every runtime tree — the rule an
 | `.claude/plugins/lup/commands/upstream.md` | lup_template.harness.content.skills.upstream_skill |
 | `.claude/plugins/lup/commands/verify-solved.md` | lup.harness.content.skills.verify_solved |
 | `.claude/plugins/lup/hooks/hooks.json` | hooks.lup-policy |
+| `.claude/plugins/lup/hooks/runtime/caller_payload.py` | lup.providers.claude.assets.caller_payload |
 | `.claude/plugins/lup/hooks/runtime/carrier_drift.py` | lup.devtools.dev.drift_fold |
 | `.claude/plugins/lup/hooks/runtime/coordination/__init__.py` | lup.coordination.bare.__init__ |
 | `.claude/plugins/lup/hooks/runtime/coordination/arrival.py` | lup.coordination.bare.arrival |
 | `.claude/plugins/lup/hooks/runtime/coordination/changes.py` | lup.coordination.bare.changes |
 | `.claude/plugins/lup/hooks/runtime/coordination/departure.py` | lup.coordination.bare.departure |
 | `.claude/plugins/lup/hooks/runtime/coordination/mail.py` | lup.coordination.bare.mail |
+| `.claude/plugins/lup/hooks/runtime/coordination/runtime.py` | lup.coordination.bare.runtime |
 | `.claude/plugins/lup/hooks/runtime/coordination/scope.py` | lup.coordination.bare.scope |
 | `.claude/plugins/lup/hooks/runtime/coordination/store.py` | lup.coordination.bare.store |
+| `.claude/plugins/lup/hooks/runtime/coordination_caller.py` | lup.providers.coordination_caller |
 | `.claude/plugins/lup/hooks/runtime/coordination_changes.py` | lup.providers.roster_prompt |
 | `.claude/plugins/lup/hooks/runtime/coordination_delivery.py` | lup.providers.assets.peer_delivery_runtime |
 | `.claude/plugins/lup/hooks/runtime/coordination_departure.py` | lup.providers.roster_prompt |
@@ -106,6 +107,7 @@ The repository-wide artifacts written outside every runtime tree — the rule an
 | `.claude/plugins/lup/hooks/runtime/policy_data.py` | lup.policy.bundle |
 | `.claude/plugins/lup/hooks/runtime/subagent_cleanup.py` | lup.providers.claude.assets.subagent_cleanup |
 | `.claude/plugins/lup/hooks/scripts/carrier_drift.sh` | lup.providers.drift_prompt |
+| `.claude/plugins/lup/hooks/scripts/coordination_caller.sh` | lup.providers.coordination_caller |
 | `.claude/plugins/lup/hooks/scripts/coordination_changes.sh` | lup.providers.roster_prompt |
 | `.claude/plugins/lup/hooks/scripts/coordination_delivery.sh` | lup.providers.peer_delivery |
 | `.claude/plugins/lup/hooks/scripts/coordination_departure.sh` | lup.providers.roster_prompt |
@@ -138,7 +140,7 @@ The repository-wide artifacts written outside every runtime tree — the rule an
 | `docs/template.md` | lup_template.harness.content.docs.template |
 | `docs/upstream-reports.md` | lup.harness.content.docs.upstream_reports |
 
-## `codex` — 105 artifacts
+## `codex` — 108 artifacts
 
 | Generated path | Compiled from |
 | --- | --- |
@@ -151,6 +153,7 @@ The repository-wide artifacts written outside every runtime tree — the rule an
 | `.codex/plugins/lup/.codex-plugin/plugin.json` | plugin.lup |
 | `.codex/plugins/lup/TEMPLATE_AGENTS.md` | lup_template.harness.content.template_codex |
 | `.codex/plugins/lup/hooks/hooks.json` | hooks.lup-policy |
+| `.codex/plugins/lup/hooks/runtime/caller_payload.py` | lup.providers.codex.assets.caller_payload |
 | `.codex/plugins/lup/hooks/runtime/carrier_drift.py` | lup.devtools.dev.drift_fold |
 | `.codex/plugins/lup/hooks/runtime/codex_patch.py` | lup.providers.codex.patch |
 | `.codex/plugins/lup/hooks/runtime/coordination/__init__.py` | lup.coordination.bare.__init__ |
@@ -158,9 +161,11 @@ The repository-wide artifacts written outside every runtime tree — the rule an
 | `.codex/plugins/lup/hooks/runtime/coordination/changes.py` | lup.coordination.bare.changes |
 | `.codex/plugins/lup/hooks/runtime/coordination/departure.py` | lup.coordination.bare.departure |
 | `.codex/plugins/lup/hooks/runtime/coordination/mail.py` | lup.coordination.bare.mail |
+| `.codex/plugins/lup/hooks/runtime/coordination/runtime.py` | lup.coordination.bare.runtime |
 | `.codex/plugins/lup/hooks/runtime/coordination/scope.py` | lup.coordination.bare.scope |
 | `.codex/plugins/lup/hooks/runtime/coordination/store.py` | lup.coordination.bare.store |
 | `.codex/plugins/lup/hooks/runtime/coordination_arrival.py` | lup.providers.roster_prompt |
+| `.codex/plugins/lup/hooks/runtime/coordination_caller.py` | lup.providers.coordination_caller |
 | `.codex/plugins/lup/hooks/runtime/coordination_changes.py` | lup.providers.roster_prompt |
 | `.codex/plugins/lup/hooks/runtime/coordination_delivery.py` | lup.providers.assets.peer_delivery_runtime |
 | `.codex/plugins/lup/hooks/runtime/coordination_departure.py` | lup.providers.roster_prompt |
@@ -199,6 +204,7 @@ The repository-wide artifacts written outside every runtime tree — the rule an
 | `.codex/plugins/lup/hooks/runtime/subagent_cleanup.py` | lup.providers.codex.assets.subagent_cleanup |
 | `.codex/plugins/lup/hooks/scripts/carrier_drift.sh` | lup.providers.drift_prompt |
 | `.codex/plugins/lup/hooks/scripts/coordination_arrival.sh` | lup.providers.roster_prompt |
+| `.codex/plugins/lup/hooks/scripts/coordination_caller.sh` | lup.providers.coordination_caller |
 | `.codex/plugins/lup/hooks/scripts/coordination_changes.sh` | lup.providers.roster_prompt |
 | `.codex/plugins/lup/hooks/scripts/coordination_delivery.sh` | lup.providers.peer_delivery |
 | `.codex/plugins/lup/hooks/scripts/coordination_departure.sh` | lup.providers.roster_prompt |
@@ -233,7 +239,6 @@ The repository-wide artifacts written outside every runtime tree — the rule an
 | `.codex/plugins/lup/skills/meta/SKILL.md` | lup_template.harness.content.skills.meta |
 | `.codex/plugins/lup/skills/modify-command/SKILL.md` | lup.harness.content.skills.modify_command |
 | `.codex/plugins/lup/skills/principle/SKILL.md` | lup.harness.content.skills.principle |
-| `.codex/plugins/lup/skills/profile/SKILL.md` | lup.harness.content.skills.profile |
 | `.codex/plugins/lup/skills/rebase/SKILL.md` | lup.harness.content.skills.rebase |
 | `.codex/plugins/lup/skills/refactor-tools/SKILL.md` | lup.harness.content.skills.refactor_tools |
 | `.codex/plugins/lup/skills/refactor/SKILL.md` | lup.harness.content.skills.refactor |

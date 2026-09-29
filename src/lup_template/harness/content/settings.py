@@ -8,7 +8,10 @@ on, and which tools it grants or refuses by judgement.
 """
 
 from lup.devtools.harness.settings import Settings, project_settings as render
+from collections.abc import Sequence
+
 from lup.harness.models import Plugin
+from lup.mcp import ToolServer
 from lup.types import JsonObject
 
 DECLARED = Settings(
@@ -64,6 +67,12 @@ DECLARED = Settings(
 )
 
 
-def project_settings(plugin: Plugin | None) -> JsonObject:
-    """Render this repository's settings artifact from its declaration."""
-    return render(DECLARED, plugin)
+def project_settings(
+    plugin: Plugin | None, servers: Sequence[ToolServer] = ()
+) -> JsonObject:
+    """Render this repository's settings artifact from its declaration.
+
+    ``servers`` are the tool servers every launched session carries, whose
+    tools the settings grant.
+    """
+    return render(DECLARED, plugin, servers)

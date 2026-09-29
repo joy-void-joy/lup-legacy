@@ -236,9 +236,12 @@ def exclude_sandbox_placeholders(root: Path) -> list[str]:
     created -- is what tells a placeholder from a file somebody meant.
 
     Returns what it added, so a launch can say so once and a second launch
-    says nothing.
+    says nothing. A launch opened outside any repository has no status to
+    keep them out of, and adds nothing.
     """
-    untracked = git.lines("-C", str(root), "ls-files", "--others", "--exclude-standard")
+    untracked = git.lines(
+        "-C", str(root), "ls-files", "--others", "--exclude-standard", _ok_code=[0, 128]
+    )
     placeholders = [
         name
         for name in untracked

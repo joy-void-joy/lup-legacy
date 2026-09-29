@@ -27,7 +27,7 @@ def where_taken(
 SKILL = models.Skill(
     id="skill.init",
     name="init",
-    description="Initialize the self-improvement loop for a specific domain",
+    description="Make this checkout a project for one domain — choose its modules, settle its seams, rename and scaffold it",
     tools=[
         "Bash(git:*, uv run lup-devtools:*, uv sync:*, uv run pyright:*, uv run ruff:*, uv run pytest:*)",
         "Read",
@@ -84,6 +84,7 @@ SKILL = models.Skill(
                 },
             ),
             *provenance.sync_baseline(SPELLING),
+            # lup: defer: "Phase 1.6: Settle the Seams" (the `phases` passage) and "Phase 2.5: Settle the Seams" (this one) both walk file ownership and rule retirement, so an interview asks them twice; decide which phase owns the seams and fold the other's (approval trees, tree roles, acceptance guard) into it.
             models.Passage(
                 module=__name__,
                 name="verify",
@@ -92,7 +93,7 @@ SKILL = models.Skill(
                         question="which rule families this domain keeps, with retiring the anti-pattern family altogether as one answer"
                     ),
                     "ask_2": models.AskUser(
-                        question="which files the human author owns, starting from whether README.md stays locked"
+                        question="which files the human author owns, starting from whether README.md stays human-owned"
                     ),
                     "ask_3": models.AskUser(
                         question="whether any root this domain adds needs a path role, and which"

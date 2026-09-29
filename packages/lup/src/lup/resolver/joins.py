@@ -30,7 +30,7 @@ from uuid import uuid4
 from lup.channels.models import utc_now
 from lup.resolver.contracts import ResolverAwaitingAnswers, ResolverDrained
 from lup.resolver.dag import ConcernGraph
-from lup.resolver.journal import (
+from lup.resolver.record import (
     JoinAuditEvent,
     JoinCompletedEvent,
     JoinPlannedEvent,

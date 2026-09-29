@@ -33,6 +33,11 @@ Session state rather than a committed artifact, which is why it sits under
 checkout has met, and a machine that has met different commands has not
 drifted from anything.
 """
+# lup: defer: the deferrals are read back here and the verdicts are not --
+# every dispatcher also appends each completed decision to `hook-events.jsonl`
+# under the plugin data directory its runtime names, and four sessions tallied
+# those by hand to learn which asks and denies dominate. A reader needs that
+# directory on both runtimes, which only each runtime's environment spells
 
 
 class Deferral(BaseModel, frozen=True):

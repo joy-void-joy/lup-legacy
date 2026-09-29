@@ -42,15 +42,17 @@ from lup.providers.claude.config_home import session_config_home
 from lup.providers.claude.transcripts import ClaudeTranscripts, result_text
 from lup.mcp import hosted_servers, opened_needs
 from lup.coordination.repository import launched_member
+from lup.launch.companions import CompanionLaunch, Joined, held_around
 from lup.launch.compilation import (
     allowance_environment,
+    inherited_environment,
     kept_record,
     semantic_hooks,
 )
 from lup.launch.declaration import Reopening
 from lup.policy.hooks import merge_hooks
 from lup.providers.claude.hooks import CLAUDE_SEMANTICS
-from lup.providers.claude.launch import claude_settings, compiled_claude
+from lup.providers.claude.launch import claude_server, claude_settings, compiled_claude
 from lup.providers.claude.model_choice import claude_effort
 from lup.sessions.recursion import (
     recursive_agent_allowance,
@@ -859,7 +861,35 @@ class ClaudeSessionOpener:
     async def open_session(
         self, resume: Reopening | None = None, *, fork: ClaudeForkPoint | None = None
     ) -> AsyncGenerator[ClaudeSession]:
-        compiled = self.compiled()
+        """Open one session, its host companions held for as long as it is open."""
+        declared = self.config
+        launch = CompanionLaunch(
+            root=declared.cwd or Path.cwd(),
+            runtime="claude",
+            environment={**inherited_environment(), **declared.environment},
+        )
+        async with held_around(declared.companions, launch) as joined:
+            for notice in joined.notices:
+                logger.info("%s", notice.text)
+            async with self.joined_session(joined, resume, fork=fork) as session:
+                yield session
+
+    @asynccontextmanager
+    async def joined_session(
+        self,
+        joined: Joined,
+        resume: Reopening | None = None,
+        *,
+        fork: ClaudeForkPoint | None = None,
+    ) -> AsyncGenerator[ClaudeSession]:
+        """Open one session reaching what its held companions hand it."""
+        declared = self.compiled()
+        compiled = declared.model_copy(
+            update={
+                "environment": {**declared.environment, **joined.environment},
+                "sandbox": declared.sandbox.widened(joined.mounts),
+            }
+        )
         relayed = allowance_environment(
             compiled.max_recursive_agent, compiled.environment
         )
@@ -1083,23 +1113,7 @@ def build_claude_options(
         0, claude_types.HookMatcher(hooks=[enforce_grants])
     )
 
-    def native_server(server: McpServerEntry) -> "claude_types.McpServerConfig":
-        """Project one entry into the server config this SDK's options take.
-
-        The projection belongs here because it is this provider's spelling: a
-        server we host becomes an SDK config, while an external one already is
-        the SDK's transport shape and passes through. Asking the neutral entry
-        to convert itself would move that spelling into library code, beside a
-        second adapter that projects the same entry into an unrelated
-        subprocess shape.
-        """
-        match server:
-            case LupMcpServerConfig():
-                return claude_types.McpSdkServerConfig(
-                    type="sdk", name=server.name, instance=server.server
-                )
-            case _:
-                return server
+    loaded = {server.name for server in config.tools.mcp if server.always_load}
 
     # The stock tools are Claude Code's coding agent, and that agent is its
     # tools and the system prompt that teaches them; a narrower grant keeps
@@ -1127,8 +1141,9 @@ def build_claude_options(
         allowed_tools=list(dict.fromkeys(allowed)),
         disallowed_tools=list(config.disallowed_tools),
         mcp_servers={
-            name: native_server(
-                relay_recursive_agent_to_mcp(server, config.environment)
+            name: claude_server(
+                relay_recursive_agent_to_mcp(server, config.environment),
+                name in loaded,
             )
             for name, server in servers.items()
         },

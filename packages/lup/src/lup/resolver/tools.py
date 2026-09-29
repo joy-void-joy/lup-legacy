@@ -28,7 +28,7 @@ from lup.coordination.tools import (
     QuestionDesk,
     create_cohort_tools,
 )
-from lup.resolver.journal import Journal
+from lup.resolver.record import Journal
 from lup.coordination.mailbox import (
     ANSWER_POLL_SECONDS,
 )

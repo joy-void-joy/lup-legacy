@@ -140,38 +140,37 @@ class PathRoleRow(TypedDict):
 
 
 class VerificationRow(TypedDict):
-    """How this project spells the gate a delegated agent is pointed at.
+    """How this project spells the checks a delegated agent is pointed at.
 
-    Three strings rather than one sentence, because the notice is composed
+    Two strings rather than one sentence, because the notice is composed
     where it is read and only the spellings are the project's. A repository
     that named its devtools CLI something else reads its own invocation here,
     where a verbatim notice names one it does not serve.
     """
 
-    gate: str
     scoped: str
-    record: str
+    tests: str
 
 
 class SpawnNameRow(TypedDict):
-    """One erased decision that a spawned agent carries a name, and how it is spelled.
+    """One erased decision that a spawned agent goes out named, and how it is spelled.
 
-    ``reason`` is what a spawn without one is refused with; ``recovery`` says
-    the shape a name takes, because a refusal an agent cannot act on becomes
-    a retry, and the kernel opens it with the key the runtime reads the name
-    from, which the row cannot hold since one row serves every runtime.
-    ``misspelled`` is what a name outside that shape is refused with.
+    ``reason`` is what a spawn with nothing to read a name from is refused
+    with; ``recovery`` says the shape a name takes, because a refusal an agent
+    cannot act on becomes a retry, and the kernel opens it with the key the
+    runtime reads the name from, which the row cannot hold since one row
+    serves every runtime.
 
-    ``punctuation`` is what a name may carry beside letters and digits, and
-    ``limit`` how long it may be. Both are data rather than a check written
-    into the judgement, because which spellings are safe is a property of the
-    runtimes a project runs on, and a project running on one of them may
-    widen what a project running on several cannot.
+    ``punctuation`` is what a name may carry beside letters and digits, its
+    first mark the one a normalized name joins its words with, and ``limit``
+    how long it may be. Both are data rather than a check written into the
+    judgement, because which spellings are safe is a property of the runtimes
+    a project runs on, and a project running on one of them may widen what a
+    project running on several cannot.
     """
 
     reason: str
     recovery: str
-    misspelled: str
     punctuation: str
     limit: int
 

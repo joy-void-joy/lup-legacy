@@ -21,7 +21,6 @@ import pytest
 
 import lup.devtools.harness.launch as launch
 import lup.launch.session as launch_session
-from lup.launch.refusal import LaunchRefused
 from lup.launch.declaration import LaunchSandbox
 from lup.coordination.identity import (
     MEMBER_ENV,
@@ -31,19 +30,9 @@ from lup.coordination.identity import (
 )
 from lup.coordination.repository import RepositoryPeers
 from lup.coordination.wake import WakePath
-from lup.harness.messaging import SessionInboxes
-
-
-def composition() -> Mock:
-    """A composition carrying the one plugin each launcher reads first."""
-    plugin = Mock()
-    plugin.name = "lup"
-    plugin.marketplace = "test"
-    built = Mock()
-    built.recipe.source.plugins = [plugin]
-    # Declined, so no launch here binds an inbox on the machine's directory.
-    built.recipe.source.image.inboxes = SessionInboxes(directory="")
-    return built
+from lup.harness.messaging import WakeSockets
+from lup.workspace.edition import shared_git_directory
+from tests.unit.harness_launch import composition, harness, profiles, stub_host
 
 
 @pytest.fixture
@@ -51,18 +40,17 @@ def uncontained(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """Everything an uncontained `session_argv` reaches that is not its subject."""
     monkeypatch.setattr(launch_session, "settle_boundary", lambda *a, **k: None)
     monkeypatch.setattr(launch_session, "say_opening", lambda *a, **k: None)
-    monkeypatch.setattr(launch, "carry_claude_home", lambda *a, **k: None)
 
 
 def opened(environment: dict[str, str], tmp_path: Path) -> list[str]:
     """Build the argv for one uncontained session against this environment."""
-    built = composition()
+    built = harness()
     return launch_session.session_argv(
         "claude",
         ["--model", "opus"],
         tmp_path,
-        built.recipe.source.image,
-        built.recipe.source.requirements,
+        built.image,
+        built.requirements,
         Mock(),
         tmp_path,
         Mock(),
@@ -108,7 +96,7 @@ def test_two_launches_are_two_members(tmp_path: Path) -> None:
     """Two sessions in one worktree are two peers, which is the case the id holds.
 
     The worktree names them and does not identify them: a derived id would
-    make these one member, and one of them would read the other's inbox.
+    make these one member, and one of them would read the other's mailbox.
     """
     first: dict[str, str] = {}
     second: dict[str, str] = {}
@@ -195,82 +183,161 @@ def launched(
     captured: list[list[str]],
     extra: list[str],
 ) -> None:
-    """Run `launch_claude` far enough to read the argv it built, and no further."""
-    import sh
+    """`harness claude` in ``worktree``, the host stubbed and the identity minted for real."""
+    import lup.coordination.repository as repository
+    import lup.providers.claude.launch as claude_launch
 
-    profiles = Mock()
-    profiles.launch_home.return_value = None
-    monkeypatch.setattr(
-        launch, "ready_to_open", lambda *a, **k: launch_session.LaunchOpening()
-    )
-    monkeypatch.setattr(launch, "project_root", lambda: worktree)
-    monkeypatch.setattr(launch, "carry_claude_home", lambda *a, **k: None)
-    monkeypatch.setattr(launch, "ambient_config_home", lambda *a, **k: worktree)
-    monkeypatch.setattr(
-        launch,
-        "session_argv",
-        lambda name, arguments, *a, **k: captured.append(arguments) or [name],
-    )
-    monkeypatch.setattr(
-        launch,
-        "claude_sandbox_arguments",
-        lambda _plugin, sandbox=LaunchSandbox.INNER, accessible=[], settings=None, tree=None: [],
-    )
-    monkeypatch.setattr(launch, "non_interactive_environment", lambda _env: {})
-    monkeypatch.setattr(
-        launch, "apply_sandbox_environment", lambda *args, **kwargs: None
-    )
-    monkeypatch.setattr(launch, "ClaudeTranscripts", lambda _home: Mock())
-    monkeypatch.setattr(launch, "accessible_roots", lambda *a: [])
-    monkeypatch.setattr(
-        launch, "start_harness_transcript", lambda *args, **kwargs: Mock()
-    )
-    monkeypatch.setattr(sh, "Command", lambda _name: lambda *args, **kwargs: None)
+    caught = stub_host(monkeypatch, worktree)
+    for module in (launch_session, claude_launch):
+        monkeypatch.setattr(module, "launched_member", repository.launched_member)
+    monkeypatch.setattr(claude_launch, "settle_claude_theme", lambda *_a, **_k: None)
 
-    launch.launch_claude(composition(), extra, profiles, None, None, False)
+    launch.launch_claude(
+        composition(worktree, "claude"),
+        launch.LaunchRequest(words=extra, sandbox=LaunchSandbox.INNER),
+        profiles(),
+        False,
+    )
+    captured.append(caught.argv)
 
 
-def test_a_live_inbox_is_refused_by_name_rather_than_by_the_runtime(
-    tmp_path: Path,
+def placed(sockets: WakeSockets, root: Path, member_id: str, cli_name: str) -> str:
+    """Where a launch in *root* places one member's wake socket, which is somewhere."""
+    found = launch_session.placed_wake_socket(
+        sockets, root, LaunchedMember(member_id=member_id, cli_name=cli_name)
+    )
+    assert found is not None
+    return found
+
+
+def joined(root: Path, sockets: WakeSockets, cli_name: str) -> tuple[str, str]:
+    """A member on *root*'s roster that declared the wake socket placed for it."""
+    member = mint_member_id()
+    address = sockets.socket(shared_git_directory(root), member)
+    RepositoryPeers(root).join(
+        member,
+        root,
+        cli_name=cli_name,
+        wake=WakePath(runtime="claude", handle=address),
+    )
+    return member, address
+
+
+def test_the_wake_socket_is_keyed_by_the_member_id_and_not_its_name(
+    tmp_path: Path, wake_sockets: WakeSockets
 ) -> None:
-    """The runtime's own refusal tells the reader to remove a live session's socket.
+    """The id addresses; the name is for a person to read, and repeats."""
+    member = mint_member_id()
 
-    Measured, from a session launched while another held the path it was
-    given. lup asks first, and answers with the session the roster says is
-    woken there -- which is who an operator ends, rather than the file that
-    would cut it off if they removed it.
+    address = placed(wake_sockets, tmp_path, member, "display-only")
+
+    assert address == wake_sockets.socket(shared_git_directory(tmp_path), member)
+    assert Path(address).name.endswith(f"--{member}.sock")
+    assert "display-only" not in address
+
+
+def test_two_sessions_with_one_display_name_bind_two_wake_sockets(
+    tmp_path: Path, wake_sockets: WakeSockets
+) -> None:
+    """Display names repeat by design, and each member still binds its own."""
+    first = placed(wake_sockets, tmp_path, mint_member_id(), "dev")
+    second = placed(wake_sockets, tmp_path, mint_member_id(), "dev")
+
+    assert first != second
+
+
+def test_a_rename_keeps_the_wake_socket(
+    tmp_path: Path, wake_sockets: WakeSockets
+) -> None:
+    """A session renames itself at will, and its peers go on reaching it.
+
+    The roster's handle is what a peer writes to, and it is the path the
+    session bound; a path keyed by the name would be a handle the next rename
+    left pointing at nothing.
     """
-    inboxes = SessionInboxes(directory=str(tmp_path / "in"))
-    inboxes.serve()
-    minted = LaunchedMember(member_id=mint_member_id(), cli_name="main")
-    inbox = inboxes.socket(tmp_path, "main")
-    RepositoryPeers(tmp_path).join(
-        mint_member_id(),
-        tmp_path,
-        cli_name="main",
-        wake=WakePath(runtime="claude", handle=inbox),
-    )
+    member, address = joined(tmp_path, wake_sockets, "dev")
+    peers = RepositoryPeers(tmp_path)
 
-    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as holder:
-        holder.bind(inbox)
-        holder.listen(1)
-        with pytest.raises(LaunchRefused) as refused:
-            launch_session.placed_inbox(inboxes, tmp_path, minted)
+    peers.rename(member, "reviewing-the-socket")
+    row = peers.row(member)
 
-    assert str(refused.value).startswith(f"main is listening at {inbox}")
+    assert row is not None
+    assert row.wake.handle == address
+    assert placed(wake_sockets, tmp_path, member, "reviewing-the-socket") == address
 
 
-def test_a_stale_inbox_is_cleared_and_placed(tmp_path: Path) -> None:
-    """A crashed session's socket file is nobody's, so the launch takes the path."""
-    inboxes = SessionInboxes(directory=str(tmp_path / "in"))
-    inboxes.serve()
-    inbox = inboxes.socket(tmp_path, "main")
+@pytest.mark.usefixtures("unix_socket")
+def test_a_stale_socket_of_a_departed_member_is_cleared(
+    tmp_path: Path, wake_sockets: WakeSockets
+) -> None:
+    """The roster says its owner left, and nothing answers where it bound.
+
+    A crashed session leaves its socket file behind. Its path is never placed
+    again, so it blocks nobody; it is removed so the directory holds the
+    sessions there are rather than every session there was.
+    """
+    wake_sockets.serve()
+    gone, address = joined(tmp_path, wake_sockets, "dev")
+    RepositoryPeers(tmp_path).leave(gone)
     with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as crashed:
-        crashed.bind(inbox)
+        crashed.bind(address)
 
-    placed = launch_session.placed_inbox(
-        inboxes, tmp_path, LaunchedMember(member_id=mint_member_id(), cli_name="main")
-    )
+    newcomer = placed(wake_sockets, tmp_path, mint_member_id(), "dev")
 
-    assert placed == inbox
-    assert not Path(inbox).exists()
+    assert not Path(address).exists()
+    assert newcomer != address
+
+
+@pytest.mark.usefixtures("unix_socket")
+def test_a_live_member_s_socket_is_left_whatever_answers_on_it(
+    tmp_path: Path, wake_sockets: WakeSockets
+) -> None:
+    """Only the roster says a member is gone; a quiet socket does not."""
+    wake_sockets.serve()
+    _, address = joined(tmp_path, wake_sockets, "dev")
+    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as quiet:
+        quiet.bind(address)
+
+    placed(wake_sockets, tmp_path, mint_member_id(), "dev")
+
+    assert Path(address).is_socket()
+
+
+@pytest.mark.usefixtures("unix_socket")
+def test_a_departed_member_still_listening_keeps_its_socket(
+    tmp_path: Path, wake_sockets: WakeSockets
+) -> None:
+    """The roster reads a lapsed pulse as a departure, and a process may outlive it.
+
+    A machine back from sleep is one: every beat is stale until the next, and
+    each session still listens. Its socket stays, so a peer can still wake it
+    once it beats again.
+    """
+    wake_sockets.serve()
+    gone, address = joined(tmp_path, wake_sockets, "dev")
+    RepositoryPeers(tmp_path).leave(gone)
+
+    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as listening:
+        listening.bind(address)
+        listening.listen(1)
+        placed(wake_sockets, tmp_path, mint_member_id(), "dev")
+
+        assert Path(address).is_socket()
+
+
+@pytest.mark.usefixtures("socket_refused")
+def test_a_file_at_the_member_s_own_path_is_its_own_and_is_replaced(
+    tmp_path: Path, wake_sockets: WakeSockets
+) -> None:
+    """Nothing but this member was ever keyed there, so nothing is asked.
+
+    Not even from a shell refused ``socket(AF_UNIX)``: the file is an earlier
+    run of this same member, and the launch replaces it rather than refusing.
+    """
+    wake_sockets.serve()
+    member = mint_member_id()
+    own = Path(wake_sockets.socket(shared_git_directory(tmp_path), member))
+    own.touch()
+
+    assert placed(wake_sockets, tmp_path, member, "dev") == str(own)
+    assert not own.exists()

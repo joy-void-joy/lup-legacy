@@ -25,11 +25,7 @@ from lup.harness.models import (
     HookSandbox,
     HookSet,
     HookUrlScope,
-    LiteralWord,
-    McpServer,
     Plugin,
-    ProjectRootWord,
-    RuntimeWord,
     ResolveSpec,
     SkillInvocation,
 )
@@ -61,14 +57,14 @@ from lup.devtools.project import DevProject
 from lup.harness.contracts import NativeSpellings
 from lup.harness.enforcement import declared_role_rows
 from lup.policy.boundary import depends_on
-from lup.coordination.policy import inbox_refusal, peer_policy
+from lup.coordination.policy import peer_policy, wake_socket_refusal
 from lup.policy.refused_tools import RefusedTool
 from lup.workspace.paths import (
     declared_project_root,
     project_root,
     read_project_name,
 )
-from lup.mcp import ServeLaunch
+from lup.mcp import ServeLaunch, ToolServer
 from lup.tools.toolsets import startup_names
 from lup_template.agent.toolsets import (
     declared_tool_groups,
@@ -254,19 +250,36 @@ the launcher's id, or the id its runtime gave the process, which
 every session of one worktree would share."""
 
 
-def agent_tool_servers(
-    withheld: list[str] = WITHHELD_TOOL_GROUPS, startup_deadline_seconds: float = 60.0
-) -> list[McpServer]:
-    """Offer this project's own agent tools to whichever runtime is reading.
+def launched_tool_servers(
+    withheld: list[str] = WITHHELD_TOOL_GROUPS,
+) -> list[ToolServer]:
+    """The servers every session this project launches carries.
 
-    The servers come from the same declaration the in-process and subprocess
-    backends assemble from, so a group added there reaches a native session
-    too rather than only the ones this program launches itself. Each entry
-    carries its server as the serve command validates it back, so what a
-    runtime starts is the declaration rather than a name looked up in a list
-    beside it. Realtime is the relay mode of a persistent run and belongs to
-    no interactive session, so its group is not among them. *withheld* are the
-    groups a declined module owns, which no plugin starts a server for.
+    Read off the same declaration the in-process and subprocess backends
+    assemble from, so a group added there reaches a launched session too.
+    Realtime is the relay mode of a persistent run and belongs to no
+    interactive session, so its group is not among them; *withheld* are the
+    groups a declined module owns.
+    """
+    started = startup_names(declared_tool_groups())
+    return [
+        server
+        for server in declared_tool_servers()
+        if server.name in started and server.name not in withheld
+    ]
+
+
+def launched_serve(root: Path, startup_deadline_seconds: float = 60.0) -> ServeLaunch:
+    """How a launched session starts those servers: this project's CLI, in its environment.
+
+    Through ``uv run --directory`` naming the checkout, so a server started
+    inside a container or from another directory still resolves this
+    project's environment; under :data:`HARNESS_SESSION`, the session every
+    group's process of one worktree shares; with this project's needs hook.
+    Each server asks for what the launcher exported for it: whichever group
+    it serves, it is one process of the launched session, so it answers to
+    that session's roster identity and spends that session's recursion
+    allowance.
 
     The deadline is sized to a cold first boot rather than a warm one. Every
     server here starts through ``uv run``, which on a checkout without an
@@ -277,38 +290,20 @@ def agent_tool_servers(
     session sees is two tool groups simply missing on the boot that built
     the environment and present on every boot after.
     """
-    launch = ServeLaunch(session=HARNESS_SESSION, needs=session_needs)
-    started = startup_names(declared_tool_groups())
-    return [
-        McpServer(
-            id=f"mcp.{server.name}",
-            name=server.name,
-            description=f"Agent tools in the {server.name} group, served over stdio",
-            command="uv",
-            arguments=[
-                LiteralWord(text="run"),
-                LiteralWord(text="--directory"),
-                ProjectRootWord(),
-                LiteralWord(text="lup-devtools"),
-                LiteralWord(text="tools"),
-                LiteralWord(text="serve"),
-                LiteralWord(text="--runtime"),
-                RuntimeWord(),
-                *(
-                    LiteralWord(text=word)
-                    for word in [*launch.options(), *server.served().arguments()]
-                ),
-            ],
-            startup_timeout_seconds=startup_deadline_seconds,
-        )
-        # What a runtime starts when a session opens, read off the same
-        # declaration the session's own assembly reads — and declared rather
-        # than built, since this list is rendered into a native tree and one
-        # that depended on what the generating machine had installed would
-        # make two checkouts' plugins differ.
-        for server in declared_tool_servers()
-        if server.name in started and server.name not in withheld
-    ]
+    return ServeLaunch(
+        program=[
+            "uv",
+            "run",
+            "--directory",
+            str(root),
+            "lup-devtools",
+            "tools",
+            "serve",
+        ],
+        session=HARNESS_SESSION,
+        needs=session_needs,
+        startup_timeout_seconds=startup_deadline_seconds,
+    )
 
 
 def declared_plugin() -> Plugin:
@@ -417,12 +412,13 @@ workspace is the library's, installed first because `dev check` rebuilds the
 bundles it compares against what is committed."""
 
 
-PUBLISH = PublishSpec(package=DISTRIBUTION)
+PUBLISH = PublishSpec(package=DISTRIBUTION, tag_prefix=declared_release().tag_prefix)
 """What a release tag publishes here: the library, not the scaffold.
 
 The workspace root is `lup-template`, which nobody installs — so the member
 is named, and `uv build` is told which of the two distributions in this
-repository is the one that ships."""
+repository is the one that ships. The tag it publishes on is the one the
+release writes, read from that declaration rather than spelled twice."""
 
 
 NATIVE_RUNTIMES: list[NativeSpellings] = [ClaudeSpellings(), CodexSpellings()]
@@ -610,13 +606,13 @@ def dev_project() -> DevProject:
                 call="RuleSelection",
                 keyword="retired",
                 summary="library scan rules this project does not hold itself to",
-                module=Path("src/lup_template/harness/content/catalog.py"),
+                module=Path(LAYOUT.path("harness", "content", "catalog.py")),
             ),
             Seam(
                 call="Image",
                 keyword="tooling",
                 summary="programs this project's work needs inside the image",
-                module=Path("src/lup_template/harness/content/image.py"),
+                module=Path(LAYOUT.path("harness", "content", "image.py")),
             ),
         ],
     )
@@ -652,7 +648,6 @@ def portable_harness(
         ),
         skills=content.skills,
         agents=content.agents,
-        mcp_servers=agent_tool_servers(composed.withheld_tool_groups()),
         hooks=HookSet(
             id="hooks.lup-policy",
             policy_ids=["fetch", "shell", "edit", "unknown-tool"],
@@ -790,13 +785,13 @@ def portable_harness(
                 # holds for the next session, where a per-call escape helps
                 # once and evaporates.
                 Path("packages/lup/src/lup/policy"),
-                Path("src/lup_template/harness/catalog.py"),
+                Path(LAYOUT.path("harness", "catalog.py")),
                 # Which of those rules apply is the same widening by another
                 # name: retiring a scan rule, or judging a command differently,
                 # is decided in these, and the next generation compiles it into
                 # the hooks as surely as an edit of the policy would.
-                Path("src/lup_template/harness/content/catalog.py"),
-                Path("src/lup_template/harness/content/shell_vocabulary.py"),
+                Path(LAYOUT.path("harness", "content", "catalog.py")),
+                Path(LAYOUT.path("harness", "content", "shell_vocabulary.py")),
                 Path("packages/lup/src/lup/harness/codescan"),
             ],
             # lup: template: what each tree in this domain is *for*. A role is
@@ -844,6 +839,15 @@ def portable_harness(
                 HookPathRole(
                     root=Path("packages/lup/src/lup/web/bundles"), role="scratch"
                 ),
+                # A pending migration is a declaration a break's own commit
+                # writes, one TOML file each: data read by `dev migrate` and
+                # the release, not source a whole-file or size gate reviews
+                # for how it reads. Data rather than scratch, because it is
+                # the only copy of what an adopter is told to do. Pending
+                # only: a released record is `dev release`'s to write.
+                HookPathRole(
+                    root=Path("packages/lup/src/lup/migrations/pending"), role="data"
+                ),
                 # What each suite the gate runs collects is a test by
                 # derivation rather than by a second table: bun collects
                 # `*.test.ts` beside its source, where no directory root
@@ -876,8 +880,8 @@ def portable_harness(
             # runtimes this project runs on, each spelled by its own login
             # declaration: a session reads neither its own token nor the
             # other runtime's. And the directory this image binds session
-            # inboxes in, read off the image rather than spelled, so a peer
-            # is reached through the roster rather than a raw frame.
+            # wake sockets in, read off the image rather than spelled, so a
+            # peer is reached through the roster rather than a raw frame.
             #
             # The one declaration every reader is refused by: the shell's
             # words on both runtimes, and on Claude the `Read` deny rules the
@@ -894,7 +898,7 @@ def portable_harness(
                         *CODEX_LOGIN.withheld_logins(),
                     ]
                 ),
-                *inbox_refusal(agent_image().inboxes.directory),
+                *wake_socket_refusal(agent_image().wake_sockets.directory),
             ],
             # Which checker answers for an edit is this project's toolchain,
             # not the library's, and it is named rather than located: the

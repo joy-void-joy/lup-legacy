@@ -145,7 +145,7 @@ def test_a_pinned_project_is_told_the_command_that_moves_the_pin(
     """The registration follows the pin, so writing its url would be read over."""
     (generated / "pyproject.toml").write_text(
         '[tool.lup]\nagent_version = "0.1.0"\n\n[tool.uv.sources]\n'
-        'lup = { git = "https://github.com/joy-void-joy/lup", branch = "dev" }\n'
+        'lup-agents = { git = "https://github.com/joy-void-joy/lup", branch = "dev" }\n'
     )
     before = (generated / "sync.json").read_text()
     monkeypatch.setattr(origin, "gh", Forge(FORK))

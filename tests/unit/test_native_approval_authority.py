@@ -90,11 +90,16 @@ def test_unexpected_execution_never_authorizes_retry(root: Path, runtime: str) -
     assert native_call(root, runtime) == before
 
 
-@pytest.mark.parametrize("runtime", ["codex"])
+@pytest.mark.parametrize(("runtime", "asked"), [("claude", "ask"), ("codex", "deny")])
 @pytest.mark.parametrize("state", ["approved", "observed"])
 def test_unproven_legacy_record_never_authorizes(
-    root: Path, runtime: str, state: Literal["approved", "observed"]
+    root: Path, runtime: str, asked: str, state: Literal["approved", "observed"]
 ) -> None:
+    """The approvals log is an audit, so the call is asked as if it were empty.
+
+    Claude renders the question natively; Codex's pre-tool boundary has no ask
+    effect, so it refuses and parks the question for a recorded answer.
+    """
     command = (
         "git push origin --delete probe-compound probe-excluded-prefix 2>&1 | tail -5"
     )
@@ -113,7 +118,7 @@ def test_unproven_legacy_record_never_authorizes(
         )
         + "\n"
     )
-    assert native_call(root, runtime) in ("ask", "deny")
+    assert native_call(root, runtime) == asked
 
 
 @pytest.mark.parametrize("runtime", ["codex"])

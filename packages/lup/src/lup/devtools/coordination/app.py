@@ -23,6 +23,7 @@ from lup.coordination.repository import (
     PeerDepartedError,
     PeerView,
     RepositoryPeers,
+    nested,
 )
 from lup.coordination.roster import Delivery
 from lup.coordination.touches import HeldPath
@@ -40,15 +41,24 @@ def peer_line(view: PeerView) -> str:
     `coordination holdings` is where the paths already live. Contested is
     called out separately because it is the half a reader acts on — it means
     two sessions are in the same place and neither knows.
+
+    The id rides beside a name, because it is the spelling that always
+    reaches this row: a name may be what another row once answered to, and
+    a person resolving that needs the one that cannot collide.
     """
     where = Path(view.member.worktree).name if view.member.worktree else ""
     state = "" if view.member.running else " [gone]"
     holding = f"holding {len(view.holding)}" if view.holding else ""
     contested = f"{len(view.contested)} contested" if view.contested else ""
+    named = (
+        f"{view.cli_name} ({view.member.actor.id})"
+        if view.cli_name
+        else view.member.actor.id
+    )
     return " — ".join(
         part
         for part in (
-            f"{view.address}{state}",
+            f"{named}{state}",
             where,
             view.doing,
             holding,
@@ -93,14 +103,16 @@ def create_coordination_app() -> typer.Typer:
         rather than everyone who ever joined: whether the peer a person sent
         something to is still there is a question the listing has to answer,
         and a roster read a month on must not answer it with a month of
-        history.
+        history. A session's native subagents are indented beneath it.
         """
         listing = peers().recent()
         if not listing:
             typer.echo("No session is working in this repository.")
             return
-        for view in listing:
+        for view in nested(listing):
             typer.echo(peer_line(view))
+            for child in view.subagents:
+                typer.echo(f"  {peer_line(child)}")
 
     @app.command("join")
     def join_cmd(
@@ -126,7 +138,7 @@ def create_coordination_app() -> typer.Typer:
         chosen = member_id or mint_member_id()
         tree = worktree or project_root()
         try:
-            peers().join(chosen, tree, cli_name=name, delivery=Delivery.MAILBOX)
+            peers().join(chosen, tree, cli_name=name, delivery=Delivery.WAITING)
         except NameTakenError as taken:
             raise typer.BadParameter(str(taken)) from taken
         typer.echo(chosen)
@@ -179,8 +191,8 @@ def create_coordination_app() -> typer.Typer:
     ) -> None:
         """Retire every session whose pulse has stopped, so nothing addresses it again.
 
-        What every coordination server does on each of its ticks, for a
-        roster no server is up on: a machine whose sessions all ended without
+        What the server answering for a session does on each of its ticks,
+        for a roster no server is up on: a machine whose sessions all ended without
         writing a departure, or a store whose sessions never beat at all.
         """
         found = peers()
@@ -280,10 +292,10 @@ def create_coordination_app() -> typer.Typer:
             )
         typer.echo(f"retracted {notice_id}")
 
-    @app.command("inbox")
-    def inbox_cmd(
+    @app.command("mailbox")
+    def mailbox_cmd(
         member_id: Annotated[
-            str, typer.Option("--id", help="Which session's inbox to read")
+            str, typer.Option("--id", help="Which session's mailbox to read")
         ],
         take: Annotated[
             bool,
@@ -292,7 +304,7 @@ def create_coordination_app() -> typer.Typer:
     ) -> None:
         """Read what is queued for one session, consuming it only when asked.
 
-        Peeking by default, because reading an inbox is how a person finds out
+        Peeking by default, because reading a mailbox is how a person finds out
         whether a peer has been reached — and a read that consumed would be a
         read that stopped the peer ever seeing it.
         """
@@ -377,7 +389,7 @@ def create_coordination_app() -> typer.Typer:
         """Stream what changes: who arrives and leaves, what they are on, what reaches them.
 
         Nothing is consumed. Mail is read the way a peek reads it, so a person
-        watching a peer's inbox is not the reason the peer never saw it. The
+        watching a peer's mailbox is not the reason the peer never saw it. The
         first look is a baseline — the live roster and the waiting mail once —
         rather than a replay.
 

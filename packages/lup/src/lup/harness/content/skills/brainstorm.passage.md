@@ -47,10 +47,10 @@ a conversation over one session, or a process that outlives any of them.
 
 ### Which runtime it drives
 
-`lup` is provider-neutral and the adapters are extras — `lup[claude]`,
-`lup[codex]`, or both. A project picks the runtimes it drives, not a rewrite:
-the same declaration renders into each. Two portable words are worth deciding
-early because they reach both:
+`lup` is provider-neutral and the adapters are extras — `lup-agents[claude]`,
+`lup-agents[codex]`, or both. A project picks the runtimes it drives, not a
+rewrite: the same declaration renders into each. Two portable words are worth
+deciding early because they reach both:
 
 - **`effort`** (`low`/`medium`/`high`/`xhigh`/`max`/`ultra`) — how hard a
   session thinks before answering. Every rung is one both runtimes list;

@@ -6,7 +6,6 @@ per-file decisions it enables, and the path resolution that keeps
 repo-relative rules matching inside a sibling worktree.
 """
 
-import importlib.util
 import io
 import json
 import sys
@@ -16,8 +15,10 @@ from types import ModuleType
 
 import pytest
 
+from lup.coordination.bare.store import Caller
 from lup.providers.codex.patch import patched_files, patched_paths
 from lup.types import JsonObject
+from tests.unit.bundled import bundled
 
 GREETING = 'def greet():\n    return "hi"\n'
 
@@ -169,12 +170,10 @@ def test_an_envelope_the_parser_cannot_vouch_for_raises(
 
 
 def bundled_dispatcher() -> ModuleType:
-    path = Path.cwd() / ".codex/plugins/lup/hooks/scripts/policy.py"
-    spec = importlib.util.spec_from_file_location("bundled_codex_policy", path)
-    assert spec is not None and spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
+    return bundled(
+        "bundled_codex_policy",
+        Path.cwd() / ".codex/plugins/lup/hooks/scripts/policy.py",
+    )
 
 
 def worktree(root: Path) -> Path:
@@ -294,9 +293,12 @@ class TestDispatchedPatches:
             calls.append(path)
             return []
 
+        def claimed(path: str, _cwd: Path, _caller: Caller) -> None:
+            calls.append(path)
+
         monkeypatch.setattr(dispatcher, "repaired_directives", record)
         monkeypatch.setattr(dispatcher, "file_diagnostics", record)
-        monkeypatch.setattr(dispatcher, "named_claim_recorded", record)
+        monkeypatch.setattr(dispatcher, "named_claim_recorded", claimed)
         monkeypatch.setenv("PLUGIN_DATA", str(tmp_path / "data"))
         payload = {
             "tool_name": "Bash" if shell else "apply_patch",

@@ -9,12 +9,12 @@ from pydantic import BaseModel
 
 from lup.coordination.repository import launched_member
 from lup.harness.generate import ProjectContent, codex_generation_recipe, generate
-from lup.harness.image import Image
 from lup.harness.models import CapabilityEvidence, Harness, HookSet, Resumption
 from lup.harness.notice import Notice
-from lup.harness.requirements import Finding, Manifest
+from lup.harness.requirements import Finding
 from lup.harness.toolchain import codex_envelope_requirement
 from lup.launch.boundary import apply_sandbox_environment
+from lup.launch.companions import CompanionLaunch, Joined, held_companions
 from lup.launch.compilation import allowance_environment, inherited_environment
 from lup.launch.declaration import (
     InnerSandbox,
@@ -24,19 +24,23 @@ from lup.launch.declaration import (
     Member,
     Recording,
     Sandbox,
+    declared_image,
+    declared_requirements,
     launched_sandbox,
     resumption,
 )
 from lup.launch.foreground import between_steps, run_in_foreground
-from lup.launch.preflight import LaunchSentinels, release_ledger, sweep_ledgers
+from lup.launch.preflight import LaunchSentinels, release_ledger
 from lup.launch.refusal import LaunchRefused
 from lup.launch.session import (
     LaunchOpening,
+    cleared_on_the_way_in,
     personal_config,
     runtime_preflight,
     session_argv,
     start_harness_transcript,
 )
+from lup.observability.audit import TraceJournal
 from lup.providers.codex.confinement import CODEX_CONFINEMENT
 from lup.providers.codex.harness_runtime import (
     CodexCliEvidence,
@@ -53,7 +57,7 @@ from lup.providers.codex.model_choice import (
     codex_default_effort,
     codex_effort_arguments,
 )
-from lup.providers.codex.profile import CodexProfileSettings
+from lup.providers.codex.profile import CodexAccountSettings
 from lup.providers.codex.session import (
     carry_codex_home,
     codex_login_preflight,
@@ -103,20 +107,21 @@ def codex_resume_arguments(resume: Resumption) -> list[str]:
     return ["resume", "--last"] if resume.latest else []
 
 
-def codex_sandbox_arguments(
+def codex_envelope(
     hooks: HookSet | None,
     environment: EnvVars,
     extra_args: list[str],
     sandbox: LaunchSandbox = LaunchSandbox.INNER,
     accessible: list[AccessibleRoot] = [],
     tree: Path | None = None,
+    mode: "CodexSandbox | None" = None,
 ) -> list[str]:
     """Compose the interactive Codex envelope that LUP_SANDBOX_ACTIVE vouches for.
 
     Establishing the inner sandbox, the launcher builds the boundary it
     announces: an explicit workspace-write sandbox on the Codex command line,
-    mirroring how the Claude settings artifact compiles the same declaration
-    into an OS wall. Path-level write and credential denials have no Codex
+    mirroring how the Claude settings compile the same declaration into an
+    OS wall. Path-level write and credential denials have no Codex
     equivalent, and neither does taking one command out of the envelope, so
     the envelope is the declaration's strict subset (network stays off). The
     dispatcher still reads the exclusions, judging those commands as though
@@ -131,40 +136,16 @@ def codex_sandbox_arguments(
     :data:`~lup.providers.codex.confinement.CODEX_CONFINEMENT` rather than
     here -- which carries why, and is where the image-side probe reads the
     same words rather than inventing its own. This is the counterpart of
-    Claude's off switch, and it is what "every runtime, in the same change"
-    means for a posture: one concept, each runtime's own word for it.
-
+    Claude's off switch: one concept, each runtime's own word for it.
     Choosing no sandbox at all spells the same off switch on the host, and
     the notice says which wall holds instead: none, so the deny lattice
     stays standing and every unjudged command keeps its escalation recipe.
+    LUP_SANDBOX_ACTIVE stays unset in both, because neither session relies on
+    it -- the kernel reads the containment out of what the launch measured.
 
-    LUP_SANDBOX_ACTIVE stays unset in both of those, because neither session
-    relies on it -- the kernel reads the containment out of what the launch
-    measured, and a boundary that was observed is a boundary whether this
-    flag vouched for it or not, while a session with no boundary wants the
-    lattice the flag would relax.
-    """
-    if hooks is None or hooks.sandbox is None:
-        return []
-    return codex_envelope(hooks, environment, extra_args, sandbox, accessible, tree)
-
-
-def codex_envelope(
-    hooks: HookSet | None,
-    environment: EnvVars,
-    extra_args: list[str],
-    sandbox: LaunchSandbox = LaunchSandbox.INNER,
-    accessible: list[AccessibleRoot] = [],
-    tree: Path | None = None,
-    mode: "CodexSandbox | None" = None,
-) -> list[str]:
-    """The Codex envelope for one posture, whether or not a policy declares a sandbox.
-
-    What :func:`codex_sandbox_arguments` composes once a policy declares a
-    sandbox, and what a declaration naming its sandbox outright compiles to
-    either way. ``mode`` is a mode the declaration names beside its wall:
-    it narrows the inner envelope and replaces the container's and the
-    host's off switch, as :func:`codex_sandbox_mode` reconciles the two.
+    ``mode`` is a mode the declaration names beside its wall: it narrows the
+    inner envelope and replaces the container's and the host's off switch,
+    as :func:`codex_sandbox_mode` reconciles the two.
     """
     overrides = [
         word
@@ -332,11 +313,14 @@ def codex_sandbox_mode(
 
 
 def codex_account_environment(agent: "Codex") -> EnvVars:
-    """The account a session runs as: its profile's home, or the home named outright."""
-    account = profile_environment(CODEX_LOGIN, agent.profile)
-    if agent.home is None:
-        return account
-    return {**account, **CODEX_LOGIN.environment(agent.home)}
+    """The account a session runs as: the home named outright, or its profile's.
+
+    A home named outright is the account's own, found by whoever named it,
+    so the profile beside it only names that account and is not looked up.
+    """
+    if agent.home is not None:
+        return CODEX_LOGIN.environment(agent.home)
+    return profile_environment(CODEX_LOGIN, agent.profile)
 
 
 def compiled_codex(agent: "Codex") -> "Codex":
@@ -353,7 +337,7 @@ def compiled_codex(agent: "Codex") -> "Codex":
     is each output's own: its home itself for a session opened here, and a
     home derived from it for the worktree a launch opens in.
     """
-    personal = UserConfigFile().load()
+    personal = personal_config(UserConfigFile())
     served = (
         agent.endpoint is not None
         or agent.model_provider is not None
@@ -401,23 +385,51 @@ def codex_launched(agent: "Codex") -> "Codex":
 def codex_mcp_arguments(tools: "CodexTools") -> list[str]:
     """The declared servers as a launched CLI starts them, one ``--config`` table each.
 
-    Declared per session over whatever the home or the plugin carries under
-    the same names, so the declaration's roster is what the session serves.
+    Declared per session over whatever the home carries under the same
+    names, so the declaration's roster is what the session serves.
+
+    A server reading what the launcher exported names it in ``env_vars``,
+    because Codex starts a stdio server under a fixed base environment and
+    forwards nothing else: without it, a coordination server joins the roster
+    under no id, and a nested agent its tools open spends no allowance. A
+    deadline the launch declares lands as ``startup_timeout_sec``, per
+    server, in this runtime's own unit.
+
+    ``default_tools_approval_mode`` grants every declared server outright,
+    the decision the other runtime's settings compile into their served-tool
+    grants: a server declared here is the declarer's own code, wired in
+    deliberately, so asking per call would make the declaration a
+    suggestion — and a session with no operator to ask would hold every
+    server it was given and call none of them.
     """
     serve = (
         tools.serve
         if tools.serve.runtime is not None
         else tools.serve.model_copy(update={"runtime": "codex"})
     )
-    return [
-        argument
+    launched = [
+        (server.name, key, value)
         for server in tools.mcp
         for key, value in dict(server.launched(serve)).items()
         if key != "type"
-        for argument in (
-            "--config",
-            f"mcp_servers.{server.name}.{key}={json.dumps(value)}",
-        )
+    ]
+    forwarded = [
+        (server.name, "env_vars", named)
+        for server in tools.mcp
+        if (named := server.launcher_variables())
+    ]
+    deadlines = [
+        (server.name, "startup_timeout_sec", deadline)
+        for server in tools.mcp
+        if (deadline := server.startup_timeout(serve)) is not None
+    ]
+    approved = [
+        (server.name, "default_tools_approval_mode", "approve") for server in tools.mcp
+    ]
+    return [
+        argument
+        for name, key, value in [*launched, *forwarded, *deadlines, *approved]
+        for argument in ("--config", f"mcp_servers.{name}.{key}={json.dumps(value)}")
     ]
 
 
@@ -523,7 +535,6 @@ def codex_root(agent: "Codex") -> Path:
 def codex_checked(agent: "Codex", sentinels: LaunchSentinels) -> LaunchOpening:
     """Clear the gates before a session: the CLI's probes, then the declared requirements."""
     launched = codex_launched(agent)
-    harness = launched.plugin if isinstance(launched.plugin, Harness) else None
     posture = launched.sandbox.posture()
     opening = LaunchOpening(sandbox=posture)
 
@@ -533,7 +544,7 @@ def codex_checked(agent: "Codex", sentinels: LaunchSentinels) -> LaunchOpening:
     opening.findings = runtime_preflight(
         "codex",
         readiness,
-        harness.requirements if harness is not None else Manifest(),
+        declared_requirements(launched.plugin, launched.requirements),
         codex_root(launched),
         sentinels,
         opening,
@@ -547,7 +558,7 @@ class CodexLaunchHome(BaseModel, frozen=True, arbitrary_types_allowed=True):
 
     store: CodexWorktreeHomeStore
     selection: CodexHomeSelection
-    settings: CodexProfileSettings | None = None
+    settings: CodexAccountSettings | None = None
     """The person's settings, carried into a container's home at its start."""
 
 
@@ -572,13 +583,9 @@ def codex_launch_home(
         editor=personal.editor,
         settings=personal.codex.settings,
     )
-    selection = select_codex_home(agent.home, environment, root, None, store)
+    selection = select_codex_home(agent.home, environment, root, store)
     contained = agent.sandbox.posture().contained()
-    settings = (
-        CodexProfileSettings.capture(selection.path, None, as_base=True)
-        if contained
-        else None
-    )
+    settings = CodexAccountSettings.capture(selection.path) if contained else None
     return CodexLaunchHome(store=store, selection=selection, settings=settings)
 
 
@@ -645,6 +652,7 @@ def codex_opening(
     state: CodexLaunchState,
     force: bool = False,
     transcript: Path | None = None,
+    joined: Joined = Joined(),
 ) -> LaunchCommand:
     """Compile a launched declaration into the process that opens its session.
 
@@ -652,17 +660,24 @@ def codex_opening(
     exercised before it is vouched for, the home prepared and the login
     refreshed through the boundary the session runs behind, the boundary
     measured and recorded, and an outer container's image and egress made
-    ready, since the argv names them.
+    ready, since the argv names them. ``joined`` is what the host companions
+    held around the session hand it: their variables join its environment
+    and their folders its sandbox's.
     """
     launched = codex_launched(agent)
-    config = compiled_codex(launched)
+    compiled = compiled_codex(launched)
+    config = compiled.model_copy(
+        update={"sandbox": compiled.sandbox.widened(joined.mounts)}
+    )
     root = codex_root(launched)
     posture = config.sandbox.posture()
     policy = config.enforced_policy()
     member = launched_member(root, config.identity.name if config.identity else None)
     environment = inherited_environment()
     environment.update(config.environment)
+    environment.update(joined.environment)
     environment.update(allowance_environment(config.max_recursive_agent, environment))
+    opening.banner.add(joined.notices)
     accessible = [
         *config.sandbox.roots(),
         *[AccessibleRoot(path=path) for path in config.writable_roots],
@@ -678,8 +693,7 @@ def codex_opening(
     )
     arguments = codex_arguments(config, envelope, words)
     environment[CODEX_HOME] = str(home.selection.path)
-    harness = config.plugin if isinstance(config.plugin, Harness) else None
-    image = harness.image if harness is not None else Image()
+    image = declared_image(config.plugin, config.sandbox)
     offered = codex_plugin_root(config, root)
 
     def authenticate(command: list[str], native_home: Path, headless: bool) -> None:
@@ -708,7 +722,7 @@ def codex_opening(
         arguments,
         root,
         image,
-        harness.requirements if harness is not None else Manifest(),
+        declared_requirements(config.plugin, config.requirements),
         policy,
         home.selection.path,
         CODEX_LOGIN,
@@ -725,8 +739,21 @@ def codex_opening(
         # Codex reads the clipboard through the X11 selection a container can
         # bridge, as its composition declares.
         clipboard="x11",
+        forwarded=list(joined.environment),
     )
     return LaunchCommand(argv=argv, env=environment, cwd=root)
+
+
+def codex_companions(
+    agent: "Codex", root: Path, journal: TraceJournal | None
+) -> CompanionLaunch:
+    """The session its host companions are held for, as a launch of ``agent`` opens it."""
+    return CompanionLaunch(
+        root=root,
+        runtime="codex",
+        environment={**inherited_environment(), **compiled_codex(agent).environment},
+        journal=journal,
+    )
 
 
 def codex_command(agent: "Codex", words: list[str]) -> LaunchCommand:
@@ -734,7 +761,8 @@ def codex_command(agent: "Codex", words: list[str]) -> LaunchCommand:
 
     Preparing the home and refreshing the login are part of what the argv
     depends on, so they happen here as they would for a launch; the boundary
-    a launch records is released again once the command is known.
+    a launch records is released again once the command is known, and so are
+    the host companions held to learn what they contribute.
     """
     launched = codex_launched(agent)
     root = codex_root(launched)
@@ -743,9 +771,18 @@ def codex_command(agent: "Codex", words: list[str]) -> LaunchCommand:
     environment = {**inherited_environment(), **compiled_codex(launched).environment}
     home = codex_launch_home(launched, environment, root)
     try:
-        return codex_opening(
-            launched, words, sentinels, opening, home, CodexLaunchState()
-        )
+        with held_companions(
+            launched.companions, codex_companions(launched, root, None)
+        ) as joined:
+            return codex_opening(
+                launched,
+                words,
+                sentinels,
+                opening,
+                home,
+                CodexLaunchState(),
+                joined=joined,
+            )
     finally:
         release_ledger(root, sentinels.nonce)
 
@@ -761,6 +798,9 @@ def launch_codex_session(
     measured behind is released however it ended.
     """
     launched = codex_launched(agent)
+    # Compiled once before any step runs, so a declaration the person's lup
+    # config cannot answer is refused before a step has done anything.
+    compiled_codex(launched)
 
     def session() -> int:
         root = codex_root(launched)
@@ -768,7 +808,7 @@ def launch_codex_session(
             generate(
                 codex_generation_recipe(root, ProjectContent(harness=launched.plugin))
             )
-        sweep_ledgers(root)
+        cleared_on_the_way_in(root)
         sentinels = LaunchSentinels()
         opening = codex_checked(launched, sentinels)
         config = compiled_codex(launched)
@@ -793,23 +833,29 @@ def launch_codex_session(
             arguments=list(words),
             record_root=record.root,
             transcribe=record.transcript,
+            mode=record.mode,
             recorder=record.ledger,
         )
         succeeded = False
         interrupted = False
         contained = launched.sandbox.posture().contained()
         try:
-            command = codex_opening(
-                launched,
-                words,
-                sentinels,
-                opening,
-                home,
-                state,
-                force,
-                transcript.journal.path,
-            )
-            status = run_in_foreground(command)
+            with held_companions(
+                launched.companions,
+                codex_companions(launched, root, transcript.journal),
+            ) as joined:
+                command = codex_opening(
+                    launched,
+                    words,
+                    sentinels,
+                    opening,
+                    home,
+                    state,
+                    force,
+                    transcript.journal.path,
+                    joined,
+                )
+                status = run_in_foreground(command)
             succeeded = status == 0
             return status
         except KeyboardInterrupt:
@@ -824,12 +870,9 @@ def launch_codex_session(
                     urgency="detail",
                 ).say()
             if home.selection.isolated and (state.installed or not contained):
-                harness = (
-                    launched.plugin if isinstance(launched.plugin, Harness) else None
-                )
                 carry_codex_home(
                     home.store,
-                    (harness.image if harness is not None else Image())
+                    declared_image(launched.plugin, launched.sandbox)
                     if contained
                     else None,
                     root,

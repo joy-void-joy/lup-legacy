@@ -10,5 +10,6 @@ protocol and persistent namespace); `container` holds the ``Sandbox``
 lifecycle (create, mount, sweep, destroy) and the post-session cleanup guard.
 
 Importing anything here requires the ``docker`` extra
-(``pip install lup[docker]``); import the concrete module you need directly.
+(``pip install lup-agents[docker]``); import the concrete module you need
+directly.
 """

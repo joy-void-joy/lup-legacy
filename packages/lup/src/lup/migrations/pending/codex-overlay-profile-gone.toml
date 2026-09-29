@@ -1,0 +1,38 @@
+subjects = [
+    "CodexProfileSettings",
+    "CodexProfileSettings.name",
+    "CodexProfileSettings.source_home",
+    "CodexProfileSettings.source_user_home",
+    "CodexProfileSettings.settings",
+    "CodexProfileSettings.as_base",
+    "CodexProfileSettings.capture",
+    "CodexProfileSettings.personal_settings",
+    "CodexProfileSettings.digest",
+    "CodexProfileSettings.installed_name",
+    "CodexProfileSettings.normalized",
+    "CodexProfileSettings.install",
+    "profile_config_filename",
+    "seed_config",
+]
+reason = """
+profile names the account on Codex as on Claude Code, so a launch no longer \
+selects a Codex configuration overlay ($CODEX_HOME/<name>.config.toml): every \
+setting one holds is a field of Codex(...), and a preset is another \
+declaration. What remains is carrying the account's own settings into a \
+contained session's home"""
+
+[[steps]]
+instruction = """
+Read CodexAccountSettings in lup.providers.codex.profile where \
+CodexProfileSettings was: capture(home) takes the account's home alone and \
+install(home) always replaces the home's settings, keeping what it installed \
+and trusted; there is no installed_name or digest, and no name or as_base."""
+
+[[steps]]
+instruction = """
+Declare the settings a Codex overlay named as fields of the Codex(...) \
+declaration — model, effort, sandbox_mode, approval_policy, model_provider \
+— and copy the declaration with model_copy(update=...) for a preset, where \
+harness codex --profile NAME selected an overlay; --profile now names the \
+account. select_codex_home and CodexWorktreeHomeStore.prepare no longer take \
+a profile, and codex_login_preflight no longer takes one."""

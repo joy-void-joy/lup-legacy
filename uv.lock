@@ -8,7 +8,7 @@ exclude-newer-span = "P3D"
 
 [manifest]
 members = [
-    "lup",
+    "lup-agents",
     "lup-template",
 ]
 
@@ -533,7 +533,7 @@ wheels = [
 ]
 
 [[package]]
-name = "lup"
+name = "lup-agents"
 version = "0.4.0"
 source = { editable = "packages/lup" }
 dependencies = [
@@ -609,7 +609,7 @@ source = { editable = "." }
 dependencies = [
     { name = "fastapi" },
     { name = "httpx" },
-    { name = "lup", extra = ["claude", "conversation", "docker", "web"] },
+    { name = "lup-agents", extra = ["claude", "conversation", "docker", "web"] },
     { name = "packaging" },
     { name = "prompt-toolkit" },
     { name = "pydantic-settings" },
@@ -636,7 +636,7 @@ dev = [
 requires-dist = [
     { name = "fastapi", specifier = ">=0.139.0" },
     { name = "httpx", specifier = ">=0.28.1" },
-    { name = "lup", extras = ["claude", "codex", "conversation", "docker", "web"], editable = "packages/lup" },
+    { name = "lup-agents", extras = ["claude", "codex", "conversation", "docker", "web"], editable = "packages/lup" },
     { name = "packaging", specifier = ">=26.2" },
     { name = "prompt-toolkit", specifier = ">=3.0.52" },
     { name = "pydantic-settings", specifier = ">=2.12.0" },

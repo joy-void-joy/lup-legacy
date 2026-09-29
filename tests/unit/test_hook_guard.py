@@ -148,6 +148,20 @@ def test_a_judged_call_passes_through_the_guard_untouched(plugin_root: Path) -> 
     assert "allow" in str(done.stdout, "utf-8")
 
 
+def test_the_dispatcher_is_started_without_the_user_site(plugin_root: Path) -> None:
+    """`-s`, so a user site under the home the session writes is never imported.
+
+    The dispatcher reaches only the standard library and the runtime beside
+    it, so the user's own site directory holds nothing it needs; closing it
+    keeps a planted module there from being what the policy loads.
+    """
+    guard = (plugin_root / "hooks" / "scripts" / "policy.sh").read_text(
+        encoding="utf-8"
+    )
+
+    assert 'python3 -s "$script"' in guard
+
+
 def test_a_missing_guard_still_refuses(tmp_path: Path) -> None:
     done = guarded(tmp_path)
 

@@ -299,7 +299,7 @@ def acceptance_guard_literal(guard: AcceptanceGuardRow | None) -> str:
 
 
 def verification_literal(row: VerificationRow) -> str:
-    """Render the gate spellings the way every other row here is rendered."""
+    """Render the check spellings the way every other row here is rendered."""
     return (
         "{\n"
         + "".join(f"    {json.dumps(name)}: {json.dumps(row[name])},\n" for name in row)
@@ -308,7 +308,7 @@ def verification_literal(row: VerificationRow) -> str:
 
 
 def verification_row(declared: SubagentCleanup | None) -> VerificationRow:
-    """How this project spells the gate, as the shipped notice reads it.
+    """How this project spells its scoped checks, as the shipped notice reads them.
 
     A project that declined the cleanup declaration still gets spellings,
     because the notice is composed wherever a delegated agent is dispatched
@@ -316,7 +316,7 @@ def verification_row(declared: SubagentCleanup | None) -> VerificationRow:
     otherwise.
     """
     held = declared or SubagentCleanup()
-    return VerificationRow(gate=held.gate, scoped=held.scoped, record=held.record)
+    return VerificationRow(scoped=held.scoped, tests=held.tests)
 
 
 def spawn_names_literal(row: SpawnNameRow | None) -> str:
@@ -330,7 +330,6 @@ def spawn_names_literal(row: SpawnNameRow | None) -> str:
     entries = [
         f'"reason": {json.dumps(row["reason"])}',
         f'"recovery": {json.dumps(row["recovery"])}',
-        f'"misspelled": {json.dumps(row["misspelled"])}',
         f'"punctuation": {json.dumps(row["punctuation"])}',
         f'"limit": {json.dumps(row["limit"])}',
     ]

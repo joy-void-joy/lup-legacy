@@ -59,6 +59,7 @@ from pathlib import Path
 
 from pydantic import BaseModel
 
+from lup.devtools.dev.library import LibraryMode, read_mode
 from lup.devtools.dev.model_config import materialize_revision
 from lup.harness.codescan.common import PACKAGE_ROOTS, module_name
 from lup.harness.codescan.symbols import defined_symbols
@@ -92,6 +93,8 @@ class ModuleSurface(BaseModel, frozen=True):
 
     module: str
     declares: list[str]
+    inherits: dict[str, list[str]] = {}
+    """Each class it declares that names bases, and the bases' own names."""
 
 
 class SurfaceCapture(BaseModel, frozen=True):
@@ -110,6 +113,15 @@ class SurfaceCapture(BaseModel, frozen=True):
         for surface in self.modules:
             for name in surface.declares:
                 yield Capability(identity=name, location=surface.module)
+
+    def bases(self) -> dict[str, list[str]]:
+        """Each class this capture holds, by its own name, and the bases it names."""
+        return {
+            parts[-1]: bases
+            for surface in self.modules
+            for name, bases in surface.inherits.items()
+            if (parts := name_parts(name))
+        }
 
     def homes(self) -> dict[str, list[str]]:
         """Each export identity this capture holds, and the modules declaring it."""
@@ -238,16 +250,29 @@ class Divergence(BaseModel, frozen=True):
 
 
 def walked_roots(
-    project: DevProject, roots: AbstractSet[str] = PACKAGE_ROOTS
+    project: DevProject,
+    roots: AbstractSet[str] = PACKAGE_ROOTS,
+    checkout: Path = Path(),
 ) -> AbstractSet[str]:
-    """The roots a capture covers: the library's, plus what the app publishes.
+    """The roots a capture covers: the library's where it is vendored, plus the app's.
 
     Read from the declaration rather than written down, for the reason
     :class:`~lup.devtools.project.DevProject` exists: initialization renames
     the application's package, and a root named here would go on naming one
     that is gone.
+
+    The library's roots are this checkout's surface only while it builds the
+    library from its own tree. A project resolving ``lup`` from its repository
+    or from a release imports every one of those names from the dependency, so
+    the commit that stops vendoring it has taken nothing from anybody — while
+    a walk reading the library at the base and none of it at the tip reports
+    every name the library declares as gone. Asked of the checkout rather than
+    of each revision, so both captures of one comparison cover the same roots;
+    a checkout with no manifest has no workspace to vendor into.
     """
-    return {*roots, project.package}
+    manifest = checkout / "pyproject.toml"
+    vendored = manifest.is_file() and read_mode(checkout) is LibraryMode.LOCAL
+    return {*roots, project.package} if vendored else {project.package}
 
 
 def offers_a_surface(parts: list[str], internal: Iterable[str]) -> bool:
@@ -290,13 +315,15 @@ def surfaces(
             and parts[0] in roots
             and offers_a_surface(parts, internal)
         ):
+            symbols = [
+                symbol for symbol in defined_symbols(source.text) if symbol.reachable
+            ]
             yield ModuleSurface(
                 module=module,
-                declares=[
-                    symbol.name
-                    for symbol in defined_symbols(source.text)
-                    if symbol.reachable
-                ],
+                declares=[symbol.name for symbol in symbols],
+                inherits={
+                    symbol.name: symbol.bases for symbol in symbols if symbol.bases
+                },
             )
 
 
@@ -371,11 +398,33 @@ def compare(captured: SurfaceCapture, live: SurfaceCapture) -> Divergence:
     it.
     """
     homes = live.homes()
+    bases = live.bases()
     held = {*captured.capabilities()}
 
+    def inherited(owner: list[str], member: str, seen: list[str]) -> list[str]:
+        """Where ``owner`` reaches ``member`` through a base declaring it, if one does."""
+        for base in bases.get(owner[-1], []):
+            if base in seen:
+                continue
+            found = homes.get(f"{base}.{member}") or inherited(
+                [base], member, [*seen, base]
+            )
+            if found:
+                return found
+        return []
+
     def answers(capability: Capability) -> list[str]:
-        """Which modules the later surface declares this name in, if any."""
-        return homes.get(capability.identity, [])
+        """Which modules the later surface declares this name in, if any.
+
+        A member its class no longer declares still answers where the class
+        does and a base of it declares the member: moved up to a parent the
+        class inherits from, it is reached by the same spelling as before.
+        """
+        found = homes.get(capability.identity, [])
+        *owner, member = name_parts(capability.identity) or [""]
+        if found or not owner or ".".join(owner) not in homes:
+            return found
+        return inherited(owner, member, [])
 
     def moved_modules() -> Iterator[ModuleMove]:
         """Each captured module that lost a name, and where its names went.
@@ -425,3 +474,22 @@ def compare(captured: SurfaceCapture, live: SurfaceCapture) -> Divergence:
         ],
         moves=list(moved_modules()),
     )
+
+
+class Span(BaseModel, frozen=True):
+    """The two ends a divergence is read between, as git's ``base..head`` names them."""
+
+    base: str
+    head: str = ""
+    """The later end, or empty for the working tree.
+
+    The working tree is what a gate asks about: uncommitted work is exactly
+    where a capability goes missing before anybody notices.
+    """
+
+    def divergence(self, project: DevProject) -> Divergence:
+        """The surfaces at both ends, compared."""
+        return compare(
+            surface_at(self.base, project),
+            surface_at(self.head, project) if self.head else surface_now(project),
+        )

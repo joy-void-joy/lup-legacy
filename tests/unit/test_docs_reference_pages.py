@@ -42,7 +42,7 @@ def project_resolving_lup(root: Path, source: str) -> Path:
     """
     root.mkdir(parents=True, exist_ok=True)
     (root / "pyproject.toml").write_text(
-        f'[project]\nname = "demo"\n\n[tool.uv.sources]\nlup = {source}\n',
+        f'[project]\nname = "demo"\n\n[tool.uv.sources]\nlup-agents = {source}\n',
         encoding="utf-8",
     )
     package = root / "src" / "lup_template" / "agent"

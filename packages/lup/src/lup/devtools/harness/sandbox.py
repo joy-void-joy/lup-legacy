@@ -20,7 +20,7 @@ def check_sandbox(image: str | None = None) -> ExerciseOutcome:
         return ExerciseOutcome(
             proved=False,
             exercised=False,
-            detail=f"Sandbox support could not load: {error}. Install lup[docker].",
+            detail=f"Sandbox support could not load: {error}. Install lup-agents[docker].",
         )
     with TemporaryDirectory(prefix="lup-sandbox-check-") as directory:
         sandbox = Sandbox(
