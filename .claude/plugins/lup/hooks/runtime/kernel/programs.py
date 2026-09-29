@@ -394,6 +394,7 @@ SCRIPT_INTERPRETERS = ("bash", "sh", "zsh", "node", "bun", "deno")
 Python is absent on purpose: it runs through `uv run python <script>`, in
 this project's environment, and the bare spelling keeps pointing there."""
 
+# lup: ignore[constant-declaration] — a rule id this repository defines, read where the verdict is
 PROGRAM_RULE = "shell:interpreter-program"
 """The rule an interpreter's refusal of the program it was handed carries.
 

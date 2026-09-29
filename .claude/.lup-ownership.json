@@ -548,7 +548,7 @@
     {
       "path": ".claude/plugins/lup/hooks/runtime/kernel/programs.py",
       "category": "generated",
-      "sha256": "5d17cc5f16045fac041c2cfaf943c8fa536811a2a11148165c5ecfb229718ad8",
+      "sha256": "d1ece72d12f40e1910cf9e503973574f8cf0d4a66cfd5f188cfa1d6304dc78ce",
       "semantic_id": "hooks.lup-policy",
       "executable": false
     },
