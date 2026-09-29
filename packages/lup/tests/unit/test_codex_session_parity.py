@@ -6,7 +6,7 @@ from collections import deque
 from pathlib import Path
 
 import pytest
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 from lup.policy.hooks import LupHookInput, LupHookMatcher, LupHookOutput, LupHooksConfig
 
@@ -19,8 +19,6 @@ from lup.providers.codex.runtime import (
     CodexTurnChannel,
     decode_completed_item,
 )
-from lup.providers.codex.selection import codex_config
-from lup.providers.selection import SessionRequest
 from lup.sessions.errors import (
     StructuredOutputError,
     TurnInterruptedError,
@@ -488,9 +486,8 @@ async def test_exiting_a_session_mid_turn_aborts_that_turn(
 def test_native_unavailable_numeric_limits_are_never_silently_dropped(
     tmp_path: Path, limit: str
 ) -> None:
-    request = SessionRequest.model_validate({"cwd": tmp_path, limit: 4})
-    with pytest.raises(UnsupportedCapability, match=limit):
-        codex_config(request)
+    with pytest.raises(ValidationError, match=limit):
+        Codex.model_validate({"cwd": tmp_path, limit: 4})
 
 
 @pytest.mark.parametrize(

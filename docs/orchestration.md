@@ -279,46 +279,44 @@ expressible rather than merely avoided.
 Every pattern above opens a session with a program behind it, and by default
 that program runs wherever the application does — a nested agent inside a
 tool call, a background agent on a wake, each member of a cohort. The wall
-around one is `SessionRequest.containment`, in the launcher's own three
-words, and it is `none` unless a request says otherwise.
+around one is the agent's own `sandbox` field, one of the launcher's three
+walls, and it is `NoSandbox()` unless a declaration says otherwise.
 
-| Wall | What it opens | What a request carries |
+| Wall | What it opens | What the declaration carries |
 | --- | --- | --- |
-| `none` | The runtime as the application's own configuration leaves it | Nothing; the default |
-| `inner` | The runtime's own sandbox, established where the session runs | Nothing else |
-| `outer` | A container, with the runtime's own sandbox stood down inside it | `contained_program`, the program that enters it |
+| `NoSandbox()` | The runtime as the application's own configuration leaves it | Nothing; the default |
+| `InnerSandbox()` | The runtime's own sandbox, established where the session runs | Nothing else |
+| `OuterContainer()` | A container, with the runtime's own sandbox stood down inside it | The program that enters it, as Claude's `cli_path` or Codex's `executable` |
 
-**`inner` is one field on each runtime and means the same thing on both.**
-Claude receives the SDK's sandbox settings; Codex receives a sandbox mode.
-Because Codex says how much a session may do by saying how far it may reach,
-a request naming both a wall and an `autonomy` lands twice on one field
-there, and the narrower of the two wins — no degree of autonomy widens the
-wall, and the wall does not widen a session that was only meant to plan.
+**`InnerSandbox()` is one field on each runtime and means the same thing on
+both.** Claude receives the SDK's sandbox settings; Codex receives a sandbox
+mode. Because Codex says how much a session may do by saying how far it may
+reach, a declaration naming both a wall and a `sandbox_mode` lands twice on
+one field there, and the narrower of the two wins — no mode widens the wall,
+and the wall does not widen a session that was only meant to read.
 
-**`outer` needs a program, because a container is not something a request
-can conjure.** The image, the mount table, the credential and the login are
-the application's, so it builds the wrapper with
+**`OuterContainer()` needs a program, because a container is not something a
+declaration can conjure.** The image, the mount table, the credential and the
+login are the application's, so it builds the wrapper with
 `lup.launch.container.contained_cli` and names the result:
 
 ```python
 from pathlib import Path
 
+from lup import Claude, OuterContainer
 from lup.launch.container import contained_cli
 from lup.harness.image import Image
 from lup.harness.requirements import Manifest
 from lup.providers.claude.login import CLAUDE_LOGIN
-from lup.providers.selection import SessionRequest
 
 
-def contained_request(
+def contained_agent(
     run_dir: Path, image: Image, manifest: Manifest, workspace: Path
-) -> SessionRequest:
+) -> Claude:
     program = contained_cli(
         run_dir / "enter.sh", image, manifest, workspace, "claude", CLAUDE_LOGIN
     )
-    return SessionRequest(
-        cwd=workspace, containment="outer", contained_program=program
-    )
+    return Claude(cwd=workspace, sandbox=OuterContainer(), cli_path=program)
 ```
 
 Both runtimes take that path where they would have found their own CLI —

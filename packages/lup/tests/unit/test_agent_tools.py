@@ -18,7 +18,7 @@ import pytest
 import sh
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
-from pydantic import ValidationError
+from pydantic import BaseModel, ValidationError
 
 from lup.mcp import (
     CodeIntel,
@@ -38,11 +38,8 @@ from lup.ledger.models import LedgerEdge, LedgerNode
 from lup.orchestration.reflection import ReviewGate
 from lup.providers.claude import Claude, ClaudeTools
 from lup.providers.claude.runtime import build_claude_options
-from lup.providers.claude.selection import claude_config
 from lup.providers.codex import Codex, CodexTools
 from lup.providers.codex.builtins import CodexBuiltins
-from lup.providers.codex.selection import codex_config
-from lup.providers.selection import SessionRequest, SessionTools
 from lup.tools.mcp import (
     LupMcpServerConfig,
     LupMcpTool,
@@ -53,6 +50,12 @@ from lup.tools.toolsets import SessionNeeds, ToolGroup
 from lup.workspace.context import SESSION_DIR_ENV
 
 FIXTURES = Path(__file__).parent.parent / "fixtures"
+
+
+class Probed(BaseModel):
+    """What the probe tools here take, and hand back unchanged."""
+
+    value: str = ""
 
 
 def options(tools: ClaudeTools, system_prompt: str = "Be brief."):
@@ -141,17 +144,6 @@ def test_the_default_is_the_web_alone_on_both_providers() -> None:
     assert Codex().builtins() == CodexBuiltins(web=True)
 
 
-def test_a_portable_request_defaults_to_the_web_on_either_runtime(
-    tmp_path: Path,
-) -> None:
-    request = SessionRequest(cwd=tmp_path)
-
-    assert request.tools == SessionTools()
-    assert claude_config(request).tools.builtin == "web"
-    assert codex_config(request).tools.builtin == "web"
-    assert codex_config(request).writable_roots == []
-
-
 @pytest.mark.parametrize(
     ("declared", "misspelt"),
     [(ClaudeTools, ["Reed"]), (CodexTools, ["Read"]), (ClaudeTools, "everything")],
@@ -204,7 +196,7 @@ def test_two_servers_under_one_name_are_refused() -> None:
 
 def test_allowed_tools_are_judged_against_the_declared_servers() -> None:
     @lup_tool("Record one value.")
-    async def record(params: SessionTools) -> SessionTools:
+    async def record(params: Probed) -> Probed:
         return params
 
     tools = ClaudeTools(builtin="none", mcp=[Toolset([record], name="app")])
@@ -237,7 +229,7 @@ class FakeContainer:
 
 
 @lup_tool("Run nothing.")
-async def execute_code(params: SessionTools) -> SessionTools:
+async def execute_code(params: Probed) -> Probed:
     return params
 
 
@@ -339,7 +331,7 @@ def test_a_toolset_of_a_closure_is_hosted_but_cannot_be_served(
     tmp_path: Path,
 ) -> None:
     @lup_tool("Answer from this process alone.")
-    async def local(params: SessionTools) -> SessionTools:
+    async def local(params: Probed) -> Probed:
         return params
 
     toolset = Toolset([local])

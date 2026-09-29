@@ -9,7 +9,6 @@ import pytest
 from lup.workspace import paths
 from lup.providers.codex.login import CODEX_HOME
 from lup.providers.codex.builtins import CodexBuiltins
-import lup.providers.codex.selection as codex_selection
 from tests.unit.doubles import FakeAppServer
 
 LUP_PROJECT_VERSION = "1.2.3"
@@ -70,5 +69,4 @@ def fake_app_server(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> FakeAppS
     home = tmp_path / "codex-home"
     home.mkdir()
     monkeypatch.setenv(CODEX_HOME, str(home))
-    monkeypatch.setattr(codex_selection, "project_root", lambda: tmp_path)
     return FakeAppServer(root=tmp_path)

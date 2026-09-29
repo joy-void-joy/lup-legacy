@@ -22,7 +22,7 @@ from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode
 
 from lup.providers.routing import catalog_provider
-from lup.providers.selection import SessionEffort
+from lup.providers.catalog import SessionEffort
 
 logger = logging.getLogger(__name__)
 

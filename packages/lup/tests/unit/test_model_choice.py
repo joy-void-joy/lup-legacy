@@ -20,6 +20,7 @@ from lup.providers.claude.model_choice import (
     claude_default_effort,
     claude_effort,
     claude_effort_named,
+    claude_model_choice,
     claude_model_id,
     claude_model_name,
 )
@@ -27,17 +28,15 @@ from lup.launch.declaration import InnerSandbox, OuterContainer
 from lup.providers.claude import Claude
 from lup.providers.claude.models import ClaudeModel
 from lup.providers.claude.runtime import build_claude_options
-from lup.providers.claude.selection import CLAUDE_RUNTIME, claude_config
 from lup.providers.codex.model_choice import (
     codex_default_effort,
     codex_effort_arguments,
     codex_effort_named,
+    codex_model_choice,
     codex_model_id,
 )
 from lup.providers.codex import Codex
-from lup.providers.codex.selection import CODEX_RUNTIME, codex_config
 from lup.providers.codex.subagents import CodexModelTiers
-from lup.providers.selection import SessionRequest
 from lup.types import CustomModel
 
 MEMBER = LaunchedMember(member_id="member-1", cli_name="work")
@@ -236,16 +235,14 @@ def test_what_the_catalog_cannot_see_is_left_to_the_cli() -> None:
 
 def test_a_model_the_other_runtime_lists_is_refused_by_this_one() -> None:
     with pytest.raises(ValueError, match="not a model Claude Code lists"):
-        CLAUDE_RUNTIME.session_factory(SessionRequest(model="gpt-6-astra"))
+        claude_model_choice("gpt-6-astra")
     with pytest.raises(ValueError, match="not a model Codex lists"):
-        CODEX_RUNTIME.session_factory(SessionRequest(model="opus", cwd=Path(".")))
+        codex_model_choice("opus")
 
 
 def test_a_portable_tier_reaches_both_runtimes() -> None:
-    request = SessionRequest(model="frontier", cwd=Path("."))
-
-    assert claude_config(request).model_id() == "fable"
-    assert codex_config(request).model_id() == "gpt-6-astra"
+    assert Claude(model="frontier").model_id() == "fable"
+    assert Codex(model="frontier", cwd=Path(".")).model_id() == "gpt-6-astra"
 
 
 def test_text_from_a_launcher_flag_is_read_against_the_catalog() -> None:

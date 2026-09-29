@@ -30,7 +30,7 @@ type CodexModelChoice = CodexModel | CustomModel | ModelTier
 def codex_model_choice(model: str | CustomModel) -> CodexModelChoice:
     """One model a caller named in words both runtimes share, as Codex takes it.
 
-    A portable request can name either runtime's catalog, so a name only the
+    A setting shared by both runtimes can name either catalog, so a name only the
     other runtime lists reaches here too, and is refused rather than sent to
     an app-server that would refuse it after the process had started.
     """
