@@ -1057,7 +1057,7 @@ def decide_shell_segment(
     # only where no `--git-dir` moved the repository: consumed with the other
     # globals, it is the one of them that says where `init` makes one.
     head = words[: global_span(words, context["rows"])]
-    if not any(word.partition("=")[0] == "--git-dir" for word in head):
+    if not any(word == "--git-dir" or word.startswith("--git-dir=") for word in head):
         made = git_init_in_scratch(
             placed, context["path_roles"], context["checkout_root"]
         )
