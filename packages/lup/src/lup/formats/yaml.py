@@ -153,19 +153,43 @@ class YamlFlow(YamlNode, frozen=True):
         return sequence
 
 
+class YamlItem(BaseModel, frozen=True):
+    """One item of a sequence, with what a reader needs above its dash.
+
+    The sequence's counterpart to :class:`YamlEntry`: a workflow step is
+    explained where it starts, and a comment on the first key of the mapping
+    it holds would land between the dash and that key instead.
+    """
+
+    value: "YamlAny"
+    comment: str = ""
+
+
 class YamlList(YamlNode, frozen=True):
-    """A sequence written one dashed item per line."""
+    """A sequence written one dashed item per line.
+
+    Told the column its key's value would start at, as every node is, while
+    its dash stands ``dash`` columns in from the key and each item's own
+    keys ``sequence`` columns in — which is where a comment on either goes.
+    """
 
     type: Literal["list"] = "list"
-    items: list["YamlAny"]
+    items: list[YamlItem]
 
     def plain(self) -> PlainData:
-        return [item.plain() for item in self.items]
+        return [item.value.plain() for item in self.items]
 
     def composed(self, layout: Layout, indent: int) -> EmittedValue:
-        return CommentedSeq(
-            item.composed(layout, indent + layout.sequence) for item in self.items
+        key = indent - layout.mapping
+        sequence = CommentedSeq(
+            item.value.composed(layout, key + layout.sequence) for item in self.items
         )
+        for index, item in enumerate(self.items):
+            if item.comment:
+                sequence.yaml_set_comment_before_after_key(
+                    index, before=item.comment, indent=key + layout.dash
+                )
+        return sequence
 
 
 class YamlEntry(BaseModel, frozen=True):

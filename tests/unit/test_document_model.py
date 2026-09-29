@@ -18,6 +18,7 @@ from lup.formats.yaml import (
     YamlDocument,
     YamlEntry,
     YamlFlow,
+    YamlItem,
     YamlList,
     YamlMap,
     YamlScalar,
@@ -142,6 +143,59 @@ def test_a_nested_comment_is_indented_with_the_key_it_stands_above() -> None:
     )
 
 
+def test_a_comment_stands_above_the_item_it_explains() -> None:
+    """A sequence item is explained at its dash, not inside the mapping it holds."""
+    steps = YamlList(
+        items=[
+            YamlItem(value=YamlMap(entries=scalars({"run": "uv sync"}))),
+            YamlItem(
+                comment="why this step exists",
+                value=YamlMap(entries=scalars({"name": "Step", "run": "true"})),
+            ),
+        ]
+    )
+    document = YamlDocument(
+        root=YamlMap(
+            entries=[
+                YamlEntry(
+                    key="jobs",
+                    value=YamlMap(entries=[YamlEntry(key="steps", value=steps)]),
+                )
+            ]
+        )
+    )
+
+    assert document.text() == (
+        "jobs:\n"
+        "  steps:\n"
+        "    - run: uv sync\n"
+        "    # why this step exists\n"
+        "    - name: Step\n"
+        "      run: 'true'\n"
+    )
+
+
+def test_a_comment_inside_an_item_is_indented_with_the_item_s_keys() -> None:
+    """An item's keys start past its dash, and so does a comment above one."""
+    step = YamlMap(
+        entries=[
+            YamlEntry(key="name", value=YamlScalar(value="Step")),
+            YamlEntry(key="run", comment="why it runs", value=YamlScalar(value="x")),
+        ]
+    )
+    document = YamlDocument(
+        root=YamlMap(
+            entries=[
+                YamlEntry(key="steps", value=YamlList(items=[YamlItem(value=step)]))
+            ]
+        )
+    )
+
+    assert document.text() == (
+        "steps:\n  - name: Step\n    # why it runs\n    run: x\n"
+    )
+
+
 def test_a_sequence_of_mappings_is_written_one_dashed_item_per_line() -> None:
     """What a workflow's steps are, and the layout every reader expects."""
     document = YamlDocument(
@@ -151,8 +205,14 @@ def test_a_sequence_of_mappings_is_written_one_dashed_item_per_line() -> None:
                     key="steps",
                     value=YamlList(
                         items=[
-                            YamlMap(entries=scalars({"uses": "actions/checkout@v4"})),
-                            YamlMap(entries=scalars({"run": "uv sync"})),
+                            YamlItem(
+                                value=YamlMap(
+                                    entries=scalars({"uses": "actions/checkout@v4"})
+                                )
+                            ),
+                            YamlItem(
+                                value=YamlMap(entries=scalars({"run": "uv sync"}))
+                            ),
                         ]
                     ),
                 )

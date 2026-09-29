@@ -11,4 +11,4 @@ instruction = """
 Call `Runtime.homed(request)` where you called `Runtime.contained(request)`; \
 nothing else about it moved. A caller reaching it through \
 `Runtime.session_factory` was never naming it and has nothing to change."""
-command = ["uv", "run", "lup-devtools", "dev", "py", "text", "\\.contained\\("]
+command = ["uv", "run", "lup-devtools", "dev", "py", "text", ".contained(", "."]

@@ -620,6 +620,45 @@ def test_a_protected_branch_is_refused_even_forced(
     assert "protected" in capsys.readouterr().err
 
 
+def test_the_scaffold_carrier_is_refused_retirement(
+    carried: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Retiring ends in the same deletion, so it is refused before anything moves."""
+    monkeypatch.chdir(carried)
+
+    with pytest.raises(typer.Exit):
+        branches.retire_branch(
+            "lup-scaffold", "abandoned", dry_run=False, scaffold="lup-scaffold"
+        )
+
+    assert "lup-scaffold" in branch_names(carried)
+    assert "scaffold carrier" in capsys.readouterr().err
+
+
+def test_a_protected_branch_is_refused_retirement(
+    carried: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.chdir(carried)
+
+    with pytest.raises(typer.Exit):
+        branches.retire_branch("develop", "abandoned", dry_run=False)
+
+    assert "develop" in branch_names(carried)
+    assert "protected" in capsys.readouterr().err
+
+
+def test_a_dry_run_retirement_of_the_carrier_says_it_is_refused(
+    carried: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.chdir(carried)
+
+    branches.retire_branch(
+        "lup-scaffold", "abandoned", dry_run=True, scaffold="lup-scaffold"
+    )
+
+    assert "scaffold carrier" in capsys.readouterr().out
+
+
 def test_a_merged_carrier_the_project_does_not_declare_deletes(
     carried: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

@@ -20,7 +20,14 @@ from lup.providers.roster_prompt import (
 )
 from lup.formats.banner import COMMENT_FREE, PROMPT_TEXT, VERBATIM_COPY
 from lup.formats.markdown import MarkdownDocument, Prose
-from lup.formats.yaml import YamlDocument, YamlEntry, YamlList, YamlMap, scalars
+from lup.formats.yaml import (
+    YamlDocument,
+    YamlEntry,
+    YamlItem,
+    YamlList,
+    YamlMap,
+    scalars,
+)
 from lup.harness.contracts import (
     ArtifactRenderer,
     Atom,
@@ -401,13 +408,15 @@ class ClaudeSkillRenderer(ArtifactRenderer[Skill]):
                                                 key="arguments",
                                                 value=YamlList(
                                                     items=[
-                                                        YamlMap(
-                                                            entries=scalars(
-                                                                {
-                                                                    "name": argument.name,
-                                                                    "description": argument.description,
-                                                                    "required": argument.required,
-                                                                }
+                                                        YamlItem(
+                                                            value=YamlMap(
+                                                                entries=scalars(
+                                                                    {
+                                                                        "name": argument.name,
+                                                                        "description": argument.description,
+                                                                        "required": argument.required,
+                                                                    }
+                                                                )
                                                             )
                                                         )
                                                         for argument in declared

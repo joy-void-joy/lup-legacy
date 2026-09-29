@@ -12,7 +12,7 @@ instruction = """
 Read `BranchBase.refusal()` where you read `BranchBase.notice()`, and exit on \
 it: it is empty wherever the base is settled, and where it is not it names \
 both spellings of `--base` for the caller to re-run with."""
-command = ["uv", "run", "lup-devtools", "dev", "py", "text", "\\.notice\\("]
+command = ["uv", "run", "lup-devtools", "dev", "py", "text", ".notice(", "."]
 
 [[steps]]
 instruction = """

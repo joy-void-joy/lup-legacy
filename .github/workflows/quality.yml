@@ -29,5 +29,10 @@ jobs:
         run: uv run lup-devtools git merge-driver
       - name: Generated artifact drift
         run: uv run lup-devtools harness check all
+      # GitHub's ubuntu-24.04 image restricts unprivileged user namespaces
+      # through AppArmor, leaving one no capabilities, so the tests that
+      # mount inside one skip rather than run. Lifted for this throwaway runner.
+      - name: Unprivileged user namespaces
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
       - name: Quality gate
         run: uv run lup-devtools dev check

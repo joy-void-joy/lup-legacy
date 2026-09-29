@@ -371,7 +371,7 @@ def create_git_app(declared: Callable[[], DevDeclarations]) -> typer.Typer:
         and then deletes: the head stays at `refs/pull/<number>/head`, which
         outlives both the branch and origin's copy of it.
         """
-        branches.retire_branch(name, reason, dry_run, base)
+        branches.retire_branch(name, reason, dry_run, base, scaffold=scaffold_branch())
 
     # -- git hook commands --
 

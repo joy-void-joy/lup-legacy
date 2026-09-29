@@ -1,1 +1,1 @@
-"""Dev operations: worktrees, branches, and pre-flight checks."""
+"""Dev operations: pre-flight checks, review markers, and reading the repository."""

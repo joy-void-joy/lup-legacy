@@ -101,13 +101,18 @@ class CommandEntry(BaseModel, frozen=True):
     def beneath(
         cls, command: ClickCommand, path: list[str]
     ) -> Iterator["CommandEntry"]:
-        """Every leaf command under ``command``, in the order ``--help`` shows.
+        """Every command under ``command`` that runs, in the order ``--help`` shows.
 
         Depth first over the group tree, so a sub-app's own sub-app is reached
-        at the depth a reader types rather than flattened into its parent.
+        at the depth a reader types rather than flattened into its parent. A
+        group is one of them where typing it runs its callback — a page
+        mounted as a sub-app with no subcommand at all, or a wizard whose
+        steps are subcommands too — and not where it only prints its help.
         """
         match command:
             case TyperGroup():
+                if path and command.invoke_without_command:
+                    yield cls(path=path, summary=summarized(command))
                 for name, child in command.commands.items():
                     if not child.hidden:
                         yield from cls.beneath(child, [*path, name])
