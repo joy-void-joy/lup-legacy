@@ -132,6 +132,21 @@ def ancestry(pid: int) -> Iterator[int]:
     yield from ancestry(int(fields[PARENT_FIELD]))
 
 
+def beneath(runtime: Runtime, ancestor: Runtime, scope: str) -> bool:
+    """Whether *runtime* runs now, started — at any remove — by *ancestor*, which runs too.
+
+    Asked only where a reader in *scope* can ask both: a process that has
+    stopped has been handed to whatever adopts orphans, so what started it
+    is no longer on record, and the answer then is no rather than a guess.
+    """
+    if runtime_alive(runtime, scope) is not True:
+        return False
+    if runtime_alive(ancestor, scope) is not True:
+        return False
+    started = list(ancestry(runtime.get("pid", 0)))
+    return ancestor.get("pid") in started[1:]
+
+
 def stdin_runtime() -> Runtime:
     """The runtime a stdio server serves: the process feeding its standard input.
 

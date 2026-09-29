@@ -43,10 +43,12 @@ from typing import TypedDict
 # interpreter and for a type checker alike.
 sys.path.insert(0, str(Path(__file__).parent))
 from coordination.mail import Message, consume, spoken, waiting
+from coordination.runtime import stdin_runtime
 from coordination.store import (
     MEMBER_KIND,
     Actor,
     conversation_of,
+    own_member,
     subagent_actor,
     text,
 )
@@ -155,10 +157,13 @@ def main() -> None:
     subagent's own mailbox and never its session's: the session's mail waits for
     the session's own next call. An event naming an agent type and no id is
     not a subagent this session's roster holds a row for, and takes nothing.
+    A runtime that inherited the launcher's id from the session's shell is
+    handed its own member's mail, never that session's.
     """
     try:
+        root = Path(sys.argv[1])
+        member = own_member(root, sys.argv[2], stdin_runtime())
         event: HookInput = json.load(sys.stdin)
-        member = sys.argv[2]
         if event.get("hook_event_name") != EVENT_NAME or not text(
             event.get("session_id")
         ):
@@ -171,7 +176,7 @@ def main() -> None:
             for name in (member, agent or member)
         ):
             return
-        deliver(Path(sys.argv[1]), member, agent)
+        deliver(root, member, agent)
     except Exception as error:
         print(
             f"Peer mail delivery failed ({type(error).__name__}); mail remains pending. Check hook input and store permissions.",

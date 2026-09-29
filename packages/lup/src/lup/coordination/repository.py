@@ -40,6 +40,7 @@ from pydantic import BaseModel, computed_field
 from lup.channels.models import Door, utc_now
 from lup.coordination.bare import mail as bare_mail
 from lup.coordination.bare import store
+from lup.coordination.bare.runtime import Runtime
 from lup.coordination.cohort import ActorCohort
 from lup.coordination.identity import (
     LaunchedMember,
@@ -253,6 +254,7 @@ class RepositoryPeers:
         cli_name: str = "",
         delivery: Delivery = Delivery.WAITING,
         wake: WakePath = WakePath(),
+        spawned_by: str = "",
     ) -> ActorRef:
         """Put this session on the roster, and hand back the address it answers to.
 
@@ -278,6 +280,11 @@ class RepositoryPeers:
         still has its mailbox, and a sender is told nothing will nudge it
         rather than told a nudge was sent.
 
+        *spawned_by* is the session whose shell started this one's runtime,
+        which inherited that session's launched id: its row names it, and one
+        given no name is called after it — the launcher's name in its
+        environment is that session's, not its own.
+
         The arrival and the naming happen under the store's roster lock, so
         two sessions starting together cannot read the same set of taken names
         and both take the free one.
@@ -294,14 +301,14 @@ class RepositoryPeers:
                 delivery=delivery,
                 worktree=str(worktree),
                 wake=wake,
+                spawned_by=spawned_by,
             )
-            chosen = (
-                cli_name
-                or current
-                or store.unique_cli_name(
-                    session_cli_name() or derived_cli_name(worktree), taken
-                )
+            wanted = (
+                f"{self.called(spawned_by) or spawned_by}-spawned"
+                if spawned_by
+                else session_cli_name() or derived_cli_name(worktree)
             )
+            chosen = cli_name or current or store.unique_cli_name(wanted, taken)
             if chosen != current:
                 self.record_name(member_id, chosen)
             return peer
@@ -739,3 +746,30 @@ def launched_member(root: Path, name: str | None = None) -> LaunchedMember:
         member_id=mint_member_id(),
         cli_name=store.unique_cli_name(wanted, peers.names_taken()),
     )
+
+
+class RuntimeMember(BaseModel, frozen=True):
+    """Who one runtime's processes are on the roster, and whose shell started it."""
+
+    member_id: str
+    spawned_by: str = ""
+    """The session whose launched id this runtime inherited, empty where the id is its own."""
+
+
+def runtime_member(
+    root: Path, launched: str, fallback: str, runtime: Runtime
+) -> RuntimeMember:
+    """The member a process of *runtime* answers as in *root*'s roster.
+
+    *launched* is the id a launcher exported, which every process the
+    launched runtime starts inherits: where *runtime* is not the one it was
+    minted for, it is a member of its own, spawned by that session. With no
+    launched id, *fallback* — what the runtime itself calls this session —
+    is all there is, and no other runtime carries it.
+    """
+    if not launched:
+        return RuntimeMember(member_id=fallback)
+    own = store.own_member(coordination_root(root), launched, runtime)
+    if own == launched:
+        return RuntimeMember(member_id=launched)
+    return RuntimeMember(member_id=own, spawned_by=launched)

@@ -103,6 +103,14 @@ class SessionNeeds(BaseModel, frozen=True, arbitrary_types_allowed=True):
     member: str = ""
     """What the roster knows this session by, empty where nothing minted one."""
 
+    spawned_by: str = ""
+    """The session whose shell started this one, whose launched id it inherited.
+
+    Empty where the id is this session's own. A runtime started from another
+    session's shell carries that session's id in its environment and is a
+    member of its own, named here by :func:`~lup.coordination.repository.runtime_member`.
+    """
+
     wake: WakePath = WakePath()
     """What would make this session look, as its own runtime's adapter answers.
 
@@ -265,6 +273,7 @@ def coordination_group(name: str = COORDINATION_SERVER) -> ToolGroup:
             needs.root,
             wake=needs.wake,
             runtime=needs.runtime,
+            spawned_by=needs.spawned_by,
         )
 
     def companions(needs: SessionNeeds) -> list[ServerCompanion]:
@@ -279,6 +288,7 @@ def coordination_group(name: str = COORDINATION_SERVER) -> ToolGroup:
                 member_id=needs.member,
                 wake=needs.wake,
                 runtime=needs.runtime,
+                spawned_by=needs.spawned_by,
             ),
             MailboxRelay(root=needs.root, member_id=needs.member),
         ]

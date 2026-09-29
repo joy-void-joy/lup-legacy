@@ -110,6 +110,27 @@ worktree has the plugin and no launcher, so it falls back to the identity its
 own runtime gave it and is named after its worktree when it joins, numbered
 the same way. It is a full peer that cannot prove who started it.
 
+**A runtime started from a session's shell is somebody else.** Every process
+the launched runtime starts inherits those two variables — and so does a
+`claude -p`, a `codex exec` or a pipeline run from the session's shell, which
+then joined, described, departed and read mail as that session: its ending
+ended the session's row, its tool calls were handed the session's mail, and
+its prompts, from another transcript, read as the session's conversation
+rewound and cleared what the session said it was doing. The id was minted
+for one runtime, and the row names the runtime it answers for, so each hook
+and tool server asks which runtime it serves — the process feeding its input
+— and a runtime that is neither the one the row names nor the one that
+started it is a member of its own: its id is the session's followed by `_`
+and a digest of its process (pid, start time and namespace), which its
+hooks and servers each arrive at without asking one another, and its row
+names the session it was `spawned_by` and is called after it
+(`<name>-spawned`). That holds after the session has stopped, so a runtime
+outliving it never takes its ended row. The first runtime to reach a row
+naming nobody takes it, and a session whose own runtime started the one that
+got there first — possible only in a store nobody had joined — takes its row
+back. A lup CLI verb run from a shell has no input to read a runtime from
+and acts as the session the environment names.
+
 **Every verb but describing is refused until the session has described
 itself.** The roster is read by sessions deciding whether they can touch the
 same code, and a row saying only where a session is answers them wrongly; a
@@ -396,7 +417,8 @@ can outlive it: measured with real tool servers under stand-in runtimes, one
 put a cleanly ended session back on the roster within a tick and beat for it
 for as long as it lived, and one freeze past the window took a live session's
 description off its row at the next sweep. Neither can happen to a row naming
-another runtime, or answered for by a pulse somebody holds.
+another runtime, or answered for by a pulse somebody holds — and such a
+runtime's server answers for a member of its own, spawned by the session.
 
 **The one place this spends more is the stat**, because settling a claim means
 asking the filesystem rather than reading a record. Measured on 2026-09-19

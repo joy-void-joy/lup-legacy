@@ -62,6 +62,7 @@ a field a newer library adds must not make its file unreadable here.
 """
 
 import fcntl
+import hashlib
 import json
 import os
 from collections.abc import Callable, Collection, Iterator
@@ -72,7 +73,7 @@ from pathlib import Path
 from typing import TypedDict
 from uuid import uuid4
 
-from .runtime import Runtime, process_scope, runtime_alive
+from .runtime import Runtime, beneath, process_scope, runtime_alive, same_runtime
 
 STORE_DIR = "lup"
 COORDINATION_DIR = "coordination"
@@ -278,6 +279,7 @@ class Member(TypedDict, total=False):
     id: str
     round: int
     parent: str
+    spawned_by: str
     names: list[Named]
     task: str
     description: str
@@ -572,6 +574,7 @@ def blank_member(kind: str, member_id: str) -> Member:
         id=member_id,
         round=1,
         parent="",
+        spawned_by="",
         names=[],
         task="",
         description="",
@@ -675,19 +678,85 @@ def named_runtime(root: Path, member: Actor) -> Runtime:
 
 
 def adopt(root: Path, member: Actor, runtime: Runtime) -> None:
-    """Record *runtime* as the process this member's row answers for, where it names none."""
+    """Record *runtime* as the process this member's row answers for, where nobody else is.
+
+    A row naming none is the first runtime's to take. So is one naming a
+    runtime *runtime* started: in a store nobody had joined, a runtime run
+    from the session's shell can reach the row before the session's own
+    first call does, and the session is still the one that started it.
+    """
+    scope = process_scope()
+
+    def owed(found: Member) -> bool:
+        """Whether this row is *runtime*'s to name."""
+        recorded = found.get("runtime")
+        return not recorded or beneath(recorded, runtime, scope)
 
     def answering(found: Member) -> Member:
         """This member, naming the process it answers for."""
-        if found.get("runtime"):
+        if not owed(found):
             return found
         settled = found.copy()
         settled["runtime"] = runtime
         return settled
 
     found = read_member(member_path(root, member), running=True)
-    if found is not None and not found.get("runtime"):
+    if found is not None and owed(found):
         revised(root, member, answering)
+
+
+def spawned_prefix(session: str) -> str:
+    """What every id spawned from *session* begins with, and no other id does.
+
+    A launched id is hex and a runtime's subagent is joined to it by a
+    hyphen, so an underscore marks the ids of runtimes started beneath it —
+    which is what lets the delivery guard, reading no file, look for their
+    mail beside the session's.
+    """
+    return f"{session}_"
+
+
+def spawned_id(session: str, runtime: Runtime) -> str:
+    """The roster id of a runtime started beneath *session* and carrying its id.
+
+    Derived from the runtime's own process — its id, its start and its
+    namespace — so every hook and server of that runtime, which share no
+    channel, arrive at one member without asking each other, and a later
+    runtime given the same pid is a different one.
+    """
+    spelled = f"{runtime.get('pid', 0)}:{runtime.get('started', '')}:{runtime.get('scope', '')}"
+    digest = hashlib.sha256(spelled.encode()).hexdigest()[:8]
+    return f"{spawned_prefix(session)}{digest}"
+
+
+def inherited(root: Path, session: str, runtime: Runtime) -> bool:
+    """Whether *runtime* carries *session*'s id without being the process it was minted for.
+
+    A launcher mints an id for the one runtime it starts, and every process
+    that runtime starts inherits it: a `claude -p`, a `codex exec` or a
+    pipeline run from the session's shell carries it too. The session's row
+    names the runtime it answers for, so a runtime that is neither that one
+    nor one that started it is somebody else — however long ago the session
+    stopped, since a runtime outliving it is still not it. A row naming no
+    runtime yet is the first runtime's to take.
+    """
+    named = named_runtime(root, session_actor(session))
+    if not named or same_runtime(named, runtime):
+        return False
+    return not beneath(named, runtime, process_scope())
+
+
+def own_member(root: Path, launched: str, runtime: Runtime) -> str:
+    """The member a process of *runtime* answers as, given the id its launcher exported.
+
+    The launched id where *runtime* is the session it was minted for, and a
+    member of its own — :func:`spawned_id` — where it inherited that id.
+    Blank stays blank: a process nothing launched answers as whatever its own
+    runtime calls it, which no other runtime can carry.
+    """
+    if not launched or not inherited(root, launched, runtime):
+        return launched
+    return spawned_id(launched, runtime)
 
 
 @contextmanager

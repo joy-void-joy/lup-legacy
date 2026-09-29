@@ -673,9 +673,13 @@ async def test_a_runtime_carrying_another_session_s_id_never_answers_for_it(
     person had stopped reading as running for as long as the other runtime
     lived. It met the session alive, so it is somebody else for good — once
     the session has stopped as much as before.
+
+    Its runtime is one the session's did not start, as a spawned runtime is
+    to the session's: the session's runtime is not beneath it, which is the
+    one relation that would make the row its own to take.
     """
     peers, member = joined(tmp_path, "mine", FOREVER)
-    with sleeping() as session:
+    with sleeping() as session, sleeping() as elsewhere:
         own = RosterPulse(
             root=tmp_path,
             member_id=member,
@@ -687,7 +691,10 @@ async def test_a_runtime_carrying_another_session_s_id_never_answers_for_it(
         silent_since(peers, member, timedelta(minutes=10))
         before = heard(peers, member)
         inherited = RosterPulse(
-            root=tmp_path, member_id=member, pulse=Pulse(interval_seconds=0.01)
+            root=tmp_path,
+            member_id=member,
+            pulse=Pulse(interval_seconds=0.01),
+            runtime=runtime_of(elsewhere.pid),
         )
         async with serving(inherited):
             await asyncio.sleep(0.1)
@@ -775,7 +782,7 @@ async def test_a_session_s_first_call_names_its_runtime_before_another_can(
     """
     peers = RepositoryPeers(tmp_path, pulse=FOREVER)
     member = mint_member_id()
-    with sleeping() as runtime:
+    with sleeping() as runtime, sleeping() as elsewhere:
         tools = {
             tool.name: tool
             for tool in create_peer_tools(
@@ -789,7 +796,10 @@ async def test_a_session_s_first_call_names_its_runtime_before_another_can(
         assert found.get("runtime") == runtime_of(runtime.pid)
 
         inherited = RosterPulse(
-            root=tmp_path, member_id=member, pulse=Pulse(interval_seconds=0.01)
+            root=tmp_path,
+            member_id=member,
+            pulse=Pulse(interval_seconds=0.01),
+            runtime=runtime_of(elsewhere.pid),
         )
         async with serving(inherited):
             await asyncio.sleep(0.05)

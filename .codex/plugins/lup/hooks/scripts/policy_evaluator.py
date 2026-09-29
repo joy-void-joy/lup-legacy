@@ -27,6 +27,7 @@ from kernel.decision import KernelDecision
 from kernel.decision import captured_edit_decision
 from kernel.policy_protocol import read_response, routing_failure
 from coordination import store
+from coordination.runtime import stdin_runtime
 from kernel.edit import (
     awaits_resolution,
     decide_edit,
@@ -3662,6 +3663,23 @@ def peer_directory(cwd: Path | None) -> Path | None:
     return peer_store(cwd, PEER_POLICY["store"])
 
 
+def answering_member(directory: Path | None) -> str:
+    """The member this hook's runtime is on the roster, blank where nothing launched it.
+
+    The launcher's id where this runtime is the session it was minted for;
+    where it inherited that id from the session's shell — a `claude -p` or a
+    pipeline run there — the member it is instead, so what it changes and
+    what it is asked about are its own. The runtime is the process feeding
+    this hook's input, which is the runtime that fired it.
+    """
+    launched = (
+        declared_identity(PEER_POLICY["member_env"]) if PEER_POLICY is not None else ""
+    )
+    if directory is None:
+        return launched
+    return store.own_member(directory, launched, stdin_runtime())
+
+
 def peer_send_decision(values: list[str], cwd: Path | None) -> KernelDecision:
     """Judge one native send against who this repository's roster holds.
 
@@ -3681,7 +3699,7 @@ def peer_send_decision(values: list[str], cwd: Path | None) -> KernelDecision:
         return decide_peer_send(values, [], PEER_POLICY)
     return decide_peer_send(
         values,
-        store.addresses(directory, beside=declared_identity(PEER_POLICY["member_env"])),
+        store.addresses(directory, beside=answering_member(directory)),
         PEER_POLICY,
     )
 
@@ -4122,7 +4140,7 @@ def foreign_claim_decision(
     directory = peer_directory(cwd)
     if PEER_POLICY is None or directory is None:
         return None
-    session = declared_identity(PEER_POLICY["member_env"])
+    session = answering_member(directory)
     return decide_foreign_claim(
         path_text,
         store.claim_holders(
@@ -4149,7 +4167,7 @@ def claim_window_opened(cwd: Path | None, caller: store.Caller) -> None:
         cwd,
         PEER_POLICY["store"],
         PEER_POLICY["windows_dir"],
-        store.acting_id(declared_identity(PEER_POLICY["member_env"]), caller),
+        store.acting_id(answering_member(peer_directory(cwd)), caller),
     )
 
 
@@ -4158,7 +4176,7 @@ def claim_window_closed(cwd: Path | None, caller: store.Caller) -> None:
     if PEER_POLICY is None:
         return
     directory = peer_directory(cwd)
-    session = declared_identity(PEER_POLICY["member_env"])
+    session = answering_member(directory)
     closed = close_claim_window(
         cwd,
         PEER_POLICY["store"],
@@ -4186,7 +4204,7 @@ def named_claim_recorded(
         return
     store.record_claims(
         directory,
-        store.acting(directory, declared_identity(PEER_POLICY["member_env"]), caller),
+        store.acting(directory, answering_member(directory), caller),
         [str(Path(path_text).resolve())],
     )
 

@@ -38,9 +38,11 @@ from pathlib import Path
 from typing import TypedDict
 
 from .mail import consume, new_message, post, waiting
+from .runtime import stdin_runtime
 from .store import (
     conversation_of,
     depart,
+    own_member,
     session_actor,
     subagent_actor,
     subagent_id,
@@ -91,15 +93,17 @@ def main() -> None:
     the session's own id as the fallback, and the subagent's id where a
     subagent is what stopped. The event name the guard passes beside them is
     not read here — an ending is an ending, and only the prompt fold has an
-    envelope to name it in.
+    envelope to name it in. A runtime that inherited the launcher's id from
+    the session's shell ends its own row, never that session's.
 
     Every failure is silence, because an exit is not something a broken
     roster may hold up.
     """
     try:
         root, member = Path(sys.argv[1]), sys.argv[2]
+        runtime = stdin_runtime()
         ending: Ending = json.load(sys.stdin)
-        session = member or text(ending.get("session_id"))
+        session = own_member(root, member, runtime) or text(ending.get("session_id"))
         agent = text(ending.get("agent_id"))
         if agent:
             subagent_left(root, session, agent)
