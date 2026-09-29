@@ -153,6 +153,14 @@ class RosterMember(BaseModel, frozen=True):
     somebody wrote down still resolves.
     """
 
+    transcript: str = ""
+    """The runtime's own transcript of this member's conversation, empty where none is known.
+
+    What its prompt fold last recorded, so a reader following what the member
+    is doing reads the file the runtime writes rather than guessing where a
+    runtime keeps one.
+    """
+
     @computed_field
     @property
     def address(self) -> str:
@@ -186,6 +194,7 @@ def folded_member(member: store.Member) -> RosterMember:
     still able to say who is here. What a malformed field costs is that field.
     """
     wake = member.get("wake") or store.Wake()
+    conversation = member.get("conversation") or store.Conversation()
     return RosterMember(
         actor=ActorRef(
             kind=store.text(member.get("kind")),
@@ -211,6 +220,7 @@ def folded_member(member: store.Member) -> RosterMember:
         delivery=carried(store.text(member.get("delivery")), Delivery.HOOK),
         parent=store.parent_of(member),
         cli_name=store.current_name(member),
+        transcript=store.text(conversation.get("transcript")),
     )
 
 

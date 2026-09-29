@@ -671,3 +671,20 @@ def test_a_claim_over_a_path_that_has_gone_ends_at_the_read(
 
     changed.write_text("value = 2\n", encoding="utf-8")
     assert peers.held() == []
+
+
+def test_a_row_names_the_transcript_its_last_prompt_came_from(tmp_path: Path) -> None:
+    """What a session is doing now is in its runtime's transcript, so the row says which.
+
+    The prompt fold records the transcript each prompt belongs to; a reader
+    following what the session does reads it off the row rather than guessing
+    where a runtime keeps it.
+    """
+    peers, member = joined(tmp_path, "reviewer")
+    transcript = tmp_path / "transcript.jsonl"
+    written(transcript, roots=1)
+    assert [row.transcript for row in peers.present()] == [""]
+
+    changes(peers.root, member, tmp_path / "tree", str(transcript))
+
+    assert [row.transcript for row in peers.present()] == [str(transcript)]
