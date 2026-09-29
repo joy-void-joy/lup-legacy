@@ -68,7 +68,7 @@ Run any of them with `uv run lup-devtools <command>`, and add `--help` for its a
 | `dev undo` | List, take, expire, or repair recoverable snapshots of this tree. |
 | `dev history` | Trace a symbol through every branch, past this tree&#x27;s own snapshots. |
 | `dev issues` | List the open issues a resolver run would take as evidence. |
-| `dev rules` | Generate the Lup rule and typed-suppression reference. |
+| `dev rules` | Print the Lup rule and typed-suppression reference. |
 | `dev models` | Read each runtime&#x27;s model lineup from its CLI, and compile its types. |
 | `dev settings` | Read the settings keys Claude Code takes from its CLI, and compile their types. |
 | `dev modules` | Report which modules this project takes, and what each one&#x27;s prose costs. |

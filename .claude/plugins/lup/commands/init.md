@@ -429,7 +429,7 @@ answering it wrongly — it is answering a question this library had no standing
 to close." The selection is subtractive, so a project that disagrees with three
 rules names those three rather than restating the thirty it keeps.
 
-Show the families before asking — `uv run lup-devtools dev rules` writes the
+Show the families before asking — `uv run lup-devtools dev rules` prints the
 generated index, and every rule in it carries the shape it matches and the
 diagnostic it prints. Then Ask the user with the AskUserQuestion tool, offering concrete options plus a free-text choice: which rule families this domain keeps, with retiring the anti-pattern family altogether as one answer. Offer the whole-family answer explicitly: a domain that does not want the
 anti-pattern rules should be able to say so once, here, rather than retire

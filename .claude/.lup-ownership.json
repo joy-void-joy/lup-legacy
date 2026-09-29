@@ -184,7 +184,7 @@
     {
       "path": ".claude/plugins/lup/commands/hooks.md",
       "category": "generated",
-      "sha256": "ac067738961f0b0dcf24372dfbc50b9dd9a04cbd31d8efc454810b7b972d0e22",
+      "sha256": "b41d69767556534eebc017be2af1018c3294ec96d5bdd1130666c675d000a628",
       "semantic_id": "skill.hooks",
       "executable": false
     },
@@ -205,7 +205,7 @@
     {
       "path": ".claude/plugins/lup/commands/init.md",
       "category": "generated",
-      "sha256": "315f036964b1d3e808e050907dee2cc69e34f9905ee4a734497f664956b1063f",
+      "sha256": "52415004ad38884cf53ab19f4ada8d2b6350417b6d4f87b8a04d045fadde7166",
       "semantic_id": "skill.init",
       "executable": false
     },

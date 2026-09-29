@@ -604,7 +604,7 @@
     {
       "path": ".codex/plugins/lup/skills/hooks/SKILL.md",
       "category": "generated",
-      "sha256": "2c53f1405c6f2f74c0cdfa25dd6cb90c70ece79ffb267e65dfa018b8289e30b3",
+      "sha256": "53286dc0996a3030fb22705b1512cf31db5b1346ef824dda1fd1212b35f1246a",
       "semantic_id": "skill.hooks",
       "executable": false
     },
@@ -625,7 +625,7 @@
     {
       "path": ".codex/plugins/lup/skills/init/SKILL.md",
       "category": "generated",
-      "sha256": "2e515e7e99a2adfc14e0cdbc6627b314c94b3c09e812139398974c8f86f54ce7",
+      "sha256": "cfa1f571102ef7a2617f177ae2989bd534a528cfc59ccb158db7aed9b700106c",
       "semantic_id": "skill.init",
       "executable": false
     },

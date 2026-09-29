@@ -7,7 +7,7 @@ from lup.providers.harness import claude_prompt_renderer
 from lup.harness.codescan.common import RuleStrength
 from lup.harness.codescan.common import RuleSelection
 from lup.harness.codescan.registry import RULE_REFERENCE, RegisteredRule, all_rules
-from lup.formats.banner import GeneratedBanner
+from lup.formats.banner import REGENERATE_COMMAND, GeneratedBanner
 from lup.harness.materialization import write_generated_file
 from lup.harness.models import Artifact
 from lup.formats.markdown import CodeCell, HtmlCodeCell, PlainCell, TableCell
@@ -160,10 +160,6 @@ RULE_REFERENCE_PATH = Path(RULE_REFERENCE)
 """Where this writes the reference, taken from the path deny messages cite so
 the two cannot name different files."""
 
-# lup: ignore[constant-declaration] — the command a reader types, whose words
-# are the CLI's own rather than a preference this module holds
-RULE_REFERENCE_COMMAND = "uv run lup-devtools dev rules"
-
 
 def rule_reference_artifact(selection: RuleSelection | None = None) -> Artifact:
     """The rule reference as one artifact, gated like any other generated file.
@@ -183,7 +179,7 @@ def rule_reference_artifact(selection: RuleSelection | None = None) -> Artifact:
         body=claude_prompt_renderer().render(document).rstrip("\n") + "\n",
         semantic_id="docs.rules",
         banner=GeneratedBanner(
-            source=document.declared_source(), command=RULE_REFERENCE_COMMAND
+            source=document.declared_source(), command=REGENERATE_COMMAND
         ),
     )
 
@@ -198,6 +194,6 @@ def write_rule_reference(
     return write_generated_file(
         rule_reference_artifact(selection),
         root or project_root(),
-        RULE_REFERENCE_COMMAND,
+        REGENERATE_COMMAND,
         check=check,
     )

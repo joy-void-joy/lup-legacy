@@ -1,0 +1,13 @@
+subjects = ["RULE_REFERENCE_COMMAND"]
+reason = """
+dev rules rewrote docs/rules.md as a side effect of being read for its table; \
+it prints the reference now, harness generate all writes docs/rules.md with \
+every other generated page, and the page's banner names that command"""
+
+[[steps]]
+instruction = """
+Regenerate docs/rules.md with harness generate all wherever a script ran \
+dev rules to write it; dev rules --check still verifies the page. Read \
+REGENERATE_COMMAND from lup.formats.banner where RULE_REFERENCE_COMMAND was \
+read."""
+command = ["uv", "run", "lup-devtools", "harness", "generate", "all"]
