@@ -69,6 +69,8 @@ from lup.types import StringMap
 if TYPE_CHECKING:
     from fastapi import BackgroundTasks, FastAPI
 
+    from lup.devtools.dashboard.stream import LiveFeed
+
 logger = logging.getLogger(__name__)
 
 
@@ -381,13 +383,15 @@ def dashboard_app(
     bundles: Path | None = None,
     health: DashboardHealth | None = None,
     panes: SetupPanes | None = None,
+    feed: "LiveFeed | None" = None,
 ) -> "FastAPI":
     """Build the dashboard: an authenticated browser surface over reviews and sessions.
 
     ``health`` is what a running dashboard answers its launcher with, and
     ``panes`` each repository's setup page; neither is served where not given.
     The repositories whose sessions it shows are the ``roots`` named and
-    every one the ``registry`` knows.
+    every one the ``registry`` knows. ``feed`` is the stream's producer where
+    the caller follows it too — the service, asking whether any tab is open.
     """
     from fastapi import BackgroundTasks, HTTPException, Request
     from fastapi.responses import JSONResponse, Response, StreamingResponse
@@ -417,7 +421,7 @@ def dashboard_app(
     def watched() -> list[KnownRepository]:
         return [*named, *(registry.repositories() if registry is not None else [])]
 
-    feed = LiveFeed(watched, store)
+    feed = feed if feed is not None else LiveFeed(watched, store)
 
     @app.middleware("http")
     async def authorize(
