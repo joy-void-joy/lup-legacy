@@ -5620,6 +5620,46 @@ def test_a_composed_session_enforces_the_rules_the_generated_tree_does() -> None
     assert composed == generated
 
 
+@pytest.mark.parametrize(
+    "state",
+    [
+        ".lup/preflight/launch.json",
+        ".lup/policy-snapshots/abc.json",
+        ".lup/questions.jsonl",
+        ".lup/review-claims/abc",
+        ".lup/review-stage-claims/abc",
+    ],
+)
+def test_the_state_the_hooks_write_is_protected_whatever_a_project_declares(
+    tmp_path: Path, state: str
+) -> None:
+    """The library writes these, so the library protects them.
+
+    A launch's measured ledger, the policy snapshots, the review queue and
+    the claims spending an answer once are written by the hooks and the
+    operator's commands from their own processes. A project declaring no
+    protected root at all still has them, on both enforcement paths, the way
+    it has `.env`.
+    """
+    hooks = declared_hook_set().model_copy(
+        update={"protected_edit_roots": [], "human_owned_files": []}
+    )
+    change = EditBatch(
+        changes=[EditChange(path=Path(state), before="a\n", after="b\n")]
+    )
+    canonical = EditPolicy(declared_path_rules(hooks)).decide(change)
+    generated = load_bundled_kernel(tmp_path, "edit").decide_edit(
+        state,
+        "a\n",
+        "b\n",
+        path_exists=True,
+        path_rules=runtime_path_rules([], []),
+        antipattern_rows=[],
+    )
+
+    assert canonical.effect == generated.effect == "ask"
+
+
 @pytest.mark.parametrize("autonomous", [False, True])
 @pytest.mark.parametrize(
     ("path", "effect", "named"),

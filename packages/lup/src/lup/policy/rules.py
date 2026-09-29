@@ -738,6 +738,44 @@ def protected_root_rule(root: str) -> PathRule:
     )
 
 
+def invariant_path_rules(
+    hook_state: tuple[str, ...] = (
+        ".lup/preflight",
+        ".lup/policy-snapshots",
+        ".lup/questions.jsonl",
+        ".lup/review-claims",
+        ".lup/review-stage-claims",
+    ),
+) -> list[PathRule]:
+    """The protected-path rules the library holds whatever a project declares.
+
+    ``hook_state`` is what the library itself writes from outside the
+    session: a launch's measured ledger, the policy snapshots a capture
+    restores from, the review queue a hook parks a question in, and the
+    claims that spend an approved answer once. A session writing one is the
+    confined thing recording what confines it -- its own measurement, its
+    own answer, a spent approval put back -- so each asks, and no adopter
+    has to know to declare it. An `.env` file and a new devtools module are
+    approvals on the same terms.
+
+    Both enforcement paths read this one list: a session composed in process
+    and the rows a generated dispatcher carries.
+    """
+    return [
+        *[protected_root_rule(state) for state in hook_state],
+        PathRule(
+            kind="name_prefix",
+            value=".env",
+            reason="protected path requires approval",
+        ),
+        PathRule(
+            kind="new_devtools",
+            value="src",
+            reason="new devtools module requires approval",
+        ),
+    ]
+
+
 def dependency_declarations(
     names: tuple[str, ...] = (
         "pyproject.toml",

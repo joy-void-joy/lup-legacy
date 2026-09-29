@@ -64,6 +64,7 @@ from lup.policy.shell_rules import (
 from lup.policy.rules import (
     antipattern_row,
     human_owned_path_rule,
+    invariant_path_rules,
     path_rule_row,
     protected_root_rule,
 )
@@ -228,20 +229,7 @@ def runtime_path_rules(
     return [
         *[path_rule_row(protected_root_rule(root)) for root in protected_roots],
         *[path_rule_row(human_owned_path_rule(path)) for path in human_owned_files],
-        PathRuleRow(
-            kind="name_prefix",
-            value=".env",
-            reason="protected path requires approval",
-            recovery="",
-            allow_autonomous=False,
-        ),
-        PathRuleRow(
-            kind="new_devtools",
-            value="src",
-            reason="new devtools module requires approval",
-            recovery="",
-            allow_autonomous=False,
-        ),
+        *[path_rule_row(rule) for rule in invariant_path_rules()],
     ]
 
 

@@ -1234,7 +1234,11 @@ itself. The file those verbs write is guarded the same way:
 hooks and the operator's commands write them from their own processes, so a
 session's own write — a row appended, a copy over the file, a claim retired —
 asks, because an approved row naming any other principal is what releases the
-retry. Nested command paths are declared with `ShellOperationRule.parents`,
+retry. The library writes them, so the library protects them:
+`lup.policy.rules.invariant_path_rules` holds them — with the launch ledger
+under `.lup/preflight`, the policy snapshots, `.env` and a new devtools
+module — on both enforcement paths whatever a project declares, and no
+adopter has to know to list them. Nested command paths are declared with `ShellOperationRule.parents`,
 and the deepest matching path decides.
 
 Approval releases one exact retry in the same session and directory.

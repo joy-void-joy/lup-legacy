@@ -769,16 +769,6 @@ def portable_harness(
                 # Gitignored is not a substitute. The gate is who may write
                 # it, and nothing was asking.
                 Path("sync.json.local"),
-                Path(".lup/preflight"),
-                Path(".lup/policy-snapshots"),
-                # The review queue, and the claims that spend an answer once.
-                # A hook parks a question here and releases the retry an
-                # approved row names, writing both from its own process; the
-                # session's own call writing either is the requester recording
-                # its own answer, or putting a spent approval back.
-                Path(".lup/questions.jsonl"),
-                Path(".lup/review-claims"),
-                Path(".lup/review-stage-claims"),
                 # What the agent is allowed to do at all is declared here, and
                 # an agent that can widen its own policy without a question
                 # has a preference rather than a boundary. Protected so the
