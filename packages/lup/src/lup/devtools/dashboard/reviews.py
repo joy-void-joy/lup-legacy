@@ -38,6 +38,7 @@ import typer
 from pydantic import BaseModel, Field
 
 from lup.coordination.repository import PeerDepartedError
+from lup.devtools.dashboard.address import AdvertisedDashboard
 from lup.devtools.dashboard.companion import (
     Dashboard,
     DashboardHealth,
@@ -48,6 +49,7 @@ from lup.devtools.dashboard.companion import (
     refuse_inside_a_session,
 )
 from lup.devtools.dashboard.panes import SetupPane, SetupPanes
+from lup.devtools.dashboard.pulse import PulseFile, status_line
 from lup.devtools.review.app import (
     RequesterPresence,
     ReviewDetail,
@@ -646,8 +648,30 @@ def create_operator_dashboard_app(root: Path) -> typer.Typer:
 
     @app.command("status")
     def status_cmd() -> None:
-        """Say whether the dashboard runs, where, and for how many sessions."""
+        """Say whether the dashboard runs, where, for how many sessions, and what waits."""
         typer.echo(dashboard_status(companion, root).model_dump_json(indent=2))
+
+    @app.command("line")
+    def line_cmd(
+        pulse: Path | None = typer.Argument(
+            None,
+            help="The pulse file to read; unset, the one this session's launch "
+            "named, else the running dashboard's",
+        ),
+    ) -> None:
+        """Print what a session's status line shows: the reviews waiting, and where.
+
+        Nothing where no dashboard answers; the address alone where nothing
+        waits. Named with its pulse, as a status line runs it, it is answered
+        before the project's application loads.
+        """
+        named = pulse or Path(
+            AdvertisedDashboard().pulse
+            or PulseFile.of(companion.slot(root).directory).path
+        )
+        shown = status_line(named)
+        if shown:
+            typer.echo(shown)
 
     @app.command("stop")
     def stop_cmd() -> None:

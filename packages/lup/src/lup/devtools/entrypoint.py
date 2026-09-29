@@ -1,15 +1,18 @@
 """Import-safe dispatch for a project's composed ``lup-devtools`` CLI.
 
 Conflict repair and pending-migration reports must run while project source
-cannot import. The console script recognizes those routes and builds only
-their library-owned command trees. Every other command loads the project's
-full Typer application from installed package metadata.
+cannot import, and a session's status line runs at every render, where
+loading the whole application would cost seconds. The console script
+recognizes those routes and builds only their library-owned command trees.
+Every other command loads the project's full Typer application from
+installed package metadata.
 
 The metadata is materialized when the environment is synced, so reading it
 does not parse a currently conflicted ``pyproject.toml``.
 """
 
 from importlib.metadata import entry_points
+from pathlib import Path
 import sys
 
 import typer
@@ -109,6 +112,23 @@ def migration_application() -> typer.Typer:
     return root_app
 
 
+def dashboard_line(pulse: Path) -> None:
+    """Print a session's status line from the dashboard's pulse, loading nothing else.
+
+    The route `dashboard line <pulse>` takes where a status line runs it,
+    answered as the project's own `dashboard line` answers it.
+    """
+    # lup: defer: most of what this route still costs (~0.3 s measured) is
+    # `import lup`, whose front door binds the session vocabulary on load
+    # (~0.22 s, `lup.sessions.events` the bulk); a status line re-run every
+    # few seconds pays it each time, in every session
+    from lup.devtools.dashboard.pulse import status_line
+
+    shown = status_line(pulse)
+    if shown:
+        typer.echo(shown)
+
+
 def main() -> None:
     """Dispatch import-safe library routes before the project's application."""
     match sys.argv:
@@ -116,5 +136,7 @@ def main() -> None:
             conflict_application()()
         case [_, "dev", "migrate", "pending", *_]:
             migration_application()()
+        case [_, "dashboard", "line", pulse] if not pulse.startswith("-"):
+            dashboard_line(Path(pulse))
         case _:
             project_application()()
