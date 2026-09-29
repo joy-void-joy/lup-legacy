@@ -1,35 +1,48 @@
-"""A session's row is present while its pulse says so, and gone when it stops.
+"""A session's row is present while its runtime runs, and gone when it stops.
 
-Written against the failure the roster had: every session that ever joined
+Written against two failures the roster had. Every session that ever joined
 read as running forever, because the only record that ended a row was the one
-a session wrote on its way out, and a killed session writes nothing. The pulse
-is the member's own file now — its modification time, touched while the
-session lives — so there is one fact rather than a record and a stamp beside
-it, and no way for the two to disagree. What is asserted is the read a peer
-makes: the listing, the claims that expire with a session, and the sweep that
-moves a stopped session's file where a listing agrees with a stat.
+a session wrote on its way out, and a killed session writes nothing — so a
+row is heard from, its file's modification time touched while the session
+lives. And a stopped session read as running whenever something else beat
+for it: a runtime started from its shell, carrying its id. So the row names
+its runtime process, a reader that can see that process asks it, one that
+cannot tests the pulse a live server holds, and the clock decides only where
+neither speaks. What is asserted is the read a peer makes — the listing, the
+claims that expire with a session, the sweep that moves a stopped session's
+file — and which server answers for which session.
 """
 
 import asyncio
 import os
-from contextlib import suppress
+import subprocess
+from collections.abc import AsyncIterator, Iterator
+from contextlib import asynccontextmanager, contextmanager, suppress
 from datetime import datetime, timedelta
 from pathlib import Path
 
+import pytest
+
 from lup.channels.models import utc_now
+from lup.channels.wait import wait_until
 from lup.coordination.identity import mint_member_id
-from lup.coordination.peer_tools import RosterPulse
+from lup.coordination.peer_tools import RosterPulse, create_peer_tools
+from lup.coordination.bare.runtime import Runtime, runtime_of
 from lup.coordination.bare.store import (
     DEPARTED_DIR,
     MEMBERS_DIR,
+    Member,
+    answered,
     beat,
     conversation_of,
     departed_path,
+    member_of,
     member_path,
+    pulse_path,
     session_actor,
     present,
 )
-from lup.coordination.pulse import Pulse
+from lup.coordination.pulse import Pulse, PulseHold
 from lup.coordination.refs import ActorRef
 from lup.coordination.repository import RepositoryPeers
 from lup.coordination.roster import RosterMember
@@ -72,6 +85,61 @@ def silent_since(peers: RepositoryPeers, member: str, ago: timedelta) -> None:
 def heard(peers: RepositoryPeers, member: str) -> datetime | None:
     """When this member was last heard from, as every reader reads it."""
     return row(peers, member).heard
+
+
+def record(peers: RepositoryPeers, member: str, runtime: Runtime) -> None:
+    """Put *runtime* on this member's row as the process the row answers for."""
+
+    def answered_by(found: Member) -> Member:
+        """This member, answering for *runtime*."""
+        settled = found.copy()
+        settled["runtime"] = runtime
+        return settled
+
+    peers.revise(member, answered_by)
+
+
+def foreign(runtime: Runtime) -> Runtime:
+    """*runtime* as a process in another pid namespace, which no reader here can ask."""
+    return Runtime(
+        pid=runtime.get("pid", 0),
+        started=runtime.get("started", ""),
+        scope="another-namespace",
+    )
+
+
+@contextmanager
+def sleeping() -> Iterator[subprocess.Popen[bytes]]:
+    """A runtime that runs until the test stops it, and is stopped whatever happens."""
+    sleeper = subprocess.Popen(["sleep", "600"])
+    try:
+        yield sleeper
+    finally:
+        sleeper.kill()
+        sleeper.wait()
+
+
+@asynccontextmanager
+async def serving(companion: RosterPulse) -> AsyncIterator[None]:
+    """*companion* running beside the test, stopped the way a server stops it."""
+    task = asyncio.create_task(companion.run())
+    try:
+        yield
+    finally:
+        task.cancel()
+        with suppress(asyncio.CancelledError):
+            await task
+
+
+async def until(peers: RepositoryPeers, member: str, held: bool) -> bool:
+    """Whether this member's pulse comes to be held, or free, within a few seconds."""
+    actor = session_actor(member)
+    found = await wait_until(
+        lambda: True if answered(peers.root, actor) == held else None,
+        wait_seconds=5.0,
+        poll_interval_seconds=0.01,
+    )
+    return found is True
 
 
 def test_a_beat_touches_the_member_s_own_file_and_nothing_else(
@@ -245,6 +313,7 @@ async def test_the_companion_puts_back_a_row_the_session_outlived(
 ) -> None:
     """A finish written while the process lives on is undone by the next tick."""
     peers, me = joined(tmp_path, "mine", FOREVER)
+    record(peers, me, runtime_of(os.getpid()))
     peers.leave(me)
     assert not member_path(peers.root, session_actor(me)).exists()
     companion = RosterPulse(
@@ -311,3 +380,273 @@ def test_the_store_holds_the_population_rather_than_its_history(
         f"{mine}.lock",
     ]
     assert not (peers.root / DEPARTED_DIR).exists()
+
+
+def test_a_session_whose_runtime_runs_is_present_however_long_it_was_silent(
+    tmp_path: Path,
+) -> None:
+    """A sleeping machine stops every beat; it does not stop the process a beat was for."""
+    peers, member = joined(tmp_path, "mine", INSTANTLY)
+    record(peers, member, runtime_of(os.getpid()))
+    silent_since(peers, member, timedelta(hours=3))
+
+    assert row(peers, member).running
+    assert member in peers.live_ids()
+    assert peers.sweep() == []
+
+
+def test_a_session_whose_runtime_stopped_reads_gone_at_once(tmp_path: Path) -> None:
+    """Within the window, because the process was asked rather than the clock."""
+    peers, member = joined(tmp_path, "mine", FOREVER)
+    with sleeping() as runtime:
+        record(peers, member, runtime_of(runtime.pid))
+
+        assert row(peers, member).running
+
+    gone = row(peers, member)
+
+    assert not gone.running
+    assert gone.error == "its runtime stopped"
+    assert [one.actor.id for one in peers.sweep()] == [member]
+
+
+def test_a_held_pulse_keeps_a_session_whole_across_a_sleep_its_readers_cannot_see_past(
+    tmp_path: Path,
+) -> None:
+    """A peer in another container cannot ask the process, and can ask the lock it holds."""
+    peers, member = joined(tmp_path, "mine", INSTANTLY)
+    record(peers, member, foreign(runtime_of(os.getpid())))
+    changed = tmp_path / "tree" / "a.py"
+    changed.parent.mkdir(parents=True, exist_ok=True)
+    changed.write_text("x = 1", encoding="utf-8")
+    peers.touched(member, changed)
+    peers.describe(member, "mid-rebase")
+    silent_since(peers, member, timedelta(hours=3))
+    hold = PulseHold(pulse_path(peers.root, session_actor(member)))
+
+    assert hold.take()
+    assert answered(peers.root, session_actor(member))
+    assert row(peers, member).running
+    assert peers.sweep() == []
+    assert [claim.path for claim in peers.held()] == [str(changed)]
+    assert row(peers, member).description == "mid-rebase"
+
+    hold.release()
+
+    assert not answered(peers.root, session_actor(member))
+    assert not row(peers, member).running
+
+
+def test_a_pulse_nobody_holds_leaves_a_session_to_the_clock(tmp_path: Path) -> None:
+    """A holder gone without a word is a server that died, which the clock still judges."""
+    peers, member = joined(tmp_path, "mine", FOREVER)
+    record(peers, member, foreign(runtime_of(os.getpid())))
+    hold = PulseHold(pulse_path(peers.root, session_actor(member)))
+    assert hold.take()
+    hold.release()
+
+    assert row(peers, member).running
+
+    peers.pulse = INSTANTLY
+
+    assert row(peers, member).error.startswith("unheard since ")
+
+
+async def test_the_companion_ends_its_session_when_its_runtime_stops(
+    tmp_path: Path,
+) -> None:
+    """A server its runtime left behind stops answering, and says why, within a beat."""
+    peers, member = joined(tmp_path, "mine", FOREVER)
+    with sleeping() as runtime:
+        companion = RosterPulse(
+            root=tmp_path,
+            member_id=member,
+            pulse=Pulse(interval_seconds=0.01),
+            runtime=runtime_of(runtime.pid),
+        )
+        async with serving(companion):
+            assert await until(peers, member, held=True)
+
+            runtime.kill()
+            runtime.wait()
+
+            assert await until(peers, member, held=False)
+            [stub] = [one for one in peers.present() if one.actor.id == member]
+
+    assert not stub.running
+    assert stub.error == "its runtime stopped"
+    assert departed_path(peers.root, session_actor(member)).is_file()
+
+
+async def test_the_companion_ends_its_session_as_it_stops_if_its_runtime_went_first(
+    tmp_path: Path,
+) -> None:
+    """A runtime killed outright closes the server's input before any beat notices."""
+    peers, member = joined(tmp_path, "mine", FOREVER)
+    with sleeping() as runtime:
+        companion = RosterPulse(
+            root=tmp_path,
+            member_id=member,
+            pulse=Pulse(interval_seconds=3600.0),
+            runtime=runtime_of(runtime.pid),
+        )
+        async with serving(companion):
+            assert await until(peers, member, held=True)
+            runtime.kill()
+            runtime.wait()
+
+    assert departed_path(peers.root, session_actor(member)).is_file()
+    assert not answered(peers.root, session_actor(member))
+
+
+async def test_a_companion_stopping_under_a_live_runtime_leaves_the_session_standing(
+    tmp_path: Path,
+) -> None:
+    """A server restarted by its runtime is not the session ending."""
+    peers, member = joined(tmp_path, "mine", INSTANTLY)
+    companion = RosterPulse(
+        root=tmp_path, member_id=member, pulse=Pulse(interval_seconds=0.01)
+    )
+    async with serving(companion):
+        assert await until(peers, member, held=True)
+
+    assert member_path(peers.root, session_actor(member)).is_file()
+    assert not answered(peers.root, session_actor(member))
+    found = member_of(peers.root, session_actor(member))
+    assert found is not None
+    assert found.get("runtime") == runtime_of(os.getpid())
+    assert row(peers, member).running
+
+
+async def test_a_runtime_carrying_another_session_s_id_never_answers_for_it(
+    tmp_path: Path,
+) -> None:
+    """A runtime started from a session's shell inherits its id, and can outlive it.
+
+    Its tool server joins under that id like any other. Answering for the row
+    whenever the row stood, or putting a finished one back, kept a session the
+    person had stopped reading as running for as long as the other runtime
+    lived. It met the session alive, so it is somebody else for good — once
+    the session has stopped as much as before.
+    """
+    peers, member = joined(tmp_path, "mine", FOREVER)
+    with sleeping() as session:
+        own = RosterPulse(
+            root=tmp_path,
+            member_id=member,
+            pulse=Pulse(interval_seconds=0.01),
+            runtime=runtime_of(session.pid),
+        )
+        async with serving(own):
+            assert await until(peers, member, held=True)
+        silent_since(peers, member, timedelta(minutes=10))
+        before = heard(peers, member)
+        inherited = RosterPulse(
+            root=tmp_path, member_id=member, pulse=Pulse(interval_seconds=0.01)
+        )
+        async with serving(inherited):
+            await asyncio.sleep(0.1)
+
+            assert not answered(peers.root, session_actor(member))
+            assert heard(peers, member) == before
+
+            peers.leave(member)
+            session.kill()
+            session.wait()
+            await asyncio.sleep(0.1)
+
+            assert not member_path(peers.root, session_actor(member)).exists()
+            assert not answered(peers.root, session_actor(member))
+
+    [stub] = [one for one in peers.present() if one.actor.id == member]
+    assert not stub.running
+
+
+@pytest.mark.parametrize("left", [True, False])
+async def test_a_runtime_resuming_a_stopped_session_s_id_answers_for_it(
+    tmp_path: Path, left: bool
+) -> None:
+    """Claude Code resumes a conversation under its own session id, which an unlaunched session is known by.
+
+    The runtime the row names had stopped before this one met it — having left
+    cleanly, or been killed with its row still standing — so the runtime
+    carrying its id now is its successor rather than somebody beside it.
+    """
+    peers, member = joined(tmp_path, "mine", FOREVER)
+    with sleeping() as first:
+        record(peers, member, runtime_of(first.pid))
+    if left:
+        peers.leave(member)
+    successor = RosterPulse(
+        root=tmp_path, member_id=member, pulse=Pulse(interval_seconds=0.01)
+    )
+    async with serving(successor):
+        assert await until(peers, member, held=True)
+
+    found = member_of(peers.root, session_actor(member))
+    assert found is not None
+    assert found.get("runtime") == runtime_of(os.getpid())
+    assert row(peers, member).running
+
+
+async def test_one_runtime_s_servers_answer_for_its_session_one_at_a_time(
+    tmp_path: Path,
+) -> None:
+    """Codex's shape: a server per conversation, every one of them under one runtime.
+
+    The one holding the pulse answers; the rest wait, and one takes over only
+    where the holder stopped while the runtime runs on — which is still the
+    session running.
+    """
+    peers, member = joined(tmp_path, "mine", FOREVER)
+    first = asyncio.create_task(
+        RosterPulse(
+            root=tmp_path, member_id=member, pulse=Pulse(interval_seconds=0.01)
+        ).run()
+    )
+    assert await until(peers, member, held=True)
+    second = RosterPulse(
+        root=tmp_path, member_id=member, pulse=Pulse(interval_seconds=0.01)
+    )
+    async with serving(second):
+        await asyncio.sleep(0.05)
+        first.cancel()
+        with suppress(asyncio.CancelledError):
+            await first
+
+        assert await until(peers, member, held=True)
+
+    assert not answered(peers.root, session_actor(member))
+    assert row(peers, member).running
+
+
+async def test_a_session_s_first_call_names_its_runtime_before_another_can(
+    tmp_path: Path,
+) -> None:
+    """In a store nobody joined yet, a session's first call puts its row down, not its pulse.
+
+    That row names the runtime, so a runtime carrying the same id whose pulse
+    beats before the session's own cannot take the row for its own.
+    """
+    peers = RepositoryPeers(tmp_path, pulse=FOREVER)
+    member = mint_member_id()
+    with sleeping() as runtime:
+        tools = {
+            tool.name: tool
+            for tool in create_peer_tools(
+                peers, member, tmp_path / "tree", runtime=runtime_of(runtime.pid)
+            )
+        }
+        await tools["coordination_describe"].handler({"description": "first"})
+        found = member_of(peers.root, session_actor(member))
+
+        assert found is not None
+        assert found.get("runtime") == runtime_of(runtime.pid)
+
+        inherited = RosterPulse(
+            root=tmp_path, member_id=member, pulse=Pulse(interval_seconds=0.01)
+        )
+        async with serving(inherited):
+            await asyncio.sleep(0.05)
+
+            assert not answered(peers.root, session_actor(member))
