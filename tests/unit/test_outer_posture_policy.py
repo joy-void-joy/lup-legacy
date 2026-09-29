@@ -45,6 +45,7 @@ from lup.policy.kernel.shell import decide_shell, shell_posture_targets
 from lup.policy.shell_rules import erase_shell_rules
 from lup.types import JsonObject
 from lup_template.harness.catalog import declared_hook_set
+from tests.unit.held import held_argv, holding
 from tests.unit.native import codex_denial
 from tests.unit.repos import initialized_repo
 
@@ -261,12 +262,16 @@ def runtime(request: pytest.FixtureRequest) -> Runtime:
 
 
 @pytest.fixture
-def checkout(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
+def checkout(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, launch_record_held: None
+) -> Iterator[Path]:
     """A checkout with a measured container around it, named by no nonce yet.
 
     The ledger lends the checkout and a sibling project, which is what a
     launch's lease names; the sibling is what a path the host lent from
-    outside this checkout is measured against.
+    outside this checkout is measured against. Read as held, as a contained
+    launch holds it: in this process by the fixture, and by a real mount
+    wherever a dispatcher answers for the container.
     """
     work = tmp_path / "checkout"
     initialized_repo(work, tmp_path / "no-hooks")
@@ -306,12 +311,23 @@ def posture_environment(posture: Posture) -> dict[str, str]:
             return held
 
 
-def met(runtime: Runtime, posture: Posture, command: str, checkout: Path) -> str:
+def met(
+    runtime: Runtime,
+    posture: Posture,
+    command: str,
+    checkout: Path,
+    held: bool = True,
+    descriptors: frozenset[int] = frozenset(),
+) -> str:
     """The effect a session of one posture meets before the call runs.
 
     Codex has no ask at this boundary: it parks the question as a review and
     answers with a structured refusal, which is the same question put where
-    Codex can carry one. Only exit 2 is a refusal.
+    Codex can carry one. Only exit 2 is a refusal. The container's session
+    reads its ledger through the read-only mount its launch holds it by;
+    ``held`` off reads the same ledger through none, as a session on the
+    host that wrote it for itself would. ``descriptors`` are handed to the
+    dispatcher, so a socket this test opened is one a process inside holds.
     """
     payload: JsonObject = {
         "session_id": "outer-probe",
@@ -320,13 +336,16 @@ def met(runtime: Runtime, posture: Posture, command: str, checkout: Path) -> str
         "tool_name": "Bash",
         "tool_input": {"command": command},
     }
-    result = sh.Command(sys.executable)(
-        "-I",
-        "-S",
-        str(DISPATCHERS[runtime].resolve()),
+    dispatching = [sys.executable, "-I", "-S", str(DISPATCHERS[runtime].resolve())]
+    if posture == "outer" and held:
+        holding()
+        dispatching = held_argv(checkout / ".lup" / "preflight", dispatching)
+    result = sh.Command(dispatching[0])(
+        *dispatching[1:],
         _in=json.dumps(payload),
         _ok_code=[0, 2],
         _return_cmd=True,
+        _pass_fds=set(descriptors),
         _env={
             **posture_environment(posture),
             "PLUGIN_DATA": str(checkout.parent / "plugin-data"),
@@ -397,6 +416,23 @@ def test_a_question_whose_harm_stays_inside_is_settled_only_by_the_container(
         "inner": host,
         "outer": "allow",
     }
+
+
+def test_a_ledger_nothing_holds_is_believed_of_no_container(
+    runtime: Runtime, checkout: Path
+) -> None:
+    """The forgery a writable ledger allowed: claiming the container to be settled.
+
+    A script in a session on the host could write the ledger an outer launch
+    writes, beside the nonce its environment names. Read through no hold, the
+    claim is dropped and the question stays the host's.
+    """
+    command = "rm -rf /opt/outer-probe"
+
+    assert met(runtime, "outer", command, checkout, held=False) == met(
+        runtime, "none", command, checkout
+    )
+    assert met(runtime, "outer", command, checkout) == "allow"
 
 
 @pytest.mark.parametrize(("command", "host"), GUARDED)
@@ -765,15 +801,21 @@ def test_an_unread_command_word_reaching_past_the_container_is_refused_in_it(
 def test_a_loopback_port_this_container_holds_is_its_own(
     runtime: Runtime, checkout: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A server the session started, measured by the process that holds it."""
+    """A server the session started, measured by the process that holds it.
+
+    The listener is handed to the dispatcher, which runs in a namespace of its
+    own, so a process inside that namespace is what holds it.
+    """
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server:
         server.bind(("127.0.0.1", 0))
         server.listen()
+        server.set_inheritable(True)
         port = server.getsockname()[1]
         command = f"curl -s http://127.0.0.1:{port}/status"
+        held = frozenset([server.fileno()])
 
         assert port not in host_held_ports(Path("/proc"))
-        assert met(runtime, "outer", command, checkout) == "allow"
+        assert met(runtime, "outer", command, checkout, descriptors=held) == "allow"
         assert previewed(command, checkout, monkeypatch)["outer"] == "allow"
 
 
@@ -1008,6 +1050,8 @@ def test_a_write_the_lease_does_not_cover_is_refused_unless_the_container_owns_i
         encoding="utf-8",
     )
 
+    holding()
+
     def written(path: str) -> str:
         payload: JsonObject = {
             "session_id": "outer-probe",
@@ -1016,10 +1060,12 @@ def test_a_write_the_lease_does_not_cover_is_refused_unless_the_container_owns_i
             "tool_name": "Write",
             "tool_input": {"file_path": path, "content": "note\n"},
         }
-        result = sh.Command(sys.executable)(
-            "-I",
-            "-S",
-            str(DISPATCHERS["claude"].resolve()),
+        dispatching = held_argv(
+            ledger.parent,
+            [sys.executable, "-I", "-S", str(DISPATCHERS["claude"].resolve())],
+        )
+        result = sh.Command(dispatching[0])(
+            *dispatching[1:],
             _in=json.dumps(payload),
             _env={
                 **posture_environment("outer"),

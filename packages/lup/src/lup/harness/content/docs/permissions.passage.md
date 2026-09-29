@@ -549,8 +549,8 @@ which one it is. So it is judged as every command it could stand for, and
 takes the strictest of their verdicts where that is stricter than the
 spelling earns as written. A verb word could be any row its legible part
 begins, among those the words before it still leave: `uv run lup-devtools
-sync $OP lup /x --mount rw` asks as `sync setup` does, and `dev questions
-$(echo answer) <id>` is refused as the operator-only verb it could be. A
+sync $OP lup /x --mount rw` asks as `sync setup` does, and `review
+$(echo approve) <id>` is refused as the operator-only verb it could be. A
 word whose legible part begins a guarded flag is read as that flag:
 `--ret$X` asks as `--retire` does, and `git -$X status` as the `-c` global.
 The reason names the word and the command it was read as, in one line. The
@@ -852,6 +852,25 @@ inheritance and stale policy execution; they are mutable local bookkeeping,
 not authentication against a hostile process with the same filesystem
 authority.
 
+A container holds its checkout's launch record read-only — `.lup/preflight`,
+`.lup/policy-snapshots` and the mount table `.lup/boundary.json` — and pins
+every directory between a hold and the writable mount enclosing it, `.lup`
+and `.git` among them, so the record can be neither rewritten nor moved out
+from under its hold. A ledger's claim to a container is believed only where
+the dispatcher reads it through that read-only mount, which it measures from
+its own mount table: the same ledger written by a script in a host session,
+where the directory is writable, loses the claim and is answered as
+uncontained. Only the session's own checkout is held; a sibling's record
+stays writable, since a mount point inside a sibling would stop `git worktree
+remove` of it from inside.
+
+What the launcher keeps for itself is mounted by no launch: a mount at,
+above, or inside `$XDG_STATE_HOME/lup` (the store of trusted repositories),
+`$XDG_CONFIG_HOME/lup` (each profile's account and credentials) or
+`~/.cache/lup/codex-revisions` (the hooks a contained Codex session runs)
+refuses the launch, naming the mount and the variable that moves the
+directory out of it.
+
 Every mounted repository's shared `config` and `hooks/` are held read-only,
 because git runs on the host what they name. For a linked worktree the
 container binds the shared git directory itself read-only and every directory
@@ -878,6 +897,17 @@ takes no read-only region inside a root, and Codex protects only a root's
 `.git`, which a bare repository does not have — so it admits a mounted bare
 clone's worktrees rather than its git directory, and a worktree cut after
 the launch is Codex's to write from the next one.
+
+A repository kept inside the checkout is held the same way once it is
+declared: `OuterContainer(nested_repositories=[NestedRepository(path=...)])`
+binds its `config` and `hooks/` read-only as a plain checkout's are, and pins
+its `.git` and the directories above it, so neither can be moved out from
+under the hold. Each launch verifies its pointers on the host and refuses a
+planted `commondir`, and refuses one whose `.git` is a pointer rather than a
+directory of its own. `create=True` initializes an absent one on the host, so
+no session writes its configuration first; an absent one not marked so is
+said and held by nothing. Declared rather than found, since a scan would read
+a tree the session writes.
 
 Git's own pointers are held the same way without a bind. A linked worktree's
 `.git` file names its entry under the shared directory, and the entry's
@@ -1034,7 +1064,7 @@ earned it, and parks nothing. Codex has no ask effect at its pre-tool
 boundary, so it parks the call in `.lup/questions.jsonl` and refuses execution
 until an explicit answer is recorded, at both pre-tool and permission-request
 events; the refusal names the review id and the commands to inspect, approve
-or reject it, and a pending or rejected review returns an explicit denial.
+or decline it, and a pending or declined review returns an explicit denial.
 
 What a rendered ask rests on is the session answering to a person. An autonomy
 mode answers on the session's behalf, including for the operations the
@@ -1048,19 +1078,100 @@ Codex delivers that denial as a supported structured `deny` carrying
 hook events; its agent still receives the same refusal and review commands.
 Neither surface turns a policy question into an implicit approval.
 
-The operator runs `uv run lup-devtools dev questions show <id>` from the
-indicated checkout, then `uv run lup-devtools dev questions answer <id>
---as operator` or `uv run lup-devtools dev questions reject <id> --as
-operator` outside the agent session. Queue answer operations are declared
-`operator_only` in the shell vocabulary; an escalation cannot grant the
-requester authority to answer itself. The file those verbs write is guarded
-the same way: `.lup/questions.jsonl`, and the claims under `.lup/review-claims`
-and `.lup/review-stage-claims` that spend an answer once, are protected roots.
-The hooks write them from their own process, so a session's own write — a row
-appended, a copy over the file, a claim retired — asks, because an approved
-row naming any other principal is what releases the retry. Nested command
-paths are declared with `ShellOperationRule.parents`, and the deepest matching
-path decides.
+The operator can keep one dashboard open over every parked review by running
+this from a terminal outside the agent session:
+
+```bash
+uv run lup-devtools dashboard serve
+```
+
+It listens on `127.0.0.1:8766` and opens the browser. Without `--root`, it
+follows the launch repository's worktrees. Each `--root <checkout>` selects a
+repository to watch; when supplied, only those repositories and their worktrees
+are included. Repeat `--root` to watch several repositories, use `--no-open` to
+open the printed address manually, and choose another port with `--port`. Leave
+the terminal command running while reviewing; Ctrl-C stops its server.
+
+The dashboard titles requests from captured evidence: a file's action and path,
+the number of files, or the command to run. The exact operation, requester,
+rule, reason, command or captured file diff, and recorded answer remain visible.
+The default view includes files that require review and highlights newly
+introduced rule exceptions. Files the policy allows automatically and existing
+exceptions remain available in the full-operation view. Approval still applies
+to the exact complete submission. Where recorded evidence cannot establish a
+file's status, it remains visible rather than being treated as automatically allowed.
+The file navigator shows change counts and supports searching paths. Select
+one file to inspect its colored, numbered diff or complete Before, After and
+Raw views; `[` and `]` move between files. A shared directory appears once,
+with complete paths available for inspection. The queue, navigator and evidence
+panels scroll independently; smaller screens offer panel switches.
+Typed `lup: ignore[...]` comments are highlighted in the code and grouped by
+rule; existing exceptions appear only in the full-operation view. Expand a
+group for written reasons and occurrence links, or use `n` and `p` to jump
+between exceptions.
+
+Approve or decline one review with an optional note. Auto-advance opens the
+next pending request after a successful decision; turn it off to stay on the
+answered request. New arrivals do not move a selection already under review.
+Use `j` / `k` for next / previous request, `Shift+A` to approve, `Shift+D` to
+decline, `c` to open and focus the collapsed comment, and `?` for shortcut help.
+Decision buttons stay visible beneath the selected evidence. Shortcuts pause
+in text fields, and holding a decision key cannot answer another request.
+
+Use **Copy link** to share a request without sharing a credential. Links use
+`#review=<question-id>`; copied links also name the checkout to distinguish
+identical IDs. They open the exact pending or historical request,
+including in another tab of an already authorized browser. Back, forward, and
+changed links select the corresponding request. A missing ID stays selected
+while the dashboard watches for it; it never silently opens a different request.
+
+The decision is recorded in the
+same durable relay that the terminal commands use, so a browser and terminal
+answering concurrently cannot replace each other's answer. Session notification
+is best effort after the answer is saved. The browser can advance while the
+server completes delivery; a missing route or failed delivery does not erase
+the answer. Each browser answer retains a separate notification outcome
+in `.lup/review-notifications/`, bound to its question, fingerprint and answer
+timestamp. Answered requests show a compact status with expandable details:
+mail queued, native queue accepted, failed or unconfirmed. Interrupted attempts
+remain unconfirmed; diagnostics failures never undo the recorded approval.
+Native retries notify only a unique registered requester whose bound native
+session matches the request. Queue acceptance does not prove the agent read
+the message. A native-hook approval still requires the agent to retry the exact
+tool call. The dashboard never executes a reconstructed command.
+
+The server mints a capability for that invocation and puts it in the printed
+browser URL's fragment, which HTTP requests do not send to the server. The
+page removes the credential from the address and keeps it in local storage for
+that exact origin: scheme, hostname, and port. Tabs at that origin authenticate
+queue API requests with its bearer credential, so shared request links carry
+only review identity. The credential is never a cookie or read from stale
+session storage. A fresh launch link updates other open tabs through storage
+events; opening it in the same tab keeps the selected review and draft comment.
+If browser storage is blocked, the page explains that access is limited to the
+tab that opened the launch link. The page and its assets contain no credential.
+Restarting the server replaces the capability; reopen its printed launch link.
+Treat the full address as an operator credential and keep it out of agent
+messages. The server binds loopback, checks Host against DNS rebinding, and
+checks the origin of answer submissions. These controls protect the browser
+surface; they are not isolation against arbitrary processes running as the
+operator's user. The session's filesystem and process boundary remains part
+of the authority boundary.
+
+The terminal surface remains available: run `uv run lup-devtools review show
+<id>` from the indicated checkout, then `uv run lup-devtools review approve
+<id> --as operator` or `uv run lup-devtools review decline <id> --as
+operator` outside the agent session. Review answers and the dashboard server
+that mints browser review credentials are declared `operator_only` in the shell
+vocabulary; an escalation cannot grant the requester authority to answer
+itself. The file those verbs write is guarded the same way:
+`.lup/questions.jsonl`, and the claims under `.lup/review-claims` and
+`.lup/review-stage-claims` that spend an answer once, are protected roots. The
+hooks and the operator's commands write them from their own processes, so a
+session's own write — a row appended, a copy over the file, a claim retired —
+asks, because an approved row naming any other principal is what releases the
+retry. Nested command paths are declared with `ShellOperationRule.parents`,
+and the deepest matching path decides.
 
 Approval releases one exact retry in the same session and directory.
 The hook re-runs policy, compares the payload, captured file preimages,
@@ -1069,7 +1180,7 @@ destination policy bindings, then claims the approval exclusively before
 allowing execution. A changed file, payload or policy requires another
 review. The receipt binds both the original request and the exact approved
 runtime input rewrite; observing a different executed input marks the receipt
-`in_doubt`. Rejection leaves the operation stopped and delivers the
+`in_doubt`. Declining leaves the operation stopped and delivers the
 operator's note.
 A crash after claiming approval does not make it reusable. Native sandbox
 restrictions still apply; queue approval does not change execution placement.
@@ -1095,8 +1206,15 @@ either invalidate approval. Every statically known shell write target also
 contributes its preimage, including redirections, authored content and in-place
 rewrites. The review diff uses the captured documents for
 patches and copies, so it remains the proposal submitted even if another writer
-changes the files before the operator opens it. Other shell commands display
-their exact command text rather than claiming a predicted file diff.
+changes the files before the operator opens it. Recognized `sed -i` commands
+also show a diff from their captured input. The preview preserves supported
+options and transforms that input through sed's sandbox mode; it never runs
+the submitted shell command. A caption identifies the dashboard's environment as
+the source of this simulation. The exact command stays visible beside its diff.
+Because the request does not capture its execution locale, only ASCII input
+and scripts without numeric byte escapes, locale-sensitive ranges, classes, case conversion or
+case-insensitive flags are previewed. Unsupported forms explain that a file
+preview is unavailable and display the complete command for review.
 
 
 ## Two markers change a decision
@@ -1173,7 +1291,7 @@ labelled `approved` carry no explicit reusable grant and are never read as
 authority. `dev hooks approvals` shows these observations with that limitation;
 `dev hooks forget <prefix or exact call>` retires an observation without
 changing authorization. Explicit native review answers remain single-use in
-`dev questions`; an execution event cannot turn one into a permanent grant.
+`review`; an execution event cannot turn one into a permanent grant.
 
 The `uv` command reader resolves global options before the subcommand, including
 `--directory`, so relocating an operator-only queue command cannot make it an
@@ -1218,6 +1336,45 @@ unspecified edit. For a concrete verdict, `edit-batch` reads a JSON
 calling checkout, and every preimage must match disk. Creations use null
 preimages and deletions null postimages. Both forms use the hook's destination
 authority and accepted policy snapshots, retaining the caller's write boundary.
+
+`dev edit-prepare proposed-edits.json --output tmp/prepared.patch` audits the
+complete proposed documents before a write is attempted. It collects every
+source-rule finding together, including project-wide rules and canonical type
+resolution, and reports the declared edit gates. The command writes only a
+fresh patch artifact beneath a declared scratch root; it never edits the
+targets, submits a review, or grants approval. Submit the emitted patch once
+through the native edit tool. An `ask` in this preview means review may be
+required when submitted; it does not mean a question has already been queued.
+
+Use `--suppressions exceptions.json` to request specific Python exceptions in
+the candidate, as a JSON list:
+
+```json
+[{"path": "src/example.py", "line": 8, "rule_id": "import-re",
+  "reason": "This module implements the grammar itself."}]
+```
+
+Line numbers refer to the proposed document before insertion. Each request
+must name a proven, suppressible missing directive and state a reason; strong,
+refuted, unresolved and nonmatching sites are refused. The helper merges typed
+directives, keeps their reasons, verifies that Python semantics are unchanged,
+and audits the resulting candidate again. Other source families are audited
+but their exception comments remain explicit edits in the proposal. Missing
+type evidence is reported, never converted into an automatic suppression.
+
+The emitted native patch is decoded again and compared with every intended
+before/after document and operation. Content that the native patch grammar
+cannot preserve exactly, including an empty creation or a missing final
+newline, is refused with an explanation. Stale preimages, duplicate targets,
+foreign paths and contradictory operations are refused before preparation.
+`--json` exposes the complete candidate, findings and readings for tools.
+
+A native hook reporting a pending review has already submitted the request.
+Wait for that answer, then retry the exact call. Adding an escalation or
+changing the payload creates a different review; an approved request cannot
+acquire additional code under its existing receipt. Reviews also bind to the
+policy that judged the call: regenerating that policy before retrying can
+require a fresh review even when the proposal and its preimages are unchanged.
 
 `hooks sweep` classifies a whole list at once and exits non-zero if any line
 is not a plain allow. With no file it reads the everyday corpus this project

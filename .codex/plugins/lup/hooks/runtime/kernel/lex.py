@@ -1659,6 +1659,7 @@ class SedRewrite(TypedDict):
     """
 
     scripts: list[str]
+    options: list[str]
     targets: list[str]
 
 
@@ -1696,6 +1697,7 @@ def shell_sed_rewrites(command: str, rows: list[ShellRuleRow]) -> list[SedRewrit
         rewrites.append(
             SedRewrite(
                 scripts=invocation["scripts"],
+                options=invocation["options"],
                 targets=[target for target in placed if target is not None],
             )
         )

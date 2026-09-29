@@ -27,6 +27,7 @@ from lup.policy.kernel.decision import (
 from lup.types import EnvVars, JsonObject
 from lup_template.harness.catalog import declared_hook_set
 from tests.unit.bundled import bundled
+from tests.unit.held import held_argv, holding
 from tests.unit.repos import commit_file, git_in, initialized_repo
 
 DISPATCHER = Path(".claude/plugins/lup/hooks/scripts/policy.py")
@@ -199,14 +200,20 @@ def write_payload(path: str, content: str) -> JsonObject:
 
 
 def decide_from(
-    payload: JsonObject, cwd: Path
+    payload: JsonObject, cwd: Path, held: Path | None = None
 ) -> dict[str, object]:  # lup: ignore[dict-str-payload]
-    """Run the dispatcher from a working directory that is not the repo."""
+    """Run the dispatcher from a working directory that is not the repo.
+
+    ``held`` is a ledger directory read through a read-only mount of itself,
+    as a contained launch holds it.
+    """
+    dispatching = ["python3", "-I", "-S", str(DISPATCHER.resolve())]
+    if held is not None:
+        holding()
+        dispatching = held_argv(held, dispatching)
     output = str(
-        sh.Command("python3")(
-            "-I",
-            "-S",
-            str(DISPATCHER.resolve()),
+        sh.Command(dispatching[0])(
+            *dispatching[1:],
             _in=json.dumps(payload),
             _cwd=str(cwd),
         )
@@ -1217,6 +1224,7 @@ def unjudged_effect_under(
             "cwd": str(root),
         },
         root,
+        written.parent if "yes" in ledger["contained"] else None,
     )
     specific = decision["hookSpecificOutput"]
     assert isinstance(specific, dict)
@@ -1264,10 +1272,10 @@ def escalated_reason_under(
     contained launch. Returns the effect, the reason the approver reads, and
     the rewrite the call goes out with.
     """
+    written = root / ".lup" / "preflight" / "launch.json"
     if ledger is None:
         monkeypatch.delenv("LUP_BOUNDARY_NONCE", raising=False)
     else:
-        written = root / ".lup" / "preflight" / "launch.json"
         written.parent.mkdir(parents=True, exist_ok=True)
         written.write_text(json.dumps(ledger), encoding="utf-8")
         monkeypatch.setenv("LUP_BOUNDARY_NONCE", "launch")
@@ -1277,7 +1285,10 @@ def escalated_reason_under(
         "cwd": str(root),
         "session_id": "requester",
     }
-    specific = decide_from(payload, root)["hookSpecificOutput"]
+    contained = ledger is not None and "yes" in ledger["contained"]
+    specific = decide_from(payload, root, written.parent if contained else None)[
+        "hookSpecificOutput"
+    ]
     assert isinstance(specific, dict)
     rewritten = specific["updatedInput"] if "updatedInput" in specific else None
     return (

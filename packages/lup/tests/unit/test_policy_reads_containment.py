@@ -34,7 +34,7 @@ def written(root: Path, nonce: str, ledger: dict[str, list[str]]) -> None:
 
 
 def test_both_terms_come_from_the_launch_that_measured_them(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, launch_record_held: None
 ) -> None:
     """A session holding no nonce reads nothing, which is the fail-closed answer."""
     written(tmp_path, "this-launch", CONTAINED)

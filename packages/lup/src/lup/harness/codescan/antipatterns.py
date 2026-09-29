@@ -140,7 +140,6 @@ from lup.policy.kernel.edit import (
     rich_progress_sites,
     subprocess_sites,
     suppress_import_sites,
-    IGNORE_RE,
     continues_comment_block,
     lines_of,
     python_tree,
@@ -1867,7 +1866,7 @@ def audit_text(
         """
         if line_no < 1 or line_no > len(original_lines) or line_no == file_ignore_line:
             return None
-        match = IGNORE_RE.search(original_lines[line_no - 1])
+        match = context.suppression_at(line_no, original_lines[line_no - 1])
         if match is None or not context.comment_at(line_no, match.start()):
             return None
         return match

@@ -14,7 +14,7 @@ import sh
 from lup.coordination.identity import mint_member_id
 from lup.coordination.policy import peer_policy
 from lup.coordination.repository import RepositoryPeers
-from lup.policy.kernel.decision import KernelDecision
+from lup.policy.kernel.decision import KernelDecision, captured_edit_decision
 from lup.policy.kernel.peers import decide_foreign_claim, settled_with_claim
 from lup.policy.peer_policy import erase_peer_policy
 from lup.policy.relay import QuestionRelay
@@ -200,6 +200,31 @@ def test_a_held_path_turns_an_allowed_edit_into_a_question() -> None:
     ).placed(escapable=True)
     assert settled.effect == "ask"
     assert "feat-rewriting" in settled.reason
+
+
+def test_a_held_path_restates_the_file_evidence_it_decided() -> None:
+    """The file's row says what the approval is for, bound to the images judged."""
+    assert DECLARED is not None
+    captured = captured_edit_decision(
+        KernelDecision("allow", "small safe edit", rule="edit:small"),
+        "/tmp/a.py",
+        before_sha256="before",
+        after_sha256="after",
+    )
+
+    settled = settled_with_claim(
+        captured, decide_foreign_claim("/tmp/a.py", ["feat-rewriting"], DECLARED)
+    )
+
+    [row] = settled.file_reviews
+    assert row["effect"] == "ask"
+    assert "feat-rewriting" in row["reason"]
+    assert "edit:small" not in row["rules"]
+    assert (row["path"], row["before_sha256"], row["after_sha256"]) == (
+        "/tmp/a.py",
+        "before",
+        "after",
+    )
 
 
 def test_a_claim_the_sweep_vacated_no_longer_asks(tmp_path: Path) -> None:

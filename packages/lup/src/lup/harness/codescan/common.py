@@ -34,6 +34,7 @@ from lup.policy.kernel.edit import (
     docstring_lines as python_docstring_lines,
     masked_source,
     python_comment_columns,
+    source_suppression,
 )
 from lup.policy.kernel.typescript import typescript_comment_columns
 
@@ -607,6 +608,10 @@ class PythonContext(BaseModel):
         return cls(
             comment_columns=typescript_comment_columns(text), docstring_lines=set()
         )
+
+    def suppression_at(self, line_no: int, text: str) -> re.Match[str] | None:
+        """The directive at a real comment opening, independent of earlier strings."""
+        return source_suppression(text, line_no, self.comment_columns)
 
     def comment_at(self, line_no: int, col: int) -> bool:
         """Whether a real `#` comment opens at (`line_no`, `col`)."""

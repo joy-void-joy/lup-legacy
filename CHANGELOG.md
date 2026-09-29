@@ -2,6 +2,45 @@
 
 ## Unreleased
 
+### Container sessions drop every capability; sudo only where declared
+
+Every session container runs with `--cap-drop ALL` and `no-new-privileges`,
+and its entrypoint starts the agent through `setpriv` with empty inheritable
+and ambient sets, so the agent holds no capability and no setuid binary in
+the image can hand it one. `OuterContainer(sudo=True)` builds that session's
+image with passwordless sudo and gives the container's root back what
+administering its own files takes; a rootful engine refuses it, and what sudo
+installs vanishes with the container — the image's `tooling` keeps a package.
+
+### A container holds its launch record, and the policy measures containment
+
+The preflight ledger, accepted policy snapshots and mount table are mounted
+read-only in the session's own container, with every directory between a
+hold and its writable mount pinned, `.lup` and a plain checkout's `.git`
+among them. A ledger's claim to a container is believed only where the
+dispatcher reads it through that read-only mount, so a ledger a host session
+wrote for itself is answered as uncontained. An uncontained launch empties
+the mount table in place rather than removing it.
+
+### A contained Codex session runs its hooks from a held revision
+
+The installed plugin revision is written again on the host under
+`~/.cache/lup/codex-revisions` and mounted read-only over the plugin's cache
+in the session's home, so the session cannot rewrite the hooks judging it.
+`lup-codex-plugin --report` prints the revision a preparation installed.
+
+### No launch mounts what the launcher keeps
+
+A mount at, above, or inside `$XDG_STATE_HOME/lup`, `$XDG_CONFIG_HOME/lup`
+or the held Codex revisions refuses the launch; `store_exposure` is now
+`launcher_state_exposure`.
+
+### Repositories inside the checkout, held as its own
+
+`OuterContainer(nested_repositories=[NestedRepository(path=...)])` holds a
+nested repository's `config` and `hooks/` read-only and verifies its
+pointers at every launch; `create=True` initializes it on the host first.
+
 ### `harness claude|codex` launches the declaration its flags make
 
 The command no longer runs a launch of its own beside the library's: it
@@ -142,13 +181,31 @@ left to `dev check`. It also runs the declared-migrations row from that same
 base: two public names removed without a migration had reached the whole
 gate because the narrowed run never asked.
 
+### A parked review is answered from the dashboard or `review`
+
+`lup-devtools dashboard serve` opens one loopback page over the parked reviews
+of every worktree of the repositories it is given: numbered diffs per file,
+the command a shell review would run, the rule and reason, and a history of
+answers. Its capability is minted per launch and carried in the URL fragment;
+an answer binds to the fingerprint the page showed and the preimages still on
+disk, is recorded atomically in the relay a terminal answers too, and then
+reaches the requester as mail and a wake. The page never runs the operation.
+The terminal verbs leave `dev questions` for a `review` group — `list`,
+`show`, `approve`, `decline`, `cancel` — and `review approve|decline` and
+`dashboard serve` are operator-only. The policy now records each file's own
+verdict beside a many-file edit's, so a review shows which files asked and
+which passed; a suppression marker inside a string no longer counts as one,
+and `sed -i` reviews preview what the rewrite would leave. `dev edit-prepare`
+audits a batch of complete documents and writes one patch without touching
+its targets.
+
 ### Claude asks natively; only Codex parks a review
 
 0.4.0's note on native approval authority says a call parks in
 `.lup/questions.jsonl` until an operator's single-use answer releases it.
 That is Codex alone, whose pre-tool boundary has no ask effect. Claude has
 rendered every policy ask as a native permission request since 0.4.0 itself,
-carrying the reason that earned it, and parks nothing, so `dev questions`
+carrying the reason that earned it, and parks nothing, so `review list`
 never lists a Claude call.
 
 What a rendered ask rests on is the session answering to a person. An

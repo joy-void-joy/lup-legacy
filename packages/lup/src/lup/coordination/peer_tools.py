@@ -40,6 +40,7 @@ from lup.coordination.repository import (
     RepositoryPeers,
     nested,
 )
+from lup.coordination.bare.scope import execution_scope
 from lup.coordination.bare.store import (
     CALLER_FIELD,
     MEMBERS_DIR,
@@ -50,7 +51,7 @@ from lup.coordination.bare.store import (
     pulse_path,
     session_actor,
 )
-from lup.coordination.roster import Delivery
+from lup.coordination.roster import Delivery, RosterMember
 from lup.coordination.wake import WakePath
 from lup.tools.mcp import LupMcpTool, ServerCompanion, ToolError, lup_tool
 
@@ -71,11 +72,15 @@ class RosterPulse(ServerCompanion, frozen=True):
     and the pulse with it — and so does this server stopping after its
     runtime went, which is how a killed runtime's row ends within a beat.
 
-    A holding tick sweeps, so every row whose session stopped is retired on
-    the record by whichever session is up rather than by the one that died;
-    then it joins, which the roster's own idempotence makes free while the
-    row is standing and is what puts it back after a finish the runtime
-    outlived — a cleared conversation, a rewound one. A departure written
+    A holding tick beats its own row first, so a delayed owner is not the
+    stale row its own sweep retires, then sweeps, so every row whose session
+    stopped is retired on the record by whichever session is up rather than
+    by the one that died; then it joins, which the roster's own idempotence
+    makes free while the row is standing and is what puts it back after a
+    finish the runtime outlived — a cleared conversation, a rewound one, a
+    sweep another session ran while this server was stalled. The native
+    route this session's hooks bound survives that rejoin only while its
+    owner, worktree and execution boundary still match. A departure written
     under another runtime stands.
 
     Nothing is written where no session has ever joined: a beat or a sweep
@@ -97,6 +102,28 @@ class RosterPulse(ServerCompanion, frozen=True):
     its input before anything else read it; one hosted in the process that
     opened its session answers for that process, which it cannot outlive.
     """
+
+    def rejoin_wake(self, previous: RosterMember | None) -> WakePath:
+        """Keep this owner's retained binding only inside its original boundary."""
+        if (
+            previous is not None
+            and previous.actor == member_ref(self.member_id)
+            and previous.worktree
+            and Path(previous.worktree).resolve() == self.root.resolve()
+            and self.wake.receiver_local
+            and previous.wake.runtime == self.wake.runtime
+            and previous.wake.handle
+            and previous.wake.session
+            and previous.wake.home
+            and previous.wake.scope
+            and previous.wake.scope == execution_scope()
+            and not self.wake.handle
+            and not self.wake.session
+            and (not self.wake.home or self.wake.home == previous.wake.home)
+            and (not self.wake.scope or self.wake.scope == previous.wake.scope)
+        ):
+            return previous.wake
+        return self.wake
 
     async def run(self) -> None:
         peers = RepositoryPeers(self.root, pulse=self.pulse)
@@ -123,8 +150,10 @@ class RosterPulse(ServerCompanion, frozen=True):
             return True
         if not hold.take():
             return True
+        peers.beat(self.member_id)
+        wake = self.rejoin_wake(peers.row(self.member_id))
         peers.sweep(by=member_ref(self.member_id))
-        peers.join(self.member_id, self.root, delivery=Delivery.HOOK, wake=self.wake)
+        peers.join(self.member_id, self.root, delivery=Delivery.HOOK, wake=wake)
         adopt(peers.root, member, self.runtime)
         peers.beat(self.member_id)
         return True

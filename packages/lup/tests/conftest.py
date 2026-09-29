@@ -16,6 +16,7 @@ from pathlib import Path
 
 import pytest
 
+import lup.policy.assets.host as policy_host
 import lup.providers.claude.launch as claude_launch
 import lup.providers.profile_tree as profile_tree
 from lup.devtools.gitguard import TEST_IDENTITY, GuardVerdict, RepositoryWatch
@@ -211,6 +212,18 @@ def unix_socket() -> None:
             f"this process may not open a Unix socket ({refused}); delivery "
             "through one cannot be measured here"
         )
+
+
+@pytest.fixture
+def launch_record_held(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Every ledger this process reads, read as a contained launch holds it.
+
+    A policy composed in process believes a ledger's containment only
+    through a read-only mount of its directory, which a test cannot make in
+    its own process; a dispatcher run as its own process is held for real,
+    in a user namespace.
+    """
+    monkeypatch.setattr(policy_host, "record_held", lambda *_arguments: True)
 
 
 @pytest.fixture

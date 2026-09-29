@@ -33,9 +33,9 @@ UNREAD = [
         id="verb-begun",
     ),
     pytest.param(
-        "dev questions $(echo answer) abc --as operator",
+        "review $(echo approve) abc --as operator",
         "deny",
-        "could not be read and could be `lup-devtools dev questions answer`",
+        "could not be read and could be `lup-devtools review approve`",
         id="operator-only-verb",
     ),
     pytest.param(

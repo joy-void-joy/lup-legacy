@@ -99,7 +99,7 @@ def test_a_reference_the_shell_never_expands_is_never_expanded() -> None:
     """
     command = "S=src.py; sed -i 's/$S/x/' $S"
     assert shell_sed_rewrites(command, VOCABULARY) == [
-        {"scripts": ["s/$S/x/"], "targets": ["src.py"]}
+        {"scripts": ["s/$S/x/"], "options": [], "targets": ["src.py"]}
     ]
     written = authored_writes("P=tmp; cat > $P/f.txt <<'EOF'\n$P\nEOF")
     assert written == [{"path": "tmp/f.txt", "content": "$P\n", "append": False}]

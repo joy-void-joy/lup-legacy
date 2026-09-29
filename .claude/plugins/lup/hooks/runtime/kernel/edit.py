@@ -115,7 +115,9 @@ it would have to guess from.
 """
 
 
-def written_suppression(line: str) -> re.Match[str] | None:
+def written_suppression(
+    line: str, comment_column: int | None = None
+) -> re.Match[str] | None:
     """The directive this line writes, where it writes one rather than quotes one.
 
     Every reading of a suppression goes through here, because a directive
@@ -131,8 +133,26 @@ def written_suppression(line: str) -> re.Match[str] | None:
     comment alike, and no directive is ever written inside one -- so nothing
     here needs to know which file it is reading.
     """
+    if comment_column is not None:
+        return IGNORE_RE.match(line, comment_column)
     match = IGNORE_RE.search(line)
     return None if match is None or quoted_example(line, match.start()) else match
+
+
+def source_suppression(
+    line: str, number: int, comment_columns: dict[int, int] | None
+) -> re.Match[str] | None:
+    """Read a directive only where the lexer says the source comment starts.
+
+    A string may mention a directive before the real comment on the same
+    line. Its characters cannot shadow that comment or become its authority.
+    Unknown lexical context retains the conservative unparsed-source reading.
+    """
+    if comment_columns is None:
+        return written_suppression(line)
+    if number not in comment_columns:
+        return None
+    return written_suppression(line, comment_columns[number])
 
 
 def standalone_suppression(line: str) -> re.Match[str] | None:
@@ -254,7 +274,7 @@ def relocated_suppressions(text: str, limit: int = SUPPRESSION_COLUMN_LIMIT) -> 
         """
         if number < 1 or number > len(lines) or number == file_level:
             return None
-        match = written_suppression(lines[number - 1])
+        match = source_suppression(lines[number - 1], number, columns)
         if match is None or number not in columns or columns[number] != match.start():
             return None
         return match
@@ -331,7 +351,9 @@ def relocated_edit_text(
     return revised[start : len(revised) - tail]
 
 
-def covering_suppression_line(lines: list[str], violation_line: int) -> int:
+def covering_suppression_line(
+    lines: list[str], violation_line: int, comment_columns: dict[int, int] | None = None
+) -> int:
     """The line holding the directive that covers `violation_line`, or 0.
 
     Both accepted placements, nearest first, so an inline directive is
@@ -340,7 +362,10 @@ def covering_suppression_line(lines: list[str], violation_line: int) -> int:
     block, which a multi-line reason puts further up than the line itself.
     """
     for candidate in range(violation_line, 0, -1):
-        if written_suppression(lines[candidate - 1]) is not None:
+        if (
+            source_suppression(lines[candidate - 1], candidate, comment_columns)
+            is not None
+        ):
             return (
                 candidate
                 if suppression_reaches(lines, candidate, violation_line)
@@ -2967,7 +2992,9 @@ def file_ignore(source: str) -> FileIgnore:
     return FileIgnore(present=True, ids=ignore_rule_ids(match) if match else None)
 
 
-def suppression_site(number: int, line: str) -> str:
+def suppression_site(
+    number: int, line: str, comment_columns: dict[int, int] | None = None
+) -> str:
     """One suppression, located, named, and quoted before it is approved.
 
     The rules are named rather than left to be read back out of the quote, so
@@ -2975,7 +3002,7 @@ def suppression_site(number: int, line: str) -> str:
     The line itself is quoted whole: a directive is written at the end of what
     it guards, which is the end a cut would take first.
     """
-    match = written_suppression(line)
+    match = source_suppression(line, number, comment_columns)
     named = ignore_rule_ids(match) if match is not None else None
     silenced = ", ".join(named) if named else "every rule"
     return f"line {number} silences {silenced}: {line.strip()}"
@@ -3026,7 +3053,10 @@ class WithdrawnGuard(TypedDict):
 
 
 def withdrawn_guards(
-    before: str | None, after: str, known_ids: list[str]
+    before: str | None,
+    after: str,
+    known_ids: list[str],
+    comment_columns: dict[int, int] | None = None,
 ) -> Iterator[WithdrawnGuard]:
     """Every line whose suppression this edit took away, once per rule.
 
@@ -3054,7 +3084,7 @@ def withdrawn_guards(
         if line in remaining:
             remaining.remove(line)
             continue
-        directive = written_suppression(line)
+        directive = source_suppression(line, number, comment_columns)
         if directive is None:
             continue
         named = ignore_rule_ids(directive)
@@ -3313,6 +3343,13 @@ def antipattern_decision(
         (rule_id, line) for rule_id, lines in unresolved.items() for line in lines
     }
     comment_columns = masked["comment_columns"]
+    previous_columns = masked_source(before or "", python_source, typescript_source)[
+        "comment_columns"
+    ]
+
+    def directive_at(number: int) -> re.Match[str] | None:
+        return source_suppression(original_lines[number - 1], number, comment_columns)
+
     file_level = file_ignore(after)
     has_file_ignore = file_level["present"]
     disabled_ids = file_level["ids"]
@@ -3320,10 +3357,8 @@ def antipattern_decision(
     for selection in resolved or []:
         rule_id = selection["row"]["id"]
         for line, end_line in selection["spans"].items():
-            holder = covering_suppression_line(original_lines, line)
-            directive = (
-                written_suppression(original_lines[holder - 1]) if holder else None
-            )
+            holder = covering_suppression_line(original_lines, line, comment_columns)
+            directive = directive_at(holder) if holder else None
             covered_ids = ignore_rule_ids(directive) if directive is not None else []
             covered = (
                 has_file_ignore and (disabled_ids is None or rule_id in disabled_ids)
@@ -3335,14 +3370,21 @@ def antipattern_decision(
                 number in changed for number in range(line, end_line + 1)
             ):
                 added[line] = True
-    gone = removed_lines(before, after)
+    removed = removed_lines(before, after)
+    gone = [
+        line[directive.start() :]
+        for number, line in enumerate((before or "").splitlines(), start=1)
+        if line in removed
+        and (directive := source_suppression(line, number, previous_columns))
+        is not None
+    ]
     declared: list[int] = []
     for number in added:
         original = original_lines[number - 1]
-        directive = written_suppression(original)
+        directive = directive_at(number)
         if (
             directive is not None
-            and not resites_a_suppression(original, gone)
+            and not resites_a_suppression(original[directive.start() :], gone)
             and (
                 comment_columns is None
                 or (
@@ -3420,7 +3462,7 @@ def antipattern_decision(
 
     known_ids = {row["id"] for row in rows}
     for number in judged:
-        directive = written_suppression(original_lines[number - 1])
+        directive = directive_at(number)
         named = ignore_rule_ids(directive) if directive is not None else None
         # Two directives are skipped, both because what they silence is not
         # visible from here. A bare one names no rule and covers every rule
@@ -3450,9 +3492,9 @@ def antipattern_decision(
         rule_id = hit["row"]["id"]
         if has_file_ignore and (disabled_ids is None or rule_id in disabled_ids):
             continue
-        holder = covering_suppression_line(original_lines, number)
+        holder = covering_suppression_line(original_lines, number, comment_columns)
         original = original_lines[holder - 1] if holder else ""
-        directive = written_suppression(original) if holder else None
+        directive = directive_at(holder) if holder else None
         if directive is not None:
             covered = ignore_rule_ids(directive)
             if covered is None or rule_id in covered:
@@ -3460,7 +3502,7 @@ def antipattern_decision(
                 # marker lands on the very line it was moved to cover, so
                 # that line is added, trips its rule, and reaches here even
                 # when the declaration gate above let it through.
-                if resites_a_suppression(original, gone):
+                if resites_a_suppression(original[directive.start() :], gone):
                     continue
                 covering[holder] = True
                 continue
@@ -3491,7 +3533,9 @@ def antipattern_decision(
     # actually covering — so debt the file was already carrying, uncovered
     # before this edit and uncovered after it, is left to the audit that owns
     # it rather than charged to whoever happened to edit the file next.
-    withdrawn = list(withdrawn_guards(before, after, [row["id"] for row in rows]))
+    withdrawn = list(
+        withdrawn_guards(before, after, [row["id"] for row in rows], previous_columns)
+    )
     if withdrawn:
         everywhere = {number: True for number in range(1, len(original_lines) + 1)}
         for hit in anti_pattern_hits(
@@ -3514,10 +3558,8 @@ def antipattern_decision(
                 continue
             if has_file_ignore and (disabled_ids is None or rule_id in disabled_ids):
                 continue
-            holder = covering_suppression_line(original_lines, number)
-            directive = (
-                written_suppression(original_lines[holder - 1]) if holder else None
-            )
+            holder = covering_suppression_line(original_lines, number, comment_columns)
+            directive = directive_at(holder) if holder else None
             if directive is not None:
                 covered = ignore_rule_ids(directive)
                 if covered is None or rule_id in covered:
@@ -3529,7 +3571,8 @@ def antipattern_decision(
     def sites_at(numbers: list[int]) -> list[str]:
         """The directives written on these lines, rendered for the prompt."""
         return [
-            suppression_site(number, original_lines[number - 1]) for number in numbers
+            suppression_site(number, original_lines[number - 1], comment_columns)
+            for number in numbers
         ]
 
     def silences_nothing(number: int) -> bool:
@@ -3546,7 +3589,7 @@ def antipattern_decision(
         standing over a live violation would look dead for the gate's own
         blindness, and be dropped from the prompt that exists to name it.
         """
-        directive = written_suppression(original_lines[number - 1])
+        directive = directive_at(number)
         if directive is None or ignore_rule_ids(directive) is not None:
             return False
         return not guarded_hits(number)

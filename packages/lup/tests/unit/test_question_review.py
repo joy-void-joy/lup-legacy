@@ -1,6 +1,6 @@
 """What a parked question proposes, derived from the operation as submitted.
 
-The surface a Codex whole-file review has is `dev questions show`, because no
+The surface a Codex whole-file review has is `review show`, because no
 Codex hook can ask: an `ask` becomes a queued review that denies the call and
 sends the operator to another terminal. What that terminal showed was the raw
 payload with the preimage printed beneath it. These pin the derivation that

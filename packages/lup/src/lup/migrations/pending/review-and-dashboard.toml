@@ -1,0 +1,20 @@
+subjects = ["create_questions_app"]
+reason = """
+one approval request is a review, and the operator's page over every parked \
+review is the dashboard, so the verbs that answer one leave `dev questions` \
+for a `review` group of their own, and the page that shows them all is served \
+by `dashboard`"""
+
+[[steps]]
+instruction = """
+Build the answering verbs with create_review_app(root) from \
+lup.devtools.review.app where create_questions_app(root) was called; the \
+dashboard's page and store live in lup.devtools.dashboard.reviews \
+(dashboard_app, ReviewStore, ReviewSnapshot, create_operator_dashboard_app)."""
+
+[[steps]]
+instruction = """
+Where a script or an instruction runs `lup-devtools dev questions list`, \
+`show`, `answer`, `reject` or `cancel`, run `lup-devtools review list`, \
+`show`, `approve`, `decline` or `cancel`; the relay file and its `rejected` \
+state are unchanged."""

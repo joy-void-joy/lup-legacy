@@ -32,7 +32,7 @@ Both halves are now measured, on codex-cli 0.155.1, and both answered no:
 
 So a Codex session an application opens cannot be asked, only refused. #180 has
 no native way out, the fail-closed denial is correct rather than a workaround,
-and `dev questions` is Codex's review surface rather than its fallback — which
+and `review` is Codex's review surface rather than its fallback — which
 is what makes that surface's diff rendering load-bearing.
 
 Both arms are `xfail(strict=True)` rather than deleted or inverted. Deleting
@@ -276,7 +276,7 @@ async def test_whether_permission_request_fires_in_an_app_server_session() -> No
         "No PermissionRequest reached the plugin's dispatcher during a live "
         "app-server turn, so the interactive half of the boundary fires only "
         "for a terminal — and an `ask` in a session an application opened can "
-        "only ever be spent as a denial. `dev questions` is then permanently "
+        "only ever be spent as a denial. `review` is then permanently "
         "the review surface. Record it against the app-server rather than the "
         "plugin: the same journal holds invocations from interactive runs."
     )
@@ -292,7 +292,7 @@ async def test_whether_permission_request_fires_in_an_app_server_session() -> No
         "the queue's own recovery text. No approval request arrived for the "
         "session's hooks to answer, so the dispatcher's deliberate silence on "
         "`ask` has nobody listening on the other side. The fail-closed denial "
-        "is therefore correct rather than a workaround, and `dev questions` is "
+        "is therefore correct rather than a workaround, and `review` is "
         "Codex's review surface rather than its fallback. Strict, so a vendor "
         "that grows the channel is heard immediately."
     ),

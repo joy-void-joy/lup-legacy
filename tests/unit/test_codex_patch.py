@@ -6,12 +6,14 @@ per-file decisions it enables, and the path resolution that keeps
 repo-relative rules matching inside a sibling worktree.
 """
 
+import importlib.util
 import io
 import json
 import sys
 from collections.abc import Callable
 from pathlib import Path
 from types import ModuleType
+from unittest.mock import patch
 
 import pytest
 
@@ -176,6 +178,29 @@ def bundled_dispatcher() -> ModuleType:
     )
 
 
+def test_bundled_dispatcher_reads_its_own_policy_data(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Another runtime's declaration cached in this process is not the one read."""
+    path = Path.cwd() / ".claude/plugins/lup/hooks/runtime/policy_data.py"
+    spec = importlib.util.spec_from_file_location("policy_data", path)
+    assert spec is not None and spec.loader is not None
+    foreign = importlib.util.module_from_spec(spec)
+    with (
+        patch.dict(sys.modules),
+        patch.object(sys, "path", [str(path.parent), *sys.path]),
+    ):
+        spec.loader.exec_module(foreign)
+    monkeypatch.setitem(sys.modules, "policy_data", foreign)
+
+    dispatcher = bundled_dispatcher()
+
+    assert dispatcher.declared_policy is not foreign
+    assert Path(dispatcher.declared_policy.__file__) == (
+        Path.cwd() / ".codex/plugins/lup/hooks/runtime/policy_data.py"
+    )
+
+
 def worktree(root: Path) -> Path:
     (root / ".git").mkdir(parents=True)
     (root / ".git" / "HEAD").write_text("ref: refs/heads/main\n", encoding="utf-8")
@@ -217,7 +242,7 @@ class TestDispatchedPatches:
 
         decision = dispatcher.dispatch(payload)
 
-        assert decision.effect == effect
+        assert decision.effect == effect, decision.stated_whole()
         payload["tool_input"] = {
             "command": "*** Begin Patch\n*** Add File: README.md\n+# Title\n*** End Patch"
         }

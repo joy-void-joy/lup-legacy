@@ -16,7 +16,7 @@ raises :class:`~lup.launch.refusal.LaunchRefused`.
 import logging
 import os
 import sys
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from datetime import datetime
 from pathlib import Path
 from uuid import uuid4
@@ -27,7 +27,7 @@ from lup.harness.devices import Device
 from lup.providers.login import ProviderLogin
 from lup.providers.user_config import UserConfig, UserConfigFile
 from lup.launch.config_volume import HomeSeedPlaces
-from lup.launch.container import contained_argv
+from lup.launch.container import contained_argv, held_lease, state_volume_name
 from lup.coordination.identity import MEMBER_ENV, NAME_ENV, LaunchedMember
 from lup.coordination.repository import RepositoryPeers, launched_member
 from lup.harness.messaging import WakeSockets
@@ -37,10 +37,11 @@ from lup.policy.boundary import BoundaryPreflight
 from lup.policy.identity import POLICY_ROOT_ENV
 from lup.policy.profiles import compile_boundary, depended_on, measured
 from lup.policy.snapshots import accept_destination_policies, destination_authorities
-from lup.launch.pointer_trust import judged_roots, store_exposure
+from lup.launch.pointer_trust import judged_roots, launcher_state_exposure
 from lup.launch.refusal import LaunchRefused
 from lup.sandbox.rail import (
     AccessibleRoot,
+    NestedRepository,
     fleet_lease,
 )
 from lup.launch.declaration import LaunchSandbox
@@ -73,7 +74,7 @@ from lup.types import EnvVars, JsonObject, JsonValue
 from lup.workspace.paths import agent_version, harness_runs_path
 from lup.harness.clipboard import ClipboardTransport
 from lup.harness.generate import RuntimeReadiness
-from lup.harness.image import Image
+from lup.harness.image import Image, SessionPrivileges
 from lup.launch.preflight import (
     LaunchSentinels,
     ROOT_VARIABLE,
@@ -506,6 +507,7 @@ def verify_inside(
     in_passing: bool = False,
     skipped: Sequence[str] = (),
     accessible: Sequence[AccessibleRoot] = (),
+    nested: Sequence[NestedRepository] = (),
 ) -> list[Finding]:
     """Exercise the image half behind an argv somebody already assembled.
 
@@ -526,7 +528,7 @@ def verify_inside(
         environ: EnvVars = dict(os.environ)  # lup: ignore[os-environ]
     else:
         environ = dict(environment)
-    leased = fleet_lease(root, list(accessible))
+    leased = held_lease(root, fleet_lease(root, list(accessible)), nested)
     return reported(
         manifest.check_inside(
             environ,
@@ -674,6 +676,7 @@ def settle_boundary(
     banner: Banner,
     accessible: list[AccessibleRoot] = [],
     runtime: str = "",
+    nested: Sequence[NestedRepository] = (),
 ) -> BoundaryPreflight:
     """Compile what this launch promised, measure it, and refuse if it fell short.
 
@@ -720,8 +723,11 @@ def settle_boundary(
         print(notice, file=sys.stderr)
     if trust.refusal:
         raise LaunchRefused(trust.refusal)
-    lease = fleet_lease(root, accessible=accessible)
-    if exposed := store_exposure(lease):
+    # A container holds its launch record read-only, so the boundary its
+    # ledger describes carries the holds the policy then refuses writes to.
+    leased = fleet_lease(root, accessible=accessible)
+    lease = held_lease(root, leased, nested) if sandbox.contained() else leased
+    if exposed := launcher_state_exposure(lease):
         raise LaunchRefused(exposed)
     boundary = compile_boundary(
         declared,
@@ -739,16 +745,25 @@ def settle_boundary(
         )
     if said:
         banner.add([Notice(text=said, urgency="boundary")])
-    record_preflight(
-        preflight,
-        sentinels,
-        root,
-        destination_policies=accept_destination_policies(
-            root, accessible, lease, runtime
-        ),
-        read_only_roots=list(lease.read_only),
-        destination_authorities=destination_authorities(accessible, runtime),
-    )
+    try:
+        record_preflight(
+            preflight,
+            sentinels,
+            root,
+            destination_policies=accept_destination_policies(
+                root, accessible, lease, runtime
+            ),
+            read_only_roots=list(lease.read_only),
+            destination_authorities=destination_authorities(accessible, runtime),
+        )
+    except OSError as refused:
+        # Where a launch is opened from inside a container, whose own
+        # launch record that container holds read-only.
+        raise LaunchRefused(
+            f"This launch cannot write its launch record under {root / '.lup'}: "
+            f"{refused.strerror}. A container holds its session's record "
+            "read-only, so a session is launched from the host."
+        ) from refused
     if not sandbox.contained():
         # No mounts, so no mount table -- and the one a contained launch left
         # behind describes a boundary this session is not behind. Attributing
@@ -780,10 +795,12 @@ def session_argv(
     devices: list[Device] = [],
     authenticate: Callable[[list[str], Path, bool], None] | None = None,
     member: LaunchedMember | None = None,
-    prepare: Callable[[list[str], Path], None] | None = None,
+    prepare: Callable[[list[str], Path], Mapping[Path, str]] | None = None,
     home_seed: HomeSeedPlaces | None = None,
     clipboard: ClipboardTransport = "commands",
     forwarded: Sequence[str] = (),
+    privileges: SessionPrivileges = SessionPrivileges(),
+    nested: Sequence[NestedRepository] = (),
 ) -> list[str]:
     """The argv that opens a session, inside the declared container or on the host.
 
@@ -820,6 +837,15 @@ def session_argv(
     ``forwarded`` names what else of ``environment`` a contained session is
     handed -- what the host companions held around it export -- carried by
     name into its container, as the launch's own variables are.
+
+    ``privileges`` is what the wall grants a contained session's processes,
+    which a host posture has no container to grant, and ``nested`` the
+    repositories inside the checkout its container holds.
+
+    ``prepare`` readies the runtime's home through the argv the session
+    opens with, and answers with what the session should find held
+    read-only in it, by host path and the path inside; a host posture's
+    home has no container to hold anything in, and its answer is not read.
 
     What it reads of the declaration arrives piece by piece -- the checkout
     it opens in, the image and its manifest, the policy, the clipboard's way
@@ -921,6 +947,8 @@ def session_argv(
         accessible=accessible,
         devices=devices,
         home_seed=home_seed,
+        privileges=privileges,
+        nested=nested,
     )
     # Verified on the way in, rather than asserted. This is §6's whole point
     # and the launch is where it has to happen: the boundary was built two
@@ -941,9 +969,16 @@ def session_argv(
         environment=environment,
         in_passing=True,
         accessible=accessible,
+        nested=nested,
     )
     if prepare is not None:
-        prepare(probing(opening, stdin=True), Path(image.config_home))
+        # What preparing the home installed and asks to be held -- a
+        # runtime's hooks, in a home the session writes -- is mounted
+        # read-only for the session, nested in the home's own volume.
+        held = prepare(probing(opening, stdin=True), Path(image.config_home))
+        if held:
+            volume = state_volume_name(root, login)
+            opening = image.home_mounts(opening, volume, held)
     # A contained session sharing host loopback can receive a browser callback.
     # Device login is needed where that callback stays outside its namespace.
     if authenticate is not None:
@@ -968,6 +1003,7 @@ def session_argv(
         banner,
         accessible,
         runtime=cli,
+        nested=nested,
     )
     say_opening(cleared, measured_here, transcript)
     native = image.clipboard.wrap([cli, *arguments], clipboard)

@@ -64,7 +64,12 @@ class EditRequest(TypedDict):
 
 
 def decision_wire(decision: KernelDecision) -> DecisionWire:
-    """Erase a decision without dropping its reviewer, placement or findings."""
+    """Carry semantic verdicts; caller-bound display attribution stays local.
+
+    The origin binds file evidence after receiving this owner's verdict. An
+    evaluator cannot substitute the caller's path or image digests through
+    advisory metadata, and the transport does not change for that metadata.
+    """
     return DecisionWire(
         effect=decision.effect,
         reason=decision.reason,

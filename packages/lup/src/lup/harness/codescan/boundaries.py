@@ -54,7 +54,6 @@ from lup.harness.codescan.project import (
     audit_suppressions,
 )
 from lup.policy.kernel.edit import (
-    IGNORE_RE,
     python_nodes,
     python_tree,
     suppression_placement,
@@ -990,7 +989,7 @@ def audit_rule(
     for line_number, line in enumerate(lines, start=1):
         if file_ignore is not None and line_number == file_ignore.line:
             continue
-        match = IGNORE_RE.search(line)
+        match = context.suppression_at(line_number, line)
         if match is None or not context.comment_at(line_number, match.start()):
             continue
         directives.append(

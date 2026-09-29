@@ -108,11 +108,14 @@ def spent_escape(tool_input):
 
 def joined(decisions):
     """Join one envelope's files: deny beats ask beats defer beats allow."""
+    evidence = tuple(row for decision in decisions for row in decision.file_reviews)
     for effect in ("deny", "ask", "defer"):
         for decision in decisions:
             if decision.effect == effect:
-                return decision
-    return KernelDecision("allow", "every patched file is declared safe")
+                return decision.revised(file_reviews=evidence)
+    return KernelDecision(
+        "allow", "every patched file is declared safe", file_reviews=evidence
+    )
 
 
 def patch_changes(command, cwd):
@@ -321,7 +324,9 @@ def queued_review(payload, decision):
                     "shell review requires regular files; use an exact patch"
                 )
             before[target.resolve()] = (
-                target.read_text(encoding="utf-8") if target.exists() else None
+                target.read_text(encoding="utf-8", newline="")
+                if target.exists()
+                else None
             )
     reviewed = reviewed_decision(
         decision,
