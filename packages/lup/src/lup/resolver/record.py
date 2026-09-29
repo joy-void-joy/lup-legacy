@@ -28,7 +28,6 @@ from lup.coordination.sessions import ActorRecord
 from lup.channels.models import utc_now
 from lup.observability.journal import Journal as SharedJournal
 from lup.observability.journal import JournalRecord
-from lup.observability.journal import JournalTail as SharedTail
 from lup.observability.journal import last_record
 from lup.resolver.models import (
     CarriedParent,
@@ -340,9 +339,6 @@ class JournalEntry(JournalRecord[ActorRef], frozen=True):
 
 
 ENTRY_ADAPTER: TypeAdapter[JournalEntry] = TypeAdapter(JournalEntry)
-
-type JournalTail = SharedTail[JournalEntry]
-"""What one follower read, and where it should resume."""
 
 
 class Journal(SharedJournal[ActorRef, JournalEntry]):
