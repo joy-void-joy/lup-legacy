@@ -428,3 +428,40 @@ def test_what_a_subagent_writes_is_held_on_its_own_row(session: Session) -> None
     assert [holder.id for holder in claim.holders] == [child]
     row = peers.row(child)
     assert row is not None and row.parent == member
+
+
+def test_dev_policy_from_a_subagent_s_shell_reads_its_own_claim_as_its_own(
+    session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The shell carries the session's id, and the command running there says whose it is.
+
+    The dispatcher opens a window keyed by the conversation making the call
+    around every command, so while a subagent's `dev policy` runs, that
+    window is the one open in the session's family, and the reading is that
+    subagent's. With no command of the family running, nothing says which
+    conversation asks, and the reading is the session's own.
+    """
+    commit_file(session.git, session.checkout, "cli.py", "value = 1\n", "seed")
+    peers = RepositoryPeers(session.checkout)
+    member = mint_member_id()
+    peers.join(member, session.checkout, cli_name="orchestrator")
+    child = peers.join_subagent(member, store.Caller(agent_id="a0cacac5"))
+    peers.lock(child.id, session.checkout)
+    session.environment[MEMBER_ENV] = member
+    edit = session.edit(session.checkout / "cli.py", "value = 1\n", "value = 2\n")
+
+    assert session.judged(monkeypatch, edit).effect == "ask"
+
+    session.dispatched(
+        "claude",
+        {
+            "tool_name": "Bash",
+            "tool_input": {
+                "command": "uv run lup-devtools dev policy --kind edit cli.py"
+            },
+            "agent_id": "a0cacac5",
+            "agent_type": "general-purpose",
+        },
+    )
+
+    assert session.judged(monkeypatch, edit).effect == "allow"

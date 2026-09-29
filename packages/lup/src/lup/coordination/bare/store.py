@@ -871,6 +871,22 @@ def acting_id(session: str, caller: Caller) -> str:
     return subagent_id(session, agent) if agent else session
 
 
+def commanding(root: Path, session: str) -> str:
+    """The one live conversation of *session* running a command now, blank where not one.
+
+    What a process run *as* a command — `dev policy` in a shell — can learn
+    of who ran it. Every such process carries the session's id and nothing
+    naming the subagent whose call started it; the permission dispatcher
+    opens a window keyed by the calling conversation around every command
+    and closes it after, so while exactly one conversation of the session
+    has one open, that conversation is the caller. Two open at once is a
+    caller nothing here can tell, and blank.
+    """
+    live = family(root, session)
+    running = [path.stem for path in listed(root / WINDOWS_DIR) if path.stem in live]
+    return running[0] if len(running) == 1 else ""
+
+
 def acting(root: Path, session: str, caller: Caller) -> Actor:
     """The row one call acts on: its subagent's own where one made it, else its session's.
 

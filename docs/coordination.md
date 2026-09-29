@@ -99,7 +99,11 @@ reaches the session that dispatched it at that session's address. What a
 subagent's calls change is held on its row, so a sibling writing there is
 asked, and the session writing under a subagent it has running is asked too;
 a subagent is not asked about its own session's claims, since the session
-dispatched it into that work.
+dispatched it into that work. `dev policy` run from a subagent's shell carries
+only the session's id; it reads as that subagent while the subagent's command
+is the one the session's family has running — the dispatcher opens a window
+keyed by the calling conversation around each command — and as the session
+where no single one is.
 
 A launcher mints both halves and exports them as `LUP_COORDINATION_MEMBER` and
 `LUP_COORDINATION_NAME`, and can prove them, the way `LUP_AGENT_IDENTITY` is
