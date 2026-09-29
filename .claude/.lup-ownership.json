@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "generator_version": "0.2.0",
-  "source_digest": "aeb1c2f06a87b7722d02de3f83060d984f80c22ac1e47dd89073ccd16f8c27ab",
+  "source_digest": "77070afbf5b9fd8072a5dc4019ab0fea4f82019a3a00715f1081ad6032875953",
   "target_requirements": [
     "claude-code"
   ],
@@ -695,7 +695,7 @@
     {
       "path": ".claude/plugins/lup/hooks/scripts/policy.py",
       "category": "generated",
-      "sha256": "193d04b20dd00015b1e25e5cee1b38d132dabba546bfbd5bafee1f9248f05083",
+      "sha256": "a36cef3068ca3f88518d5a2924d445520ec0b17bbb1f6e67bbda46a1945b2aed",
       "semantic_id": "hooks.lup-policy",
       "executable": true
     },
@@ -709,7 +709,7 @@
     {
       "path": ".claude/plugins/lup/hooks/scripts/policy_evaluator.py",
       "category": "generated",
-      "sha256": "edbb30960301681f1665448b3e778c1f5ac36edf87f1870a3701e6388e0654f6",
+      "sha256": "90af36d3ef126fefab42d49fd12870fd9fb438fb70f2b1239f68eeb4b33891a6",
       "semantic_id": "hooks.lup-policy",
       "executable": false
     },
@@ -786,7 +786,7 @@
     {
       "path": "docs/harness.md",
       "category": "generated",
-      "sha256": "14bb1f2b5e296de28a32fd6657df843105dbb16dec34ac997fa1884c72eaf7ff",
+      "sha256": "8973ec99423bf9a7e5c427dbac54b1542c0be27cd41e87552975d5ce2667c72a",
       "semantic_id": "docs.harness",
       "executable": false
     },
@@ -828,14 +828,14 @@
     {
       "path": "docs/permissions.md",
       "category": "generated",
-      "sha256": "99b626970cc0cba9cc3c88f1e5a27d2e3cdcf238849bd931c7cc7b33c7ded89e",
+      "sha256": "53361b693e7c2d7d176e548d2ae0320d8feec94ce9a4ff72a75d91178644eaa5",
       "semantic_id": "docs.permissions",
       "executable": false
     },
     {
       "path": "docs/platform-differentiation.md",
       "category": "generated",
-      "sha256": "b69e09ddfacbce7746e611178e4d02719162519a8a6b1d16ea33faaba06777d1",
+      "sha256": "3ae05d348348f63a025fee48ae0e25deb34887bf8945fee1db6b202faee548ec",
       "semantic_id": "docs.platform-differentiation",
       "executable": false
     },
