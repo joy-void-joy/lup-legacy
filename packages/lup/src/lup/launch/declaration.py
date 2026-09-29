@@ -217,7 +217,9 @@ class OuterContainer(Sandbox, frozen=True):
     Regenerating them is then the host's work — a session asking is told so
     before anything is written — as is any git command rewriting them in
     this checkout: a merge, a switch or a reset that touches them. Only this
-    checkout's trees; a sibling worktree's stay the session's to regenerate."""
+    checkout's trees; a sibling worktree's stay the session's to regenerate.
+    Off unless asked, so a mode meant to run unattended asks: a session
+    switched to auto mode partway through is invisible to its launch."""
 
     guidance: PromptDocument | None = None
     """The always-loaded document a session in this container reads instead

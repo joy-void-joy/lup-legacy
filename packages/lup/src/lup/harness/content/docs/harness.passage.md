@@ -614,7 +614,10 @@ are read-only in this session; run `uv run lup-devtools harness generate all`
 on the host", `dev check`'s drift line says the same, and so is any git command
 rewriting them here — a merge, a switch or a reset that touches them. Off by
 default, since a project whose sessions regenerate their own checkout would
-lose that.
+lose that. So a mode meant to run unattended sets it in its `container=`: the
+launch cannot tell such a session from any other, because a session switched
+to auto mode partway through says nothing to the launch that opened it, and the
+mode is the one declaration that knows what the session is for.
 
 `lup-devtools harness claude|codex` launches a declaration. Each flag is a
 field of the `Claude(...)` or `Codex(...)` it builds from this repository's
@@ -664,7 +667,7 @@ FREE = LaunchMode(
     help="explore without being asked; a later session tidies up",
     claude=Claude(permission_mode="auto"),
     codex=Codex(approval_policy="on-request", approvals_reviewer="auto_review"),
-    container=OuterContainer(sudo=True, guidance=FREE_GUIDANCE),
+    container=OuterContainer(sudo=True, guidance=FREE_GUIDANCE, hold_generated=True),
 )
 ```
 

@@ -202,7 +202,9 @@ class LaunchMode(BaseModel, frozen=True, arbitrary_types_allowed=True):
     container: OuterContainer = OuterContainer()
     """What this mode grants its container — network, memory, sudo, devices,
     folders, held trees, guidance of its own — over the person's config and
-    the project's, under the command line."""
+    the project's, under the command line. A mode meant to run unattended
+    holds the generated trees here, ``hold_generated=True``: the launch has no
+    other way to know the session will go unwatched."""
 
     targets: NativeTargets | None = None
     """What generation compiles while this mode is in force; unset, the project's own.
