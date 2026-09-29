@@ -1,5 +1,5 @@
 import { memo, useEffect, useRef, useState, type RefObject } from "react";
-import type { ReviewDecision, ReviewDetail, ReviewRoot, ReviewSnapshot, ReviewSummary, SetupPane } from "../generated/views";
+import type { ReviewDecision, ReviewDetail, ReviewRoot, ReviewSnapshot, ReviewSummary, SetupPane, UnpreviewedStep } from "../generated/views";
 import { answerReview, followDashboard, readReview, readReviewLink, readSetupPanes, reviewLink, ReviewError, takeToken, TOKEN_KEY } from "./api";
 import { Files, type FileNavigation } from "./Files";
 import { applied, type LiveState } from "./live";
@@ -31,6 +31,18 @@ function ToolInput({ detail }: { detail: ReviewDetail }) {
       <div className="tool-input"><JsonRecord value={detail.question.operation.payload} /></div>
     </>}
   </details>;
+}
+
+/** The steps of a command no document shows: what only running them reveals, or a file that is not text. */
+function UnpreviewedSteps({ steps }: { steps: UnpreviewedStep[] }) {
+  return <section className="unpreviewed" aria-label="Steps no document shows">
+    <h3>{steps.length === 1 ? "1 step" : `${steps.length} steps`} no document shows</h3>
+    <ul>{steps.map((step, index) => <li key={index}>
+      <span className={`unpreviewed-cause ${step.cause}`}>{step.cause === "run" ? "Result known only after running" : "Leaves a file that is not text"}</span>
+      <pre>{step.command}</pre>
+      {step.paths.length > 0 && <ul className="unpreviewed-paths" aria-label="Files it leaves so">{step.paths.map((path) => <li key={path}><code>{path}</code></li>)}</ul>}
+    </li>)}</ul>
+  </section>;
 }
 
 function RequestLink({ summary }: { summary: ReviewSummary }) {
@@ -91,8 +103,9 @@ function RequestDetails({ detail, queuePath, note, sending, fileNavigation, onNo
     {detail.stale_reason !== "" && <p className="notice" role="status">{detail.stale_reason}</p>}
     <ToolInput detail={detail} />
     {detail.preview_unavailable !== "" && <p className="notice" role="status">{detail.preview_unavailable}</p>}
-    {(detail.preview_notice ?? "") !== "" && <details className="preview-note"><summary>Preview computed where the dashboard runs</summary><p>{detail.preview_notice}</p></details>}
+    {(detail.preview_notice ?? "") !== "" && <details className="preview-note"><summary>How these documents were worked out</summary><p>{detail.preview_notice}</p></details>}
     {detail.files.length > 0 ? <FileEvidence files={detail.files} navigation={fileNavigation} command={detail.command} /> : <section className="command-only"><h3>Tool input</h3><JsonRecord value={question.operation.payload} /></section>}
+    {(question.unpreviewed ?? []).length > 0 && <UnpreviewedSteps steps={question.unpreviewed ?? []} />}
     {question.answer !== null && <section className="answer-record">
       <h3>{question.answer.approved ? "Approved" : "Declined"} by {question.answer.principal}</h3>
       {question.answer.note !== "" && <p>{question.answer.note}</p>}
