@@ -197,6 +197,12 @@ LAUNCH_FIELDS = {
     "host companions": FieldExample(
         example="launch_companions.py", call="Claude", keyword="companions"
     ),
+    "container network": FieldExample(
+        example="launch_network.py", call="OuterContainer", keyword="network"
+    ),
+    "container memory": FieldExample(
+        example="launch_memory.py", call="OuterContainer", keyword="memory"
+    ),
 }
 
 
