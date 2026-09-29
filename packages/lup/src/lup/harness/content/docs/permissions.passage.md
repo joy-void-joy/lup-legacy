@@ -1194,11 +1194,10 @@ into an implicit approval.
 {{ dashboard }}The terminal answers every review: run `uv run lup-devtools review show
 <id>` from the indicated checkout, then `uv run lup-devtools review approve
 <id> --as operator` or `uv run lup-devtools review decline <id> --as
-operator` outside the agent session. Review answers and the dashboard server
-that mints browser review credentials are declared `operator_only` in the shell
-vocabulary, and the answering verbs refuse a caller inside a launched session
-themselves; an escalation cannot grant the requester authority to answer
-itself.
+operator` outside the agent session. Review answers are declared
+`operator_only` in the shell vocabulary, and the verbs refuse a caller inside
+a launched session themselves; an escalation cannot grant the requester
+authority to answer itself.
 
 An answer is written where no session writes: into lup's own state on the
 host, `$XDG_STATE_HOME/lup/reviews`, one directory per repository. Every
