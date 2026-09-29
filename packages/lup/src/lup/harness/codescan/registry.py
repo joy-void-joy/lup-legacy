@@ -5,8 +5,8 @@ auditor finding resolves here: every rule the set holds — a line rule the
 kernel runs per edit, a project rule the sweep runs over the tree, a
 composition rule generation runs over the assembled harness — is projected
 into one card carrying its family, scope, diagnostic, and the module that
-enforces it. `uv run lup-devtools dev rules` renders the cards into the
-checked-in `docs/rules.md` reference that deny messages point at, so no rule
+enforces it. `uv run lup-devtools harness generate all` renders the cards into
+the checked-in `docs/rules.md` reference that deny messages point at, so no rule
 is discoverable only through the scanner that owns it.
 
 A card is a rendering of its declaration and is never written beside it: a
