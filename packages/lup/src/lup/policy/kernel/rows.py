@@ -256,6 +256,23 @@ class RewrittenDocumentRow(TypedDict):
     """A host-resolved owner decision, including caller write restrictions."""
 
 
+class PostToolReport(TypedDict):
+    """What a finished call is told, split by whether it is asked to act.
+
+    ``blocking`` is what a gate still refuses about what landed, and each
+    runtime delivers it as the feedback that stops the turn to be read.
+    ``context`` is what the agent should know and need not act on — a
+    directive the sweep removed, a name an edit still to come may supply —
+    delivered beside the result. One label for both taught agents to read
+    every notice as an order: a justified suppression reported as a
+    "blocking error" left the agent unable to tell whether anything was
+    asked of it.
+    """
+
+    blocking: list[str]
+    context: list[str]
+
+
 class ImportBoundaryRow(TypedDict):
     """Module families whose dependencies belong in declared repository roots."""
 
@@ -423,11 +440,6 @@ class ShellRuleRow(TypedDict):
     its verdict past its ``ask_flags`` and ``ask_refspecs``. Destination
     grammar still asks: a probe still contacts the repository it names, and
     where the work would land is guarded as a place, not as a write.
-    ``amending_flags`` name the flags that point an operation at a record
-    that already exists (``dev report-friction --issue N``): what the row
-    asks about is creating one, and amending one a follow-up restores, so a
-    non-allow row de-escalates to allow when one appears among literal words
-    free of guarded flags.
     ``frozen_flags`` name the flags that pin a dependency restore to what its
     lockfile already declares (``bun install --frozen-lockfile``): a non-allow
     row de-escalates to allow when one appears among literal words free of
@@ -621,7 +633,6 @@ class ShellRuleRow(TypedDict):
     allow_flags: list[str]
     read_verbs: list[str]
     probe_flags: list[str]
-    amending_flags: list[str]
     frozen_flags: list[str]
     write_markers: list[str]
     guarded_keys: list[str]
@@ -663,7 +674,6 @@ type ShellRowField = Literal[
     "allow_flags",
     "read_verbs",
     "probe_flags",
-    "amending_flags",
     "frozen_flags",
     "write_markers",
     "guarded_keys",
@@ -727,7 +737,6 @@ def shell_row_values(
         "allow_flags": row["allow_flags"],
         "read_verbs": row["read_verbs"],
         "probe_flags": row["probe_flags"],
-        "amending_flags": row["amending_flags"],
         "frozen_flags": row["frozen_flags"],
         "write_markers": row["write_markers"],
         "guarded_keys": row["guarded_keys"],

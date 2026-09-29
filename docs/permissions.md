@@ -133,7 +133,7 @@ question the row alone cannot:
 | `ask_flags` | the spellings that escalate this row |
 | `flag_effects` | what the escalation is *about* — `git reset --hard` discards working-tree content, which the bare verb never did |
 | `write_flags` | options whose value is a path this command writes, so the path is resolved and judged by the write row every other spelling reaches |
-| `allow_flags`, `read_verbs`, `amending_flags`, `frozen_flags`, `write_markers`, `bare_reads`, `guarded_keys` | the de-escalations: a pure read-only form, a verb that pins the query action, a flag that points a creating verb at a record that already exists (`dev report-friction --issue N` amends a report where the bare verb files an issue), a flag that pins a dependency restore to what its lockfile already declares (`bun install --frozen-lockfile`, and `uv sync --frozen` or `--locked` by the same judgement), a marker whose absence means it only reads, the argument-less form, a setting that redirects neither execution nor the repository this checkout talks to |
+| `allow_flags`, `read_verbs`, `frozen_flags`, `write_markers`, `bare_reads`, `guarded_keys` | the de-escalations: a pure read-only form, a verb that pins the query action, a flag that pins a dependency restore to what its lockfile already declares (`bun install --frozen-lockfile`, and `uv sync --frozen` or `--locked` by the same judgement), a marker whose absence means it only reads, the argument-less form, a setting that redirects neither execution nor the repository this checkout talks to |
 | `setting_flags`, `guarded_settings` | the same absence test about a global that carries a setting — `git -c color.ui=false` turns off colour, `git -c core.pager=x` runs a program and `git -c remote.origin.url=x` aims the next push somewhere else, and only the last two are worth interrupting about; the question a guarded one raises never stands in for the subcommand behind it, so `git -c core.pager=x checkout main` is refused as `git checkout main` is |
 | `ask_refspecs` | the effects an operand's *grammar* carries, for a push that spells a delete twice — `--delete main` and `:main` |
 | `force_flags`, `lease_flags`, `protected_refs` | a forced update judged by what it can discard: `--force-with-lease` onto a named feature branch allows, because it replaces only what this checkout last saw; `--force`, a refspec's leading `+`, a lease onto a protected branch (`main`, `dev`), or a lease naming no branch asks |
@@ -1170,25 +1170,26 @@ inside a shell tool call never reaches the dispatcher that judges it.
 
 ## Where a native ask is put
 
-A policy ask is parked for the operator, or put to the runtime's own prompt
-where that is safe. Parking writes the call to the review queue —
-`.lup/questions.jsonl` in the checkout — and refuses it while it waits; the
-answer releases it once. Codex parks every ask, having no ask effect at its
-pre-tool boundary, at both pre-tool and permission-request events. Claude
-parks every ask where the session's launch holds a dashboard (the launch
-hands the session `LUP_DASHBOARD_URL`, which the hook reads), for the
-session, its subagents and its `-p` runs alike; and it parks every
-`human_only` ask everywhere. Only an ask a supervisor may answer, where no
-dashboard is held, is rendered as Claude's native permission request.
+A policy ask is parked for the operator where somebody reads what parks, and
+is otherwise put to the runtime's own prompt. Parking writes the call to the
+review queue — `.lup/questions.jsonl` in the checkout — and refuses it while
+it waits; the answer releases it once. Codex parks every ask, having no ask
+effect at its pre-tool boundary, at both pre-tool and permission-request
+events, and is answered on the dashboard or from the terminal. Claude parks
+every ask where the session's launch holds a dashboard (the launch hands the
+session `LUP_DASHBOARD_URL`, which the hook reads), for the session, its
+subagents and its `-p` runs alike. Where no dashboard is held, every Claude
+ask — a `human_only` one included — is its native permission request, where
+the person already is.
 
-A `human_only` ask never reaches a prompt, because a prompt is not a person.
-An autonomy mode may answer a prompt on the session's behalf — on Claude Code
-2.1.263 an auto-mode classifier let a hook's ask for a ref deletion run with
-no prompt shown, while on 2.1.283 the same shape raised a prompt that held,
-unanswered, for a minute — and no field in the hook payload separates a
-prompt somebody saw from one a mode settled. What a mode does with a prompt
-moves between releases; a refusal it does not answer: a hook's `deny` held
-in a `-p` run under both the default and the auto mode on 2.1.283. Observed
+Measured on Claude Code 2.1.283, in an interactive session driven in auto
+mode: a hook's `ask` raised the permission prompt, and the call had not run
+a minute later with nobody answering; a hook's `deny` held in a `-p` run
+under both the default and the auto mode. What a mode does with a prompt is
+the vendor's and has moved between releases: on 2.1.263 an auto-mode
+classifier let a hook's ask for a ref deletion run with no prompt shown.
+No field in the hook payload separates a prompt somebody saw from one a mode
+settled; a parked question is answered only by a recorded answer. Observed
 execution is evidence of neither: it records that a call ran and confers no
 authority over the next.
 
@@ -1504,14 +1505,35 @@ settled by adding it to a list that asserts allow.
 
 ## Hook execution evidence
 
-Claude reports post-edit diagnostics through its
-[structured post-edit feedback](https://code.claude.com/docs/en/hooks#posttooluse-decision-control):
-exit 0 with `decision: "block"` and a `reason`. This gives the agent the findings
-beside the completed edit. It does not undo the edit or report a crashed hook.
-Diagnostics name the file, line, severity, and message. Codex delivers its
-post-tool findings through stderr and exit 2. Its patch parser reads every
-touched path without replaying the old file contents, so both runtimes run
-the same per-file repairs and type checks after an edit, including moves.
+After a write, the hooks sweep the written file with the whole-tree rule check
+scoped to it (`repair_command`), then type-check it (`diagnostics_command`).
+The sweep runs every rule over every span, project rules included, so what
+the gate ahead of the write cannot see is reported per write rather than
+first met at the end. It removes dead directives and says so; where the
+policy the session loaded would refuse taking a directive out, which happens
+when the sources moved since launch, it puts the file back and says the two
+disagree.
+
+What reaches the agent comes in two parts. What a gate still refuses is
+*blocking*. Claude gets it as
+[structured post-edit feedback](https://code.claude.com/docs/en/hooks#posttooluse-decision-control)
+(exit 0 with `decision: "block"` and a `reason`), and Codex through stderr
+and exit 2. What is only worth knowing is *context*: a removed directive, a
+name used before a later edit supplies it (`reportUndefinedVariable`, an
+unresolved import, an unknown symbol on an import line), what a question
+would have asked about a shell write, or another repository's referral.
+Claude and Codex both get it as `hookSpecificOutput.additionalContext`. When
+something also blocks, Codex adds it after the refusal. Nothing here undoes
+an edit or reports a crashed hook. Another repository's referral is said in
+full once per repository per session.
+
+A shell command is reviewed by what it changed, not by what its words name:
+the claim window's before-and-after comparison gives every file that moved
+from the commit, so a script's writes get the same rule scan as a redirect's.
+Only a file the words name meets the path gates as well: a generator rewrites
+its own trees, which those gates refuse editing by hand. Codex's patch parser reads every touched path without replaying the old file
+contents, so both runtimes run the same sweep and type check after an edit,
+including moves.
 
 Both plugins register a short command invoking the generated
 `hooks/scripts/policy.sh`. That guard runs `policy.py`, preserves its output

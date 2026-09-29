@@ -33,8 +33,8 @@ from lup.launch.declaration import (
     declared_image,
     declared_requirements,
     launched_sandbox,
-    loopback_relayed,
     resumption,
+    session_loopback,
 )
 from lup.launch.environments import revisions_home
 from lup.launch.guidance import held_guidance
@@ -840,7 +840,7 @@ def codex_companions(
             **compiled_codex(agent).environment,
         },
         journal=journal,
-        relayed=loopback_relayed(agent.plugin, agent.sandbox),
+        loopback=session_loopback(agent.plugin, agent.sandbox),
     )
 
 

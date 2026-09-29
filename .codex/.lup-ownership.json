@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "generator_version": "0.2.0",
-  "source_digest": "7035464cea8859f8bc75e70ca2c784b186f5007619b46a372df569ea63959e40",
+  "source_digest": "9d141e33350a28357c60764e57232312f378ef62a3155051ac6b458ffdd5d5c0",
   "target_requirements": [
     "codex-cli>=0.144"
   ],
@@ -58,7 +58,7 @@
     {
       "path": ".codex/plugins/lup/TEMPLATE_AGENTS.md",
       "category": "generated",
-      "sha256": "1d82fba3c1216ff9efb7bd815672ff95f462aa8f84edcd16472694d46964046c",
+      "sha256": "f7211a111345b38dd658a700868afadf2486330e057f61bfebe659f17113ea1a",
       "semantic_id": "harness.template-guidance",
       "executable": false
     },
@@ -212,7 +212,7 @@
     {
       "path": ".codex/plugins/lup/hooks/runtime/kernel/commands.py",
       "category": "generated",
-      "sha256": "795722739950dbc4c73c18b71960b7cdb7237273d4c84f8fabca2b896a1c8164",
+      "sha256": "81467a092cf086fc7b945085503d3d1e4baa2fa6b785ff91beb0471e20bbd339",
       "semantic_id": "hooks.lup-policy",
       "executable": false
     },
@@ -247,7 +247,7 @@
     {
       "path": ".codex/plugins/lup/hooks/runtime/kernel/edit.py",
       "category": "generated",
-      "sha256": "6380cc629748fbf1acff12fcf634ef64b3058bcad3c4849a187fcfb9dc47724d",
+      "sha256": "14c1686ef5d9552988c63c6f9f79afa20d0016c61ee7974df7a47017cefb597b",
       "semantic_id": "hooks.lup-policy",
       "executable": false
     },
@@ -324,7 +324,7 @@
     {
       "path": ".codex/plugins/lup/hooks/runtime/kernel/rows.py",
       "category": "generated",
-      "sha256": "bcd4b5678aba483ce2de9a07933505eab5f34b47b45fe95593c0164aac32f6a6",
+      "sha256": "9c0662d62181ba9fca213fb20570f81c3cf273f0da6e51891ba706a7ba90e446",
       "semantic_id": "hooks.lup-policy",
       "executable": false
     },
@@ -408,7 +408,7 @@
     {
       "path": ".codex/plugins/lup/hooks/runtime/policy_data.py",
       "category": "generated",
-      "sha256": "602c5285873d64077ef1e53a1719702bff65fe4cc3885d8da1165f7f77da4947",
+      "sha256": "a5cd93779d63c5138188ee9b4c57b5513befb583a7bd99990190e15c29bb5c88",
       "semantic_id": "hooks.lup-policy",
       "executable": false
     },
@@ -464,7 +464,7 @@
     {
       "path": ".codex/plugins/lup/hooks/scripts/policy.py",
       "category": "generated",
-      "sha256": "b172bff11afeafffb5d479b0fab67b8a6c2d6678fd6d4d12406f22da5aa6fe90",
+      "sha256": "383c2dea6a36c5f0c72e5ec54902758cd5ca6c919d6c3cfdd97cb934833f3bfb",
       "semantic_id": "hooks.lup-policy",
       "executable": true
     },
@@ -478,7 +478,7 @@
     {
       "path": ".codex/plugins/lup/hooks/scripts/policy_evaluator.py",
       "category": "generated",
-      "sha256": "c41165bb169e340bd1eec2fdd4bf30a68e779eb3a83dc19380e003adc4496bf5",
+      "sha256": "b64111a09a7e09310d1c237349abf8f5efe56636fa15d1e430386d844059a4ca",
       "semantic_id": "hooks.lup-policy",
       "executable": false
     },
@@ -611,7 +611,7 @@
     {
       "path": ".codex/plugins/lup/skills/hooks/SKILL.md",
       "category": "generated",
-      "sha256": "2c53f1405c6f2f74c0cdfa25dd6cb90c70ece79ffb267e65dfa018b8289e30b3",
+      "sha256": "53286dc0996a3030fb22705b1512cf31db5b1346ef824dda1fd1212b35f1246a",
       "semantic_id": "skill.hooks",
       "executable": false
     },
@@ -632,7 +632,7 @@
     {
       "path": ".codex/plugins/lup/skills/init/SKILL.md",
       "category": "generated",
-      "sha256": "2e515e7e99a2adfc14e0cdbc6627b314c94b3c09e812139398974c8f86f54ce7",
+      "sha256": "cfa1f571102ef7a2617f177ae2989bd534a528cfc59ccb158db7aed9b700106c",
       "semantic_id": "skill.init",
       "executable": false
     },
@@ -723,7 +723,7 @@
     {
       "path": ".codex/plugins/lup/skills/resolve/SKILL.md",
       "category": "generated",
-      "sha256": "b381280e99758031c8d1cb879c25f939e95a7a6c6957200ff4c7d9af4e8fac3f",
+      "sha256": "61a9d8c9ac6ce253d5717b9fb9e2092aabb5fea287edf7e29c1bed960bfaa61a",
       "semantic_id": "skill.resolve",
       "executable": false
     },
@@ -744,7 +744,7 @@
     {
       "path": ".codex/plugins/lup/skills/upstream/SKILL.md",
       "category": "generated",
-      "sha256": "0e4047dbf6ec9c7c155b701eb709b2e5ad07c61d5dc7f8e2c02428ec94ea7c04",
+      "sha256": "382c7900a249799f2bc24d7d8781beaf9d6171c7fe2d0293e8657eb9b309daec",
       "semantic_id": "skill.upstream",
       "executable": false
     },

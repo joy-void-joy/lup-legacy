@@ -1080,22 +1080,27 @@ def devtools_rules() -> list[ShellSubcommandRule]:
                         "the command for the user to run."
                     ),
                 ),
-                # Files a GitHub issue on whichever tracker owns the component,
-                # the act `gh issue create` asks about. `--issue N` corrects a
-                # report already filed, which a follow-up restores the way an
-                # edited issue is.
+                # Files a GitHub issue, or with `--issue N` corrects one: the
+                # acts `gh issue create` and `gh issue edit` allow on this
+                # checkout's own repository. Unnamed, the command files only
+                # there -- a component a declared tracker claims stops it with
+                # the invocation that names that tracker -- so `--repo` is the
+                # one spelling that reaches another repository's watchers, and
+                # it asks as `gh issue create --repo` does.
                 ShellOperationRule(
                     name="report-friction",
-                    effect_class="publication",
-                    reviewer="human_only",
-                    amending_flags=["--issue"],
+                    effect_class="compensable",
+                    ask_flags=["--repo"],
                     reason=(
-                        "filing a friction report opens an issue the tracker's"
-                        " watchers are notified of"
+                        "a friction report filed on a named tracker opens an"
+                        " issue that repository's watchers are notified of"
                     ),
                     recovery=(
-                        "`--issue N` adds to a report already filed instead; "
-                        "`dev issues` lists the open ones."
+                        "Unnamed, the report is filed on this checkout's own "
+                        "repository. One that belongs on another tracker is this "
+                        "question; where nobody can approve it, report the "
+                        "command for the user to run. `--issue N` adds to a "
+                        "report already filed, and `dev issues` lists the open ones."
                     ),
                 ),
                 # The scaffold's own initialization verb, whose body is
@@ -2248,31 +2253,33 @@ def protected_branches(rules: list[ShellCommandRule]) -> list[str]:
     ]
 
 
-def gh_rule(allow_authoring: bool = True) -> ShellCommandRule:
+def gh_rule(
+    allow_authoring: bool = True, allow_filing: bool = True
+) -> ShellCommandRule:
     """Compile the gh surface by what each operation does beyond this machine.
 
     Three bands rather than the two a read/write split offers.
 
     **Compensable collaboration allows.** Opening a pull request, retitling
     it, marking it ready, commenting, closing, reopening, and the same set for
-    an existing issue: every one of them is restored by a normal follow-up
-    operation, and a review flow performs several of them every round.
-    Compensable is a claim about the remote *state*, never about observation
-    — reopening a pull request does not un-send the mail that closing it
-    generated — so it is the right test for whether a person needs to see the
+    an issue, filing a new one among them: every one of them is restored by a
+    normal follow-up operation, and a review flow performs several of them
+    every round. Compensable is a claim about the remote *state*, never about
+    observation — reopening a pull request does not un-send the mail that
+    closing it generated, nor does closing an issue un-send the mail filing it
+    did — so it is the right test for whether a person needs to see the
     moment, and the wrong one for whether the effect was free. Merging a pull
     request allows beside them for the reason `git merge` does: it is how a
     landing workflow finishes, and it declares that it integrates.
 
     **Execution, attestation, publication, and repository security ask.** A
     workflow run runs something; an approving or request-changes review says
-    something in the caller's name; a release publishes, and so does a new
-    issue, a report filed where other people are notified of it; a secret, a
-    ruleset, or a repository setting is the security posture of the
-    repository itself, which a merge past the branch's protection (``--admin``)
-    overrides. A later compensating action may exist for each and does not
-    make them compensable: what happened was an event, and events are what a
-    person is being asked about.
+    something in the caller's name; a release publishes where people consume
+    it; a secret, a ruleset, or a repository setting is the security posture
+    of the repository itself, which a merge past the branch's protection
+    (``--admin``) overrides. A later compensating action may exist for each
+    and does not make them compensable: what happened was an event, and events
+    are what a person is being asked about.
 
     **A deletion nested inside an allowed operation survives it.** ``gh pr
     close`` allows and ``gh pr close --delete-branch`` asks, because a safe
@@ -2284,12 +2291,19 @@ def gh_rule(allow_authoring: bool = True) -> ShellCommandRule:
     On, they allow — the branch is already pushed by then. Off, they join the
     verbs that ask.
 
-    Both halves of that grant are claims about *this* repository — the work is
-    the author's own, and the branch is already pushed — and ``--repo`` is what
-    makes them someone else's, so the authoring verbs carry it as a guard the
-    way git's redirecting globals do. Spelled as a flag, the redirect is judged
-    per verb, so reading another repository keeps its grant: a read is a read
-    wherever it points.
+    ``allow_filing`` decides the same of a new issue: a report on the tracker
+    this project keeps for exactly that, or a publication worth a question
+    because its watchers are notified of it. On, it allows. Off, it joins the
+    verbs that ask.
+
+    Every grant in the first band is a claim about *this* repository — the
+    work is the author's own, the branch is already pushed, the tracker is the
+    project's — and ``--repo`` is what makes it someone else's, so every write
+    in that band carries it as a guard the way git's redirecting globals do. A
+    report filed on another repository reaches people who never agreed to
+    receive this project's reports, which is the question it keeps. Spelled
+    as a flag, the redirect is judged per verb, so reading another repository
+    keeps its grant: a read is a read wherever it points.
 
     The flag is only half of it. ``GH_REPO`` and ``GH_HOST`` reach the same
     retarget through the environment, and that spelling is caught by the
@@ -2491,13 +2505,25 @@ def gh_rule(allow_authoring: bool = True) -> ShellCommandRule:
                 [
                     *reads(["list", "view", "status"]),
                     *compensable(
-                        ["edit", "comment", "close", "reopen", "pin", "unpin"]
+                        [
+                            "edit",
+                            "comment",
+                            "close",
+                            "reopen",
+                            "pin",
+                            "unpin",
+                            *(["create"] if allow_filing else []),
+                        ]
                     ),
-                    *judged(
-                        ["create"],
-                        "publication",
-                        "filing an issue publishes a report the repository's"
-                        " watchers are notified of",
+                    *(
+                        []
+                        if allow_filing
+                        else judged(
+                            ["create"],
+                            "publication",
+                            "filing an issue publishes a report the repository's"
+                            " watchers are notified of",
+                        )
                     ),
                     *judged(
                         ["delete", "transfer"],

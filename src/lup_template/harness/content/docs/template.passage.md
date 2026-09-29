@@ -114,8 +114,10 @@ source explicitly. Without `--url`, it uses the existing Git dependency pin,
 then the scaffold's named sync registration: its URL, or its checkout's origin.
 An absent source is reported before any pin is changed. Library friction reports
 use that same configured upstream; the consuming project's reports use its own
-origin. A `lup` entry that names no URL, remote or path — one committed before
-the entry carried a URL, which no update rewrites, since root files are the
+origin, and are the only ones filed without a question — one routed upstream
+prints the command naming that tracker with `--repo`, which asks. A `lup`
+entry that names no URL, remote or path — one committed before the entry
+carried a URL, which no update rewrites, since root files are the
 project's own — falls back to the source repository the installed library
 declares in its `[project.urls]`.
 
@@ -244,7 +246,7 @@ what a session is offered are all derived from that one answer.
 
 {{ setup_page }}{{ sync_registry }}## How the two halves depend on each other
 
-`lup_template` imports `lup`. `lup` never imports `lup_template` — it is
+{{ application }} imports `lup`. `lup` never imports {{ application_2 }} — it is
 published standalone and could not. The placement test for any new utility is
 the same question in both directions: *would another project built on lup want
 this?* If yes it belongs in `packages/lup/`; if it only makes sense for this

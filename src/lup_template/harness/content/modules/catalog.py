@@ -25,10 +25,10 @@ def project_module(layout: ApplicationLayout) -> Module:
     return module(layout)
 
 
-def template_init_module() -> Module:
+def template_init_module(layout: ApplicationLayout) -> Module:
     from lup_template.harness.content.modules.template_init import module
 
-    return module()
+    return module(layout)
 
 
 def upstream_module() -> Module:
@@ -54,7 +54,7 @@ def opening_modules(layout: ApplicationLayout) -> list[ModuleEntry]:
     return [ModuleEntry(spec=specs.PROJECT, build=lambda: project_module(layout))]
 
 
-def closing_modules() -> list[ModuleEntry]:
+def closing_modules(layout: ApplicationLayout) -> list[ModuleEntry]:
     """What this repository says once the library has said its piece.
 
     Standing a project up and keeping it in step with upstream are both
@@ -62,7 +62,9 @@ def closing_modules() -> list[ModuleEntry]:
     the configuration section closes the tooling chapter for the same reason.
     """
     return [
-        ModuleEntry(spec=specs.TEMPLATE_INIT, build=template_init_module),
+        ModuleEntry(
+            spec=specs.TEMPLATE_INIT, build=lambda: template_init_module(layout)
+        ),
         ModuleEntry(spec=specs.UPSTREAM, build=upstream_module),
         ModuleEntry(spec=specs.EXAMPLES, build=examples_module),
     ]
@@ -83,5 +85,5 @@ def composed_entries(
     return [
         *opening_modules(layout),
         *library_modules(layout, rules),
-        *closing_modules(),
+        *closing_modules(layout),
     ]

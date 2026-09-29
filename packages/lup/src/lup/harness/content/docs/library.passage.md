@@ -349,7 +349,9 @@ already runs on the host's loopback — a model server, a database — is a
 project names, and a container whose loopback is its own, on any network but
 the host's, reaches it through a socket the launch relays for that one port,
 which the image's entrypoint binds to the same address inside; nothing else on
-the host's loopback is reachable that way.
+the host's loopback is reachable that way. A container joined to no network
+(`network="none"`) is refused a host service rather than relayed one, since the
+relay would be the one way through that wall.
 
 `steps` are the repository's own workflow around a launch — a checkpoint, a
 base-freshness sync, a companion tree regenerated — each a `LaunchStep` with

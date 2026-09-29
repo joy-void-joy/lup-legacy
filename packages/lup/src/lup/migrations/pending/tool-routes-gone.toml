@@ -1,0 +1,32 @@
+subjects = [
+    "ParamBuilder",
+    "ToolRoute",
+    "ToolRoute.pattern",
+    "ToolRoute.tool",
+    "ToolRoute.build_params",
+    "ToolRoute.arguments",
+    "Redirection",
+    "Redirection.domain",
+    "Redirection.advice",
+    "Redirection.covers",
+    "ToolRoutes",
+    "ToolRoutes.routes",
+    "ToolRoutes.redirections",
+    "ToolRoutes.route",
+    "ToolRoutes.redirect",
+    "ToolRoutes.dispatch",
+    "ToolRoutes.advice",
+    "routes",
+]
+reason = """
+no fetch tool consulted a URL-to-tool routing table, and what decides \
+where a fetch may go is the policy's `FetchPolicy` over `UrlScope`s, so \
+`lup.tools.routing` went"""
+
+[[steps]]
+instruction = """
+Keep a URL-to-tool table in the fetch tool that reads it: match the URL \
+against your own patterns before fetching and call the better tool \
+directly, or copy `lup.tools.routing` from the release before this one \
+into your project; scope what a fetch may reach with `FetchPolicy` from \
+lup.policy.rules."""

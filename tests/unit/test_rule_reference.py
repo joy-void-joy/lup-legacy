@@ -1,7 +1,12 @@
 """Generated Lup rule reference tests."""
 
 from pathlib import Path
+from unittest.mock import Mock
 
+import pytest
+from typer.testing import CliRunner
+
+import lup.devtools.dev.rules as rules
 from lup.providers.harness import claude_prompt_renderer, codex_prompt_renderer
 from lup.harness.codescan.antipatterns import (
     PYTHON_ANTI_PATTERNS,
@@ -9,8 +14,21 @@ from lup.harness.codescan.antipatterns import (
     RuleSet,
 )
 from lup.harness.codescan.common import Rule
-from lup.harness.codescan.registry import all_rules
+from lup.harness.codescan.registry import CLEARED_SEPARATOR, all_rules
 from lup.devtools.dev.rules import rule_reference_artifact, rule_reference_document
+from lup_template.devtools.main import app
+
+
+def test_printing_the_reference_writes_nothing(monkeypatch: pytest.MonkeyPatch) -> None:
+    """`dev rules` is read to see the table; a read does not rewrite the page."""
+    written = Mock()
+    monkeypatch.setattr(rules, "write_generated_file", written)
+
+    result = CliRunner().invoke(app, ["dev", "rules"])
+
+    assert result.exit_code == 0, result.output
+    assert "`seam-boundary`" in result.output
+    written.assert_not_called()
 
 
 def test_checked_in_rule_reference_matches_canonical_objects() -> None:
@@ -86,3 +104,18 @@ def every_declared() -> list[Rule]:
         *held.project,
         *held.composition,
     ]
+
+
+def test_no_card_shows_one_snippet_both_flagged_and_cleared() -> None:
+    """A verdict that turns on where the code sits shows where.
+
+    `front-door`, `seam-boundary` and `native-spelling` each declare one
+    snippet flagged in a neutral module and cleared in an adapter, and the
+    card rendered both as the same text: a rule contradicting itself.
+    """
+    for card in all_rules():
+        cleared = card.cleared.split(CLEARED_SEPARATOR) if card.cleared else []
+        assert card.example not in cleared, card.id
+
+    spelling = next(card for card in all_rules() if card.id == "native-spelling")
+    assert "providers/codex/harness.py" in spelling.cleared

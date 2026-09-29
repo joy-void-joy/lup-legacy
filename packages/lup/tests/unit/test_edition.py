@@ -20,7 +20,7 @@ from lup.policy.assets.host import (
     declared_program,
     file_diagnostics,
     publish_edition,
-    repaired_directives,
+    swept_files,
     shared_git_directory,
     worktree_root,
 )
@@ -123,7 +123,7 @@ def test_the_hook_and_the_library_name_one_location(tmp_path: Path) -> None:
     worktree = linked(main, tmp_path / "feature")
     file = edited(worktree)
 
-    publish_edition(str(file))
+    publish_edition(str(file), str(main))
 
     assert edition_path(worktree).is_file()
     assert edition_path(worktree) == edition_path(main)
@@ -133,7 +133,7 @@ def test_what_the_hook_writes_is_what_the_library_reads(tmp_path: Path) -> None:
     work = checkout(tmp_path / "repo")
     file = edited(work)
 
-    publish_edition(str(file))
+    publish_edition(str(file), str(work))
 
     assert read_edition(edition_path(work)) == Edition(workspace=work, file=file)
 
@@ -143,7 +143,7 @@ def test_an_edit_in_a_worktree_publishes_that_worktree(tmp_path: Path) -> None:
     main = checkout(tmp_path / "repo")
     worktree = linked(main, tmp_path / "feature")
 
-    publish_edition(str(edited(worktree)))
+    publish_edition(str(edited(worktree)), str(main))
 
     published = read_edition(edition_path(main))
     assert published is not None and published.workspace == worktree
@@ -153,8 +153,8 @@ def test_a_later_edit_replaces_an_earlier_one(tmp_path: Path) -> None:
     main = checkout(tmp_path / "repo")
     worktree = linked(main, tmp_path / "feature")
 
-    publish_edition(str(edited(main)))
-    publish_edition(str(edited(worktree)))
+    publish_edition(str(edited(main)), str(main))
+    publish_edition(str(edited(worktree)), str(main))
 
     published = read_edition(edition_path(main))
     assert published is not None and published.workspace == worktree
@@ -164,9 +164,26 @@ def test_a_path_in_no_repository_publishes_nothing(tmp_path: Path) -> None:
     loose = tmp_path / "loose.py"
     loose.write_text("x = 1\n", encoding="utf-8")
 
-    publish_edition(str(loose))
+    publish_edition(str(loose), str(tmp_path))
 
     assert list(tmp_path.glob("**/edition.json")) == []
+
+
+def test_an_edit_in_a_repository_nested_in_the_session_s_publishes_nothing(
+    tmp_path: Path,
+) -> None:
+    """Another repository's git directory is not this session's to keep state in.
+
+    The reader looks in the session's own repository, so a record written
+    into the nested one's is read by nobody and outlives the file it names.
+    """
+    session = checkout(tmp_path / "repo")
+    nested = checkout(session / "works")
+
+    publish_edition(str(edited(nested)), str(session))
+
+    assert not (nested / ".git" / "lup").exists()
+    assert read_edition(edition_path(session)) is None
 
 
 def test_an_unwritable_destination_does_not_raise(tmp_path: Path) -> None:
@@ -180,7 +197,7 @@ def test_an_unwritable_destination_does_not_raise(tmp_path: Path) -> None:
     work = checkout(tmp_path / "repo")
     (work / ".lup").write_text("occupied\n", encoding="utf-8")
 
-    publish_edition(str(edited(work)))
+    publish_edition(str(edited(work)), str(work))
 
 
 def checker(root: Path, payload: str) -> list[str]:
@@ -320,7 +337,7 @@ def test_a_diagnostic_for_the_edited_file_is_reported(tmp_path: Path) -> None:
     file = edited(work)
     command = checker(work, report(file))
 
-    assert file_diagnostics(str(file), command) == [
+    assert file_diagnostics(str(file), command)["blocking"] == [
         "module.py:1: error: something is wrong",
     ]
 
@@ -352,7 +369,7 @@ def test_a_removed_directive_is_reported_back(tmp_path: Path) -> None:
     file = edited(work)
     command = sweep(work, removals("module.py"))
 
-    assert repaired_directives(str(file), command) == [
+    assert swept_files([str(file)], command)[str(file)]["repaired"] == [
         "line 3: removed `# lup: ignore` — it guarded no rule, so it silenced nothing"
     ]
 
@@ -363,7 +380,7 @@ def test_a_removed_directive_names_the_rule_it_claimed(tmp_path: Path) -> None:
     file = edited(work)
     command = sweep(work, removals("module.py", rule_id="any-type"))
 
-    assert repaired_directives(str(file), command) == [
+    assert swept_files([str(file)], command)[str(file)]["repaired"] == [
         "line 3: removed `# lup: ignore[any-type]` — it guarded no rule, so it"
         " silenced nothing"
     ]
@@ -382,7 +399,7 @@ def test_the_sweep_is_given_the_file_the_way_it_names_its_own(
     (work / "package").mkdir()
     file = edited(work, "package/module.py")
     command = sweep(work, removals("package/module.py"))
-    repaired_directives(str(file), command)
+    swept_files([str(file)], command)
 
     recorded = (work / "sweep-arguments").read_text(encoding="utf-8")
 
@@ -396,7 +413,7 @@ def test_a_file_outside_the_checkout_is_not_swept(tmp_path: Path) -> None:
     outside = tmp_path / "elsewhere.py"
     outside.write_text("x = 1\n", encoding="utf-8")
 
-    assert repaired_directives(str(outside), ["fake-sweep"]) == []
+    assert swept_files([str(outside)], ["fake-sweep"]) == {}
 
 
 def test_the_checker_leads_the_path_with_its_own_environment(tmp_path: Path) -> None:
@@ -420,7 +437,7 @@ def test_the_checker_leads_the_path_with_its_own_environment(tmp_path: Path) -> 
     )
     script.chmod(0o755)
 
-    assert file_diagnostics(str(file), [".venv/bin/fake-checker"]) == []
+    assert file_diagnostics(str(file), [".venv/bin/fake-checker"])["blocking"] == []
     assert recorded.read_text(encoding="utf-8").startswith(f"{binaries}{os.pathsep}")
 
 
@@ -438,7 +455,7 @@ def test_a_file_the_checker_cannot_read_is_not_checked(tmp_path: Path) -> None:
     manifest.write_text('[project]\nname = "x"\n', encoding="utf-8")
     command = checker(work, report(manifest))
 
-    assert file_diagnostics(str(manifest), command) == []
+    assert file_diagnostics(str(manifest), command)["blocking"] == []
 
 
 def test_a_file_holding_a_merge_open_is_not_checked(tmp_path: Path) -> None:
@@ -457,7 +474,7 @@ def test_a_file_holding_a_merge_open_is_not_checked(tmp_path: Path) -> None:
     )
     command = checker(work, report(file))
 
-    assert file_diagnostics(str(file), command) == []
+    assert file_diagnostics(str(file), command)["blocking"] == []
 
 
 def test_a_file_quoting_one_marker_is_still_checked(tmp_path: Path) -> None:
@@ -472,7 +489,7 @@ def test_a_file_quoting_one_marker_is_still_checked(tmp_path: Path) -> None:
     file.write_text('x = """\n<<<<<<< quoted, not conflicted\n"""\n', encoding="utf-8")
     command = checker(work, report(file))
 
-    assert file_diagnostics(str(file), command) == [
+    assert file_diagnostics(str(file), command)["blocking"] == [
         "module.py:1: error: something is wrong",
     ]
 
@@ -483,8 +500,8 @@ def test_the_readable_suffixes_are_the_callers_to_choose(tmp_path: Path) -> None
     file = edited(work, "module.qs")
     command = checker(work, report(file))
 
-    assert file_diagnostics(str(file), command) == []
-    assert file_diagnostics(str(file), command, suffixes=(".qs",)) == [
+    assert file_diagnostics(str(file), command)["blocking"] == []
+    assert file_diagnostics(str(file), command, suffixes=(".qs",))["blocking"] == [
         "module.qs:1: error: something is wrong",
     ]
 
@@ -499,7 +516,7 @@ def test_a_diagnostic_about_another_file_is_not(tmp_path: Path) -> None:
     file = edited(work)
     command = checker(work, report(work / "elsewhere.py"))
 
-    assert file_diagnostics(str(file), command) == []
+    assert file_diagnostics(str(file), command)["blocking"] == []
 
 
 def test_an_informational_note_is_not_a_diagnostic(tmp_path: Path) -> None:
@@ -507,21 +524,21 @@ def test_an_informational_note_is_not_a_diagnostic(tmp_path: Path) -> None:
     file = edited(work)
     command = checker(work, report(file, severity="information"))
 
-    assert file_diagnostics(str(file), command) == []
+    assert file_diagnostics(str(file), command)["blocking"] == []
 
 
 def test_no_declared_checker_reports_nothing(tmp_path: Path) -> None:
     """Empty declares no checker, rather than guessing at one."""
     work = checkout(tmp_path / "repo")
 
-    assert file_diagnostics(str(edited(work)), []) == []
+    assert file_diagnostics(str(edited(work)), [])["blocking"] == []
 
 
 def test_a_checker_that_is_not_installed_reports_nothing(tmp_path: Path) -> None:
     """A missing checker is not evidence about the edit."""
     work = checkout(tmp_path / "repo")
 
-    assert file_diagnostics(str(edited(work)), ["nowhere/pyright"]) == []
+    assert file_diagnostics(str(edited(work)), ["nowhere/pyright"])["blocking"] == []
 
 
 def test_a_checker_that_writes_nonsense_reports_nothing(tmp_path: Path) -> None:
@@ -531,7 +548,7 @@ def test_a_checker_that_writes_nonsense_reports_nothing(tmp_path: Path) -> None:
     file = edited(work)
     command = checker(work, "not json at all")
 
-    assert file_diagnostics(str(file), command) == []
+    assert file_diagnostics(str(file), command)["blocking"] == []
 
 
 def test_a_corrupt_record_reads_as_none(tmp_path: Path) -> None:
@@ -571,7 +588,122 @@ def test_the_published_bytes_are_the_declared_fields(tmp_path: Path) -> None:
     """The hook writes JSON by hand; drift here is drift in the contract."""
     work = checkout(tmp_path / "repo")
 
-    publish_edition(str(edited(work)))
+    publish_edition(str(edited(work)), str(work))
 
     written = json.loads(edition_path(work).read_text(encoding="utf-8"))
     assert set(written) == set(Edition.model_fields)
+
+
+def pending_report(file: Path, rule: str, line: int) -> str:
+    return json.dumps(
+        {
+            "generalDiagnostics": [
+                {
+                    "file": str(file),
+                    "severity": "error",
+                    "rule": rule,
+                    "range": {"start": {"line": line}},
+                    "message": "not there yet",
+                }
+            ]
+        }
+    )
+
+
+def test_a_name_used_before_it_is_supplied_is_context(tmp_path: Path) -> None:
+    """A change spanning two edits reports its use before its definition.
+
+    Labelled a blocking error, it arrived dozens of times per change while
+    four builders worked in parallel, each time about a name the next edit
+    wrote. It is said, and said as what it is.
+    """
+    work = checkout(tmp_path / "repo")
+    file = edited(work)
+    command = checker(work, pending_report(file, "reportUndefinedVariable", 0))
+
+    found = file_diagnostics(str(file), command)
+
+    assert found["blocking"] == []
+    assert found["context"][1:] == ["module.py:1: error: not there yet"]
+
+
+def test_an_unknown_symbol_on_an_import_line_is_context(tmp_path: Path) -> None:
+    work = checkout(tmp_path / "repo")
+    file = work / "module.py"
+    file.write_text("from lup import not_yet\n\nx = not_yet\n", encoding="utf-8")
+    command = checker(work, pending_report(file, "reportAttributeAccessIssue", 0))
+
+    assert file_diagnostics(str(file), command)["blocking"] == []
+
+
+def test_an_unknown_attribute_elsewhere_still_blocks(tmp_path: Path) -> None:
+    """The same rule off an import line is a real mistake, not a pending one."""
+    work = checkout(tmp_path / "repo")
+    file = work / "module.py"
+    file.write_text("import os\n\nx = os.nope\n", encoding="utf-8")
+    command = checker(work, pending_report(file, "reportAttributeAccessIssue", 2))
+
+    assert file_diagnostics(str(file), command)["blocking"] == [
+        "module.py:3: error: not there yet"
+    ]
+
+
+def findings(file: str, line: int = 2, kind: str = "missing") -> str:
+    return json.dumps(
+        {
+            "repaired": [],
+            "findings": [
+                {
+                    "file": file,
+                    "line": line,
+                    "kind": kind,
+                    "rule_id": "native-spelling",
+                    "message": "neutral module contains a wire word",
+                    "text": "x",
+                }
+            ],
+        }
+    )
+
+
+def test_what_the_sweep_still_refuses_comes_back_with_the_file(tmp_path: Path) -> None:
+    """The sweep is the whole-tree check scoped to the file, every rule over
+    every span, so a verdict the gate ahead of the write cannot reach is
+    reported per write rather than first met at the end."""
+    work = checkout(tmp_path / "repo")
+    file = edited(work)
+    command = sweep(work, findings("module.py"))
+
+    swept = swept_files([str(file)], command)[str(file)]
+
+    assert swept["refused"] == [
+        {
+            "line": 2,
+            "rule_id": "native-spelling",
+            "kind": "missing",
+            "message": "neutral module contains a wire word",
+        }
+    ]
+    assert swept["written"] == "x = 1\n"
+
+
+def test_an_advisory_finding_is_not_a_refusal(tmp_path: Path) -> None:
+    work = checkout(tmp_path / "repo")
+    file = edited(work)
+    command = sweep(work, findings("module.py", kind="untyped"))
+
+    assert swept_files([str(file)], command)[str(file)]["refused"] == []
+
+
+def test_every_file_of_a_checkout_is_swept_in_one_run(tmp_path: Path) -> None:
+    """Starting the sweep is most of what it costs, so a command that wrote
+    several files pays for it once."""
+    work = checkout(tmp_path / "repo")
+    first, second = edited(work, "first.py"), edited(work, "second.py")
+    command = sweep(work, json.dumps({"repaired": []}))
+
+    swept = swept_files([str(first), str(second)], command)
+
+    assert set(swept) == {str(first), str(second)}
+    recorded = (work / "sweep-arguments").read_text(encoding="utf-8")
+    assert "--path first.py --path second.py" in recorded

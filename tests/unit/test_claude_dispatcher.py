@@ -19,7 +19,6 @@ import sh
 from lup.providers.claude.hooks import claude_placed_input
 from lup.policy.grants import allowance_grants_environment, write_allowance_grants
 from lup.policy.identity import AGENT_IDENTITY_ENV, ConcernAllowance
-from lup.policy.relay import QuestionRelay
 from lup.policy.kernel.decision import (
     CONTAINED_ESCAPE_NOTICE,
     SANDBOX_ESCAPE_NOTICE,
@@ -966,7 +965,9 @@ def test_post_tool_findings_are_feedback_without_a_process_error(
     dispatcher = bundled_dispatcher()
     payload = {"hook_event_name": "PostToolUse", "tool_name": "Edit", "tool_input": {}}
     monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps(payload)))
-    monkeypatch.setattr(dispatcher, "observe", lambda _payload: findings)
+    monkeypatch.setattr(
+        dispatcher, "observe", lambda _payload: {"blocking": findings, "context": []}
+    )
     monkeypatch.setattr(dispatcher, "plugin_data_root", lambda: tmp_path)
 
     dispatcher.main()
@@ -1155,7 +1156,9 @@ def test_the_one_loss_the_snapshot_cannot_hold_still_asks(delete_repo: Path) -> 
     assert effect == "ask"
 
 
-def test_a_write_the_gates_already_read_is_not_reported_again(tmp_path: Path) -> None:
+def test_a_write_the_gates_already_read_is_not_reported_again(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """The after-the-fact review answers for the writes nothing could read first.
 
     A shell write is reported afterwards because its content only exists once
@@ -1175,10 +1178,16 @@ def test_a_write_the_gates_already_read_is_not_reported_again(tmp_path: Path) ->
         "chore: base",
     )
     (work / "src" / "engine.py").write_text("value = 2\n", encoding="utf-8")
-    review = bundled_dispatcher().written_review
+    dispatcher = bundled_dispatcher()
+    # The sweep answers for rules the gate does not run, which is not this.
+    monkeypatch.setattr(dispatcher, "swept_files", lambda _paths, _command: {})
+    review = dispatcher.written_review
 
-    assert review("cat > src/engine.py <<'EOF'\nvalue = 2\nEOF", work) == []
-    assert review("dev render > src/engine.py", work) != []
+    assert review("cat > src/engine.py <<'EOF'\nvalue = 2\nEOF", work) == {
+        "blocking": [],
+        "context": [],
+    }
+    assert review("dev render > src/engine.py", work)["blocking"] != []
 
 
 def test_an_effect_no_boundary_here_reaches_still_asks(delete_repo: Path) -> None:
@@ -1270,9 +1279,8 @@ def escalated_reason_under(
     put it and named by the nonce this session is entitled to believe; none
     given is a launch that measured nothing, which the reader answers as
     uncontained. The native sandbox is off in both, as it is in every
-    contained launch. Returns the effect, the reason the approver reads in
-    the queue it is parked in, and the rewrite the call goes out with once
-    the operator approves it.
+    contained launch. Returns the effect, the reason the approver reads, and
+    the rewrite the call goes out with.
     """
     written = root / ".lup" / "preflight" / "launch.json"
     if ledger is None:
@@ -1289,15 +1297,14 @@ def escalated_reason_under(
     }
     contained = ledger is not None and "yes" in ledger["contained"]
     answer = decide_from(payload, root, written.parent if contained else None)
-    relay = QuestionRelay(root / ".lup/questions.jsonl")
-    (parked,) = relay.pending()
-    relay.answer(parked.id, "operator", True)
-    retried = decide_from(payload, root, written.parent if contained else None)
-    specific = retried["hookSpecificOutput"]
+    specific = answer["hookSpecificOutput"]
     assert isinstance(specific, dict)
-    assert specific["permissionDecision"] == "allow"
     rewritten = specific["updatedInput"] if "updatedInput" in specific else None
-    return claude_effect(answer), parked.reason, rewritten
+    return (
+        claude_effect(answer),
+        str(specific["permissionDecisionReason"]),
+        rewritten,
+    )
 
 
 def test_an_approved_crossing_on_a_host_is_described_as_leaving_for_it(
@@ -1374,18 +1381,11 @@ def test_a_reason_naming_only_its_category_announces_nothing() -> None:
     assert "systemMessage" not in decision
 
 
-def test_a_parked_shell_question_is_not_told_twice() -> None:
-    """The agent reads the reason and the person the line saying where it waits.
-
-    Neither repeats the other: the person's line names the review and its
-    route to an answer, and the reason stays with the call it refused.
-    """
+def test_a_shell_prompt_is_not_told_twice() -> None:
+    """A command's prompt renders the reason itself, so announcing it repeats it."""
     decision = decide({"tool_name": "Bash", "tool_input": {"command": "rm -rf src"}})
-    specific = decision["hookSpecificOutput"]
-    assert isinstance(specific, dict)
-    reason = str(specific["permissionDecisionReason"]).splitlines()[0]
 
-    assert reason not in str(decision["systemMessage"])
+    assert "systemMessage" not in decision
 
 
 @pytest.mark.parametrize(

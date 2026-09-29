@@ -56,7 +56,7 @@ from pydantic import BaseModel, Field, StringConstraints, ValidationError
 
 from lup.channels.wait import wait_until
 from lup.harness.notice import Notice
-from lup.launch.declaration import Mount
+from lup.launch.declaration import Loopback, Mount
 from lup.launch.refusal import LaunchRefused
 from lup.launch.secrets import HostSecrets
 from lup.observability.audit import TraceJournal
@@ -104,10 +104,9 @@ class CompanionLaunch(BaseModel, frozen=True, arbitrary_types_allowed=True):
     """The run's journal, where the session is recorded; ``None`` where nothing
     is, such as a command printed rather than run."""
 
-    relayed: bool = False
-    """Whether the session's loopback is its container's own, so a service on
-    the host's loopback reaches it only through a relay: a contained session
-    on any network but the host's."""
+    loopback: Loopback = Loopback.HOST
+    """Whose loopback the session reaches, which decides whether a service on
+    the host's is reached itself, relayed, or refused."""
 
 
 class Contribution(BaseModel, frozen=True):
@@ -315,7 +314,8 @@ class HostService(HostCompanion, frozen=True):
     it, so the launcher listens on a socket of this service's, mounts it into
     the container and forwards what arrives to this one port; the image's
     entrypoint binds the same address inside to that socket. Nothing else on
-    the host's loopback is reachable that way.
+    the host's loopback is reachable that way. A container joined to no
+    network is refused one: the relay would be its way out.
     """
 
     port: PortNumber
@@ -340,7 +340,15 @@ class HostService(HostCompanion, frozen=True):
 
     @contextmanager
     def held(self, launch: CompanionLaunch) -> Iterator[Contribution]:
-        if not launch.relayed:
+        if launch.loopback is Loopback.SEALED:
+            raise LaunchRefused(
+                f"Host service {self.name} is declared, and this session's "
+                'container joins no network (network "none"): relaying '
+                f"127.0.0.1:{self.port} into it would be the one way through "
+                "that wall. Give the container a network, or drop the service "
+                "from this declaration."
+            )
+        if launch.loopback is Loopback.HOST:
             yield Contribution(environment={self.variable: self.address()})
             return
         directory = Path(tempfile.mkdtemp(prefix=f"lup-service-{self.name}-"))

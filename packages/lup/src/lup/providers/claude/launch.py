@@ -33,8 +33,8 @@ from lup.launch.declaration import (
     declared_image,
     declared_requirements,
     launched_sandbox,
-    loopback_relayed,
     resumption,
+    session_loopback,
 )
 from lup.launch.foreground import between_steps, run_in_foreground
 from lup.launch.guidance import held_guidance
@@ -739,7 +739,7 @@ def claude_companions(
             **compiled_claude(agent).environment,
         },
         journal=journal,
-        relayed=loopback_relayed(agent.plugin, agent.sandbox),
+        loopback=session_loopback(agent.plugin, agent.sandbox),
     )
 
 

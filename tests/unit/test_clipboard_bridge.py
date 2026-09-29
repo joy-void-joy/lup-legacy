@@ -298,21 +298,19 @@ def test_the_shim_is_executable_in_its_own_right(
     assert str(printed) == "on the clipboard"
 
 
-def test_the_shims_are_advertised_and_not_only_installed() -> None:
-    """A runtime deciding whether to look for a clipboard finds one here.
+def test_the_session_is_handed_the_bridge_and_no_display() -> None:
+    """The bridge speaks no X protocol, so nothing in the session is told it does.
 
-    The socket alone was not enough, and the gap is upstream of everything
-    else this file proves: a runtime that reads the environment, sees no
-    display, and concludes the machine has no clipboard never runs a shim at
-    all -- so every spelling below answers perfectly to nobody. Measured
-    against Claude Code, which probes for `xclip` only where `DISPLAY` is
-    set and otherwise emits an escape sequence a multiplexer may swallow.
+    A `DISPLAY` naming it sent every X client in the session to connect to
+    an address with no server behind it: headless Chromium's ANGLE backend
+    tried, failed, and gave every page no WebGL at all, with nothing saying
+    why. The bridge's own variable is the one address handed in; a runtime
+    that finds no display copies through the `tmux` shim or the terminal's
+    own escape sequence, and reads through the shims by name.
     """
     bridge = ClipboardBridge()
-    environment = bridge.environment()
-    assert environment[bridge.display_variable] == bridge.display
-    assert bridge.display, "a probe reads this for truth before it reads it at all"
-    assert sorted(environment) == sorted([bridge.variable, bridge.display_variable])
+
+    assert bridge.environment() == {bridge.variable: bridge.path()}
 
 
 def test_a_copy_spelled_the_way_a_multiplexer_takes_one_reaches_the_clipboard(

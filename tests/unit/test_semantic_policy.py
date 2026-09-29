@@ -1192,11 +1192,11 @@ SHELL_POLICY_CASES = [
     DecisionCase(input="gh api repos/o/r/pulls", effect="allow"),
     DecisionCase(input="gh api -X POST repos/o/r/issues", effect="ask"),
     DecisionCase(input="gh api -f title=x repos/o/r/issues", effect="ask"),
-    # A write to a pull-request or merge route is the typed verb by another
-    # spelling, and allows where the endpoint names this checkout's own
-    # repository; a literal owner and name are anybody's, the line `gh pr
-    # create --repo` draws. Filing an issue and deleting a branch ask for what
-    # they are rather than for their method.
+    # A write to a pull-request, merge or issue route is the typed verb by
+    # another spelling, and allows where the endpoint names this checkout's
+    # own repository; a literal owner and name are anybody's, the line `gh pr
+    # create --repo` and `gh issue create --repo` draw. Deleting a branch asks
+    # for what it is rather than for its method.
     DecisionCase(
         input="gh api repos/{owner}/{repo}/pulls -f title=t -f head=a -f base=b",
         effect="allow",
@@ -1217,7 +1217,8 @@ SHELL_POLICY_CASES = [
         input="gh api --hostname h.example repos/{owner}/{repo}/pulls -f title=t",
         effect="ask",
     ),
-    DecisionCase(input="gh api repos/{owner}/{repo}/issues -f title=t", effect="ask"),
+    DecisionCase(input="gh api repos/{owner}/{repo}/issues -f title=t", effect="allow"),
+    DecisionCase(input="gh api repos/o/r/issues -f title=t", effect="ask"),
     DecisionCase(
         input="gh api -X DELETE repos/{owner}/{repo}/git/refs/heads/feat/x",
         effect="ask",
@@ -1910,16 +1911,24 @@ SHELL_POLICY_CASES = [
     DecisionCase(input="gh pr close 1 --delete-branch", effect="ask"),
     DecisionCase(input="gh pr reopen 1", effect="allow"),
     DecisionCase(input="gh api -X POST /repos", effect="ask"),
-    # A new issue is a report filed where the repository's watchers are
-    # notified of it; working an existing one is compensable.
-    DecisionCase(input="gh issue create --title x", effect="ask"),
+    # A new issue on this repository is a report its own tracker exists to
+    # receive, and a close restores it; one filed on another repository
+    # reaches watchers who never asked for this project's reports.
+    DecisionCase(input="gh issue create --title x", effect="allow"),
     DecisionCase(input="gh issue create -R o/r --title x", effect="ask"),
+    DecisionCase(input="gh issue create --repo o/r --title x", effect="ask"),
     DecisionCase(input="gh issue edit 3 --title x", effect="allow"),
     DecisionCase(input="gh issue comment 3 --body hi", effect="allow"),
-    # A friction report files an issue too, and one pointed at a report
-    # already filed amends it -- unless the pointer cannot be read.
+    # A friction report files an issue too, on the same terms: unnamed it
+    # lands here, and naming a tracker is the other-repository form. A
+    # pointer at a report already filed corrects it, and a pointer that
+    # cannot be read could be the tracker's flag.
     DecisionCase(
         input="uv run lup-devtools dev report-friction --summary s --component c",
+        effect="allow",
+    ),
+    DecisionCase(
+        input="uv run lup-devtools dev report-friction --summary s --repo o/r",
         effect="ask",
     ),
     DecisionCase(
@@ -1932,7 +1941,7 @@ SHELL_POLICY_CASES = [
     ),
     DecisionCase(
         input="uv run lup-devtools dev report-friction --summary s --issue $N",
-        effect="ask",
+        effect="deny",
     ),
     DecisionCase(input="gh issue close 3", effect="allow"),
     DecisionCase(input="gh release create v1", effect="ask"),

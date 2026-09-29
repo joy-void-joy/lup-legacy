@@ -367,6 +367,14 @@ def create_dev_app(
                 "instead of what it found — parsing, walking, or resolving",
             ),
         ] = False,
+        refutations: Annotated[
+            bool,
+            typer.Option(
+                "--refutations",
+                help="With --antipatterns: list each finding the receiver's type "
+                "refuted or left unresolved, which are otherwise only counted",
+            ),
+        ] = False,
         as_json: Annotated[
             bool,
             typer.Option(
@@ -409,8 +417,27 @@ def create_dev_app(
                 "base it cannot work out",
             ),
         ] = None,
+        conflict_markers: Annotated[
+            bool,
+            typer.Option(
+                "--conflict-markers",
+                help="Refuse a tracked file holding a conflict block a merge left "
+                "behind only — the row the full check and --changed also run",
+            ),
+        ] = False,
+        staged: Annotated[
+            bool,
+            typer.Option(
+                "--staged",
+                help="With --conflict-markers: read what the next commit holds, "
+                "as the commit hook does",
+            ),
+        ] = False,
     ) -> None:
         """Run ruff format, ruff check, pyright, and pytest. Read-only by default."""
+        if conflict_markers:
+            check.run_conflict_markers(staged)
+            return
         declarations = declared()
         if changed:
             from lup.devtools.dev.branches import get_integration_branch
@@ -432,7 +459,11 @@ def create_dev_app(
                     antipatterns_mod.summarize(declarations.project, as_json, path)
                 case _:
                     antipatterns_mod.report(
-                        declarations.project, as_json, path, fix=fix
+                        declarations.project,
+                        as_json,
+                        path,
+                        fix=fix,
+                        refutations=refutations,
                     )
             return
         if boundaries:
@@ -472,6 +503,14 @@ def create_dev_app(
                 "its whole suite"
             ),
         ] = None,
+        integration: Annotated[
+            bool,
+            typer.Option(
+                "--integration",
+                help="Also run the tests marked integration, which each suite's "
+                "configuration deselects",
+            ),
+        ] = False,
     ) -> None:
         """Run named tests in the suite that installs each, one run per suite.
 
@@ -484,6 +523,7 @@ def create_dev_app(
             test_roots=declarations.test_roots,
             selections=paths or [],
             excluded_roots=check.non_code_roots(declarations.project),
+            integration=integration,
         )
 
     # -- comments command --
@@ -773,6 +813,14 @@ def create_dev_app(
         resolver takes every open issue in this repository as evidence, so
         the next run plans a repair it cannot make. A component no declared
         tracker claims stays here, which is every defect this tree owns.
+
+        Filed unasked only here. This runs inside an allowed devtools call,
+        and the permission policy reads its words rather than its routing,
+        so a new unnamed report whose component a declared tracker claims
+        stops, printing the same invocation with `--repo` naming that
+        tracker -- the spelling the policy asks about. A correction
+        (`--issue`) goes wherever routing sends it, as `dev tracker` reaches
+        a declared tracker.
         """
         routes = tracker_routes()
         report = issues_mod.FrictionReport(
@@ -783,6 +831,14 @@ def create_dev_app(
             state=state,
             recovery_cost=recovery_cost,
         )
+        given = ["uv", "run", "lup-devtools", "dev", "report-friction"]
+        given += ["--summary", summary, "--component", component]
+        given += ["--command", command, "--error", error]
+        given += ["--state", state, "--recovery-cost", recovery_cost]
+        elsewhere = routes.claimed_elsewhere(component, given)
+        if elsewhere and issue is None and not repository:
+            typer.echo(elsewhere, err=True)
+            raise typer.Exit(1)
         try:
             target = routes.chosen(
                 ["issue", "create", "--title", summary],
@@ -956,24 +1012,26 @@ def create_dev_app(
             typer.Option("--check", help="Fail when docs/rules.md is stale"),
         ] = False,
     ) -> None:
-        """Generate the Lup rule and typed-suppression reference.
+        """Print the Lup rule and typed-suppression reference.
 
+        Read-only: `harness generate all` writes `docs/rules.md` with every
+        other generated page, and `--check` says whether it is current.
         Rendered against the selection this repository holds itself to, which
         is the same one the edit hook and the sweep read. Rendering the whole
-        library table instead writes a reference naming rules the gate here
-        does not enforce — and a project that retired one then has two
-        documents disagreeing about what it is held to, the generated file
-        saying it still applies.
+        library table instead names rules the gate here does not enforce —
+        and a project that retired one then has two documents disagreeing
+        about what it is held to, the generated file saying it still applies.
         """
+        selection = declared().hooks.rules
+        if not check_only:
+            typer.echo(rules.rule_reference_artifact(selection).content, nl=False)
+            return
         try:
-            destination = rules.write_rule_reference(
-                check=check_only, selection=declared().hooks.rules
-            )
+            destination = rules.write_rule_reference(check=True, selection=selection)
         except RuntimeError as error:
             typer.echo(str(error), err=True)
             raise typer.Exit(1) from error
-        verb = "verified" if check_only else "written"
-        typer.echo(f"Lup rule reference {verb}: {destination}")
+        typer.echo(f"Lup rule reference verified: {destination}")
 
     @app.command("models")
     def models_cmd(

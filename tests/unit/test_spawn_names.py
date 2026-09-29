@@ -18,7 +18,7 @@ from lup.policy.kernel.spawns import decide_spawn, spawn_name
 from lup.policy.relay import QuestionRelay
 from lup.types import JsonObject
 from lup_template.harness.catalog import portable_harness
-from tests.unit.native import claude_effect, codex_denial
+from tests.unit.native import codex_denial
 
 DISPATCHER = Path(".claude/plugins/lup/hooks/scripts/policy.py")
 CODEX_DISPATCHER = Path(".codex/plugins/lup/hooks/scripts/policy.py")
@@ -223,10 +223,9 @@ def test_a_refusal_escalates_into_the_question_the_caller_asked_for(
 
     specific = decision["hookSpecificOutput"]
     assert isinstance(specific, dict)
-    assert claude_effect(decision) == "ask"
+    assert specific["permissionDecision"] == "ask"
     assert "measuring the hook" in str(specific["permissionDecisionReason"])
-    (question,) = QuestionRelay(tmp_path / ".lup/questions.jsonl").pending()
-    assert question.operation.tool == "Agent"
+    assert QuestionRelay(tmp_path / ".lup/questions.jsonl").pending() == []
 
 
 def test_a_project_requiring_no_name_leaves_every_spawn_alone() -> None:

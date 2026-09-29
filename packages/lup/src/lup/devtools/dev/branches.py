@@ -2763,7 +2763,7 @@ def run_deletion(plan: DeletionPlan, force: bool) -> None:
     from lup.devtools.dev.worktree import (
         drop_the_hold,
         refuse_live_worktree_removal,
-        said_environment_removed,
+        said_checkout_state_removed,
     )
 
     completed: list[str] = []
@@ -2788,7 +2788,7 @@ def run_deletion(plan: DeletionPlan, force: bool) -> None:
                 git("worktree", "remove", *(["--force"] if force else []), worktree)
                 typer.echo(f"Removed worktree: {worktree}")
                 completed.append("removed worktree")
-                said_environment_removed(Path(worktree))
+                said_checkout_state_removed(Path(worktree))
             except sh.ErrorReturnCode as error:
                 if not worktree_left_as_mount_point(worktree):
                     # `git worktree remove` unregisters before its final rmdir,

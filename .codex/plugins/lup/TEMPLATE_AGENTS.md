@@ -570,7 +570,9 @@ installs an immutable content-addressed copy of the plugin after a digest check,
 launches the Codex CLI in a persistent per-worktree home derived, at every
 launch, from the selected account's authentication and settings — the account
 home of the profile `~/.config/lup/config.toml` selects, else `~/.codex` — and
-returns what a session changed in them to that account when it closes.
+returns what a session changed in them to that account when it closes. The
+home is kept in lup's state, `~/.local/state/lup/homes/` (or under
+`$XDG_STATE_HOME`), never in the checkout, since it holds a copy of the login.
 `lup-devtools dev usage codex` reports this backend's usage and
 `lup-devtools dev usage claude` the other's; profiles, one name per account on
 both runtimes, are managed with `lup-devtools setup profile`.

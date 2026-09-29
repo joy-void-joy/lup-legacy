@@ -137,8 +137,8 @@ def test_a_verdict_says_what_kind_of_question_it_is_without_reading_prose() -> N
     """
     rows = erase_shell_rules(default_vocabulary())
 
-    filing = classify_shell("gh issue create --title x", rows)
+    release = classify_shell("gh release create v1", rows)
     deletion = classify_shell("rm -rf build", rows)
 
-    assert filing.purpose == "external_consequence"
+    assert release.purpose == "external_consequence"
     assert deletion.purpose == "unrecovered_local_mutation"

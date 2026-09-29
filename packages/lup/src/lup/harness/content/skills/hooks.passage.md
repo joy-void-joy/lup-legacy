@@ -15,7 +15,7 @@ Update the canonical policy and regenerate its hermetic native dispatchers.
 - `packages/lup/src/lup/harness/codescan/` owns the rule families — anti-patterns
   (`antipatterns.py`), boundary/spelling seams (`boundaries.py`), capability
   architecture (`capabilities.py`) — indexed by `registry.py` and rendered
-  into `docs/rules.md` by `uv run lup-devtools dev rules`.
+  into `docs/rules.md` by `uv run lup-devtools harness generate all`.
 - {{ harness_catalog_py }} owns application URL scopes,
   protected roots, policy IDs, and other composition inputs; the readable
   shell table it declares is `content/shell_vocabulary.py`.

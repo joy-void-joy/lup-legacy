@@ -77,8 +77,13 @@ from host import (
     text_at,
     undo_snapshot,
     worktree_path,
+    worktree_root,
+    referral_noted,
+    file_diagnostics,
+    swept_files,
 )
 from kernel.decision import KernelDecision
+from kernel.rows import PostToolReport
 
 # A line of its own: a dispatcher's bundle drops an import line whose text is
 # already in it, and a line naming both would redefine `KernelDecision` there.
@@ -147,6 +152,8 @@ from policy_data import (
     ALLOWED_FETCH_SCOPES,
     ANTI_PATTERN_ROWS,
     DASHBOARD_URL_ENV,
+    DIAGNOSTICS_COMMAND,
+    REPAIR_COMMAND,
     RESOLUTION_COMMAND,
     DENIED_FETCH_SCOPES,
     EDIT_RULES,
@@ -1154,7 +1161,9 @@ def authored_review(
     return max(verdicts, key=lambda verdict: STRENGTH.index(verdict.effect))
 
 
-def written_review(command: str, cwd: Path) -> list[str]:
+def written_review(
+    command: str, cwd: Path, changed: list[str] | None = None, session: str = ""
+) -> PostToolReport:
     """What the gates say about the files a shell command just wrote.
 
     The half of an edit's review a shell write cannot reach in advance. An
@@ -1179,7 +1188,9 @@ def written_review(command: str, cwd: Path) -> list[str]:
     It reports and does not undo. The command has run, so a refusal here is
     an account of what landed rather than a verdict on whether it should
     have; the agent is told, in the words the gate would have used, and what
-    it does about it is the next turn's business.
+    it does about it is the next turn's business. A refusal is blocking; what
+    a question would have asked -- a suppression to approve, another
+    repository's file -- is context, since nobody is left to answer it.
 
     A patch is the third route in, and the one that is read rather than
     resolved: `git apply` replaces tracked content wholesale by a spelling no
@@ -1187,20 +1198,41 @@ def written_review(command: str, cwd: Path) -> list[str]:
     reads them out, and what lands is put to the same gates as the rest --
     which is what lets that row allow instead of refusing an operation with no
     reasonable substitute.
+
+    The words name only some of what a command writes: a script, a generator,
+    an interpreter handed a file name none of these readers sees. ``changed``
+    is every file the claim window measured moving across the command, among
+    those differing from the commit or untracked, so a write no word names is
+    reviewed as a redirect is -- and a checkout's own moves, which leave files
+    matching the commit, are not. Such a file is put to the rule scan alone,
+    the anti-pattern gate's refusal and nothing else: a generator rewrites its
+    own trees, which the path gates refuse editing by hand, and read against
+    them every regeneration would come back refused. The Python files among
+    all of them are then swept as an edit is (:func:`reviewed_writes`), for
+    what the rules the edit gate does not run still refuse.
     """
     carried = [write["path"] for write in authored_writes(command)]
-
-    return [
-        f"{target}: {verdict.reason}"
-        for target in [
-            *shell_write_targets(command),
-            *shell_flag_write_targets(command, SHELL_RULES),
-            *patch_write_targets(shell_patch_operands(command, SHELL_RULES), cwd),
-        ]
+    base = cwd.resolve()
+    measured = [
+        str(Path(path).relative_to(base)) if Path(path).is_relative_to(base) else path
+        for path in changed or []
+    ]
+    named = [
+        *shell_write_targets(command),
+        *shell_flag_write_targets(command, SHELL_RULES),
+        *patch_write_targets(shell_patch_operands(command, SHELL_RULES), cwd),
+    ]
+    targets = [
+        target
+        for target in dict.fromkeys([*named, *measured])
         # A write whose bytes were in the command went to these gates before it
         # ran, and reporting it again tells the agent the same thing twice about
         # a write somebody has already answered for.
         if target not in carried and (cwd / target).is_file()
+    ]
+    verdicts = [
+        (target, referred_once(verdict, target, cwd, session))
+        for target in targets
         for after in [text_at(cwd, target)]
         if after is not None
         for verdict in [
@@ -1216,8 +1248,164 @@ def written_review(command: str, cwd: Path) -> list[str]:
                 cwd=cwd,
             )
         ]
-        if verdict.effect != "allow"
+        if target in named
+        or (verdict.effect == "deny" and verdict.rule == "edit:anti-pattern")
     ]
+    # The edit gate answered the line rules against the commit; the sweep adds
+    # what only it runs, so the two never name one finding twice.
+    answered = [row["id"] for rows in ANTI_PATTERN_ROWS.values() for row in rows]
+    return merged(
+        [
+            PostToolReport(
+                blocking=[
+                    f"{target}: {verdict.addressed()}"
+                    for target, verdict in verdicts
+                    if verdict.effect == "deny"
+                ],
+                context=[
+                    f"{target}: {verdict.addressed()}"
+                    for target, verdict in verdicts
+                    if verdict.effect not in ("allow", "deny")
+                    # Said once already: the file is only another
+                    # repository's, which the agent was told.
+                    and not (
+                        verdict.rule == "edit:foreign-repository"
+                        and not verdict.recovery
+                    )
+                ],
+            ),
+            reviewed_writes(
+                [
+                    str(cwd / target)
+                    for target in targets
+                    if not foreign_repository(target, cwd)
+                ],
+                cwd,
+                answered=answered,
+                diagnosed=False,
+            ),
+        ]
+    )
+
+
+def merged(reports: list[PostToolReport]) -> PostToolReport:
+    """Several reports about one call, as the one report its runtime delivers."""
+    return PostToolReport(
+        blocking=[line for report in reports for line in report["blocking"]],
+        context=[line for report in reports for line in report["context"]],
+    )
+
+
+def reviewed_writes(
+    paths: list[str],
+    cwd: Path | None,
+    answered: list[str] | None = None,
+    diagnosed: bool = True,
+) -> PostToolReport:
+    """What the checks after a write say about the files it wrote.
+
+    The sweep goes first because it rewrites what it repairs, and a type
+    check run before it describes lines that have since moved. What it still
+    refuses is blocking: it is the whole-tree check scoped to these files,
+    every rule over every span, so nothing the gate ahead of the write could
+    not see is first met at the end. *answered* names rules another gate
+    already reported for this write, and those are left to it.
+    """
+    swept = swept_files(paths, REPAIR_COMMAND)
+    skipped = answered or []
+
+    def refused(path: str, file: dict) -> list[str]:
+        shown = worktree_path(path)
+        return [
+            f"{shown}:{finding['line']}: {finding['message']} "
+            f"({finding['kind']}, rule {finding['rule_id']})"
+            for finding in file["refused"]
+            if finding["rule_id"] not in skipped
+        ]
+
+    return merged(
+        [
+            *(repair_report(path, file, cwd) for path, file in swept.items()),
+            PostToolReport(
+                blocking=[
+                    line for path, file in swept.items() for line in refused(path, file)
+                ],
+                context=[],
+            ),
+            *(
+                PostToolReport(blocking=found["blocking"], context=found["context"])
+                for path in (paths if diagnosed else [])
+                for found in [file_diagnostics(path, DIAGNOSTICS_COMMAND)]
+            ),
+        ]
+    )
+
+
+def repair_report(path: str, file: dict, cwd: Path | None) -> PostToolReport:
+    """What the sweep's repair of one file comes to, under this session's policy.
+
+    The sweep judges by the checkout's rules and the gate ahead of the write
+    by the policy this session loaded, and the two differ whenever the
+    sources moved since the launch -- after a rename, the gate demanded a
+    `# lup: ignore[seam-boundary]` the sweep then deleted as dead, and every
+    later edit to the file was refused for the missing directive. So the
+    repair is put to that policy as an edit: where it would refuse taking a
+    directive out, the file goes back to what was written, and the agent is
+    told the two disagree rather than meeting the refusal on its next edit.
+    Every removal is said either way, because a line that vanishes unsaid is
+    one the agent writes again.
+    """
+    shown = worktree_path(path)
+    after = text_at(Path(path).parent, Path(path).name)
+    if not file["repaired"] or file["written"] is None or after is None:
+        return PostToolReport(
+            blocking=[], context=[f"{shown}: {line}" for line in file["repaired"]]
+        )
+    verdict = local_edit_decision(
+        path,
+        file["written"],
+        after,
+        path_exists=True,
+        autonomous=True,
+        cwd=cwd,
+        resolve_external=False,
+    )
+    if verdict.effect != "deny" or verdict.rule != "edit:anti-pattern":
+        return PostToolReport(
+            blocking=[], context=[f"{shown}: {line}" for line in file["repaired"]]
+        )
+    Path(path).write_text(file["written"], encoding="utf-8")
+    return PostToolReport(
+        blocking=[],
+        context=[
+            f"{shown}: left as written. The sweep called its directives dead by "
+            "this checkout's rules, and the policy this session loaded still "
+            "needs one of them; the two agree again once `uv run lup-devtools "
+            "harness generate all` runs and the session restarts. What the "
+            "loaded policy said about the repair:",
+            verdict.reason,
+        ],
+    )
+
+
+def referred_once(
+    verdict: KernelDecision, path_text: str, cwd: Path | None, session: str
+) -> KernelDecision:
+    """Another repository's referral, said in full once per repository per session.
+
+    The referral's second sentence -- that the repository's conventions are
+    its own and the rule checker is not applying any of them -- is true of
+    every file in that repository and news only the first time. Printed on
+    every edit it was read about 150 times by one agent, which is the noise
+    this project's own "say it once" refuses. So the verdict stands on every
+    edit and its recovery goes with the first (:func:`referral_noted`).
+    """
+    if verdict.rule != "edit:foreign-repository" or not session or cwd is None:
+        return verdict
+    repository = worktree_root(str((cwd / path_text).resolve())) or path_text
+    if referral_noted(cwd, session, repository):
+        return verdict.revised(recovery="")
+    return verdict
 
 
 def foreign_claim_decision(
@@ -1232,13 +1420,17 @@ def foreign_claim_decision(
     *caller* is the conversation making the call, as its runtime's host half
     read it off the payload: a subagent is judged as its own row, so its
     sibling's claims are asked about and its session's are not.
+
+    The file is named as its checkout spells it, so one edit reads the same
+    whichever spelling the call used: named as given, a claim made an absolute
+    and a relative spelling of one edit two different answers.
     """
     directory = peer_directory(cwd)
     if PEER_POLICY is None or directory is None:
         return None
     session = answering_member(directory)
     return decide_foreign_claim(
-        path_text,
+        worktree_path(str(((cwd or Path.cwd()) / path_text).resolve())),
         store.claim_holders(
             directory,
             path_text,
@@ -1267,10 +1459,14 @@ def claim_window_opened(cwd: Path | None, caller: store.Caller) -> None:
     )
 
 
-def claim_window_closed(cwd: Path | None, caller: store.Caller) -> None:
-    """Attribute what a command changed, contested where nothing could tell."""
+def claim_window_closed(cwd: Path | None, caller: store.Caller) -> list[str]:
+    """Attribute what a command changed, contested where nothing could tell.
+
+    What changed is returned too, since it is the one account of a command's
+    writes that does not depend on the command naming them.
+    """
     if PEER_POLICY is None:
-        return
+        return []
     directory = peer_directory(cwd)
     session = answering_member(directory)
     closed = close_claim_window(
@@ -1283,6 +1479,7 @@ def claim_window_closed(cwd: Path | None, caller: store.Caller) -> None:
         store.record_claims(
             directory, store.acting(directory, session, caller), closed["paths"]
         )
+    return closed["paths"]
 
 
 def named_claim_recorded(

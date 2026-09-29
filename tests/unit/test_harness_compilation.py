@@ -1138,7 +1138,7 @@ def test_every_typed_content_module_is_reachable_from_a_catalog() -> None:
     builder, including declined declarations, without changing that selection
     or importing the optional subjects owned by the library.
     """
-    for entry in [*opening_modules(LAYOUT), *closing_modules()]:
+    for entry in [*opening_modules(LAYOUT), *closing_modules(LAYOUT)]:
         assert entry.build().spec == entry.spec
     content = Path("src/lup_template/harness/content")
     assert content.is_dir()
@@ -2379,12 +2379,12 @@ def test_generated_claude_hook_refuses_the_declared_calls(tmp_path: Path) -> Non
         "content": "# lup: escalate[decision]: the user asked for a page\npage"
     }
     # The marker exists to turn a refusal into the question its caller asked
-    # for, and a person's question is parked for the operator to answer.
+    # for, and where no dashboard is held the question is put where the
+    # caller's reader already is.
     escalated = decision("Artifact", proposal)
-    assert escalated.permission_decision == "deny"
+    assert escalated.permission_decision == "ask"
     assert "the user asked for a page" in escalated.permission_decision_reason
-    (question,) = QuestionRelay(tmp_path / ".lup/questions.jsonl").pending()
-    assert question.operation.tool == "Artifact"
+    assert QuestionRelay(tmp_path / ".lup/questions.jsonl").pending() == []
 
 
 def test_generated_claude_hook_leaves_every_other_skill_to_the_runtime() -> None:
@@ -2741,9 +2741,9 @@ def test_generated_claude_hook_requires_review_for_human_owned_readme_edits(
         hook_decision(payload, tmp_path, agent_type="resolver-worker"),
         hook_decision(payload, tmp_path, identity="resolver-worker"),
     ):
-        assert granted.permission_decision == "deny"
+        assert granted.permission_decision == "ask"
         assert "human-authored" in granted.permission_decision_reason
-        assert len(QuestionRelay(tmp_path / ".lup/questions.jsonl").pending()) == 1
+        assert QuestionRelay(tmp_path / ".lup/questions.jsonl").pending() == []
         assert readme.read_text(encoding="utf-8") == "# Operator-authored design\n"
 
 

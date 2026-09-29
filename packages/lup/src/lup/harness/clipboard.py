@@ -326,28 +326,6 @@ class ClipboardBridge(BaseModel, frozen=True):
             "rest by name, because the server is genuinely out of reach"
         ),
     )
-    display_variable: str = Field(
-        default="DISPLAY",
-        description=(
-            "The variable a runtime's own clipboard probe reads to decide "
-            "whether the machine it is on has a clipboard at all. Claude "
-            "Code's is the measured case: it looks for `wl-copy` only when "
-            "`WAYLAND_DISPLAY` is set and for `xclip` only when `DISPLAY` "
-            "is, so a container carrying every name under `shims` and no "
-            "display variable is judged to have no clipboard and falls back "
-            "to an escape sequence -- which the operator's multiplexer and "
-            "terminal each get to decline, where the shim beside it would "
-            "have answered"
-        ),
-    )
-    display: str = Field(
-        default="lup-bridge:0",
-        description=(
-            "Discovery marker for command-based clipboard clients. It is not "
-            "an X11 endpoint. The private-display wrapper replaces it with "
-            "an authenticated local endpoint for native X11 clients"
-        ),
-    )
     media_types: list[str] = Field(
         default=["image/png", "image/jpeg", "image/gif", "image/webp"],
         description=(
@@ -392,15 +370,19 @@ class ClipboardBridge(BaseModel, frozen=True):
         )
 
     def environment(self) -> EnvVars:
-        """What tells the shims inside where to reach this broker, and what finds them.
+        """What tells the shims inside where to reach this broker, and nothing else.
 
-        The socket is the channel and the display marker is the *discovery*.
-        A runtime that never runs a shim, because it read the environment and
-        concluded the machine has no display, reaches the operator's
-        clipboard through neither -- so both are this bridge's to declare,
-        both being true only where it is running.
+        No display. The bridge speaks no X protocol, and a `DISPLAY` naming
+        it sent every X client in the session to an address with no server
+        behind it -- headless Chromium among them, which then gave every page
+        no WebGL at all. A runtime that finds no display reads the clipboard
+        through the shims by name and copies through the `tmux` shim or the
+        terminal's own escape sequence, as Claude Code does (measured on
+        2.1.283: it looks for `xclip` to copy only where `DISPLAY` is set); a
+        runtime whose clipboard is native X11 is given a real display of its
+        own by the private-display wrapper, which speaks it.
         """
-        return {self.variable: self.path(), self.display_variable: self.display}
+        return {self.variable: self.path()}
 
     def answered(self, line: bytes) -> ClipboardReply:
         """One request line, answered or refused.

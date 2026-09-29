@@ -2244,9 +2244,8 @@ def contained_cli(
 ) -> Path:
     """The program a session is started as, so it opens inside a container.
 
-    What a :class:`~lup.providers.selection.SessionRequest` asking for
-    ``outer`` containment names in ``contained_program``. The seam is the
-    program on both runtimes -- Claude's SDK spawns whatever ``cli_path``
+    What an agent declared behind ``sandbox=OuterContainer()`` names as
+    its CLI. The seam is the program on both runtimes -- Claude's SDK spawns whatever ``cli_path``
     names and hands it the arguments it would have handed ``claude``, Codex
     takes the same question as ``executable`` -- so a session is contained by
     pointing that field here, and neither adapter learns anything about

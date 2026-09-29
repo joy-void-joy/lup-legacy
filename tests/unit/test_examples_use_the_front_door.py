@@ -72,7 +72,8 @@ def test_a_lazy_export_is_taken_from_the_package_root(path: Path) -> None:
 def test_no_example_opens_a_session_through_an_adapter(path: Path) -> None:
     """The narrower thing that is always wrong: naming an opener.
 
-    A `SessionOpener` is the engine an agent composes. An example holding
+    A `ClaudeSessionOpener` or `CodexSessionOpener` is the engine an agent
+    composes. An example holding
     one has not configured an agent differently — it has stepped inside the
     composition root, where the contract it depends on is not a public one.
     """

@@ -130,10 +130,9 @@ def test_an_edit_under_another_session_s_claim_asks_and_names_the_holder(
     decision = decide(edit_payload(work / "a.py", "value = 1", "value = 2", work), mine)
     specific = decision["hookSpecificOutput"]
     assert isinstance(specific, dict)
-    assert claude_effect(decision) == "ask"
+    assert specific["permissionDecision"] == "ask"
     assert "feat-rewriting" in str(specific["permissionDecisionReason"])
-    (question,) = QuestionRelay(work / ".lup/questions.jsonl").pending()
-    assert "feat-rewriting" in question.reason
+    assert QuestionRelay(work / ".lup/questions.jsonl").pending() == []
 
 
 def test_a_session_is_not_asked_about_a_path_it_holds_itself(tmp_path: Path) -> None:
