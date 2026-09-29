@@ -74,7 +74,7 @@ from lup.types import EnvVars, JsonObject, JsonValue
 from lup.workspace.paths import agent_version, harness_runs_path
 from lup.harness.clipboard import ClipboardTransport
 from lup.harness.generate import RuntimeReadiness
-from lup.harness.image import Image, SessionPrivileges
+from lup.harness.image import Image, MemoryLimit, SessionPrivileges
 from lup.launch.preflight import (
     LaunchSentinels,
     ROOT_VARIABLE,
@@ -802,6 +802,7 @@ def session_argv(
     forwarded: Sequence[str] = (),
     privileges: SessionPrivileges = SessionPrivileges(),
     nested: Sequence[NestedRepository] = (),
+    memory: MemoryLimit | None = None,
 ) -> list[str]:
     """The argv that opens a session, inside the declared container or on the host.
 
@@ -840,8 +841,9 @@ def session_argv(
     name into its container, as the launch's own variables are.
 
     ``privileges`` is what the wall grants a contained session's processes,
-    which a host posture has no container to grant, and ``nested`` the
-    repositories inside the checkout its container holds.
+    which a host posture has no container to grant, ``nested`` the
+    repositories inside the checkout its container holds, and ``memory`` how
+    much its container may hold.
 
     ``prepare`` readies the runtime's home through the argv the session
     opens with, and answers with what the session should find held
@@ -950,6 +952,7 @@ def session_argv(
         home_seed=home_seed,
         privileges=privileges,
         nested=nested,
+        memory=memory,
     )
     # Verified on the way in, rather than asserted. This is §6's whole point
     # and the launch is where it has to happen: the boundary was built two

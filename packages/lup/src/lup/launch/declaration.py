@@ -17,13 +17,14 @@ from typing import Protocol, Self, runtime_checkable
 from pydantic import BaseModel, Field
 
 from lup.harness.devices import Device
-from lup.harness.image import Image, SessionPrivileges, detected_client
+from lup.harness.image import Image, MemoryLimit, SessionPrivileges, detected_client
 from lup.harness.messaging import WakeSockets
 from lup.harness.models import Harness, HookSet, Resumption
 from lup.harness.notice import Notice
 from lup.harness.requirements import Manifest
 from lup.observability.sessions import SessionRecorder
 from lup.policy.enforcement import SandboxPosture
+from lup.sandbox.models import NetworkMode
 from lup.sandbox.rail import AccessibleRoot, NestedRepository
 from lup.sessions.events import SessionId, SessionSummary
 from lup.types import EnvVars
@@ -133,9 +134,17 @@ class Sandbox(BaseModel, ABC, frozen=True, extra="forbid"):
         """The image this wall's container runs, where it names one."""
         return None
 
+    def networked(self, image: Image) -> Image:
+        """``image`` on the network this wall's container joins; a host wall joins none."""
+        return image
+
     def privileges(self) -> SessionPrivileges:
         """What this wall lets a session's processes come to hold: nothing, unless it grants sudo."""
         return SessionPrivileges()
+
+    def memory_limit(self) -> MemoryLimit | None:
+        """How much memory this wall's container may hold, where it bounds it."""
+        return None
 
     def nested(self) -> list[NestedRepository]:
         """The repositories inside the checkout this wall holds as it holds the checkout's own."""
@@ -153,6 +162,12 @@ class OuterContainer(Sandbox, frozen=True):
     plainly which wall is load-bearing: in an unprivileged container the
     runtime's own confinement cannot start, so inside one the container and
     its egress proxy are the whole boundary.
+
+    What the container grants its session — its network, memory, sudo,
+    devices, folders and held trees — may be stated by several hands at
+    once, each an ``OuterContainer`` saying only what it sets, laid one over
+    the next by :meth:`over`: a launch's command line over its mode, over the
+    person's config, over the project.
     """
 
     devices: list[Device] = []
@@ -178,6 +193,15 @@ class OuterContainer(Sandbox, frozen=True):
     at every launch. One marked ``create`` is initialized on the host when
     absent, so no session writes its configuration first."""
 
+    network: NetworkMode | None = None
+    """The network the container joins: ``filtered`` behind the egress proxy,
+    ``bridge``, ``host`` or ``none``, as :class:`~lup.harness.egress.SessionEgress`
+    describes each. Unset, the image's own."""
+
+    memory: MemoryLimit | None = None
+    """How much memory the container may hold, an amount or a share of what
+    the engine can hand out; unset, the engine's default, which is no limit."""
+
     def posture(self) -> LaunchSandbox:
         return LaunchSandbox.OUTER
 
@@ -190,11 +214,45 @@ class OuterContainer(Sandbox, frozen=True):
     def named_image(self) -> Image | None:
         return self.image
 
+    def networked(self, image: Image) -> Image:
+        if self.network is None:
+            return image
+        egress = image.egress.model_copy(update={"mode": self.network})
+        return image.model_copy(update={"egress": egress})
+
     def privileges(self) -> SessionPrivileges:
         return SessionPrivileges(sudo=self.sudo)
 
+    def memory_limit(self) -> MemoryLimit | None:
+        return self.memory
+
     def nested(self) -> list[NestedRepository]:
         return list(self.nested_repositories)
+
+    def over(self, lower: "OuterContainer") -> "OuterContainer":
+        """These settings laid over ``lower``'s, as a higher hand's over a lower one's.
+
+        A setting this one states wins, even said as its default, so a
+        ``--no-sudo`` takes back a mode's sudo; one it leaves is ``lower``'s.
+        The folders, devices and nested repositories either names are all
+        granted, this one's first, since a grant is not something a higher
+        hand overrules by naming another. The result remembers what either
+        stated, so it lays over the next one down the same way.
+        """
+        granted = {
+            "mounts": list(dict.fromkeys([*self.mounts, *lower.mounts])),
+            "devices": list(dict.fromkeys([*self.devices, *lower.devices])),
+            "nested_repositories": list(
+                dict.fromkeys([*self.nested_repositories, *lower.nested_repositories])
+            ),
+        }
+        stated = {
+            name: getattr(self, name)
+            for name in self.model_fields_set
+            if name not in granted
+        }
+        joined = {name: value for name, value in granted.items() if value}
+        return lower.model_copy(update={**stated, **joined})
 
 
 class InnerSandbox(Sandbox, frozen=True):
@@ -303,11 +361,16 @@ def declared_requirements(
 
 
 def declared_image(plugin: Harness | Path | None, sandbox: "SessionSandbox") -> Image:
-    """The image a contained session runs: the container's own, the harness's, or lup's."""
+    """The image a contained session runs: the container's own, the harness's, or lup's.
+
+    On the network the container names, where it names one, since which
+    network a session joins and the proxy its environment points at are one
+    fact the image's egress holds.
+    """
     named = sandbox.named_image()
     if named is not None:
-        return named
-    return plugin.image if isinstance(plugin, Harness) else Image()
+        return sandbox.networked(named)
+    return sandbox.networked(plugin.image if isinstance(plugin, Harness) else Image())
 
 
 def settled_sandbox(asked: LaunchSandbox | None, stated: str) -> LaunchSandbox:

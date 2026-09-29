@@ -669,6 +669,7 @@ def claude_opening(
         forwarded=list(joined.environment),
         privileges=config.sandbox.privileges(),
         nested=config.sandbox.nested(),
+        memory=config.sandbox.memory_limit(),
     )
     return LaunchCommand(argv=argv, env=environment, cwd=root)
 

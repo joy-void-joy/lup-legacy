@@ -25,10 +25,17 @@ import json
 from collections.abc import Callable, Mapping, Sequence
 from enum import StrEnum
 from pathlib import Path, PurePosixPath
-from typing import Literal
+from typing import Literal, Self
 
 import sh
-from pydantic import BaseModel, Field, TypeAdapter, ValidationError
+from pydantic import (
+    BaseModel,
+    ByteSize,
+    Field,
+    TypeAdapter,
+    ValidationError,
+    model_validator,
+)
 
 from lup.harness.browser import BrowserBridge
 from lup.harness.clipboard import ClipboardBridge, shim_program
@@ -159,6 +166,57 @@ class SessionPrivileges(BaseModel, frozen=True, extra="forbid"):
         ]
 
 
+class MemoryLimit(BaseModel, frozen=True, extra="forbid"):
+    """How much memory one session's container may hold: an amount, or a share.
+
+    A share is what a committed declaration can state, because it means the
+    same on every machine: half of what the engine can hand a container is a
+    sentence two hosts with different memory both honour, where an amount is
+    one machine's fact and belongs in that machine's person's config or on one
+    launch's command line. Spelled as a byte size (``12GiB``, ``512MiB``, a
+    plain number of bytes) or a percentage (``75%``).
+    """
+
+    amount: ByteSize | None = Field(default=None, gt=0)
+    """Bytes, whatever the machine holds."""
+
+    percent: int | None = Field(default=None, ge=1, le=100)
+    """A share of the memory the container engine can hand out."""
+
+    @model_validator(mode="before")
+    @classmethod
+    # lup: ignore[bare-object] — a before-hook receives whatever the caller
+    # wrote, which is the untyped boundary the rule says to narrow at
+    def spelled(cls, value: object) -> object:
+        """Read the one-word spelling a flag or a config file writes."""
+        if not isinstance(value, str):
+            return value
+        if value.strip().endswith("%"):
+            return {"percent": value.strip().removesuffix("%")}
+        return {"amount": value}
+
+    @model_validator(mode="after")
+    def one_measure(self) -> Self:
+        """Refuse a limit stating both measures, or neither."""
+        if (self.amount is None) == (self.percent is None):
+            raise ValueError("a memory limit is an amount or a percentage, not both")
+        return self
+
+    def resolved(self, total: int) -> int:
+        """The limit in bytes, given how much the engine can hand out."""
+        if self.amount is not None:
+            return int(self.amount)
+        return total * (self.percent or 0) // 100
+
+    def described(self, total: int) -> str:
+        """The limit as a launch says it, with the share it stands for."""
+        held = ByteSize(self.resolved(total)).human_readable(decimal=False)
+        if self.percent is None:
+            return held
+        whole = ByteSize(total).human_readable(decimal=False)
+        return f"{held}, {self.percent}% of the engine's {whole}"
+
+
 class Registry(BaseModel, frozen=True):
     """A manager that installs by registry name, and the command that drives it.
 
@@ -207,10 +265,29 @@ class ContainerEngine(BaseModel, frozen=True):
     """
 
     binary: str = Field(description="The executable that starts a container")
+    memory_report: str = Field(
+        default="{{.MemTotal}}",
+        description="The `info` template this engine answers its memory in",
+    )
 
     def identity_arguments(self, uid: int, gid: int) -> list[str]:
         """Run the session as this uid and gid, in the words this engine takes."""
         return ["--user", f"{uid}:{gid}"]
+
+    def memory_total(self) -> int | None:
+        """How much memory this engine can hand a container, or nothing it said.
+
+        Asked of the engine rather than read off the host, because the two
+        differ exactly where a share would go wrong: an engine inside a
+        virtual machine hands out the machine's memory, not the laptop's.
+        """
+        try:
+            answered = str(
+                sh.Command(self.binary)("info", "--format", self.memory_report)
+            ).strip()
+        except (sh.CommandNotFound, sh.ErrorReturnCode):
+            return None
+        return int(answered) if answered.isdigit() else None
 
     def rootless(self) -> bool:
         """Whether this engine runs as an unprivileged host user.
@@ -253,6 +330,7 @@ class Podman(ContainerEngine, frozen=True):
     """Podman, which remaps into the subuid range unless told to keep the id."""
 
     binary: str = "podman"
+    memory_report: str = "{{.Host.MemTotal}}"
 
     def identity_arguments(self, uid: int, gid: int) -> list[str]:
         """The portable spelling, plus podman's word for leaving the id alone."""
@@ -1204,6 +1282,7 @@ USER $UID:$GID
         engine: ContainerEngine = Docker(),
         proxy_address: str = "",
         privileges: SessionPrivileges = SessionPrivileges(),
+        memory: int | None = None,
     ) -> list[str]:
         """The run arguments a session is started with, mounts excluded.
 
@@ -1255,6 +1334,10 @@ USER $UID:$GID
         none gained, unless the session may administer its container -- see
         :class:`SessionPrivileges`. A device grant is untouched, being the
         runtime's to inject from outside the container's own capability set.
+
+        ``memory`` is the bytes the container may hold, resolved from a
+        :class:`MemoryLimit` against what this engine can hand out; unset,
+        the engine's own default, which is no limit.
         """
         return [
             *engine.identity_arguments(uid, gid),
@@ -1262,6 +1345,7 @@ USER $UID:$GID
             "--init",
             "--pids-limit",
             str(self.pids_limit),
+            *(["--memory", str(memory)] if memory is not None else []),
             *privileges.arguments(),
             *[
                 argument
@@ -1397,6 +1481,7 @@ USER $UID:$GID
         home_seed: Path | None = None,
         trust_document: str = "",
         privileges: SessionPrivileges = SessionPrivileges(),
+        memory: int | None = None,
     ) -> list[str]:
         """The whole argv that opens one agent session inside a container.
 
@@ -1469,7 +1554,9 @@ USER $UID:$GID
 
         ``privileges`` is what the wall this session opens behind granted,
         and has to be what the image ``tag`` was rendered with: sudo is a
-        layer of the image and a flag of the run, one grant spelled twice.
+        layer of the image and a flag of the run, one grant spelled twice;
+        ``memory`` the bytes its container may hold, as :meth:`run_arguments`
+        spells them.
         """
         granted_devices = [
             argument for device in devices for argument in device.arguments()
@@ -1571,7 +1658,9 @@ USER $UID:$GID
             "-e",
             f"{config_home_env}={self.config_home}",
             *(["-e", f"LUP_TRUST_DOCUMENT={trust_document}"] if trust_document else []),
-            *self.run_arguments(checkout, uid, gid, engine, proxy_address, privileges),
+            *self.run_arguments(
+                checkout, uid, gid, engine, proxy_address, privileges, memory
+            ),
             *[
                 argument
                 for name, value in reaching.items()

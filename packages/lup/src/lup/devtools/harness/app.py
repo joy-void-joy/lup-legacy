@@ -21,7 +21,7 @@ import lup.devtools.harness.clean as clean
 import lup.devtools.harness.doctor as doctor
 import lup.devtools.harness.drift as drift
 import lup.devtools.harness.launch as launch
-from lup.launch.declaration import LaunchSandbox
+from lup.launch.declaration import LaunchSandbox, OuterContainer
 import lup.devtools.harness.policy_refresh as policy_refresh
 import lup.devtools.harness.reconcile as reconcile
 import lup.devtools.harness.resolve as resolve
@@ -57,6 +57,7 @@ from lup.providers.runtime_homes import runtime_logins
 from lup.devtools.harness.drift import RepositoryWriter
 from lup.workspace.paths import project_root
 from lup.policy.assets.host import boundary_description
+from lup.sandbox.models import NetworkMode
 from lup.sandbox.observed import unheld
 
 
@@ -69,6 +70,7 @@ def create_harness_app(
     checkpoint: launch.LaunchCheckpoint | None = None,
     node_classes: list[type[LedgerNode]] | None = None,
     ledger: LedgerLayout = LedgerLayout(),
+    container: OuterContainer = OuterContainer(),
 ) -> typer.Typer:
     """Wire the harness command tree over the targets one project declares.
 
@@ -87,6 +89,9 @@ def create_harness_app(
     a launch that finds the session kinds among them records itself in the
     ledger as a pointer at its transcript directory, and one that does not
     records nothing.
+
+    ``container`` is what the project's contained sessions are granted, under
+    the person's ``[container]`` config, a mode and the command line.
     """
     directory = profiles or claude_profile_directory()
     modes = launch_modes or []
@@ -637,6 +642,33 @@ def create_harness_app(
                     "launch only",
                 ),
             ] = [],
+            sudo: Annotated[
+                bool | None,
+                typer.Option(
+                    "--sudo/--no-sudo",
+                    help="Let the contained session become its container's "
+                    "root through sudo, on a rootless engine only; default: "
+                    "the mode's, your [container] config's, or the project's",
+                ),
+            ] = None,
+            network: Annotated[
+                NetworkMode | None,
+                typer.Option(
+                    "--network",
+                    help="The container's network: filtered (behind the "
+                    "egress proxy), bridge, host or none; default: the "
+                    "mode's, your [container] config's, or the image's",
+                ),
+            ] = None,
+            memory: Annotated[
+                str | None,
+                typer.Option(
+                    "--memory",
+                    help="How much memory the container may hold: an amount "
+                    "such as 12GiB, or a share such as 75%; default: the "
+                    "mode's, your [container] config's, or no limit",
+                ),
+            ] = None,
             max_recursive_agent: Annotated[
                 int | None,
                 typer.Option(
@@ -664,6 +696,10 @@ def create_harness_app(
                 mounts=mount,
                 read_only=mount_ro,
                 devices=device,
+                sudo=sudo,
+                network=network,
+                memory=launch.memory_limit(memory),
+                container=container,
                 max_recursive_agent=max_recursive_agent,
                 transcribe_session=transcribe_session,
                 relaxed=ignore_antipatterns,
@@ -833,6 +869,33 @@ def create_harness_app(
                     "launch only",
                 ),
             ] = [],
+            sudo: Annotated[
+                bool | None,
+                typer.Option(
+                    "--sudo/--no-sudo",
+                    help="Let the contained session become its container's "
+                    "root through sudo, on a rootless engine only; default: "
+                    "the mode's, your [container] config's, or the project's",
+                ),
+            ] = None,
+            network: Annotated[
+                NetworkMode | None,
+                typer.Option(
+                    "--network",
+                    help="The container's network: filtered (behind the "
+                    "egress proxy), bridge, host or none; default: the "
+                    "mode's, your [container] config's, or the image's",
+                ),
+            ] = None,
+            memory: Annotated[
+                str | None,
+                typer.Option(
+                    "--memory",
+                    help="How much memory the container may hold: an amount "
+                    "such as 12GiB, or a share such as 75%; default: the "
+                    "mode's, your [container] config's, or no limit",
+                ),
+            ] = None,
             max_recursive_agent: Annotated[
                 int | None,
                 typer.Option(
@@ -860,6 +923,10 @@ def create_harness_app(
                 mounts=mount,
                 read_only=mount_ro,
                 devices=device,
+                sudo=sudo,
+                network=network,
+                memory=launch.memory_limit(memory),
+                container=container,
                 max_recursive_agent=max_recursive_agent,
                 transcribe_session=transcribe_session,
                 relaxed=ignore_antipatterns,

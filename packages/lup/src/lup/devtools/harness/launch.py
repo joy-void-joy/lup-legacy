@@ -32,7 +32,7 @@ from lup.devtools.harness.drift import (
 from lup.devtools.sync import accessible_roots, granted_devices
 from lup.harness.devices import Device
 from lup.harness.generate import NativeHarnessComposition
-from lup.harness.image import Image
+from lup.harness.image import Image, MemoryLimit
 from lup.harness.models import Harness, NativeName, Plugin, Resumption
 from lup.harness.notice import Notice
 from lup.harness.process import LocalProcessLauncher
@@ -54,7 +54,7 @@ from lup.launch.declaration import (
     settled_sandbox,
 )
 from lup.launch.refusal import LaunchRefused
-from lup.launch.session import StandingGrants
+from lup.launch.session import StandingGrants, personal_config
 from lup.observability.audit import TraceJournal
 from lup.observability.sessions import SessionRecorder
 from lup.providers.claude import Claude, ClaudeTools
@@ -66,6 +66,8 @@ from lup.providers.codex.harness import CodexSpellings
 from lup.providers.codex.model_choice import CodexModelChoice, codex_effort_named
 from lup.providers.codex.session import prepare_codex_plugin
 from lup.providers.profiles import DefaultHomeProfile, ProfileDirectory
+from lup.providers.user_config import UserConfigFile
+from lup.sandbox.models import NetworkMode
 from lup.sessions.events import SessionId
 from lup.types import CustomModel, EnvVars
 from lup.workspace.paths import project_root
@@ -117,6 +119,19 @@ def declared_devices(names: list[str]) -> list[Device]:
             ) from error
 
     return [declared(name) for name in names]
+
+
+def memory_limit(spelled: str | None) -> MemoryLimit | None:
+    """A memory limit named on a command line, refused in the flag's words where it is none."""
+    if spelled is None:
+        return None
+    try:
+        return MemoryLimit.model_validate(spelled)
+    except ValidationError as error:
+        raise typer.BadParameter(
+            f"--memory {spelled!r}: a limit is an amount such as 12GiB or "
+            "512MiB, or a share such as 75%"
+        ) from error
 
 
 @runtime_checkable
@@ -398,6 +413,15 @@ class LaunchRequest(BaseModel, frozen=True, arbitrary_types_allowed=True):
     mounts: list[Path] = []
     read_only: list[Path] = []
     devices: list[str] = []
+    network: NetworkMode | None = None
+    memory: MemoryLimit | None = None
+    sudo: bool | None = None
+    """``--sudo`` or ``--no-sudo``, or ``None`` where the command line said neither."""
+
+    container: OuterContainer = OuterContainer()
+    """The project's own container, under the person's config, the mode and
+    what this command line states."""
+
     max_recursive_agent: int | None = None
     transcribe_session: bool = False
     relaxed: bool = False
@@ -475,49 +499,102 @@ class LaunchRequest(BaseModel, frozen=True, arbitrary_types_allowed=True):
             return LaunchSandbox.INNER
         return settled_sandbox(None, "pass `--sandbox inner`")
 
-    def wall(
-        self, posture: LaunchSandbox, image: Image, escapable: bool
-    ) -> SessionSandbox:
-        """The sandbox declared: this launch's mounts, then the machine's standing ones.
+    def stated(self) -> OuterContainer:
+        """What this command line states of the container: its folders, devices and settings named.
 
-        The container runs ``image``. The inner sandbox lets a command ask to
-        run outside it, for the policy to judge, where the runtime has such a
-        way out: Claude Code has, Codex's envelope has none. Devices are a
-        container's: on the host, which holds its own, a flag naming one is
-        said rather than granted.
+        Only what was typed, so a setting left off the command line stays the
+        mode's, the person's or the project's.
         """
-        mounts = [
-            *[Mount(path=path, writable=True) for path in self.mounts],
-            *[Mount(path=path) for path in self.read_only],
-            *[
+        named = {
+            name: value
+            for name, value in (
+                ("network", self.network),
+                ("memory", self.memory),
+                ("sudo", self.sudo),
+            )
+            if value is not None
+        }
+        return OuterContainer.model_validate(
+            {
+                "mounts": [
+                    *[Mount(path=path, writable=True) for path in self.mounts],
+                    *[Mount(path=path) for path in self.read_only],
+                ],
+                "devices": declared_devices(self.devices),
+                **named,
+            }
+        )
+
+    def settled_container(self, image: Image) -> OuterContainer:
+        """The container this launch opens: the command line over the person, over the project.
+
+        The project's layer is its declared container over what this machine
+        registers for the repository — its standing folders and devices — on
+        the harness's ``image``; the person's is their lup config's
+        ``[container]``.
+        """
+        standing = OuterContainer(
+            image=image,
+            mounts=[
                 Mount(path=root.path, writable=root.writable)
                 for root in accessible_roots()
             ],
-        ]
+            devices=granted_devices(),
+        )
+        person = personal_config(UserConfigFile()).container
+        return self.stated().over(person.over(self.container.over(standing)))
+
+    def wall(
+        self, posture: LaunchSandbox, image: Image, escapable: bool
+    ) -> SessionSandbox:
+        """The sandbox declared, with every folder the container's layers name.
+
+        The container is :meth:`settled_container`. The inner sandbox lets a
+        command ask to run outside it, for the policy to judge, where the
+        runtime has such a way out: Claude Code has, Codex's envelope has
+        none. What only a container grants — devices, sudo, a network, a
+        memory limit — the host already holds or has no wall to hold, so a
+        flag naming one there is said rather than granted.
+        """
+        settled = self.settled_container(image)
         match posture:
             case LaunchSandbox.OUTER:
-                return OuterContainer(
-                    mounts=mounts,
-                    devices=[*declared_devices(self.devices), *granted_devices()],
-                    image=image,
-                )
+                return settled
             case LaunchSandbox.INNER:
-                self.say_hosted_devices()
-                return InnerSandbox(mounts=mounts, escapable=escapable)
+                self.say_hosted_settings()
+                return InnerSandbox(mounts=settled.mounts, escapable=escapable)
             case LaunchSandbox.NONE:
-                self.say_hosted_devices()
-                return NoSandbox(mounts=mounts)
+                self.say_hosted_settings()
+                return NoSandbox(mounts=settled.mounts)
 
-    def say_hosted_devices(self) -> None:
-        """Say that a device asked for is the host's own, where no container opens."""
-        if not self.devices:
+    def say_hosted_settings(self) -> None:
+        """Say what the command line asked of a container, where the session opens on the host."""
+        asked = [
+            *(
+                [
+                    "--device "
+                    + ", ".join(
+                        device.name for device in declared_devices(self.devices)
+                    )
+                ]
+                if self.devices
+                else []
+            ),
+            *([f"--network {self.network}"] if self.network is not None else []),
+            *(["--memory"] if self.memory is not None else []),
+            *(
+                ["--sudo" if self.sudo else "--no-sudo"]
+                if self.sudo is not None
+                else []
+            ),
+        ]
+        if not asked:
             return
         Notice(
             text=(
-                "Devices: "
-                + ", ".join(device.name for device in declared_devices(self.devices))
-                + " asked for; the session runs on the host, which holds its "
-                "own devices, and --device grants one inside the container."
+                f"{'; '.join(asked)} asked for; the session runs on the host, "
+                "which holds its own devices, network and memory, and grants "
+                "each of these only to the container."
             ),
             urgency="detail",
         ).say()

@@ -1,0 +1,14 @@
+subjects = ["LaunchRequest.say_hosted_devices"]
+reason = """
+what a container grants its session — network, memory, sudo, devices and \
+folders — is one OuterContainer laid by each hand that states it, the command \
+line over a mode, over the person's `[container]` config, over the project; \
+a host session says every container setting its command line asked for, not \
+only its devices"""
+
+[[steps]]
+instruction = """
+Call `LaunchRequest.say_hosted_settings()` where you called \
+`say_hosted_devices()`; it says the devices as before, and `--sudo`, \
+`--network` and `--memory` beside them."""
+command = ["uv", "run", "lup-devtools", "dev", "py", "text", "say_hosted_devices", "."]
