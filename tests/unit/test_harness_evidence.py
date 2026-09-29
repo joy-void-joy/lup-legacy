@@ -229,6 +229,7 @@ def test_pull_request_workflow_runs_the_same_gate_a_checkout_runs() -> None:
         "uv sync --all-extras",
         "uv run lup-devtools git merge-driver",
         DRIFT_COMMAND,
+        *(step.run for step in WORKFLOW.namespace_steps()),
         CHECK_COMMAND,
     ]
 
