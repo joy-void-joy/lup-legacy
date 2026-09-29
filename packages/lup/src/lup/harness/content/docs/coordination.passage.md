@@ -354,7 +354,7 @@ own processes, and every relation between members derived at the read:
 
 | Question | What answers it |
 | --- | --- |
-| Is this member still here? | Its own file's modification time — the owner touches it while it lives |
+| Is this member still here? | The runtime process its file names, where the reader can ask it; else the pulse its tool server holds; else its file's modification time |
 | Does this claim still hold? | A stat of the path, against the time the claim recorded |
 | Do two sessions contest a path? | Their two files both claiming it |
 | What is this member called? | The names on its file, newest last |
@@ -364,6 +364,35 @@ Nothing is folded and nothing is replayed, so what the store holds is bounded
 by the population rather than by its history: a member that stops takes its
 file to `departed/`, and the sweep deletes that after the retention window.
 Nothing here needs compaction.
+
+**Presence is the runtime's process, not a beat.** A session is the Claude
+Code or Codex process somebody started, and its row names that process — its
+id, its start time, and the pid namespace both belong to, since an id alone is
+reused and means nothing in another container. A reader in that namespace asks
+the process: present however long the file was quiet, which is what a machine
+that slept leaves every file, and gone the moment it stops. A reader in
+another container cannot see it, so the session's tool server holds a lock on
+the row's pulse for as long as it answers for the session; the kernel lets it
+go when the server ends however it ends, and nothing about it lapses in a
+sleep. Only where neither speaks — a server that died without a word, behind
+a namespace the reader cannot see into — does the file's modification time
+decide, against the two-minute window.
+
+A beat answers for the runtime rather than for the server beating it. The
+server names its runtime as the process feeding its input, through any
+`uv run` or shell between them, and beats only for a row naming that runtime,
+and only while holding the pulse — which one server of a runtime holds at a
+time, so the server Codex starts for each subagent, and keeps after the
+subagent stops, answers for the session only where the session's own stopped
+while the runtime runs on. Each tick asks the runtime first, and one that
+stopped ends the row, saying so; a server stopping after its runtime went does
+the same, which is what a runtime killed outright does to its servers' input.
+A runtime started from a session's own shell inherits the session's id and
+can outlive it: measured with real tool servers under stand-in runtimes, one
+put a cleanly ended session back on the roster within a tick and beat for it
+for as long as it lived, and one freeze past the window took a live session's
+description off its row at the next sweep. Neither can happen to a row naming
+another runtime, or answered for by a pulse somebody holds.
 
 **The one place this spends more is the stat**, because settling a claim means
 asking the filesystem rather than reading a record. Measured on 2026-09-19
@@ -501,9 +530,10 @@ saying how many others are here and where the listing is. A quiet roster costs
 no context at all, and a broken one costs the prompt nothing, because the hook
 fails open.
 
-The same hook beats for the session, which is the pulse its row is present
-by: a running row nothing has heard from within the window reads as gone, and
-a sweep retires it. And it is where a rewind is noticed. A runtime that
+The same hook beats for the session, which a reader who can ask neither its
+runtime nor its pulse reads it present by: a running row nobody vouches for
+within the window reads as gone, and a sweep retires it. And it is where a
+rewind is noticed. A runtime that
 rewinds or clears a conversation keeps the process, the session id and the
 tool server, and signals none of it — so the row would go on saying what the
 discarded conversation was doing, under a pulse the same server keeps beating.
