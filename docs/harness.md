@@ -622,6 +622,18 @@ plugin is never mistaken for the cache. Personal trust state, credentials,
 active run state, and cache contents are never generated or committed. Review
 hook trust with the native hooks surface after generation.
 
+A contained Codex session's home is a volume it writes, so the revision its
+hooks run from is held for it: the preparation inside the container reports
+the revision it installed (`lup-codex-plugin --report`), the launch writes that
+revision again from the plugin source on the host, under
+`~/.cache/lup/codex-revisions/`, refusing a name that does not match the
+source's content, and mounts it read-only over the plugin's whole cache in the
+home, after the volume it nests in. The session runs the hooks it was
+launched with and sees no other revision; the rest of the home stays
+writable. A Claude Code session loads its plugin from the checkout's
+generated tree, which a contained session can write — holding the generated
+trees is its own piece of work.
+
 `lup-devtools harness claude|codex` launches a declaration. Each flag is a
 field of the `Claude(...)` or `Codex(...)` it builds from this repository's
 composition — the generated plugin and every plugin the checkout keeps beside

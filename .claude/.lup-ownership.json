@@ -779,7 +779,7 @@
     {
       "path": "docs/harness.md",
       "category": "generated",
-      "sha256": "19f420001b6b8a5d725d858779245f47272e28a4a5bf000cfa46c4276457f86a",
+      "sha256": "52161be68fe32f2ab16b170c0d81a673fb712a0b2ec7a5c92b1ce44718deafaa",
       "semantic_id": "docs.harness",
       "executable": false
     },
@@ -828,7 +828,7 @@
     {
       "path": "docs/platform-differentiation.md",
       "category": "generated",
-      "sha256": "1c76c94a0720ff522152a66f2abfae6c0300408d77092c181e3d61eb51bddccd",
+      "sha256": "2087070b316fa0e9beecf05b56decc248dcc3616091b80f8a6433e31964737cd",
       "semantic_id": "docs.platform-differentiation",
       "executable": false
     },

@@ -16,7 +16,7 @@ raises :class:`~lup.launch.refusal.LaunchRefused`.
 import logging
 import os
 import sys
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from datetime import datetime
 from pathlib import Path
 from uuid import uuid4
@@ -27,7 +27,7 @@ from lup.harness.devices import Device
 from lup.providers.login import ProviderLogin
 from lup.providers.user_config import UserConfig, UserConfigFile
 from lup.launch.config_volume import HomeSeedPlaces
-from lup.launch.container import contained_argv, held_lease
+from lup.launch.container import contained_argv, held_lease, state_volume_name
 from lup.coordination.identity import MEMBER_ENV, NAME_ENV, LaunchedMember
 from lup.coordination.repository import RepositoryPeers, launched_member
 from lup.harness.messaging import WakeSockets
@@ -792,7 +792,7 @@ def session_argv(
     devices: list[Device] = [],
     authenticate: Callable[[list[str], Path, bool], None] | None = None,
     member: LaunchedMember | None = None,
-    prepare: Callable[[list[str], Path], None] | None = None,
+    prepare: Callable[[list[str], Path], Mapping[Path, str]] | None = None,
     home_seed: HomeSeedPlaces | None = None,
     clipboard: ClipboardTransport = "commands",
     forwarded: Sequence[str] = (),
@@ -836,6 +836,11 @@ def session_argv(
 
     ``privileges`` is what the wall grants a contained session's processes,
     which a host posture has no container to grant.
+
+    ``prepare`` readies the runtime's home through the argv the session
+    opens with, and answers with what the session should find held
+    read-only in it, by host path and the path inside; a host posture's
+    home has no container to hold anything in, and its answer is not read.
 
     What it reads of the declaration arrives piece by piece -- the checkout
     it opens in, the image and its manifest, the policy, the clipboard's way
@@ -960,7 +965,13 @@ def session_argv(
         accessible=accessible,
     )
     if prepare is not None:
-        prepare(probing(opening, stdin=True), Path(image.config_home))
+        # What preparing the home installed and asks to be held -- a
+        # runtime's hooks, in a home the session writes -- is mounted
+        # read-only for the session, nested in the home's own volume.
+        held = prepare(probing(opening, stdin=True), Path(image.config_home))
+        if held:
+            volume = state_volume_name(root, login)
+            opening = image.home_mounts(opening, volume, held)
     # A contained session sharing host loopback can receive a browser callback.
     # Device login is needed where that callback stays outside its namespace.
     if authenticate is not None:

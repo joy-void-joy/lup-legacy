@@ -1595,6 +1595,25 @@ USER $UID:$GID
             tag,
         ]
 
+    def home_mounts(
+        self, opening: list[str], state_volume: str, held: Mapping[Path, str]
+    ) -> list[str]:
+        """A session argv with read-only mounts nested in its config home.
+
+        What only a preparation run through this argv can name -- the
+        revision a runtime installed into its home -- held read-only for the
+        session that follows. Placed straight after the volume they nest in,
+        parent before child as :meth:`session_arguments` places every other
+        mount, rather than relying on each engine to sort them.
+        """
+        volume = opening.index(f"{state_volume}:{self.config_home}") + 1
+        nested = [
+            word
+            for host, inside in held.items()
+            for word in ("-v", f"{host}:{inside}:ro")
+        ]
+        return [*opening[:volume], *nested, *opening[volume:]]
+
     def seed_configuration(self) -> JsonObject:
         """The container-side ``.claude.json`` a fresh config home starts from.
 

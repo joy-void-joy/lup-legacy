@@ -1,6 +1,7 @@
 """Plugin readiness is measured where the session actually opens its home."""
 
 import json
+import sys
 from pathlib import Path
 from unittest.mock import ANY, AsyncMock, Mock
 
@@ -61,6 +62,7 @@ def test_plugin_preparation_uses_the_actual_home_before_authentication(
     sandbox: LaunchSandbox,
 ) -> None:
     calls = Mock()
+    calls.prepare.return_value = {}
     launch_session.session_argv(
         "codex",
         [],
@@ -111,12 +113,14 @@ def test_container_preparation_runs_the_owned_installer_in_the_same_boundary(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    execute = Mock(return_value="verified\n")
+    installed = "/cfg/plugins/cache/lup/lup/0.1.0"
+    execute = Mock(return_value=f'{{"installed_root": "{installed}"}}\n')
     command = Mock(return_value=execute)
     monkeypatch.setattr(sh, "Command", command)
-    codex_session.prepare_codex_plugin(
+    prepared = codex_session.prepare_codex_plugin(
         ["podman", "run", "image"], Path("/cfg"), tmp_path, {"FIXTURE": "yes"}, True
     )
+    assert prepared.installed_root == Path(installed)
     command.assert_called_once_with("podman")
     execute.assert_called_once_with(
         "run",
@@ -133,8 +137,10 @@ def test_container_preparation_runs_the_owned_installer_in_the_same_boundary(
         "/cfg",
         "--trust-project",
         "--force",
+        "--report",
         _env={"FIXTURE": "yes"},
         _in=None,
+        _err=sys.stderr,
     )
 
 
@@ -148,6 +154,7 @@ def test_owned_home_preparation_verifies_discovery_and_hook_trust(
     declared.source = tmp_path / "plugin"
     monkeypatch.setattr(CodexMarketplace, "declared", Mock(return_value=declared))
     installer = Mock()
+    installer.ensure.return_value.installed_root = tmp_path / "home" / "0.1.0"
     monkeypatch.setattr(
         installation, "CodexPluginInstaller", Mock(return_value=installer)
     )
