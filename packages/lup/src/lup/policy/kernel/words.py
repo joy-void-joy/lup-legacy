@@ -1327,6 +1327,112 @@ def deletes_protected(operand: str, row: PathRuleRow) -> bool:
     )
 
 
+GIT_INIT_GRAMMAR = grammar(
+    valued=(
+        "-b",
+        "--initial-branch",
+        "--template",
+        "--separate-git-dir",
+        "--object-format",
+        "--ref-format",
+    ),
+    flags=("-q", "--quiet", "--bare", "--shared", "--no-template"),
+)
+"""The options `git init` reads, and which of them consume the next word.
+
+`--shared` takes its permissions only attached, so it consumes nothing."""
+
+
+class InitOperands(TypedDict):
+    """Where one `git init` makes a repository, and whether that could be read."""
+
+    named: list[PathWord]
+    """Each directory it names: the work tree's, and a separate git dir's."""
+
+    directories: int
+    """How many operands name the work tree; none means wherever git stands."""
+
+    read: bool
+    """Whether every option is one the grammar lists and none copies files in.
+
+    `--template` copies a directory into the new repository, which is a read
+    of wherever it names, so a reading carrying one is not a plain create."""
+
+
+def git_init_operands(words: list[str], at: int) -> InitOperands | None:
+    """The directories one `git init` makes, or ``None`` where it is not one.
+
+    ``at`` is where the caller reads the subcommand, as for a restore: a grant
+    reads it where it is written, since a global such as `--git-dir` moves the
+    repository itself, and a reader naming paths reads it past the globals.
+    """
+    if posixpath.basename(words[0]) != "git" or words[at : at + 1] != ["init"]:
+        return None
+    named: list[PathWord] = []
+    directories = 0
+    read = True
+    literal = False
+    position = at + 1
+    while position < len(words):
+        word = words[position]
+        if literal or word == "-" or not word.startswith("-"):
+            named.append(PathWord(at=position, prefix="", path=word))
+            directories += 1
+            position += 1
+            continue
+        if word == "--":
+            literal = True
+            position += 1
+            continue
+        options = read_options(word, words[position + 1 :], GIT_INIT_GRAMMAR)
+        if options is None:
+            read = False
+            position += 1
+            continue
+        for option in options["options"]:
+            read = read and option["name"] != "--template"
+            if option["name"] == "--separate-git-dir" and option["value"]:
+                attached = options["width"] == 1
+                named.append(
+                    PathWord(
+                        at=position if attached else position + 1,
+                        prefix=f"{option['name']}=" if attached else "",
+                        path=option["value"],
+                    )
+                )
+        position += options["width"]
+    return InitOperands(named=named, directories=directories, read=read)
+
+
+def git_init_in_scratch(
+    words: list[str], path_roles: list[PathRoleRow], checkout: str = ""
+) -> KernelDecision | None:
+    """Recognize a `git init` whose repository is made in declared scratch.
+
+    A repository made there is as disposable as the scratch holding it, and a
+    project scaffolded under `tmp/` needs one. Every directory it makes has
+    to be named and sit under a scratch root this checkout declares: a work
+    tree left to wherever git stands is this checkout's own, and a separate
+    git dir anywhere else would move the repository out from under it. The
+    words are the placed ones, so a `cd` or `git -C` is already in them, and
+    a link a directory crosses is the host's to resolve like any write's.
+    """
+    reading = git_init_operands(words, 1)
+    if reading is None or not reading["read"] or reading["directories"] != 1:
+        return None
+    places = [named["path"] for named in reading["named"]]
+    if any(opaque_argument(place) for place in places):
+        return None
+    if not all(
+        declared_scratch(repository_relative(place, checkout), path_roles)
+        for place in places
+    ):
+        return None
+    return KernelDecision(
+        "allow", "a repository made in scratch is as disposable as the scratch"
+    )
+
+
 def git_rm_operands(
     words: list[str], rows: list[ShellRuleRow]
 ) -> list[PathWord] | None:

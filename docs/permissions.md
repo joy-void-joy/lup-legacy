@@ -446,7 +446,13 @@ meet the one rule — and the machine's temporary root, the session
 scratchpad (`$TMPDIR`, `/tmp/claude-*`) with the rest of `/tmp` around it,
 which no review pass reads and no capture holds (reassigning `TMPDIR` asks,
 and a suffix climbing clear of `/tmp` leaves the grant behind); discards and
-fd dups strip.
+fd dups strip. A repository made in this checkout's declared scratch is as
+disposable as the scratch holding it, so `git init tmp/p` — after a `cd` or
+`git -C`, with a separate git dir there too — is a scratch write, its
+directories resolved by the host as any write target is. Every other `git
+init` stays unclassified: one naming no directory makes the repository
+wherever git stands, a `--git-dir` moves it, and `--template` copies a
+directory in.
 Loops, conditionals, case
 arms, subshells, and brace groups classify recursively over frozen bindings —
 literal assignments instantiate, opaque ones (`read`, globs) gate

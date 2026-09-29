@@ -46,6 +46,7 @@ from .words import (
     dangerous_assignment_reason,
     dangerous_env_name,
     effective_command,
+    git_init_in_scratch,
     global_span,
     is_help_probe,
     is_trusted_script,
@@ -991,6 +992,16 @@ def decide_shell_segment(
         if not moved
         else joined_directory(directory, moved)
     )
+    # Read off the placed words, where a `cd` and `git -C` already stand, and
+    # only where no `--git-dir` moved the repository: consumed with the other
+    # globals, it is the one of them that says where `init` makes one.
+    head = words[: global_span(words, context["rows"])]
+    if not any(word.partition("=")[0] == "--git-dir" for word in head):
+        made = git_init_in_scratch(
+            placed, context["path_roles"], context["checkout_root"]
+        )
+        if made is not None:
+            return made
     # A command word nobody can read is read as each program whose verb the
     # words after it name, and the spelling's own verdict is the floor.
     verdict = strictest_reading(

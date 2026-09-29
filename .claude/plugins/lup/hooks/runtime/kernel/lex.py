@@ -53,6 +53,7 @@ from .words import (
     git_apply_words,
     global_span,
     git_checkout_operands,
+    git_init_operands,
     git_restore_operands,
     git_rm_operands,
     opaque_argument,
@@ -1562,6 +1563,9 @@ def verb_path_words(words: list[str], rows: list[ShellRuleRow]) -> list[PathWord
     removed = git_rm_operands(words, rows)
     if removed is not None:
         return removed
+    initialized = git_init_operands(words, global_span(words, rows))
+    if initialized is not None:
+        return initialized["named"]
     archived = archive_write(words)
     if archived is not None:
         return archived["named"]
