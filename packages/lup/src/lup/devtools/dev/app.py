@@ -417,8 +417,27 @@ def create_dev_app(
                 "base it cannot work out",
             ),
         ] = None,
+        conflict_markers: Annotated[
+            bool,
+            typer.Option(
+                "--conflict-markers",
+                help="Refuse a tracked file holding a conflict block a merge left "
+                "behind only — the row the full check and --changed also run",
+            ),
+        ] = False,
+        staged: Annotated[
+            bool,
+            typer.Option(
+                "--staged",
+                help="With --conflict-markers: read what the next commit holds, "
+                "as the commit hook does",
+            ),
+        ] = False,
     ) -> None:
         """Run ruff format, ruff check, pyright, and pytest. Read-only by default."""
+        if conflict_markers:
+            check.run_conflict_markers(staged)
+            return
         declarations = declared()
         if changed:
             from lup.devtools.dev.branches import get_integration_branch

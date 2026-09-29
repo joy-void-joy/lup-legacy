@@ -57,6 +57,8 @@ from lup.devtools.dev.git_guards import GitGuard, read_hooks
 from lup.devtools.dev.worktree import OWNERSHIP_MERGE_DRIVER, MergeDriver
 from lup.devtools.dev.cites import sweep_cites
 from lup.devtools.dev.comments import FoundComment, scan_tracked
+from lup.devtools.dev.conflicts import conflict_blocks, staged_paths, staged_text
+from lup.devtools.dev.tracked import tracked_files
 from lup.devtools.dev.commands import CommandSurface
 from lup.devtools.dev.documented import generated_files, unresolved
 from lup.ledger.models import LedgerNode
@@ -1126,6 +1128,65 @@ def changed_scope(since: str) -> ChangedScope:
     )
 
 
+def conflict_marker_report(
+    paths: list[str], read: Callable[[str], str | None]
+) -> CheckReport:
+    """Every file and line a merge's conflict block opens on, or ok.
+
+    Gating: a block is a resolution nobody finished, whatever language the
+    file is in, and nothing else this gate runs reads markdown or a page for
+    one — a merge committed its markers into a passage and the page generated
+    from it, and the whole gate passed. *read* answers a path's text, or
+    ``None`` for one that does not read as text.
+    """
+    found = [
+        f"  {path}:{line}"
+        for path in paths
+        for text in [read(path)]
+        if text is not None
+        for line in conflict_blocks(text)
+    ]
+    return CheckReport(
+        name="conflict markers",
+        passed=not found,
+        lines=[
+            f"conflict markers: FAIL ({len(found)} block(s) a merge left behind)",
+            *found,
+            "  resolve each, or excuse a fixture holding one on purpose with a "
+            "`lup: ignore[conflict-marker]` line heading its paragraph",
+        ]
+        if found
+        else ["conflict markers: ok"],
+    )
+
+
+def worktree_text(path: str) -> str | None:
+    """A file's text as the working tree holds it, or ``None``."""
+    try:
+        return Path(path).read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return None
+
+
+def run_conflict_markers(staged: bool) -> None:
+    """Refuse what holds a conflict block: the tracked tree, or the next commit.
+
+    *staged* reads what the index holds for the paths the next commit adds or
+    changes, which is what the commit hook asks about — the working tree can
+    already hold the resolution of a block the index still carries.
+    """
+    root = project_root()
+    report = (
+        conflict_marker_report(staged_paths(root), partial(staged_text, root))
+        if staged
+        else conflict_marker_report(tracked_files(), worktree_text)
+    )
+    for line in report.lines:
+        typer.echo(line)
+    if not report.passed:
+        raise typer.Exit(1)
+
+
 def owned_comments(
     found: list[FoundComment], scope: list[str] | None
 ) -> list[FoundComment]:
@@ -1166,6 +1227,11 @@ def scan_reports(
     def reported() -> Iterator[CheckReport]:
         # advisory — a note asks somebody for something, and a tree is expected
         # to carry open ones; worth reading, not worth refusing over
+        # gating — see conflict_marker_report
+        yield conflict_marker_report(
+            tracked_files() if scope is None else scope, worktree_text
+        )
+
         found = owned_comments(scan_tracked(find_feedback), scope)
         scaffold = is_template_scaffold(project_root())
         yield CheckReport(
@@ -1776,7 +1842,8 @@ def run_changed(
     with ThreadPoolExecutor(max_workers=len(tools) + 1) as pool:
         running = [pool.submit(tool) for tool in tools]
         migrated = migration_reports(project, spread, base.commit, record)
-        reports = [*(job.result() for job in running), *migrated]
+        marked = conflict_marker_report([*scope.checked, *scope.unread], worktree_text)
+        reports = [*(job.result() for job in running), *migrated, marked]
     unread = [
         path for path in scope.unread if not (migrated and record.holds(Path(path)))
     ]

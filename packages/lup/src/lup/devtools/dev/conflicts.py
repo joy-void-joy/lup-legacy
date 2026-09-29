@@ -31,6 +31,7 @@ reaches them; one keeping it anywhere else gets the bare name instead::
 import logging
 import re
 from pathlib import Path
+from collections.abc import Iterator
 from typing import TypedDict
 
 import sh
@@ -496,3 +497,65 @@ def conflict_complete(dry_run: bool) -> None:
     except sh.ErrorReturnCode as e:
         typer.echo(f"Failed to complete {operation}: {decode_stderr(e)}", err=True)
         raise typer.Exit(1)
+
+
+def conflict_blocks(
+    text: str,
+    opening: str = "<<<<<<< ",
+    middle: str = "=======",
+    closing: str = ">>>>>>> ",
+    excused_by: str = "lup: ignore[conflict-marker]",
+) -> list[int]:
+    """The line each conflict block a merge left in this text opens on.
+
+    A merge committed its markers into a markdown passage and the page
+    generated from it, and the whole gate passed: nothing it runs reads
+    markdown for them. A block is the three markers git writes, in order —
+    a line opening with *opening*, a *middle* line, a line opening with
+    *closing* — and any one alone is reachable in honest text: a setext
+    heading underlines with ``=======``, a docstring quotes a marker.
+
+    The one exemption is a marker in the file, never a path: a line carrying
+    *excused_by* excuses the blocks opening in the paragraph it heads, up to
+    the next blank line. A fixture holding a conflict on purpose writes it
+    inside a string, where no comment can share the marker's line, so the
+    paragraph is how far the marker has to reach — and no farther, so a real
+    conflict elsewhere in that file is still found.
+    """
+    lines = text.splitlines()
+
+    def opened() -> Iterator[int]:
+        start = 0
+        divided = False
+        excused = False
+        for number, line in enumerate(lines, start=1):
+            match line.strip():
+                case "":
+                    excused = False
+                case str() if excused_by in line:
+                    excused = True
+                case str() if line.startswith(opening):
+                    start, divided = (0 if excused else number), False
+                case str() if start and line.rstrip() == middle:
+                    divided = True
+                case str() if start and divided and line.startswith(closing):
+                    yield start
+                    start = 0
+
+    return list(opened())
+
+
+def staged_text(root: Path, path: str) -> str | None:
+    """A file's text as the index holds it, which is what a commit records."""
+    try:
+        return str(git("-C", str(root), "show", f":{path}", _tty_out=False))
+    except (sh.ErrorReturnCode, UnicodeDecodeError):
+        return None
+
+
+def staged_paths(root: Path) -> list[str]:
+    """Every path the next commit adds or changes."""
+    named = git.lines(
+        "-C", str(root), "diff", "--cached", "--name-only", "--diff-filter=ACMR"
+    )
+    return [path for path in named if path]

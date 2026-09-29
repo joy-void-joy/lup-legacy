@@ -182,7 +182,8 @@ def test_a_change_no_scoped_check_reads_says_so_and_names_every_gate_left(
     printed = capsys.readouterr().out.splitlines()
 
     assert "No Python file changed, so neither ruff nor pyright ran." in printed
-    assert not any("checks passed" in line for line in printed)
+    # What does read every changed file is the conflict row, and it says so.
+    assert "conflict markers: ok" in printed
     assert "Unread: 1 changed file(s) no scoped check reads:" in printed
     assert "  prose.md" in printed
     assert any(

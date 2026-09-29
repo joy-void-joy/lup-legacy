@@ -237,6 +237,15 @@ class GitGuard(BaseModel, frozen=True):
 
 DECLARED_GUARDS = [
     GitGuard(standdown=MERGE_STANDDOWN),
+    # No standdown: a merge's own commit is where its markers get committed.
+    GitGuard(
+        command=f"{CHECK_COMMAND} --conflict-markers --staged",
+        refusal=(
+            "Refuses this commit while a staged file holds a conflict block a\n"
+            "# merge left behind. Resolve it, or excuse a fixture holding one on\n"
+            "# purpose with a `lup: ignore[conflict-marker]` line heading it."
+        ),
+    ),
     *(
         GitGuard(
             command=SETTLE_COMMAND,
