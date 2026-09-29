@@ -51,6 +51,7 @@ from lup.harness.models import (
     HookSet,
     Plugin,
     PluginLocation,
+    PromptDocument,
     QualifiedAgentName,
     Skill,
     SkillInvocation,
@@ -532,15 +533,15 @@ class ClaudeGuidanceRenderer(ArtifactRenderer[Harness]):
         self.prompts = prompts
 
     def render(self, source: Harness) -> ArtifactTree:
-        return ArtifactTree(
-            artifacts=[
-                Artifact.generated(
-                    path=Path(".claude/CLAUDE.md"),
-                    body=self.prompts.render(source.guidance),
-                    semantic_id="harness.guidance",
-                    banner=guidance_banner(self.prompts, source.guidance),
-                )
-            ]
+        return ArtifactTree(artifacts=[self.guidance(source.guidance)])
+
+    def guidance(self, document: PromptDocument) -> Artifact:
+        """``document`` as Claude Code reads its always-loaded guidance, at the path it reads."""
+        return Artifact.generated(
+            path=Path(".claude/CLAUDE.md"),
+            body=self.prompts.render(document),
+            semantic_id="harness.guidance",
+            banner=guidance_banner(self.prompts, document),
         )
 
 

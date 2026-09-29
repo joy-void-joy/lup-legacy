@@ -17,7 +17,7 @@ from lup.harness.generate import (
     claude_generation_recipe,
     generate,
 )
-from lup.harness.models import CapabilityEvidence, Harness, Resumption
+from lup.harness.models import ArtifactTree, CapabilityEvidence, Harness, Resumption
 from lup.harness.requirements import Finding
 from lup.harness.toolchain import bubblewrap_requirement, socat_requirement
 from lup.launch.boundary import apply_sandbox_environment
@@ -29,12 +29,14 @@ from lup.launch.declaration import (
     LaunchStep,
     Member,
     Recording,
+    Sandbox,
     declared_image,
     declared_requirements,
     launched_sandbox,
     resumption,
 )
 from lup.launch.foreground import between_steps, run_in_foreground
+from lup.launch.guidance import held_guidance
 from lup.launch.preflight import LaunchSentinels, release_ledger
 from lup.launch.refusal import LaunchRefused
 from lup.launch.session import (
@@ -51,7 +53,8 @@ from lup.providers.claude.config_home import (
     selected_config_home,
 )
 from lup.providers.claude.confinement import CLAUDE_SANDBOX_OFF
-from lup.providers.claude.harness import CLAUDE_OVERLAY
+from lup.providers.claude.harness import CLAUDE_OVERLAY, ClaudeGuidanceRenderer
+from lup.providers.harness import claude_prompt_renderer, reject_oversized_guidance
 from lup.providers.claude.harness_runtime import (
     ClaudeCliEvidence,
     claude_capability_probes,
@@ -194,6 +197,24 @@ def claude_held_trees(root: Path, plugin: Path | None) -> list[Path]:
         checkout / ".claude" / "CLAUDE.md",
     ]
     return [path for path in [*within, *alone] if path.exists()]
+
+
+def claude_guidance(root: Path, sandbox: Sandbox) -> dict[Path, str]:
+    """The guidance a Claude Code session's container holds over ``.claude/CLAUDE.md``.
+
+    Rendered the way generation renders the project's and held to its
+    budget, then written outside the checkout; nothing where the wall swaps
+    no guidance in.
+    """
+    document = sandbox.held_guidance()
+    if document is None:
+        return {}
+    try:
+        rendered = ClaudeGuidanceRenderer(claude_prompt_renderer()).guidance(document)
+        reject_oversized_guidance(ArtifactTree(artifacts=[rendered]))
+    except ValueError as refused:
+        raise LaunchRefused(f"this session's guidance: {refused}") from refused
+    return held_guidance(root, rendered.path, rendered.content)
 
 
 def compiled_claude(agent: "Claude") -> "Claude":
@@ -699,6 +720,7 @@ def claude_opening(
             if config.sandbox.holds_generated()
             else []
         ),
+        overlays=claude_guidance(root, config.sandbox),
     )
     return LaunchCommand(argv=argv, env=environment, cwd=root)
 

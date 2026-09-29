@@ -120,16 +120,18 @@ class UserConfig(BaseModel, frozen=True, extra="forbid"):
     """``[container]``: what every contained session this person launches is
     granted — its network, memory, sudo, devices, folders and held trees —
     over what the project declares and under a mode and the command line.
-    A repository's own facts, its image and the repositories kept inside it,
-    are not a person's to state."""
+    A repository's own facts, its image, the repositories kept inside it and
+    the guidance a kind of its sessions reads, are not a person's to state."""
 
     @field_validator("container")
     @classmethod
     def container_states_no_repository_s_facts(
         cls, value: OuterContainer
     ) -> OuterContainer:
-        """Refuse an image or nested repositories, which name one repository's own."""
-        named = sorted({"image", "nested_repositories"} & value.model_fields_set)
+        """Refuse an image, nested repositories or guidance, which are one repository's own."""
+        named = sorted(
+            {"image", "nested_repositories", "guidance"} & value.model_fields_set
+        )
         if named:
             raise ValueError(
                 f"[container] names {', '.join(named)}, which are one repository's "

@@ -1482,6 +1482,7 @@ USER $UID:$GID
         trust_document: str = "",
         privileges: SessionPrivileges = SessionPrivileges(),
         memory: int | None = None,
+        overlays: Mapping[Path, str] | None = None,
     ) -> list[str]:
         """The whole argv that opens one agent session inside a container.
 
@@ -1557,6 +1558,11 @@ USER $UID:$GID
         layer of the image and a flag of the run, one grant spelled twice;
         ``memory`` the bytes its container may hold, as :meth:`run_arguments`
         spells them.
+
+        ``overlays`` are files held read-only over a path inside the checkout
+        -- a kind of session's own guidance over the committed one -- keyed
+        by where each is on the host. Sorted with every other mount, so each
+        lands over the checkout it sits in rather than under it.
         """
         granted_devices = [
             argument for device in devices for argument in device.arguments()
@@ -1569,6 +1575,7 @@ USER $UID:$GID
         declared = [
             *[(host, inside, "rw") for host, inside in writable.items()],
             *[(host, inside, "ro") for host, inside in read_only.items()],
+            *[(host, inside, "ro") for host, inside in (overlays or {}).items()],
         ]
         mounts = [
             argument

@@ -18,7 +18,7 @@ failure mode the design forbids, so a caller that asked to be contained and
 cannot be gets a refusal naming what was missing, and the operator decides.
 """
 
-from collections.abc import Callable, Iterator, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
 import hashlib
 import json
 import os
@@ -1814,6 +1814,7 @@ def contained_argv(
     nested: Sequence[NestedRepository] = (),
     memory: MemoryLimit | None = None,
     trees: Sequence[Path] = (),
+    overlays: Mapping[Path, str] | None = None,
 ) -> list[str]:
     """The argv that opens a session in this project's container.
 
@@ -1876,8 +1877,10 @@ def contained_argv(
     :func:`held_lease`.
 
     ``memory`` is the limit the wall declares, resolved against this
-    engine by :func:`held_memory`, and ``trees`` the generated trees it
-    holds read-only -- see :func:`held_lease`.
+    engine by :func:`held_memory`, ``trees`` the generated trees it holds
+    read-only -- see :func:`held_lease` -- and ``overlays`` the files it
+    holds read-only over a path in the checkout, keyed by where each is on
+    the host.
     """
     said = banner if banner is not None else Banner()
     if engine is not None:
@@ -2128,6 +2131,7 @@ def contained_argv(
         trust_document=login.trust_document,
         privileges=privileges,
         memory=bounded.limit,
+        overlays=overlays,
     )
 
 

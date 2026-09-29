@@ -60,6 +60,7 @@ from lup.harness.models import (
     HookSet,
     Plugin,
     PluginLocation,
+    PromptDocument,
     QualifiedAgentName,
     Skill,
     SkillInvocation,
@@ -512,15 +513,19 @@ class CodexGuidanceRenderer(ArtifactRenderer[Harness]):
         self.spellings = spellings
         self.budget = budget
 
+    def guidance(self, document: PromptDocument) -> Artifact:
+        """``document`` as Codex reads its always-loaded guidance, at the path it reads."""
+        return Artifact.generated(
+            path=Path("AGENTS.md"),
+            body=self.prompts.render(document),
+            semantic_id="harness.guidance",
+            banner=guidance_banner(self.prompts, document),
+        )
+
     def render(self, source: Harness) -> ArtifactTree:
         return ArtifactTree(
             artifacts=[
-                Artifact.generated(
-                    path=Path("AGENTS.md"),
-                    body=self.prompts.render(source.guidance),
-                    semantic_id="harness.guidance",
-                    banner=guidance_banner(self.prompts, source.guidance),
-                ),
+                self.guidance(source.guidance),
                 Artifact.generated(
                     path=Path(".codex/config.toml"),
                     body=codex_project_config(self.budget),

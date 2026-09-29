@@ -807,6 +807,7 @@ def session_argv(
     nested: Sequence[NestedRepository] = (),
     memory: MemoryLimit | None = None,
     trees: Sequence[Path] = (),
+    overlays: Mapping[Path, str] | None = None,
 ) -> list[str]:
     """The argv that opens a session, inside the declared container or on the host.
 
@@ -847,8 +848,10 @@ def session_argv(
     ``privileges`` is what the wall grants a contained session's processes,
     which a host posture has no container to grant, ``nested`` the
     repositories inside the checkout its container holds, ``memory`` how
-    much its container may hold, and ``trees`` the generated trees it holds
-    read-only, which the boundary it records names as it names every hold.
+    much its container may hold, ``trees`` the generated trees it holds
+    read-only, which the boundary it records names as it names every hold,
+    and ``overlays`` the files it holds over a path in the checkout -- a
+    kind of session's own guidance -- keyed by where each is on the host.
 
     ``prepare`` readies the runtime's home through the argv the session
     opens with, and answers with what the session should find held
@@ -880,6 +883,8 @@ def session_argv(
     environment[POLICY_ROOT_ENV] = str(root)
 
     accessible = list(mounts)
+    # A file something is held over is held by that, and one bind to a path.
+    held_trees = [path for path in trees if str(path) not in (overlays or {}).values()]
     if not sandbox.contained():
         # A host posture holds the host's devices already, so a flag asking
         # for one describes a container this launch does not open. Said
@@ -958,7 +963,8 @@ def session_argv(
         privileges=privileges,
         nested=nested,
         memory=memory,
-        trees=trees,
+        trees=held_trees,
+        overlays=overlays,
     )
     # Verified on the way in, rather than asserted. This is §6's whole point
     # and the launch is where it has to happen: the boundary was built two
@@ -980,7 +986,7 @@ def session_argv(
         in_passing=True,
         accessible=accessible,
         nested=nested,
-        trees=trees,
+        trees=held_trees,
     )
     if prepare is not None:
         # What preparing the home installed and asks to be held -- a
@@ -1015,7 +1021,7 @@ def session_argv(
         accessible,
         runtime=cli,
         nested=nested,
-        trees=trees,
+        trees=held_trees,
     )
     say_opening(cleared, measured_here, transcript)
     native = image.clipboard.wrap([cli, *arguments], clipboard)

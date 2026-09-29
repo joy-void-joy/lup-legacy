@@ -14,12 +14,12 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Protocol, Self, runtime_checkable
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from lup.harness.devices import Device
 from lup.harness.image import Image, MemoryLimit, SessionPrivileges, detected_client
 from lup.harness.messaging import WakeSockets
-from lup.harness.models import Harness, HookSet, Resumption
+from lup.harness.models import Harness, HookSet, PromptDocument, Resumption
 from lup.harness.notice import Notice
 from lup.harness.requirements import Manifest
 from lup.observability.sessions import SessionRecorder
@@ -150,6 +150,10 @@ class Sandbox(BaseModel, ABC, frozen=True, extra="forbid"):
         """Whether this wall holds the generated trees the runtime runs from read-only."""
         return False
 
+    def held_guidance(self) -> PromptDocument | None:
+        """The guidance this wall puts over the committed one, where it swaps it."""
+        return None
+
     def nested(self) -> list[NestedRepository]:
         """The repositories inside the checkout this wall holds as it holds the checkout's own."""
         return []
@@ -215,6 +219,27 @@ class OuterContainer(Sandbox, frozen=True):
     this checkout: a merge, a switch or a reset that touches them. Only this
     checkout's trees; a sibling worktree's stay the session's to regenerate."""
 
+    guidance: PromptDocument | None = None
+    """The always-loaded document a session in this container reads instead
+    of the committed one: rendered for the runtime the way generation renders
+    the project's, held to the same budget, and mounted read-only over the
+    committed file's path inside the container, so the tree on the host never
+    changes. It names the module declaring it, as a rendered file does. Only
+    a container can put one file over another; a host session refuses one."""
+
+    @field_validator("guidance")
+    @classmethod
+    def guidance_names_its_source(
+        cls, value: PromptDocument | None
+    ) -> PromptDocument | None:
+        """Refuse guidance naming no module, which the file it renders to must name."""
+        if value is not None and value.source is None:
+            raise ValueError(
+                "guidance a container holds renders to a file of its own, so it "
+                "names the module declaring it: PromptDocument(parts=..., source=...)"
+            )
+        return value
+
     def posture(self) -> LaunchSandbox:
         return LaunchSandbox.OUTER
 
@@ -241,6 +266,9 @@ class OuterContainer(Sandbox, frozen=True):
 
     def holds_generated(self) -> bool:
         return self.hold_generated
+
+    def held_guidance(self) -> PromptDocument | None:
+        return self.guidance
 
     def nested(self) -> list[NestedRepository]:
         return list(self.nested_repositories)

@@ -9,7 +9,13 @@ from pydantic import BaseModel
 
 from lup.coordination.repository import launched_member
 from lup.harness.generate import ProjectContent, codex_generation_recipe, generate
-from lup.harness.models import CapabilityEvidence, Harness, HookSet, Resumption
+from lup.harness.models import (
+    ArtifactTree,
+    CapabilityEvidence,
+    Harness,
+    HookSet,
+    Resumption,
+)
 from lup.harness.notice import Notice
 from lup.harness.requirements import Finding
 from lup.harness.toolchain import codex_envelope_requirement
@@ -30,6 +36,7 @@ from lup.launch.declaration import (
     resumption,
 )
 from lup.launch.environments import revisions_home
+from lup.launch.guidance import held_guidance
 from lup.launch.foreground import between_steps, run_in_foreground
 from lup.launch.preflight import LaunchSentinels, release_ledger
 from lup.launch.refusal import LaunchRefused
@@ -43,6 +50,8 @@ from lup.launch.session import (
 )
 from lup.observability.audit import TraceJournal
 from lup.providers.codex.confinement import CODEX_CONFINEMENT
+from lup.providers.codex.harness import CodexGuidanceRenderer, CodexSpellings
+from lup.providers.harness import codex_prompt_renderer, reject_oversized_guidance
 from lup.providers.codex.harness_runtime import (
     CodexCliEvidence,
     codex_capability_probes,
@@ -337,6 +346,26 @@ def codex_held_trees(root: Path, offered: CodexMarketplace | None) -> list[Path]
         checkout / "AGENTS.md",
     ]
     return [path for path in [*offering, *alone] if path.exists()]
+
+
+def codex_guidance(root: Path, sandbox: Sandbox) -> dict[Path, str]:
+    """The guidance a Codex session's container holds over ``AGENTS.md``.
+
+    Rendered the way generation renders the project's and held to its
+    budget, then written outside the checkout; nothing where the wall swaps
+    no guidance in.
+    """
+    document = sandbox.held_guidance()
+    if document is None:
+        return {}
+    try:
+        rendered = CodexGuidanceRenderer(
+            codex_prompt_renderer(), CodexSpellings()
+        ).guidance(document)
+        reject_oversized_guidance(ArtifactTree(artifacts=[rendered]))
+    except ValueError as refused:
+        raise LaunchRefused(f"this session's guidance: {refused}") from refused
+    return held_guidance(root, rendered.path, rendered.content)
 
 
 def codex_account_environment(agent: "Codex") -> EnvVars:
@@ -792,6 +821,7 @@ def codex_opening(
             if config.sandbox.holds_generated()
             else []
         ),
+        overlays=codex_guidance(root, config.sandbox),
     )
     return LaunchCommand(argv=argv, env=environment, cwd=root)
 
