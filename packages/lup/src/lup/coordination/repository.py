@@ -554,6 +554,10 @@ class RepositoryPeers:
         # `names.jsonl`, `delivery/`, `heartbeats/` and `resets/` stay on every
         # clone that ran 0.2.x; the user settled that the first sweep of this
         # store deletes them, and no sweep or migration does
+        # lup: defer: nothing bounds `mail.jsonl` -- every message posted in
+        # this clone stays on it, and the dashboard reads all of it; the user
+        # has not settled whether this sweep keeps it to the retention window
+        # (taking the dashboard's older history with it) or it stays whole
         return [
             folded_member(member)
             for member in store.swept(self.root, now, self.pulse.stale_after_seconds)
@@ -566,6 +570,7 @@ class RepositoryPeers:
         redirect: bool = False,
         door: Door = Door.AGENT,
         in_reply_to: str = "",
+        sender: str = "",
     ) -> ActorRef | None:
         """Post one message to whatever a sender spelled, or say it reached nobody.
 
@@ -577,6 +582,9 @@ class RepositoryPeers:
         A member that has stopped is the other answer, and that one raises:
         the address was right, the session is gone, and queuing for it would
         tell the sender nothing while the message waits for nobody.
+
+        *sender* signs it with the address a reply reaches: the sending
+        member's id, or `user` for the person.
         """
         member = self.address(to)
         if member is None:
@@ -585,7 +593,12 @@ class RepositoryPeers:
         if standing is not None and not standing.running:
             raise PeerDepartedError(standing, self.called(member.id))
         self.cohort.say(
-            member, text, redirect=redirect, door=door, in_reply_to=in_reply_to
+            member,
+            text,
+            redirect=redirect,
+            door=door,
+            in_reply_to=in_reply_to,
+            sender=sender,
         )
         return member
 

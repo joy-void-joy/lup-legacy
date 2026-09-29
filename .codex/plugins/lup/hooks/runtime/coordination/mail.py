@@ -31,13 +31,18 @@ tool call, and mail that cannot be read must not stop the work it was meant to
 inform.
 """
 
+import fcntl
+import json
 from pathlib import Path
 from typing import TypedDict
 from uuid import uuid4
 
 from .store import (
+    MAIL_RECORD,
     MAILBOX_DIR,
     NOTICES_DIR,
+    Actor,
+    conversation_of,
     discarded,
     listed,
     loaded,
@@ -78,6 +83,13 @@ class Notice(TypedDict, total=False):
     door: str
     by: str
     posted_at: str
+
+
+class Posted(TypedDict, total=False):
+    """One line of the mail record: a message, and the member whose mailbox it was put in."""
+
+    recipient: Actor
+    message: Message
 
 
 def mailbox_path(root: Path, mailbox: str) -> Path:
@@ -123,18 +135,48 @@ def new_message(
     )
 
 
-def post(root: Path, mailbox: str, message: Message) -> bool:
+def post(root: Path, recipient: Actor, message: Message) -> bool:
     """Put one message in one member's mailbox, by rename.
 
     One recipient, always. Where a sender meant everyone, it resolved that
     against the roster and calls this once per member — so no reader of this
     store has to know what a broadcast is, and a message in a mailbox is a
     message for whoever owns that mailbox.
+
+    Once it has landed it goes on the record too, naming the member it went
+    to, which outlives the mailbox copy its reader takes; a record that could
+    not be written costs a reader of the history one line, never the
+    recipient its message.
     """
+    mailbox = conversation_of(recipient)
     landed = published(
         message_path(root, mailbox, text(message.get("id")) or uuid4().hex), message
     )
-    return landed is not None
+    if landed is None:
+        return False
+    recorded(root, Posted(recipient=recipient, message=message))
+    return True
+
+
+def recorded(root: Path, posted: Posted) -> bool:
+    """Append one line to the mail record, saying whether it was written.
+
+    Appended rather than rewritten, so a reader following the file never meets
+    a line it has read change under it; under a lock on the record itself, so
+    two senders' lines never interleave however long either message is.
+    """
+    try:
+        root.mkdir(parents=True, exist_ok=True)
+        with (root / MAIL_RECORD).open("a", encoding="utf-8") as record:
+            fcntl.flock(record.fileno(), fcntl.LOCK_EX)
+            try:
+                record.write(json.dumps(posted) + "\n")
+                record.flush()
+            finally:
+                fcntl.flock(record.fileno(), fcntl.LOCK_UN)
+    except OSError:
+        return False
+    return True
 
 
 def waiting(root: Path, mailbox: str) -> list[Message]:
@@ -213,10 +255,17 @@ def spoken(messages: list[Message]) -> str:
 
     One line per message, naming what carried each, because a redirect and an
     ordinary message ask different things of the reader and a rendering that
-    hid the difference hid it from the one party that needed it.
+    hid the difference hid it from the one party that needed it. Who sent it
+    is named where the sender signed it — a peer's id, or `user` for the
+    person — which is the address a reply goes to.
     """
+
+    def heading(message: Message) -> str:
+        kind = "redirected" if message.get("redirect") else "message"
+        sender = text(message.get("sender"))
+        signed = f" from {sender}" if sender else ""
+        return f"[{kind}{signed} by {text(message.get('door')) or 'peer'}]"
+
     return "\n".join(
-        f"[{'redirected' if message.get('redirect') else 'message'} by "
-        f"{text(message.get('door')) or 'peer'}] {text(message.get('text'))}"
-        for message in messages
+        f"{heading(message)} {text(message.get('text'))}" for message in messages
     )

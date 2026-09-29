@@ -581,6 +581,51 @@
       "title": "CriteriaCarriedEvent",
       "type": "object"
     },
+    "DashboardEvent": {
+      "discriminator": {
+        "mapping": {
+          "message": "#/$defs/MessageEvent",
+          "repository": "#/$defs/RepositoryEvent",
+          "repository_gone": "#/$defs/RepositoryGoneEvent",
+          "review": "#/$defs/ReviewEvent",
+          "review_gone": "#/$defs/ReviewGoneEvent",
+          "review_scope": "#/$defs/ReviewScopeEvent",
+          "session": "#/$defs/SessionEvent",
+          "session_gone": "#/$defs/SessionGoneEvent",
+          "snapshot": "#/$defs/SnapshotEvent"
+        },
+        "propertyName": "type"
+      },
+      "oneOf": [
+        {
+          "$ref": "#/$defs/SnapshotEvent"
+        },
+        {
+          "$ref": "#/$defs/RepositoryEvent"
+        },
+        {
+          "$ref": "#/$defs/RepositoryGoneEvent"
+        },
+        {
+          "$ref": "#/$defs/SessionEvent"
+        },
+        {
+          "$ref": "#/$defs/SessionGoneEvent"
+        },
+        {
+          "$ref": "#/$defs/MessageEvent"
+        },
+        {
+          "$ref": "#/$defs/ReviewEvent"
+        },
+        {
+          "$ref": "#/$defs/ReviewGoneEvent"
+        },
+        {
+          "$ref": "#/$defs/ReviewScopeEvent"
+        }
+      ]
+    },
     "DecisionEffect": {
       "enum": [
         "allow",
@@ -1199,6 +1244,264 @@
       "title": "LeaseRefreshedEvent",
       "type": "object"
     },
+    "LiveMessage": {
+      "additionalProperties": false,
+      "description": "One message of one repository's mail record, and whether it still waits.",
+      "properties": {
+        "door": {
+          "title": "Door",
+          "type": "string"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "in_reply_to": {
+          "title": "In Reply To",
+          "type": "string"
+        },
+        "key": {
+          "title": "Key",
+          "type": "string"
+        },
+        "recipient": {
+          "title": "Recipient",
+          "type": "string"
+        },
+        "recipient_kind": {
+          "title": "Recipient Kind",
+          "type": "string"
+        },
+        "redirect": {
+          "title": "Redirect",
+          "type": "boolean"
+        },
+        "repository": {
+          "title": "Repository",
+          "type": "string"
+        },
+        "sender": {
+          "title": "Sender",
+          "type": "string"
+        },
+        "sent_at": {
+          "format": "date-time",
+          "title": "Sent At",
+          "type": "string"
+        },
+        "seq": {
+          "title": "Seq",
+          "type": "integer"
+        },
+        "text": {
+          "title": "Text",
+          "type": "string"
+        },
+        "waiting": {
+          "title": "Waiting",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "key",
+        "repository",
+        "id",
+        "seq",
+        "sender",
+        "recipient",
+        "recipient_kind",
+        "text",
+        "door",
+        "redirect",
+        "in_reply_to",
+        "sent_at",
+        "waiting"
+      ],
+      "title": "LiveMessage",
+      "type": "object"
+    },
+    "LiveRepository": {
+      "additionalProperties": false,
+      "description": "One repository the dashboard serves, by the key every address under it carries.",
+      "properties": {
+        "checkout": {
+          "title": "Checkout",
+          "type": "string"
+        },
+        "key": {
+          "title": "Key",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "repository": {
+          "title": "Repository",
+          "type": "string"
+        }
+      },
+      "required": [
+        "key",
+        "name",
+        "repository",
+        "checkout"
+      ],
+      "title": "LiveRepository",
+      "type": "object"
+    },
+    "LiveSession": {
+      "additionalProperties": false,
+      "description": "One session or subagent of one repository, as the page lists it.\n\nAddressed by its member id, which every verb accepts and no rename\nchanges; ``key`` qualifies it by its repository, since ids are minted\nper repository.",
+      "properties": {
+        "activity": {
+          "$ref": "#/$defs/SessionActivity",
+          "default": {
+            "arguments": {},
+            "at": null,
+            "calling": "",
+            "said": "",
+            "transcript": ""
+          }
+        },
+        "arrived": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Arrived"
+        },
+        "contested": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Contested",
+          "type": "array"
+        },
+        "delivery": {
+          "default": "",
+          "title": "Delivery",
+          "type": "string"
+        },
+        "doing": {
+          "default": "",
+          "title": "Doing",
+          "type": "string"
+        },
+        "error": {
+          "default": "",
+          "title": "Error",
+          "type": "string"
+        },
+        "heard": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Heard"
+        },
+        "holding": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Holding",
+          "type": "array"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "key": {
+          "title": "Key",
+          "type": "string"
+        },
+        "kind": {
+          "title": "Kind",
+          "type": "string"
+        },
+        "name": {
+          "default": "",
+          "title": "Name",
+          "type": "string"
+        },
+        "parent": {
+          "default": "",
+          "title": "Parent",
+          "type": "string"
+        },
+        "repository": {
+          "title": "Repository",
+          "type": "string"
+        },
+        "running": {
+          "title": "Running",
+          "type": "boolean"
+        },
+        "summary": {
+          "default": "",
+          "title": "Summary",
+          "type": "string"
+        },
+        "task": {
+          "default": "",
+          "title": "Task",
+          "type": "string"
+        },
+        "waiting": {
+          "default": 0,
+          "title": "Waiting",
+          "type": "integer"
+        },
+        "wake": {
+          "default": "",
+          "title": "Wake",
+          "type": "string"
+        },
+        "worktree": {
+          "default": "",
+          "title": "Worktree",
+          "type": "string"
+        }
+      },
+      "required": [
+        "key",
+        "repository",
+        "id",
+        "parent",
+        "kind",
+        "name",
+        "doing",
+        "task",
+        "running",
+        "worktree",
+        "holding",
+        "contested",
+        "delivery",
+        "wake",
+        "arrived",
+        "heard",
+        "summary",
+        "error",
+        "waiting",
+        "activity"
+      ],
+      "title": "LiveSession",
+      "type": "object"
+    },
     "MaterialQuestion": {
       "additionalProperties": false,
       "description": "A resolver question: the mailbox's shape, plus what the run consults.\n\nThe id, the prompt, the answer domain and the two validators over them\nare what any door reads, and live on :class:`~lup.coordination.questions.Question`.\nAdded here is only what the resolver itself consults \u2014 which concern the\nquestion belongs to, which edit gates an option would need, and which\nlost criteria a re-check is about.",
@@ -1309,6 +1612,27 @@
         "message"
       ],
       "title": "MessageCompletedEvent",
+      "type": "object"
+    },
+    "MessageEvent": {
+      "additionalProperties": false,
+      "description": "A message posted, or one its recipient has now taken.",
+      "properties": {
+        "message": {
+          "$ref": "#/$defs/LiveMessage"
+        },
+        "type": {
+          "const": "message",
+          "default": "message",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "type",
+        "message"
+      ],
+      "title": "MessageEvent",
       "type": "object"
     },
     "MessageOutstandingEvent": {
@@ -2300,6 +2624,95 @@
       "title": "RecheckReusedEvent",
       "type": "object"
     },
+    "ReplyOutcome": {
+      "additionalProperties": false,
+      "description": "What became of the operator's message: queued in the mailbox, and whether a wake landed.",
+      "properties": {
+        "detail": {
+          "title": "Detail",
+          "type": "string"
+        },
+        "queued": {
+          "title": "Queued",
+          "type": "boolean"
+        },
+        "session": {
+          "title": "Session",
+          "type": "string"
+        },
+        "woken": {
+          "title": "Woken",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "session",
+        "queued",
+        "woken",
+        "detail"
+      ],
+      "title": "ReplyOutcome",
+      "type": "object"
+    },
+    "ReplyRequest": {
+      "additionalProperties": false,
+      "description": "What the operator wrote to one session.",
+      "properties": {
+        "text": {
+          "minLength": 1,
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "text"
+      ],
+      "title": "ReplyRequest",
+      "type": "object"
+    },
+    "RepositoryEvent": {
+      "additionalProperties": false,
+      "description": "A repository the dashboard serves, first seen or changed.",
+      "properties": {
+        "repository": {
+          "$ref": "#/$defs/LiveRepository"
+        },
+        "type": {
+          "const": "repository",
+          "default": "repository",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "type",
+        "repository"
+      ],
+      "title": "RepositoryEvent",
+      "type": "object"
+    },
+    "RepositoryGoneEvent": {
+      "additionalProperties": false,
+      "description": "A repository the dashboard no longer serves.",
+      "properties": {
+        "key": {
+          "title": "Key",
+          "type": "string"
+        },
+        "type": {
+          "const": "repository_gone",
+          "default": "repository_gone",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "type",
+        "key"
+      ],
+      "title": "RepositoryGoneEvent",
+      "type": "object"
+    },
     "ResolvePhase": {
       "description": "Persisted resolver phase names in their only valid forward order.",
       "enum": [
@@ -2451,6 +2864,27 @@
       "title": "ReviewError",
       "type": "object"
     },
+    "ReviewEvent": {
+      "additionalProperties": false,
+      "description": "A review that was parked, or whose row changed.",
+      "properties": {
+        "review": {
+          "$ref": "#/$defs/ReviewSummary"
+        },
+        "type": {
+          "const": "review",
+          "default": "review",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "type",
+        "review"
+      ],
+      "title": "ReviewEvent",
+      "type": "object"
+    },
     "ReviewFile": {
       "additionalProperties": false,
       "description": "Captured file contents and the corresponding proposed change.",
@@ -2548,6 +2982,28 @@
         "review_reason"
       ],
       "title": "ReviewFile",
+      "type": "object"
+    },
+    "ReviewGoneEvent": {
+      "additionalProperties": false,
+      "description": "A review no queue holds any more.",
+      "properties": {
+        "key": {
+          "title": "Key",
+          "type": "string"
+        },
+        "type": {
+          "const": "review_gone",
+          "default": "review_gone",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "type",
+        "key"
+      ],
+      "title": "ReviewGoneEvent",
       "type": "object"
     },
     "ReviewHunk": {
@@ -2732,6 +3188,39 @@
         "repository_name"
       ],
       "title": "ReviewRoot",
+      "type": "object"
+    },
+    "ReviewScopeEvent": {
+      "additionalProperties": false,
+      "description": "Which checkouts' queues are read, and which could not be.",
+      "properties": {
+        "errors": {
+          "items": {
+            "$ref": "#/$defs/ReviewError"
+          },
+          "title": "Errors",
+          "type": "array"
+        },
+        "roots": {
+          "items": {
+            "$ref": "#/$defs/ReviewRoot"
+          },
+          "title": "Roots",
+          "type": "array"
+        },
+        "type": {
+          "const": "review_scope",
+          "default": "review_scope",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "type",
+        "roots",
+        "errors"
+      ],
+      "title": "ReviewScopeEvent",
       "type": "object"
     },
     "ReviewSnapshot": {
@@ -3304,6 +3793,96 @@
       "title": "ScopeRequest",
       "type": "object"
     },
+    "SessionActivity": {
+      "additionalProperties": false,
+      "description": "What one conversation's transcript says it is doing now.",
+      "properties": {
+        "arguments": {
+          "$ref": "#/$defs/JsonObject",
+          "default": {}
+        },
+        "at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "At"
+        },
+        "calling": {
+          "default": "",
+          "title": "Calling",
+          "type": "string"
+        },
+        "said": {
+          "default": "",
+          "title": "Said",
+          "type": "string"
+        },
+        "transcript": {
+          "default": "",
+          "title": "Transcript",
+          "type": "string"
+        }
+      },
+      "required": [
+        "said",
+        "calling",
+        "arguments",
+        "at",
+        "transcript"
+      ],
+      "title": "SessionActivity",
+      "type": "object"
+    },
+    "SessionEvent": {
+      "additionalProperties": false,
+      "description": "A session or subagent that arrived, or whose row or activity changed.",
+      "properties": {
+        "session": {
+          "$ref": "#/$defs/LiveSession"
+        },
+        "type": {
+          "const": "session",
+          "default": "session",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "type",
+        "session"
+      ],
+      "title": "SessionEvent",
+      "type": "object"
+    },
+    "SessionGoneEvent": {
+      "additionalProperties": false,
+      "description": "A session or subagent no roster lists any more.",
+      "properties": {
+        "key": {
+          "title": "Key",
+          "type": "string"
+        },
+        "type": {
+          "const": "session_gone",
+          "default": "session_gone",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "type",
+        "key"
+      ],
+      "title": "SessionGoneEvent",
+      "type": "object"
+    },
     "SessionId": {
       "additionalProperties": false,
       "description": "Opaque native conversation identity.",
@@ -3347,6 +3926,51 @@
         "path"
       ],
       "title": "SetupPane",
+      "type": "object"
+    },
+    "SnapshotEvent": {
+      "additionalProperties": false,
+      "description": "Everything the dashboard knows now, handed to a tab with nothing to resume from.",
+      "properties": {
+        "messages": {
+          "items": {
+            "$ref": "#/$defs/LiveMessage"
+          },
+          "title": "Messages",
+          "type": "array"
+        },
+        "repositories": {
+          "items": {
+            "$ref": "#/$defs/LiveRepository"
+          },
+          "title": "Repositories",
+          "type": "array"
+        },
+        "reviews": {
+          "$ref": "#/$defs/ReviewSnapshot"
+        },
+        "sessions": {
+          "items": {
+            "$ref": "#/$defs/LiveSession"
+          },
+          "title": "Sessions",
+          "type": "array"
+        },
+        "type": {
+          "const": "snapshot",
+          "default": "snapshot",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "type",
+        "repositories",
+        "sessions",
+        "messages",
+        "reviews"
+      ],
+      "title": "SnapshotEvent",
       "type": "object"
     },
     "StepAnswers": {
@@ -3575,6 +4199,25 @@
         "undoes"
       ],
       "title": "StepView",
+      "type": "object"
+    },
+    "StreamFrame": {
+      "additionalProperties": false,
+      "description": "One frame: the event, and the cursor a tab resumes after it from.",
+      "properties": {
+        "cursor": {
+          "title": "Cursor",
+          "type": "string"
+        },
+        "event": {
+          "$ref": "#/$defs/DashboardEvent"
+        }
+      },
+      "required": [
+        "cursor",
+        "event"
+      ],
+      "title": "StreamFrame",
       "type": "object"
     },
     "SupervisorState": {

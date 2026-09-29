@@ -73,7 +73,7 @@ def delegate(
     for path in locked:
         peers.lock(member.id, Path(path))
     message = f"{task.id}: {title}" + (f"\n{text}" if text else "")
-    peers.send(to, message)
+    peers.send(to, message, sender=store.author.id)
     reached = next(
         (view for view in peers.listing() if view.member.actor.id == member.id), None
     )

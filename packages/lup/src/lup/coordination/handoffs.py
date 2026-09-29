@@ -297,7 +297,7 @@ def hand_off(
         taken.append(str(target))
 
     message = f"{handoff.id}: {title}" + (f"\n{text}" if text else "")
-    peers.send(to, message)
+    peers.send(to, message, sender=sender.id)
     reached = next(
         (view for view in peers.listing() if view.member.actor.id == member.id), None
     )

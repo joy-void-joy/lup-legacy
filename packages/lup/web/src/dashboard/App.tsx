@@ -1,7 +1,9 @@
 import { memo, useEffect, useRef, useState, type RefObject } from "react";
 import type { ReviewDecision, ReviewDetail, ReviewRoot, ReviewSnapshot, ReviewSummary, SetupPane } from "../generated/views";
-import { answerReview, followReviews, readReview, readReviewLink, readSetupPanes, reviewLink, ReviewError, takeToken, TOKEN_KEY } from "./api";
+import { answerReview, followDashboard, readReview, readReviewLink, readSetupPanes, reviewLink, ReviewError, takeToken, TOKEN_KEY } from "./api";
 import { Files, type FileNavigation } from "./Files";
+import { applied, type LiveState } from "./live";
+import { Sessions } from "./Sessions";
 
 const FileEvidence = memo(Files);
 const JsonRecord = memo(function JsonRecord({ value }: { value: unknown }) {
@@ -179,7 +181,10 @@ export function App() {
   const [help, setHelp] = useState(false);
   const [advance, setAdvance] = useState(true);
   const [mobilePanel, setMobilePanel] = useState<"queue" | "review">("review");
-  const [view, setView] = useState<"reviews" | "setup">("reviews");
+  const [view, setView] = useState<"reviews" | "sessions" | "setup">("reviews");
+  const [live, setLive] = useState<LiveState | null>(null);
+  const liveState = useRef<LiveState | null>(null);
+  const cursor = useRef("");
   const [panes, setPanes] = useState<SetupPane[] | null>(null);
   const [pane, setPane] = useState("");
   const fileNavigation = useRef<FileNavigation | null>(null);
@@ -283,15 +288,27 @@ export function App() {
       setConnection("Connecting…");
       setAccessDenied(false);
       try {
-        for await (const snapshot of followReviews(token, controller.signal)) {
+        for await (const entry of followDashboard(token, controller.signal, cursor.current)) {
           if (controller.signal.aborted) return;
-          for (const key of settledReviews.current.keys()) {
-            if (!snapshot.reviews.some((row) => row.key === key && row.state === "pending")) settledReviews.current.delete(key);
+          if (entry.kind === "live") {
+            setConnection("Live");
+            continue;
           }
-          const fresh = { ...snapshot, reviews: snapshot.reviews.map((row) => settledReviews.current.get(row.key)?.summary ?? row) };
-          liveQueue.current = fresh;
-          setQueue(fresh);
-          setConnection("Live");
+          const previous = liveState.current;
+          const next = applied(previous, entry.frame);
+          cursor.current = entry.frame.cursor;
+          liveState.current = next;
+          setLive(next);
+          if (previous === null || next.reviews !== previous.reviews) {
+            const snapshot = next.reviews;
+            for (const key of settledReviews.current.keys()) {
+              if (!snapshot.reviews.some((row) => row.key === key && row.state === "pending")) settledReviews.current.delete(key);
+            }
+            const fresh = { ...snapshot, reviews: snapshot.reviews.map((row) => settledReviews.current.get(row.key)?.summary ?? row) };
+            liveQueue.current = fresh;
+            setQueue(fresh);
+          }
+          if (entry.frame.event.type === "snapshot") setConnection("Live");
         }
         if (!controller.signal.aborted) throw new Error("The connection closed.");
       } catch (failure) {
@@ -442,6 +459,7 @@ export function App() {
       </div>
       <nav className="views" aria-label="Dashboard view">
         <button type="button" aria-pressed={view === "reviews"} onClick={() => setView("reviews")}>Reviews</button>
+        <button type="button" aria-pressed={view === "sessions"} onClick={() => setView("sessions")}>Sessions{live === null ? "" : ` (${[...live.sessions.values()].filter((each) => each.running && each.parent === "").length})`}</button>
         <button type="button" aria-pressed={view === "setup"} onClick={() => setView("setup")}>Setup</button>
       </nav>
       <div className="connection"><span role="status" className={queueCurrent ? "live" : "muted"}>{connection === "Live" && queuePartial ? "Some queues unavailable" : connection}</span>
@@ -449,7 +467,8 @@ export function App() {
         <button type="button" onClick={reconnect}>Reconnect</button></div>
     </header>
     {notice !== "" && <p className="notice" role="alert">{notice}</p>}
-    {view === "setup" ? <>{error !== "" && <p className="error" role="alert">{error}</p>}<SetupView panes={panes} chosen={pane} onChoose={setPane} /></> : <>
+    {view === "sessions" ? <Sessions live={live} current={connection === "Live"} token={token} />
+      : view === "setup" ? <>{error !== "" && <p className="error" role="alert">{error}</p>}<SetupView panes={panes} chosen={pane} onChoose={setPane} /></> : <>
     {help && <section className="shortcut-help" id="shortcut-help" aria-label="Keyboard shortcuts">
       <span><kbd>Shift</kbd> + <kbd>A</kbd> Approve</span><span><kbd>Shift</kbd> + <kbd>D</kbd> Decline</span>
       <span><kbd>J</kbd> Next request</span><span><kbd>K</kbd> Previous request</span><span><kbd>C</kbd> Comment</span><span><kbd>?</kbd> Toggle help</span>

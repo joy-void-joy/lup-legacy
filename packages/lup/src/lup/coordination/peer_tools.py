@@ -474,7 +474,7 @@ def create_peer_tools(
                 "`coordination_peers` lists the others"
             )
         try:
-            found = peers.send(params.address, params.text, door=door)
+            found = peers.send(params.address, params.text, door=door, sender=acting.id)
         except PeerDepartedError as departed:
             raise ToolError(
                 f"{departed}; `coordination_peers` lists who is here"
@@ -504,9 +504,7 @@ def create_peer_tools(
         delivery = peers.take(present(params.caller).id)
         return MailboxOutput(
             messages=[
-                f"[{'redirect' if message.redirect else 'message'} by "
-                f"{message.door}] {message.text}"
-                for message in delivery.messages
+                f"{message.heading()} {message.text}" for message in delivery.messages
             ]
         )
 

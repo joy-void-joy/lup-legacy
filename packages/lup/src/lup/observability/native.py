@@ -22,12 +22,14 @@ import logging
 import threading
 from abc import ABC, abstractmethod
 from collections.abc import Iterator, Mapping
+from datetime import datetime
 from pathlib import Path
 from typing import Literal
 
 from pydantic import BaseModel, TypeAdapter, ValidationError
 
 from lup.observability.audit import ObservableEventKind, TraceJournal
+from lup.sessions.events import TurnMessage
 from lup.types import JsonObject, JsonValue
 
 logger = logging.getLogger(__name__)
@@ -41,6 +43,13 @@ One mapping rather than a set per verdict, because the verdicts are exclusive:
 two sets can hold the same session at once and nothing in the type says which
 reading wins, while a session that is absent here has simply not identified
 itself yet."""
+
+
+class NativeTurn(BaseModel, frozen=True):
+    """One transcript record read as the portable message it carries, and when."""
+
+    message: TurnMessage
+    at: datetime | None = None
 
 
 class NativeSemanticBlock(BaseModel, frozen=True):
@@ -145,6 +154,34 @@ class NativeTranscripts(ABC):
     @abstractmethod
     def semantic_blocks(self, record: JsonObject) -> list[NativeSemanticBlock]:
         """The reasoning and tool blocks this record exposes, in its own words."""
+
+
+class NativeTurns(ABC):
+    """What a session is saying and doing, read line by line out of its runtime's transcript.
+
+    Apart from :class:`NativeTranscripts`, which finds and mirrors a runtime's
+    files wholesale: this starts from a file somebody already named — a
+    roster row's — and answers for one line, or for where a subagent of it
+    writes. Every method is a place a vendor's own vocabulary would
+    otherwise have leaked into provider-neutral code.
+    """
+
+    @abstractmethod
+    def turn(self, record: JsonObject) -> NativeTurn | None:
+        """This record as the message it carries, or ``None`` for anything else.
+
+        ``None`` for bookkeeping, for what the runtime injected rather than
+        anybody said, and for a record another runtime wrote — which is what
+        lets a reader that knows no runtime ask each in turn.
+        """
+
+    @abstractmethod
+    def subagent(self, transcript: Path, agent: str) -> Path | None:
+        """Where the subagent *agent* of the session *transcript* records is kept.
+
+        ``None`` where this runtime kept none there, or it is not this
+        runtime's session.
+        """
 
 
 class NativeTranscriptWatcher:

@@ -2,6 +2,27 @@
 
 ## Unreleased
 
+### The dashboard shows every session live, and writes to any of them
+
+Everything live reaches the page on one stream, `GET /api/stream`: a fresh tab
+gets the whole state once and then each numbered change, and a reconnecting
+tab resumes after the last cursor it saw. A Sessions view lists every
+repository's sessions with their subagents nested beneath them — what each
+says it is doing, the call it is waiting on and what it last said, read from
+the transcript its roster row names, what it holds, and every message to and
+from it — and a box writes to a session as `user`, through its mailbox and
+then its wake socket or `codex queue`. Reviews ride the same stream;
+`SnapshotFeed` and `/api/events` are gone.
+
+### Mail names who sent it, and stays on a record
+
+A message is signed with the address a reply reaches — the sending member's
+id, or `user` — and read as `[message from <sender> by <door>] …`. Every
+message posted also lands on the coordination store's `mail.jsonl`, which
+`ActorMail.posted` follows from a cursor. `bare.mail.post` takes the
+recipient rather than a mailbox's name, and a cohort no longer signs with its
+run id.
+
 ### Every launch holds one dashboard per person
 
 `harness claude|codex` holds the dashboard as a host companion: the first
