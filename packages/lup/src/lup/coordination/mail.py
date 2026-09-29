@@ -203,10 +203,10 @@ class MailCursor(BaseModel, frozen=True):
 
 
 class PostedMessage(BaseModel, frozen=True):
-    """One message as the record keeps it: its line, and the mailbox it was put in."""
+    """One message as the record keeps it: its line, and whose mailbox it was put in."""
 
     seq: int
-    mailbox: str
+    recipient: ActorRef
     message: ActorMessage
 
 
@@ -253,7 +253,9 @@ class ActorMail:
             in_reply_to=in_reply_to,
             redirect=redirect,
         )
-        mail.post(self.root, to.conversation(), message)
+        mail.post(
+            self.root, store.Actor(kind=to.kind, id=to.id, round=to.round), message
+        )
         return folded_message(message)
 
     def waiting(self, actor: ActorRef) -> ActorDelivery:
@@ -315,9 +317,16 @@ class ActorMail:
                     posted = POSTED.validate_json(line.content)
                 except ValidationError:
                     continue
+                recipient = posted.get("recipient") or store.Actor()
+                if not store.actor_kind(recipient):
+                    continue
                 yield PostedMessage(
                     seq=seq,
-                    mailbox=store.text(posted.get("mailbox")),
+                    recipient=ActorRef(
+                        kind=store.actor_kind(recipient),
+                        id=store.actor_id(recipient),
+                        round=store.actor_round(recipient) or 1,
+                    ),
                     message=folded_message(posted.get("message") or mail.Message()),
                 )
 

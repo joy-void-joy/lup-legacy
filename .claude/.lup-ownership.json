@@ -373,14 +373,14 @@
     {
       "path": ".claude/plugins/lup/hooks/runtime/coordination/departure.py",
       "category": "generated",
-      "sha256": "7c223140978451fd8795e6659ee31c9cbd9077f4609541dc41daebbe20f895a0",
+      "sha256": "ae5445d3885112cf60909c93b9f849598a167fd3797e27cac287979a8c682be6",
       "semantic_id": "hooks.lup-policy",
       "executable": false
     },
     {
       "path": ".claude/plugins/lup/hooks/runtime/coordination/mail.py",
       "category": "generated",
-      "sha256": "fe49e95de17fa8998a5829d6641261546b6e42a256c15f78ad148226792cfbc0",
+      "sha256": "4f48c6fb8774a7103cd6be168784d9e578547f52c58f038c1afb3bf8ac488295",
       "semantic_id": "hooks.lup-policy",
       "executable": false
     },

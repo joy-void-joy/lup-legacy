@@ -26,6 +26,7 @@ from types import ModuleType
 
 from lup.channels.models import Door
 from lup.coordination.bare.mail import mailbox_path, new_message, post
+from lup.coordination.bare.store import session_actor
 from lup.coordination.identity import member_ref
 from lup.coordination.mail import ActorMail
 from lup.types import JsonObject
@@ -54,13 +55,13 @@ def handed(root: Path, member_id: str) -> JsonObject | None:
 def queued(root: Path, member_id: str, text: str, redirect: bool = False) -> None:
     """Put one message in a member's mailbox, the way a sender leaves it.
 
-    Under the conversation key the typed sender writes to, spelled by the ref
-    rather than assembled here — a directory only the test could name would
-    pin nothing about where mail actually lands.
+    To the member the typed sender writes to, spelled by the store rather than
+    assembled here — a directory only the test could name would pin nothing
+    about where mail actually lands.
     """
     post(
         root,
-        member_ref(member_id).conversation(),
+        session_actor(member_id),
         new_message(
             sender="somebody",
             to=member_id,

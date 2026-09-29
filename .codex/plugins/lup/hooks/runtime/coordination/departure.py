@@ -67,7 +67,7 @@ def subagent_left(root: Path, session: str, agent: str) -> bool:
     for message in unread:
         post(
             root,
-            conversation_of(session_actor(session)),
+            session_actor(session),
             new_message(
                 sender=text(message.get("sender")),
                 to=text(message.get("to")),

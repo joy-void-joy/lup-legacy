@@ -37,8 +37,9 @@ def test_a_posted_message_is_on_the_record_after_its_reader_took_it(
     page = mail.posted(MailCursor())
     assert mail.waiting(reader).messages == []
     assert [
-        (each.mailbox, each.message.sender, each.message.text) for each in page.messages
-    ] == [(reader.conversation(), "writer", "the base moved")]
+        (each.recipient, each.message.sender, each.message.text)
+        for each in page.messages
+    ] == [(reader, "writer", "the base moved")]
     assert [each.seq for each in page.messages] == [0]
 
 
@@ -51,7 +52,9 @@ def test_the_record_is_followed_from_where_a_reader_stopped(tmp_path: Path) -> N
 
     mail.send(reader, "third")
     with (tmp_path / MAIL_RECORD).open("a", encoding="utf-8") as record:
-        record.write('{"mailbox": "session-reader", "message": {"id": "half')
+        record.write(
+            '{"recipient": {"kind": "session", "id": "reader"}, "message": {"id'
+        )
     then = mail.posted(first.cursor)
 
     assert [each.message.text for each in first.messages] == ["first", "second"]

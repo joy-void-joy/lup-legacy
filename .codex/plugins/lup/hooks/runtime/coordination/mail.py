@@ -41,6 +41,8 @@ from .store import (
     MAIL_RECORD,
     MAILBOX_DIR,
     NOTICES_DIR,
+    Actor,
+    conversation_of,
     discarded,
     listed,
     loaded,
@@ -84,9 +86,9 @@ class Notice(TypedDict, total=False):
 
 
 class Posted(TypedDict, total=False):
-    """One line of the mail record: a message, and the mailbox it was put in."""
+    """One line of the mail record: a message, and the member whose mailbox it was put in."""
 
-    mailbox: str
+    recipient: Actor
     message: Message
 
 
@@ -133,7 +135,7 @@ def new_message(
     )
 
 
-def post(root: Path, mailbox: str, message: Message) -> bool:
+def post(root: Path, recipient: Actor, message: Message) -> bool:
     """Put one message in one member's mailbox, by rename.
 
     One recipient, always. Where a sender meant everyone, it resolved that
@@ -141,16 +143,18 @@ def post(root: Path, mailbox: str, message: Message) -> bool:
     store has to know what a broadcast is, and a message in a mailbox is a
     message for whoever owns that mailbox.
 
-    Once it has landed it goes on the record too, which outlives the mailbox
-    copy its reader takes; a record that could not be written costs a reader
-    of the history one line, never the recipient its message.
+    Once it has landed it goes on the record too, naming the member it went
+    to, which outlives the mailbox copy its reader takes; a record that could
+    not be written costs a reader of the history one line, never the
+    recipient its message.
     """
+    mailbox = conversation_of(recipient)
     landed = published(
         message_path(root, mailbox, text(message.get("id")) or uuid4().hex), message
     )
     if landed is None:
         return False
-    recorded(root, Posted(mailbox=mailbox, message=message))
+    recorded(root, Posted(recipient=recipient, message=message))
     return True
 
 
