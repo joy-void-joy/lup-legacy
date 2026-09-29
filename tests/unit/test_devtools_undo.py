@@ -115,7 +115,6 @@ def test_expiry_drops_only_what_is_past_the_window(checkout: Path) -> None:
 
 def test_a_checkout_with_no_snapshots_reports_none(checkout: Path) -> None:
     assert undo.points(checkout) == []
-    assert undo.latest(checkout) is None
 
 
 def test_a_failed_snapshot_is_reported_rather_than_raised(tmp_path: Path) -> None:

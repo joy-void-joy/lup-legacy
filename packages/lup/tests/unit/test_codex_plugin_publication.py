@@ -10,7 +10,7 @@ from lup.providers.codex.harness_runtime import (
     CodexPluginInstaller,
     PluginCacheConfig,
     cachebusted_plugin_version,
-    directory_digest,
+    digest_directory,
     plugin_content_digest,
 )
 
@@ -75,14 +75,14 @@ def test_native_updates_preserve_live_revisions_and_unrelated_configuration(
     shutil.copytree(source, legacy)
     legacy_manifest = legacy / ".codex-plugin/plugin.json"
     legacy_manifest.write_text(json.dumps({"name": "lup", "version": legacy.name}))
-    retained_digest = directory_digest(legacy)
+    retained_digest = digest_directory(legacy, Path.read_bytes)
     second = installer.ensure(source, tmp_path)
     assert installer.ensure(source, tmp_path).installed_root == second.installed_root
     assert first.source_digest > second.source_digest
     assert second.package_version == "1.0.0"
     assert second.ready
     assert second.installed_root != legacy
-    assert directory_digest(legacy) == retained_digest
+    assert digest_directory(legacy, Path.read_bytes) == retained_digest
     assert first.installed_root != second.installed_root
     assert (
         first.installed_root / ".codex-plugin" / "plugin.json"

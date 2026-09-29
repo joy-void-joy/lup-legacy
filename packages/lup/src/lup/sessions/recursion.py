@@ -67,11 +67,6 @@ def recursive_agent_allowance(
     return RecursiveAgentAllowance(remaining=settings.remaining)
 
 
-def recursive_agent_allowed(environment: EnvVars | None = None) -> bool:
-    """Whether this context may open another Lup agent session."""
-    return recursive_agent_allowance(environment).remaining != 0
-
-
 def child_recursive_agent_allowance(
     environment: EnvVars | None = None,
 ) -> RecursiveAgentAllowance:
