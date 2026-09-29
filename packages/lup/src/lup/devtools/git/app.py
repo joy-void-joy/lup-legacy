@@ -409,10 +409,16 @@ def create_git_app(declared: Callable[[], DevDeclarations]) -> typer.Typer:
         which of them the error was about.
         """
         root = project_root()
+        guards = declared().git_guards
+        # A host step: the shared hooks directory is held read-only inside a
+        # contained session, so where there is something to write and nothing
+        # here may write it, the host's command is what the reader needs.
+        blocked = git_guards_mod.blocked_arming(guards, root)
+        if blocked:
+            typer.echo(blocked, err=True)
+            raise typer.Exit(1)
         try:
-            installed = git_guards_mod.install_guards(
-                declared().git_guards, root, force=force
-            )
+            installed = git_guards_mod.install_guards(guards, root, force=force)
         except git_guards_mod.GuardConflict as error:
             typer.echo(str(error), err=True)
             raise typer.Exit(1) from error
@@ -421,7 +427,12 @@ def create_git_app(declared: Callable[[], DevDeclarations]) -> typer.Typer:
             # it and sits outside all of them, so a sandbox confining writes to
             # the checkout refuses this — as an errno naming a path, which says
             # nothing about hooks to whoever reads it out of a traceback.
-            typer.echo(f"the hooks could not be written: {error}", err=True)
+            typer.echo(
+                f"the hooks could not be written: {error}. Where this session "
+                "cannot write them, run "
+                f"`{git_guards_mod.host_install(root)}` from a terminal on the host.",
+                err=True,
+            )
             raise typer.Exit(1) from error
         for state in installed:
             typer.echo(state.describe())

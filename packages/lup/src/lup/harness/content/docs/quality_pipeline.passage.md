@@ -59,7 +59,10 @@ failure refuses the commit as it came.
 an older library and clears any this wrote at a moment nothing declares any
 more, `git hooks status` says what a clone would run at each moment and lists
 the checks behind each, and `uninstall` removes them. A hook written by
-anything else is reported rather than replaced.
+anything else is reported rather than replaced. Installing is a host step: a
+contained session holds the shared hooks directory read-only, and `git hooks
+install` there writes nothing where every moment is already current and
+otherwise refuses with the exact command to run from a terminal on the host.
 
 The commands the guards run are ones the pipeline runs too, reading the same
 verdicts `dev check` reports, so the places that can refuse the same work

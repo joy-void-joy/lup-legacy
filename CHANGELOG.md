@@ -21,6 +21,15 @@ refusal is said when it refuses. `GitGuard.environment`, `GitGuard.check`,
 each moment. A clone armed before this runs `uv run lup-devtools git hooks
 install` once, on the host.
 
+### `git hooks install` names the host's command where it cannot write
+
+A contained session holds the shared hooks directory read-only, where `git
+hooks install` failed on an errno naming a path. It writes nothing where every
+moment is already current, and otherwise refuses naming the outstanding
+moments and the exact command to run from a host terminal, `cd <checkout> &&
+uv run lup-devtools git hooks install`, which `git worktree create` names too;
+`host_install(root)` in `lup.devtools.dev.git_guards` spells it.
+
 ### A runtime started from a session's shell is a member of its own
 
 `LUP_COORDINATION_MEMBER` reaches every process a launched session starts,

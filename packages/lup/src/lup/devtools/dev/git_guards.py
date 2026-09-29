@@ -720,6 +720,17 @@ def arming_is_refused(directory: Path) -> bool:
     )
 
 
+def host_install(root: Path) -> str:
+    """The exact command that arms this clone's hooks, typed on the host.
+
+    Installing is a host step: a contained session holds the shared hooks
+    directory read-only, because what it holds are scripts git executes at
+    the operator's next commit. Named with the checkout it runs in, which is
+    any of the clone's, since every worktree resolves the same directory.
+    """
+    return f"cd {shlex.quote(str(root))} && {INSTALL_COMMAND}"
+
+
 def blocked_arming(guards: list[GitGuard], root: Path) -> str:
     """Why this checkout cannot arm its guards, empty where it can or need not.
 
@@ -746,7 +757,7 @@ def blocked_arming(guards: list[GitGuard], root: Path) -> str:
         [
             f"{directory} is held read-only and these guards are not armed in it:",
             *(f"  - {state.describe()}" for state in outstanding),
-            f"Run `{INSTALL_COMMAND}` on the host, outside the sandbox. Hooks "
+            f"Run `{host_install(root)}` from a terminal on the host. Hooks "
             "resolve through the shared directory from every worktree of this "
             "clone, so arming them once there covers this checkout and every "
             "worktree cut after it.",
@@ -757,9 +768,16 @@ def blocked_arming(guards: list[GitGuard], root: Path) -> str:
 def install_script(
     script: HookScript, root: Path, *, force: bool = False
 ) -> GuardState:
-    """Write one moment's hook, refusing to displace one written elsewhere."""
+    """Write one moment's hook, refusing to displace one written elsewhere.
+
+    A moment already current is left as it is, so installing over an armed
+    clone writes nothing — which is what lets it succeed where the hooks
+    directory is held read-only and there is nothing to write.
+    """
     directory = hooks_directory(root)
     existing = guard_state(script, directory)
+    if existing.armed:
+        return existing
     if existing.status == "foreign" and not force:
         raise GuardConflict(
             f"{existing.path} holds a hook this did not write; read it, then pass "
