@@ -19,7 +19,21 @@ from lup.harness.codescan.common import AntiPattern
 from lup.policy.contracts import DecisionPolicy
 from lup.policy.grants import LeaseGrants
 from lup.policy.identity import AGENT_IDENTITY_ENV
-from lup.policy.kernel.decision import KernelDecision, captured_edit_decision
+from lup.policy.kernel.decision import (
+    FileReviewRow,
+    KernelDecision,
+    captured_edit_decision,
+)
+from lup.policy.kernel.documents import (
+    FollowedDocument,
+    FollowedReading,
+    document_operation,
+    file_steps,
+    followed_documents,
+    judged_documents,
+    rewrite_reading,
+    shown_documents,
+)
 from lup.policy.kernel.policy_protocol import read_response, routing_failure
 from lup.policy.kernel.edit import (
     decide_edit,
@@ -28,9 +42,13 @@ from lup.policy.kernel.edit import (
 from lup.policy.kernel.fetch import decide_fetch, loopback_port
 from lup.policy.kernel.semantics import UnjudgedAmbient
 from lup.policy.assets.host import (
+    document_at,
     document_digest,
     declared_identity,
+    patched_documents,
+    resolved_path,
     routed_edit_response,
+    sed_output,
     directory_write_targets,
     empty_directory_targets,
     foreign_repository,
@@ -42,10 +60,8 @@ from lup.policy.assets.host import (
     readonly_write_targets,
     recoverable_write_targets,
     resolved_write_targets,
-    rewritten_text,
     sibling_worktrees,
     walked_withheld,
-    text_at,
     this_checkout_path,
     tracked_write_targets,
     unleased_write_targets,
@@ -54,13 +70,11 @@ from lup.policy.assets.host import (
 from lup.coordination.bare.store import claim_holders, commanding
 from lup.policy.kernel.effects import STRENGTH
 from lup.policy.kernel.lex import (
-    authored_writes,
     command_segments,
     parse_shell,
     named_write_verdict,
     shell_flag_write_targets,
     shell_path_verb_targets,
-    shell_sed_rewrites,
     shell_write_targets,
     shell_written_targets,
 )
@@ -80,11 +94,9 @@ from lup.policy.kernel.rows import (
     PeerPolicyRow,
     RewriteReading,
     RewrittenDocumentRow,
-    UnproducedDocumentRow,
     UrlScopeRow,
     WithheldWalkRow,
     landing_rows,
-    unproduced_cause,
 )
 from lup.policy.kernel.shell import (
     decide_shell,
@@ -313,55 +325,74 @@ class ShellPolicy(DecisionPolicy[ShellCommand]):
         self.interactive = interactive
         self.relayed = relayed
 
-    def authored_verdict(self, event: ShellCommand) -> Decision | None:
-        """What the edit gates say about the writes this command carries.
+    def followed(self, event: ShellCommand) -> FollowedReading:
+        """What the command line leaves in each file it writes, worked out step by step.
+
+        The reading the generated dispatchers take, through the same host
+        readers: a rewrite run over the text the line has left, a patch
+        applied to a copy, a copy landing its source's text -- and nothing
+        run that only running could show.
+        """
+        root = event.cwd or Path.cwd()
+        return followed_documents(
+            file_steps(event.command, self.rules),
+            lambda target: document_at(root, target),
+            lambda target: resolved_path(root, target),
+            sed_output,
+            lambda patch, options, program, directory, current: patched_documents(
+                root, patch, options, program, directory, current
+            ),
+        )
+
+    def document_verdict(
+        self, authored: "EditPolicy", document: FollowedDocument, root: Path
+    ) -> Decision:
+        """One file's edit verdict, over what stood there and what the line leaves.
+
+        The edit gates alone, as the dispatchers read a command's writes: a
+        peer's claim is asked about by an edit tool, while a command's writes
+        are attributed to it after it runs. The preimage is the one the line
+        read rather than :meth:`~lup.policy.models.EditChange.as_documents`'s,
+        which would resolve it against this process's directory.
+        """
+        return authored.decide_change(
+            EditChange(
+                path=Path(document["path"]),
+                before=document["before"],
+                after=document["after"],
+                operation=document_operation(document),
+            ),
+            root,
+        )
+
+    def judged(self, reading: FollowedReading, root: Path) -> dict[str, Decision]:
+        """What the edit gates say about each file a command's own bytes or a rewrite reach.
 
         A redirection is judged by its path because a command produces its
-        output by running and nothing could read it first. `cat > f <<'EOF'`
-        and `echo x > f` carry the bytes instead, so the gates an `Edit` is
-        put to -- the anti-pattern audit, the review-note gate, the size
-        budget -- can read exactly what would land, at the moment that still
-        changes the answer. Measured before this: a heredoc replaced a tracked
-        library module with one line, allowed and unprompted.
+        output by running and nothing could read it first. `cat > f <<'EOF'`,
+        `echo x > f` and an in-place sed carry or make the bytes instead, so
+        the gates an `Edit` is put to -- the anti-pattern audit, the
+        review-note gate, the size budget -- read exactly what would land, as
+        the edit the whole line makes of the file: a second rewrite or an
+        append is read against what came before it in the same line.
 
-        The preimage is read here rather than left to
-        :meth:`~lup.policy.models.EditChange.as_documents`, which would resolve
-        it against this process's directory. The command's targets are relative
-        to the session's, and those are the same directory only by luck.
-
-        ``None`` where nothing was read: a command whose output is produced by
-        running, or a file this process cannot open. Neither is a refusal --
-        the reading is what a relaxation needs, not a gate of its own.
+        Empty where this composition holds no edit policy. ``resolution`` is
+        left unanswered here for the reason :meth:`EditPolicy.decide_change`
+        leaves it unanswered: resolving a finding needs a language server,
+        which is a cost the generated dispatcher pays where it can and an
+        in-process reading does not.
         """
-        if self.authored is None:
-            return None
-        root = event.cwd or Path.cwd()
-        changes = [
-            EditChange(
-                path=Path(write["path"]),
-                before=before,
-                after=(before or "") + write["content"]
-                if write["append"]
-                else write["content"],
-                operation="modify"
-                if write["append"]
-                else "overwrite"
-                if existing
-                else "create",
-            )
-            for write in authored_writes(event.command)
-            for existing in [(root / write["path"]).is_file()]
-            for before in [text_at(root, write["path"]) if existing else None]
-        ]
-        if not changes:
-            return None
-        # The edit gates alone, as the dispatchers' authored review reads them:
-        # a peer's claim is asked about by an edit tool, while a command's
-        # writes are attributed to it after it runs.
         authored = self.authored
-        return joined([authored.decide_change(change, root) for change in changes])
+        if authored is None:
+            return {}
+        return {
+            document["path"]: self.document_verdict(authored, document, root)
+            for document in judged_documents(reading)
+        }
 
-    def rewritten_documents(self, event: ShellCommand) -> RewriteReading:
+    def rewritten_documents(
+        self, reading: FollowedReading, judged: dict[str, Decision], root: Path
+    ) -> RewriteReading:
         """What every in-place rewrite in this command would leave behind.
 
         Resolved here and judged in the kernel, which is the arrangement that
@@ -372,62 +403,53 @@ class ShellPolicy(DecisionPolicy[ShellCommand]):
 
         A file this could not produce yields the reason it could not, and the
         classifier says which reason rather than that something went unproduced.
-
-        ``resolution`` is left unanswered here for the reason
-        :meth:`EditPolicy.decide_change` leaves it unanswered: resolving a
-        finding needs a language server, which is a cost the generated
-        dispatcher pays where it can and an in-process reading does not.
         """
-        root = event.cwd or Path.cwd()
-        # First naming wins, and the fold is written backwards to get it: one
-        # file named by two rewrites is one file, and re-running the second
-        # script over it would answer about a document the first already
-        # replaced.
-        scripts_for = {
-            target: rewrite
-            for rewrite in reversed(shell_sed_rewrites(event.command, self.rules))
-            for target in reversed(rewrite["targets"])
-        }
 
-        # lup: ignore[empty-collection] — one reading feeding two collections:
-        # each target reaches exactly one of them and which it is costs a sed
-        # run, so a comprehension per list would run every script twice
-        documents: list[RewrittenDocumentRow] = []
-        unproduced: list[UnproducedDocumentRow] = []  # lup: ignore[empty-collection]
-        for target, rewrite in scripts_for.items():
-            attempt = rewritten_text(
-                rewrite["scripts"], target, root, rewrite["options"]
-            )
-            after = attempt["text"]
-            if after is None:
-                unproduced.append(
-                    UnproducedDocumentRow(
-                        target=target, cause=unproduced_cause(attempt["cause"])
-                    )
-                )
-                continue
-            before = text_at(root, target)
-            if before is None:
-                unproduced.append(
-                    UnproducedDocumentRow(target=target, cause="unreadable")
-                )
-                continue
-            document = RewrittenDocumentRow(
+        def row(target: str, document: FollowedDocument) -> RewrittenDocumentRow:
+            placed = RewrittenDocumentRow(
                 target=target,
-                path=worktree_path(str((root / target).resolve())),
-                before=before,
-                after=after,
+                path=worktree_path(document["path"]),
+                before=document["before"],
+                after=document["after"],
+                operation=document_operation(document),
                 foreign=foreign_repository(target, root),
                 outside_project=outside_this_project(target, root),
                 checkout_path=this_checkout_path(target, root),
                 resolution=None,
             )
-            if self.authored is not None:
-                document["decision"] = self.authored.decide_change(
-                    EditChange(path=Path(target), before=before, after=after), root
-                ).as_kernel()
-            documents.append(document)
-        return RewriteReading(documents=documents, unproduced=unproduced)
+            if document["path"] in judged:
+                placed["decision"] = judged[document["path"]].as_kernel()
+            return placed
+
+        return rewrite_reading(reading, row)
+
+    def reviewed_rows(
+        self,
+        reading: FollowedReading,
+        judged: dict[str, Decision],
+        asked: bool,
+        root: Path,
+    ) -> tuple[FileReviewRow, ...]:
+        """Each file a command changes, with its verdict and the document it would hold.
+
+        In the order the line writes them, as the dispatchers record them: a
+        file no gate read on the way to the verdict is put to the edit gates
+        only where somebody is asked, since only a reviewer reads it.
+        """
+        authored = self.authored
+        return tuple(
+            row
+            for document in shown_documents(reading)
+            for verdict in [
+                judged[document["path"]]
+                if document["path"] in judged
+                else self.document_verdict(authored, document, root)
+                if asked and authored is not None
+                else None
+            ]
+            if verdict is not None
+            for row in verdict.file_reviews
+        )
 
     def rewrite_antipatterns(
         self, rows: list[RewrittenDocumentRow]
@@ -459,11 +481,14 @@ class ShellPolicy(DecisionPolicy[ShellCommand]):
         boundary = measured_boundary(root)
         acted_on = shell_path_verb_targets(event.command, self.rules)
         flagged = shell_flag_write_targets(event.command, self.rules)
-        # The edit gates, over the files a rewrite in place would replace. Off
-        # the one edit policy this composition holds rather than a second set
-        # declared here: a rewrite is an edit spelled as a command, and two
-        # tables would be two answers to what may be written.
-        rewritten = self.rewritten_documents(event)
+        # The edit gates, over what the line leaves in the files a rewrite in
+        # place or the command's own bytes reach. Off the one edit policy this
+        # composition holds rather than a second set declared here: a rewrite
+        # is an edit spelled as a command, and two tables would be two answers
+        # to what may be written.
+        followed = self.followed(event)
+        judged = self.judged(followed, root)
+        rewritten = self.rewritten_documents(followed, judged, root)
         edits = self.authored
         # Another checkout of this repository keeps this one's scratch, as
         # the dispatchers read it: asked of Git only where the command names
@@ -623,18 +648,29 @@ class ShellPolicy(DecisionPolicy[ShellCommand]):
         # shell verdict is kept where it is at least as strong, because it
         # carries the placement and the checkpoint that an edit verdict has
         # nothing to say about.
-        carried = self.authored_verdict(event)
-        file_reviews = tuple(
-            row
-            for document in rewritten["documents"]
-            if "decision" in document
-            for row in document["decision"].file_reviews
-        ) + (carried.file_reviews if carried is not None else ())
-        if carried is None or STRENGTH.index(carried.effect) <= STRENGTH.index(
+        carried = max(
+            (
+                judged[document["path"]]
+                for document in followed["documents"]
+                if document["authored"] and document["path"] in judged
+            ),
+            key=lambda decision: STRENGTH.index(decision.effect),
+            default=None,
+        )
+        if carried is not None and STRENGTH.index(carried.effect) > STRENGTH.index(
             verdict.effect
         ):
-            return verdict.model_copy(update={"file_reviews": file_reviews})
-        return carried.model_copy(update={"file_reviews": file_reviews})
+            verdict = carried
+        # What the command changes, file by file, as the verdict judged it:
+        # the record a question keeps for the operator to read.
+        return verdict.model_copy(
+            update={
+                "file_reviews": self.reviewed_rows(
+                    followed, judged, verdict.effect == "ask", root
+                ),
+                "unpreviewed": tuple(followed["unpreviewed"]),
+            }
+        )
 
     def decide_segment(self, segment: ShellSegment) -> Decision:
         return pydantic_decision(
@@ -969,6 +1005,7 @@ class EditPolicy(DecisionPolicy[EditBatch]):
                         path,
                         before_sha256=document_digest(change.before),
                         after_sha256=document_digest(change.after),
+                        after=change.after,
                     )
                 )
         except (OSError, ValueError, KeyError, TypeError) as error:
@@ -978,6 +1015,7 @@ class EditPolicy(DecisionPolicy[EditBatch]):
                     path,
                     before_sha256=document_digest(change.before),
                     after_sha256=document_digest(change.after),
+                    after=change.after,
                 )
             )
         suffix = change.path.suffix.lower()
@@ -1010,5 +1048,6 @@ class EditPolicy(DecisionPolicy[EditBatch]):
                 path,
                 before_sha256=document_digest(change.before),
                 after_sha256=document_digest(change.after),
+                after=change.after,
             )
         )

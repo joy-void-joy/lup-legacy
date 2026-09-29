@@ -23,6 +23,7 @@ import os
 import signal
 from hashlib import sha256
 import sys
+import tempfile
 import time
 from datetime import UTC, datetime, timedelta
 
@@ -913,8 +914,14 @@ def review_fingerprint(
     policy_identity: str,
     resolved: dict,
     evidence: list[dict] | None,
+    unpreviewed: list[dict] | None,
 ) -> str:
-    """The digest one parked call is approved under: everything the approver reads."""
+    """The digest one parked call is approved under: everything the approver reads.
+
+    ``evidence`` is each file's verdict with the document it judged, and
+    ``unpreviewed`` the steps no document states -- the two halves of what a
+    reviewer is shown a command changes.
+    """
     material = json.dumps(
         [
             session,
@@ -930,6 +937,7 @@ def review_fingerprint(
             policy_identity,
             resolved,
             evidence,
+            unpreviewed,
         ],
         sort_keys=True,
     )
@@ -961,6 +969,7 @@ def recorded_fingerprint(entry: dict) -> str:
         }:
             purpose = entry["purpose"] if "purpose" in entry else None
             evidence = entry["file_reviews"] if "file_reviews" in entry else None
+            unpreviewed = entry["unpreviewed"] if "unpreviewed" in entry else None
             return review_fingerprint(
                 session,
                 root,
@@ -975,6 +984,7 @@ def recorded_fingerprint(entry: dict) -> str:
                 policy_identity,
                 resolved,
                 evidence if isinstance(evidence, list) else None,
+                unpreviewed if isinstance(unpreviewed, list) else None,
             )
     return ""
 
@@ -999,6 +1009,7 @@ def review_hook_call(
     member: str = "",
     placement: str = "ambient",
     provider: str = "",
+    unpreviewed: str = "null",
 ) -> dict[Literal["state", "id", "reason"], str]:
     """Park a call or spend its explicit, single-use reviewer answer.
 
@@ -1006,6 +1017,10 @@ def review_hook_call(
     never from the relay: the relay is the session's to write. A parked
     record is matched only where its own fields hash to the call's
     fingerprint, so a record rewritten to show another call spends nothing.
+
+    *file_reviews* and *unpreviewed* are the verdict's record of what the
+    call changes -- each file with the document it would hold, and each step
+    no document states -- kept on the question for the reviewer to read.
 
     A declared successor stage may spend one further claim for that same
     identified invocation. The immutable primary claim proves which stage
@@ -1024,6 +1039,7 @@ def review_hook_call(
     )
     before = json.loads(preconditions)
     evidence = json.loads(file_reviews)
+    unseen = json.loads(unpreviewed)
     resolved = {path: str(Path(path).resolve()) for path in before}
     fingerprint = review_fingerprint(
         session,
@@ -1039,6 +1055,7 @@ def review_hook_call(
         policy_identity,
         resolved,
         evidence,
+        unseen,
     )
     log = root / ".lup/questions.jsonl"
 
@@ -1152,6 +1169,7 @@ def review_hook_call(
         "resolved": resolved,
         "policy_identity": policy_identity,
         "file_reviews": evidence,
+        "unpreviewed": unseen,
         "resumption": "native_retry",
         "member": member,
         "operation": {
@@ -2649,27 +2667,34 @@ def text_at(root: Path, target: str) -> str | None:
 
 
 def sed_output(
-    scripts: list[str],
-    options: list[str],
-    *,
-    before: str | None = None,
-    target: Path | None = None,
-    root: Path | None = None,
-    timeout: float = 2.0,
+    scripts: list[str], options: list[str], text: str, timeout: float = 2.0
 ) -> dict[Literal["text", "cause"], str | None]:
-    """Run only sed's sandboxed text transformation, preserving output bytes.
+    """What an in-place sed leaves of one document, without touching any file.
+
+    sed is run over the text and its output captured, which is the same
+    computation ``-i`` performs and none of the writing: ``-i`` is exactly
+    "run the script, then replace the file with the result". Over the text
+    rather than the file, because the text is what a command line has left
+    there so far, which a second rewrite of the same file reads. And under
+    ``--sandbox``, so a script this was never meant to run -- one reading or
+    writing another file, or running a command -- is refused by sed itself.
+
+    Both keys always stand and exactly one is filled: ``text`` is the
+    after-document, ``cause`` is what stopped one being produced -- ``refused``
+    where sed would not run the script, ``unreadable`` where what came back
+    is not text. The cause crosses as the word this half read rather than as
+    the classifier's own literal, which this half may not name.
 
     Bounded by ``timeout`` or the hook's deadline, whichever is nearer: an
     answer that does not come in time is a refused rewrite, which the
-    classifier asks about.
+    classifier asks about. The scripts are passed as ``-e`` expressions, so a
+    script is never re-read as an option.
     """
     expressions = [word for script in scripts for word in ("-e", script)]
-    operands = [str(target)] if target is not None else []
     try:
         finished = subprocess.run(
-            ["sed", "--sandbox", *options, *expressions, "--", *operands],
-            cwd=str(root) if root is not None else None,
-            input=before.encode("utf-8") if before is not None else None,
+            ["sed", "--sandbox", *options, *expressions],
+            input=text.encode("utf-8"),
             capture_output=True,
             timeout=hook_seconds_left(timeout),
             check=False,
@@ -2683,41 +2708,111 @@ def sed_output(
         return {"text": None, "cause": "refused"}
 
 
-def rewritten_text(
-    scripts: list[str], target: str, root: Path, options: list[str] | None = None
-) -> dict[Literal["text", "cause"], str | None]:
-    """What one file would hold after these scripts, without touching the file.
+def document_at(root: Path, target: str) -> dict[Literal["text", "cause"], str | None]:
+    """What stands at one path before a command line writes it, or why no text does.
 
-    sed is run over the file and its output captured, which is the same
-    computation ``-i`` performs and none of the writing: ``-i`` is exactly
-    "run the script, then replace the file with the result", so dropping it
-    leaves the result on standard output and the file as it was. A command
-    still about to be refused has therefore changed nothing by being judged.
-
-    Both keys always stand and exactly one is filled: ``text`` is the
-    after-document, ``cause`` is what stopped one being produced.
-
-    A cause rather than a bare absence, because each of the four sends the
-    writer somewhere different: nothing stands at the path, something stands
-    there that a rewrite cannot replace, sed would not run the script, or what
-    came back is not text this can read. One sentence covering all four told a
-    writer who typed a wrong path the same thing it told one who aimed ``-i``
-    at a directory, and offered a recovery that fitted neither.
-
-    The cause crosses as the word this half read rather than as the
-    classifier's own literal, which this half may not name -- the arrangement
-    a checker's verdicts already cross by, and the kernel narrows it.
-
-    The scripts are passed as ``-e`` expressions and the file as an operand
-    after ``--``, so a filename beginning with a dash stays a filename and a
-    script is never re-read as one.
+    The reading a line's fold starts every file from: its text, or
+    ``missing`` where nothing stands, ``directory`` or ``irregular`` where
+    something that is not a file does, and ``unreadable`` where a file's
+    bytes are not text.
     """
     landed = root / target
     if not landed.exists():
         return {"text": None, "cause": "missing"}
+    if landed.is_dir():
+        return {"text": None, "cause": "directory"}
     if not landed.is_file():
         return {"text": None, "cause": "irregular"}
-    return sed_output(scripts, options or [], target=landed, root=root)
+    text = text_at(root, target)
+    return {"text": text, "cause": None if text is not None else "unreadable"}
+
+
+def resolved_path(root: Path, target: str) -> str:
+    """The one name every spelling of a file shares: where it resolves from *root*."""
+    return str((root / target).resolve())
+
+
+def patched_documents(
+    root: Path,
+    patch: str,
+    options: list[str],
+    program: str,
+    directory: str,
+    current: Callable[[str], dict[Literal["text", "cause"], str | None]],
+) -> list[dict[Literal["path", "after"], str | None]] | None:
+    """What one patch leaves in each file it touches, applied to a copy of them.
+
+    Git reads the patch -- which files it touches, and what applying it
+    leaves -- in a scratch directory holding a copy of each of those files as
+    ``current`` says the line has left it, so the checkout is never written.
+    ``program`` is the command that applies it; `patch` is applied the way
+    `git apply` does with the strip count it spelled, which is the only way
+    it was stepped.
+
+    ``None`` wherever the copy cannot say what the command would leave: a
+    patch Git does not read or apply, a binary or a renaming one, a path
+    outside the directory it applies in, a file that does not read as text.
+    Each is a result only running shows.
+    """
+    environ = os.environ  # lup: ignore[os-environ]
+    encoded = patch.encode("utf-8")
+    with tempfile.TemporaryDirectory(prefix="lup-patch-") as scratch:
+        copy = Path(scratch) / "tree"
+        copy.mkdir()
+        # Nothing above the scratch directory is a repository to it, and no
+        # repository a hook inherited is the one it applies to.
+        environment = {
+            **{
+                name: value
+                for name, value in environ.items()
+                if name not in ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE")
+            },
+            "GIT_CEILING_DIRECTORIES": scratch,
+        }
+
+        def applied(arguments: list[str]) -> str | None:
+            try:
+                finished = subprocess.run(
+                    ["git", "-c", "core.quotePath=false", "apply", *arguments, "-"],
+                    cwd=str(copy),
+                    input=encoded,
+                    capture_output=True,
+                    env=environment,
+                    timeout=hook_seconds_left(5.0),
+                    check=False,
+                )
+            except (OSError, subprocess.TimeoutExpired):
+                return None
+            if finished.returncode:
+                return None
+            return finished.stdout.decode("utf-8", errors="replace")
+
+        listing = applied(["--numstat", *options])
+        if listing is None or program not in ("git", "patch"):
+            return None
+        rows = list(csv.reader(listing.splitlines(), delimiter="\t"))
+        paths = [row[2] for row in rows if len(row) == 3 and row[0] != "-"]
+        if len(paths) != len(rows) or any(
+            "=>" in path or Path(path).is_absolute() or ".." in Path(path).parts
+            for path in paths
+        ):
+            return None
+        for path in paths:
+            standing = current(str(Path(directory, path)) if directory else path)
+            if standing["text"] is not None:
+                (copy / path).parent.mkdir(parents=True, exist_ok=True)
+                (copy / path).write_text(standing["text"], encoding="utf-8", newline="")
+            elif standing["cause"] != "missing":
+                return None
+        if applied(options) is None:
+            return None
+        return [
+            {
+                "path": resolved_path(root, str(Path(directory, path))),
+                "after": text_at(copy, path) if (copy / path).is_file() else None,
+            }
+            for path in paths
+        ]
 
 
 def recoverable_write_targets(

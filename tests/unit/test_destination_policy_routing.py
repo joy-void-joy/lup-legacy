@@ -350,7 +350,9 @@ def test_protocol_preserves_all_semantic_fields_and_rejects_malformed_responses(
     row = decision_wire(source)
     restored = read_response(json.loads(json.dumps({"protocol": 1, "decision": row})))
     assert decision_wire(restored) == row
-    assert set(row) == set(vars(source)) - {"file_reviews"}
+    # The caller's per-file record -- each file's document, and the steps no
+    # document shows -- is bound where the call is, never carried by an owner.
+    assert set(row) == set(vars(source)) - {"file_reviews", "unpreviewed"}
     for malformed in (
         {"protocol": 2, "decision": row},
         {"protocol": 1, "decision": {"effect": "allow"}},

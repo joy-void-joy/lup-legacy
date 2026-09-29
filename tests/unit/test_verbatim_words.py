@@ -17,12 +17,15 @@ import pytest
 
 from lup.harness.enforcement import semantic_policy_for
 from lup.policy.kernel.decision import KernelDecision
+from lup.policy.kernel.documents import file_steps
 from lup.policy.kernel.edit import decide_edit
 from lup.policy.kernel.lex import command_segments, parse_shell
 from lup.policy.kernel.rows import PathRoleRow
 from lup.policy.models import ShellCommand
+from lup.policy.shell_rules import erase_shell_rules
+from lup.policy.vocabulary import default_vocabulary
 from lup_template.harness.catalog import declared_hook_set
-from lup.policy.kernel.review import copied_paths, literal_input
+from lup.policy.kernel.review import literal_input
 from lup.policy.kernel.roles import spells_its_path
 from lup.policy.kernel.syntax import VerbatimText, expands, verbatim_piece
 from lup.policy.kernel.words import opaque_argument
@@ -111,8 +114,12 @@ def test_the_review_readers_bind_only_what_reaches_the_program_as_written() -> N
     A brace expansion copies to two targets and `$'…'` rewrites its text, so
     neither is a literal to show a diff for.
     """
-    assert copied_paths("cp 'a$b' c") == {"source": "a$b", "target": "c"}
-    assert copied_paths("cp a{b,c} d") is None
+    rows = erase_shell_rules(default_vocabulary())
+    assert [
+        (step["action"], step["path"], step["source"])
+        for step in file_steps("cp 'a$b' c", rows)
+    ] == [("copy", "c", "a$b")]
+    assert [step["action"] for step in file_steps("cp a{b,c} d", rows)] == ["run"]
     assert literal_input("apply_patch 'x'", "apply_patch") == "x"
     with pytest.raises(ValueError):
         literal_input("apply_patch $'x'", "apply_patch")

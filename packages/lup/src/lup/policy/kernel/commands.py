@@ -1562,8 +1562,8 @@ def decide_sed_words(words: list[str], context: "SedContext") -> KernelDecision:
 def unproduced_verdict(target: str, cause: UnproducedCause | None) -> KernelDecision:
     """What to say about a file an in-place rewrite names and nothing produced.
 
-    Four causes and a fifth silence, each sending the writer somewhere else.
-    One sentence standing for all five tells a mistyped path, a rewrite aimed
+    Five causes and a sixth silence, each sending the writer somewhere else.
+    One sentence standing for all six tells a mistyped path, a rewrite aimed
     at a directory and a script sed will not run the same thing, and offers
     the one recovery that fits none of them -- make the change as an edit
     instead, which answers only the case where the document exists and could
@@ -1615,6 +1615,17 @@ def unproduced_verdict(target: str, cause: UnproducedCause | None) -> KernelDeci
                 purpose="quality_review",
                 recovery=UNPRODUCED_SED_RECOVERY,
             )
+        case "run":
+            return KernelDecision(
+                "ask",
+                f"sed would rewrite {target} in place, over what an earlier step"
+                " of the same line writes there by running, which nothing read",
+                purpose="quality_review",
+                recovery=(
+                    "Run the step that writes the file first, then rewrite it"
+                    " in a command of its own, where what it holds can be read."
+                ),
+            )
     return KernelDecision(
         "ask",
         f"sed would rewrite {target} in place, and nothing read what it would"
@@ -1642,7 +1653,7 @@ def rewrite_verdict(
         document["path"],
         document["before"],
         document["after"],
-        path_exists=True,
+        path_exists=document["operation"] != "create",
         path_rules=context["path_rules"],
         antipattern_rows=context["antipattern_rows"].get(suffix, []),
         path_roles=context["path_roles"],
@@ -1653,7 +1664,7 @@ def rewrite_verdict(
         acceptance_guard=context["acceptance_guard"],
         resolution=document["resolution"],
         suffix=suffix,
-        operation="modify",
+        operation=document["operation"],
         edit_rules=context["edit_rules"],
         foreign=document["foreign"],
         outside_project=document["outside_project"],

@@ -10,11 +10,12 @@ says by the time they answer.
 """
 
 from datetime import UTC, datetime
+from hashlib import sha256
 from pathlib import Path
 
 from lup.policy.operations import Operation
 from lup.types import JsonObject
-from lup.policy.relay import PersistentQuestion
+from lup.policy.relay import CapturedFileReview, PersistentQuestion
 from lup.policy.review import ReviewedFile, reviewed_files, spliced
 from lup.providers.harness import patch_review
 
@@ -174,17 +175,44 @@ def test_shell_patch_review_reads_the_same_literal_envelope(tmp_path: Path) -> N
     assert change.after == "approved\n"
 
 
-def test_copy_review_uses_captured_source_and_destination(tmp_path: Path) -> None:
+def test_copy_review_shows_the_recorded_document_over_the_captured_destination(
+    tmp_path: Path,
+) -> None:
+    """A copy is shown as the policy judged it, not as the source reads now."""
     source = tmp_path / "proposal.md"
     target = tmp_path / "design.md"
     source.write_text("changed proposal\n")
     target.write_text("changed destination\n")
-    [change] = patch_review(
-        "cp proposal.md design.md",
-        tmp_path,
-        {source: "approved\n", target: "original\n"},
-        True,
+    operation = Operation(
+        id="op",
+        session="session",
+        requester="session",
+        tool="Bash",
+        payload={"command": "cp proposal.md design.md"},
+        cwd=tmp_path,
+        worktree=tmp_path,
     )
+    question = PersistentQuestion(
+        id="q",
+        operation=operation,
+        fingerprint=operation.fingerprint(),
+        preconditions={source: "approved\n", target: "original\n"},
+        file_reviews=[
+            CapturedFileReview(
+                path=target,
+                effect="ask",
+                reason="protected",
+                rule="edit:protected-path",
+                rules=[],
+                before_sha256=sha256(b"original\n").hexdigest(),
+                after_sha256=sha256(b"approved\n").hexdigest(),
+                after="approved\n",
+            )
+        ],
+        reason="review",
+    )
+    assert patch_review("cp proposal.md design.md", tmp_path, {}, True) == []
+    [change] = reviewed_files(question, patch_review)
     assert change.before == "original\n"
     assert change.after == "approved\n"
 

@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from lup.policy.assets.host import document_digest, sed_output
+from lup.policy.assets.host import document_digest
 
 from lup.devtools.review.app import ReviewDetail, ReviewFile
 from lup.devtools.dev.edit_prepare import native_patch
@@ -31,6 +31,7 @@ def captured(
         str(change.path),
         before_sha256=document_digest(change.before),
         after_sha256=document_digest(change.after),
+        after=change.after,
     )
     return CapturedFileReview.model_validate(decision.file_reviews[0])
 
@@ -295,6 +296,7 @@ def test_kernel_revision_preserves_original_capture(tmp_path: Path) -> None:
         str(change.path),
         before_sha256=document_digest(change.before),
         after_sha256=document_digest(change.after),
+        after=change.after,
     )
     assert (
         decision.revised(reason="native caption").file_reviews == decision.file_reviews
@@ -337,6 +339,7 @@ def test_owner_transport_cannot_substitute_callers_file_evidence(
         str(fake.path),
         before_sha256=document_digest(fake.before),
         after_sha256=document_digest(fake.after),
+        after=fake.after,
     )
     wire = decision_wire(wrong)
     assert "file_reviews" not in wire
@@ -349,6 +352,7 @@ def test_owner_transport_cannot_substitute_callers_file_evidence(
         str(actual.path),
         before_sha256=document_digest(actual.before),
         after_sha256=document_digest(actual.after),
+        after=actual.after,
     )
     assert bound.effect == "ask"
     assert len(bound.file_reviews) == 1
@@ -370,113 +374,87 @@ def test_unrelated_removed_directive_does_not_reduce_new_rule_list(
     assert shown.suppressions[0].review_rule_ids == ["old", "new"]
 
 
-def test_shell_summary_keeps_unknown_after_image_visible(tmp_path: Path) -> None:
-    change = ReviewedFile(
-        path=tmp_path / "app.txt", before="old\n", after="different\n"
-    )
+def shell_question(
+    root: Path, command: str, rows: list[CapturedFileReview] | None, before: str
+) -> PersistentQuestion:
+    """A parked command over ``app.txt``, holding ``before`` as its preimage."""
     operation = Operation(
         id="op",
         session="s",
         requester="s",
         tool="Bash",
-        payload={"command": "sed -i s/old/new/ app.txt"},
-        cwd=tmp_path,
-        worktree=tmp_path,
+        payload={"command": command},
+        cwd=root,
+        worktree=root,
     )
-    question = PersistentQuestion(
+    return PersistentQuestion(
         id="q",
         operation=operation,
         fingerprint="bound",
         reason="shell gate",
-        preconditions={change.path: change.before},
-        file_reviews=[captured(change, "allow")],
+        preconditions={root / "app.txt": before},
+        file_reviews=rows,
+    )
+
+
+def test_a_command_shows_the_document_its_verdict_judged(tmp_path: Path) -> None:
+    """The after shown is the one recorded, whatever the command would say now."""
+    change = ReviewedFile(path=tmp_path / "app.txt", before="old\n", after="judged\n")
+    question = shell_question(
+        tmp_path, "sed -i s/old/new/ app.txt", [captured(change, "allow")], "old\n"
     )
     detail = ReviewDetail.of(tmp_path, question, "operator")
-    assert detail.files[0].review_effect == "unknown"
-    assert detail.summary.paths == ["app.txt"]
-    assert detail.summary.total_files == 1
-    historical = question.model_copy(update={"file_reviews": None})
-    assert ReviewDetail.of(tmp_path, historical, "operator").summary.paths == [
-        "app.txt"
+    assert [(file.before, file.after) for file in detail.files] == [
+        ("old\n", "judged\n")
     ]
+    assert detail.files[0].review_effect == "allow"
+    assert detail.summary.paths == []
+    assert detail.summary.total_files == 1
 
 
-def test_preview_cache_binds_complete_inputs_but_not_answer_state_or_live_staleness(
+def test_a_record_that_kept_only_a_digest_says_so(tmp_path: Path) -> None:
+    change = ReviewedFile(path=tmp_path / "app.txt", before="old\n", after="new\n")
+    digest_only = captured(change).model_copy(update={"after": None})
+    question = shell_question(
+        tmp_path, "sed -i s/old/new/ app.txt", [digest_only], "old\n"
+    )
+    detail = ReviewDetail.of(tmp_path, question, "operator")
+    assert detail.files == []
+    assert "kept only a digest" in detail.preview_unavailable
+
+
+def test_reading_a_command_review_runs_nothing(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from lup.policy import review
+    """Nothing is run where the review is read: the documents are the record's."""
+    import subprocess
 
-    review.captured_sed_output.cache_clear()
-    original = sed_output
-    calls = []
+    def refused(*args: object, **kwargs: object) -> object:
+        raise AssertionError(f"ran {args!r} while reading a review")
 
-    def counted(*args, **kwargs):
-        calls.append(kwargs["before"])
-        return original(*args, **kwargs)
-
-    monkeypatch.setattr(review, "sed_output", counted)
-    path = tmp_path / "app.txt"
-    path.write_text("old\n")
-    operation = Operation(
-        id="op",
-        session="s",
-        requester="s",
-        tool="Bash",
-        payload={"command": "sed -i s/old/new/ app.txt"},
-        cwd=tmp_path,
-        worktree=tmp_path,
+    change = ReviewedFile(path=tmp_path / "app.txt", before="old\n", after="new\n")
+    question = shell_question(
+        tmp_path, "sed -i s/old/new/ app.txt", [captured(change)], "old\n"
     )
-    entry = PersistentQuestion(
-        id="q",
-        operation=operation,
-        fingerprint="same",
-        reason="shell gate",
-        preconditions={path: "old\n"},
-    )
-    first = ReviewDetail.of(tmp_path, entry, "operator")
-    assert calls == ["old\n"]
-    assert first.stale_reason == ""
-    path.write_text("changed\n")
-    answered = entry.model_copy(update={"state": "approved"})
-    second = ReviewDetail.of(tmp_path, answered, "operator")
-    assert calls == ["old\n"]
-    assert second.summary.state == "approved"
-    assert second.stale_reason
-    changed_input = entry.model_copy(update={"preconditions": {path: "old old\n"}})
-    third = ReviewDetail.of(tmp_path, changed_input, "operator")
-    assert calls == ["old\n", "old old\n"]
-    assert third.files[0].after == "new old\n"
+    monkeypatch.setattr(subprocess, "run", refused)
+    monkeypatch.setattr(subprocess, "Popen", refused)
+    detail = ReviewDetail.of(tmp_path, question, "operator")
+    assert detail.files[0].after == "new\n"
 
 
-def test_cached_transformation_does_not_cache_live_symlink_binding(
+def test_an_unbound_preimage_is_read_only_where_its_digest_still_holds(
     tmp_path: Path,
 ) -> None:
-    first = tmp_path / "first.txt"
-    second = tmp_path / "second.txt"
-    first.write_text("old\n")
-    second.write_text("old\n")
-    link = tmp_path / "target.txt"
-    link.symlink_to(first)
-    operation = Operation(
-        id="op",
-        session="s",
-        requester="s",
-        tool="Bash",
-        payload={"command": "sed -i s/old/new/ target.txt"},
-        cwd=tmp_path,
-        worktree=tmp_path,
-    )
-    entry = PersistentQuestion(
-        id="q",
-        operation=operation,
-        fingerprint="same",
-        reason="shell gate",
-        preconditions={first: "old\n"},
-    )
-    shown = ReviewDetail.of(tmp_path, entry, "operator")
-    assert shown.files[0].path == str(first)
-    link.unlink()
-    link.symlink_to(second)
-    changed = ReviewDetail.of(tmp_path, entry, "operator")
-    assert changed.files == []
-    assert "preimage" in changed.preview_unavailable
+    """A record with no preimage shows the file as it stands only if it is the one judged."""
+    target = tmp_path / "app.txt"
+    target.write_text("old\n", encoding="utf-8")
+    change = ReviewedFile(path=target, before="old\n", after="new\n")
+    question = shell_question(
+        tmp_path, "sed -i s/old/new/ app.txt", [captured(change)], "old\n"
+    ).model_copy(update={"preconditions": {}})
+    shown = ReviewDetail.of(tmp_path, question, "operator")
+    assert [(file.before, file.after) for file in shown.files] == [("old\n", "new\n")]
+    target.write_text("moved on\n", encoding="utf-8")
+    moved = ReviewDetail.of(tmp_path, question, "operator")
+    assert moved.files == []
+    assert "changed since the command was judged" in moved.preview_unavailable

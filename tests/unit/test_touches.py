@@ -212,6 +212,7 @@ def test_a_held_path_restates_the_file_evidence_it_decided() -> None:
         "/tmp/a.py",
         before_sha256="before",
         after_sha256="after",
+        after="x = 1\n",
     )
 
     settled = settled_with_claim(
@@ -222,11 +223,12 @@ def test_a_held_path_restates_the_file_evidence_it_decided() -> None:
     assert row["effect"] == "ask"
     assert "feat-rewriting" in row["reason"]
     assert "edit:small" not in row["rules"]
-    assert (row["path"], row["before_sha256"], row["after_sha256"]) == (
-        "/tmp/a.py",
-        "before",
-        "after",
-    )
+    assert (
+        row["path"],
+        row["before_sha256"],
+        row["after_sha256"],
+        row["after"],
+    ) == ("/tmp/a.py", "before", "after", "x = 1\n")
 
 
 def test_a_claim_the_sweep_vacated_no_longer_asks(tmp_path: Path) -> None:

@@ -32,11 +32,12 @@ def reason(cause: str | None) -> str:
 
 
 def test_each_cause_says_what_it_is() -> None:
-    """Four readings, four answers, because each sends the writer elsewhere."""
+    """Five readings, five answers, because each sends the writer elsewhere."""
     assert "no file stands there" in reason("missing")
     assert "not a regular file" in reason("irregular")
     assert "sed itself would not run the script" in reason("refused")
     assert "reads as text" in reason("unreadable")
+    assert "writes there by running" in reason("run")
 
 
 def test_a_target_nothing_looked_at_still_says_so() -> None:
@@ -63,6 +64,9 @@ def test_the_host_reaches_each_of_them_over_a_real_tree(tmp_path: Path) -> None:
     assert "no file stands there" in said("sed -i 's/a/b/' absent.md")
     assert "not a regular file" in said("sed -i 's/a/b/' folder")
     assert "not a regular file" in said("sed -i 's/a/b/' /dev/null")
+    assert "writes there by running" in said(
+        "uv run gen > notes.md && sed -i 's/a/b/' notes.md"
+    )
     # The file that is there reaches the edit gates instead, which is the
     # whole point of separating "could not be produced" from "was produced".
     assert "no file stands there" not in said("sed -i 's/a/b/' notes.md")
