@@ -38,6 +38,7 @@ from pathlib import Path
 from pydantic import BaseModel, computed_field
 
 from lup.channels.models import Door, utc_now
+from lup.coordination.bare import mail as bare_mail
 from lup.coordination.bare import store
 from lup.coordination.cohort import ActorCohort
 from lup.coordination.identity import (
@@ -539,29 +540,31 @@ class RepositoryPeers:
 
         A member whose pulse stopped has its file moved to the departed, so a
         reader that lists the directory agrees with one that stats the file; a
-        departed stub past the retention window is deleted, which is what
-        keeps the store the size of the population rather than of its history.
-        A session that beats again after this re-joins on its next call, which
-        the roster's own idempotence allows once the file has moved.
+        departed stub past the retention window is deleted, and so is every
+        message on the mail record sent before that window opened, which is
+        what keeps the store the size of the population rather than of its
+        history. A session that beats again after this re-joins on its next
+        call, which the roster's own idempotence allows once the file has
+        moved.
 
         A claim needs no sweeping and *by* names nobody: a claim stands or it
         does not, and the filesystem is what says which. Whoever swept is a
         parameter the surfaces pass and this has no record to attribute to
         them.
         """
+        moment = now or utc_now()
         # lup: defer: nothing deletes what the member-file store replaced in
         # this directory -- `touches.jsonl`, `roster.jsonl`, `messages.jsonl`,
         # `names.jsonl`, `delivery/`, `heartbeats/` and `resets/` stay on every
         # clone that ran 0.2.x; the user settled that the first sweep of this
         # store deletes them, and no sweep or migration does
-        # lup: defer: nothing bounds `mail.jsonl` -- every message posted in
+        # lup: solved: nothing bounds `mail.jsonl` -- every message posted in
         # this clone stays on it, and the dashboard reads all of it; the user
         # has not settled whether this sweep keeps it to the retention window
         # (taking the dashboard's older history with it) or it stays whole
-        return [
-            folded_member(member)
-            for member in store.swept(self.root, now, self.pulse.stale_after_seconds)
-        ]
+        retired = store.swept(self.root, moment, self.pulse.stale_after_seconds)
+        bare_mail.trimmed(self.root, self.retention.since(moment))
+        return [folded_member(member) for member in retired]
 
     def send(
         self,

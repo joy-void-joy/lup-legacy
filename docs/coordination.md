@@ -438,7 +438,11 @@ run steering its workers, signs nothing and reads `[message by <door>] …`.
 Every message posted also lands on the store's mail record, `mail.jsonl`, one
 line naming the member it went to: the mailbox is its reader's position and
 empties as it is read, so what was said to a member, and by whom, is read
-from the record — the dashboard follows it from a cursor.
+from the record — the dashboard follows it from a cursor. The record holds
+the roster's retention window, as the departed do: the sweep cuts every
+message sent before it off the record's head, leaving a first line that
+counts what was cut, so a line keeps its number and a reader following the
+record is carried across the cut.
 
 **A notice is neither.** "The base moved under all of you" is a fact about the
 population rather than about its recipients: it stays true after it is said,

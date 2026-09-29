@@ -107,7 +107,9 @@ MAIL_RECORD = "mail.jsonl"
 Beside the mailboxes rather than instead of them: a mailbox is its reader's
 position and empties as it is read, so what was said to a member, and by
 whom, is answered here — by a reader following the file from where it last
-stopped.
+stopped. Kept to the retention window the departed are: the sweep cuts what
+was sent before it off the head, and the first line of what is left counts
+the lines cut, so a line keeps its number across a cut.
 """
 
 LOOKS_DIR = "looks"

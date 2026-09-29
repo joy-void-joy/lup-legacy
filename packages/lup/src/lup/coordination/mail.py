@@ -26,6 +26,7 @@ that member's first turn, and at every turn after, because it has not
 stopped being true.
 """
 
+import os
 from collections.abc import Iterator
 from datetime import datetime
 from pathlib import Path
@@ -200,6 +201,11 @@ class MailCursor(BaseModel, frozen=True):
 
     offset: int = 0
     seq: int = 0
+    cut: int = 0
+    """How many lines had been cut off the head of the record the offset is into."""
+
+    inode: int = 0
+    """Which file the offset is into, so one that replaced it is not read from there."""
 
 
 class PostedMessage(BaseModel, frozen=True):
@@ -288,20 +294,37 @@ class ActorMail:
         """Every message the record gained since *cursor*, each at the line it sits on.
 
         Whole lines only: one a sender is still writing waits for the next
-        read. A record shorter than the cursor was replaced, and is read again
-        from its start. A line that will not parse keeps its number and
-        yields nothing, so every other line keeps the number it always had.
+        read. A line keeps its number for as long as it is on the record: a
+        sweep that cuts the record's head replaces it with one whose first
+        line counts what was cut, so a reader the cut moved from under is
+        carried to where it was in the replacement and handed only what it
+        had not read. A record replaced by anything else, or shorter than the
+        cursor, is read again from its start. A line that will not parse keeps
+        its number and yields nothing, so every other line keeps the number it
+        always had.
         """
-        path = self.root / store.MAIL_RECORD
         try:
-            size = path.stat().st_size
+            record = (self.root / store.MAIL_RECORD).open("rb")
         except OSError:
             return MailPage()
-        start = cursor if size >= cursor.offset else MailCursor()
+        with record:
+            head = record.readline()
+            cut = mail.cut_of(head)
+            found = os.fstat(record.fileno())
+            here = MailCursor(
+                offset=len(head) if cut is not None else 0,
+                seq=cut or 0,
+                cut=cut or 0,
+                inode=found.st_ino,
+            )
+            following = (cursor.inode, cursor.cut) == (here.inode, here.cut) and (
+                found.st_size >= cursor.offset
+            )
+            start = cursor if following else here
+            floor = cursor.seq if not following and here.cut > cursor.cut else 0
+            record.seek(start.offset)
 
-        def lines() -> Iterator[RecordLine]:
-            with path.open("rb") as record:
-                record.seek(start.offset)
+            def lines() -> Iterator[RecordLine]:
                 offset = start.offset
                 for line in record:
                     if not line.endswith(b"\n"):
@@ -309,10 +332,12 @@ class ActorMail:
                     offset += len(line)
                     yield RecordLine(end=offset, content=line)
 
-        read = list(lines())
+            read = list(lines())
 
         def messages() -> Iterator[PostedMessage]:
             for seq, line in enumerate(read, start=start.seq):
+                if seq < floor:
+                    continue
                 try:
                     posted = POSTED.validate_json(line.content)
                 except ValidationError:
@@ -335,6 +360,8 @@ class ActorMail:
             cursor=MailCursor(
                 offset=read[-1].end if read else start.offset,
                 seq=start.seq + len(read),
+                cut=here.cut,
+                inode=here.inode,
             ),
         )
 
