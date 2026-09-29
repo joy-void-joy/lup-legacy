@@ -132,7 +132,7 @@ def test_cli_reports_tracker_failure(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_cli_forwards_correction_number(monkeypatch: pytest.MonkeyPatch) -> None:
     """The number to correct, and the tracker the routing chose, both arrive.
 
-    Both, because the command now decides where a report lands as well as
+    Both, because the command decides where a report lands as well as
     whether it is a correction: a stub that only recorded the number would
     pass a version that routed everything to one repository.
     """
