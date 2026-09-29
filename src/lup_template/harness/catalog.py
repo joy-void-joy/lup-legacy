@@ -404,12 +404,14 @@ def declared_scaffold() -> ScaffoldSource:
 WORKFLOW = WorkflowSpec(
     branches=list(INTEGRATION_BRANCHES),
     frontend=FrontendSpec(workspace="packages/lup/web", bun_version="1.3.14"),
+    user_namespaces=True,
 )
 """This project's gate: the two-tier model, where `dev` integrates and `main`
 carries what has landed, so both deserve a run of their own -- the branches
 the shell vocabulary declares as the ones other people build on. The frontend
 workspace is the library's, installed first because `dev check` rebuilds the
-bundles it compares against what is committed."""
+bundles it compares against what is committed. The contained-launch tests
+mount inside a user namespace of their own, so the runner is told to allow one."""
 
 
 PUBLISH = PublishSpec(package=DISTRIBUTION, tag_prefix=declared_release().tag_prefix)

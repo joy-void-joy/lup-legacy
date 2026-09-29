@@ -145,6 +145,33 @@ class WorkflowSpec(BaseModel, frozen=True):
     needs nothing carries no apt call it would have to read past.
     """
 
+    user_namespaces: bool = False
+    """Whether the gate's tests need an unprivileged user namespace that can mount.
+
+    The pinned runner image restricts them through AppArmor: a namespace is
+    created but holds no capabilities, so a test that mounts inside one —
+    holding a directory read-only, as a contained launch holds its record —
+    can only skip there. A project with such tests lifts the restriction for
+    its throwaway runner; one without carries no sysctl to read past.
+    """
+
+    def namespace_steps(self) -> list[WorkflowStep]:
+        """The sysctl lifting the runner's refusal, or nothing where none is needed."""
+        if not self.user_namespaces:
+            return []
+        return [
+            WorkflowStep(
+                name="Unprivileged user namespaces",
+                run="sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0",
+                comment=(
+                    "GitHub's ubuntu-24.04 image restricts unprivileged user"
+                    " namespaces\nthrough AppArmor, leaving one no capabilities,"
+                    " so the tests that\nmount inside one skip rather than run."
+                    " Lifted for this throwaway runner."
+                ),
+            )
+        ]
+
     def install_steps(self) -> list[WorkflowStep]:
         """The apt step, or nothing where the project declares no package."""
         if not self.system_packages:
@@ -185,6 +212,7 @@ class WorkflowSpec(BaseModel, frozen=True):
                 name="Merge driver", run="uv run lup-devtools git merge-driver"
             ),
             WorkflowStep(name="Generated artifact drift", run=DRIFT_COMMAND),
+            *self.namespace_steps(),
             WorkflowStep(name="Quality gate", run=CHECK_COMMAND),
         ]
 
