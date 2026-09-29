@@ -856,7 +856,7 @@
     {
       "path": "docs/quality-pipeline.md",
       "category": "generated",
-      "sha256": "93b25f46a1a30e3769268a3efeb0ccb8df378320066d10289555f49354ea2660",
+      "sha256": "02a62eae98484e4f087eda957767a56923dc21fe086cb3f72e61ed0c7c415499",
       "semantic_id": "docs.quality-pipeline",
       "executable": false
     },
