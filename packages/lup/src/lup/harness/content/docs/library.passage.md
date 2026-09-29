@@ -343,7 +343,13 @@ session to hold it starts it on its preferred ports or the next free ones,
 later sessions join it, a replacement is started where it stopped answering
 or its declaration changed, and it is stopped once the last lease goes, a
 lease whose launcher died counting as gone. Its state and output live under
-lup's own state directory, never in a checkout.
+lup's own state directory, never in a checkout. A service the operator
+already runs on the host's loopback — a model server, a database — is a
+`HostService`: the session is handed its address under the variable the
+project names, and a container whose loopback is its own, on any network but
+the host's, reaches it through a socket the launch relays for that one port,
+which the image's entrypoint binds to the same address inside; nothing else on
+the host's loopback is reachable that way.
 
 `steps` are the repository's own workflow around a launch — a checkpoint, a
 base-freshness sync, a companion tree regenerated — each a `LaunchStep` with

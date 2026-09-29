@@ -209,6 +209,9 @@ LAUNCH_FIELDS = {
     "a kind of session's own guidance": FieldExample(
         example="launch_guidance.py", call="OuterContainer", keyword="guidance"
     ),
+    "named host services": FieldExample(
+        example="launch_host_service.py", call="HostService"
+    ),
     "held generated trees": FieldExample(
         example="launch_held_trees.py", call="OuterContainer", keyword="hold_generated"
     ),

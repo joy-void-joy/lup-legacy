@@ -76,6 +76,7 @@ uv run -m examples.launch_asking
 uv run -m examples.launch_guidance
 uv run -m examples.launch_nested_repositories
 uv run -m examples.launch_companions
+uv run -m examples.launch_host_service
 ```
 
 `launch_profile` expects a profile named `work` among yours
