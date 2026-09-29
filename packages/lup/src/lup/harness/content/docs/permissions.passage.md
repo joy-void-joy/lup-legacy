@@ -1178,7 +1178,6 @@ Neither surface turns a policy question into an implicit approval.
 {{ dashboard }}The terminal answers every review: run `uv run lup-devtools review show
 <id>` from the indicated checkout, then `uv run lup-devtools review approve
 <id> --as operator` or `uv run lup-devtools review decline <id> --as
-<<<<<<< HEAD
 operator` outside the agent session. Review answers are declared
 `operator_only` in the shell vocabulary; an escalation cannot grant the
 requester authority to answer itself. The file those verbs write is guarded
@@ -1187,24 +1186,12 @@ the same way: `.lup/questions.jsonl`, and the claims under
 are protected roots. The hooks and the operator's commands write them from
 their own processes, so a session's own write — a row appended, a copy over
 the file, a claim retired — asks, because an approved row naming any other
-principal is what releases the retry. Nested command paths are declared with
+principal is what releases the retry. The library writes them, so the library
+protects them: `lup.policy.rules.invariant_path_rules` holds them — with the
+launch ledger under `.lup/preflight`, the policy snapshots, `.env` and a new
+devtools module — on both enforcement paths whatever a project declares, and
+no adopter has to know to list them. Nested command paths are declared with
 `ShellOperationRule.parents`,
-=======
-operator` outside the agent session. Review answers and the dashboard server
-that mints browser review credentials are declared `operator_only` in the shell
-vocabulary; an escalation cannot grant the requester authority to answer
-itself. The file those verbs write is guarded the same way:
-`.lup/questions.jsonl`, and the claims under `.lup/review-claims` and
-`.lup/review-stage-claims` that spend an answer once, are protected roots. The
-hooks and the operator's commands write them from their own processes, so a
-session's own write — a row appended, a copy over the file, a claim retired —
-asks, because an approved row naming any other principal is what releases the
-retry. The library writes them, so the library protects them:
-`lup.policy.rules.invariant_path_rules` holds them — with the launch ledger
-under `.lup/preflight`, the policy snapshots, `.env` and a new devtools
-module — on both enforcement paths whatever a project declares, and no
-adopter has to know to list them. Nested command paths are declared with `ShellOperationRule.parents`,
->>>>>>> fix-policy-round-two
 and the deepest matching path decides.
 
 Approval releases one exact retry in the same session and directory.
