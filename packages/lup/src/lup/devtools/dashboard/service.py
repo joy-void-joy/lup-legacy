@@ -17,6 +17,7 @@ import logging
 import os
 import shutil
 import sys
+import threading
 import webbrowser
 from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
@@ -122,8 +123,18 @@ class GraphicalSession(BaseSettings):
 
 
 def page_reopened(url: str) -> bool:
-    """Open the page in the operator's browser, answering whether one opened."""
-    return GraphicalSession().present() and webbrowser.open(url)
+    """Ask the operator's browser to open the page, answering whether one could be asked.
+
+    On a thread of its own: a browser the standard library starts in the
+    foreground — one `$BROWSER` names, say — is waited on until it exits,
+    which would stall every look after it and let the pulse go stale.
+    """
+    if not GraphicalSession().present():
+        return False
+    threading.Thread(
+        target=webbrowser.open, args=(url,), name="dashboard-reopen", daemon=True
+    ).start()
+    return True
 
 
 class HeraldRecord(BaseModel, frozen=True):

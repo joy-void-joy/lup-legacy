@@ -311,7 +311,8 @@ def test_the_service_tells_the_desktop_and_publishes_what_it_counts(
         counted = None
         for _ in range(100):
             counted = pulse.read()
-            if told.exists() and counted is not None and counted.pending == 1:
+            waited = counted is not None and counted.pending == 1
+            if told.exists() and opened.exists() and waited:
                 break
             time.sleep(0.2)
         assert Mount(path=pulse.path.parent) in joined.mounts
