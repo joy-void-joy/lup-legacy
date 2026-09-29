@@ -219,7 +219,7 @@
     {
       "path": ".claude/plugins/lup/commands/land.md",
       "category": "generated",
-      "sha256": "587e1bb64e11b176087b8bc8eb5efc22da55518560f6dc19f6cd9f92b4cb6680",
+      "sha256": "0dd756b84d2c6ad7efbc366be6f5c1dc6508a0e4bf6baa8ecf5c4f8a419abcf1",
       "semantic_id": "skill.land",
       "executable": false
     },
@@ -254,7 +254,7 @@
     {
       "path": ".claude/plugins/lup/commands/rebase.md",
       "category": "generated",
-      "sha256": "d573224cc215818afbdab4e20d72f2ef96880d061fe99945d6115414c2e9a687",
+      "sha256": "c41c0051589e5d31b6d1dcc72882586b88adf0e2d8aca4c2f6733cc609cb3970",
       "semantic_id": "skill.rebase",
       "executable": false
     },
@@ -751,7 +751,7 @@
     {
       "path": "docs/contributing.md",
       "category": "generated",
-      "sha256": "f1335c0a970c2ce12fcd8764df9da3b46cc59b474349580e9e3b97dd625ee8f8",
+      "sha256": "658ef4a3b69b8f8e63c8285c087b712418e88531517c024f7db2b01b72ddd3a1",
       "semantic_id": "docs.contributing",
       "executable": false
     },
@@ -786,7 +786,7 @@
     {
       "path": "docs/harness.md",
       "category": "generated",
-      "sha256": "ddc995eb5fd80f90bccd1d98c691c72051c288b608bb34da7f3c99f17aa562cc",
+      "sha256": "14bb1f2b5e296de28a32fd6657df843105dbb16dec34ac997fa1884c72eaf7ff",
       "semantic_id": "docs.harness",
       "executable": false
     },
