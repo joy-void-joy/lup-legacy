@@ -30,6 +30,7 @@ import ast
 from collections import deque
 from collections.abc import Collection, Iterator, Sequence
 from enum import StrEnum
+from functools import cache
 from pathlib import Path
 from typing import get_args
 
@@ -730,6 +731,7 @@ def constant_declarations(text: str) -> list[ConstantDeclaration]:
     ]
 
 
+@cache
 def default_position_names(
     text: str,
 ) -> set[str]:  # lup: ignore[set-shape] — name identity membership
@@ -824,9 +826,36 @@ def default_position_names(
                 ]
         return []
 
+    def scoped(node: ast.AST) -> list[ast.stmt | ast.expr]:
+        match node:
+            case ast.FunctionDef() | ast.AsyncFunctionDef() | ast.Lambda():
+                return [node]
+        return []
+
+    def candidate(node: ast.AST) -> list[ast.expr]:
+        match node:
+            case ast.IfExp() | ast.BoolOp():
+                return [node]
+        return []
+
     functions = [
-        (node, parameters(node)) for node in python_nodes(tree) if parameters(node)
+        function
+        for node in python_nodes(tree)
+        for function in scoped(node)
+        if parameters(function)
     ]
+
+    def enclosing(node: ast.expr) -> list[str]:
+        """Every parameter of each function the expression is written inside."""
+        return [
+            name
+            for function in functions
+            if (function.lineno, function.col_offset) <= (node.lineno, node.col_offset)
+            and (node.end_lineno or 0, node.end_col_offset or 0)
+            <= (function.end_lineno or 0, function.end_col_offset or 0)
+            for name in parameters(function)
+        ]
+
     return {
         *(
             name
@@ -836,9 +865,9 @@ def default_position_names(
         ),
         *(
             name
-            for function, given in functions
-            for node in ast.walk(function)
-            for fallback in fallbacks(node, given)
+            for node in python_nodes(tree)
+            for site in candidate(node)
+            for fallback in fallbacks(site, enclosing(site))
             for name in reached(fallback)
         ),
     }
