@@ -35,6 +35,12 @@ class ReviewAnswers(HostCompanion, frozen=True):
     own launch handed it.
     """
 
+    # lup: defer: a session with no container around it runs as the operator,
+    # so the host's answers are its to write: a shell write into
+    # `$XDG_STATE_HOME/lup/reviews` is asked about (a target known only when
+    # it runs, a copy over a file), not refused, and an Edit is refused only
+    # as outside the writable boundary. A refused-write row for lup's own
+    # state would make it a refusal on every posture — the policy's to add.
     name: CompanionName = "review-answers"
 
     @contextmanager
