@@ -247,6 +247,11 @@ def scan_antipatterns(
         for source in declaration_sources
         if within_scope(source.path.as_posix(), paths)
     ]
+    # A scope holding no production file has nothing any rule would judge, and
+    # the post-write review asks about every file a call wrote -- tests and
+    # scratch scripts among them -- so the project's context is not built.
+    if paths is not None and not scanned and not sources:
+        return AntiPatternScan(findings=[], refuted=[])
     # A whole-repository sweep remembers what the checker said, because it
     # holds every module a refutation could resolve through and can therefore
     # key an answer by all of them. A scoped sweep holds only the files it was
