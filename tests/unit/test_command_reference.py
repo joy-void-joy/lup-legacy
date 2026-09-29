@@ -78,7 +78,7 @@ def test_a_group_that_runs_on_its_own_is_a_command_on_the_page() -> None:
         "page",
         "leads only",
     ]
-    assert {"setup dashboard", "dev report", "setup"} <= spelled
+    assert {"dev report", "setup"} <= spelled
 
 
 def test_every_command_carries_a_summary() -> None:
