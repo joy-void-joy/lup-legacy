@@ -2142,15 +2142,11 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
 
 PATH_ROLES: list[PathRoleRow] = [
     {
-        "root": "tests",
-        "role": "test",
+        "root": "**/.venv",
+        "role": "scratch",
     },
     {
-        "root": "packages/lup/tests",
-        "role": "test",
-    },
-    {
-        "root": ".venv",
+        "root": "**/.venv-contained",
         "role": "scratch",
     },
     {

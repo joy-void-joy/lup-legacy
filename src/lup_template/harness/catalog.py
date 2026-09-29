@@ -52,6 +52,7 @@ from lup.devtools.dev.release import ReleaseSpec
 from lup.devtools.dev.reach import Spread
 from lup.devtools.dev.scaffold import ScaffoldSource
 from lup.devtools.dev.seams import DECLARED_SEAMS, Seam
+from lup.devtools.dev.subprojects import SubProjects
 from lup.devtools.dev.workflow import FrontendSpec, PublishSpec, WorkflowSpec
 from lup.devtools.project import DevProject
 from lup.harness.contracts import NativeSpellings
@@ -325,6 +326,27 @@ def declared_hook_set() -> HookSet:
     return portable_harness().declared_hooks
 
 
+def declared_sub_projects() -> SubProjects:
+    """The uv projects nested in this repository, and where environments are built.
+
+    This repository is one project, so it declares none. What it does declare
+    is where an environment is built: uv's default, and the name this image's
+    containers keep theirs under. Every project here builds under one of
+    those, the root included, so each is scratch wherever it sits, and a
+    sub-project's packages are searched under both.
+    """
+    return SubProjects(
+        # lup: template: a uv project this domain nests inside the repository —
+        # a directory with its own pyproject.toml, lockfile and environment,
+        # often on another Python. Declare it here, as
+        # `SubProject(root=Path("studio"), python="3.13")`, and `harness
+        # generate all` compiles it into Pyright's execution environments,
+        # Ruff's target versions, a test root and its test role.
+        projects=[],
+        environments=[".venv", agent_image().project_environment],
+    )
+
+
 def declared_test_roots() -> list[TestRoot]:
     """The suites the gate runs: one pytest per installed root, and bun's own.
 
@@ -332,14 +354,17 @@ def declared_test_roots() -> list[TestRoot]:
     vendored library — so the gate runs pytest once per root rather than
     reporting a green tree that never exercised half of it. The frontend's
     own tests are a third suite, run by bun from the workspace that holds
-    them. Declared beside the hook set because the policy reads the list
-    too: the files a suite collects carry the test role, derived from here.
+    them, and each declared sub-project's suite runs in its own environment.
+    Declared beside the hook set because the policy reads the list too: the
+    files a suite collects carry the test role, derived from here — a pytest
+    suite's from the `testpaths` its configuration declares.
     Read where a command runs, since the first root is the working directory.
     """
     return [
         TestRoot(name="pytest", directory=Path.cwd()),
         TestRoot(name="pytest (lup)", directory=Path("packages/lup")),
         BunTestRoot(name="bun test", directory=Path("packages/lup/web")),
+        *declared_sub_projects().test_roots(),
     ]
 
 
@@ -801,16 +826,17 @@ def portable_harness(
             # from work — so a domain with a data directory, a notebook tree or
             # a generated client says so here, and every gate reads it at once.
             path_roles=[
-                HookPathRole(root=Path("tests"), role="test"),
-                HookPathRole(root=Path("packages/lup/tests"), role="test"),
                 # Scratch is "disposable by construction", and a build product
                 # qualifies as squarely as a scratchpad does: every one of
                 # these is reproduced by a command, so destroying one costs
                 # the command rather than any information. Leaving them
                 # production made `rm` and `cp` ask about caches and virtual
                 # environments, which is an approval that teaches nobody
-                # anything.
-                HookPathRole(root=Path(".venv"), role="scratch"),
+                # anything. An environment is one under every name a project
+                # here builds it, at any depth: a sub-project keeps its own
+                # inside the tree the gate checks, and the gate excludes
+                # scratch from Pyright.
+                *declared_sub_projects().environment_roles(),
                 HookPathRole(root=Path("build"), role="scratch"),
                 HookPathRole(root=Path("dist"), role="scratch"),
                 HookPathRole(root=Path("htmlcov"), role="scratch"),
@@ -851,12 +877,14 @@ def portable_harness(
                     root=Path("packages/lup/src/lup/migrations/pending"), role="data"
                 ),
                 # What each suite the gate runs collects is a test by
-                # derivation rather than by a second table: bun collects
-                # `*.test.ts` beside its source, where no directory root
-                # could name it, and a file the gate runs as a test that the
-                # policy budgets as source is the disagreement deriving one
-                # from the other rules out. After the scratch rows, so a test
-                # under `node_modules` stays scratch.
+                # derivation rather than by a second table: a pytest suite's
+                # `testpaths` — `tests/` at both roots, and a sub-project's
+                # own — and bun's `*.test.ts` beside its source, where no
+                # directory root could name it. A file the gate runs as a
+                # test that the policy budgets as source is the disagreement
+                # deriving one from the other rules out. After the scratch
+                # rows, so a cache or a `node_modules` under a test tree
+                # stays scratch.
                 *collected_test_roles(declared_test_roots()),
                 # Deliberately absent, though Git ignores every one of them:
                 # `.env.local`, `notes/`, `.lup/`, and the `*.local` configs

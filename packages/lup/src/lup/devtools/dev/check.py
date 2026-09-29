@@ -6,7 +6,7 @@ import tomllib
 from datetime import UTC, datetime, timedelta
 from hashlib import sha256
 from tempfile import gettempdir
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import nullcontext
 from functools import partial
@@ -327,6 +327,7 @@ def pyright_check(
     excluded_roots: list[str],
     scope: list[str] | None = None,
     abandoned_after: timedelta = timedelta(hours=1),
+    environments: Sequence[Path] = (),
 ) -> CheckReport:
     """Whether the code-bearing workspace type-checks.
 
@@ -353,6 +354,15 @@ def pyright_check(
     gap is wide enough that no live run is ever inside it — and overridable
     because it is a judgement about how long is long, which a slower tree
     would make differently.
+
+    ``environments`` are the declared sub-projects, each synced before
+    Pyright starts: their execution environments name the packages on disk,
+    and the sub-project's own suite, which would build that environment
+    too, runs beside Pyright rather than before it — so a fresh clone's
+    gate would report every third-party import resolved or not by which
+    finished first. Inexact, the way `uv run` syncs, so nothing a worktree's
+    own sync installed is taken away; a sync that fails is this row's
+    verdict, in uv's words.
     """
     root = project_root()
     sweep_pyright_scratch(root, abandoned_after)
@@ -377,18 +387,22 @@ def pyright_check(
             },
             stream,
         )
-    try:
-        return ran(
+
+    def checked() -> None:
+        """Every sub-project's environment readied, then the one Pyright run."""
+        for environment in environments:
+            uv("sync", "--inexact", _cwd=str(root / environment))
+        uv(
+            "run",
             "pyright",
-            lambda: uv(
-                "run",
-                "pyright",
-                "--project",
-                str(configuration),
-                *python_arguments,
-                *(scope or []),
-            ),
+            "--project",
+            str(configuration),
+            *python_arguments,
+            *(scope or []),
         )
+
+    try:
+        return ran("pyright", checked)
     finally:
         configuration.unlink(missing_ok=True)
 
@@ -1614,13 +1628,15 @@ def run_checks(
     spread: Spread | None = None,
     migration_base: str | None = None,
     release_tag_prefix: str = "v",
+    environments: Sequence[Path] = (),
 ) -> None:
     """Run ruff format, ruff check, pyright, pytest, and this gate's own sweeps.
 
     Read-only by default (reports issues without modifying files).
     Pass *fix* to auto-fix formatting and lint issues. ``scope`` narrows the
-    note and anti-pattern gates to paths this tree is answerable for, and
-    ``migration_base`` names the commit removed capabilities are judged from.
+    note and anti-pattern gates to paths this tree is answerable for,
+    ``migration_base`` names the commit removed capabilities are judged from,
+    and ``environments`` are the sub-projects Pyright reads through their own.
 
     A gate with no suite to run says so in a row of its own, where the suites
     would have reported. A tally counting only what ran reads the same
@@ -1649,7 +1665,7 @@ def run_checks(
         tools: list[Callable[[], CheckReport]] = [
             partial(ruff_format_check, fix, excluded_roots),
             partial(ruff_lint_check, fix, excluded_roots),
-            partial(pyright_check, excluded_roots),
+            partial(pyright_check, excluded_roots, environments=environments),
             *(
                 partial(root.checked, admission.workers, excluded_roots)
                 for root in suites
@@ -1759,6 +1775,7 @@ def run_changed(
     test_roots: list[TestRoot],
     spread: Spread | None = None,
     fix: bool = False,
+    environments: Sequence[Path] = (),
 ) -> None:
     """Check the files this tree changed, and say plainly what went unchecked.
 
@@ -1802,7 +1819,9 @@ def run_changed(
         [
             partial(ruff_format_check, fix, excluded_roots, scope.checked),
             partial(ruff_lint_check, fix, excluded_roots, scope.checked),
-            partial(pyright_check, excluded_roots, scope.checked),
+            partial(
+                pyright_check, excluded_roots, scope.checked, environments=environments
+            ),
         ]
         if scope.checked
         else []

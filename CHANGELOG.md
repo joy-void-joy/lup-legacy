@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+### A nested uv project is declared once and checked by every gate
+
+`SubProject(root, python, …)` in the catalog's `declared_sub_projects()`
+compiles, through `harness generate all`, into Pyright execution environments
+for the project and its `tmp/<root>` scratch on its own Python and packages,
+its root in Pyright's `include`, Ruff's per-file target version, a test root
+whose files carry the test role, and scratch roles for every environment
+directory at any depth. A fresh worktree and the gate's Pyright sync its
+environment first. A pytest root takes its test role from its own
+`testpaths`, a suite spreads over workers only where its own environment
+holds pytest-xdist (or its `TestRoot` declares `parallel`), a gate with no
+suite declared says `tests: no suites declared`, and a module is named from
+the segment its first `src/` introduces, whatever that package is called.
+`parallel_arguments` and `scanned_roots` are gone.
+
 ### The dashboard shows every session live, and writes to any of them
 
 Everything live reaches the page on one stream, `GET /api/stream`: a fresh tab

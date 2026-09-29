@@ -13,6 +13,7 @@ from lup.harness.codescan.common import RuleSelection
 from lup.devtools.dev.model_catalog import catalog_writers, library_catalogs
 from lup.devtools.dev.settings_schema import SettingsSchemaSource, settings_writers
 from lup.devtools.dev.rules import write_rule_reference
+from lup.devtools.dev.subprojects import write_sub_projects
 from lup.devtools.dev.workflow import write_publish, write_workflow
 from lup.devtools.harness.composition import NativeTargets
 from lup.providers.claude.composition import ClaudeComposer
@@ -32,6 +33,7 @@ from lup_template.harness.catalog import (
     PUBLISH,
     WORKFLOW,
     declared_hook_set,
+    declared_sub_projects,
     launched_serve,
     launched_tool_servers,
     portable_harness,
@@ -123,6 +125,7 @@ REPOSITORY_WIDE: list[RepositoryWriter] = [
     partial(write_rule_reference, selection=declared_hook_set().rules),
     partial(write_workflow, WORKFLOW),
     partial(write_publish, PUBLISH),
+    partial(write_sub_projects, declared_sub_projects()),
     partial(write_generated_paths, TARGETS),
     # The schema before the bundles, because the frontend build compiles its
     # types from it: written in this order, one generation leaves both true.
