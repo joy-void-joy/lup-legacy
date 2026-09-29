@@ -740,10 +740,60 @@ def default_position_names(
     ``Field`` (or a ``default_factory`` lambda returning the constant) — and
     the two shapes a mutable default is written as, the ``TABLE if argument is
     None else argument`` sentinel and the ``argument or TABLE`` fallback.
+
+    The last two count only where ``argument`` is what a caller hands in: a
+    parameter of a function enclosing the expression, or an attribute of one,
+    which is how a model's field reaches its methods. Any operand used to do,
+    so ``something or TABLE`` over a local, a global or a call exempted the
+    table from both rules asking for a default, while no caller could reach it.
     """
     tree = python_tree(text)
     if tree is None:
         return set()  # lup: ignore[set-shape] — an unparseable module names nothing
+
+    def supplied(node: ast.expr, parameters: Collection[str]) -> bool:
+        match node:
+            case ast.Name(id=name):
+                return name in parameters
+            case ast.Attribute(value=value):
+                return supplied(value, parameters)
+        return False
+
+    def parameters(node: ast.AST) -> list[str]:
+        match node:
+            case (
+                ast.FunctionDef(args=args)
+                | ast.AsyncFunctionDef(args=args)
+                | ast.Lambda(args=args)
+            ):
+                return [
+                    argument.arg
+                    for argument in [
+                        *args.posonlyargs,
+                        *args.args,
+                        *args.kwonlyargs,
+                        *filter(None, [args.vararg, args.kwarg]),
+                    ]
+                ]
+        return []
+
+    def fallbacks(node: ast.AST, given: Collection[str]) -> list[ast.expr | None]:
+        match node:
+            case ast.IfExp(
+                test=ast.Compare(
+                    left=left,
+                    ops=[ast.Is() | ast.IsNot()],
+                    comparators=[ast.Constant(value=None)],
+                ),
+                body=body,
+                orelse=orelse,
+            ) if supplied(left, given):
+                return [body, orelse]
+            case ast.BoolOp(op=ast.Or(), values=[*passed, last]) if all(
+                supplied(value, given) for value in passed
+            ):
+                return [last]
+        return []
 
     def reached(node: ast.expr | None) -> list[str]:
         match node:
@@ -772,23 +822,25 @@ def default_position_names(
                     for keyword in keywords
                     if keyword.arg in ("default", "default_factory")
                 ]
-            case ast.IfExp(
-                test=ast.Compare(
-                    ops=[ast.Is() | ast.IsNot()], comparators=[ast.Constant(value=None)]
-                ),
-                body=body,
-                orelse=orelse,
-            ):
-                return [body, orelse]
-            case ast.BoolOp(op=ast.Or(), values=values):
-                return list(values)
         return []
 
+    functions = [
+        (node, parameters(node)) for node in python_nodes(tree) if parameters(node)
+    ]
     return {
-        name
-        for node in python_nodes(tree)
-        for default in defaults(node)
-        for name in reached(default)
+        *(
+            name
+            for node in python_nodes(tree)
+            for default in defaults(node)
+            for name in reached(default)
+        ),
+        *(
+            name
+            for function, given in functions
+            for node in ast.walk(function)
+            for fallback in fallbacks(node, given)
+            for name in reached(fallback)
+        ),
     }
 
 

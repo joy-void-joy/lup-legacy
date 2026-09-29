@@ -380,6 +380,34 @@ def test_every_admitted_default_spelling_clears_a_table() -> None:
         )
 
 
+def test_a_fallback_after_what_a_caller_supplies_reaches_through_its_attribute() -> (
+    None
+):
+    consumer = "class Set:\n    def build(self):\n        return self.rules or FIELD\n"
+
+    assert "FIELD" in default_position_names(consumer)
+
+
+def test_a_fallback_after_what_no_caller_supplies_replaces_nothing() -> None:
+    """`something or TABLE` is a default only where a caller hands `something` in.
+
+    Any operand at all used to count, so a local, a module global or a call
+    beside a constant exempted it from both rules that ask for a default.
+    """
+    unreached = {
+        "LOCAL": "def build():\n    rules = load()\n    return rules or LOCAL\n",
+        "GLOBAL": "CHOSEN = configured or GLOBAL\n",
+        "CALL": "def build(rules=None):\n    return load(rules) or CALL\n",
+        "SENTINEL": (
+            "def build():\n    rules = load()\n"
+            "    return SENTINEL if rules is None else rules\n"
+        ),
+    }
+
+    for name, consumer in unreached.items():
+        assert name not in default_position_names(consumer), name
+
+
 # A directive inside the first ten lines governs the whole file, so proximity
 # is only observable below that window.
 BELOW_FILE_WINDOW = "\n" * 10
