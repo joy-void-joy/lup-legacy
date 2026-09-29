@@ -78,6 +78,7 @@ def test_a_claude_launch_holds_its_rendered_guidance_over_the_committed_file(
     committed.parent.mkdir(parents=True)
     committed.write_text("committed\n", encoding="utf-8")
     stub_host(monkeypatch, root)
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
     monkeypatch.setattr(claude_launch, "settle_claude_theme", lambda *_a, **_k: None)
     handed: dict[str, Any] = {}
 
@@ -100,4 +101,5 @@ def test_a_claude_launch_holds_its_rendered_guidance_over_the_committed_file(
     ((written, inside),) = handed["overlays"].items()
     assert inside == str(committed)
     assert "Explore freely" in written.read_text(encoding="utf-8")
+    assert written.is_relative_to(tmp_path / "home" / ".cache" / "lup" / "guidance")
     assert committed not in handed["trees"]
