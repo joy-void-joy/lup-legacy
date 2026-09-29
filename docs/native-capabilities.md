@@ -144,7 +144,7 @@ part of probing.
   The `exec` finding above is not a property of `exec`: the middle verdict is
   missing from every surface Lup can open, so an `ask` is spent as a denial
   wherever an application is the one asking. The fail-closed denial is
-  therefore correct rather than a workaround. And `dev questions` is Codex's
+  therefore correct rather than a workaround. And `review` is Codex's
   review surface rather than its fallback, which is what makes that surface's
   diff rendering load-bearing instead of a convenience. Issue #180 is this gap
   met from a real session; queue settlement requires an independent operator.

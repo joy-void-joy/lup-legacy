@@ -496,8 +496,8 @@ which one it is. So it is judged as every command it could stand for, and
 takes the strictest of their verdicts where that is stricter than the
 spelling earns as written. A verb word could be any row its legible part
 begins, among those the words before it still leave: `uv run lup-devtools
-sync $OP lup /x --mount rw` asks as `sync setup` does, and `dev questions
-$(echo answer) <id>` is refused as the operator-only verb it could be. A
+sync $OP lup /x --mount rw` asks as `sync setup` does, and `review
+$(echo approve) <id>` is refused as the operator-only verb it could be. A
 word whose legible part begins a guarded flag is read as that flag:
 `--ret$X` asks as `--retire` does, and `git -$X status` as the `-c` global.
 The reason names the word and the command it was read as, in one line. The
@@ -971,7 +971,7 @@ earned it, and parks nothing. Codex has no ask effect at its pre-tool
 boundary, so it parks the call in `.lup/questions.jsonl` and refuses execution
 until an explicit answer is recorded, at both pre-tool and permission-request
 events; the refusal names the review id and the commands to inspect, approve
-or reject it, and a pending or rejected review returns an explicit denial.
+or decline it, and a pending or declined review returns an explicit denial.
 
 What a rendered ask rests on is the session answering to a person. An autonomy
 mode answers on the session's behalf, including for the operations the
@@ -985,11 +985,11 @@ Codex delivers that denial as a supported structured `deny` carrying
 hook events; its agent still receives the same refusal and review commands.
 Neither surface turns a policy question into an implicit approval.
 
-The operator can keep one browser inbox open by running this from a terminal
-outside the agent session:
+The operator can keep one dashboard open over every parked review by running
+this from a terminal outside the agent session:
 
 ```bash
-uv run lup-devtools dev questions serve
+uv run lup-devtools dashboard serve
 ```
 
 It listens on `127.0.0.1:8766` and opens the browser. Without `--root`, it
@@ -999,7 +999,7 @@ are included. Repeat `--root` to watch several repositories, use `--no-open` to
 open the printed address manually, and choose another port with `--port`. Leave
 the terminal command running while reviewing; Ctrl-C stops its server.
 
-The inbox titles requests from captured evidence: a file's action and path,
+The dashboard titles requests from captured evidence: a file's action and path,
 the number of files, or the command to run. The exact operation, requester,
 rule, reason, command or captured file diff, and recorded answer remain visible.
 The default view includes files that require review and highlights newly
@@ -1017,11 +1017,11 @@ rule; existing exceptions appear only in the full-operation view. Expand a
 group for written reasons and occurrence links, or use `n` and `p` to jump
 between exceptions.
 
-Approve or reject one question with an optional note. Auto-advance opens the
+Approve or decline one review with an optional note. Auto-advance opens the
 next pending request after a successful decision; turn it off to stay on the
 answered request. New arrivals do not move a selection already under review.
-Use `j` / `k` for next / previous request, `Shift+A` to approve, `Shift+R` to
-reject, `c` to open and focus the collapsed comment, and `?` for shortcut help.
+Use `j` / `k` for next / previous request, `Shift+A` to approve, `Shift+D` to
+decline, `c` to open and focus the collapsed comment, and `?` for shortcut help.
 Decision buttons stay visible beneath the selected evidence. Shortcuts pause
 in text fields, and holding a decision key cannot answer another request.
 
@@ -1030,7 +1030,7 @@ Use **Copy link** to share a request without sharing a credential. Links use
 identical IDs. They open the exact pending or historical request,
 including in another tab of an already authorized browser. Back, forward, and
 changed links select the corresponding request. A missing ID stays selected
-while the inbox watches for it; it never silently opens a different request.
+while the dashboard watches for it; it never silently opens a different request.
 
 The decision is recorded in the
 same durable relay that the terminal commands use, so a browser and terminal
@@ -1045,7 +1045,7 @@ remain unconfirmed; diagnostics failures never undo the recorded approval.
 Native retries notify only a unique registered requester whose bound native
 session matches the request. Queue acceptance does not prove the agent read
 the message. A native-hook approval still requires the agent to retry the exact
-tool call. The inbox never executes a reconstructed command.
+tool call. The dashboard never executes a reconstructed command.
 
 The server mints a capability for that invocation and puts it in the printed
 browser URL's fragment, which HTTP requests do not send to the server. The
@@ -1065,11 +1065,11 @@ surface; they are not isolation against arbitrary processes running as the
 operator's user. The session's filesystem and process boundary remains part
 of the authority boundary.
 
-The terminal surface remains available: run `uv run lup-devtools dev questions
-show <id>` from the indicated checkout, then `uv run lup-devtools dev questions
-answer <id> --as operator` or `uv run lup-devtools dev questions reject <id>
---as operator` outside the agent session. Queue answers and the server that
-mints browser review credentials are declared `operator_only` in the shell
+The terminal surface remains available: run `uv run lup-devtools review show
+<id>` from the indicated checkout, then `uv run lup-devtools review approve
+<id> --as operator` or `uv run lup-devtools review decline <id> --as
+operator` outside the agent session. Review answers and the dashboard server
+that mints browser review credentials are declared `operator_only` in the shell
 vocabulary; an escalation cannot grant the requester authority to answer
 itself. Nested command paths are declared with `ShellOperationRule.parents`,
 and the deepest matching path decides.
@@ -1081,7 +1081,7 @@ destination policy bindings, then claims the approval exclusively before
 allowing execution. A changed file, payload or policy requires another
 review. The receipt binds both the original request and the exact approved
 runtime input rewrite; observing a different executed input marks the receipt
-`in_doubt`. Rejection leaves the operation stopped and delivers the
+`in_doubt`. Declining leaves the operation stopped and delivers the
 operator's note.
 A crash after claiming approval does not make it reusable. Native sandbox
 restrictions still apply; queue approval does not change execution placement.
@@ -1110,7 +1110,7 @@ patches and copies, so it remains the proposal submitted even if another writer
 changes the files before the operator opens it. Recognized `sed -i` commands
 also show a diff from their captured input. The preview preserves supported
 options and transforms that input through sed's sandbox mode; it never runs
-the submitted shell command. A caption identifies the inbox environment as
+the submitted shell command. A caption identifies the dashboard's environment as
 the source of this simulation. The exact command stays visible beside its diff.
 Because the request does not capture its execution locale, only ASCII input
 and scripts without numeric byte escapes, locale-sensitive ranges, classes, case conversion or
@@ -1192,7 +1192,7 @@ labelled `approved` carry no explicit reusable grant and are never read as
 authority. `dev hooks approvals` shows these observations with that limitation;
 `dev hooks forget <prefix or exact call>` retires an observation without
 changing authorization. Explicit native review answers remain single-use in
-`dev questions`; an execution event cannot turn one into a permanent grant.
+`review`; an execution event cannot turn one into a permanent grant.
 
 The `uv` command reader resolves global options before the subcommand, including
 `--directory`, so relocating an operator-only queue command cannot make it an

@@ -7,7 +7,7 @@ import pytest
 
 from lup.policy.assets.host import document_digest, sed_output
 
-from lup.devtools.dev.questions import ReviewDetail, ReviewFile
+from lup.devtools.review.app import ReviewDetail, ReviewFile
 from lup.policy.assets.host import review_hook_call
 from lup.policy.kernel.decision import (
     DecisionEffect,

@@ -15,8 +15,13 @@ from lup.channels.models import Door, publish_atomic
 from lup.coordination.relay import MailboxRelay, WakeReceipts
 from lup.coordination.repository import RepositoryPeers
 from lup.coordination.wake import WakePath
-from lup.devtools.dev import questions
-from lup.devtools.dev.questions import ReviewDecision, ReviewDetail, ReviewInbox
+from lup.devtools.dashboard.reviews import (
+    ReviewDecision,
+    ReviewSnapshot,
+    dashboard_app,
+)
+from lup.devtools.review import app as review
+from lup.devtools.review.app import ReviewDetail
 from lup.policy.operations import Operation
 from lup.policy.relay import PersistentQuestion
 
@@ -45,7 +50,7 @@ async def test_browser_decision_relays_from_the_recipient_scope_once(
             raise OSError("Notification diagnostic store unavailable")
         publish_atomic(path, record)
 
-    monkeypatch.setattr("lup.devtools.dev.review_notifications.publish_atomic", publish)
+    monkeypatch.setattr("lup.devtools.review.notifications.publish_atomic", publish)
     upstream = tmp_path / "upstream"
     consumer = tmp_path / "consumer"
     for checkout in (upstream, consumer):
@@ -77,7 +82,7 @@ async def test_browser_decision_relays_from_the_recipient_scope_once(
         cwd=upstream,
         worktree=upstream,
     )
-    entry = questions.relay(upstream).record(
+    entry = review.relay(upstream).record(
         PersistentQuestion(
             id="browser-delivery",
             operation=operation,
@@ -88,9 +93,7 @@ async def test_browser_decision_relays_from_the_recipient_scope_once(
             resumption="native_retry",
         )
     )
-    application = questions.review_app(
-        BASE_URL, TOKEN, (upstream, consumer), discover=False
-    )
+    application = dashboard_app(BASE_URL, TOKEN, (upstream, consumer), discover=False)
     async with AsyncClient(
         transport=ASGITransport(app=application), base_url=BASE_URL
     ) as http:
@@ -98,7 +101,7 @@ async def test_browser_decision_relays_from_the_recipient_scope_once(
             "/api/reviews", headers={"Authorization": f"Bearer {TOKEN}"}
         )
         assert listed.status_code == 200
-        [summary] = ReviewInbox.model_validate(listed.json()).reviews
+        [summary] = ReviewSnapshot.model_validate(listed.json()).reviews
         response = await http.post(
             f"/api/reviews/{summary.key}/answer",
             headers={"Authorization": f"Bearer {TOKEN}", "Origin": BASE_URL},
@@ -109,9 +112,7 @@ async def test_browser_decision_relays_from_the_recipient_scope_once(
             },
         )
 
-    reopened = questions.review_app(
-        BASE_URL, TOKEN, (upstream, consumer), discover=False
-    )
+    reopened = dashboard_app(BASE_URL, TOKEN, (upstream, consumer), discover=False)
     async with AsyncClient(
         transport=ASGITransport(app=reopened), base_url=BASE_URL
     ) as http:
@@ -134,7 +135,7 @@ async def test_browser_decision_relays_from_the_recipient_scope_once(
             "Notification diagnostic store unavailable" in decision.notification.detail
         )
         assert "Notification diagnostic store unavailable" in persisted.detail
-    settled = questions.relay(upstream).find(entry.id)
+    settled = review.relay(upstream).find(entry.id)
     assert settled == decision.review.question
     assert settled is not None and settled.answer is not None
     assert settled.state == ("approved" if approved else "rejected")
@@ -184,5 +185,5 @@ async def test_browser_decision_relays_from_the_recipient_scope_once(
     assert MailboxRelay(root=consumer, member_id=MEMBER).tick() is None
     native_queue.assert_called_once()
     assert RepositoryPeers(consumer).waiting(MEMBER).messages == [message]
-    assert questions.relay(upstream).find(entry.id) == settled
+    assert review.relay(upstream).find(entry.id) == settled
     assert not target.exists()

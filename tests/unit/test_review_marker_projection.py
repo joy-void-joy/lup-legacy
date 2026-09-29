@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from lup.devtools.dev.questions import ReviewFile
+from lup.devtools.review.app import ReviewFile
 from lup.harness.codescan.markers import ScanMode, find_feedback
 from lup.policy.review import ReviewedFile
 

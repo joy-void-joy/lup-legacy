@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from lup.devtools.dev.questions import ReviewDetail
+from lup.devtools.review.app import ReviewDetail
 from lup.policy.assets.host import rewritten_text, sed_output
 from lup.policy.kernel.decision import KernelDecision
 from lup.policy.kernel.words import sed_invocation
@@ -67,7 +67,7 @@ def test_sed_diff_uses_only_captured_input_and_preserves_modes_and_bytes(
     detail = ReviewDetail.of(tmp_path, entry, "operator")
     assert detail.command == command
     assert detail.preview_unavailable == ""
-    assert "inbox environment" in detail.preview_notice
+    assert "where the dashboard runs" in detail.preview_notice
     assert "captured input" in detail.preview_notice
     assert detail.stale_reason
 
@@ -341,7 +341,7 @@ def test_literal_brackets_remain_supported_without_locale_regex_semantics(
 
     assert preview.unavailable == ""
     assert preview.files[0].after == after
-    assert "inbox environment" in preview.notice
+    assert "where the dashboard runs" in preview.notice
 
 
 @pytest.mark.parametrize(

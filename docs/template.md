@@ -176,12 +176,14 @@ display around the readers it names.
 - `agent` — Agent introspection and debugging
 - `conversation` — Retain authenticated AI conversations
 - `coordination` — Reach the other sessions working in this repository
+- `dashboard` — Serve the operator's page over the parked reviews
 - `dev` — Read this repository, and hold it to what it settled
 - `feedback` — Feedback state, metrics, and commits
 - `git` — Branches, worktrees, pull requests, and conflicts
 - `harness` — Generate and launch the native harnesses
 - `ledger` — Read and preserve the notes this repository has recorded
 - `resolve` — Drive a resolver run, and watch or answer it
+- `review` — The parked reviews an operator answers, and what each waits on
 - `run` — Follow work that outlives its tool call
 - `setup` — Interactive setup wizard, and its page
 - `sync` — Stay in step with upstream: tracked repos, and what they owe

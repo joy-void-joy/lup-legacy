@@ -13,6 +13,7 @@ from typing import Final
 
 import pytest
 import sh
+import typer
 import uvicorn
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
@@ -24,18 +25,20 @@ from lup.coordination.refs import ActorRef
 from lup.coordination.repository import RepositoryPeers
 from lup.coordination.roster import RosterMember
 from lup.coordination.wake import WakePath, Woken
-from lup.devtools.dev import questions
-from lup.devtools.dev.questions import (
-    ReviewDecision,
+from lup.devtools.dashboard import reviews as dashboard
+from lup.devtools.dashboard.reviews import ReviewDecision, ReviewSnapshot
+from lup.devtools.review import notifications
+from lup.devtools.review.app import (
     ReviewDetail,
     ReviewFile,
-    ReviewInbox,
     ReviewLine,
     ReviewSuppression,
+    relay,
 )
-from lup.devtools.dev.review_notifications import (
+from lup.devtools.review.notifications import (
     ReviewNotification,
     ReviewNotifications,
+    notify_requester,
 )
 from lup.policy.operations import Operation
 from lup.policy.relay import PersistentQuestion, QuestionRelay
@@ -54,16 +57,23 @@ def isolated_bundle(monkeypatch: pytest.MonkeyPatch) -> None:
     """Exercise the real Host guard without making API tests build JavaScript."""
 
     def build(title: str, url: str, surface: str) -> FastAPI:
-        assert surface == "reviews"
-        return page_app(title, url, "<!doctype html><main>Review inbox</main>")
+        assert surface == "dashboard"
+        return page_app(title, url, "<!doctype html><main>Dashboard</main>")
 
     monkeypatch.setattr(web_serve, "bundle_app", build)
+
+
+def mounted(root: Path) -> typer.Typer:
+    """The `dashboard` group as a composed CLI mounts it, so `serve` is its verb."""
+    cli = typer.Typer()
+    cli.add_typer(dashboard.create_operator_dashboard_app(root), name="dashboard")
+    return cli
 
 
 def client(*roots: Path, discover: bool = False) -> AsyncClient:
     return AsyncClient(
         transport=ASGITransport(
-            app=questions.review_app(BASE_URL, TOKEN, roots, discover=discover)
+            app=dashboard.dashboard_app(BASE_URL, TOKEN, roots, discover=discover)
         ),
         base_url=BASE_URL,
     )
@@ -80,7 +90,7 @@ def parked(root: Path, question_id: str = "q-1") -> PersistentQuestion:
         cwd=root,
         worktree=root,
     )
-    return questions.relay(root).record(
+    return relay(root).record(
         PersistentQuestion(
             id=question_id,
             operation=operation,
@@ -96,7 +106,7 @@ def parked(root: Path, question_id: str = "q-1") -> PersistentQuestion:
 async def only_key(http: AsyncClient) -> str:
     response = await http.get("/api/reviews", headers=AUTHORIZATION)
     assert response.status_code == 200
-    snapshot = ReviewInbox.model_validate(response.json())
+    snapshot = ReviewSnapshot.model_validate(response.json())
     assert len(snapshot.reviews) == 1
     return snapshot.reviews[0].key
 
@@ -158,7 +168,7 @@ async def test_answer_requires_the_exact_origin(
         )
 
     assert response.status_code == 403
-    assert questions.relay(tmp_path).find(entry.id) == entry
+    assert relay(tmp_path).find(entry.id) == entry
 
 
 async def test_answer_requires_authentication_even_with_the_correct_origin(
@@ -175,7 +185,7 @@ async def test_answer_requires_authentication_even_with_the_correct_origin(
         )
 
     assert response.status_code == 401
-    assert questions.relay(tmp_path).find(entry.id) == entry
+    assert relay(tmp_path).find(entry.id) == entry
 
 
 @pytest.mark.parametrize(
@@ -196,7 +206,7 @@ async def test_answer_refuses_browser_simple_request_media_types(
         )
 
     assert response.status_code == 415
-    assert questions.relay(tmp_path).find(entry.id) == entry
+    assert relay(tmp_path).find(entry.id) == entry
 
 
 async def test_browser_cannot_choose_the_answering_principal(tmp_path: Path) -> None:
@@ -215,7 +225,7 @@ async def test_browser_cannot_choose_the_answering_principal(tmp_path: Path) -> 
         )
 
     assert response.status_code == 422
-    assert questions.relay(tmp_path).find(entry.id) == entry
+    assert relay(tmp_path).find(entry.id) == entry
 
 
 async def test_malformed_answer_is_a_validation_error(tmp_path: Path) -> None:
@@ -229,7 +239,7 @@ async def test_malformed_answer_is_a_validation_error(tmp_path: Path) -> None:
         )
 
     assert response.status_code == 422
-    assert questions.relay(tmp_path).find(entry.id) == entry
+    assert relay(tmp_path).find(entry.id) == entry
 
 
 async def test_same_question_id_in_two_roots_stays_distinct(tmp_path: Path) -> None:
@@ -241,7 +251,7 @@ async def test_same_question_id_in_two_roots_stays_distinct(tmp_path: Path) -> N
         response = await http.get(
             "/api/reviews", params={"root": str(outside)}, headers=AUTHORIZATION
         )
-        snapshot = ReviewInbox.model_validate(response.json())
+        snapshot = ReviewSnapshot.model_validate(response.json())
         details = [
             ReviewDetail.model_validate(
                 (
@@ -297,7 +307,7 @@ async def test_file_detail_uses_the_captured_preimage_and_preserves_both_documen
             "preconditions": {path: before},
         }
     )
-    questions.relay(tmp_path).record(entry)
+    relay(tmp_path).record(entry)
     path.write_text("somebody else's intervening edit\n", encoding="utf-8")
     async with client(tmp_path) as http:
         key = await only_key(http)
@@ -547,7 +557,7 @@ async def test_an_absent_preimage_becoming_a_file_prevents_approval(
     entry = parked(tmp_path)
     path = tmp_path / "created-later.txt"
     entry = entry.model_copy(update={"preconditions": {path: None}})
-    questions.relay(tmp_path).record(entry)
+    relay(tmp_path).record(entry)
     path.write_text("must survive", encoding="utf-8")
     async with client(tmp_path) as http:
         key = await only_key(http)
@@ -558,7 +568,7 @@ async def test_an_absent_preimage_becoming_a_file_prevents_approval(
         )
 
     assert response.status_code == 409
-    assert questions.relay(tmp_path).find(entry.id) == entry
+    assert relay(tmp_path).find(entry.id) == entry
 
 
 async def test_a_changed_fingerprint_never_records_a_decision(tmp_path: Path) -> None:
@@ -572,7 +582,7 @@ async def test_a_changed_fingerprint_never_records_a_decision(tmp_path: Path) ->
         )
 
     assert response.status_code == 409
-    assert questions.relay(tmp_path).find(entry.id) == entry
+    assert relay(tmp_path).find(entry.id) == entry
 
 
 async def test_expired_questions_are_visible_but_cannot_be_answered(
@@ -582,7 +592,7 @@ async def test_expired_questions_are_visible_but_cannot_be_answered(
     entry = entry.model_copy(
         update={"expires": datetime.now(UTC) - timedelta(seconds=1)}
     )
-    questions.relay(tmp_path).record(entry)
+    relay(tmp_path).record(entry)
     async with client(tmp_path) as http:
         key = await only_key(http)
         shown = await http.get(f"/api/reviews/{key}", headers=AUTHORIZATION)
@@ -594,7 +604,7 @@ async def test_expired_questions_are_visible_but_cannot_be_answered(
 
     assert not ReviewDetail.model_validate(shown.json()).summary.answerable
     assert answered.status_code == 409
-    stored = questions.relay(tmp_path).find(entry.id)
+    stored = relay(tmp_path).find(entry.id)
     assert stored is not None
     assert stored.answer is None
 
@@ -627,11 +637,11 @@ async def test_decision_is_durable_without_executing_the_command(
     assert decision.review.question.answer is not None
     assert decision.review.question.answer.principal == "operator"
     assert decision.review.question.answer.note == "Retry the exact call."
-    assert questions.relay(tmp_path).find(entry.id) == decision.review.question
+    assert relay(tmp_path).find(entry.id) == decision.review.question
     assert not decision.notification.woken
     assert not (tmp_path / "must-not-execute").exists()
     assert duplicate.status_code == 409
-    assert not ReviewInbox.model_validate(shown.json()).reviews[0].answerable
+    assert not ReviewSnapshot.model_validate(shown.json()).reviews[0].answerable
 
 
 async def test_notification_failure_cannot_undo_the_recorded_answer(
@@ -644,7 +654,7 @@ async def test_notification_failure_cannot_undo_the_recorded_answer(
         assert question.state == "rejected"
         raise OSError("notification transport unavailable")
 
-    monkeypatch.setattr(questions, "notify_requester", fail)
+    monkeypatch.setattr(dashboard, "notify_requester", fail)
     async with client(tmp_path) as http:
         key = await only_key(http)
         response = await http.post(
@@ -660,7 +670,7 @@ async def test_notification_failure_cannot_undo_the_recorded_answer(
     assert response.status_code == 200
     decision = ReviewDecision.model_validate(response.json())
     assert decision.review.question.state == "rejected"
-    assert questions.relay(tmp_path).find(entry.id) == decision.review.question
+    assert relay(tmp_path).find(entry.id) == decision.review.question
     assert not decision.notification.queued
     assert not decision.notification.woken
     assert "no confirmed outcome" in decision.notification.detail
@@ -671,8 +681,8 @@ async def test_notification_failure_cannot_undo_the_recorded_answer(
 
 async def test_event_stream_sends_a_snapshot_then_queue_changes(tmp_path: Path) -> None:
     parked(tmp_path)
-    app = questions.review_app(BASE_URL, TOKEN, (tmp_path,))
-    snapshots: list[ReviewInbox] = []
+    app = dashboard.dashboard_app(BASE_URL, TOKEN, (tmp_path,))
+    snapshots: list[ReviewSnapshot] = []
     disconnected = asyncio.Event()
     started = asyncio.Event()
     statuses: list[int] = []
@@ -709,7 +719,7 @@ async def test_event_stream_sends_a_snapshot_then_queue_changes(tmp_path: Path) 
                 for line in message["body"].splitlines():
                     if not line:
                         continue
-                    snapshots.append(ReviewInbox.model_validate_json(line))
+                    snapshots.append(ReviewSnapshot.model_validate_json(line))
                 if len(snapshots) == 1:
                     parked(tmp_path, "q-2")
                 else:
@@ -744,9 +754,9 @@ def test_root_discovery_keeps_only_named_repositories_and_their_worktrees(
         requested.append(root)
         return discoveries[root]
 
-    monkeypatch.setattr(questions, "sibling_worktrees", discover)
+    monkeypatch.setattr(dashboard, "sibling_worktrees", discover)
 
-    roots = questions.review_roots(current, [additional, current])
+    roots = dashboard.review_roots(current, [additional, current])
 
     assert roots == (current, sibling, additional, additional_sibling)
     assert set(requested) == {current, additional}
@@ -786,7 +796,7 @@ async def test_cli_serves_selected_roots_and_keeps_the_token_out_of_public_pages
     watched = selected_names or ("current",)
     entry = entries[watched[0]]
     monkeypatch.setattr(
-        questions,
+        dashboard,
         "sibling_worktrees",
         lambda root: [root, root.with_name(f"{root.name}-sibling")],
     )
@@ -807,7 +817,7 @@ async def test_cli_serves_selected_roots_and_keeps_the_token_out_of_public_pages
     monkeypatch.setattr(secrets, "token_urlsafe", token)
     monkeypatch.setattr(webbrowser, "open", opened.append)
     monkeypatch.setattr(uvicorn, "run", serve)
-    arguments = ["serve", "--port", str(requested_port)]
+    arguments = ["dashboard", "serve", "--port", str(requested_port)]
     arguments.extend(
         argument
         for name in selected_names
@@ -816,7 +826,7 @@ async def test_cli_serves_selected_roots_and_keeps_the_token_out_of_public_pages
     if not open_page:
         arguments.append("--no-open")
 
-    result = CliRunner().invoke(questions.create_questions_app(current), arguments)
+    result = CliRunner().invoke(mounted(current), arguments)
 
     assert result.exit_code == 0, result.output
     assert sizes == [32]
@@ -830,8 +840,8 @@ async def test_cli_serves_selected_roots_and_keeps_the_token_out_of_public_pages
         page = await http.get("/")
         unauthenticated = await http.get("/api/reviews")
         snapshot = await http.get("/api/reviews", headers=AUTHORIZATION)
-        inbox = ReviewInbox.model_validate(snapshot.json())
-        selected = next(item for item in inbox.reviews if item.id == entry.id)
+        queue = ReviewSnapshot.model_validate(snapshot.json())
+        selected = next(item for item in queue.reviews if item.id == entry.id)
         decision = await http.post(
             f"/api/reviews/{selected.key}/answer",
             headers={**AUTHORIZATION, "Origin": expected_url},
@@ -843,11 +853,11 @@ async def test_cli_serves_selected_roots_and_keeps_the_token_out_of_public_pages
     assert unauthenticated.status_code == 401
     assert decision.status_code == 200
     expected_names = {name for root in watched for name in (root, f"{root}-sibling")}
-    assert {item.id for item in inbox.reviews} == {
+    assert {item.id for item in queue.reviews} == {
         f"{name}-question" for name in expected_names
     }
-    assert {Path(item.path).name for item in inbox.roots} == expected_names
-    assert len(inbox.roots) == len(expected_names)
+    assert {Path(item.path).name for item in queue.roots} == expected_names
+    assert len(queue.roots) == len(expected_names)
 
 
 @pytest.mark.parametrize("host", ["0.0.0.0", "192.0.2.1", "attacker.example"])
@@ -865,11 +875,11 @@ def test_cli_refuses_non_loopback_before_serving_or_discovering_roots(
         del host, port, access_log
         served.append(app)
 
-    monkeypatch.setattr(questions, "sibling_worktrees", discover)
+    monkeypatch.setattr(dashboard, "sibling_worktrees", discover)
     monkeypatch.setattr(uvicorn, "run", serve)
 
     result = CliRunner().invoke(
-        questions.create_questions_app(tmp_path), ["serve", "--host", host, "--no-open"]
+        mounted(tmp_path), ["dashboard", "serve", "--host", host, "--no-open"]
     )
 
     assert result.exit_code != 0
@@ -885,9 +895,9 @@ def git_repository(root: Path) -> None:
         "-C",
         str(root),
         "-c",
-        "user.name=Inbox test",
+        "user.name=Dashboard test",
         "-c",
-        "user.email=inbox-test@example.invalid",
+        "user.email=dashboard-test@example.invalid",
         "commit",
         "--allow-empty",
         "-m",
@@ -895,7 +905,7 @@ def git_repository(root: Path) -> None:
     )
 
 
-async def test_open_inbox_discovers_a_worktree_created_after_startup(
+async def test_open_dashboard_discovers_a_worktree_created_after_startup(
     tmp_path: Path,
 ) -> None:
     root = tmp_path / "repository"
@@ -907,11 +917,11 @@ async def test_open_inbox_discovers_a_worktree_created_after_startup(
         sh.git("-C", str(root), "worktree", "add", "-b", "later", str(sibling))
         entry = parked(sibling, "arrived-later-question")
         after = await http.get("/api/reviews", headers=AUTHORIZATION)
-        snapshot = ReviewInbox.model_validate(after.json())
+        snapshot = ReviewSnapshot.model_validate(after.json())
         found = next(row for row in snapshot.reviews if row.id == entry.id)
         detail = await http.get(f"/api/reviews/{found.key}", headers=AUTHORIZATION)
 
-    assert {row.id for row in ReviewInbox.model_validate(before.json()).reviews} == {
+    assert {row.id for row in ReviewSnapshot.model_validate(before.json()).reviews} == {
         "original-question"
     }
     assert {row.id for row in snapshot.reviews} == {
@@ -923,7 +933,7 @@ async def test_open_inbox_discovers_a_worktree_created_after_startup(
     assert ReviewDetail.model_validate(detail.json()).question == entry
 
 
-async def test_inbox_tracks_siblings_after_its_launch_worktree_is_removed(
+async def test_dashboard_tracks_siblings_after_its_launch_worktree_is_removed(
     tmp_path: Path,
 ) -> None:
     root = tmp_path / "repository"
@@ -941,12 +951,12 @@ async def test_inbox_tracks_siblings_after_its_launch_worktree_is_removed(
         sh.git("-C", str(root), "worktree", "add", "-b", "arrived", str(arrived))
         entry = parked(arrived, "arrived-question")
         after = await http.get("/api/reviews", headers=AUTHORIZATION)
-        snapshot = ReviewInbox.model_validate(after.json())
+        snapshot = ReviewSnapshot.model_validate(after.json())
         found = next(row for row in snapshot.reviews if row.id == entry.id)
         detail = await http.get(f"/api/reviews/{found.key}", headers=AUTHORIZATION)
 
     assert before.status_code == after.status_code == 200
-    assert {row.id for row in ReviewInbox.model_validate(before.json()).reviews} == {
+    assert {row.id for row in ReviewSnapshot.model_validate(before.json()).reviews} == {
         "remaining-question"
     }
     assert snapshot.errors == []
@@ -972,7 +982,7 @@ def test_requester_notification_crosses_repositories_and_deduplicates_worktree_r
     git_repository(consumer)
     sh.git("-C", str(consumer), "worktree", "add", "-b", "sibling", str(sibling))
     entry = parked(upstream)
-    entry = questions.relay(upstream).answer(
+    entry = relay(upstream).answer(
         entry.id, "operator", True, "Please retry the reviewed operation."
     )
     member = RosterMember(
@@ -1018,9 +1028,9 @@ def test_requester_notification_crosses_repositories_and_deduplicates_worktree_r
 
     monkeypatch.setattr(RepositoryPeers, "present", present)
     monkeypatch.setattr(RepositoryPeers, "send", send)
-    monkeypatch.setattr(questions, "wake", wake)
+    monkeypatch.setattr(notifications, "wake", wake)
 
-    notification = questions.notify_requester((upstream, consumer, sibling), entry)
+    notification = notify_requester((upstream, consumer, sibling), entry)
 
     assert visited.count(consumer_store) == 1
     assert visited.count(upstream_store) == 1
@@ -1055,11 +1065,11 @@ async def test_unavailable_first_queue_does_not_hide_a_healthy_repository(
     entry = parked(healthy, "healthy-question")
     if not missing_root:
         git_repository(unavailable)
-        questions.relay(unavailable).path.mkdir(parents=True)
+        relay(unavailable).path.mkdir(parents=True)
     async with client(unavailable, healthy, discover=True) as http:
         response = await http.get("/api/reviews", headers=AUTHORIZATION)
         assert response.status_code == 200
-        snapshot = ReviewInbox.model_validate(response.json())
+        snapshot = ReviewSnapshot.model_validate(response.json())
         key = next(item.key for item in snapshot.reviews if item.id == entry.id)
         found = await http.get(f"/api/reviews/{key}", headers=AUTHORIZATION)
         missing = await http.get("/api/reviews/unknown", headers=AUTHORIZATION)
@@ -1097,10 +1107,10 @@ async def test_saved_answer_is_returned_when_notification_makes_the_queue_unavai
         assert roots == (tmp_path,)
         assert settled.state == "approved"
         assert settled.answer is not None
-        monkeypatch.setattr(questions, "relay", unavailable)
+        monkeypatch.setattr(dashboard, "relay", unavailable)
         return ReviewNotification(queued=True, woken=True, detail="Requester notified.")
 
-    monkeypatch.setattr(questions, "notify_requester", notify)
+    monkeypatch.setattr(dashboard, "notify_requester", notify)
     async with client(tmp_path) as http:
         key = await only_key(http)
         response = await http.post(
@@ -1127,7 +1137,12 @@ async def test_saved_answer_is_returned_when_notification_makes_the_queue_unavai
 
 
 @pytest.mark.parametrize(
-    "module", ["lup.devtools.dev.questions", "lup.devtools.dev.app"]
+    "module",
+    [
+        "lup.devtools.review.app",
+        "lup.devtools.dashboard.reviews",
+        "lup.devtools.dev.app",
+    ],
 )
 def test_terminal_review_commands_import_without_optional_web_dependencies(
     tmp_path: Path, module: str

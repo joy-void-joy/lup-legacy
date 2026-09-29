@@ -940,7 +940,7 @@ install — so it cannot differ per worktree, and it is user-level configuration
 this repository does not write. A Codex editor session would need the extension
 host inside the image, or a host posture with a prepared home. Neither is
 built, and neither is needed for the review problem: what a Codex session's
-reviewer reads is `dev questions show`.
+reviewer reads is `review show`, or the dashboard.
 
 
 Commit generated artifacts together with the catalog changes that produced

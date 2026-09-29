@@ -3210,19 +3210,18 @@ def reviewed_decision(
         str(cwd),
         *(["--project", project] if project else []),
         "lup-devtools",
-        "dev",
-        "questions",
+        "review",
     ]
     show = shlex.join([*prefix, "show", identifier])
-    answer = shlex.join([*prefix, "answer", identifier, "--as", "operator"])
-    reject = shlex.join([*prefix, "reject", identifier, "--as", "operator"])
+    approve = shlex.join([*prefix, "approve", identifier, "--as", "operator"])
+    decline = shlex.join([*prefix, "decline", identifier, "--as", "operator"])
     return decision.revised(
         effect="deny",
         recovery=(
             f"Review {identifier} is {result['state']}; this request is already submitted. "
-            "Wait for its answer in the review inbox, then retry this exact tool call. "
+            "Wait for its answer on the dashboard, then retry this exact tool call. "
             "Do not add an escalation or rewrite the call: that creates a different review. "
-            f"The operator can also run `{show}`, then `{answer}` or `{reject}`. "
+            f"The operator can also run `{show}`, then `{approve}` or `{decline}`. "
             "Changed file contents or policy require fresh review."
         ),
     )

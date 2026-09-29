@@ -277,7 +277,7 @@ def shell_preview(question: PersistentQuestion) -> FilePreview:
         else FilePreview(
             files=[file for result in results for file in result.files],
             notice=(
-                "Preview computed in inbox environment using sandboxed GNU sed and the captured input. "
+                "Preview computed where the dashboard runs, using sandboxed GNU sed and the captured input. "
                 "The request did not capture its execution environment; compare this simulation with the exact command."
             ),
         )

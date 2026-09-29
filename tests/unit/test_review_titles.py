@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from lup.devtools.dev.questions import ReviewSummary
+from lup.devtools.review.app import ReviewSummary
 from lup.policy.operations import Operation
 from lup.policy.relay import PersistentQuestion
 from lup.types import JsonObject

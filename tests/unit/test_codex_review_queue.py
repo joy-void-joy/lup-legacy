@@ -337,9 +337,8 @@ def test_requester_cannot_answer_its_own_question(
                 [
                     *runner,
                     "lup-devtools",
-                    "dev",
-                    "questions",
-                    "answer",
+                    "review",
+                    "approve",
                     question.id,
                     "--as",
                     "operator",
@@ -356,9 +355,8 @@ def test_requester_cannot_answer_its_own_question(
                 "--directory",
                 str(root),
                 "lup-devtools",
-                "dev",
-                "questions",
-                "answer",
+                "review",
+                "approve",
                 question.id,
                 "--as",
                 "operator",
@@ -470,6 +468,6 @@ def test_review_notice_quotes_the_checkout(root: Path) -> None:
     (nested / "DESIGN.md").write_text("# Previous design\n")
     notice = denial(hook(nested, replacement()))
     assert "uv run --directory '" in notice
-    assert "questions show" in notice
-    assert "questions answer" in notice
-    assert "questions reject" in notice
+    assert "review show" in notice
+    assert "review approve" in notice
+    assert "review decline" in notice

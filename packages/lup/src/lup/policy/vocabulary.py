@@ -914,28 +914,37 @@ def devtools_rules() -> list[ShellSubcommandRule]:
     )
     return [
         ShellSubcommandRule(
-            name="dev",
+            name="review",
             operations=[
-                *[
-                    ShellOperationRule(
-                        name=action,
-                        parents=["questions"],
-                        operator_only=True,
-                        reason="a requesting agent cannot approve or reject review-queue operations",
-                        recovery="The operator must answer from a terminal outside the agent session.",
-                    )
-                    for action in ("answer", "reject")
-                ],
+                ShellOperationRule(
+                    name=action,
+                    operator_only=True,
+                    reason="a requesting agent cannot approve or decline a review",
+                    recovery=(
+                        "The operator answers on the dashboard or from a terminal "
+                        "outside the agent session."
+                    ),
+                )
+                for action in ("approve", "decline")
+            ],
+        ),
+        ShellSubcommandRule(
+            name="dashboard",
+            operations=[
                 ShellOperationRule(
                     name="serve",
-                    parents=["questions"],
                     operator_only=True,
-                    reason="a requesting agent cannot mint operator credentials for the review inbox",
+                    reason="a requesting agent cannot mint operator credentials for the dashboard",
                     recovery=(
-                        "The operator must start `uv run lup-devtools dev questions serve` "
+                        "The operator must start `uv run lup-devtools dashboard serve` "
                         "from a terminal outside the agent session."
                     ),
                 ),
+            ],
+        ),
+        ShellSubcommandRule(
+            name="dev",
+            operations=[
                 # Retiring deletes the note and the words it was written in,
                 # which is the one step of the verify-solved pass nothing can
                 # undo: a claim wrongly retired takes the concern with it,

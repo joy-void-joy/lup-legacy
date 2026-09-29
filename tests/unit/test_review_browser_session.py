@@ -5,21 +5,21 @@ from pathlib import Path
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-from lup.devtools.dev.questions import review_app
+from lup.devtools.dashboard.reviews import dashboard_app
 
 
 async def test_browser_authority_is_not_emitted_or_accepted_as_a_cookie(
     tmp_path: Path,
 ) -> None:
     url = "http://127.0.0.1:8766"
-    app = review_app(url, "operator-capability", (tmp_path,))
+    app = dashboard_app(url, "operator-capability", (tmp_path,))
     async with AsyncClient(transport=ASGITransport(app=app), base_url=url) as client:
         authenticated = await client.get(
             "/api/reviews", headers={"Authorization": "Bearer operator-capability"}
         )
         assert authenticated.status_code == 200
         assert "set-cookie" not in authenticated.headers
-        client.cookies.set("lup-review-token", "operator-capability")
+        client.cookies.set("lup-dashboard-token", "operator-capability")
         assert (await client.get("/api/reviews")).status_code == 401
 
 
@@ -37,7 +37,7 @@ async def test_browser_answers_require_exact_origin_and_json(
     tmp_path: Path, origin: str, media_type: str, status: int
 ) -> None:
     url = "http://127.0.0.1:8766"
-    app = review_app(url, "operator-capability", (tmp_path,))
+    app = dashboard_app(url, "operator-capability", (tmp_path,))
     async with AsyncClient(transport=ASGITransport(app=app), base_url=url) as client:
         response = await client.post(
             "/api/reviews/missing/answer",
@@ -56,7 +56,7 @@ async def test_server_restart_invalidates_the_prior_browser_capability(
     tmp_path: Path,
 ) -> None:
     url = "http://127.0.0.1:8766"
-    restarted = review_app(url, "second-capability", (tmp_path,))
+    restarted = dashboard_app(url, "second-capability", (tmp_path,))
     async with AsyncClient(
         transport=ASGITransport(app=restarted), base_url=url
     ) as client:

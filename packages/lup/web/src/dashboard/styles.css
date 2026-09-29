@@ -12,7 +12,7 @@ h1, h2, h3, h4, p { margin-top: 0; }
 h1 { font-size: 1.2rem; line-height: 1.2; margin: 0; }
 h2 { font-size: 1.1rem; line-height: 1.35; overflow-wrap: anywhere; margin: 0; }
 h3 { font-size: 1rem; }
-.inbox { display: flex; flex-direction: column; height: 100dvh; }
+.dashboard { display: flex; flex-direction: column; height: 100dvh; }
 .masthead { flex: none; display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: .55rem 1rem; border-bottom: 1px solid var(--line); background: #fff; }
 .eyebrow { font-size: .75rem; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin-bottom: .35rem; }
 .connection { display: flex; align-items: center; flex-wrap: wrap; gap: .8rem; font-size: .85rem; }
@@ -144,7 +144,7 @@ textarea { display: block; width: 100%; resize: vertical; min-height: 3rem; max-
 .decision-hint { color: var(--muted); font-size: .8rem; }
 .approve { color: #fff; background: var(--green); border-color: var(--green); }
 .approve:hover { color: #fff; background: #10573f; border-color: #10573f; }
-.reject { color: #963e30; border-color: #d7b8b0; }
+.decline { color: #963e30; border-color: #d7b8b0; }
 .answer-record { flex: none; max-height: 20vh; overflow: auto; padding: .5rem; }
 .answer-record p { white-space: pre-wrap; overflow-wrap: anywhere; }
 .command-only { flex: 1; min-height: 0; overflow: auto; }

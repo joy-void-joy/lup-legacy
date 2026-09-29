@@ -397,7 +397,7 @@ def create_hooks_app(declared: Callable[[], HookSet]) -> typer.Typer:
         """List execution observations, including unverified historical approvals.
 
         These records grant no reusable authority. Explicit, single-use answers
-        and their disposition are shown by ``dev questions``.
+        and their disposition are shown by ``review``.
         """
         held = remembered(project_root())
         if as_json:

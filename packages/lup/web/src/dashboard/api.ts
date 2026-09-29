@@ -1,6 +1,7 @@
-import type { ReviewAnswer, ReviewDecision, ReviewDetail, ReviewInbox } from "../generated/views";
+import type { ReviewAnswer, ReviewDecision, ReviewDetail, ReviewSnapshot } from "../generated/views";
 
-const TOKEN_KEY = "lup-review-token";
+/** Where this origin keeps the operator's capability, and the key a storage event names. */
+export const TOKEN_KEY = "lup-dashboard-token";
 export type ReviewAccess = { token: string; notice: string };
 
 /** Share the launch capability only with tabs at this exact browser origin. */
@@ -56,7 +57,7 @@ export function reviewLink(id: string, root: string | null = null): string {
   return url.href;
 }
 
-export async function readInbox(token: string, signal?: AbortSignal): Promise<ReviewInbox> {
+export async function readReviews(token: string, signal?: AbortSignal): Promise<ReviewSnapshot> {
   return (await accepted(await fetch("api/reviews", { headers: authorization(token), signal }))).json();
 }
 
@@ -75,7 +76,7 @@ export async function answerReview(key: string, answer: ReviewAnswer, token: str
 }
 
 /** Decode complete NDJSON records even when UTF-8 or a record spans chunks. */
-export async function* followInbox(token: string, signal: AbortSignal): AsyncGenerator<ReviewInbox> {
+export async function* followReviews(token: string, signal: AbortSignal): AsyncGenerator<ReviewSnapshot> {
   const response = await accepted(await fetch("api/events", {
     headers: authorization(token), signal,
   }));
@@ -91,10 +92,10 @@ export async function* followInbox(token: string, signal: AbortSignal): AsyncGen
       for (; newline !== -1; newline = buffered.indexOf("\n")) {
         const record = buffered.slice(0, newline);
         buffered = buffered.slice(newline + 1);
-        if (record.trim() !== "") yield JSON.parse(record) as ReviewInbox;
+        if (record.trim() !== "") yield JSON.parse(record) as ReviewSnapshot;
       }
       if (chunk.done) {
-        if (buffered.trim() !== "") yield JSON.parse(buffered) as ReviewInbox;
+        if (buffered.trim() !== "") yield JSON.parse(buffered) as ReviewSnapshot;
         return;
       }
     }

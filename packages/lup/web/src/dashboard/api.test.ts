@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { answerReview, followInbox, readInbox, readReviewLink, reviewLink, takeToken } from "./api";
+import { answerReview, followReviews, readReviews, readReviewLink, reviewLink, takeToken } from "./api";
 
 const originalFetch = globalThis.fetch;
 const originalStorage = Object.getOwnPropertyDescriptor(globalThis, "localStorage");
@@ -19,8 +19,8 @@ describe("review capability", () => {
     expect(takeToken()).toEqual({ token: "operator-secret", notice: "" });
     expect(window.location.hash).toBe("");
     expect(takeToken()).toEqual({ token: "operator-secret", notice: "" });
-    expect(localStorage.getItem("lup-review-token")).toBe("operator-secret");
-    expect(sessionStorage.getItem("lup-review-token")).toBeNull();
+    expect(localStorage.getItem("lup-dashboard-token")).toBe("operator-secret");
+    expect(sessionStorage.getItem("lup-dashboard-token")).toBeNull();
   });
 
   test("authenticates reads and answers without putting the capability in the URL or body", async () => {
@@ -29,7 +29,7 @@ describe("review capability", () => {
       calls.push({ url: String(input), options });
       return Response.json(snapshot);
     }, { preconnect() {} });
-    await readInbox("operator-secret");
+    await readReviews("operator-secret");
     await answerReview("tree/request", { approved: false, note: "Use a scoped change", fingerprint: "exact" }, "operator-secret");
     expect(calls.map((call) => call.url)).toEqual(["api/reviews", "api/reviews/tree%2Frequest/answer"]);
     for (const call of calls) expect(new Headers(call.options?.headers).get("Authorization")).toBe("Bearer operator-secret");
@@ -58,13 +58,13 @@ describe("review capability", () => {
       headers = new Headers(options?.headers);
       return Response.json(snapshot);
     }, { preconnect() {} });
-    await readInbox("");
+    await readReviews("");
     expect(headers.has("Authorization")).toBe(false);
   });
 
   test("stale tab storage never overrides the origin's current launch token", () => {
-    sessionStorage.setItem("lup-review-token", "previous-launch");
-    localStorage.setItem("lup-review-token", "current-launch");
+    sessionStorage.setItem("lup-dashboard-token", "previous-launch");
+    localStorage.setItem("lup-dashboard-token", "current-launch");
     expect(takeToken().token).toBe("current-launch");
     localStorage.clear();
     expect(takeToken().token).toBe("");
@@ -80,7 +80,7 @@ describe("review capability", () => {
     expect(access.token).toBe("private-launch");
     expect(access.notice).toContain("Browser storage is unavailable");
     expect(window.location.hash).toBe("#review=q1");
-    expect(localStorage.getItem("lup-review-token")).toBeNull();
+    expect(localStorage.getItem("lup-dashboard-token")).toBeNull();
   });
 
   test("a denied storage read reports the problem and preserves access already held in memory", () => {
@@ -101,13 +101,13 @@ describe("review stream", () => {
       },
     })), { preconnect() {} });
     const received = [];
-    for await (const entry of followInbox("secret", new AbortController().signal)) received.push(entry);
+    for await (const entry of followReviews("secret", new AbortController().signal)) received.push(entry);
     expect(received).toEqual([wanted, snapshot]);
   });
 
   test("surfaces refused credentials instead of decoding an error as a snapshot", async () => {
     globalThis.fetch = Object.assign(async () => Response.json({ detail: "Access denied" }, { status: 403 }), { preconnect() {} });
-    await expect(followInbox("bad", new AbortController().signal).next()).rejects.toThrow("Access denied");
+    await expect(followReviews("bad", new AbortController().signal).next()).rejects.toThrow("Access denied");
   });
 
   test("closing a reader cancels the underlying stream", async () => {
@@ -116,7 +116,7 @@ describe("review stream", () => {
       start(controller) { controller.enqueue(new TextEncoder().encode(`${JSON.stringify(snapshot)}\n`)); },
       cancel() { cancelled = true; },
     })), { preconnect() {} });
-    const reader = followInbox("secret", new AbortController().signal);
+    const reader = followReviews("secret", new AbortController().signal);
     await reader.next();
     await reader.return(undefined);
     expect(cancelled).toBe(true);

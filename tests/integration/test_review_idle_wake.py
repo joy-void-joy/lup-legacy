@@ -25,8 +25,9 @@ from lup.coordination.identity import MEMBER_ENV, NAME_ENV, member_ref
 from lup.coordination.relay import MailboxRelay
 from lup.coordination.repository import RepositoryPeers
 from lup.coordination.wake import WakePath
-from lup.devtools.dev import questions
-from lup.devtools.dev.questions import ReviewDecision, ReviewInbox
+from lup.devtools.dashboard import reviews as dashboard
+from lup.devtools.dashboard.reviews import ReviewDecision, ReviewSnapshot
+from lup.devtools.review import app as review
 from lup.policy.operations import Operation
 from lup.policy.relay import PersistentQuestion
 from lup.providers.codex.app_server import (
@@ -295,7 +296,7 @@ async def test_browser_answer_starts_an_idle_codex_turn_through_the_relay(
                     cwd=root,
                     worktree=root,
                 )
-                entry = questions.relay(root).record(
+                entry = review.relay(root).record(
                     PersistentQuestion(
                         id="idle-review-question",
                         operation=operation,
@@ -308,7 +309,9 @@ async def test_browser_answer_starts_an_idle_codex_turn_through_the_relay(
                 )
                 with monkeypatch.context() as host:
                     host.setattr(routing, "execution_scope", lambda: "browser-host")
-                    app = questions.review_app(BASE_URL, TOKEN, (root,), discover=False)
+                    app = dashboard.dashboard_app(
+                        BASE_URL, TOKEN, (root,), discover=False
+                    )
                     async with AsyncClient(
                         transport=ASGITransport(app=app), base_url=BASE_URL
                     ) as http:
@@ -317,7 +320,7 @@ async def test_browser_answer_starts_an_idle_codex_turn_through_the_relay(
                             headers={"Authorization": f"Bearer {TOKEN}"},
                         )
                         assert listed.status_code == 200
-                        [summary] = ReviewInbox.model_validate(listed.json()).reviews
+                        [summary] = ReviewSnapshot.model_validate(listed.json()).reviews
                         response = await http.post(
                             f"/api/reviews/{summary.key}/answer",
                             headers={
@@ -336,7 +339,7 @@ async def test_browser_answer_starts_an_idle_codex_turn_through_the_relay(
                     not decision.notification.queued and not decision.notification.woken
                 )
                 outcome = (
-                    questions.ReviewStore(roots=(root,))
+                    dashboard.ReviewStore(roots=(root,))
                     .detail(summary.key)
                     .notification
                 )
@@ -351,7 +354,7 @@ async def test_browser_answer_starts_an_idle_codex_turn_through_the_relay(
                 assert sum(event.method == "turn/started" for event in observed) == 2
                 assert relay.tick() is None
                 assert peers.waiting("recipient").messages == [mail]
-                assert questions.relay(root).find(entry.id) == decision.review.question
+                assert review.relay(root).find(entry.id) == decision.review.question
                 assert not target.exists()
     finally:
         try:

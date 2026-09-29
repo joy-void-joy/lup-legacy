@@ -11,14 +11,11 @@ import pytest
 from fastapi import BackgroundTasks, HTTPException
 from starlette.types import Message, Scope
 
-from lup.devtools.dev import questions
-from lup.devtools.dev.questions import (
-    ReviewAnswer,
-    ReviewDecision,
-    ReviewStore,
-    ReviewSummary,
-)
-from lup.devtools.dev.review_notifications import (
+from lup.devtools.dashboard import reviews as dashboard
+from lup.devtools.dashboard.reviews import ReviewAnswer, ReviewDecision, ReviewStore
+from lup.devtools.review import app as questions
+from lup.devtools.review.app import ReviewSummary
+from lup.devtools.review.notifications import (
     ReviewNotification,
     ReviewNotifications,
 )
@@ -26,7 +23,7 @@ from lup.policy.operations import Operation
 from lup.policy.relay import PersistentQuestion
 from lup.policy.review import reviewed_preview
 from lup.providers.harness import patch_review
-from tests.unit.test_review_inbox import BASE_URL, TOKEN, parked
+from tests.unit.test_dashboard_reviews import BASE_URL, TOKEN, parked
 
 
 def test_review_keys_preserve_the_existing_root_and_question_identity(
@@ -151,8 +148,8 @@ async def test_http_answers_return_while_an_owned_notification_waits(
                 raise TimeoutError("The HTTP response waited for requester delivery")
         return expected
 
-    monkeypatch.setattr(questions, "notify_requester", deliver)
-    app = questions.review_app(BASE_URL, TOKEN, (tmp_path,))
+    monkeypatch.setattr(dashboard, "notify_requester", deliver)
+    app = dashboard.dashboard_app(BASE_URL, TOKEN, (tmp_path,))
 
     async def request(
         entry: PersistentQuestion, result: asyncio.Future[ReviewDecision]

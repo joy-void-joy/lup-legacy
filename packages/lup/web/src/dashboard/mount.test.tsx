@@ -41,7 +41,7 @@ function exception(fields: Pick<ReviewSuppression, "line" | "rule_ids" | "reason
   return { ...fields, review_effect: fields.introduced ? "ask" : "allow", review_reason: fields.introduced ? "New exception requires approval." : "Existing exception.", review_rule_ids: fields.introduced ? fields.rule_ids : [] };
 }
 
-describe("review inbox page", () => {
+describe("dashboard page", () => {
   let shown: Mounted | null = null;
   let detail = review();
   let details = new Map<string, ReturnType<typeof review>>();
@@ -53,7 +53,7 @@ describe("review inbox page", () => {
   let stream: ReadableStreamDefaultController<Uint8Array> | null = null;
   let streamingAborted = false;
   let requests: { path: string; method: string; body: unknown; authorization: string | null }[] = [];
-  const inbox = () => ({ roots: [root], reviews: rows, errors: [] });
+  const queue = () => ({ roots: [root], reviews: rows, errors: [] });
 
   beforeEach(() => {
     detail = review();
@@ -77,14 +77,14 @@ describe("review inbox page", () => {
       if (path === "api/events") return new Response(new ReadableStream<Uint8Array>({
         start(controller) {
           stream = controller;
-          controller.enqueue(new TextEncoder().encode(`${JSON.stringify(inbox())}\n`));
+          controller.enqueue(new TextEncoder().encode(`${JSON.stringify(queue())}\n`));
           options?.signal?.addEventListener("abort", () => {
             streamingAborted = true;
             controller.error(new DOMException("Stopped", "AbortError"));
           }, { once: true });
         },
       }));
-      if (path === "api/reviews") return refreshStatus === 200 ? Response.json(inbox()) : Response.json({ detail: "Refresh unavailable" }, { status: refreshStatus });
+      if (path === "api/reviews") return refreshStatus === 200 ? Response.json(queue()) : Response.json({ detail: "Refresh unavailable" }, { status: refreshStatus });
       for (const [key, captured] of details) {
         if (path === `api/reviews/${key}`) {
           await detailWait.get(key);
@@ -173,7 +173,7 @@ describe("review inbox page", () => {
     const page = await open();
     await comment("Keep the draft during live safety checks.");
     detail.stale_reason = "The captured file changed on disk.";
-    await act(async () => stream?.enqueue(new TextEncoder().encode(`${JSON.stringify(inbox())}\n`)));
+    await act(async () => stream?.enqueue(new TextEncoder().encode(`${JSON.stringify(queue())}\n`)));
     await until(() => page.root.textContent?.includes(detail.stale_reason) ?? false, "fresh stale-preimage status");
     expect(requests.filter((request) => request.path === "api/reviews/tree-q1")).toHaveLength(2);
     expect(labelled<HTMLButtonElement>(page.root, "button", "Approve").disabled).toBe(true);
@@ -224,7 +224,7 @@ describe("review inbox page", () => {
     expect(page.root.querySelectorAll(".queue-row")).toHaveLength(1);
   });
 
-  test("a refused submission keeps the selected request and comment for rejection", async () => {
+  test("a refused submission keeps the selected request and comment for declining", async () => {
     addRequest();
     const page = await open();
     answerStatus = 409;
@@ -234,8 +234,8 @@ describe("review inbox page", () => {
     expect(one<HTMLTextAreaElement>(page.root, "textarea").value).toBe("Use a scoped patch.");
     expect(one(page.root, ".queue-row.selected").textContent).toContain(summary.title);
     answerStatus = 200;
-    await click(labelled(page.root, "button", "Reject"));
-    await until(() => page.root.textContent?.includes("Rejection recorded.") ?? false, "the rejected record");
+    await click(labelled(page.root, "button", "Decline"));
+    await until(() => page.root.textContent?.includes("Decline recorded.") ?? false, "the declined record");
     expect(requests.filter((request) => request.method === "POST")[1]?.body).toEqual({ approved: false, note: "Use a scoped patch.", fingerprint: "bound-tree-q1" });
     await until(() => page.root.querySelector(".request .reason")?.textContent === "Request tree-q2", "the next request");
   });
@@ -244,12 +244,12 @@ describe("review inbox page", () => {
     detail.stale_reason = "The proposed file has changed.";
     const page = await open();
     expect(labelled<HTMLButtonElement>(page.root, "button", "Approve").disabled).toBe(true);
-    expect(labelled<HTMLButtonElement>(page.root, "button", "Reject").disabled).toBe(false);
+    expect(labelled<HTMLButtonElement>(page.root, "button", "Decline").disabled).toBe(false);
     await keydown("A", "KeyA", { shiftKey: true });
     await keyup("A", "KeyA");
     expect(requests.filter((request) => request.method === "POST")).toHaveLength(0);
     addRequest();
-    await act(async () => stream?.enqueue(new TextEncoder().encode(`${JSON.stringify(inbox())}\n`)));
+    await act(async () => stream?.enqueue(new TextEncoder().encode(`${JSON.stringify(queue())}\n`)));
     await until(() => page.root.querySelectorAll(".queue-row").length === 2, "the new queued request");
     page.unmount();
     shown = null;
@@ -272,7 +272,7 @@ describe("review inbox page", () => {
     await comment("This comment belongs to the first request.");
     const newer = addRequest();
     rows = [newer.summary, { ...summary }];
-    await act(async () => stream?.enqueue(new TextEncoder().encode(`${JSON.stringify(inbox())}\n`)));
+    await act(async () => stream?.enqueue(new TextEncoder().encode(`${JSON.stringify(queue())}\n`)));
     await until(() => page.root.querySelectorAll(".queue-row").length === 2, "the newer request");
     expect(one(page.root, ".queue-row.selected").textContent).toContain(summary.title);
     expect(one(page.root, ".request .reason").textContent).toBe(summary.reason);
@@ -407,8 +407,8 @@ describe("review inbox page", () => {
     await keydown("A", "KeyA", { shiftKey: true });
     expect(requests.filter((request) => request.method === "POST")).toHaveLength(1);
     await keyup("A", "KeyA");
-    await keydown("R", "KeyR", { shiftKey: true });
-    await keyup("R", "KeyR");
+    await keydown("D", "KeyD", { shiftKey: true });
+    await keyup("D", "KeyD");
     await until(() => page.root.textContent?.includes("Queue complete") ?? false, "queue completion");
     expect(requests.filter((request) => request.method === "POST").map((request) => ({ path: request.path, body: request.body }))).toEqual([
       { path: "api/reviews/tree-q1/answer", body: { approved: true, note: "", fingerprint: "bound-tree-q1" } },
@@ -428,8 +428,8 @@ describe("review inbox page", () => {
     const editable = document.createElement("div");
     editable.setAttribute("contenteditable", "true");
     page.root.append(editable);
-    await keydown("R", "KeyR", { shiftKey: true }, editable);
-    await keyup("R", "KeyR");
+    await keydown("D", "KeyD", { shiftKey: true }, editable);
+    await keyup("D", "KeyD");
     await keydown("A", "KeyA", { shiftKey: true, metaKey: true });
     await keyup("A", "KeyA");
     expect(requests.filter((request) => request.method === "POST")).toHaveLength(0);
@@ -456,18 +456,18 @@ describe("review inbox page", () => {
     await click(labelled(page.root, "button", "Approve"));
     await keydown("j", "KeyJ");
     await keyup("j", "KeyJ");
-    await keydown("R", "KeyR", { shiftKey: true });
-    await keyup("R", "KeyR");
+    await keydown("D", "KeyD", { shiftKey: true });
+    await keyup("D", "KeyD");
     expect(requests.filter((request) => request.method === "POST")).toHaveLength(1);
     expect(one(page.root, ".request .reason").textContent).toBe(summary.reason);
-    expect(labelled<HTMLButtonElement>(page.root, "button", "Reject").disabled).toBe(true);
+    expect(labelled<HTMLButtonElement>(page.root, "button", "Decline").disabled).toBe(true);
     await act(async () => { finish?.(); });
     await until(() => page.root.querySelector(".request .reason")?.textContent === "Request tree-q2", "the unlocked next request");
     await act(async () => labelled(page.root, "button", "Approve").dispatchEvent(new MouseEvent("click", { bubbles: true, detail: 2 })));
     expect(requests.filter((request) => request.method === "POST")).toHaveLength(1);
   });
 
-  test("recorded decisions advance without waiting for another inbox read", async () => {
+  test("recorded decisions advance without waiting for another queue read", async () => {
     addRequest();
     const page = await open();
     refreshStatus = 503;
@@ -480,7 +480,7 @@ describe("review inbox page", () => {
 
   test("an older pending snapshot cannot undo a recorded decision before the stream catches up", async () => {
     addRequest();
-    const previous = inbox();
+    const previous = queue();
     const page = await open();
     await click(labelled(page.root, "button", "Approve"));
     await until(() => page.root.querySelector(".request .reason")?.textContent === "Request tree-q2", "the next request");
@@ -490,7 +490,7 @@ describe("review inbox page", () => {
     const completed = rows.find((row) => row.key === "tree-q1");
     if (completed === undefined) throw new Error("fixture lacks the completed request");
     completed.title = "Server-confirmed history title";
-    await act(async () => stream?.enqueue(new TextEncoder().encode(`${JSON.stringify(inbox())}\n`)));
+    await act(async () => stream?.enqueue(new TextEncoder().encode(`${JSON.stringify(queue())}\n`)));
     await click(labelled(page.root, "button", "History (1)"));
     expect(one(page.root, ".queue-row").textContent).toContain("Server-confirmed history title");
   });
@@ -505,7 +505,7 @@ describe("review inbox page", () => {
     const settled = details.get("tree-q1");
     if (settled === undefined) throw new Error("fixture lacks the settled request");
     settled.notification = { queued: true, woken: true, detail: "The native runtime accepted the notification." };
-    await act(async () => stream?.enqueue(new TextEncoder().encode(`${JSON.stringify(inbox())}\n`)));
+    await act(async () => stream?.enqueue(new TextEncoder().encode(`${JSON.stringify(queue())}\n`)));
     await until(() => page.root.querySelector(".notification-status summary")?.textContent?.includes("accepted by runtime") ?? false, "the refreshed transport outcome");
     expect(one(page.root, ".notification-status p").textContent).toBe(settled.notification.detail);
     expect(page.root.textContent).not.toContain("agent read");
@@ -765,7 +765,7 @@ describe("review inbox page", () => {
   test("shell file previews keep the exact command and unavailable-preview explanation visible", async () => {
     detail.command = "sed -i 's/before/after/' /project/file.py";
     detail.preview_unavailable = "One command target cannot be safely previewed.";
-    detail.preview_notice = "Preview computed in inbox environment from captured input. The execution environment was not captured.";
+    detail.preview_notice = "Preview computed where the dashboard runs, from captured input. The execution environment was not captured.";
     const page = await open();
     await click(one<HTMLElement>(page.root, ".request-evidence > summary"));
     await until(() => page.root.querySelector(".tool-input pre") !== null, "the exact command and tool input");
@@ -780,7 +780,7 @@ describe("review inbox page", () => {
 
   test("a token-free link opens the exact request in another tab using origin storage", async () => {
     const second = addRequest();
-    localStorage.setItem("lup-review-token", "browser-secret");
+    localStorage.setItem("lup-dashboard-token", "browser-secret");
     window.history.replaceState(null, "", "/#review=tree-q2");
     const page = await open();
     expect(one(page.root, ".request .reason").textContent).toBe(second.summary.reason);
@@ -796,7 +796,7 @@ describe("review inbox page", () => {
     rows = [detail.summary];
     window.history.replaceState(null, "", "/#token=browser-secret&review=q1");
     shown = mount(<App />);
-    await until(() => shown?.root.textContent?.includes("Rejected by operator") ?? false, "the directly linked history request");
+    await until(() => shown?.root.textContent?.includes("Declined by operator") ?? false, "the directly linked history request");
     expect(labelled(shown.root, "button", "History (1)").getAttribute("aria-pressed")).toBe("true");
     expect(one(shown.root, ".metadata").textContent).toContain(detail.summary.operation);
     expect(window.location.hash).toBe("#review=q1");
@@ -812,8 +812,8 @@ describe("review inbox page", () => {
     refreshStatus = 200;
     const before = requests.length;
     await act(async () => {
-      localStorage.setItem("lup-review-token", "renewed-access");
-      window.dispatchEvent(new StorageEvent("storage", { key: "lup-review-token", newValue: "renewed-access", storageArea: localStorage }));
+      localStorage.setItem("lup-dashboard-token", "renewed-access");
+      window.dispatchEvent(new StorageEvent("storage", { key: "lup-dashboard-token", newValue: "renewed-access", storageArea: localStorage }));
     });
     await until(() => page.root.querySelector("textarea") !== null && requests.some((request) => request.authorization === "Bearer renewed-access"), "access from the other tab");
     expect(one<HTMLTextAreaElement>(page.root, "textarea").value).toBe("Keep this draft across authentication.");
@@ -838,7 +838,7 @@ describe("review inbox page", () => {
     await until(() => page.root.querySelector("textarea") !== null && requests.some((request) => request.authorization === "Bearer restarted-server"), "same-tab reauthentication");
     expect(window.location.href).toBe(address);
     expect(window.location.hash).not.toContain("token");
-    expect(localStorage.getItem("lup-review-token")).toBe("restarted-server");
+    expect(localStorage.getItem("lup-dashboard-token")).toBe("restarted-server");
     expect(one<HTMLTextAreaElement>(page.root, "textarea").value).toBe("Keep this second request's draft.");
     expect(one(page.root, ".request .reason").textContent).toBe("Request tree-q2");
     expect(requests.slice(before).every((request) => request.authorization === "Bearer restarted-server")).toBe(true);
@@ -849,7 +849,7 @@ describe("review inbox page", () => {
     refreshStatus = 401;
     shown = mount(<App />);
     await until(() => shown?.root.textContent?.includes("not authorized") ?? false, "missing access");
-    localStorage.setItem("lup-review-token", "restored-launch");
+    localStorage.setItem("lup-dashboard-token", "restored-launch");
     refreshStatus = 200;
     await click(labelled(shown.root, "button", "Check access again"));
     await until(() => shown?.root.querySelector("textarea") !== null, "rechecked access");
@@ -876,7 +876,7 @@ describe("review inbox page", () => {
     expect(shown.root.querySelector(".request")).toBeNull();
     expect(requests.some((request) => request.path === "api/reviews/tree-q1")).toBe(false);
     const later = addRequest("tree-later");
-    await act(async () => stream?.enqueue(new TextEncoder().encode(`${JSON.stringify(inbox())}\n`)));
+    await act(async () => stream?.enqueue(new TextEncoder().encode(`${JSON.stringify(queue())}\n`)));
     await until(() => shown?.root.querySelector(".request .reason")?.textContent === later.summary.reason, "the linked request arrival");
   });
 

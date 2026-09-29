@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 import sh
 
-from lup.devtools.dev.questions import answer
+from lup.devtools.review.app import answer
 from lup.policy.relay import QuestionRelay
 from lup.providers.codex.harness_runtime import CodexPluginInstaller, PluginCacheConfig
 from lup.providers.codex.subagents import CodexModelTiers

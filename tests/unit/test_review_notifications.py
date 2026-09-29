@@ -5,16 +5,16 @@ from pathlib import Path
 
 import pytest
 
-from lup.devtools.dev.review_notifications import (
+from lup.devtools.review.notifications import (
     ReviewNotification,
     ReviewNotificationRecord,
     ReviewNotifications,
+    notify_requester,
 )
 from lup.policy.operations import Operation
 from lup.policy.relay import Answer, PersistentQuestion
 from lup.coordination.repository import RepositoryPeers
 from lup.coordination.wake import WakePath
-from lup.devtools.dev import questions
 
 
 @pytest.fixture
@@ -172,6 +172,6 @@ def test_native_retry_never_notifies_a_rebound_or_unbound_member(
         tmp_path,
         wake=WakePath(runtime="codex", session=bound_thread, handle=bound_thread),
     )
-    outcome = questions.notify_requester((tmp_path,), entry)
+    outcome = notify_requester((tmp_path,), entry)
     assert not outcome.queued and not outcome.woken
     assert peers.waiting("recipient").messages == []

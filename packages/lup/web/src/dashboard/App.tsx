@@ -1,12 +1,17 @@
 import { memo, useEffect, useRef, useState, type RefObject } from "react";
-import type { ReviewDecision, ReviewDetail, ReviewInbox, ReviewSummary } from "../generated/views";
-import { answerReview, followInbox, readReview, readReviewLink, reviewLink, ReviewError, takeToken } from "./api";
+import type { ReviewDecision, ReviewDetail, ReviewSnapshot, ReviewSummary } from "../generated/views";
+import { answerReview, followReviews, readReview, readReviewLink, reviewLink, ReviewError, takeToken, TOKEN_KEY } from "./api";
 import { Files, type FileNavigation } from "./Files";
 
 const FileEvidence = memo(Files);
 const JsonRecord = memo(function JsonRecord({ value }: { value: unknown }) {
   return <pre>{JSON.stringify(value, null, 2)}</pre>;
 });
+
+/** A review's state as the page names it: the relay records a declined review as `rejected`. */
+function stateLabel(state: string): string {
+  return state === "rejected" ? "declined" : state;
+}
 
 function RequestRecord({ question }: { question: ReviewDetail["question"] }) {
   const [open, setOpen] = useState(false);
@@ -62,7 +67,7 @@ function RequestDetails({ detail, note, sending, fileNavigation, onNote, onAnswe
     <div className="request-inspection">
     {detail.notification !== undefined && detail.notification !== null && <details className="request-context notification-status"><summary>Agent notification · {detail.notification.woken ? "accepted by runtime" : detail.notification.queued ? "queued" : "unconfirmed"}</summary><p>{detail.notification.detail}</p></details>}
     <header className="request-heading">
-      <div className="request-title"><span className={`state ${summary.state}`}>{summary.state}</span>
+      <div className="request-title"><span className={`state ${summary.state}`}>{stateLabel(summary.state)}</span>
       <h2 ref={heading} tabIndex={-1}>{summary.title}</h2><RequestLink summary={summary} /></div>
       <details className="request-context"><summary>Why approval is needed · {summary.rule || "Request details"}</summary>
       <p className="reason">{summary.reason}</p>
@@ -79,10 +84,10 @@ function RequestDetails({ detail, note, sending, fileNavigation, onNote, onAnswe
     {detail.stale_reason !== "" && <p className="notice" role="status">{detail.stale_reason}</p>}
     <ToolInput detail={detail} />
     {detail.preview_unavailable !== "" && <p className="notice" role="status">{detail.preview_unavailable}</p>}
-    {(detail.preview_notice ?? "") !== "" && <details className="preview-note"><summary>Preview computed in inbox environment</summary><p>{detail.preview_notice}</p></details>}
+    {(detail.preview_notice ?? "") !== "" && <details className="preview-note"><summary>Preview computed where the dashboard runs</summary><p>{detail.preview_notice}</p></details>}
     {detail.files.length > 0 ? <FileEvidence files={detail.files} navigation={fileNavigation} command={detail.command} /> : <section className="command-only"><h3>Tool input</h3><JsonRecord value={question.operation.payload} /></section>}
     {question.answer !== null && <section className="answer-record">
-      <h3>{question.answer.approved ? "Approved" : "Rejected"} by {question.answer.principal}</h3>
+      <h3>{question.answer.approved ? "Approved" : "Declined"} by {question.answer.principal}</h3>
       {question.answer.note !== "" && <p>{question.answer.note}</p>}
     </section>}
     </div>
@@ -92,14 +97,14 @@ function RequestDetails({ detail, note, sending, fileNavigation, onNote, onAnswe
       <textarea id="review-comment" rows={2} value={note} disabled={sending}
         onChange={(event) => onNote(event.target.value)} placeholder="Optional instructions or reason" />
       </details>
-      {!summary.answerable && <p className="notice">This request cannot be answered from this inbox.</p>}
+      {!summary.answerable && <p className="notice">This request cannot be answered from this dashboard.</p>}
       <div className="actions">
         <button className="approve" type="button" aria-keyshortcuts="Shift+A"
           disabled={sending || !summary.answerable || detail.stale_reason !== ""}
           onClick={(event) => { if (event.detail < 2) void onAnswer(true); }}>Approve</button>
-        <button className="reject" type="button" aria-keyshortcuts="Shift+R" disabled={sending || !summary.answerable}
-          onClick={(event) => { if (event.detail < 2) void onAnswer(false); }}>Reject</button>
-        <span className="decision-hint">{sending ? "Recording decision…" : "Shift+A approve · Shift+R reject"}</span>
+        <button className="decline" type="button" aria-keyshortcuts="Shift+D" disabled={sending || !summary.answerable}
+          onClick={(event) => { if (event.detail < 2) void onAnswer(false); }}>Decline</button>
+        <span className="decision-hint">{sending ? "Recording decision…" : "Shift+A approve · Shift+D decline"}</span>
       </div>
     </section>}
   </article>;
@@ -118,7 +123,7 @@ export function App() {
   liveAccess.current = access;
   const [linked, setLinked] = useState(readReviewLink);
   const [accessDenied, setAccessDenied] = useState(false);
-  const [inbox, setInbox] = useState<ReviewInbox | null>(null);
+  const [queue, setQueue] = useState<ReviewSnapshot | null>(null);
   const [selected, setSelected] = useState("");
   const [filter, setFilter] = useState<"pending" | "history">("pending");
   const [detail, setDetail] = useState<ReviewDetail | null>(null);
@@ -136,11 +141,11 @@ export function App() {
   const routedAddress = useRef(window.location.href);
   const answering = useRef(false);
   const current = useRef(selected);
-  const liveInbox = useRef(inbox);
+  const liveQueue = useRef(queue);
   const settledReviews = useRef(new Map<string, ReviewDetail>());
   current.current = selected;
-  liveInbox.current = inbox;
-  const rows = inbox?.reviews ?? [];
+  liveQueue.current = queue;
+  const rows = queue?.reviews ?? [];
   const pending = rows.filter((row) => row.state === "pending");
   const visible = rows.filter((row) => filter === "pending" ? row.state === "pending" : row.state !== "pending");
   const position = visible.findIndex((row) => row.key === selected);
@@ -168,7 +173,7 @@ export function App() {
 
   useEffect(() => {
     function refreshed(event: StorageEvent) {
-      if (event.key === "lup-review-token" || event.key === null) refreshAccess();
+      if (event.key === TOKEN_KEY || event.key === null) refreshAccess();
     }
     window.addEventListener("storage", refreshed);
     return () => window.removeEventListener("storage", refreshed);
@@ -195,7 +200,7 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    if (inbox === null) return;
+    if (queue === null) return;
     if (linked !== null) {
       const row = linkedRows.length === 1 ? linkedRows[0] : undefined;
       if (row === undefined) { setSelected(""); current.current = ""; }
@@ -207,10 +212,10 @@ export function App() {
       return;
     }
     if (selected === "" && filter === "pending") {
-      const row = inbox.reviews.find((item) => item.state === "pending");
+      const row = queue.reviews.find((item) => item.state === "pending");
       if (row !== undefined) navigate(row, true);
     }
-  }, [inbox, filter, linked, selected]);
+  }, [queue, filter, linked, selected]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -219,21 +224,21 @@ export function App() {
       setConnection("Connecting…");
       setAccessDenied(false);
       try {
-        for await (const snapshot of followInbox(token, controller.signal)) {
+        for await (const snapshot of followReviews(token, controller.signal)) {
           if (controller.signal.aborted) return;
           for (const key of settledReviews.current.keys()) {
             if (!snapshot.reviews.some((row) => row.key === key && row.state === "pending")) settledReviews.current.delete(key);
           }
           const fresh = { ...snapshot, reviews: snapshot.reviews.map((row) => settledReviews.current.get(row.key)?.summary ?? row) };
-          liveInbox.current = fresh;
-          setInbox(fresh);
+          liveQueue.current = fresh;
+          setQueue(fresh);
           setConnection("Live");
         }
         if (!controller.signal.aborted) throw new Error("The connection closed.");
       } catch (failure) {
         if (controller.signal.aborted) return;
         if (failure instanceof ReviewError && [401, 403].includes(failure.status)) {
-          setConnection("Access denied. Open the inbox using the operator's launch link.");
+          setConnection("Access denied. Open the dashboard using the operator's launch link.");
           setAccessDenied(true);
           return;
         }
@@ -254,7 +259,7 @@ export function App() {
       if (!controller.signal.aborted) setError(String(failure));
     });
     return () => controller.abort();
-  }, [selected, token, inbox]);
+  }, [selected, token, queue]);
 
   function select(wanted: string) {
     if (answering.current) return;
@@ -292,10 +297,10 @@ export function App() {
         setDetail(settled.review);
         setDecision(settled);
       }
-      let refreshed = liveInbox.current;
+      let refreshed = liveQueue.current;
       if (refreshed !== null) refreshed = { ...refreshed, reviews: refreshed.reviews.map((row) => row.key === key ? settled.review.summary : row) };
-      liveInbox.current = refreshed;
-      setInbox(refreshed);
+      liveQueue.current = refreshed;
+      setQueue(refreshed);
       if (current.current === key && advance) {
         setFilter("pending");
         const next = nextPending(refreshed?.reviews ?? [], key);
@@ -316,12 +321,12 @@ export function App() {
       const code = event.code || event.key;
       if (heldKeys.current.has(code)) return;
       const key = event.key.toLowerCase();
-      if (!(key === "?" || key === "j" || key === "k" || key === "c" || key === "[" || key === "]" || key === "n" || key === "p" || (event.shiftKey && (key === "a" || key === "r")))) return;
+      if (!(key === "?" || key === "j" || key === "k" || key === "c" || key === "[" || key === "]" || key === "n" || key === "p" || (event.shiftKey && (key === "a" || key === "d")))) return;
       heldKeys.current.add(code);
       event.preventDefault();
       if (key === "?") setHelp((value) => !value);
       else if (event.shiftKey && key === "a") void answer(true);
-      else if (event.shiftKey && key === "r") void answer(false);
+      else if (event.shiftKey && key === "d") void answer(false);
       else if (key === "j") move(1);
       else if (key === "k") move(-1);
       else if (!answering.current && key === "[") fileNavigation.current?.moveFile(-1);
@@ -347,23 +352,23 @@ export function App() {
     };
   });
 
-  if (accessDenied) return <main className="access"><h1>Review inbox</h1>
-    <p>This browser is not authorized, or its review session has expired. Open the launch link printed by the operator's review inbox command, then return to this request link.</p>
+  if (accessDenied) return <main className="access"><h1>Dashboard</h1>
+    <p>This browser is not authorized, or its dashboard session has expired. Open the launch link printed by the operator's <code>dashboard serve</code>, then return to this request link.</p>
     {linked !== null && <p>Requested review: <code>{linked.id}</code></p>}
     {notice !== "" && <p className="notice" role="alert">{notice}</p>}
     <button type="button" onClick={() => { refreshAccess(); setRetry((value) => value + 1); }}>Check access again</button>
   </main>;
 
-  return <div className="inbox">
+  return <div className="dashboard">
     <header className="masthead">
-      <div><p className="eyebrow">Lup · operator review</p><h1>Review inbox</h1></div>
+      <div><p className="eyebrow">Lup · operator review</p><h1>Dashboard</h1></div>
       <div className="connection"><span role="status" className={connection === "Live" ? "live" : "muted"}>{connection}</span>
         <button type="button" aria-expanded={help} aria-controls="shortcut-help" onClick={() => setHelp((value) => !value)}>Keyboard shortcuts</button>
         <button type="button" onClick={() => { refreshAccess(); setRetry((value) => value + 1); }}>Reconnect</button></div>
     </header>
     {notice !== "" && <p className="notice" role="alert">{notice}</p>}
     {help && <section className="shortcut-help" id="shortcut-help" aria-label="Keyboard shortcuts">
-      <span><kbd>Shift</kbd> + <kbd>A</kbd> Approve</span><span><kbd>Shift</kbd> + <kbd>R</kbd> Reject</span>
+      <span><kbd>Shift</kbd> + <kbd>A</kbd> Approve</span><span><kbd>Shift</kbd> + <kbd>D</kbd> Decline</span>
       <span><kbd>J</kbd> Next request</span><span><kbd>K</kbd> Previous request</span><span><kbd>C</kbd> Comment</span><span><kbd>?</kbd> Toggle help</span>
       <span><kbd>[</kbd> / <kbd>]</kbd> Previous / next file</span><span><kbd>P</kbd> / <kbd>N</kbd> Previous / next rule exception</span>
       <p>Shortcuts pause while typing. Release the keys before deciding another request.</p>
@@ -381,26 +386,26 @@ export function App() {
           <span>{position >= 0 ? `${position + 1} of ${visible.length}` : `${visible.length} requests`}</span>
           <button type="button" disabled={sending || position + 1 >= visible.length} onClick={() => move(1)} aria-label="Next request">Next →</button>
         </div>
-        {inbox !== null && visible.length === 0 && <p className="empty">{filter === "pending" ? "No requests waiting. This page will update when one arrives." : "No answered requests yet."}</p>}
+        {queue !== null && visible.length === 0 && <p className="empty">{filter === "pending" ? "No requests waiting. This page will update when one arrives." : "No answered requests yet."}</p>}
         {visible.map((row) => <div className="queue-entry" key={row.key}><button type="button" disabled={sending} className={`queue-row ${selected === row.key ? "selected" : ""}`}
           aria-current={selected === row.key ? "true" : undefined} onClick={() => select(row.key)}>
-          <span className="row-top"><span className={`state ${row.state}`}>{row.state}</span><time>{new Date(row.created).toLocaleTimeString()}</time></span>
+          <span className="row-top"><span className={`state ${row.state}`}>{stateLabel(row.state)}</span><time>{new Date(row.created).toLocaleTimeString()}</time></span>
           <strong>{row.title}</strong><small>{row.requester}</small>
           {row.total_files > 0 && <small className="review-file-count">{row.paths.length > 0 ? `${row.paths.length} ${row.paths.length === 1 ? "file" : "files"} to review` : "Operation review"} · {row.total_files} submitted</small>}
-          <small className="root-path">{inbox?.roots.find((root) => root.id === row.root_id)?.path}</small>
+          <small className="root-path">{queue?.roots.find((root) => root.id === row.root_id)?.path}</small>
         </button>{row.paths.length > 1 && <details className="queue-files"><summary>{row.paths.length} files to review</summary>{row.paths.map((path) => <code key={path}>{path}</code>)}</details>}</div>)}
-        <details className="roots"><summary>Watched checkouts ({inbox?.roots.length ?? 0})</summary>
-          {inbox?.roots.map((root) => <p key={root.id}><code>{root.path}</code></p>)}</details>
+        <details className="roots"><summary>Watched checkouts ({queue?.roots.length ?? 0})</summary>
+          {queue?.roots.map((root) => <p key={root.id}><code>{root.path}</code></p>)}</details>
       </aside>
       <main className="stage">
-        {inbox?.errors.map((issue) => <p className="notice" role="alert" key={issue.root}>{issue.root}: {issue.message}</p>)}
+        {queue?.errors.map((issue) => <p className="notice" role="alert" key={issue.root}>{issue.root}: {issue.message}</p>)}
         {error !== "" && <p className="error" role="alert">{error}</p>}
         {decision !== null && <div className="decision-receipt" role="status">
-          <strong>{decision.review.question.answer?.approved ? "Approval recorded." : "Rejection recorded."}</strong>
+          <strong>{decision.review.question.answer?.approved ? "Approval recorded." : "Decline recorded."}</strong>
           <span> {decision.review.summary.title}</span><p>{decision.notification.detail}</p>
         </div>}
         {linked !== null && selected === "" ? <section className="missing-review" role="status">
-          <h2>{inbox === null ? "Loading requested review…" : linkedRows.length > 1 ? "This request ID exists in multiple checkouts" : "Request not found"}</h2>
+          <h2>{queue === null ? "Loading requested review…" : linkedRows.length > 1 ? "This request ID exists in multiple checkouts" : "Request not found"}</h2>
           <p>Requested review: <code>{linked.id}</code></p>
           <p>{linkedRows.length > 1 ? "Choose the intended checkout from the queue." : "This page will keep watching for that exact request in the selected repositories."}</p>
           <button type="button" disabled={sending} onClick={() => { setFilter("pending"); select(""); }}>Show pending queue</button>

@@ -2572,42 +2572,6 @@
       "title": "ReviewHunk",
       "type": "object"
     },
-    "ReviewInbox": {
-      "additionalProperties": false,
-      "description": "A complete snapshot of the configured review queues.",
-      "properties": {
-        "errors": {
-          "default": [],
-          "items": {
-            "$ref": "#/$defs/ReviewError"
-          },
-          "title": "Errors",
-          "type": "array"
-        },
-        "reviews": {
-          "default": [],
-          "items": {
-            "$ref": "#/$defs/ReviewSummary"
-          },
-          "title": "Reviews",
-          "type": "array"
-        },
-        "roots": {
-          "items": {
-            "$ref": "#/$defs/ReviewRoot"
-          },
-          "title": "Roots",
-          "type": "array"
-        }
-      },
-      "required": [
-        "roots",
-        "reviews",
-        "errors"
-      ],
-      "title": "ReviewInbox",
-      "type": "object"
-    },
     "ReviewLine": {
       "additionalProperties": false,
       "description": "One source line, with original terminators and both document positions.",
@@ -2755,6 +2719,42 @@
         "path"
       ],
       "title": "ReviewRoot",
+      "type": "object"
+    },
+    "ReviewSnapshot": {
+      "additionalProperties": false,
+      "description": "A complete snapshot of the configured review queues.",
+      "properties": {
+        "errors": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/ReviewError"
+          },
+          "title": "Errors",
+          "type": "array"
+        },
+        "reviews": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/ReviewSummary"
+          },
+          "title": "Reviews",
+          "type": "array"
+        },
+        "roots": {
+          "items": {
+            "$ref": "#/$defs/ReviewRoot"
+          },
+          "title": "Roots",
+          "type": "array"
+        }
+      },
+      "required": [
+        "roots",
+        "reviews",
+        "errors"
+      ],
+      "title": "ReviewSnapshot",
       "type": "object"
     },
     "ReviewSummary": {

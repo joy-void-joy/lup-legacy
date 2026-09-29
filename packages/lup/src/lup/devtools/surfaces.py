@@ -7,14 +7,14 @@ reads that is not listed fails the build rather than a browser. A project
 with a surface of its own lists it beside these in its composition.
 """
 
-from lup.devtools.dashboard.serve import RowRequest, ScopeRequest, StepReply
-from lup.devtools.dashboard.wizard import StepAnswers, WizardView
-from lup.devtools.dev.questions import (
+from lup.devtools.dashboard.reviews import (
     ReviewAnswer,
     ReviewDecision,
-    ReviewDetail,
-    ReviewInbox,
+    ReviewSnapshot,
 )
+from lup.devtools.dashboard.serve import RowRequest, ScopeRequest, StepReply
+from lup.devtools.dashboard.wizard import StepAnswers, WizardView
+from lup.devtools.review.app import ReviewDetail
 from lup.devtools.supervisor.projection import (
     ActorIndex,
     AnswerSubmission,
@@ -53,13 +53,14 @@ SUPERVISOR = Surface(
 )
 """The resolver supervisor: one run projected, the rail, the record, and what the page posts."""
 
-REVIEWS = Surface(
-    name="reviews", models=[ReviewInbox, ReviewDetail, ReviewAnswer, ReviewDecision]
+DASHBOARD = Surface(
+    name="dashboard",
+    models=[ReviewSnapshot, ReviewDetail, ReviewAnswer, ReviewDecision],
 )
-"""The operator inbox: saved requests, captured changes and exact decisions."""
+"""The operator's dashboard: parked reviews, captured changes and exact decisions."""
 
 
 # lup: ignore[library-default] — the surfaces this library authors, so the
 # table is what it ships rather than a choice made for an adopter
-LIBRARY_SURFACES = [EXPLORER, WIZARD, SUPERVISOR, REVIEWS]
+LIBRARY_SURFACES = [EXPLORER, WIZARD, SUPERVISOR, DASHBOARD]
 """Every surface lup builds into its own package data."""

@@ -622,7 +622,7 @@ SHELL_POLICY_CASES = [
     DecisionCase(input="uv run --with x git status", effect="ask"),
     DecisionCase(input="uv run git push --force origin feat", effect="ask"),
     DecisionCase(
-        input="uv --unknown-option run lup-devtools dev questions answer abc --as operator",
+        input="uv --unknown-option run lup-devtools review approve abc --as operator",
         effect="deny",
         sandboxed=True,
     ),
@@ -945,15 +945,16 @@ SHELL_POLICY_CASES = [
     ),
     DecisionCase(input="uv run lup-devtools sync set$X lup /srv/lup", effect="ask"),
     DecisionCase(
-        input="uv run lup-devtools dev questions $(echo answer) abc --as operator",
+        input="uv run lup-devtools review $(echo approve) abc --as operator",
         effect="deny",
     ),
     DecisionCase(
-        input="uv run lup-devtools dev questions $(echo answer) abc --as operator",
+        input="uv run lup-devtools review $(echo approve) abc --as operator",
         effect="deny",
         sandboxed=True,
     ),
-    DecisionCase(input="uv run lup-devtools dev $VERB abc", effect="deny"),
+    DecisionCase(input="uv run lup-devtools review $VERB abc", effect="deny"),
+    DecisionCase(input="uv run lup-devtools dev $VERB abc", effect="ask"),
     DecisionCase(input="uv run lup-devtools dev comments --ret$X a.py:1", effect="ask"),
     DecisionCase(
         input="uv run lup-devtools dev comments --ret$X a.py:1",
@@ -4089,9 +4090,9 @@ def test_a_tee_and_a_redirect_answer_alike_in_a_confined_session(
 @pytest.mark.parametrize(
     "arguments",
     [
-        "dev questions answer abc --as operator",
-        "dev questions reject abc --as operator",
-        "dev questions serve --no-open --root /example",
+        "review approve abc --as operator",
+        "review decline abc --as operator",
+        "dashboard serve --no-open --root /example",
         "harness policy-refresh",
     ],
 )
@@ -4142,14 +4143,14 @@ def test_retiring_a_claim_asks_and_reopening_one_does_not(
         "uv run env lup-devtools",
     ],
 )
-def test_a_requester_cannot_start_the_operator_review_inbox(runner: str) -> None:
+def test_a_requester_cannot_start_the_operator_dashboard(runner: str) -> None:
     """Changing directories or requesting escalation cannot mint review authority."""
     policy = semantic_policy_for(declared_hook_set())
     for prefix in ("", "# lup: escalate[decision]: user agreed\n"):
         decision = policy.decide(
             ShellCommand(
                 command=(
-                    f"{prefix}{runner} dev questions serve --no-open "
+                    f"{prefix}{runner} dashboard serve --no-open "
                     "--host 127.0.0.1 --port 8766 --root /example"
                 )
             )

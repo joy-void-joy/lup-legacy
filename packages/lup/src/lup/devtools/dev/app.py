@@ -33,7 +33,6 @@ import lup.devtools.dev.pending as pending_mod
 import lup.devtools.dev.plugin as plugin_mod
 import lup.devtools.dev.policy_explain as policy_explain
 import lup.devtools.dev.edit_prepare as edit_prepare
-import lup.devtools.dev.questions as questions_mod
 import lup.devtools.dev.reach as reach
 import lup.devtools.dev.scaffold as scaffold_mod
 import lup.devtools.dev.scaffold_fit as scaffold_fit
@@ -128,11 +127,6 @@ def create_dev_app(
         model_config_mod.create_model_config_app(),
         name="model-config",
         help="Pydantic configuration census and equivalence",
-    )
-    app.add_typer(
-        questions_mod.create_questions_app(Path.cwd()),
-        name="questions",
-        help="The parked asks a reviewer answers, and what each is waiting on",
     )
     # Three trees that were top-level and are core's either way, so being
     # top-level bought nothing and cost a reader three names to learn instead

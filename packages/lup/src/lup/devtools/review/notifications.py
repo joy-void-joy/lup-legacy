@@ -1,4 +1,9 @@
-"""Persist browser notification outcomes independently of approval authority."""
+"""Tell a review's requester how it was answered, and remember whether that landed.
+
+The answer is authority and the notification is courtesy: an answer stands
+whether or not its requester hears of it, so the outcome of telling them is
+persisted apart from the relay, bound to the exact answer it reports.
+"""
 
 from collections.abc import Callable
 from datetime import datetime
@@ -8,7 +13,10 @@ from uuid import NAMESPACE_URL, uuid5
 
 from pydantic import BaseModel, ValidationError
 
-from lup.channels.models import publish_atomic, utc_now
+from lup.channels.models import Door, publish_atomic, utc_now
+from lup.coordination.repository import RepositoryPeers
+from lup.coordination.roster import RosterMember
+from lup.coordination.wake import wake
 from lup.policy.relay import PersistentQuestion
 
 
@@ -142,3 +150,75 @@ class ReviewNotifications(BaseModel, frozen=True):
     ) -> ReviewNotification:
         """Prepare and complete delivery synchronously for non-HTTP callers."""
         return self.complete(entry, self.prepare(entry), lambda: deliver(roots, entry))
+
+
+class ReviewRecipient(BaseModel, frozen=True, arbitrary_types_allowed=True):
+    """The requesting member and the repository that can reach it."""
+
+    peers: RepositoryPeers
+    member: RosterMember
+
+
+def notify_requester(
+    roots: tuple[Path, ...], entry: PersistentQuestion
+) -> ReviewNotification:
+    """Queue the answer for its requester and try its declared wake route."""
+    candidates = [RepositoryPeers(root) for root in roots]
+    rosters = {peers.root: peers for peers in candidates}
+    identities = {entry.operation.requester, entry.operation.session}
+    members = [
+        ReviewRecipient(peers=peers, member=member)
+        for peers in rosters.values()
+        for member in peers.present()
+        if member.running
+        and (
+            entry.resumption != "native_retry"
+            or not entry.operation.session
+            or member.wake.session == entry.operation.session
+        )
+        and (
+            member.actor.id in identities
+            or bool(member.wake.session and member.wake.session in identities)
+        )
+    ]
+    if len(members) != 1:
+        return ReviewNotification(
+            queued=False,
+            woken=False,
+            detail="Decision recorded; no unique live requester is registered.",
+        )
+    recipient = members[0]
+    member = recipient.member
+    instruction = (
+        "Retry the exact tool call; its preimages and policy are rechecked."
+        if entry.state == "approved" and entry.resumption == "native_retry"
+        else "Read the recorded decision before continuing."
+    )
+    message = (
+        f"Review {entry.id} in {entry.operation.worktree} was {entry.state}. {instruction}\n"
+        f"Operator note: {entry.answer.note if entry.answer else ''}"
+    )
+    delivered = recipient.peers.send(member.address, message, door=Door.PAGE)
+    if delivered is None:
+        return ReviewNotification(
+            queued=False, woken=False, detail="Decision recorded; requester left."
+        )
+    try:
+        nudged = wake(
+            member.wake, message, Path(member.worktree) if member.worktree else None
+        )
+    except Exception as error:
+        return ReviewNotification(
+            queued=True,
+            woken=False,
+            detail=f"Decision recorded and notification queued; wake failed: {error}",
+        )
+    return ReviewNotification(
+        queued=True,
+        woken=nudged.reached,
+        detail=(
+            "Decision recorded and notification accepted by the requester runtime."
+            if nudged.reached
+            else f"Decision recorded and notification queued. {nudged.reason}"
+        ),
+    )
