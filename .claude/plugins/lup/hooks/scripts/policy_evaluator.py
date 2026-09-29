@@ -4118,13 +4118,17 @@ def foreign_claim_decision(
     *caller* is the conversation making the call, as its runtime's host half
     read it off the payload: a subagent is judged as its own row, so its
     sibling's claims are asked about and its session's are not.
+
+    The file is named as its checkout spells it, so one edit reads the same
+    whichever spelling the call used: named as given, a claim made an absolute
+    and a relative spelling of one edit two different answers.
     """
     directory = peer_directory(cwd)
     if PEER_POLICY is None or directory is None:
         return None
     session = declared_identity(PEER_POLICY["member_env"])
     return decide_foreign_claim(
-        path_text,
+        worktree_path(str(((cwd or Path.cwd()) / path_text).resolve())),
         store.claim_holders(
             directory,
             path_text,
