@@ -15,7 +15,7 @@ import os
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Protocol, Self, runtime_checkable
+from typing import Protocol, Self, TypedDict, runtime_checkable
 
 import typer
 from pydantic import BaseModel, Field, TypeAdapter, ValidationError, model_validator
@@ -351,6 +351,14 @@ def install_codex_plugin_home(codex_home: Path, force: bool, trusted: bool) -> N
     prepare_codex_plugin([], codex_home, project_root(), {}, force, trusted)
 
 
+class StatedLaunch(TypedDict, total=False):
+    """The launch fields a command line may state, each only where it states it."""
+
+    resume: Resume
+    max_recursive_agent: int
+    record: Recording
+
+
 class LaunchRequest(BaseModel, frozen=True, arbitrary_types_allowed=True):
     """What one `harness claude|codex` command line asked for, before it is a declaration."""
 
@@ -447,22 +455,17 @@ class LaunchRequest(BaseModel, frozen=True, arbitrary_types_allowed=True):
             }
         )
 
-    def stated_launch(self) -> dict[str, object]:
+    def stated_launch(self) -> StatedLaunch:
         """The launch fields this command line states, spelled alike for either runtime."""
+        stated = StatedLaunch()
         reopening = self.reopening()
-        return {
-            **({"resume": reopening} if reopening is not None else {}),
-            **(
-                {"max_recursive_agent": self.max_recursive_agent}
-                if self.max_recursive_agent is not None
-                else {}
-            ),
-            **(
-                {"record": Recording(transcript=True)}
-                if self.transcribe_session
-                else {}
-            ),
-        }
+        if reopening is not None:
+            stated["resume"] = reopening
+        if self.max_recursive_agent is not None:
+            stated["max_recursive_agent"] = self.max_recursive_agent
+        if self.transcribe_session:
+            stated["record"] = Recording(transcript=True)
+        return stated
 
     def refuse_hosted_mode(self, posture: LaunchSandbox, runtime: str) -> None:
         """Refuse a mode taking away what only a container stands in for, where none opens."""

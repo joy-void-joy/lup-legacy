@@ -377,15 +377,14 @@ def laid_over[T: BaseModel](preset: T, base: T) -> T:
     combination neither side refused alone is refused where they meet.
     """
 
-    def stated(name: str) -> object:
-        value = getattr(preset, name)
-        under = getattr(base, name)
-        if isinstance(value, BaseModel) and type(value) is type(under):
-            return laid_over(value, under)
-        return value
-
+    stated = {name: getattr(preset, name) for name in preset.model_fields_set}
     laid = base.model_copy(
-        update={name: stated(name) for name in preset.model_fields_set}
+        update={
+            name: laid_over(value, getattr(base, name))
+            if isinstance(value, BaseModel) and type(value) is type(getattr(base, name))
+            else value
+            for name, value in stated.items()
+        }
     )
     return type(base).model_validate(laid)
 
