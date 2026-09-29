@@ -65,6 +65,7 @@ from lup.devtools.review.notifications import (
     notify_requester,
 )
 from lup.policy.relay import PersistentQuestion, RelaySignature
+from lup.providers.user_config import UserConfigFile
 from lup.sandbox.rail import repository_layout, sibling_worktrees
 from lup.types import StringMap
 
@@ -672,6 +673,29 @@ def create_operator_dashboard_app(root: Path) -> typer.Typer:
         shown = status_line(named)
         if shown:
             typer.echo(shown)
+
+    @app.command("reopen")
+    def reopen_cmd(
+        turned: bool | None = typer.Option(
+            None,
+            "--on/--off",
+            help="Turn reopening on or off in your lup config; neither says which it is",
+        ),
+    ) -> None:
+        """Whether a review parking while no tab is open reopens the page in the browser."""
+
+        def settled() -> None:
+            config = UserConfigFile()
+            if turned is not None:
+                config.record({("dashboard", "reopen"): turned})
+            state = "on" if config.load().dashboard.reopen else "off"
+            typer.echo(
+                f"Reopening the page when a review parks with no tab open: {state} "
+                f"(`[dashboard] reopen` in {config.path()}); the desktop notice "
+                "is sent either way."
+            )
+
+        refused("reopen", settled)
 
     @app.command("stop")
     def stop_cmd() -> None:

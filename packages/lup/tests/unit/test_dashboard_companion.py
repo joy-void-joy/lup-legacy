@@ -33,6 +33,7 @@ from lup.devtools.dashboard.companion import (
 from lup.devtools.dashboard.pulse import DASHBOARD_PULSE_ENV, DashboardPulse, PulseFile
 from lup.devtools.dashboard.reviews import create_operator_dashboard_app
 from lup.launch.declaration import Mount
+from lup.providers.user_config import UserConfigFile
 from lup.devtools.harness.launch import held_services
 from lup.devtools.review.answers import ReviewAnswers
 from lup.devtools.review.app import relay
@@ -315,6 +316,25 @@ def test_the_service_tells_the_desktop_and_publishes_what_it_counts(
         assert "/#token=" in opened.read_text()
 
     assert pulse.read() is None
+
+
+def test_reopening_is_turned_off_and_on_from_the_operators_terminal(
+    state: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    cli = create_operator_dashboard_app(tmp_path)
+    runner = CliRunner()
+
+    off = runner.invoke(cli, ["reopen", "--off"])
+    said = runner.invoke(cli, ["reopen"])
+    turned_off = UserConfigFile().load().dashboard.reopen
+    on = runner.invoke(cli, ["reopen", "--on"])
+    monkeypatch.setenv(MEMBER_ENV, "a-session")
+    refused = runner.invoke(cli, ["reopen", "--off"])
+
+    assert off.exit_code == 0 and not turned_off
+    assert "off" in said.output
+    assert on.exit_code == 0 and UserConfigFile().load().dashboard.reopen
+    assert refused.exit_code == 2 and UserConfigFile().load().dashboard.reopen
 
 
 def test_a_harness_taking_the_module_holds_the_dashboard_at_every_launch() -> None:
