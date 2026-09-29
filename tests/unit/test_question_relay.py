@@ -164,6 +164,9 @@ def test_concurrent_processes_record_exactly_one_answer(
     """A lock held in Python memory cannot serialize separate operator commands."""
     relay, _ = parked(tmp_path)
     delay_question_reads(monkeypatch)
+    # lup: defer: forked beside xdist's thread, each child runs Python and
+    # Python warns on every run that it can deadlock; a forkserver child
+    # applying the delay itself would not inherit anybody's held lock
     context = get_context("fork")
     ready = context.Barrier(2)
 
