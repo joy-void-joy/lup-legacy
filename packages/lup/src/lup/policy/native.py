@@ -1,16 +1,15 @@
-"""The wire seams a native adapter implements around the semantic core.
+"""The wire seam a native adapter implements in front of the semantic core.
 
 :class:`NativeEventDecoder` turns one provider's raw hook payload into the
-semantic events of :mod:`lup.policy.models`; :class:`NativeDecisionRenderer`
-turns a :class:`~lup.policy.models.Decision` back into that provider's wire
-response. Implementations live in ``lup.providers.<provider>.native``; nothing
-here decides — the kernel does.
+semantic events of :mod:`lup.policy.models`. Implementations live in
+``lup.providers.<provider>.native``; the verdict goes back out through the
+adapter's own hooks, from :func:`~lup.policy.enforcement.policy_hook_output`.
+Nothing here decides — the kernel does.
 """
 
 from abc import ABC, abstractmethod
 
-from lup.policy.models import Decision, SemanticEvent
-from lup.types import JsonObject
+from lup.policy.models import SemanticEvent
 
 
 class NativeEventDecoder[N](ABC):
@@ -19,16 +18,3 @@ class NativeEventDecoder[N](ABC):
     @abstractmethod
     def decode(self, event: N) -> SemanticEvent:
         """Decode or return conservative typed evidence."""
-
-
-class NativeDecisionRenderer[N](ABC):
-    """Render a semantic decision for one native boundary."""
-
-    @abstractmethod
-    def render(self, decision: Decision, tool_input: JsonObject | None = None) -> N:
-        """Render representable effects and fail closed otherwise.
-
-        ``tool_input`` is the judged call's own arguments, which a runtime
-        that places a call as well as deciding it has to carry back. One
-        that cannot place reads the verdict alone and ignores them.
-        """

@@ -1,0 +1,15 @@
+subjects = [
+    "NativeDecisionRenderer",
+    "NativeDecisionRenderer.render",
+]
+reason = """
+with the test-only Claude and Codex renderers gone, the seam they \
+implemented had no implementation and no caller: a verdict leaves through \
+`policy_hook_output` and each adapter's own hooks"""
+
+[[steps]]
+instruction = """
+Render a verdict for a new runtime from `policy_hook_output(decision, \
+escapable=...)` (lup.policy.enforcement) inside that adapter's hook \
+translation, as `lup.providers.claude.hooks.lup_hook_output_to_claude` does, \
+rather than subclassing `NativeDecisionRenderer`."""
