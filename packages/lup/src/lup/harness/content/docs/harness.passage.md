@@ -644,8 +644,39 @@ describes the declaration.
 | `--generate-only` | every tree regenerated, then `prepare()` — the home a host session opens against |
 | `--force-install` (Codex) | `prepare(force=True)`, and `launch(force=True)` |
 | `--ignore-antipatterns` | the plugin compiled with every rule retired |
-| a launch mode | its targets compile the plugin; its model, words, record root and allowance are fields; what it opens around the run is a host companion |
+| `--mode <name>` | the mode's `claude=` or `codex=` preset laid over the declaration (`laid_over`), under this table's other flags; its `container=` between them and your `[container]`; its targets, where it declares any, compile the plugin |
 | passthrough words | `launch(*words)`, after everything the declaration compiles to |
+
+### Modes: a named kind of session
+
+A project declares its kinds of session as `LaunchMode`s on
+`DevtoolsDeclarations.launch_modes`, and `harness claude|codex --mode <name>`
+opens one. A mode is a preset of the declaration the launch builds, never a
+second vocabulary: a `Claude(...)` and its `Codex(...)` variant stating only
+what the mode changes, each laid over the project's declaration by
+`laid_over` — a nested declaration field by field, so a mode moving its
+`Recording(root=...)` keeps the ledger — with the command line laid over both,
+so `--model` still wins. How much the runtime asks is already a field of each:
+
+```python
+FREE = LaunchMode(
+    name="free",
+    help="explore without being asked; a later session tidies up",
+    claude=Claude(permission_mode="auto"),
+    codex=Codex(approval_policy="on-request", approvals_reviewer="auto_review"),
+    container=OuterContainer(sudo=True, guidance=FREE_GUIDANCE),
+)
+```
+
+What it grants the container is its `container=`, between the command line
+and your `[container]`. A mode taking away what only a container stands in
+for — Claude Code's `auto` or `bypassPermissions`, Codex never asking or its
+`auto_review` reviewer, Codex's own sandbox stood down, or guidance of its own,
+which the container mounts read-only over `.claude/CLAUDE.md` or `AGENTS.md` —
+is refused on the host. The wall itself is `--sandbox`'s, so a preset naming a
+`sandbox` is refused where it is declared. A mode's `targets` compile a tree of
+its own where what it adds has to reach the runtime at startup; unset, the
+project's.
 
 ### Opening a session the anti-pattern gate leaves alone
 
