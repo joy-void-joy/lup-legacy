@@ -24,9 +24,10 @@ import sh
 from lup.devtools.review.app import ReviewDetail
 from lup.harness.enforcement import semantic_policy_for
 from lup.policy.assets.host import document_digest
+from lup.policy.identity import DASHBOARD_URL_ENV
 from lup.policy.models import Decision, ShellCommand
 from lup.policy.relay import PersistentQuestion, QuestionRelay
-from lup.types import JsonObject
+from lup.types import EnvVars, JsonObject
 from lup_template.harness.catalog import declared_hook_set
 from tests.unit.native import claude_effect, codex_effect
 from tests.unit.repos import commit_file, initialized_repo
@@ -69,8 +70,14 @@ def judged(root: Path, command: str) -> Decision:
     )
 
 
-def dispatched(runtime: Runtime, root: Path, command: str) -> sh.RunningCommand:
-    """One runtime's generated dispatcher over the command, as its harness sends it."""
+def dispatched(
+    runtime: Runtime, root: Path, command: str, held: EnvVars | None = None
+) -> sh.RunningCommand:
+    """One runtime's generated dispatcher over the command, as its harness sends it.
+
+    ``held`` is what the launch lends the session beside the rest of the
+    environment -- a dashboard's address, where one reads what parks.
+    """
     payload: JsonObject = {
         "session_id": "requester",
         "cwd": str(root),
@@ -96,6 +103,7 @@ def dispatched(runtime: Runtime, root: Path, command: str) -> sh.RunningCommand:
             },
             "PLUGIN_DATA": str(root.parent / "plugin-data"),
             "CLAUDE_PLUGIN_DATA": str(root.parent / "plugin-data"),
+            **(held or {}),
         },
         _return_cmd=True,
     )
@@ -111,8 +119,12 @@ def effect(runtime: Runtime, answer: sh.RunningCommand) -> str:
 
 
 def parked(runtime: Runtime, root: Path, command: str) -> PersistentQuestion:
-    """The one question a runtime parks for a command that asks."""
-    dispatched(runtime, root, command)
+    """The one question a runtime parks for a command that asks.
+
+    Under a launch holding a dashboard, which is where a question a
+    supervisor may answer parks on Claude too.
+    """
+    dispatched(runtime, root, command, {DASHBOARD_URL_ENV: "http://127.0.0.1:8766"})
     (question,) = QuestionRelay(root / ".lup/questions.jsonl").pending()
     return question
 
