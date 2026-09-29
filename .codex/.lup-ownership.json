@@ -205,7 +205,7 @@
     {
       "path": ".codex/plugins/lup/hooks/runtime/kernel/bindings.py",
       "category": "generated",
-      "sha256": "150c5f3651fa2210dcbb5e8d9a69a1b322bb3d794540876b4b0948c8f892c122",
+      "sha256": "23b9565beb135221553eb43631b8f88ca37895546dae30214279a60377af7a5d",
       "semantic_id": "hooks.lup-policy",
       "executable": false
     },
@@ -338,7 +338,7 @@
     {
       "path": ".codex/plugins/lup/hooks/runtime/kernel/shell.py",
       "category": "generated",
-      "sha256": "c9ba6f02f4dd576794a5dce8af6038def16737d1cfb0f1f5a8c2d34a1e6a83cf",
+      "sha256": "5c16a84baa584ec026b7f615668eafb042a725d55fd784f3c1eea65bc3230c66",
       "semantic_id": "hooks.lup-policy",
       "executable": false
     },

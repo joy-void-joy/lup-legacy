@@ -437,7 +437,14 @@ directory in.
 Loops, conditionals, case
 arms, subshells, and brace groups classify recursively over frozen bindings —
 literal assignments instantiate, opaque ones (`read`, globs) gate
-flag-guarded commands. `find -exec` payloads and wrappers (`env`, `time`,
+flag-guarded commands. A `for` loop over at most sixteen literal words is read
+once per word in the binding pass every reader of the line shares, so a
+redirection, a `tee` or a `cd` in its body names the path each pass reaches:
+`for f in tmp/a tmp/b; do echo x > $f; done` writes two scratch files rather
+than a path only the run knows. A body that assigns the loop's own name is
+not read that way, since a later reference is then some other value
+(`f=README.md; rm $f`), and its references gate as an opaque list's do.
+`find -exec` payloads and wrappers (`env`, `time`,
 `timeout`, `nice`, `stdbuf`, `setsid`, `nohup`, `exec`, `command`) recurse;
 each wrapper's options are read by the grammar its `--help` lists, clusters
 included, and one the grammar does not list leaves the command unread and

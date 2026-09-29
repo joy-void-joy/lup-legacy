@@ -70,9 +70,9 @@ from .bindings import (
     bind_script,
     carried_words,
     expanded_script,
-    literal_loop_word,
     pure_assignment_names,
     references,
+    unrollable,
 )
 from .escalation import read_escalation
 from .programs import (
@@ -1245,10 +1245,13 @@ def decide_for_body(
 ) -> list[KernelDecision]:
     """Classify a ``for`` body once per literal loop word, or gated when opaque.
 
-    A literal word list instantiates the body exactly, so a word landing in a
-    guarded flag position is judged as the flag it becomes. A non-literal list
-    (globs, expansions) can become any word, so every command referencing the
-    variable must name an argument-safe command before one placeholder pass.
+    A literal word list instantiates the body exactly -- once per word, in the
+    binding pass every reader shares -- so a word landing in a guarded flag
+    position is judged as the flag it becomes. A non-literal list (globs,
+    expansions) can become any word, and a body assigning the loop's name
+    makes a later reference some other value, so there every command
+    referencing the variable must name an argument-safe command before one
+    placeholder pass.
     """
     name = command["name"]
     if dangerous_env_name(name):
@@ -1275,16 +1278,18 @@ def decide_for_body(
             )["decisions"]
         ]
 
-    if all(literal_loop_word(word) for word in loop_words):
-        return instantiations([word_text(word) for word in loop_words] or ["x"])
+    # The binding pass read a literal list's body once per word already, for
+    # every reader of the line, so each pass is in the body as it stands.
+    if unrollable(command):
+        return decide_list(command["body"], context, depth + 1, bindings)["decisions"]
     for inner in simple_commands(command["body"]):
         if references(inner["words"], name):
             words = command_words([word_text(word) for word in inner["words"]])
             if not words or not argument_safe_words(words, context):
                 return [
                     unjudged(
-                        "loop words are not literal, so a variable argument"
-                        " could become a guarded flag"
+                        "the loop variable is not one literal word on every pass,"
+                        " so an argument could become a guarded flag"
                     )
                 ]
     return instantiations(["x"])

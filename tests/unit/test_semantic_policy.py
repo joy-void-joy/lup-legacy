@@ -1528,6 +1528,31 @@ SHELL_POLICY_CASES = [
     # produced the document the edit gates judge, and the rewrite is asked
     # about rather than granted.
     DecisionCase(input="for x in -i; do sed \"$x\" 's/a/b/' f; done", effect="ask"),
+    # A literal word list is read once per word for the whole line, so a
+    # redirection, a `tee` or a `cd` in the body names the path each pass
+    # reaches, and the targets are judged as spelled. A body that assigns the
+    # loop's own name makes a later reference some other value, so it is not
+    # read as the word: `f=README.md; rm $f` removes README.md, not `tmp/a`.
+    DecisionCase(input="for f in tmp/a tmp/b; do echo x > $f; done", effect="allow"),
+    DecisionCase(
+        input="for f in tmp/a tmp/b; do echo x | tee $f; done", effect="allow"
+    ),
+    DecisionCase(input="for f in tmp/a README.md; do echo x > $f; done", effect="ask"),
+    DecisionCase(
+        input="for d in tmp/a tmp/b; do cd $d && echo x > out; done", effect="allow"
+    ),
+    DecisionCase(
+        input="for a in tmp/x tmp/y; do for b in 1 2; do echo x > $a/$b; done; done",
+        effect="allow",
+    ),
+    DecisionCase(input="for f in tmp/a; do f=README.md; rm $f; done", effect="deny"),
+    DecisionCase(
+        input="for f in tmp/a; do f=README.md; echo x > $f; done", effect="ask"
+    ),
+    DecisionCase(
+        input="for f in a b c d e f g h i j k l m n o p q; do echo x > tmp/$f; done",
+        effect="ask",
+    ),
     DecisionCase(input='for f in *.txt; do sort "$f"; done', effect="deny"),
     DecisionCase(input='for f in a; do python "$f"; done', effect="deny"),
     DecisionCase(input='for f in a; do wc "$f"', effect="deny"),
@@ -4433,6 +4458,10 @@ def test_write_targets_name_only_the_paths_a_command_opens_for_writing() -> None
     assert shell_write_targets("ls >&2") == []
     assert shell_write_targets("a > one.txt | b > two.txt") == ["one.txt", "two.txt"]
     assert shell_write_targets("frobnicate --weird") == []
+    assert shell_write_targets("for f in tmp/a tmp/b; do echo x > $f; done") == [
+        "tmp/a",
+        "tmp/b",
+    ]
 
 
 def test_whether_a_file_was_already_there_no_longer_decides_a_redirection(
