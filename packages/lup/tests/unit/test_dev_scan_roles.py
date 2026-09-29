@@ -77,7 +77,8 @@ def test_every_external_check_skips_data_and_scratch(
     check.ruff_format_check(False, excluded)
     check.ruff_lint_check(False, excluded)
     check.pyright_check(excluded)
-    check.TestRoot(name="pytest", directory=tmp_path).checked(2, excluded)
+    serial = check.TestRoot(name="pytest", directory=tmp_path, parallel=False)
+    serial.checked(2, excluded)
 
     assert excluded == ["notes", "**/tmp"]
     assert all("tests" not in call for call in calls)

@@ -2198,6 +2198,14 @@ PATH_ROLES: list[PathRoleRow] = [
         "role": "data",
     },
     {
+        "root": "tests",
+        "role": "test",
+    },
+    {
+        "root": "packages/lup/tests",
+        "role": "test",
+    },
+    {
         "root": "packages/lup/web/**/*.test.js",
         "role": "test",
     },

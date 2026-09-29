@@ -1,0 +1,13 @@
+subjects = ["parallel_arguments"]
+reason = """
+a suite spreads over processes where its own environment holds pytest-xdist, \
+asked of the environment `uv run` builds from the suite's directory, or where \
+its TestRoot declares `parallel`; the gate's own interpreter answered for \
+every suite, and handed `-n` to a nested project's pytest that refused it"""
+
+[[steps]]
+instruction = """
+Replace calls to lup.devtools.dev.check.parallel_arguments(workers) with \
+root.spread(workers) on the TestRoot the arguments are for. A suite whose \
+answer is known declares it as TestRoot(..., parallel=True) or \
+parallel=False, and spread asks its environment nothing."""
