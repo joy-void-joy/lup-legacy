@@ -14,7 +14,7 @@ the child project must select its own environment from its working directory.
 from collections.abc import Mapping
 
 from lup.coordination.identity import MEMBER_ENV, NAME_ENV, MemberEnv
-from lup.policy.identity import DASHBOARD_URL_ENV
+from lup.policy.identity import DASHBOARD_URL_ENV, REVIEW_ANSWERS_ENV
 from lup.devtools.launcher import ENVIRONMENT_VARIABLE
 from lup.sessions.recursion import RecursiveAgentSettings
 from lup.types import EnvVars
@@ -61,6 +61,7 @@ LAUNCHER_DECIDED_ENV: list[str] = [
     MEMBER_ENV,
     NAME_ENV,
     DASHBOARD_URL_ENV,
+    REVIEW_ANSWERS_ENV,
 ]
 """What a launched process is told about where it is, rather than what it does.
 
@@ -70,7 +71,9 @@ not that session answers to somebody else's address. It arrives by reference
 rather than respelled, because a second spelling is a second place a variable
 has to be added, and the one that is missed is the one nobody takes away. The
 dashboard's address is where that launch's companion listens, which a process
-that did not hold it has no business reporting as its own.
+that did not hold it has no business reporting as its own; the answers store
+is the operator's, lent to that launch, where a suite recording an answer
+would write into the person's own reviews, or fail on a read-only mount.
 
 A suite is the case that matters. A test joining a roster without saying what
 to call the session is named after whichever worktree pytest was started from
