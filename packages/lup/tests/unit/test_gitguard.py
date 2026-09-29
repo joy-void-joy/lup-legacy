@@ -1,5 +1,6 @@
 """The guard that catches a suite writing into the checkout it runs inside."""
 
+import io
 from pathlib import Path
 
 import pytest
@@ -8,9 +9,10 @@ import sh
 import lup.devtools.gitguard as gitguard
 from lup.devtools.dev.git_guards import (
     DECLARED_GUARDS,
-    DRIFT_COMMAND,
-    MERGE_STANDDOWN,
     GitGuard,
+    MergeInProgress,
+    fire,
+    hook_scripts,
     hooks_directory,
     install_guards,
     read_hooks,
@@ -38,36 +40,28 @@ def test_every_installed_hook_scrubs_the_environment_before_its_check() -> None:
 
     That is the one way in that a suite cannot close from its own side, however
     carefully each helper binds its git, so the hook closes it instead. Before
-    the check rather than anywhere inside it: the names have to be gone by the
-    time anything the check runs asks git which repository it is in.
+    the hand-off rather than anywhere after it: the names have to be gone by
+    the time the checkout's devtools, or anything a guard runs, asks git which
+    repository it is in.
     """
-    for guard in DECLARED_GUARDS:
-        check = guard.check()
+    for script in hook_scripts(DECLARED_GUARDS):
+        body = script.body()
 
-        assert guard.environment == GIT_ENVIRONMENT
-        assert f"unset {' '.join(guard.environment)}" in check
-        assert check.index("unset ") < check.index(f"exec {guard.command}")
+        assert f"unset {' '.join(GIT_ENVIRONMENT)}\n" in body
+        assert body.index("unset ") < body.index("uv run lup-devtools git hooks run")
 
 
-def test_the_declared_commit_guard_reads_the_merge_before_it_checks() -> None:
-    """The standdown goes after the scrub and before the check, in that order.
+def test_the_declared_drift_guard_stands_down_for_a_merge_and_nothing_else() -> None:
+    """The commit concluding a merge is the drift guard's to skip, and only its.
 
-    After, because the scrub is what makes `git rev-parse` resolve the
-    repository the hook is running in rather than the one a name in the
-    environment points at. Before, because a check that has already started
-    cannot be stood down.
+    The conflict-marker check beside it runs for that commit too, because a
+    merge's own commit is where its markers get committed.
     """
-    for guard in (
-        one for one in DECLARED_GUARDS if one.hook == "pre-commit" and one.standdown
-    ):
-        check = guard.check()
+    standdowns = [
+        guard.standdown for guard in DECLARED_GUARDS if guard.hook == "pre-commit"
+    ]
 
-        assert guard.standdown == MERGE_STANDDOWN
-        assert (
-            check.index("unset ")
-            < check.index("MERGE_HEAD")
-            < check.index(f"exec {guard.command}")
-        )
+    assert standdowns == [MergeInProgress(), None]
 
 
 def test_the_commit_guard_stands_down_for_a_merge_and_not_for_what_follows(
@@ -80,8 +74,10 @@ def test_the_commit_guard_stands_down_for_a_merge_and_not_for_what_follows(
     that settles them comes after. Git draws that line itself for the merge it
     completes on its own, which runs `pre-merge-commit` — a moment nothing
     here declares — so this guard was refusing exactly the merges somebody had
-    to resolve by hand, and only those. It stands down for one merge commit
-    and for nothing else, which is what the commit after it has to show.
+    to resolve by hand, and only those. It stands down while one merge is
+    being concluded and for nothing else, which is what the commit after it
+    has to show. Fired as the checkout's runner fires it, in the repository
+    the conflicted merge left.
     """
     root = repository(tmp_path / "checkout")
     wrote(root, "a.txt", "base\n")
@@ -92,41 +88,20 @@ def test_the_commit_guard_stands_down_for_a_merge_and_not_for_what_follows(
     git("-C", str(root), "checkout", "-q", "main")
     wrote(root, "a.txt", "main's\n")
     committed(root, "main's own")
-    install_guards([GitGuard(command="exit 1", standdown=MERGE_STANDDOWN)], root)
+    guards = [GitGuard(command="exit 1", standdown=MergeInProgress())]
     git("-C", str(root), "merge", "--no-edit", "other", _ok_code=[0, 1])
     wrote(root, "a.txt", "both\n")
     git("-C", str(root), "add", "a.txt")
 
+    concluding = fire(guards, "pre-commit", (), root, io.StringIO())
     git("-C", str(root), "commit", "--no-edit", "-q")
-    merge = git.out("-C", str(root), "rev-parse", "HEAD")
     wrote(root, "b.txt", "after the merge\n")
     git("-C", str(root), "add", "b.txt")
-    git("-C", str(root), "commit", "-q", "-m", "after", _ok_code=[0, 1])
+    after = fire(guards, "pre-commit", (), root, io.StringIO())
 
-    second_parent = git.out(
-        "-C",
-        str(root),
-        "rev-parse",
-        "--verify",
-        "--quiet",
-        f"{merge}^2",
-        _ok_code=[0, 1],
-    )
-    assert second_parent
-    assert git.out("-C", str(root), "rev-parse", "HEAD") == merge
-    assert git.lines("-C", str(root), "diff", "--name-only", "--cached") == ["b.txt"]
-
-
-def test_a_guard_that_wants_nothing_dropped_writes_no_scrub() -> None:
-    """The names are a default, so a project can decline them.
-
-    Declining has to leave a hook that still runs, rather than one carrying a
-    bare `unset` and a comment explaining a line that is not there.
-    """
-    check = GitGuard(environment=()).check()
-
-    assert "unset" not in check
-    assert check.endswith(f"exec {DRIFT_COMMAND}\n")
+    assert concluding == 0
+    assert after == 1
+    assert git.out("-C", str(root), "rev-parse", "-q", "--verify", "HEAD^2")
 
 
 def test_a_hook_at_a_moment_nothing_declares_is_reported_then_cleared(

@@ -13,6 +13,7 @@ resolves against a working directory a CLI is imported long before anyone
 points it at.
 """
 
+import sys
 from collections.abc import Callable
 from pathlib import Path
 from typing import Annotated
@@ -55,7 +56,7 @@ def create_git_app(declared: Callable[[], DevDeclarations]) -> typer.Typer:
     )
 
     @app.callback()
-    def guard_worktree_pointers() -> None:
+    def guard_worktree_pointers(ctx: typer.Context) -> None:
         """Refuse any git-workflow command run over a redirected worktree set.
 
         The one host-side chokepoint for this command tree: every `dev git`
@@ -63,9 +64,23 @@ def create_git_app(declared: Callable[[], DevDeclarations]) -> typer.Typer:
         through here before running git across the worktrees, so a pointer a
         contained session moved is caught once rather than at each command. A
         layout with no sibling worktrees no-ops, leaving a plain checkout's
-        commands untouched.
+        commands untouched. The hooks group judges for itself, one level down.
         """
-        worktree.refuse_redirected_pointers()
+        if ctx.invoked_subcommand != "hooks":
+            worktree.refuse_redirected_pointers()
+
+    @guard_app.callback()
+    def guard_hook_pointers(ctx: typer.Context) -> None:
+        """Judge the worktree set for every hooks command but the one git runs.
+
+        `run` is reached from inside a hook, after git has resolved the
+        repository it is working in, and reads that repository alone; each
+        guard it runs that is a git-workflow command passes through the
+        judgement above on its own. Judging every worktree of the clone there
+        would charge each commit seconds more for nothing.
+        """
+        if ctx.invoked_subcommand != "run":
+            worktree.refuse_redirected_pointers()
 
     def scaffold_branch() -> str:
         """The branch this project's copied half is compiled onto, if it has one."""
@@ -411,16 +426,46 @@ def create_git_app(declared: Callable[[], DevDeclarations]) -> typer.Typer:
         for state in installed:
             typer.echo(state.describe())
 
+    @guard_app.command("run")
+    def guard_run_cmd(
+        hook: Annotated[str, typer.Argument(help="The git hook that fired")],
+        arguments: Annotated[
+            list[str] | None, typer.Argument(help="What git passed the hook")
+        ] = None,
+    ) -> None:
+        """Run the guards this checkout declares at one git hook.
+
+        Every hook `install` writes calls this and names no guard, so what
+        runs is this checkout's own declaration at the revision it is at,
+        whichever revision wrote the hook. The first guard to refuse ends
+        the moment, and says why.
+        """
+        status = git_guards_mod.fire(
+            declared().git_guards,
+            hook,
+            tuple(arguments or ()),
+            project_root(),
+            sys.stdin,
+        )
+        raise typer.Exit(status)
+
     @guard_app.command("status")
     def guard_status_cmd() -> None:
         """Report what this clone refuses, at every moment a hook sits at.
 
         Both directions, because either alone reads as fully armed: a moment
         this declares with nothing installed at it, and a hook this installed
-        at a moment nothing declares any more.
+        at a moment nothing declares any more. Each moment lists the guards
+        this checkout runs there, which the installed hook does not name.
         """
-        hooks = git_guards_mod.read_hooks(declared().git_guards, project_root())
-        for state in [*hooks.guards, *hooks.orphaned]:
+        guards = declared().git_guards
+        hooks = git_guards_mod.read_hooks(guards, project_root())
+        scripts = git_guards_mod.hook_scripts(guards)
+        for script, state in zip(scripts, hooks.guards, strict=True):
+            typer.echo(state.describe())
+            for guard in script.guards:
+                typer.echo(f"  runs `{guard.command}`")
+        for state in hooks.orphaned:
             typer.echo(state.describe())
 
     @guard_app.command("uninstall")

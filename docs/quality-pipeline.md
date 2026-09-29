@@ -8,7 +8,10 @@ catches a class of problem the others cannot.
 ## Commit time: the git guard
 
 `uv run lup-devtools git hooks install` writes one hook per moment a
-project declares. The `pre-commit` hook comes declared with two checks. The
+project declares, and names no check in it: each hook hands its moment to
+`uv run lup-devtools git hooks run <hook>`, and the checkout git fired it in
+runs the guards its own devtools declares there. The `pre-commit` moment
+comes declared with two checks. The
 first runs `uv run lup-devtools harness check all`, so a commit is refused
 while any generated artifact differs from what its source renders. The
 second runs `uv run lup-devtools dev check --conflict-markers --staged`, so a
@@ -16,8 +19,8 @@ commit is refused while a file it holds carries a conflict block a merge left
 behind: a `<<<<<<< ` line, a `=======` line and a `>>>>>>> ` line, in order.
 That second check runs for a merge's own commit too, which the drift check
 stands down for, because that commit is where markers get committed. Each
-reads back in about a second, which is what a check standing between
-somebody and their next keystroke has to cost.
+costs seconds rather than the gate's minutes, which is what a check standing
+between somebody and their next keystroke can afford.
 
 The whole gate and `dev check --changed` run the same conflict-marker row,
 over every tracked text file and over the changed ones. A fixture holding a
@@ -35,15 +38,34 @@ Which hooks a project arms is its own declaration, so one that guards a
 second moment — or runs its gate under another name — says so instead of
 forking the module that writes them.
 
+The hook names no check because every worktree of a clone runs the one
+shared hooks directory, each at a revision of its own. A hook spelling its
+checks out was written by one revision and run by all of them: a check that
+grew an option failed every commit in a worktree cut before it, and a hook
+written from an older checkout ran none of the checks a newer one declares.
+Written from any revision the hook is the same file, so a guard added,
+dropped or changed reaches every checkout at the revision it holds, and
+arming stays a once-per-clone act. Handing the moment over costs one start of
+the checkout's devtools at each moment, the settle moments included.
+
+One skew is left, and the hook tolerates it alone: a checkout older than `git
+hooks run` itself, whose devtools runs but has no such verb, so declares no
+guard the hook could reach. Its commit goes through with one line naming the
+checkout. The case is told apart narrowly — typer's usage error exits 2, and
+only where the verb's own help also exits 2 while the CLI's exits 0 is the
+verb missing from devtools that run — so a broken environment, which `uv`
+reports as 2 too, and a check that refused with 2 still refuse. Every other
+failure refuses the commit as it came.
+
 `git worktree create` arms them, re-running install refreshes a body left by
 an older library and clears any this wrote at a moment nothing declares any
-more, `git hooks status` says what a clone would run at each moment, and
-`uninstall` removes them. A hook written by anything else is reported rather
-than replaced.
+more, `git hooks status` says what a clone would run at each moment and lists
+the checks behind each, and `uninstall` removes them. A hook written by
+anything else is reported rather than replaced.
 
-The command it runs is one the pipeline runs too, and the same verdict
-`dev check` reports, so the places that can refuse the same work reach one
-computation instead of several that can disagree.
+The commands the guards run are ones the pipeline runs too, reading the same
+verdicts `dev check` reports, so the places that can refuse the same work
+reach one computation instead of several that can disagree.
 
 The check reads every generated artifact every time, with no path pattern
 deciding when it applies. It costs well under a second, and the alternative

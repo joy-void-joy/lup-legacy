@@ -2,6 +2,25 @@
 
 ## Unreleased
 
+### A git hook installed from any revision runs in a worktree at any other
+
+`git hooks install` writes hooks naming no guard: each hands its moment to
+`uv run lup-devtools git hooks run <hook>`, and the checkout git fired it in
+runs the guards its own devtools declares there. One clone's shared hooks
+directory serves worktrees at every revision, so a hook written from `dev`
+no longer fails every commit in a worktree whose devtools predates an option
+a guard uses, and one written from an older checkout no longer skips the
+guards a newer one declares. A checkout older than `git hooks run` itself
+commits with one line naming it; every other failure refuses as before.
+`GitGuard.standdown` takes a `Standdown` — `MergeInProgress`,
+`NoMergeCommit` or `DeletionOnly` for the `MERGE_STANDDOWN`,
+`SETTLE_STANDDOWN` and `DELETION_STANDDOWN` shell snippets — and a guard's
+refusal is said when it refuses. `GitGuard.environment`, `GitGuard.check`,
+`HookScript.replayed`, `capture`, `framed` and `REPLAY_CALL` are gone;
+`fire` is what the verb runs, and `git hooks status` lists the guards behind
+each moment. A clone armed before this runs `uv run lup-devtools git hooks
+install` once, on the host.
+
 ### A runtime started from a session's shell is a member of its own
 
 `LUP_COORDINATION_MEMBER` reaches every process a launched session starts,
