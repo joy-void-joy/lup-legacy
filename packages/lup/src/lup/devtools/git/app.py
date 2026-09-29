@@ -32,7 +32,9 @@ from lup.harness.process import LocalProcessLauncher
 from lup.policy.vocabulary import protected_branches
 from lup.workspace.paths import project_root
 from lup.devtools.git.prepare import prepare
+from lup.devtools.git.settle import settle
 from lup.devtools.launcher import console_script
+from lup.devtools.utils import decode_stderr
 
 
 def create_git_app(declared: Callable[[], DevDeclarations]) -> typer.Typer:
@@ -274,6 +276,40 @@ def create_git_app(declared: Callable[[], DevDeclarations]) -> typer.Typer:
         """
         target = into if into is not None else branches.get_integration_branch()
         preview.run_preview(names, target, as_json)
+
+    @app.command("settle")
+    def settle_cmd() -> None:
+        """Regenerate over the merge commit HEAD just became, and fold it in.
+
+        The post-merge and post-commit guards run this; by hand it settles a
+        merge made where they were not armed. It rewrites only a merge commit
+        no other branch holds, with the same parents, message and author, and
+        commits nothing regeneration did not write.
+        """
+        root = project_root()
+        launcher = console_script(root)
+        if launcher is None:
+            typer.echo(
+                "This checkout's environment is not synced, so the merge was not "
+                "settled: regenerate and commit what it writes by hand.",
+                err=True,
+            )
+            raise typer.Exit(1)
+
+        def regenerate() -> None:
+            sh.Command(str(launcher))("harness", "generate", "all", _cwd=str(root))
+
+        try:
+            settled = settle(root, regenerate)
+        except sh.ErrorReturnCode as error:
+            typer.echo(
+                "The merge was not settled, so its generated trees may be stale: "
+                f"{decode_stderr(error).strip()}",
+                err=True,
+            )
+            raise typer.Exit(1) from error
+        if settled is not None:
+            typer.echo(settled.report())
 
     @app.command("merge-driver")
     def merge_driver_cmd() -> None:

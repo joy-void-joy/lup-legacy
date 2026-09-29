@@ -625,7 +625,7 @@
     {
       "path": ".codex/plugins/lup/skills/land/SKILL.md",
       "category": "generated",
-      "sha256": "088a00e085a4e790a12452859d8eec0d9a8ef107ffcf73d32056b04ea2a127e5",
+      "sha256": "5a7f0a3255a182fb4b078a2e58647cf10f7540ef692ec42b2576f5a714e48db3",
       "semantic_id": "skill.land",
       "executable": false
     },
@@ -660,7 +660,7 @@
     {
       "path": ".codex/plugins/lup/skills/rebase/SKILL.md",
       "category": "generated",
-      "sha256": "128d275d7d57cacaebde6936d0ba6add3a4cab645b5cbe5387305399d7bc11f6",
+      "sha256": "0263adabaa9386a2299d3206be31b4f771de07ac36aaf74478c0ea993da7e8bf",
       "semantic_id": "skill.rebase",
       "executable": false
     },
