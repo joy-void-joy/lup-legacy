@@ -87,7 +87,7 @@ from lup.policy.kernel.shell import (
     shell_context,
     shell_posture_targets,
 )
-from lup.policy.kernel.walks import shell_walked_roots
+from lup.policy.kernel.walks import excluded_name, shell_walked_roots
 from lup.policy.kernel.withheld import (
     carries_withheld_name,
     withheld_edit,
@@ -577,6 +577,8 @@ class ShellPolicy(DecisionPolicy[ShellCommand]):
                             lambda path: (
                                 withheld_row(path, self.refused_paths) is not None
                             ),
+                            lambda name: excluded_name(name, walk["excluded"]),
+                            lambda name: excluded_name(name, walk["skipped"]),
                             root,
                         )
                     ]

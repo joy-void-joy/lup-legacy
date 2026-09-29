@@ -84,7 +84,7 @@ from kernel.words import INTERPRETERS
 from kernel.roles import displaced_targets, sibling_scratch_rows
 from kernel.shell import decide_shell, sandbox_excluded, shell_posture_targets
 from kernel.tools import decide_tool
-from kernel.walks import shell_walked_roots
+from kernel.walks import excluded_name, shell_walked_roots
 from kernel.withheld import (
     carries_withheld_name,
     withheld_edit,
@@ -1444,6 +1444,8 @@ def walked_withheld(
     hidden: bool,
     named: Callable[[str], bool],
     withheld: Callable[[str], bool],
+    pruned: Callable[[str], bool],
+    skipped: Callable[[str], bool],
     root: Path | None = None,
     reserve: float = 1.0,
 ) -> str:
@@ -1459,7 +1461,12 @@ def walked_withheld(
     by its name alone, which is what keeps this from reading every pattern at
     every file: only a file so named, or beneath a directory so named, is put
     to ``withheld``, the kernel's whole reading. ``hidden`` false skips names
-    beginning with a dot, as `rg` does unless told otherwise.
+    beginning with a dot, as `rg` does unless told otherwise; ``pruned`` is a
+    directory and ``skipped`` a file the command told its walk to leave out.
+
+    What was found is returned beneath the root as the command spelled it --
+    `~/.codex/auth.json`, `.lup/codex-home/auth.json` -- which is the path the
+    refusal names, and whose first name is the directory to leave out.
 
     Bounded by the hook's deadline less ``reserve``: a walk that has not
     finished by then returns the directory it stopped in, which is withheld
@@ -1482,23 +1489,26 @@ def walked_withheld(
         return ""
     for directory, folders, files in start.walk():
         if hook_seconds_left(float("inf")) < reserve:
-            return str(directory)
-        if not hidden:
-            folders[:] = [name for name in folders if not name.startswith(".")]
+            return (Path(walked) / directory.relative_to(start)).as_posix()
+        folders[:] = [
+            name
+            for name in folders
+            if (hidden or not name.startswith(".")) and not pruned(name)
+        ]
         beneath = any(named(part) for part in directory.parts)
         found = next(
             (
                 path
                 for name in files
-                if hidden or not name.startswith(".")
+                if (hidden or not name.startswith(".")) and not skipped(name)
                 if beneath or named(name)
-                for path in [str(directory / name)]
-                if withheld(path)
+                for path in [directory / name]
+                if withheld(str(path))
             ),
-            "",
+            None,
         )
-        if found:
-            return found
+        if found is not None:
+            return (Path(walked) / found.relative_to(start)).as_posix()
     return ""
 
 
@@ -3285,6 +3295,8 @@ def bash_decision(
                     walk["hidden"],
                     lambda name: carries_withheld_name(name, names),
                     lambda path: withheld_row(path, REFUSED_PATHS) is not None,
+                    lambda name: excluded_name(name, walk["excluded"]),
+                    lambda name: excluded_name(name, walk["skipped"]),
                     cwd,
                 )
             ]

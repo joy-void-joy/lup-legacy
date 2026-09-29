@@ -29,7 +29,7 @@ from .decision import KernelDecision
 from .lex import placed_path, placed_redirects
 from .rows import RefusedPathRow, WithheldWalkRow
 from .syntax import Redirect, Script, Word, WordPart, word_text
-from .walks import placed_root, walked_roots
+from .walks import grep_split, placed_root, walked_roots
 from .words import expands_to
 
 # lup: ignore[library-default] — the shell builtins that write their operands to stdout
@@ -279,6 +279,7 @@ def carries_withheld_name(name: str, names: WithheldNames) -> bool:
 def withheld_walk(
     words: list[str],
     directory: str | None,
+    checkout_root: str,
     walks: list[WithheldWalkRow],
     rows: list[RefusedPathRow],
 ) -> KernelDecision | None:
@@ -286,15 +287,15 @@ def withheld_walk(
 
     Which words the command walks is its grammar, read by
     :func:`~kernel.walks.walked_roots`; what lies beneath each is the host's
-    to say, since only a filesystem can. A read reaching a key or a login is
-    reading it, whichever word named the directory above it, so it meets the
-    refusal naming that path would. A walk the host could not finish before
-    the hook's deadline met no answer, which is not an answer of none.
+    to say, since only a filesystem can, spelled beneath the root the command
+    named. A read reaching a key or a login is reading it, whichever word
+    named the directory above it, so it meets the refusal naming that path
+    would. A walk the host could not finish before the hook's deadline met no
+    answer, which is not an answer of none.
     """
-    executable = posixpath.basename(words[0]) if words else ""
     reached = next(
         (
-            (root["path"], walk["found"])
+            walk
             for root in walked_roots(words)
             for walk in walks
             if walk["root"] == placed_root(root["path"], directory)
@@ -303,24 +304,55 @@ def withheld_walk(
     )
     if reached is None:
         return None
-    spelled, found = reached
-    row = withheld_row(found, rows)
+    found = reached["found"]
+    placed = placed_root(found, directory) or found
+    row = withheld_row(
+        posixpath.join(checkout_root, placed)
+        if checkout_root and not posixpath.isabs(placed)
+        else placed,
+        rows,
+    )
+    executable = posixpath.basename(words[0])
+    recovery = walk_recovery(words, reached)
     if row is None:
         return KernelDecision(
             "deny",
-            f"{spelled}: `{executable}` reads everything beneath it, and the walk"
-            f" stopped at {found} before this hook could show none of it is a key"
-            " or a login",
+            f"{reached['root']}: `{executable}` reads everything beneath it, and the"
+            f" walk stopped at {found} before this hook could show none of it is a"
+            " key or a login",
             cause="deliberate",
-            recovery="Name the directories below it that the work needs.",
+            recovery=recovery,
         )
     return KernelDecision(
         "deny",
-        f"{spelled}: `{executable}` reads everything beneath it, {found} among it,"
-        f" and {row['reason']}",
+        f"{reached['root']}: `{executable}` reads everything beneath it, {found}"
+        f" among it, and {row['reason']}",
         cause="deliberate",
-        recovery=f"{row['recovery']} Name the directories below it that the work"
-        " needs, or search with `rg`, which skips dot names unless told otherwise.",
+        recovery=recovery,
+    )
+
+
+def walk_recovery(words: list[str], walk: WithheldWalkRow) -> str:
+    """The searches that read the same tree without walking into what was found.
+
+    Named in the command's own words, because the checkout a session works
+    in is the tree this refuses most often: `rg` skips hidden and ignored
+    paths, and grep leaves out the directory holding what was found -- the
+    first name beneath the root -- or the file, where it stands at the top.
+    Another walker is told to name the directories below the root it needs.
+    """
+    depth = len(PurePosixPath(walk["root"]).parts)
+    beneath = PurePosixPath(walk["found"]).parts[depth:]
+    held = beneath[0] if beneath else walk["found"]
+    if posixpath.basename(words[0]) not in ("grep", "egrep", "fgrep"):
+        return f"Name the directories below it that the work needs, leaving out {held}."
+    leaving = f"--exclude-dir={held}" if len(beneath) > 1 else f"--exclude={held}"
+    at = 2 if len(words) > 1 and words[1].startswith("-") else 1
+    searching = " ".join(["rg", *grep_split(words[1:])["operands"]])
+    excluding = " ".join([*words[:at], leaving, *words[at:]])
+    return (
+        f"`{searching}` skips hidden and ignored paths, and `{excluding}` leaves"
+        f" out {held}."
     )
 
 

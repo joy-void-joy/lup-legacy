@@ -949,7 +949,11 @@ def decide_shell_segment(
     withheld = withheld_operand(
         words, directory, context["checkout_root"], context["refused_paths"]
     ) or withheld_walk(
-        words, directory, context["withheld_walks"], context["refused_paths"]
+        words,
+        directory,
+        context["checkout_root"],
+        context["withheld_walks"],
+        context["refused_paths"],
     )
     if withheld is not None:
         return withheld

@@ -18,6 +18,8 @@ import pytest
 import sh
 
 from lup.devtools.dev.policy_explain import verdict_for
+from lup.harness.enforcement import semantic_policy_for
+from lup.policy.models import ShellCommand
 from lup.types import JsonObject
 from lup_template.harness.catalog import declared_hook_set
 from tests.unit.repos import initialized_repo
@@ -42,8 +44,29 @@ STAYS_OUT = [
     pytest.param("rg password ~", id="rg-skips-dot-names"),
     pytest.param("grep -rn token src", id="grep-source"),
     pytest.param("rg token .", id="rg-checkout"),
+    pytest.param("grep -r --exclude-dir=.lup token .", id="grep-excluding-attached"),
+    pytest.param("grep -r --exclude-dir .lup token .", id="grep-excluding-apart"),
 ]
 """Reads that name no withheld path and walk into none."""
+
+
+def test_a_refused_checkout_walk_names_the_spellings_that_read_it(
+    checkout: Path, home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A session searching its own checkout is told the two searches that work.
+
+    Every checkout keeping a runtime's login under `.lup/` refuses `grep -r .`,
+    so the refusal says what reads the same tree without it: `rg`, which
+    skips hidden and ignored paths, and grep leaving that directory out.
+    """
+    monkeypatch.setenv("HOME", str(home))
+    policy = semantic_policy_for(declared_hook_set())
+
+    decision = policy.decide(ShellCommand(command="grep -r token .", cwd=checkout))
+
+    assert decision.effect == "deny"
+    assert "`rg token .`" in decision.recovery
+    assert "`grep -r --exclude-dir=.lup token .`" in decision.recovery
 
 
 @pytest.fixture(params=["claude", "codex"])

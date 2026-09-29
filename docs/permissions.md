@@ -541,7 +541,11 @@ dot names where `rg` does — and a root holding a withheld path refuses the
 command as naming it would: `grep -r password ~`, `tar czf out.tgz ~` and
 `grep -r token .` over a checkout that keeps a runtime's login are refused,
 while `ls ~`, `grep x ~/notes.txt`, `rg password ~` and `grep -rn x src`
-read. A walk the hook's deadline cut short is refused too, since a root
+read. grep's `--exclude-dir` and `--exclude` are walks leaving that
+directory or file out, so a refused search of a checkout names the two that
+read the same tree — `rg token .`, which skips hidden and ignored paths, and
+`grep -r --exclude-dir=.lup token .` — in the command's own words, and
+both are allowed. A walk the hook's deadline cut short is refused too, since a root
 nobody finished walking is not one known to hold nothing. `find` walks as
 well, but hands its payload only what its predicates select, which the run
 alone evaluates, so its payload is judged as the command it is.

@@ -111,7 +111,7 @@ from kernel.words import INTERPRETERS
 from kernel.roles import displaced_targets, sibling_scratch_rows
 from kernel.shell import decide_shell, sandbox_excluded, shell_posture_targets
 from kernel.tools import decide_tool
-from kernel.walks import shell_walked_roots
+from kernel.walks import excluded_name, shell_walked_roots
 from kernel.withheld import (
     carries_withheld_name,
     withheld_edit,
@@ -315,6 +315,8 @@ def bash_decision(
                     walk["hidden"],
                     lambda name: carries_withheld_name(name, names),
                     lambda path: withheld_row(path, REFUSED_PATHS) is not None,
+                    lambda name: excluded_name(name, walk["excluded"]),
+                    lambda name: excluded_name(name, walk["skipped"]),
                     cwd,
                 )
             ]

@@ -20,6 +20,7 @@ beneath, which changes nothing; a root missed is a walk nobody measured.
 
 import posixpath
 from collections.abc import Iterator
+from fnmatch import fnmatchcase
 from typing import TypedDict
 
 from .lex import placed_path, read_segments
@@ -36,6 +37,23 @@ class WalkedRoot(TypedDict):
     `rg` skips them unless told otherwise, and every credential file a
     machine keeps in a home is one, so `rg password ~` walks into none of
     them where `grep -r password ~` walks into all."""
+
+    excluded: list[str]
+    """Directory names the walk leaves out, as globs its tool matches them by.
+
+    `grep --exclude-dir=.lup` skips every directory so named, which is how a
+    search of a checkout keeping a login beneath `.lup/` reads the rest."""
+
+    skipped: list[str]
+    """File names the walk leaves out, as globs: `grep --exclude=.env.local`.
+
+    Kept apart from ``excluded`` because each option reaches only its own
+    kind: `--exclude=.lup` still descends into a directory named `.lup`."""
+
+
+def excluded_name(name: str, globs: list[str]) -> bool:
+    """Whether a walk told to leave out these globs leaves out this directory."""
+    return any(fnmatchcase(name, glob) for glob in globs)
 
 
 class SplitWords(TypedDict):
@@ -111,7 +129,9 @@ def patterned(options: list[str]) -> bool:
     )
 
 
-def searched_roots(split: SplitWords, hidden: bool) -> list[WalkedRoot]:
+def searched_roots(
+    split: SplitWords, hidden: bool, excluded: list[str], skipped: list[str]
+) -> list[WalkedRoot]:
     """The roots a pattern search walks: every operand past its pattern.
 
     With the pattern handed to an option, every operand is a root. Naming
@@ -119,10 +139,29 @@ def searched_roots(split: SplitWords, hidden: bool) -> list[WalkedRoot]:
     """
     operands = split["operands"]
     roots = operands if patterned(split["options"]) else operands[1:]
-    return [WalkedRoot(path=root, hidden=hidden) for root in roots or ["."]]
+    return [
+        WalkedRoot(path=root, hidden=hidden, excluded=excluded, skipped=skipped)
+        for root in roots or ["."]
+    ]
 
 
-def grep_roots(
+def option_values(arguments: list[str], option: str) -> list[str]:
+    """Every value one long option is given, attached after `=` or apart."""
+    return [
+        *(
+            word.removeprefix(f"{option}=")
+            for word in arguments
+            if word.startswith(f"{option}=")
+        ),
+        *(
+            value
+            for flag, value in zip(arguments, arguments[1:], strict=False)
+            if flag == option
+        ),
+    ]
+
+
+def grep_split(
     arguments: list[str],
     valued: str = "ABCDdefm",
     named: tuple[str, ...] = (
@@ -141,21 +180,35 @@ def grep_roots(
         "--label",
         "--binary-files",
     ),
-) -> list[WalkedRoot]:
-    """`grep -r`, in each of its spellings, and nothing else of grep.
+) -> SplitWords:
+    """grep's arguments parted into its options and its pattern and paths.
 
     ``valued`` and ``named`` are grep's own options that take the next word as
     their value, so that word is read as neither the pattern nor a root.
+    """
+    return split_options(arguments, valued, named)
+
+
+def grep_roots(arguments: list[str]) -> list[WalkedRoot]:
+    """`grep -r`, in each of its spellings, and nothing else of grep.
+
+    Each `--exclude-dir` is a directory the walk leaves out wherever it meets
+    one, and each `--exclude` a file.
     """
     directed = any(
         (flag, value) in (("-d", "recurse"), ("--directories", "recurse"))
         for flag, value in zip(arguments, arguments[1:], strict=False)
     )
-    split = split_options(arguments, valued, named)
+    split = grep_split(arguments)
     spelled = ("--recursive", "--dereference-recursive", "--directories=recurse")
     if not (directed or recursing(split["options"], "rR", spelled)):
         return []
-    return searched_roots(split, True)
+    return searched_roots(
+        split,
+        True,
+        option_values(arguments, "--exclude-dir"),
+        option_values(arguments, "--exclude"),
+    )
 
 
 def rg_roots(
@@ -205,7 +258,7 @@ def rg_roots(
         any(option in ("--hidden", "-.") or "." in short(option) for option in options)
         or sum(short(option).count("u") for option in options) >= 2
     )
-    return searched_roots(split, hidden)
+    return searched_roots(split, hidden, [], [])
 
 
 def tar_members(arguments: list[str]) -> Iterator[str]:
@@ -255,7 +308,9 @@ def copied_roots(
         return []
     operands = split["operands"]
     read = operands[:-1] if sources else operands
-    return [WalkedRoot(path=root, hidden=True) for root in read]
+    return [
+        WalkedRoot(path=root, hidden=True, excluded=[], skipped=[]) for root in read
+    ]
 
 
 def walked_roots(words: list[str]) -> list[WalkedRoot]:
@@ -268,7 +323,7 @@ def walked_roots(words: list[str]) -> list[WalkedRoot]:
             return rg_roots(arguments)
         case "tar":
             return [
-                WalkedRoot(path=member, hidden=True)
+                WalkedRoot(path=member, hidden=True, excluded=[], skipped=[])
                 for member in tar_members(arguments)
             ]
         case "zip":
@@ -277,7 +332,8 @@ def walked_roots(words: list[str]) -> list[WalkedRoot]:
             if not recursing(split["options"], "rR", spelled):
                 return []
             return [
-                WalkedRoot(path=member, hidden=True) for member in split["operands"][1:]
+                WalkedRoot(path=member, hidden=True, excluded=[], skipped=[])
+                for member in split["operands"][1:]
             ]
         case "cp":
             return copied_roots(arguments, "rRa", ("--recursive", "--archive"), True)
@@ -312,7 +368,12 @@ def shell_walked_roots(command: str, rows: list[ShellRuleRow]) -> list[WalkedRoo
     reading answers it.
     """
     return [
-        WalkedRoot(path=placed, hidden=root["hidden"])
+        WalkedRoot(
+            path=placed,
+            hidden=root["hidden"],
+            excluded=root["excluded"],
+            skipped=root["skipped"],
+        )
         for segment in read_segments(command, rows)
         for root in walked_roots(segment["words"])
         for placed in [placed_root(root["path"], segment["directory"])]

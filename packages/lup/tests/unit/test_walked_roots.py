@@ -74,6 +74,30 @@ def test_a_walk_reads_dot_names_unless_its_tool_skips_them(
     assert root["hidden"] is hidden
 
 
+@pytest.mark.parametrize(
+    ("command", "excluded", "skipped"),
+    [
+        ("grep -r --exclude-dir=.lup x .", [".lup"], []),
+        (
+            "grep -r --exclude-dir .lup --exclude-dir=node_modules x .",
+            [".lup", "node_modules"],
+            [],
+        ),
+        ("grep -r --exclude=.env.local x .", [], [".env.local"]),
+        ("grep -r x .", [], []),
+    ],
+)
+def test_a_walk_leaves_out_what_its_tool_is_told_to(
+    command: str, excluded: list[str], skipped: list[str]
+) -> None:
+    """A directory and a file are left out apart: `--exclude=.lup` still descends."""
+    (root,) = walked_roots(command.split())
+
+    assert root["path"] == "."
+    assert sorted(root["excluded"]) == sorted(excluded)
+    assert root["skipped"] == skipped
+
+
 def test_a_walk_the_host_found_reaching_a_key_is_refused() -> None:
     rules = erase_shell_rules(default_vocabulary())
     walks = [WithheldWalkRow(root="~", found="/home/u/.ssh/id_rsa")]
