@@ -5,12 +5,14 @@ from pathlib import Path
 
 import pytest
 
+from lup.devtools.review import notifications
 from lup.devtools.review.notifications import (
     ReviewNotification,
     ReviewNotificationRecord,
     ReviewNotifications,
     notify_requester,
 )
+from lup.devtools.review.wait import ReviewWaiters
 from lup.policy.operations import Operation
 from lup.policy.relay import Answer, PersistentQuestion
 from lup.coordination.repository import RepositoryPeers
@@ -175,3 +177,38 @@ def test_native_retry_never_notifies_a_rebound_or_unbound_member(
     outcome = notify_requester((tmp_path,), entry)
     assert not outcome.queued and not outcome.woken
     assert peers.waiting("recipient").messages == []
+
+
+def test_an_answer_a_waiter_holds_is_mailed_and_wakes_nothing(
+    tmp_path: Path,
+    answered: PersistentQuestion,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The waiter's own completion wakes the session; a second wake repeats it.
+
+    The message still names the waiter for a session that reads its mail
+    first, and asks for no retry a running waiter already made needless.
+    """
+    entry = answered.model_copy(
+        update={"id": "held-review", "state": "approved", "resumption": "native_retry"}
+    )
+    peers = RepositoryPeers(tmp_path)
+    peers.join(
+        "recipient",
+        tmp_path,
+        wake=WakePath(runtime="codex", session="native-thread", handle="native-thread"),
+    )
+    woken: list[str] = []
+    monkeypatch.setattr(
+        notifications, "wake", lambda path, message, cwd: woken.append(message)
+    )
+
+    with ReviewWaiters(root=tmp_path).holding([entry.id]):
+        outcome = notify_requester((tmp_path,), entry)
+
+    (message,) = peers.waiting("recipient").messages
+    assert outcome.queued and not outcome.woken
+    assert "review wait" in outcome.detail
+    assert woken == []
+    assert f"lup-devtools review wait {entry.id}" in message.text
+    assert "Retry" not in message.text

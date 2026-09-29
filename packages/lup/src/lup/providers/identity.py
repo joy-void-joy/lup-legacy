@@ -54,6 +54,18 @@ def native_session_id(runtime: str) -> str:
             return ""
 
 
+def native_session_ids() -> list[str]:
+    """Every id a runtime set for this process's session, whichever runtime started it.
+
+    For a process that cannot say which runtime it runs under -- a command a
+    session's shell started -- so each adapter is asked, and only the one
+    whose runtime started it has set anything.
+    """
+    return [
+        identity for identity in (claude_session_id(), codex_session_id()) if identity
+    ]
+
+
 def native_wake(runtime: str, cli_name: str) -> WakePath:
     """How *runtime* would have this session made to look, where anything can.
 

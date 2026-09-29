@@ -24,6 +24,7 @@ from lup.devtools.review import app as review
 from lup.devtools.review.app import ReviewDetail
 from lup.policy.operations import Operation
 from lup.policy.relay import PersistentQuestion
+from tests.unit.native import bound
 
 BASE_URL: Final = "http://127.0.0.1:8765"
 TOKEN: Final = "isolated-browser-operator"
@@ -83,14 +84,16 @@ async def test_browser_decision_relays_from_the_recipient_scope_once(
         worktree=upstream,
     )
     entry = review.relay(upstream).record(
-        PersistentQuestion(
-            id="browser-delivery",
-            operation=operation,
-            fingerprint=operation.fingerprint(),
-            reason="The operator must review this exact command.",
-            rule="shell:test",
-            eligible=["operator"],
-            resumption="native_retry",
+        bound(
+            PersistentQuestion(
+                id="browser-delivery",
+                operation=operation,
+                fingerprint="",
+                reason="The operator must review this exact command.",
+                rule="shell:test",
+                eligible=["operator"],
+                resumption="native_retry",
+            )
         )
     )
     application = dashboard_app(BASE_URL, TOKEN, (upstream, consumer), discover=False)
@@ -150,9 +153,9 @@ async def test_browser_decision_relays_from_the_recipient_scope_once(
     assert str(upstream) in message.text
     assert NOTE in message.text
     instruction = (
-        "Retry the exact tool call; its preimages and policy are rechecked."
+        f"lup-devtools review wait {entry.id}` carries it out"
         if approved
-        else "Read the recorded decision before continuing."
+        else "Don't retry the call as it stands"
     )
     assert instruction in message.text
 

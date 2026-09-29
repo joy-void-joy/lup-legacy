@@ -8,6 +8,7 @@ persisted apart from the relay, bound to the exact answer it reports.
 from collections.abc import Callable
 from datetime import datetime
 import logging
+import shlex
 from pathlib import Path
 from uuid import NAMESPACE_URL, uuid5
 
@@ -17,6 +18,7 @@ from lup.channels.models import Door, publish_atomic, utc_now
 from lup.coordination.repository import RepositoryPeers
 from lup.coordination.roster import RosterMember
 from lup.coordination.wake import wake
+from lup.devtools.review.wait import ReviewWaiters
 from lup.policy.relay import PersistentQuestion
 
 
@@ -159,6 +161,46 @@ class ReviewRecipient(BaseModel, frozen=True, arbitrary_types_allowed=True):
     member: RosterMember
 
 
+def answered_message(entry: PersistentQuestion) -> str:
+    """What the session that asked is told of the answer, and what to do about it.
+
+    An approved native call is carried out by `review wait`, which the
+    session was told to start when the call was parked; the message names the
+    command again for a session that never started it, rather than asking
+    for a retry that a running waiter might already have made unnecessary.
+    """
+    note = entry.answer.note if entry.answer is not None else ""
+    wait = shlex.join(
+        [
+            "uv",
+            "run",
+            "--directory",
+            str(entry.operation.cwd),
+            "lup-devtools",
+            "review",
+            "wait",
+            entry.id,
+        ]
+    )
+    match entry.state, entry.resumption:
+        case "approved", "native_retry":
+            instruction = (
+                f"`{wait}` carries it out and reports what it did; start it "
+                "if it is not already running."
+            )
+        case "rejected", _:
+            instruction = (
+                "Don't retry the call as it stands: change course, or ask the user."
+            )
+        case _:
+            instruction = "Read the recorded decision before continuing."
+    state = "declined" if entry.state == "rejected" else entry.state
+    return (
+        f"Review {entry.id} in {entry.operation.worktree} was {state}. {instruction}"
+        + (f"\nOperator note: {note}" if note else "")
+    )
+
+
 def notify_requester(
     roots: tuple[Path, ...], entry: PersistentQuestion
 ) -> ReviewNotification:
@@ -189,19 +231,20 @@ def notify_requester(
         )
     recipient = members[0]
     member = recipient.member
-    instruction = (
-        "Retry the exact tool call; its preimages and policy are rechecked."
-        if entry.state == "approved" and entry.resumption == "native_retry"
-        else "Read the recorded decision before continuing."
-    )
-    message = (
-        f"Review {entry.id} in {entry.operation.worktree} was {entry.state}. {instruction}\n"
-        f"Operator note: {entry.answer.note if entry.answer else ''}"
-    )
+    message = answered_message(entry)
     delivered = recipient.peers.send(member.address, message, door=Door.PAGE)
     if delivered is None:
         return ReviewNotification(
             queued=False, woken=False, detail="Decision recorded; requester left."
+        )
+    if ReviewWaiters(root=entry.operation.cwd).held(entry.id):
+        return ReviewNotification(
+            queued=True,
+            woken=False,
+            detail=(
+                "Decision recorded and notification queued; a `review wait` "
+                "holds this review, and it wakes the session when it settles."
+            ),
         )
     try:
         nudged = wake(
