@@ -2,6 +2,44 @@
 
 ## Unreleased
 
+### Every launch holds one dashboard per person
+
+`harness claude|codex` holds the dashboard as a host companion: the first
+launch starts it, every later one — any repository, a child session included
+— joins it, and the last one's end stops it. It keeps its port and its
+capability across restarts, so an open tab reconnects rather than being told
+its access expired, and the capability is withheld from every session. The
+page groups reviews by repository and by the session that asked, one producer
+serves every tab, and each repository's setup is a pane beside its reviews.
+`dashboard open|status|stop` join `serve`; the group is the new `dashboard`
+module's, taken by default. `setup dashboard` is the hidden `setup serve`.
+
+### A review whose requester is gone expires
+
+A review expires once the roster saw its requester end, or after an hour
+where the roster never knew it, recording why; the dashboard sweeps every ten
+seconds and `review list` before it lists.
+
+### Pyright reads the environment the session selected
+
+`dev check`, code intelligence and the rule resolver hand Pyright the
+checkout's own interpreter, `UV_PROJECT_ENVIRONMENT` included, and the
+scaffold no longer pins `venvPath`/`venv`; `dev migrate pyright-environment`
+retires the unchanged pair.
+
+### Browser login is `conversation setup`
+
+The conversation module owns its login, so declining it leaves `setup`
+without it; the login and the retention read one profile directory.
+
+### Smaller fixes from the review stack
+
+`dev migrate pending` reports while the application's code does not import.
+Preflight hands the host sentinel to the probe observing it and leaves the
+launcher's own environment as it found it. The dashboard keeps a
+native-provider deferral under Full operation, tells loading from an empty
+queue, and names the queue and target checkouts.
+
 ### Container sessions drop every capability; sudo only where declared
 
 Every session container runs with `--cap-drop ALL` and `no-new-privileges`,
