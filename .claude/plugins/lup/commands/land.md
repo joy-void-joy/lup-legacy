@@ -31,7 +31,7 @@ Report which case it is and what the comparison showed, and let the user settle 
 ## Targeted Mode (branch names provided)
 
 1. Run `uv run lup-devtools git survey --json`.
-2. Resolve every named branch against the survey. Report each name that matches nothing; stop only when none of them resolve.
+2. Read `integration_remote` and each row's `on_remote` as step 2 of the full sweep says, then resolve every named branch against the survey. Report each name that matches nothing; stop only when none of them resolve.
 3. Show every resolved branch's `disposition` and `reason` in one table, then Request explicit user approval before carrying out the actions those dispositions imply. Reason: the branches may hold work the user has not looked at.
 4. Carry out each disposition's action from the table below, committing every `COMMIT` branch and taking it and every `LAND` branch through step 6, and every branch an open PR is driving through step 7.
 
@@ -45,6 +45,14 @@ uv run lup-devtools git survey --json
 
 Every branch arrives with a `disposition` and a `reason` already computed. **Do not re-derive them** — the classifier is shared with `git survey`, so a judgement made here would drift from the one made there.
 
+**Read `integration_remote` before any row.** Every disposition is judged against the local integration branch, so the sweep is only as right as that copy is current:
+
+- `behind` counts the commits origin's copy holds and the local one lacks — usually pull requests merged on the forge. While it is non-zero, work that already landed there reads as `LAND` here. Report it first, bring the integration checkout level (`git pull --ff-only` there, or a merge where the two have diverged), and survey again before acting on any row.
+- `ahead` counts the commits the local copy holds and no remote carries. Report it with the sweep: every branch landed on top of them builds on history nobody else has, and pushing it is the user's call.
+- An empty `remote` means origin carries no integration branch at all; say so. `null` means no remote was read, which `remotes_fetched` already says.
+
+**Read `on_remote` beside every row holding unlanded work.** `false` is work this clone alone holds — the disposition does not change, but the table says so, because it is the work a lost disk takes with it. `null` means no remote was read.
+
 ### 3. Reconcile against the runs holding branches
 
 Read `runs` before you read `branches`. Each entry is a resolver run holding branches out of the sweep, and `alive` says whether anything is still answerable for them.
@@ -57,7 +65,7 @@ Do not present a dead run's branches as a to-do list. One decision about the run
 
 One table covering every branch, ordered `LAND` and `COMMIT` first (that is the work at risk), then the `KEEP` rows an open PR is driving (work already asked for, waiting on nothing but an order to merge in), then `DELETE`/`STALE`, then the rest of `KEEP`/`CURRENT`:
 
-| Branch | Disposition | Unique | Behind | Rewr | Diff | Dirt | PR | Proposed action |
+| Branch | Disposition | Unique | Behind | Rewr | Diff | Dirt | Remote | PR | Proposed action |
 
 `Dirt` is the survey's `changes` — what that branch's worktree holds uncommitted. On a reserved workspace it decides the disposition, which is what `COMMIT` says: reserving a workspace claims nobody has started, and an uncommitted change contradicts it. Everywhere else it changes only what carrying a disposition out costs — a dirty worktree makes a delete refuse until forced, and forcing discards those files, so a dirty row is one to read before proposing anything.
 

@@ -141,6 +141,15 @@ class BranchInfo(BaseModel):
     one nobody has opened, and saying nothing is how it stays reserved for a
     session that is not coming.
     """
+    on_remote: bool | None = None
+    """Whether a remote carries a branch of this name, None where none was read.
+
+    A signal beside the verb, like :attr:`behind`. Work a remote does not
+    carry is one disk away from gone, and nothing else in a row says so: a
+    ``LAND`` branch pushed long ago and one that exists only here read
+    alike, and so does an integration branch whose history reached no
+    remote at all.
+    """
     changes: WorktreeChanges | None = None
     """What this branch's worktree holds uncommitted, where it has one.
 
@@ -210,10 +219,78 @@ class RunHold(BaseModel):
     branches: list[str]
 
 
+class IntegrationStanding(BaseModel):
+    """Where the local integration branch stands against origin's copy of it.
+
+    Every disposition is judged against the local copy, so a sweep is only as
+    right as that copy is current, and the two ways it can be wrong wrong
+    every row differently. Commits only origin's copy holds — a pull request
+    merged on the forge — make the work they carry read as unlanded here.
+    Commits only the local copy holds are on no remote at all, and a sweep
+    that lands more on top of them builds on history nobody else has.
+    """
+
+    branch: str
+    remote: str = ""
+    """Origin's copy, empty where origin carries no branch of that name."""
+
+    ahead: int = 0
+    """Commits the local copy holds that origin's lacks: on no remote yet."""
+
+    behind: int = 0
+    """Commits origin's copy holds that the local one lacks: not pulled yet."""
+
+    def lines(self) -> list[str]:
+        """What a reader of the table has to hear, which is nothing when level."""
+        if not self.remote:
+            return [
+                f"{self.branch} exists only here: origin carries no {self.branch}, "
+                "so none of its history is on a remote"
+            ]
+        return [
+            *(
+                [
+                    f"{self.remote} holds {self.behind} commit(s) {self.branch} "
+                    "lacks: every row is judged against the local copy, so bring "
+                    "it level before acting on one"
+                ]
+                if self.behind
+                else []
+            ),
+            *(
+                [
+                    f"{self.branch} holds {self.ahead} commit(s) {self.remote} "
+                    "lacks: they are on no remote until pushed"
+                ]
+                if self.ahead
+                else []
+            ),
+        ]
+
+
+def integration_standing(integration: str) -> IntegrationStanding:
+    """Count the local integration branch against origin's copy, both ways."""
+    remote = f"origin/{integration}"
+    if not resolvable(remote):
+        return IntegrationStanding(branch=integration)
+    return IntegrationStanding(
+        branch=integration,
+        remote=remote,
+        ahead=count_commits_behind(remote, integration),
+        behind=count_commits_behind(integration, remote),
+    )
+
+
 class SurveyResult(BaseModel):
     integration_branch: str
     current_branch: str
     branches: list[BranchInfo]
+    integration_remote: IntegrationStanding | None = None
+    """How the integration branch stands against origin's copy, None unread.
+
+    Read before any row: every disposition below is judged against the local
+    copy, and this says whether that copy is one a sweep can trust.
+    """
     runs: list[RunHold] = []
     remote_branches: list[RemoteBranchInfo] = []
     """Branches on a remote that no local branch corresponds to.
@@ -1870,6 +1947,7 @@ def survey(as_json: bool, scaffold: str = "") -> None:
     local_names = {b["name"] for b in raw_branches}
     remote_rows = parse_remote_branches() if has_remote else []
     remote_only = [row for row in remote_rows if row["name"] not in local_names]
+    published = {row["name"] for row in remote_rows}
 
     if has_remote and not as_json:
         typer.echo("Querying PR status...", err=True)
@@ -1931,6 +2009,7 @@ def survey(as_json: bool, scaffold: str = "") -> None:
             reason=verdict.reason,
             rewritten=len(rewrite_suspects(name, integration)) if unique else 0,
             behind=count_commits_behind(name, integration),
+            on_remote=name in published if has_remote else None,
             changes=uncommitted,
         )
 
@@ -1978,6 +2057,7 @@ def survey(as_json: bool, scaffold: str = "") -> None:
         integration_branch=integration,
         current_branch=cur,
         branches=branches_list,
+        integration_remote=integration_standing(integration) if has_remote else None,
         runs=runs_holding(leased),
         remote_branches=remote_list,
         remotes_fetched=not complaint,
@@ -2016,6 +2096,22 @@ def survey(as_json: bool, scaffold: str = "") -> None:
             "Reason",
         )
         typer.echo(format_table(headers, [display_row(bi) for bi in branches_list]))
+
+        if result.integration_remote is not None:
+            for line in result.integration_remote.lines():
+                typer.echo(f"\n{line}")
+        # Only work the integration branch lacks: a landed branch's commits
+        # are wherever the integration branch is, which the lines above say.
+        unpublished = [
+            bi.name
+            for bi in branches_list
+            if bi.on_remote is False and bi.unique_commits
+        ]
+        if unpublished:
+            typer.echo(
+                f"\n{len(unpublished)} branch(es) holding unlanded work on no "
+                f"remote, so nothing but this clone holds it: {', '.join(unpublished)}"
+            )
 
         if not result.remotes_fetched:
             typer.echo(
