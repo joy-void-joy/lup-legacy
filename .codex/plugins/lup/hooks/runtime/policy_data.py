@@ -2240,15 +2240,11 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
 
 PATH_ROLES: list[PathRoleRow] = [
     {
-        "root": "tests",
-        "role": "test",
+        "root": "**/.venv",
+        "role": "scratch",
     },
     {
-        "root": "packages/lup/tests",
-        "role": "test",
-    },
-    {
-        "root": ".venv",
+        "root": "**/.venv-contained",
         "role": "scratch",
     },
     {
@@ -2294,6 +2290,14 @@ PATH_ROLES: list[PathRoleRow] = [
     {
         "root": "packages/lup/src/lup/migrations/pending",
         "role": "data",
+    },
+    {
+        "root": "tests",
+        "role": "test",
+    },
+    {
+        "root": "packages/lup/tests",
+        "role": "test",
     },
     {
         "root": "packages/lup/web/**/*.test.js",
