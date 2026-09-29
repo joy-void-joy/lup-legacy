@@ -69,13 +69,14 @@ uv run -m examples.launch_recursion
 uv run -m examples.launch_mounts
 uv run -m examples.launch_devices
 uv run -m examples.launch_sudo
+uv run -m examples.launch_nested_repositories
 uv run -m examples.launch_companions
 ```
 
 `launch_profile` expects a profile named `work` among yours
-(`uv run lup-devtools harness profile list`), `launch_outer_container`
-and `launch_devices` a Docker or Podman engine, and `launch_sudo` a rootless
-one.
+(`uv run lup-devtools harness profile list`), `launch_outer_container`,
+`launch_devices` and `launch_nested_repositories` a Docker or Podman engine,
+and `launch_sudo` a rootless one.
 
 Each composition declares its agent at the application boundary. The
 one-shot `ask`, the declared layers, the background scheduler, and the router

@@ -24,7 +24,7 @@ from lup.harness.notice import Notice
 from lup.harness.requirements import Manifest
 from lup.observability.sessions import SessionRecorder
 from lup.policy.enforcement import SandboxPosture
-from lup.sandbox.rail import AccessibleRoot
+from lup.sandbox.rail import AccessibleRoot, NestedRepository
 from lup.sessions.events import SessionId, SessionSummary
 from lup.types import EnvVars
 
@@ -137,6 +137,10 @@ class Sandbox(BaseModel, ABC, frozen=True, extra="forbid"):
         """What this wall lets a session's processes come to hold: nothing, unless it grants sudo."""
         return SessionPrivileges()
 
+    def nested(self) -> list[NestedRepository]:
+        """The repositories inside the checkout this wall holds as it holds the checkout's own."""
+        return []
+
     def confinement(self) -> "InnerSandbox | None":
         """The runtime's own sandbox this wall establishes, or ``None`` where it stands down."""
         return None
@@ -167,6 +171,13 @@ class OuterContainer(Sandbox, frozen=True):
     installs vanishes with the container, so a package the session keeps
     needing belongs in the image's ``tooling``."""
 
+    nested_repositories: list[NestedRepository] = []
+    """Repositories kept inside the checkout whose ``config`` and ``hooks/``
+    the container holds read-only, as it holds the checkout's own, since the
+    host's git runs what they name; their pointers are verified on the host
+    at every launch. One marked ``create`` is initialized on the host when
+    absent, so no session writes its configuration first."""
+
     def posture(self) -> LaunchSandbox:
         return LaunchSandbox.OUTER
 
@@ -181,6 +192,9 @@ class OuterContainer(Sandbox, frozen=True):
 
     def privileges(self) -> SessionPrivileges:
         return SessionPrivileges(sudo=self.sudo)
+
+    def nested(self) -> list[NestedRepository]:
+        return list(self.nested_repositories)
 
 
 class InnerSandbox(Sandbox, frozen=True):

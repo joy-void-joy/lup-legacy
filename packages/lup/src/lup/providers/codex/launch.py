@@ -752,6 +752,7 @@ def codex_opening(
         clipboard="x11",
         forwarded=list(joined.environment),
         privileges=config.sandbox.privileges(),
+        nested=config.sandbox.nested(),
     )
     return LaunchCommand(argv=argv, env=environment, cwd=root)
 

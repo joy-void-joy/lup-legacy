@@ -18,7 +18,7 @@ failure mode the design forbids, so a caller that asked to be contained and
 cannot be gets a refusal naming what was missing, and the operator decides.
 """
 
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
 import hashlib
 import json
 import os
@@ -33,6 +33,7 @@ from ipaddress import IPv4Address
 from pathlib import Path
 
 import sh
+from lup.execution.shell import git
 from lup.policy.identity import POLICY_ROOT_ENV
 from pydantic import BaseModel, Field
 from rich.console import Console
@@ -87,12 +88,14 @@ from lup.launch.config_volume import (
 )
 from lup.sandbox.attribution import WRITE_REFUSAL_MARKERS
 from lup.launch.pointer_trust import judged_roots, launcher_state_exposure
+from lup.sandbox.pointers import pointer_drift, refusal
 from lup.launch.refusal import LaunchRefused
 from lup.sandbox.rail import (
     AccessibleRoot,
     Lease,
     demoted,
     fleet_lease,
+    NestedRepository,
     hold_pruning_across,
     in_repository,
     merged,
@@ -837,7 +840,57 @@ def record_boundary(
     )
 
 
-def held_lease(root: Path, lease: Lease) -> Lease:
+def readied_nested(root: Path, declared: Sequence[NestedRepository]) -> list[Notice]:
+    """Ready each declared repository inside the checkout for its hold, on the host.
+
+    One marked ``create`` and absent is initialized here, so no session is
+    the one that writes its configuration; one absent and unmarked is said
+    and held by nothing. Each present one has its pointers verified as every
+    worktree's are, so a ``commondir`` a session planted in it is refused
+    rather than held in place, and its ``hooks/`` made where ``git init``
+    made none, since a bind whose source is missing refuses the container.
+    Only a repository keeping its own ``.git`` directory is held: one whose
+    ``.git`` is a pointer reads its configuration from wherever that leads.
+    """
+
+    def readied(nested: NestedRepository) -> Iterator[Notice]:
+        checkout = root / nested.path
+        if not (checkout / ".git").exists():
+            if not nested.create:
+                yield Notice(
+                    text=(
+                        f"Nested repository {nested.path}: not there, so nothing "
+                        "held; a session that makes it writes its configuration "
+                        "unheld"
+                    ),
+                    urgency="boundary",
+                )
+                return
+            checkout.mkdir(parents=True, exist_ok=True)
+            git("init", "-q", str(checkout))
+            yield Notice(
+                text=f"Nested repository {nested.path}: initialized on the host",
+                urgency="boundary",
+            )
+        # Its own directory, by where it is: asking git for the repository
+        # would follow the very `commondir` a session could have planted.
+        directory = checkout / ".git"
+        if not directory.is_dir():
+            raise LaunchRefused(
+                f"Nested repository {nested.path}: {directory} is not a git "
+                "directory of its own, so nothing says where its configuration "
+                "is. Declare a repository kept with its own `.git` directory."
+            )
+        if drifts := pointer_drift(directory):
+            raise LaunchRefused(refusal(drifts))
+        (directory / "hooks").mkdir(exist_ok=True)
+
+    return [notice for nested in declared for notice in readied(nested)]
+
+
+def held_lease(
+    root: Path, lease: Lease, nested: Sequence[NestedRepository] = ()
+) -> Lease:
     """What a container at ``root`` mounts: ``lease``, its launch record held, every hold rooted.
 
     The launch record is :func:`~lup.launch.preflight.launch_record`: what
@@ -852,6 +905,10 @@ def held_lease(root: Path, lease: Lease) -> Lease:
     and a mount inside a sibling would make it a checkout nobody can remove
     from inside -- the landing workflow this lease keeps siblings writable
     for.
+
+    ``nested`` are the repositories the wall declares inside the checkout,
+    each held as a plain checkout's own is -- ``config`` and ``hooks/`` --
+    where it is there to hold; :func:`readied_nested` readies them first.
     """
     # lup: defer: a sibling worktree's launch record stays writable here, so a
     # contained session can rewrite the ledger a session in that sibling reads
@@ -859,8 +916,16 @@ def held_lease(root: Path, lease: Lease) -> Lease:
     # Holding it would pin a mount point inside the sibling; closing it needs
     # the record kept outside the checkout, or read against what its launch
     # handed the runtime at start
-    record = [path for path in launch_record(root) if lease.writable_at(path)]
-    return rooted(merged([lease, Lease(read_only=same_path(record))]))
+    anchors = [
+        root / repository.path / ".git" / name
+        for repository in nested
+        for name in ("config", "hooks")
+        if (root / repository.path / ".git" / name).exists()
+    ]
+    held = [
+        path for path in [*launch_record(root), *anchors] if lease.writable_at(path)
+    ]
+    return rooted(merged([lease, Lease(read_only=same_path(held))]))
 
 
 class Spoken(BaseModel, frozen=True):
@@ -1685,6 +1750,7 @@ def contained_argv(
     devices: list[Device] = [],
     home_seed: HomeSeedPlaces | None = None,
     privileges: SessionPrivileges = SessionPrivileges(),
+    nested: Sequence[NestedRepository] = (),
 ) -> list[str]:
     """The argv that opens a session in this project's container.
 
@@ -1741,6 +1807,10 @@ def contained_argv(
     an unprivileged user on the host, where on a rootful one it is the
     host's root, held back only by the capabilities dropped -- so that grant
     is refused before anything is built.
+
+    ``nested`` are the repositories the wall declares inside the checkout,
+    readied on the host and held as the checkout's own -- see
+    :func:`held_lease`.
     """
     said = banner if banner is not None else Banner()
     if engine is not None:
@@ -1796,8 +1866,9 @@ def contained_argv(
     # not readied -- its whole lease is read-only, and it is not ours to move.
     readied = [root, *(item.path for item in accessible if item.writable)]
     said.add(preparation_notice(prepared_across(readied, SHARED_STATE)))
+    said.add(readied_nested(root, nested))
     lease = held_lease(
-        root, lease if lease is not None else fleet_lease(root, accessible)
+        root, lease if lease is not None else fleet_lease(root, accessible), nested
     )
     if exposed := launcher_state_exposure(lease):
         raise LaunchRefused(exposed)

@@ -853,6 +853,17 @@ takes no read-only region inside a root, and Codex protects only a root's
 clone's worktrees rather than its git directory, and a worktree cut after
 the launch is Codex's to write from the next one.
 
+A repository kept inside the checkout is held the same way once it is
+declared: `OuterContainer(nested_repositories=[NestedRepository(path=...)])`
+binds its `config` and `hooks/` read-only as a plain checkout's are, and pins
+its `.git` and the directories above it, so neither can be moved out from
+under the hold. Each launch verifies its pointers on the host and refuses a
+planted `commondir`, and refuses one whose `.git` is a pointer rather than a
+directory of its own. `create=True` initializes an absent one on the host, so
+no session writes its configuration first; an absent one not marked so is
+said and held by nothing. Declared rather than found, since a scan would read
+a tree the session writes.
+
 Git's own pointers are held the same way without a bind. A linked worktree's
 `.git` file names its entry under the shared directory, and the entry's
 `commondir` and `gitdir` name the shared directory and the way back; host git
