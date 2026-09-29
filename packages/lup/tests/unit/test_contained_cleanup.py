@@ -18,7 +18,7 @@ import sh
 
 import lup.devtools.harness.clean as clean
 import lup.launch.container as contained
-from lup.devtools.dev.worktree import said_environment_removed
+from lup.devtools.dev.worktree import said_checkout_state_removed
 from lup.launch.config_volume import HomeHelper
 from lup.launch.superseded import SupersededFile, SupersededRecord
 from lup.launch.environments import (
@@ -30,6 +30,7 @@ from lup.launch.environments import (
     sweep_environments,
 )
 from lup.harness.image import Image, Podman
+from lup.launch.homes import claimed_directory, homes_root
 from lup.harness.requirements import Manifest
 from lup.providers.claude.login import CLAUDE_LOGIN
 from lup.providers.codex.login import CODEX_LOGIN
@@ -81,11 +82,29 @@ def test_removing_a_worktree_removes_its_environment_and_says_so(
     worktree = tmp_path / "tree" / "feat"
     held = claimed(worktree)
 
-    said_environment_removed(worktree)
+    said_checkout_state_removed(worktree)
 
     assert not held.exists()
     assert str(held) in capsys.readouterr().out
     assert remove_worktree_environment(worktree) is None
+
+
+def test_removing_a_worktree_removes_the_runtime_homes_lup_kept_for_it(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A home inside the worktree went with it; one kept in lup's state goes too."""
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    worktree = tmp_path / "tree" / "feat"
+    worktree.mkdir(parents=True)
+    homes = claimed_directory(homes_root(), worktree.resolve())
+
+    said_checkout_state_removed(worktree)
+
+    assert not homes.exists()
+    assert str(homes) in capsys.readouterr().out
 
 
 NOW = datetime(2026, 9, 25, 12, tzinfo=UTC)
@@ -170,6 +189,7 @@ def engine(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Engine:
     )
     monkeypatch.setattr(contained, "repository_layout", Mock(return_value=layout))
     monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
     return held
 
 
@@ -230,6 +250,23 @@ def test_yes_removes_only_what_is_finished(tmp_path: Path, engine: Engine) -> No
     assert not any("lup-claude-lup" in words for words in engine.done)
     assert not gone.exists() and alive.exists()
     assert "Removed 5" in said[-1].text
+
+
+def test_the_homes_kept_for_a_checkout_that_is_gone_are_finished(
+    tmp_path: Path, engine: Engine
+) -> None:
+    root = tmp_path / "dev"
+    root.mkdir()
+    gone = claimed_directory(homes_root(), tmp_path / "gone")
+    alive = claimed_directory(homes_root(), root)
+    logins = [CODEX_LOGIN]
+    held = clean.inventory(root, Image(), Podman(), logins, None, kept(tmp_path))
+
+    homes = {item.name: item.finished for item in held if item.kind == "home"}
+    clean.cleaned(root, held, Podman(), logins, None, kept(tmp_path))
+
+    assert homes == {str(gone): True, str(alive): False}
+    assert not gone.exists() and alive.exists()
 
 
 def test_a_launch_sweeps_other_projects_stopped_proxies_but_not_its_own(

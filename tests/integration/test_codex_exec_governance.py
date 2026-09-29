@@ -36,7 +36,7 @@ import pytest
 import sh
 from pydantic import BaseModel
 
-from lup.providers.codex.home import SCOPED_HOME_DIR
+from lup.providers.codex.home import CodexWorktreeHomeStore
 from lup.workspace.paths import find_project_root
 
 pytestmark = pytest.mark.integration
@@ -89,7 +89,7 @@ def scoped_home(root: Path) -> Path:
     the checkout's own, which is where a launch here puts it.
     """
     named = os.environ.get("CODEX_HOME")  # lup: ignore[dict-get] — one env name
-    return Path(named) if named else root / SCOPED_HOME_DIR
+    return Path(named) if named else CodexWorktreeHomeStore().home_for(root)
 
 
 def run_exec(root: Path, command: str, bypass_trust: bool, final: Path) -> ExecArm:

@@ -1,0 +1,28 @@
+subjects = [
+    "SCOPED_HOME_DIR",
+    "CodexWorktreeHomeStore.__init__",
+    "CodexWorktreeHomeStore.scoped_dir",
+    "said_environment_removed",
+]
+reason = """
+a checkout's Codex home, which holds a copy of the login, lived inside the \
+checkout at .lup/codex-home, so every recursive read of the tree walked a \
+credential and an archive or build context could carry one; it is kept in \
+lup's state for the person, $XDG_STATE_HOME/lup/homes (~/.local/state/lup/homes), \
+one directory per checkout claiming it, removed with its worktree and listed \
+by harness clean"""
+
+[[steps]]
+instruction = """
+From a terminal on the host, move every worktree's existing .lup/codex-home \
+into lup's state, once; a home lup's state already keeps for a checkout is \
+left beside it for a merge by hand. Add --dry-run to see what would move."""
+command = ["uv", "run", "lup-devtools", "harness", "codex-home", "migrate"]
+
+[[steps]]
+instruction = """
+Build CodexWorktreeHomeStore(homes=...) where it took scoped_dir=..., and ask \
+store.home_for(worktree) for a checkout's home wherever the checkout joined \
+SCOPED_HOME_DIR; lup.launch.homes lists, claims and removes the homes kept \
+per checkout. Call said_checkout_state_removed where said_environment_removed \
+was called: it removes the worktree's runtime homes beside its environment."""
