@@ -174,8 +174,9 @@ LEDGER = ModuleSpec(
     id="ledger",
     title="Ledger",
     summary=(
-        "One append-only log per repository, outside every worktree, "
-        "holding typed nodes whose standing is read rather than stored."
+        "One append-only log per repository, each kind committed with the code "
+        "or kept outside every worktree, holding typed nodes whose standing is "
+        "read rather than stored."
     ),
     default_on=True,
     subapps=["ledger"],
