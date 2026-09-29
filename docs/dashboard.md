@@ -5,8 +5,44 @@
 The `dashboard` module gives the operator one page over every session's parked
 reviews, in every repository they work in, with each repository's setup beside
 them. Declining it removes the `dashboard` commands and the service every
-launch holds; `review list`, `show`, `approve`, `decline` and `cancel` remain,
-and a parked call is answered from the terminal.
+launch holds; `review list`, `show`, `approve`, `decline`, `cancel` and `wait`
+remain, and a parked call is answered from the terminal.
+
+## A parked call, and the session waiting on it
+
+A session whose launch holds the dashboard parks every question its policy
+asks, on Claude as on Codex, for the session, its subagents and its `-p` runs
+alike: the call is written to the review queue and refused while it waits.
+Where no dashboard is held, Codex parks all the same and Claude parks what
+only a person may answer, leaving the rest to its own prompt
+(`docs/permissions.md`, "Where a native ask is put").
+
+The refusal is written for the agent: the call is queued as review `<id>`,
+not refused; it is not to be changed; the agent carries on and starts
+`uv run lup-devtools review wait <id>` in the background, which wakes it with
+the result. `review wait <id>...` waits for every review named, `--any` for
+the first of them, and with none named for every review this session and its
+subagents have waiting; it reports each as it settles. An approved one it
+carries out itself, inside the session's own shell and sandbox: an edit is
+written as the after-document the operator saw, only where the file still
+stands as the review recorded it — otherwise it reports the conflict and
+writes nothing — and a command runs in the directory recorded with it, its
+output the waiter's own. So the session is woken with "ran", "applied" or
+"declined" and the operator's note, and never retries the call. The command
+runs in a fresh shell: what the session's shell did since, a `cd` or an
+exported variable, does not reach it, since the policy judged it standing
+alone. A call a shell cannot carry out — one placed outside the session's
+sandbox, or a tool that is not a write or a command — is reported as
+approved, for one exact retry the hook allows once.
+
+The waiter carries out only a review this session asked, by the id its
+runtime gave the session or the roster member its launch named, reads the
+answer where only the operator writes it, and takes the claim a retry would,
+so an approval is spent once whichever comes first. On Claude, a background
+command's end re-invokes the session. On Codex a command the shell tool
+started keeps running after the turn and its end starts none — measured on
+0.158.0 — so the waiter queues its report into the session's thread with
+`codex queue` when it settles, which starts a turn in an idle session.
 
 ## One service for every session
 
@@ -112,20 +148,26 @@ including in another tab of an already authorized browser. Back, forward, and
 changed links select the corresponding request. A missing ID stays selected
 while the dashboard watches for it; it never silently opens a different request.
 
-The decision is recorded in the
-same durable relay that the terminal commands use, so a browser and terminal
-answering concurrently cannot replace each other's answer. Session notification
-is best effort after the answer is saved. The browser can advance while the
-server completes delivery; a missing route or failed delivery does not erase
-the answer. Each browser answer retains a separate notification outcome
-in `.lup/review-notifications/`, bound to its question, fingerprint and answer
+The decision is recorded where the terminal commands record theirs: on the
+host, in lup's own state (`$XDG_STATE_HOME/lup/reviews`), which every launch
+lends its session read-only and no session writes, under one lock with the
+terminal, so a browser and terminal answering concurrently cannot replace
+each other's answer. An answer is given against the fingerprint the page
+displayed, and a review whose record no longer hashes to its fingerprint is
+refused an answer. Session notification is best effort after the answer is
+saved. The browser can advance while the server completes delivery; a
+missing route or failed delivery does not erase the answer. Each browser
+answer retains a separate notification outcome in
+`.lup/review-notifications/`, bound to its question, fingerprint and answer
 timestamp. Answered requests show a compact status with expandable details:
 mail queued, native queue accepted, failed or unconfirmed. Interrupted attempts
 remain unconfirmed; diagnostics failures never undo the recorded approval.
-Native retries notify only a unique registered requester whose bound native
-session matches the request. Queue acceptance does not prove the agent read
-the message. A native-hook approval still requires the agent to retry the exact
-tool call. The dashboard never executes a reconstructed command.
+Native reviews notify only a unique registered requester whose bound native
+session matches the request, naming the `review wait` that carries the call
+out; where a `review wait` already holds the review, the session is mailed and
+not woken, since the waiter's end wakes it. Queue acceptance does not prove
+the agent read the message. The dashboard executes nothing: an approved call
+is carried out by the session's own `review wait`, or one exact retry.
 
 The capability travels in the launch URL's fragment, which HTTP requests do
 not send to the server. The page removes the credential from the address and

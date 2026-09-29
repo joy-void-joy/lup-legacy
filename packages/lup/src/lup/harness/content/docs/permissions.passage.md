@@ -1062,50 +1062,82 @@ inside a shell tool call never reaches the dispatcher that judges it.
 
 ## Where a native ask is put
 
-A policy ask goes to the person through whatever channel the runtime has.
-Claude renders it as a native permission request carrying the reason that
-earned it, and parks nothing. Codex has no ask effect at its pre-tool
-boundary, so it parks the call in `.lup/questions.jsonl` and refuses execution
-until an explicit answer is recorded, at both pre-tool and permission-request
-events; the refusal names the review id and the commands to inspect, approve
-or decline it, and a pending or declined review returns an explicit denial.
+A policy ask is parked for the operator, or put to the runtime's own prompt
+where that is safe. Parking writes the call to the review queue —
+`.lup/questions.jsonl` in the checkout — and refuses it while it waits; the
+answer releases it once. Codex parks every ask, having no ask effect at its
+pre-tool boundary, at both pre-tool and permission-request events. Claude
+parks every ask where the session's launch holds a dashboard (the launch
+hands the session `LUP_DASHBOARD_URL`, which the hook reads), for the
+session, its subagents and its `-p` runs alike; and it parks every
+`human_only` ask everywhere. Only an ask a supervisor may answer, where no
+dashboard is held, is rendered as Claude's native permission request.
 
-What a rendered ask rests on is the session answering to a person. An autonomy
-mode answers on the session's behalf, including for the operations the
-`human_only` reviewer reserves, and no field in the hook payload separates a
-prompt somebody saw from one a mode settled. Observed execution is evidence of
-neither: it records that a call ran and confers no authority over the next.
+A `human_only` ask never reaches a prompt, because a prompt is not a person.
+An autonomy mode answers a prompt on the session's behalf — on Claude Code
+2.1.263 an auto-mode classifier let a hook's ask for a ref deletion run with
+no prompt shown — and no field in the hook payload separates a prompt
+somebody saw from one a mode settled. No mode answers a refusal: a hook's
+`deny` held in a `-p` run under both the default and the auto mode on
+2.1.283. Observed execution is evidence of neither: it records that a call
+ran and confers no authority over the next.
 
-Codex delivers that denial as a supported structured `deny` carrying
-`systemMessage`, so its app-server raises an operator-visible warning in
-`hook/completed` beside the agent's refusal. `codex exec --json` omits those
-hook events; its agent still receives the same refusal and review commands.
-Neither surface turns a policy question into an implicit approval.
+The refusal is written for the agent, because a refusal normally means
+"change course" and an agent reading this one that way reshapes the call and
+spends the review. It reads: "Queued for the operator as review `<id>` — not
+refused. Don't change the command; carry on with other work. Start `uv run
+lup-devtools review wait <id>` in the background (run_in_background) to be
+woken with the result." A subagent and a `-p` run, whose background commands
+end with them, are told to run it in the foreground once nothing else is
+left; Codex is told to leave it running under its shell tool, which keeps it
+past the turn. Beside it, the operator is shown where the review waits — on
+the dashboard, or the terminal commands that answer it — as `systemMessage`
+on both runtimes. Codex delivers the refusal as a structured `deny`
+carrying that line, so its app-server raises an operator-visible warning in
+`hook/completed`; `codex exec --json` omits those hook events, and its agent
+still receives the same refusal. Neither surface turns a policy question
+into an implicit approval.
 
 {{ dashboard }}The terminal answers every review: run `uv run lup-devtools review show
 <id>` from the indicated checkout, then `uv run lup-devtools review approve
 <id> --as operator` or `uv run lup-devtools review decline <id> --as
 operator` outside the agent session. Review answers are declared
-`operator_only` in the shell vocabulary; an escalation cannot grant the
-requester authority to answer itself. The file those verbs write is guarded
-the same way: `.lup/questions.jsonl`, and the claims under
-`.lup/review-claims` and `.lup/review-stage-claims` that spend an answer once,
-are protected roots. The hooks and the operator's commands write them from
-their own processes, so a session's own write — a row appended, a copy over
-the file, a claim retired — asks, because an approved row naming any other
-principal is what releases the retry. Nested command paths are declared with
-`ShellOperationRule.parents`,
-and the deepest matching path decides.
+`operator_only` in the shell vocabulary, and the verbs refuse a caller inside
+a launched session themselves; an escalation cannot grant the requester
+authority to answer itself.
 
-Approval releases one exact retry in the same session and directory.
-The hook re-runs policy, compares the payload, captured file preimages,
-resolved paths, originating dispatcher and policy bytes, and accepted
-destination policy bindings, then claims the approval exclusively before
-allowing execution. A changed file, payload or policy requires another
-review. The receipt binds both the original request and the exact approved
-runtime input rewrite; observing a different executed input marks the receipt
-`in_doubt`. Declining leaves the operation stopped and delivers the
-operator's note.
+An answer is written where no session writes: into lup's own state on the
+host, `$XDG_STATE_HOME/lup/reviews`, one directory per repository. Every
+launch lends its session that repository's directory read-only, mounted in a
+container at the path the host has it and named by `LUP_REVIEW_ANSWERS`, so a
+hook and `review wait` read the answer and nothing in the session can write
+one; a launch refuses a writable mount of it, and any mount of the rest of
+lup's state. The question stays in the checkout, which the session writes:
+`.lup/questions.jsonl`, and the claims under `.lup/review-claims` and
+`.lup/review-stage-claims` that spend an answer once, are protected roots, so
+a session's own write to them asks. A record there claiming an answer is
+ignored, and a parked record whose fields no longer hash to its fingerprint
+— one rewritten to show another call — can be neither answered nor spent.
+Nested command paths are declared with `ShellOperationRule.parents`, and the
+deepest matching path decides.
+
+An approval is spent once. `review wait`, started in the session's own shell,
+carries the call out there: an approved edit writes the after-document the
+operator saw, only where every file still stands as the review recorded it,
+and reports a conflict otherwise; an approved command runs in the directory
+recorded with it, in a fresh shell, so nothing the session did to its own
+shell since reaches it. It carries out only a review this session asked —
+by its runtime's session id or its launch's roster member — and it takes the
+same exclusive claim a retried call would. A call a shell cannot carry out,
+one placed outside the session's sandbox or a tool that is not a write or a
+command, is left to one exact retry in the same session and directory: the
+hook re-runs policy, compares the payload, captured file preimages, resolved
+paths, originating dispatcher and policy bytes, and accepted destination
+policy bindings, then claims the approval exclusively before allowing
+execution. A changed file, payload or policy requires another review. The
+receipt binds both the original request and the exact approved runtime input
+rewrite; observing a different executed input marks the receipt `in_doubt`.
+Declining leaves the operation stopped and delivers the operator's note.
 A crash after claiming approval does not make it reusable. Native sandbox
 restrictions still apply; queue approval does not change execution placement.
 Post-tool evidence marks a dispatched review completed, without claiming that
