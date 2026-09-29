@@ -245,6 +245,51 @@ def test_a_parked_command_records_each_document_and_binds_each_preimage(
 
 
 @pytest.mark.parametrize("runtime", ["claude", "codex"])
+def test_a_copy_after_a_cd_is_shown_as_the_file_it_replaces(
+    checkout: Path, runtime: Runtime
+) -> None:
+    """The operator's report: `cd <tree> && cp <src> <dst>` parked with no diff.
+
+    A lone `cp` showed one and this did not. The copy's operands resolve from
+    where the `cd` leaves the shell, and the copy lands the source's text.
+    """
+    proposal = "the proposed way\n"
+    (checkout / "tmp/proposal.md").write_text(proposal, encoding="utf-8")
+    command = f"cd {checkout} && cp tmp/proposal.md {PROTECTED}/notes.md"
+    question = parked(runtime, checkout, command)
+    ((path, before, after),) = [
+        (row.path, question.preconditions[row.path], row.after)
+        for row in question.file_reviews or []
+    ]
+    assert (path, before, after) == (checkout / PROTECTED / "notes.md", NOTES, proposal)
+    assert question.preconditions[checkout / "tmp/proposal.md"] == proposal
+    detail = ReviewDetail.of(checkout, question, "operator")
+    assert [(file.before, file.after) for file in detail.files] == [(NOTES, proposal)]
+
+
+@pytest.mark.parametrize("runtime", ["claude", "codex"])
+def test_every_segment_that_writes_a_file_is_shown_in_order(
+    checkout: Path, runtime: Runtime
+) -> None:
+    """A heredoc, a copy of it through a `cd`, a rewrite, and a program's output."""
+    command = (
+        "cat > tmp/draft.md <<'EOF'\ndraft — ü\nEOF\n"
+        f"cd {PROTECTED} && cp ../../../../../tmp/draft.md extra.md"
+        " && sed -i 's/draft/final/' extra.md; sort -o sorted.txt notes.md"
+    )
+    question = parked(runtime, checkout, command)
+    assert [
+        (row.path, row.effect, row.after) for row in question.file_reviews or []
+    ] == [
+        (checkout / "tmp/draft.md", "allow", "draft — ü\n"),
+        (checkout / PROTECTED / "extra.md", "ask", "final — ü\n"),
+    ]
+    assert [(entry.command, entry.paths) for entry in question.unpreviewed or []] == [
+        ("sort -o sorted.txt notes.md", [checkout / PROTECTED / "sorted.txt"])
+    ]
+
+
+@pytest.mark.parametrize("runtime", ["claude", "codex"])
 def test_a_patch_is_shown_applied_to_a_copy(checkout: Path, runtime: Runtime) -> None:
     (checkout / "fix.diff").write_text(
         f"--- a/{PROTECTED}/extra.md\n+++ b/{PROTECTED}/extra.md\n"
