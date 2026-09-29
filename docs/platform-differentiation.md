@@ -109,13 +109,15 @@ skill-only plugins do not require hook evidence.
 
 Neither runtime remembers an approval. An observed execution records that it ran and nothing more, so every ask re-enters review on both. A queue answer releases one exact retry: the receipt binds the captured documents, resolved paths, origin policy and accepted destination policies. `test_codex_review_delivery.py` verifies native notification, blocking, independent settlement and one-use replay using an inert local Responses server.
 
-`uv run lup-devtools dashboard serve` provides the same persistent dashboard
-over the durable reviews from either runtime. One operator capability
-protects its queue APIs; the same captured diffs, exact commands, approval and
-decline notes, and atomic answer transition apply to both. The command that
-mints that capability is operator-only under both generated policies. Claude's
-native permission requests remain native requests; the dashboard displays what
-was parked in the durable relay. Browser settlement records the answer before
+
+The dashboard is one per person over the durable reviews from either runtime:
+`harness claude` and `harness codex` hold the same host companion, and it
+serves both runtimes' sessions on one page. One operator capability protects
+its queue APIs; the same captured diffs, exact commands, approval and decline
+notes, and atomic answer transition apply to both. The verbs that reach that
+capability are operator-only under both generated policies. Claude's native
+permission requests remain native requests; the dashboard displays what was
+parked in the durable relay. Browser settlement records the answer before
 returning to the browser; notification continues in the server, and its
 failure does not undo the decision.
 Queue acceptance alone does not prove that a particular recipient took a turn.

@@ -47,7 +47,10 @@ Run any of them with `uv run lup-devtools <command>`, and add `--help` for its a
 
 | Command | What it does |
 | --- | --- |
-| `dashboard serve` | Serve the dashboard over every worktree of the selected repositories. |
+| `dashboard serve` | Serve the dashboard in this terminal, over the selected repositories, until Ctrl+C. |
+| `dashboard open` | Open the dashboard the running sessions hold, in this machine&#x27;s browser. |
+| `dashboard status` | Say whether the dashboard runs, where, and for how many sessions. |
+| `dashboard stop` | Stop the running dashboard now; the next session&#x27;s launch starts it again. |
 
 ## `dev`
 

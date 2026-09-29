@@ -1,10 +1,10 @@
-<!-- passage: setup-dashboard -->
-### The setup dashboard
+<!-- passage: setup-page -->
+### The setup page
 
-`uv run lup-devtools setup dashboard` serves a local browser interface at
-`http://127.0.0.1:8765`. It is the web face of the same declarative
-`INTEGRATIONS` registry that `uv run lup-devtools setup` walks in the
-terminal: a domain customizes the registry once and gets both.
+The setup page is the web face of the same declarative `INTEGRATIONS`
+registry that `uv run lup-devtools setup` walks in the terminal: a domain
+customizes the registry once and gets both. `uv run lup-devtools setup serve`
+serves it at `http://127.0.0.1:8765`{{ setup_pane }}.
 
 A progress-oriented wizard covers first setup; an all-integrations view covers
 later maintenance. Browser forms are generated only for declarative
@@ -229,7 +229,7 @@ takes. What the plugin ships, what `docs/` publishes, what the CLI serves and
 what a session is offered are all derived from that one answer.
 [harness.md](harness.md) is the guide; this is only where the files are.
 
-{{ setup_dashboard }}{{ sync_registry }}## How the two halves depend on each other
+{{ setup_page }}{{ sync_registry }}## How the two halves depend on each other
 
 `lup_template` imports `lup`. `lup` never imports `lup_template` — it is
 published standalone and could not. The placement test for any new utility is

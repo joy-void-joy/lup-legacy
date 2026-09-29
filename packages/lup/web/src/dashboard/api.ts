@@ -1,4 +1,4 @@
-import type { ReviewAnswer, ReviewDecision, ReviewDetail, ReviewSnapshot } from "../generated/views";
+import type { ReviewAnswer, ReviewDecision, ReviewDetail, ReviewSnapshot, SetupPane } from "../generated/views";
 
 /** Where this origin keeps the operator's capability, and the key a storage event names. */
 export const TOKEN_KEY = "lup-dashboard-token";
@@ -55,6 +55,11 @@ export function reviewLink(id: string, root: string | null = null): string {
   url.search = "";
   url.hash = fragment.toString();
   return url.href;
+}
+
+/** Each repository's setup pane, by the path that opens it. */
+export async function readSetupPanes(token: string, signal?: AbortSignal): Promise<SetupPane[]> {
+  return (await accepted(await fetch("api/setup", { headers: authorization(token), signal }))).json();
 }
 
 export async function readReviews(token: string, signal?: AbortSignal): Promise<ReviewSnapshot> {

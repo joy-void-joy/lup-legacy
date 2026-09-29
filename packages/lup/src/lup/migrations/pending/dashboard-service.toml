@@ -1,0 +1,33 @@
+subjects = [
+    "create_dashboard_app",
+    "create_dashboard",
+    "DASHBOARD_PORT",
+    "setup dashboard",
+]
+reason = """
+the dashboard is one service per person that every `harness claude|codex` \
+launch holds, owned by a `dashboard` module a project may decline, and a \
+repository's setup page is its pane there — so the setup page is no longer \
+a `setup dashboard` verb of its own, and its factories are named for what \
+they serve"""
+
+[[steps]]
+instruction = """
+Build the setup page with create_setup_page(url, integrations, steps) and its \
+command with create_setup_page_app(integrations, default_port, steps), both \
+from lup.devtools.dashboard.setup_page, where create_dashboard and \
+create_dashboard_app from lup.devtools.dashboard.app were called; \
+SETUP_PAGE_PORT replaces DASHBOARD_PORT."""
+
+[[steps]]
+instruction = """
+Where a script or an instruction runs `lup-devtools setup dashboard`, open the \
+dashboard's setup pane instead (`lup-devtools dashboard open`, then Setup); \
+`lup-devtools setup serve` serves the page alone, with the same options."""
+
+[[steps]]
+instruction = """
+The `dashboard` command group now belongs to the `dashboard` module, which is \
+taken by default: a project that declined it serves no `dashboard` verb and \
+no launch starts the service. A composition building its own Harness sets \
+`dashboard=DASHBOARD.id in composed.taken()` for launches to hold it."""

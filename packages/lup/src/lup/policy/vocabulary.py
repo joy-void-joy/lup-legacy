@@ -936,8 +936,28 @@ def devtools_rules() -> list[ShellSubcommandRule]:
                     operator_only=True,
                     reason="a requesting agent cannot mint operator credentials for the dashboard",
                     recovery=(
-                        "The operator must start `uv run lup-devtools dashboard serve` "
-                        "from a terminal outside the agent session."
+                        "The operator serves it from a terminal outside the agent session."
+                    ),
+                ),
+                # Opening reads the capability the page is opened with, and
+                # stopping takes the page away from every session's operator;
+                # `status` reads neither, and stays the session's to ask.
+                ShellOperationRule(
+                    name="open",
+                    operator_only=True,
+                    reason="a requesting agent cannot read the dashboard's operator credentials",
+                    recovery=(
+                        "`dashboard status` says where it is; the operator opens "
+                        "it from a terminal outside the agent session."
+                    ),
+                ),
+                ShellOperationRule(
+                    name="stop",
+                    operator_only=True,
+                    reason="a requesting agent cannot stop the operator's dashboard",
+                    recovery=(
+                        "The operator stops it from a terminal outside the agent "
+                        "session; it stops by itself once the last session ends."
                     ),
                 ),
             ],

@@ -11,7 +11,7 @@ const summary = {
   key: "tree-q1", root_id: root.id, id: "q1", state: "pending", requester: "codex-session",
   reason: "Review the complete replacement", operation: "apply_patch in /project", rule: "whole-file",
   title: "Update project/file.py", paths: ["project/file.py"], total_files: 1,
-  created: "2026-09-24T12:00:00Z", answerable: true,
+  created: "2026-09-24T12:00:00Z", answerable: true, session: "",
 };
 
 function review(key = "tree-q1") {
@@ -56,6 +56,7 @@ describe("dashboard page", () => {
   let stream: ReadableStreamDefaultController<Uint8Array> | null = null;
   let streamingAborted = false;
   let requests: { path: string; method: string; body: unknown; authorization: string | null }[] = [];
+  let panes: { key: string; repository: string; name: string; path: string }[] = [];
   const queue = () => ({ roots, reviews: rows, errors: issues });
 
   beforeEach(() => {
@@ -72,6 +73,7 @@ describe("dashboard page", () => {
     stream = null;
     streamingAborted = false;
     requests = [];
+    panes = [];
     sessionStorage.clear();
     localStorage.clear();
     window.history.replaceState(null, "", "/#token=browser-secret");
@@ -91,6 +93,7 @@ describe("dashboard page", () => {
         },
       }));
       if (path === "api/reviews") return refreshStatus === 200 ? Response.json(queue()) : Response.json({ detail: "Refresh unavailable" }, { status: refreshStatus });
+      if (path === "api/setup") return Response.json(panes);
       for (const [key, captured] of details) {
         if (path === `api/reviews/${key}`) {
           await detailWait.get(key);
@@ -159,6 +162,41 @@ describe("dashboard page", () => {
     await until(() => page.root.querySelector(".request-location code")?.textContent === secondRoot.path, "the next request's queue checkout");
     expect([...page.root.querySelectorAll(".request-location code")].map((node) => node.textContent)).toEqual([secondRoot.path, next.question.operation.cwd]);
     expect(one(page.root, ".masthead .roots summary").textContent).toBe("Watching 2 checkout queues");
+  });
+
+  test("the queue groups reviews by repository, then by the session that asked, and moves in that order", async () => {
+    const other = { id: "other", path: "/projects/other/main", repository: "/projects/other/.git", repository_name: "other" };
+    roots = [{ ...root, repository: "/project/.git", repository_name: "project" }, other];
+    rows = [{ ...summary, session: "builder" }];
+    const second = addRequest("tree-q2");
+    second.summary.root_id = other.id;
+    second.summary.session = "reviewer";
+    const third = addRequest("tree-q3");
+    third.summary.session = "builder";
+    const page = await open();
+    expect([...page.root.querySelectorAll(".repository-name")].map((node) => node.textContent)).toEqual(["project (2)", "other (1)"]);
+    expect([...page.root.querySelectorAll(".session-name")].map((node) => node.textContent)).toEqual(["Asked by builder (2)", "Asked by reviewer (1)"]);
+    await keydown("j", "KeyJ");
+    await keyup("j", "KeyJ");
+    await until(() => page.root.querySelector(".queue-row.selected strong")?.closest(".session-group")?.querySelector(".session-name")?.textContent === "Asked by builder (2)"
+      && [...page.root.querySelectorAll(".queue-row")].indexOf(one(page.root, ".queue-row.selected")) === 1, "the second request of the first session");
+  });
+
+  test("the setup view lists each repository's pane and shows the one chosen", async () => {
+    panes = [
+      { key: "first", repository: "/project/.git", name: "project", path: "/setup/first/capability-one/" },
+      { key: "second", repository: "/projects/other/.git", name: "other", path: "/setup/second/capability-two/" },
+    ];
+    const page = await open();
+    await click(labelled(page.root, ".views button", "Setup"));
+    await until(() => page.root.querySelector(".setup-frame") !== null, "the setup pane");
+    expect(one<HTMLIFrameElement>(page.root, ".setup-frame").getAttribute("src")).toBe("/setup/first/capability-one/");
+    expect(requests.find((request) => request.path === "api/setup")?.authorization).toBe("Bearer browser-secret");
+    await click(labelled(page.root, ".setup-list button", "other"));
+    await until(() => page.root.querySelector(".setup-frame")?.getAttribute("src") === "/setup/second/capability-two/", "the second pane");
+    expect(one<HTMLIFrameElement>(page.root, ".setup-frame").title).toBe("Setup · other");
+    await click(labelled(page.root, ".views button", "Reviews"));
+    await until(() => page.root.querySelector(".decision") !== null, "the review again");
   });
 
   test("checkout and target identity preserve full literal paths in compact scrollable lines", async () => {

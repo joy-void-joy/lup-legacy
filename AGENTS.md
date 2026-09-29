@@ -111,6 +111,10 @@ Skills and agents render from typed catalogs, one per half: change the catalog t
 
 **Every runtime, same semantics.** A capability is complete only when every supported runtime provides equivalent user-visible behavior, validation, diagnostics, tests, and documentation; a native substitute is valid only when its difference is explicit and evidence-backed. Done means `harness generate all` reconciles both; `docs/platform-differentiation.md` maps every surface this covers and audits parity, `docs/permissions.md` maps enforcement gaps.
 
+## Dashboard
+
+Every `harness claude|codex` launch holds the operator's dashboard: one page per person over every session's parked reviews and each repository's setup, stopped with the last session. `dashboard status` says where it is; opening, stopping and serving it are the operator's. `docs/dashboard.md` describes it.
+
 ---
 
 ## Long-Running Work

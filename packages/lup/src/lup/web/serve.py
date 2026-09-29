@@ -3,7 +3,7 @@
 :mod:`lup.web.loopback` already argued that binding loopback and checking the
 ``Host`` header belong together, and that a surface skipping the second had no
 way of knowing it had. It then left the half that *invokes* them to each
-application — so the supervisor and the setup dashboard each wrote their own
+application — so the supervisor and the setup page each wrote their own
 construct-guard-open-run sequence, and a third surface would have written a
 third, with the same one line to forget.
 

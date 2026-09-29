@@ -282,20 +282,21 @@ def create_setup_app(
         invoke_without_command=True,
     )
     app.add_typer(create_profile_app(directory), name="profile")
-    # The dashboard is this wizard seen through a browser — the same declared
+    # The setup page is this wizard seen through a browser — the same declared
     # integrations rendered for somebody who would rather click than answer
-    # prompts. Beneath it rather than beside it because neither is usable
-    # without the other: the page serves this wizard's declarations, and a
-    # project that kept the page and dropped the wizard would be hosting a
-    # form over nothing. Imported where it is mounted, because serving it is
-    # the `web` extra and a module-level import would make that extra a
-    # requirement of running `setup` at all.
-    from lup.devtools.dashboard.app import create_dashboard_app
+    # prompts — and the dashboard shows it as this repository's pane, by
+    # running this command in a checkout of it: only this repository's own
+    # CLI knows its integrations. Hidden, since the pane is how it is reached.
+    # Imported where it is mounted, because serving it is the `web` extra and
+    # a module-level import would make that extra a requirement of running
+    # `setup` at all.
+    from lup.devtools.dashboard.setup_page import create_setup_page_app
 
     app.add_typer(
-        create_dashboard_app(integrations),
-        name="dashboard",
-        help="Host the local setup dashboard",
+        create_setup_page_app(integrations),
+        name="serve",
+        hidden=True,
+        help="Serve this repository's setup page, the dashboard's setup pane",
     )
 
     @app.command("status")

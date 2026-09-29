@@ -73,6 +73,8 @@ def devtools_policy() -> ShellPolicy:
         "review approve abc --as operator",
         "review decline abc --as operator",
         "dashboard serve --no-open",
+        "dashboard open",
+        "dashboard stop",
         "harness policy-refresh --nonce abc --repository /example",
     ],
 )
@@ -129,6 +131,7 @@ def test_a_child_session_without_a_boundary_is_asked(runtime: str) -> None:
         "review list --all",
         "review show abc",
         "review cancel abc --reason withdrawn",
+        "dashboard status",
     ],
 )
 def test_generation_and_review_inspection_do_not_open_operator_authority(

@@ -1,1 +1,1 @@
-"""Local web dashboard for reusable project setup workflows."""
+"""The operator's dashboard: every session's reviews on one page per person, each repository's setup as a pane."""

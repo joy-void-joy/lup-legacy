@@ -35,6 +35,7 @@ from lup.devtools.review.app import (
     ReviewSuppression,
     relay,
 )
+from lup.devtools.dashboard.companion import SessionMarkers
 from lup.devtools.review.notifications import (
     ReviewNotification,
     ReviewNotifications,
@@ -55,6 +56,9 @@ ANSWER_HEADERS: Final = {**AUTHORIZATION, "Origin": BASE_URL}
 @pytest.fixture(autouse=True)
 def isolated_bundle(monkeypatch: pytest.MonkeyPatch) -> None:
     """Exercise the real Host guard without making API tests build JavaScript."""
+    for field in SessionMarkers.model_fields.values():
+        if isinstance(field.validation_alias, str):
+            monkeypatch.delenv(field.validation_alias, raising=False)
 
     def build(title: str, url: str, surface: str) -> FastAPI:
         assert surface == "dashboard"
@@ -765,7 +769,8 @@ def test_root_discovery_keeps_only_named_repositories_and_their_worktrees(
 
 @pytest.mark.parametrize("open_page", [False, True])
 @pytest.mark.parametrize(
-    "selected_names", [(), ("additional",), ("additional", "other", "additional")]
+    "selected_names",
+    [(), ("additional",), ("current", "other"), ("additional", "other", "additional")],
 )
 @pytest.mark.parametrize(
     ("requested_port", "expected_url"), [(8765, BASE_URL), (80, "http://127.0.0.1")]
@@ -791,15 +796,16 @@ async def test_cli_serves_selected_roots_and_keeps_the_token_out_of_public_pages
         )
     ]
     for root in roots:
-        (root / ".git").mkdir(parents=True)
+        git_repository(root)
     entries = {root.name: parked(root, f"{root.name}-question") for root in roots}
     watched = selected_names or ("current",)
     entry = entries[watched[0]]
-    monkeypatch.setattr(
-        dashboard,
-        "sibling_worktrees",
-        lambda root: [root, root.with_name(f"{root.name}-sibling")],
-    )
+
+    def discover(root: Path) -> list[Path]:
+        checkout = root.parent if root.name == ".git" else root
+        return [checkout, checkout.with_name(f"{checkout.name}-sibling")]
+
+    monkeypatch.setattr(dashboard, "sibling_worktrees", discover)
     served: list[FastAPI] = []
     opened: list[str] = []
     sizes: list[int] = []
@@ -808,10 +814,17 @@ async def test_cli_serves_selected_roots_and_keeps_the_token_out_of_public_pages
         sizes.append(size)
         return TOKEN
 
-    def serve(app: FastAPI, host: str, port: int, access_log: bool) -> None:
+    def serve(
+        app: FastAPI,
+        host: str,
+        port: int,
+        access_log: bool,
+        timeout_graceful_shutdown: int,
+    ) -> None:
         assert host == "127.0.0.1"
         assert port == requested_port
         assert not access_log
+        assert timeout_graceful_shutdown == 2
         served.append(app)
 
     monkeypatch.setattr(secrets, "token_urlsafe", token)
@@ -871,8 +884,14 @@ def test_cli_refuses_non_loopback_before_serving_or_discovering_roots(
         discovered.append(root)
         return [root]
 
-    def serve(app: FastAPI, host: str, port: int, access_log: bool) -> None:
-        del host, port, access_log
+    def serve(
+        app: FastAPI,
+        host: str,
+        port: int,
+        access_log: bool,
+        timeout_graceful_shutdown: int,
+    ) -> None:
+        del host, port, access_log, timeout_graceful_shutdown
         served.append(app)
 
     monkeypatch.setattr(dashboard, "sibling_worktrees", discover)

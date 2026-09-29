@@ -1,6 +1,6 @@
 import { memo, useEffect, useRef, useState, type RefObject } from "react";
-import type { ReviewDecision, ReviewDetail, ReviewSnapshot, ReviewSummary } from "../generated/views";
-import { answerReview, followReviews, readReview, readReviewLink, reviewLink, ReviewError, takeToken, TOKEN_KEY } from "./api";
+import type { ReviewDecision, ReviewDetail, ReviewRoot, ReviewSnapshot, ReviewSummary, SetupPane } from "../generated/views";
+import { answerReview, followReviews, readReview, readReviewLink, readSetupPanes, reviewLink, ReviewError, takeToken, TOKEN_KEY } from "./api";
 import { Files, type FileNavigation } from "./Files";
 
 const FileEvidence = memo(Files);
@@ -115,6 +115,44 @@ function RequestDetails({ detail, queuePath, note, sending, fileNavigation, onNo
   </article>;
 }
 
+type SessionGroup = { session: string; rows: ReviewSummary[] };
+type RepositoryGroup = { repository: string; name: string; sessions: SessionGroup[] };
+
+/** Rows grouped by the repository they were parked in, then by the session that asked, in the order they arrive. */
+function grouped(rows: ReviewSummary[], roots: ReviewRoot[]): RepositoryGroup[] {
+  const where = new Map(roots.map((root) => [root.id, root]));
+  const groups: RepositoryGroup[] = [];
+  for (const row of rows) {
+    const root = where.get(row.root_id);
+    const repository = root?.repository || root?.path || row.root_id;
+    let group = groups.find((each) => each.repository === repository);
+    if (group === undefined) {
+      group = { repository, name: root?.repository_name || root?.path || "Checkout unavailable", sessions: [] };
+      groups.push(group);
+    }
+    const session = row.session || row.requester || "an unknown session";
+    let asking = group.sessions.find((each) => each.session === session);
+    if (asking === undefined) {
+      asking = { session, rows: [] };
+      group.sessions.push(asking);
+    }
+    asking.rows.push(row);
+  }
+  return groups;
+}
+
+function SetupView({ panes, chosen, onChoose }: { panes: SetupPane[] | null; chosen: string; onChoose(key: string): void }) {
+  const pane = panes?.find((each) => each.key === chosen) ?? panes?.[0];
+  return <div className="setup-view">
+    <aside className="setup-list" aria-label="Repositories">
+      {panes === null ? <p className="empty" role="status">Loading repositories…</p>
+        : panes.length === 0 ? <p className="empty">No repository's setup is served here.</p>
+        : panes.map((each) => <button key={each.key} type="button" aria-pressed={pane?.key === each.key} title={each.repository} onClick={() => onChoose(each.key)}>{each.name}</button>)}
+    </aside>
+    {pane !== undefined && <iframe className="setup-frame" title={`Setup · ${pane.name}`} src={pane.path} />}
+  </div>;
+}
+
 function nextPending(rows: ReviewSummary[], key: string): string {
   const position = rows.findIndex((row) => row.key === key);
   return rows.find((row, index) => index > position && row.key !== key && row.state === "pending")?.key
@@ -141,6 +179,9 @@ export function App() {
   const [help, setHelp] = useState(false);
   const [advance, setAdvance] = useState(true);
   const [mobilePanel, setMobilePanel] = useState<"queue" | "review">("review");
+  const [view, setView] = useState<"reviews" | "setup">("reviews");
+  const [panes, setPanes] = useState<SetupPane[] | null>(null);
+  const [pane, setPane] = useState("");
   const fileNavigation = useRef<FileNavigation | null>(null);
   const heldKeys = useRef(new Set<string>());
   const routedAddress = useRef(window.location.href);
@@ -156,7 +197,8 @@ export function App() {
   const queueCurrent = queue !== null && connection === "Live" && !queuePartial;
   const queueStatus = queue === null ? "Loading review queue…" : queuePartial ? "Some checkout queues are unavailable" : "Refreshing review queue…";
   const pending = rows.filter((row) => row.state === "pending");
-  const visible = rows.filter((row) => filter === "pending" ? row.state === "pending" : row.state !== "pending");
+  const groups = grouped(rows.filter((row) => filter === "pending" ? row.state === "pending" : row.state !== "pending"), queue?.roots ?? []);
+  const visible = groups.flatMap((group) => group.sessions.flatMap((asking) => asking.rows));
   const position = visible.findIndex((row) => row.key === selected);
   const linkedRows = linked === null ? [] : rows.filter((row) => row.id === linked.id && (linked.root === null || row.root_id === linked.root));
 
@@ -285,6 +327,15 @@ export function App() {
     });
   }, [selected, token, queue, retry, connection]);
 
+  useEffect(() => {
+    if (view !== "setup") return;
+    const controller = new AbortController();
+    void readSetupPanes(token, controller.signal).then(setPanes).catch((failure: unknown) => {
+      if (!controller.signal.aborted) setError(String(failure));
+    });
+    return () => controller.abort();
+  }, [view, token]);
+
   function select(wanted: string) {
     if (answering.current) return;
     navigate(rows.find((row) => row.key === wanted) ?? null);
@@ -340,7 +391,7 @@ export function App() {
 
   useEffect(() => {
     function down(event: KeyboardEvent) {
-      if (event.defaultPrevented || event.repeat || event.isComposing || event.ctrlKey || event.metaKey || event.altKey) return;
+      if (view !== "reviews" || event.defaultPrevented || event.repeat || event.isComposing || event.ctrlKey || event.metaKey || event.altKey) return;
       if (event.target instanceof Element && event.target.closest("input, textarea, select, [contenteditable]:not([contenteditable='false']), [role='textbox']") !== null) return;
       const code = event.code || event.key;
       if (heldKeys.current.has(code)) return;
@@ -377,7 +428,7 @@ export function App() {
   });
 
   if (accessDenied) return <main className="access"><h1>Dashboard</h1>
-    <p>This browser is not authorized, or its dashboard session has expired. Open the launch link printed by the operator's <code>dashboard serve</code>, then return to this request link.</p>
+    <p>This browser is not authorized, or its dashboard session has expired. Open the dashboard with the operator's <code>uv run lup-devtools dashboard open</code>, or the launch link <code>dashboard serve</code> printed, then return to this request link.</p>
     {linked !== null && <p>Requested review: <code>{linked.id}</code></p>}
     {notice !== "" && <p className="notice" role="alert">{notice}</p>}
     <button type="button" onClick={reconnect}>Check access again</button>
@@ -389,11 +440,16 @@ export function App() {
         {queue === null ? <p className="watched-checkout">Loading watched checkout…</p> : queue.roots.length === 1 ? <p className="watched-checkout">Watching queue <code tabIndex={0}>{queue.roots[0]?.path}</code></p>
           : <details className="roots"><summary>Watching {queue.roots.length} checkout queues</summary>{queue.roots.map((root) => <p key={root.id}><code tabIndex={0}>{root.path}</code></p>)}</details>}
       </div>
+      <nav className="views" aria-label="Dashboard view">
+        <button type="button" aria-pressed={view === "reviews"} onClick={() => setView("reviews")}>Reviews</button>
+        <button type="button" aria-pressed={view === "setup"} onClick={() => setView("setup")}>Setup</button>
+      </nav>
       <div className="connection"><span role="status" className={queueCurrent ? "live" : "muted"}>{connection === "Live" && queuePartial ? "Some queues unavailable" : connection}</span>
         <button type="button" aria-expanded={help} aria-controls="shortcut-help" onClick={() => setHelp((value) => !value)}>Keyboard shortcuts</button>
         <button type="button" onClick={reconnect}>Reconnect</button></div>
     </header>
     {notice !== "" && <p className="notice" role="alert">{notice}</p>}
+    {view === "setup" ? <>{error !== "" && <p className="error" role="alert">{error}</p>}<SetupView panes={panes} chosen={pane} onChoose={setPane} /></> : <>
     {help && <section className="shortcut-help" id="shortcut-help" aria-label="Keyboard shortcuts">
       <span><kbd>Shift</kbd> + <kbd>A</kbd> Approve</span><span><kbd>Shift</kbd> + <kbd>D</kbd> Decline</span>
       <span><kbd>J</kbd> Next request</span><span><kbd>K</kbd> Previous request</span><span><kbd>C</kbd> Comment</span><span><kbd>?</kbd> Toggle help</span>
@@ -415,13 +471,19 @@ export function App() {
         </div>
         {!queueCurrent && <p className="empty" role="status">{queueStatus}{queue !== null && " · Previously loaded requests may be incomplete."}</p>}
         {queueCurrent && visible.length === 0 && <p className="empty">{filter === "pending" ? "No requests waiting. This page will update when one arrives." : "No answered requests yet."}</p>}
-        {visible.map((row) => <div className="queue-entry" key={row.key}><button type="button" disabled={sending} className={`queue-row ${selected === row.key ? "selected" : ""}`}
-          aria-current={selected === row.key ? "true" : undefined} onClick={() => select(row.key)}>
-          <span className="row-top"><span className={`state ${row.state}`}>{stateLabel(row.state)}</span><time>{new Date(row.created).toLocaleTimeString()}</time></span>
-          <strong>{row.title}</strong><small>{row.requester}</small>
-          {row.total_files > 0 && <small className="review-file-count">{row.paths.length > 0 ? `${row.paths.length} ${row.paths.length === 1 ? "file" : "files"} to review` : "Operation review"} · {row.total_files} submitted</small>}
-          <small className="root-path">Queue: {queue?.roots.find((root) => root.id === row.root_id)?.path ?? "Checkout unavailable"}</small>
-        </button>{row.paths.length > 1 && <details className="queue-files"><summary>{row.paths.length} files to review</summary>{row.paths.map((path) => <code key={path}>{path}</code>)}</details>}</div>)}
+        {groups.map((group) => <section className="repository-group" key={group.repository} aria-label={`Repository ${group.name}`}>
+          <h2 className="repository-name" title={group.repository}>{group.name} <span className="count">({group.sessions.reduce((total, asking) => total + asking.rows.length, 0)})</span></h2>
+          {group.sessions.map((asking) => <section className="session-group" key={asking.session} aria-label={`Session ${asking.session}`}>
+            <h3 className="session-name">Asked by {asking.session} <span className="count">({asking.rows.length})</span></h3>
+            {asking.rows.map((row) => <div className="queue-entry" key={row.key}><button type="button" disabled={sending} className={`queue-row ${selected === row.key ? "selected" : ""}`}
+              aria-current={selected === row.key ? "true" : undefined} onClick={() => select(row.key)}>
+              <span className="row-top"><span className={`state ${row.state}`}>{stateLabel(row.state)}</span><time>{new Date(row.created).toLocaleTimeString()}</time></span>
+              <strong>{row.title}</strong><small>{row.requester}</small>
+              {row.total_files > 0 && <small className="review-file-count">{row.paths.length > 0 ? `${row.paths.length} ${row.paths.length === 1 ? "file" : "files"} to review` : "Operation review"} · {row.total_files} submitted</small>}
+              <small className="root-path">Queue: {queue?.roots.find((root) => root.id === row.root_id)?.path ?? "Checkout unavailable"}</small>
+            </button>{row.paths.length > 1 && <details className="queue-files"><summary>{row.paths.length} files to review</summary>{row.paths.map((path) => <code key={path}>{path}</code>)}</details>}</div>)}
+          </section>)}
+        </section>)}
       </aside>
       <main className="stage">
         {queue?.errors.map((issue) => <p className="notice" role="alert" key={issue.root}>{issue.root}: {issue.message}</p>)}
@@ -441,5 +503,6 @@ export function App() {
           : <p className="empty" role="status">Loading request…</p>}
       </main>
     </div>
+    </>}
   </div>;
 }

@@ -83,6 +83,7 @@ def credential_files(
         "/proc/*/environ",
         "**/.env.local",
         "**/.env.*.local",
+        "**/lup/companions/*/dashboard/token",
     ),
     exempt: Sequence[str] = (
         "~/.ssh/*.pub",
@@ -104,6 +105,10 @@ def credential_files(
     `.env.<mode>.local` beside it, are where a project's settings keep the API
     keys its `.env` leaves out, in whichever checkout or worktree holds one.
     The committed `.env` and `.env.example` name no secret and stay readable.
+
+    And the operator's: the capability that opens the dashboard, kept in
+    lup's own state, which a session holding it could answer its own reviews
+    with.
 
     ``also`` is the composition root's, for a login only it can name -- the
     runtimes' own, which a neutral module does not spell.

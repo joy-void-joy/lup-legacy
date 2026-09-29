@@ -139,16 +139,26 @@ CLOSING_PARTS: list[models.PromptPart] = [
         module=__name__,
         name="template",
         values={
-            # The dashboard is the setup module's, and the page it shares its
-            # loopback guard with is the resolver's: each sentence stays only
-            # where its module does.
-            "setup_dashboard": models.WhereTaken(
+            # The setup page is the setup module's, the pane showing it the
+            # dashboard's, and the page it shares its loopback guard with the
+            # resolver's: each sentence stays only where its module does.
+            "setup_page": models.WhereTaken(
                 module="setup",
                 parts=[
                     models.Passage(
                         module=__name__,
-                        name="setup-dashboard",
+                        name="setup-page",
                         values={
+                            "setup_pane": models.WhereTaken(
+                                module="dashboard",
+                                parts=[
+                                    models.TextPart(
+                                        text=", and the dashboard runs it to "
+                                        "show it as this repository's setup "
+                                        "pane"
+                                    )
+                                ],
+                            ),
                             "shared_with_supervisor": models.WhereTaken(
                                 module="resolver",
                                 parts=[
@@ -158,7 +168,7 @@ CLOSING_PARTS: list[models.PromptPart] = [
                                         "[supervisor.md](supervisor.md)"
                                     )
                                 ],
-                            )
+                            ),
                         },
                     )
                 ],

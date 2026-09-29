@@ -44,6 +44,18 @@ time { font-size: .75rem; }
 .state.rejected, .state.failed { background: #fceeea; border-color: #edc7be; color: #913f30; }
 .roots { font-size: .75rem; margin-top: .3rem; color: var(--muted); max-height: 20vh; overflow: auto; }
 .roots p { margin: .5rem 0; }
+.views { display: flex; gap: .3rem; }
+.views [aria-pressed="true"] { background: #e7f1ec; border-color: #aac6b8; font-weight: 650; color: #174d3b; }
+.repository-group { margin-bottom: 1rem; }
+.repository-name { font-size: .9rem; margin: 0 0 .4rem; overflow-wrap: anywhere; }
+.session-group { margin: 0 0 .6rem .4rem; padding-left: .5rem; border-left: 2px solid var(--line); }
+.session-name { font-size: .78rem; font-weight: 600; color: var(--muted); margin: 0 0 .35rem; overflow-wrap: anywhere; }
+.count { font-weight: 400; color: var(--muted); }
+.setup-view { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(12rem, 18%) minmax(0, 1fr); }
+.setup-list { display: flex; flex-direction: column; gap: .4rem; padding: .7rem; border-right: 1px solid var(--line); background: #fbfcfa; overflow: auto; }
+.setup-list button { text-align: left; overflow-wrap: anywhere; }
+.setup-list [aria-pressed="true"] { background: #e7f1ec; border-color: #aac6b8; font-weight: 650; color: #174d3b; }
+.setup-frame { width: 100%; height: 100%; border: 0; background: #fff; }
 .stage { display: flex; flex-direction: column; min-height: 0; min-width: 0; overflow: hidden; padding: .6rem; gap: .4rem; }
 .request { display: flex; flex-direction: column; flex: 1; min-height: 0; min-width: 0; gap: .35rem; }
 .request-inspection { display: flex; flex-direction: column; flex: 1; min-height: 0; min-width: 0; gap: .35rem; overflow: auto; overscroll-behavior: contain; }
@@ -172,6 +184,9 @@ kbd { display: inline-block; padding: .05rem .35rem; border: 1px solid #bbc9c1; 
   .workspace[data-mobile-panel="review"] > .queue, .workspace[data-mobile-panel="queue"] > .stage { display: none; }
   .stage, .queue { flex: 1; }
   .stage { padding: .4rem; }
+  .setup-view { display: flex; flex-direction: column; }
+  .setup-list { flex: none; flex-direction: row; flex-wrap: wrap; border-right: 0; border-bottom: 1px solid var(--line); }
+  .setup-frame { flex: 1; }
   .files { display: flex; flex-direction: column; }
   .files[data-mobile-panel="evidence"] > .file-overview, .files[data-mobile-panel="navigator"] > .file { display: none; }
   .file, .file-overview { flex: 1; }

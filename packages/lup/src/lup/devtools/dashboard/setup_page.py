@@ -1,9 +1,11 @@
-"""Serve the reusable setup registry through a local web dashboard.
+"""Serve the reusable setup registry as a page: the dashboard's setup pane.
 
-The CLI wizard and the dashboard deliberately take the same ``Integration``
-list and the same env-file helpers. A domain customizes setup once; both
+The CLI wizard and this page deliberately take the same ``Integration`` list
+and the same env-file helpers. A domain customizes setup once; both
 interfaces then expose the same fields, status checks, and bespoke-flow
-fallbacks.
+fallbacks. The page is served by each repository's own CLI, since only that
+CLI knows its integrations, and the dashboard shows it as that repository's
+pane (:mod:`lup.devtools.dashboard.panes`).
 
 Here a "fallback" is a step like any other. A declarative integration becomes a
 :class:`~lup.devtools.dashboard.wizard.SetupStep` here — the same guide,
@@ -42,7 +44,7 @@ from lup.devtools.setup import Integration, read_env_local, write_env_local
 from lup.types import EnvVars
 from lup.web.serve import serve_local_page
 
-DASHBOARD_PORT = 8765
+SETUP_PAGE_PORT = 8765
 """Where this page listens when nothing says otherwise.
 
 A port is this library's judgement rather than anyone's convention, so it is
@@ -153,7 +155,7 @@ def integration_step(integration: Integration) -> IntegrationStep:
     )
 
 
-def create_dashboard(
+def create_setup_page(
     url: str,
     integrations: list[Integration],
     steps: list[SetupStep[EnvScope]] | None = None,
@@ -178,12 +180,12 @@ def create_dashboard(
     )
 
 
-def create_dashboard_app(
+def create_setup_page_app(
     integrations: list[Integration],
-    default_port: int = DASHBOARD_PORT,
+    default_port: int = SETUP_PAGE_PORT,
     steps: list[SetupStep[EnvScope]] | None = None,
 ) -> typer.Typer:
-    """Build the dashboard command over a project's declared integrations.
+    """Build the command serving the setup page over a project's declared integrations.
 
     ``steps`` is where a project puts a flow the registry cannot describe — one
     that verifies a secret against the service before recording it, or creates
@@ -191,29 +193,29 @@ def create_dashboard_app(
     is the order somebody meets them in.
     """
     app = typer.Typer(
-        help="Host the local setup dashboard",
+        help="Serve this repository's setup page",
         invoke_without_command=True,
         no_args_is_help=False,
     )
 
     @app.callback(invoke_without_command=True)
-    def serve_dashboard(
+    def serve_setup_page(
         context: typer.Context,
         host: Annotated[str, typer.Option(help="Interface to bind")] = "127.0.0.1",
         port: Annotated[int, typer.Option(help="TCP port to bind")] = default_port,
         open_page: Annotated[
             bool,
-            typer.Option("--open/--no-open", help="Open the dashboard in a browser"),
+            typer.Option("--open/--no-open", help="Open the page in a browser"),
         ] = True,
     ) -> None:
-        """Run the setup dashboard from the same registry as the CLI wizard."""
+        """Serve the setup page from the same registry as the CLI wizard."""
         if context.invoked_subcommand is not None:
             return
         build: Callable[[str], FastAPI] = partial(
-            create_dashboard, integrations=integrations, steps=steps or []
+            create_setup_page, integrations=integrations, steps=steps or []
         )
         try:
-            serve_local_page(build, "Lup setup dashboard", host, port, open_page)
+            serve_local_page(build, "Lup setup", host, port, open_page)
         except ValueError as error:
             raise typer.BadParameter(str(error)) from error
 

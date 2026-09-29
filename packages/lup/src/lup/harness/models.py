@@ -1961,6 +1961,12 @@ class Harness(BaseModel, frozen=True):
     a spec is here: a project that declined the resolver module ships no
     worker, review or merge skill, and must not have to declare a spec
     naming skills it does not have."""
+    dashboard: bool = False
+    """Whether every launch holds the operator's dashboard, as the dashboard module does.
+
+    Independent of the sandbox: a contained session's reviews are answered on
+    the host's page like any other. A harness without it starts no service and
+    imports none of the page's dependencies."""
     requirements: Manifest = Manifest()
     """The external programs this project needs, exercised before a launch.
 

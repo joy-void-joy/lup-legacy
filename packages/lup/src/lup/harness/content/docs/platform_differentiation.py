@@ -86,6 +86,14 @@ def document(
                         len([skill for skill in skills if skill.machine_hint])
                     ),
                     "len_agents": models.counted(len(agents)),
+                    # The dashboard is the dashboard module's, and its parity
+                    # statement goes with it where the module is declined.
+                    "dashboard_parity": models.WhereTaken(
+                        module="dashboard",
+                        parts=[
+                            models.Passage(module=__name__, name="dashboard-parity")
+                        ],
+                    ),
                 },
             ),
             *resolver_parity,

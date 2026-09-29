@@ -108,28 +108,7 @@ skill-only plugins do not require hook evidence.
 
 Neither runtime remembers an approval. An observed execution records that it ran and nothing more, so every ask re-enters review on both. A queue answer releases one exact retry: the receipt binds the captured documents, resolved paths, origin policy and accepted destination policies. `test_codex_review_delivery.py` verifies native notification, blocking, independent settlement and one-use replay using an inert local Responses server.
 
-`uv run lup-devtools dashboard serve` provides the same persistent dashboard
-over the durable reviews from either runtime. One operator capability
-protects its queue APIs; the same captured diffs, exact commands, approval and
-decline notes, and atomic answer transition apply to both. The command that
-mints that capability is operator-only under both generated policies. Claude's
-native permission requests remain native requests; the dashboard displays what
-was parked in the durable relay. Browser settlement records the answer before
-returning to the browser; notification continues in the server, and its
-failure does not undo the decision.
-Queue acceptance alone does not prove that a particular recipient took a turn.
-The Codex idle-wake integration test measures the complete browser-to-relay
-path on CLI 0.158.0. The fixture forwards its declared launch identity into a
-real native stdio child. Its owned heartbeat recovers a pulse aged beyond the
-120-second presence window while preserving the hook-bound route. A completed
-first turn is followed by an autonomously queued review
-notification and a second completed turn carrying the operator's nonce to an
-inert local Responses endpoint. It uses the recorded home and normal native
-Unix socket discovery, without manually resuming the thread. Native
-approval releases an exact retry through that runtime's existing hook path;
-the dashboard does not execute the operation itself.
-
-## The launch declaration's intended differences
+{{ dashboard_parity }}## The launch declaration's intended differences
 
 Every launch field on `Claude` and `Codex` compiles into both a session
 opened in process and a launched CLI, with the same meaning. Where a
@@ -252,3 +231,28 @@ to declare names them as the closed type spells them. And the SDK symbols in
 the guidance's Type Safety section stay literal too — they are importable names
 from the library this template builds on, needed verbatim by a reader on either
 runtime.
+
+<!-- passage: dashboard-parity -->
+
+The dashboard is one per person over the durable reviews from either runtime:
+`harness claude` and `harness codex` hold the same host companion, and it
+serves both runtimes' sessions on one page. One operator capability protects
+its queue APIs; the same captured diffs, exact commands, approval and decline
+notes, and atomic answer transition apply to both. The verbs that reach that
+capability are operator-only under both generated policies. Claude's native
+permission requests remain native requests; the dashboard displays what was
+parked in the durable relay. Browser settlement records the answer before
+returning to the browser; notification continues in the server, and its
+failure does not undo the decision.
+Queue acceptance alone does not prove that a particular recipient took a turn.
+The Codex idle-wake integration test measures the complete browser-to-relay
+path on CLI 0.158.0. The fixture forwards its declared launch identity into a
+real native stdio child. Its owned heartbeat recovers a pulse aged beyond the
+120-second presence window while preserving the hook-bound route. A completed
+first turn is followed by an autonomously queued review
+notification and a second completed turn carrying the operator's nonce to an
+inert local Responses endpoint. It uses the recorded home and normal native
+Unix socket discovery, without manually resuming the thread. Native
+approval releases an exact retry through that runtime's existing hook path;
+the dashboard does not execute the operation itself.
+

@@ -16,7 +16,7 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 
 from lup.devtools import setup
-from lup.devtools.dashboard.app import create_dashboard
+from lup.devtools.dashboard.setup_page import create_setup_page
 from lup.devtools.dashboard.wizard import WizardView
 from lup_template.devtools.setup import INTEGRATIONS
 
@@ -35,7 +35,7 @@ def isolated_dashboard(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
 def client() -> AsyncClient:
     """A client over the dashboard, bound to the host it will answer for."""
     return AsyncClient(
-        transport=ASGITransport(app=create_dashboard(BASE_URL, INTEGRATIONS)),
+        transport=ASGITransport(app=create_setup_page(BASE_URL, INTEGRATIONS)),
         base_url=BASE_URL,
     )
 
@@ -147,7 +147,7 @@ async def test_a_rebound_host_cannot_write_the_env_file(
     """
     del isolated_dashboard
     async with AsyncClient(
-        transport=ASGITransport(app=create_dashboard(BASE_URL, INTEGRATIONS)),
+        transport=ASGITransport(app=create_setup_page(BASE_URL, INTEGRATIONS)),
         base_url="http://evil.example",
     ) as http:
         page = await http.get("/")

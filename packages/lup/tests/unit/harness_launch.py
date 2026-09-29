@@ -59,7 +59,7 @@ class Transcript:
 
 
 def harness() -> Harness:
-    """This repository's harness, its wake socket declined so nothing binds one."""
+    """This repository's harness, its wake socket and dashboard declined so nothing binds one."""
     from lup_template.harness.catalog import portable_harness
 
     declared = portable_harness()
@@ -67,7 +67,8 @@ def harness() -> Harness:
         update={
             "image": declared.image.model_copy(
                 update={"wake_sockets": WakeSockets(directory="")}
-            )
+            ),
+            "dashboard": False,
         }
     )
 

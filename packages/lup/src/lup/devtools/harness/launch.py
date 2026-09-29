@@ -20,6 +20,7 @@ from typing import Protocol, runtime_checkable
 import typer
 from pydantic import BaseModel, Field, TypeAdapter, ValidationError
 
+from lup.devtools.dashboard.companion import Dashboard
 from lup.devtools.dev.branches import settle_base_freshness
 from lup.devtools.dev.worktree import RelocationHint, refuse_redirected_pointers
 from lup.devtools.harness.composition import NativeTargets
@@ -32,7 +33,7 @@ from lup.devtools.sync import accessible_roots, granted_devices
 from lup.harness.devices import Device
 from lup.harness.generate import NativeHarnessComposition
 from lup.harness.image import Image
-from lup.harness.models import NativeName, Plugin, Resumption
+from lup.harness.models import Harness, NativeName, Plugin, Resumption
 from lup.harness.notice import Notice
 from lup.harness.process import LocalProcessLauncher
 from lup.launch.companions import CompanionLaunch, Contribution, HostCompanion
@@ -576,6 +577,16 @@ def machine_overlay(composition: NativeHarnessComposition) -> list[Path]:
     return [composition.recipe.root / overlay.directory]
 
 
+def held_services(harness: Harness) -> list[HostCompanion]:
+    """What this repository's harness holds on the host around every session it opens.
+
+    The dashboard, where the module is taken: every launch holds it, whichever
+    runtime, sandbox or caller — a session opening a child session included —
+    so there is one page for all of them.
+    """
+    return [Dashboard()] if harness.dashboard else []
+
+
 def claude_declaration(
     composition: NativeHarnessComposition,
     request: LaunchRequest,
@@ -627,7 +638,7 @@ def claude_declaration(
             max_recursive_agent=request.allowance(),
             profile=selected,
             home=home,
-            companions=request.companions("claude"),
+            companions=[*request.companions("claude"), *held_services(source)],
         )
 
     declared(lambda: declaration(NoSandbox()))
@@ -677,7 +688,7 @@ def codex_declaration(
             max_recursive_agent=request.allowance(),
             profile=request.profile,
             home=home,
-            companions=request.companions("codex"),
+            companions=[*request.companions("codex"), *held_services(source)],
         )
 
     declared(lambda: declaration(NoSandbox()))

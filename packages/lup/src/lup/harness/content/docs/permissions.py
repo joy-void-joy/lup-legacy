@@ -81,6 +81,27 @@ DOCUMENT = models.PromptDocument(
             module="coordination",
             parts=[models.Passage(module=__name__, name="reaching-another-session")],
         ),
-        models.Passage(module=__name__, name="forge-credentials"),
+        models.Passage(
+            module=__name__,
+            name="forge-credentials",
+            values={
+                # The page reviews are answered on in a browser is the
+                # dashboard module's, and goes with it where it is declined.
+                "dashboard": models.WhereTaken(
+                    module="dashboard",
+                    parts=[
+                        models.TextPart(
+                            text=(
+                                "The operator reviews every parked request, of "
+                                "every repository and session, on one page: the "
+                                "dashboard, in `docs/dashboard.md`. The verbs "
+                                "reaching its capability are `operator_only` "
+                                "too.\n\n"
+                            )
+                        )
+                    ],
+                ),
+            },
+        ),
     ],
 )
