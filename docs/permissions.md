@@ -1361,7 +1361,10 @@ After a write, the hooks sweep the written file with the whole-tree rule check
 scoped to it (`repair_command`), then type-check it (`diagnostics_command`).
 The sweep runs every rule over every span, project rules included, so what
 the gate ahead of the write cannot see is reported per write rather than
-first met at the end. It removes dead directives and says so.
+first met at the end. It removes dead directives and says so; where the
+policy the session loaded would refuse taking a directive out, which happens
+when the sources moved since launch, it puts the file back and says the two
+disagree.
 
 What reaches the agent comes in two parts. What a gate still refuses is
 *blocking*. Claude gets it as

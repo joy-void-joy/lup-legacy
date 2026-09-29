@@ -120,6 +120,28 @@ def sweeping(work: Path, rewritten: str, rule_id: str) -> None:
     script.chmod(0o755)
 
 
+def test_a_repair_the_loaded_policy_would_refuse_is_put_back(tmp_path: Path) -> None:
+    """The sweep judges by the checkout's rules, the gate by the loaded policy.
+
+    After a rename the two disagreed: the gate demanded a directive the sweep
+    deleted as dead, and every later edit to the file was refused for its
+    absence. Where the loaded policy still needs what was taken out, the file
+    is left as written and the disagreement is said.
+    """
+    work = tmp_path / "repo"
+    initialized_repo(work, tmp_path / "no-hooks")
+    written = "import subprocess  # lup: ignore[subprocess] — a fixture\n"
+    module = work / "module.py"
+    module.write_text(written, encoding="utf-8")
+    sweeping(work, "import subprocess\n", "subprocess")
+
+    report = claude().reviewed_writes([str(module)], work, diagnosed=False)
+
+    assert module.read_text(encoding="utf-8") == written
+    assert report["blocking"] == []
+    assert "left as written" in report["context"][0]
+
+
 def test_a_repair_the_loaded_policy_agrees_with_stands_and_is_said(
     tmp_path: Path,
 ) -> None:

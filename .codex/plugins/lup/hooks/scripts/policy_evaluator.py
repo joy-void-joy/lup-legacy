@@ -4271,16 +4271,7 @@ def reviewed_writes(
 
     return merged(
         [
-            # Every removal is said: a line that vanishes unsaid is one the
-            # agent writes again on the next file.
-            PostToolReport(
-                blocking=[],
-                context=[
-                    f"{worktree_path(path)}: {line}"
-                    for path, file in swept.items()
-                    for line in file["repaired"]
-                ],
-            ),
+            *(repair_report(path, file, cwd) for path, file in swept.items()),
             PostToolReport(
                 blocking=[
                     line for path, file in swept.items() for line in refused(path, file)
@@ -4293,6 +4284,53 @@ def reviewed_writes(
                 for found in [file_diagnostics(path, DIAGNOSTICS_COMMAND)]
             ),
         ]
+    )
+
+
+def repair_report(path: str, file: dict, cwd: Path | None) -> PostToolReport:
+    """What the sweep's repair of one file comes to, under this session's policy.
+
+    The sweep judges by the checkout's rules and the gate ahead of the write
+    by the policy this session loaded, and the two differ whenever the
+    sources moved since the launch -- after a rename, the gate demanded a
+    `# lup: ignore[seam-boundary]` the sweep then deleted as dead, and every
+    later edit to the file was refused for the missing directive. So the
+    repair is put to that policy as an edit: where it would refuse taking a
+    directive out, the file goes back to what was written, and the agent is
+    told the two disagree rather than meeting the refusal on its next edit.
+    Every removal is said either way, because a line that vanishes unsaid is
+    one the agent writes again.
+    """
+    shown = worktree_path(path)
+    after = text_at(Path(path).parent, Path(path).name)
+    if not file["repaired"] or file["written"] is None or after is None:
+        return PostToolReport(
+            blocking=[], context=[f"{shown}: {line}" for line in file["repaired"]]
+        )
+    verdict = local_edit_decision(
+        path,
+        file["written"],
+        after,
+        path_exists=True,
+        autonomous=True,
+        cwd=cwd,
+        resolve_external=False,
+    )
+    if verdict.effect != "deny" or verdict.rule != "edit:anti-pattern":
+        return PostToolReport(
+            blocking=[], context=[f"{shown}: {line}" for line in file["repaired"]]
+        )
+    Path(path).write_text(file["written"], encoding="utf-8")
+    return PostToolReport(
+        blocking=[],
+        context=[
+            f"{shown}: left as written. The sweep called its directives dead by "
+            "this checkout's rules, and the policy this session loaded still "
+            "needs one of them; the two agree again once `uv run lup-devtools "
+            "harness generate all` runs and the session restarts. What the "
+            "loaded policy said about the repair:",
+            verdict.reason,
+        ],
     )
 
 
