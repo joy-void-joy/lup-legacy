@@ -276,3 +276,25 @@ def test_the_bun_root_collects_tests_beside_their_source(tmp_path: Path) -> None
     roles = check.collected_test_roles([pytest_root, bun_root])
     assert [role.root for role in roles] == bun_root.collected()
     assert {role.role for role in roles} == {"test"}
+
+
+def test_a_named_path_nothing_answers_is_refused_by_name(tmp_path: Path) -> None:
+    # Handed to pytest it collected nothing, and the run reported "no tests
+    # ran" and a failed suite without saying which of the names was wrong.
+    (tmp_path / "tests/unit").mkdir(parents=True)
+    kept = tmp_path / "tests/unit/test_kept.py"
+    kept.write_text("def test_kept() -> None:\n    pass\n", encoding="utf-8")
+    gone = tmp_path / "tests/unit/test_gone.py"
+
+    with pytest.raises(typer.BadParameter, match="test_gone.py"):
+        check.run_selected(declared_roots(tmp_path), [str(kept), str(gone)], [])
+
+
+def test_a_node_id_is_found_by_the_file_it_names(tmp_path: Path) -> None:
+    named = tmp_path / "test_kept.py"
+    named.write_text("def test_kept() -> None:\n    pass\n", encoding="utf-8")
+
+    assert check.absent_selections([f"{named}::test_kept"]) == []
+    assert check.absent_selections([f"{tmp_path / 'gone.py'}::test_kept"]) == [
+        f"{tmp_path / 'gone.py'}::test_kept"
+    ]

@@ -623,6 +623,23 @@ def owning_index(test_roots: list[TestRoot], selection: Path) -> int | None:
     )
 
 
+def absent_selections(selections: list[str]) -> list[str]:
+    """The named tests nothing on disk answers, spelled as they were named.
+
+    A node id names its test after the file holding it, so the file is what
+    is looked for. Handed a name nothing answers, pytest collected nothing,
+    and the run reported "no tests ran" and a failed suite without saying
+    which name was wrong.
+    """
+    return [
+        selection
+        for selection in selections
+        # lup: ignore[string-split] — pytest's node-id separator, which pytest
+        # exposes no parser for
+        if not Path(selection.partition("::")[0]).exists()
+    ]
+
+
 def group_by_root(
     test_roots: list[TestRoot], selections: list[str]
 ) -> list[RootSelection]:
@@ -676,8 +693,12 @@ def run_selected(
     are said as they arise rather than after, because this output streams:
     a run queued behind four others says so before it waits, not after.
     The selection is read before a slot is asked for, so a path under no
-    suite is refused at once rather than after a wait.
+    suite, or one nothing on disk answers, is refused at once rather than
+    after a wait.
     """
+    absent = absent_selections(selections)
+    if absent:
+        raise typer.BadParameter(f"nothing on disk answers {', '.join(absent)}")
     groups = group_by_root(test_roots, selections)
     failed: list[str] = []
     with admitted(project_root(), workers, announce=Notice.say) as admission:
