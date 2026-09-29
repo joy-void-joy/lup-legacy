@@ -186,3 +186,27 @@ def test_another_repositorys_referral_is_said_in_full_once_per_session(
     assert again.effect == "ask"
     assert again.recovery == ""
     assert elsewhere.recovery
+
+
+def test_a_file_a_command_wrote_without_naming_it_is_reviewed(tmp_path: Path) -> None:
+    """A script names none of the files it writes, and was reviewed for none.
+
+    The claim window measured what moved across the command, so a file only
+    it knows about is put to the same gates as a redirect's target.
+    """
+    work = tmp_path / "repo"
+    initialized_repo(work, tmp_path / "no-hooks")
+    module = work / "module.py"
+    module.write_text("import subprocess\n", encoding="utf-8")
+    (work / "lup-devtools").write_text(
+        '#!/bin/sh\necho \'{"repaired": [], "findings": []}\'\n', encoding="utf-8"
+    )
+
+    report = claude().written_review(
+        "uv run python tmp/generate.py", work, [str(module)], "session"
+    )
+
+    assert any(
+        line.startswith("module.py: line 1:") and "(rule subprocess)" in line
+        for line in report["blocking"]
+    )

@@ -535,12 +535,13 @@ def observe(payload):
         return PostToolReport(blocking=[], context=[])
     # What the command changed, read against the snapshot its own PreToolUse
     # took, and contested where another session had a window open across it.
-    claim_window_closed(session_root(payload), caller_of(payload))
+    changed = claim_window_closed(session_root(payload), caller_of(payload))
     return merged(
         [
             written_review(
                 command,
                 session_root(payload) or Path.cwd(),
+                changed,
                 payload["session_id"] if "session_id" in payload else "",
             ),
             # What the boundary refused, named as the boundary rather than

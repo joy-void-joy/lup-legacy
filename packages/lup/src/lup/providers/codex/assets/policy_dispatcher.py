@@ -460,12 +460,13 @@ def observe(payload):
         return reviewed_writes(changed, directory)
     # What the command changed, read against the snapshot its own PreToolUse
     # took, and contested where another session had a window open across it.
-    claim_window_closed(Path(root) if root else None, caller_of(payload))
+    changed = claim_window_closed(Path(root) if root else None, caller_of(payload))
     return merged(
         [
             written_review(
                 command,
                 Path(root) if root else Path.cwd(),
+                changed,
                 payload["session_id"] if "session_id" in payload else "",
             ),
             PostToolReport(

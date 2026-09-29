@@ -1154,7 +1154,9 @@ def test_the_one_loss_the_snapshot_cannot_hold_still_asks(delete_repo: Path) -> 
     assert effect == "ask"
 
 
-def test_a_write_the_gates_already_read_is_not_reported_again(tmp_path: Path) -> None:
+def test_a_write_the_gates_already_read_is_not_reported_again(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """The after-the-fact review answers for the writes nothing could read first.
 
     A shell write is reported afterwards because its content only exists once
@@ -1174,7 +1176,10 @@ def test_a_write_the_gates_already_read_is_not_reported_again(tmp_path: Path) ->
         "chore: base",
     )
     (work / "src" / "engine.py").write_text("value = 2\n", encoding="utf-8")
-    review = bundled_dispatcher().written_review
+    dispatcher = bundled_dispatcher()
+    # The sweep answers for rules the gate does not run, which is not this.
+    monkeypatch.setattr(dispatcher, "swept_files", lambda _paths, _command: {})
+    review = dispatcher.written_review
 
     assert review("cat > src/engine.py <<'EOF'\nvalue = 2\nEOF", work) == {
         "blocking": [],

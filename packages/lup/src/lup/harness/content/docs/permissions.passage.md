@@ -1362,6 +1362,9 @@ something also blocks, Codex adds it after the refusal. Nothing here undoes
 an edit or reports a crashed hook. Another repository's referral is said in
 full once per repository per session.
 
+A shell command is reviewed by what it changed, not by what its words name:
+the claim window's before-and-after comparison gives every file that moved
+from the commit, so a script's writes get the same review as a redirect's.
 Codex's patch parser reads every touched path without replaying the old file
 contents, so both runtimes run the same sweep and type check after an edit,
 including moves.

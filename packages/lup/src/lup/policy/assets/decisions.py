@@ -999,7 +999,9 @@ def authored_review(
     )
 
 
-def written_review(command: str, cwd: Path, session: str = "") -> PostToolReport:
+def written_review(
+    command: str, cwd: Path, changed: list[str] | None = None, session: str = ""
+) -> PostToolReport:
     """What the gates say about the files a shell command just wrote.
 
     The half of an edit's review a shell write cannot reach in advance. An
@@ -1034,8 +1036,22 @@ def written_review(command: str, cwd: Path, session: str = "") -> PostToolReport
     reads them out, and what lands is put to the same gates as the rest --
     which is what lets that row allow instead of refusing an operation with no
     reasonable substitute.
+
+    The words name only some of what a command writes: a script, a generator,
+    an interpreter handed a file name none of these readers sees. ``changed``
+    is every file the claim window measured moving across the command, among
+    those differing from the commit or untracked, so a write no word names is
+    reviewed as a redirect is -- and a checkout's own moves, which leave files
+    matching the commit, are not. The Python files among them are then swept
+    as an edit is (:func:`reviewed_writes`), for what the rules the edit gate
+    does not run still refuse.
     """
     carried = [write["path"] for write in authored_writes(command)]
+    base = cwd.resolve()
+    measured = [
+        str(Path(path).relative_to(base)) if Path(path).is_relative_to(base) else path
+        for path in changed or []
+    ]
     targets = [
         target
         for target in dict.fromkeys(
@@ -1043,6 +1059,7 @@ def written_review(command: str, cwd: Path, session: str = "") -> PostToolReport
                 *shell_write_targets(command),
                 *shell_flag_write_targets(command, SHELL_RULES),
                 *patch_write_targets(shell_patch_operands(command, SHELL_RULES), cwd),
+                *measured,
             ]
         )
         # A write whose bytes were in the command went to these gates before it
@@ -1069,20 +1086,40 @@ def written_review(command: str, cwd: Path, session: str = "") -> PostToolReport
             )
         ]
     ]
-    return PostToolReport(
-        blocking=[
-            f"{target}: {verdict.addressed()}"
-            for target, verdict in verdicts
-            if verdict.effect == "deny"
-        ],
-        context=[
-            f"{target}: {verdict.addressed()}"
-            for target, verdict in verdicts
-            if verdict.effect not in ("allow", "deny")
-            # Said once already: the file is only another repository's, which
-            # the agent was told.
-            and not (verdict.rule == "edit:foreign-repository" and not verdict.recovery)
-        ],
+    # The edit gate answered the line rules against the commit; the sweep adds
+    # what only it runs, so the two never name one finding twice.
+    answered = [row["id"] for rows in ANTI_PATTERN_ROWS.values() for row in rows]
+    return merged(
+        [
+            PostToolReport(
+                blocking=[
+                    f"{target}: {verdict.addressed()}"
+                    for target, verdict in verdicts
+                    if verdict.effect == "deny"
+                ],
+                context=[
+                    f"{target}: {verdict.addressed()}"
+                    for target, verdict in verdicts
+                    if verdict.effect not in ("allow", "deny")
+                    # Said once already: the file is only another
+                    # repository's, which the agent was told.
+                    and not (
+                        verdict.rule == "edit:foreign-repository"
+                        and not verdict.recovery
+                    )
+                ],
+            ),
+            reviewed_writes(
+                [
+                    str(cwd / target)
+                    for target in targets
+                    if not foreign_repository(target, cwd)
+                ],
+                cwd,
+                answered=answered,
+                diagnosed=False,
+            ),
+        ]
     )
 
 
@@ -1257,10 +1294,14 @@ def claim_window_opened(cwd: Path | None, caller: store.Caller) -> None:
     )
 
 
-def claim_window_closed(cwd: Path | None, caller: store.Caller) -> None:
-    """Attribute what a command changed, contested where nothing could tell."""
+def claim_window_closed(cwd: Path | None, caller: store.Caller) -> list[str]:
+    """Attribute what a command changed, contested where nothing could tell.
+
+    What changed is returned too, since it is the one account of a command's
+    writes that does not depend on the command naming them.
+    """
     if PEER_POLICY is None:
-        return
+        return []
     directory = peer_directory(cwd)
     session = declared_identity(PEER_POLICY["member_env"])
     closed = close_claim_window(
@@ -1273,6 +1314,7 @@ def claim_window_closed(cwd: Path | None, caller: store.Caller) -> None:
         store.record_claims(
             directory, store.acting(directory, session, caller), closed["paths"]
         )
+    return closed["paths"]
 
 
 def named_claim_recorded(
