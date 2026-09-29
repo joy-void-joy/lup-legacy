@@ -27,13 +27,17 @@ from lup.harness.enforcement import (
 from lup.harness.models import HookSet
 from lup.policy.kernel.fetch import scope_text
 from lup.policy.assets.host import (
+    closed_deadline,
     contained,
+    deadline_passed,
     defers_unjudged,
     delivers,
     measured_boundary,
+    opened_deadline,
     sandbox_active,
     text_at,
 )
+from lup.policy.bundle import hook_deadline
 from lup.policy.kernel.lex import shell_write_targets
 from lup.policy.kernel.semantics import UnjudgedAmbient
 from lup.policy.models import EditBatch, EditChange, FetchUrl, ShellCommand
@@ -230,7 +234,20 @@ def read_under(
                     EditChange(path=path, before=current or "", after=current or "")
                 ],
             )
-    decision = policy.decide(event)
+    # Bounded as the hook it previews is, from the same declaration: a
+    # reading waiting on what never returns -- a walk of a whole disk -- is
+    # refused at the deadline, as the dispatcher refuses the call.
+    previous = opened_deadline(hook_deadline(hooks.policy_timeout))
+    try:
+        decision = policy.decide(event)
+    except RuntimeError as overran:
+        if not deadline_passed():
+            raise
+        return PolicyReading(
+            placement=placement.name, effect="deny", reason=str(overran)
+        )
+    finally:
+        closed_deadline(previous)
     return PolicyReading(
         placement=placement.name, effect=decision.effect, reason=decision.reason
     )

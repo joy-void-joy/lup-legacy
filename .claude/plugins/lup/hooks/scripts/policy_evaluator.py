@@ -349,7 +349,8 @@ def opened_deadline(seconds: float, grace: float = 2.0) -> str:
     # the way to a verdict answer an OSError as the failure it reads as and
     # carry on, and an alarm one of them swallowed would leave the hook
     # running with nothing left to stop it. Nothing before the dispatcher
-    # catches this one, so it reaches the refusal of a call it could not judge.
+    # catches this one, so it reaches the refusal of a call it could not judge,
+    # which :func:`deadline_passed` then names as what it was.
     def overran(_number, _frame):
         signal.signal(signal.SIGALRM, signal.SIG_IGN)
         raise RuntimeError("this hook reached its deadline before a verdict")
@@ -368,6 +369,17 @@ def closed_deadline(previous: str) -> None:
         environ["LUP_HOOK_DEADLINE"] = previous
         return
     environ.pop("LUP_HOOK_DEADLINE", None)
+
+
+def deadline_passed() -> bool:
+    """Whether the hook's deadline has come, so a failure now is the deadline's.
+
+    Read off the clock rather than off the error: the alarm fires past the
+    deadline, and a step cut short at it fails however it fails, so a
+    verdict that did not arrive before the deadline is named as having met
+    it. Outside a hook there is no deadline to have passed.
+    """
+    return hook_seconds_left(float("inf")) <= 0.0
 
 
 def hook_seconds_left(ceiling: float) -> float:

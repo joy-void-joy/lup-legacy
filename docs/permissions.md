@@ -1560,7 +1560,10 @@ not say, so no capture is claimed. What nothing can hand a timeout to — a
 review-queue lock another writer holds, a read that never returns, the
 classifier itself — is stopped by an alarm two seconds past the deadline,
 and the dispatcher refuses the call as one it could not judge. A process the
-hook starts inherits the deadline and cannot extend it.
+hook starts inherits the deadline and cannot extend it. `dev policy` opens
+the same deadline for each reading it takes, from the same declaration
+(`lup.policy.bundle.hook_deadline`), so a reading that would wait past it is
+refused as the hook it previews would be rather than holding the command.
 
 Plugin hooks receive a writable data directory: `PLUGIN_DATA` under Codex and
 `CLAUDE_PLUGIN_DATA` under Claude Code. Each dispatcher appends

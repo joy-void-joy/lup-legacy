@@ -11,13 +11,15 @@ dispatcher on every posture, with `dev policy`'s reading beside it.
 import json
 import os
 import sys
+import time
 from pathlib import Path
 from typing import Literal
 
 import pytest
 import sh
 
-from lup.devtools.dev.policy_explain import verdict_for
+from lup.devtools.dev import policy_explain
+from lup.devtools.dev.policy_explain import PLACEMENTS, verdict_for
 from lup.harness.enforcement import semantic_policy_for
 from lup.policy.models import ShellCommand
 from lup.types import JsonObject
@@ -213,3 +215,35 @@ def test_a_read_that_walks_into_none_stays_a_read(
         "allow"
     }
     assert previewed(command, checkout, home, monkeypatch) == {"allow"}
+
+
+class Stalled:
+    """A policy whose verdict never comes, as a walk of a whole disk would not."""
+
+    def decide(self, event: ShellCommand) -> None:
+        time.sleep(30)
+
+
+def stalled(*_args: object, **_kwargs: object) -> Stalled:
+    return Stalled()
+
+
+def test_a_reading_in_process_is_bounded_as_a_hook_is(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """`dev policy` meets the deadline each dispatcher opens, from one declaration.
+
+    Unbounded, a reading waiting on something that never returns -- a walk
+    of a whole disk -- hangs the command a session reaches for before it
+    spends a turn, where the hook it previews has already refused.
+    """
+    monkeypatch.setattr(policy_explain, "semantic_policy_for", stalled)
+    hooks = declared_hook_set().model_copy(update={"policy_timeout": 1})
+    started = time.monotonic()
+
+    verdict = verdict_for("ls", "shell", False, tmp_path, hooks, PLACEMENTS[:1])
+
+    assert time.monotonic() - started < 10
+    (reading,) = verdict.readings
+    assert reading.effect == "deny"
+    assert "deadline" in reading.reason

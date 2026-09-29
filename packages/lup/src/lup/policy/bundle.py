@@ -186,6 +186,18 @@ def compilation_sources(
     )
 
 
+def hook_deadline(hook_timeout: int, verdict_reserve: float = 5.0) -> float:
+    """How long a verdict may take, given what the runtime gives the hook.
+
+    That timeout less ``verdict_reserve``, the time starting the interpreter
+    and writing the verdict take, so everything the verdict waits on has
+    ended while the runtime is still listening. Read by each dispatcher, and
+    by a reading taken in this process, so `dev policy` is bounded as the
+    hook it previews is.
+    """
+    return hook_timeout - verdict_reserve
+
+
 def bundled_antipattern_rows(
     rules: RuleSet | None = None,
 ) -> dict[str, list[AntiPatternRow]]:
@@ -682,7 +694,6 @@ def render_policy_data(
     refused_paths: list[RefusedPaths] | None = None,
     secret_variables: list[str] | None = None,
     hook_timeout: int = 30,
-    verdict_reserve: float = 5.0,
 ) -> str:
     """Render one plugin's canonical policy rows without executable logic.
 
@@ -696,9 +707,7 @@ def render_policy_data(
 
     ``hook_timeout`` is what the runtime gives the policy hook, the same value
     its hooks file declares, and the hook's deadline is derived from it rather
-    than restated beside it: that timeout less ``verdict_reserve``, the time
-    starting the interpreter and writing the verdict take, so everything the
-    verdict waits on has ended while the runtime is still listening.
+    than restated beside it, by :func:`hook_deadline`.
     """
     body = "\n\n".join(
         [
@@ -759,7 +768,7 @@ def render_policy_data(
             "RESOLUTION_COMMAND: list[str] = "
             + string_rows_literal(resolution_command),
             "REPAIR_COMMAND: list[str] = " + string_rows_literal(repair_command),
-            "HOOK_DEADLINE_SECONDS = " + json.dumps(hook_timeout - verdict_reserve),
+            "HOOK_DEADLINE_SECONDS = " + json.dumps(hook_deadline(hook_timeout)),
         ]
     )
     return (
