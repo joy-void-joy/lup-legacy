@@ -629,3 +629,67 @@ def test_a_merged_carrier_the_project_does_not_declare_deletes(
     branches.delete_branch("lup-scaffold", dry_run=False, force=False)
 
     assert "lup-scaffold" not in branch_names(carried)
+
+
+@pytest.fixture
+def merged_on_the_forge(tmp_path: Path) -> Path:
+    """A branch whose pull request merged on the forge, which local main never pulled.
+
+    The merge happens in a second clone and is pushed, as a forge's merge
+    button does; this checkout then fetches, so `origin/main` holds the merge
+    and its own `main` does not.
+    """
+    work = tmp_path / "repo"
+    git = initialized_repo(work, tmp_path / "no-hooks")
+    commit_file(git, work, "file.txt", "base\n", "chore: base")
+    origin = tmp_path / "origin.git"
+    sh.Command("git")("init", "--bare", "-q", "-b", "main", str(origin))
+    git("remote", "add", "origin", str(origin))
+    git("checkout", "-q", "-b", "topic")
+    commit_file(git, work, "extra.txt", "extra\n", "feat: extra")
+    git("checkout", "-q", "main")
+    git("push", "-q", "origin", "main", "topic")
+
+    forge = tmp_path / "forge"
+    sh.Command("git")("clone", "-q", str(origin), str(forge), _tty_out=False)
+    merger = initialized_repo(forge, tmp_path / "no-hooks")
+    merger("merge", "--no-ff", "-m", "Merge pull request #1", "origin/topic")
+    merger("push", "-q", "origin", "main")
+
+    git("fetch", "-q", "origin")
+    return work
+
+
+def test_a_branch_merged_on_the_forge_deletes_though_main_is_stale(
+    merged_on_the_forge: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Origin's integration branch holds it, so nothing is discarded.
+
+    Judged against the local integration branch alone, a merge that happened
+    on the forge reads as unmerged until somebody pulls, and the refusal
+    offered `--force` — the instrument for discarding work, handed out where
+    none was at stake.
+    """
+    monkeypatch.chdir(merged_on_the_forge)
+
+    branches.delete_branch("topic", dry_run=False, force=False)
+
+    assert "topic" not in branch_names(merged_on_the_forge)
+    assert "topic" not in remote_branch_names(merged_on_the_forge)
+    assert "origin/main" in capsys.readouterr().out
+
+
+def test_the_dry_run_says_which_copy_of_main_holds_it(
+    merged_on_the_forge: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.chdir(merged_on_the_forge)
+
+    branches.delete_branch("topic", dry_run=True, force=False)
+
+    out = capsys.readouterr().out
+    assert "unmerged" not in out
+    assert "git pull --ff-only" in out

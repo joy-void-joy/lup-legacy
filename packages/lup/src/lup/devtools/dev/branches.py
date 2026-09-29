@@ -2077,7 +2077,7 @@ class PlannedAction(BaseModel):
     def render(self) -> str:
         match self.verdict:
             case "ok":
-                return f"{self.description} (ok)"
+                return f"{self.description} (ok{f': {self.detail}' if self.detail else ''})"
             case "forced":
                 return f"{self.description} (force: {self.detail})"
             case "blocked":
@@ -2216,6 +2216,34 @@ def upstream_ref(name: str) -> str | None:
     return tracked or (recorded if recorded and resolvable(recorded) else None)
 
 
+def holding_copy(ref: str, integration: str, by_content: bool = False) -> str:
+    """The copy of the integration branch already holding *ref*, local first.
+
+    Origin's copy answers where the local one does not, because a pull
+    request merged on the forge lands there, and the local integration branch
+    holds it only once somebody pulls. Judged against the local copy alone,
+    every branch merged that way read as unmerged in the meantime, and the
+    refusal offered `--force` where nothing was at stake. Either copy holding
+    the commits means deleting the branch discards nothing.
+
+    ``by_content`` also counts a branch every commit of which is in by
+    patch-id, which is the survey's reading of containment; without it only
+    ancestry answers. Empty where neither copy holds it.
+    """
+    return next(
+        (
+            copy
+            for copy in (integration, f"origin/{integration}")
+            if resolvable(copy)
+            and (
+                is_ancestor(ref, copy)
+                or (by_content and count_unique_commits(ref, copy) == 0)
+            )
+        ),
+        "",
+    )
+
+
 def outgrew_upstream(name: str) -> bool:
     """Whether the branch holds commits the upstream it tracks does not.
 
@@ -2313,15 +2341,23 @@ def plan_branch_step(name: str, force: bool) -> PlannedAction:
     """
     description = f"Delete local branch: {name}"
     integration = get_integration_branch()
-    unique = count_unique_commits(name, integration)
-    if is_ancestor(name, integration) or unique == 0:
+    landed = holding_copy(name, integration, by_content=True)
+    if landed:
         if outgrew_upstream(name):
             return PlannedAction(
                 description=description,
                 verdict="forced",
-                detail=f"ahead of origin/{name}, which {integration} already contains",
+                detail=f"ahead of origin/{name}, which {landed} already contains",
             )
-        return PlannedAction(description=description)
+        stale = (
+            f"{landed} holds it, and {integration} is "
+            f"{count_commits_behind(integration, landed)} behind it — "
+            "`git pull --ff-only` in the integration checkout"
+            if landed != integration
+            else ""
+        )
+        return PlannedAction(description=description, detail=stale)
+    unique = count_unique_commits(name, integration)
     suspects = rewrite_suspects(name, integration)
     trail = (
         f"; {len(suspects)} of {unique} unique commit(s) share a subject with "
@@ -2469,7 +2505,7 @@ def plan_remote_only_deletion(
                 )
             ],
         )
-    contained = is_ancestor(f"origin/{name}", get_integration_branch())
+    contained = bool(holding_copy(f"origin/{name}", get_integration_branch()))
     return DeletionPlan(
         branch=name,
         has_local=False,
@@ -2534,7 +2570,7 @@ def plan_deletion(
 
     actions.append(plan_branch_step(name, force=force))
 
-    merged = is_ancestor(name, get_integration_branch())
+    merged = bool(holding_copy(name, get_integration_branch()))
     delete_remote = has_remote and (merged if remote is None else remote)
     if delete_remote:
         actions.append(plan_remote_step(name, force=force, contained=merged))
@@ -2747,7 +2783,13 @@ def delete_branch(
         raise typer.Exit(1)
 
     integration = get_integration_branch()
-    contained = is_ancestor(plan.ref(), integration)
+    landed = holding_copy(plan.ref(), integration)
+    contained = bool(landed)
+    if landed not in ("", integration):
+        typer.echo(
+            f"{name} is in {landed}, which {integration} has not pulled: "
+            "`git pull --ff-only` in the integration checkout brings it level"
+        )
     if plan.delete_remote and not contained and not preserved:
         typer.echo(
             f"Warning: {name} holds commits {integration} does not, and origin/{name} "
@@ -2764,7 +2806,7 @@ def delete_branch(
     # the ref the next line removes, and a deferral parked on it asks that
     # question later, when absence is all there is to read and absence is not
     # an answer. So the verdict already reached above is written down.
-    records.record_landing(name, integration if contained else "")
+    records.record_landing(name, landed)
     run_deletion(plan, force)
 
 
