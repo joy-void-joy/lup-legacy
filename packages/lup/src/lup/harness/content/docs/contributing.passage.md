@@ -72,7 +72,8 @@ moving fails on that rather than on the code.
 
 `uv` is the package manager: use `uv add <package>`, never edit
 `pyproject.toml` by hand. Secrets go in `.env.local`, which is gitignored;
-`.env` holds template defaults. `uv run lup-devtools --help` is the full
+`.env` holds template defaults; a key only a host companion may hold goes in
+the host store with `uv run lup-devtools setup secret <KEY>`. `uv run lup-devtools --help` is the full
 command tree.
 
 To launch the repository as a native agent plugin:

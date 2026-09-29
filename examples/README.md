@@ -77,6 +77,7 @@ uv run -m examples.launch_guidance
 uv run -m examples.launch_nested_repositories
 uv run -m examples.launch_companions
 uv run -m examples.launch_host_service
+uv run -m examples.launch_companion_secrets
 ```
 
 `launch_profile` expects a profile named `work` among yours
@@ -84,7 +85,9 @@ uv run -m examples.launch_host_service
 `launch_devices`, `launch_network`, `launch_memory`, `launch_held_trees`,
 `launch_asking`, `launch_guidance` and `launch_nested_repositories` a Docker or
 Podman engine,
-and `launch_sudo` a rootless one.
+and `launch_sudo` a rootless one. `launch_companion_secrets` expects
+`PREVIEW_TOKEN` in the host store (`uv run lup-devtools setup secret
+PREVIEW_TOKEN`).
 
 Each composition declares its agent at the application boundary. The
 one-shot `ask`, the declared layers, the background scheduler, and the router

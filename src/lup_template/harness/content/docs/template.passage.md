@@ -20,6 +20,17 @@ checked against one. The page writes credentials into `.env.local`, and a
 local bind alone leaves that reachable by DNS rebinding from any page the
 browser has open. Both halves are `lup.web.loopback`{{ shared_with_supervisor }}.
 
+An integration declared `host_only=True` is answered into the project's host
+store instead, `$XDG_CONFIG_HOME/lup/secrets/<project>.env` (owner-only, one
+file per `[project]` name, shared by every worktree): the place for a key a
+host companion is started with and a session must never hold. No session
+reads it — a contained launch refuses a mount reaching the person's lup
+config, a launch takes every name the store holds out of what the session
+inherits, and a `SharedProcess` is started with only the keys its `secrets`
+names. `uv run lup-devtools setup secret <KEY>` sets one no integration
+declares, `--unset` removes it. Inside a container each of these refuses
+before anything is typed, naming the command to run on the host.
+
 
 <!-- passage: sync-registry -->
 ### The sync registry

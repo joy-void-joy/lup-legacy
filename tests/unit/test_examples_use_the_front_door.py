@@ -209,6 +209,9 @@ LAUNCH_FIELDS = {
     "a kind of session's own guidance": FieldExample(
         example="launch_guidance.py", call="OuterContainer", keyword="guidance"
     ),
+    "a companion's host-only secrets": FieldExample(
+        example="launch_companion_secrets.py", call="Preview", keyword="secrets"
+    ),
     "named host services": FieldExample(
         example="launch_host_service.py", call="HostService"
     ),

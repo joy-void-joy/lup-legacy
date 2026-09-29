@@ -283,6 +283,7 @@ Run any of them with `uv run lup-devtools <command>`, and add `--help` for its a
 | `setup api-key` | Set up Example API key. |
 | `setup codex` | Set Codex/OpenAI per-MTok pricing (enables budget caps). |
 | `setup timezone` | Set timezone. |
+| `setup secret` | Set a key in this project&#x27;s host store, which only host companions are handed. |
 | `setup profile list` | Show every profile, local and global, and which one a launch selects. |
 | `setup profile add` | Register a runtime configuration home under a name, in this checkout. |
 | `setup profile use` | Select the profile a launch uses when none is named, in this checkout. |
