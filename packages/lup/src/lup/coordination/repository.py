@@ -38,7 +38,9 @@ from pathlib import Path
 from pydantic import BaseModel, computed_field
 
 from lup.channels.models import Door, utc_now
+from lup.coordination.bare import mail as bare_mail
 from lup.coordination.bare import store
+from lup.coordination.bare.runtime import Runtime
 from lup.coordination.cohort import ActorCohort
 from lup.coordination.identity import (
     LaunchedMember,
@@ -252,6 +254,7 @@ class RepositoryPeers:
         cli_name: str = "",
         delivery: Delivery = Delivery.WAITING,
         wake: WakePath = WakePath(),
+        spawned_by: str = "",
     ) -> ActorRef:
         """Put this session on the roster, and hand back the address it answers to.
 
@@ -277,6 +280,11 @@ class RepositoryPeers:
         still has its mailbox, and a sender is told nothing will nudge it
         rather than told a nudge was sent.
 
+        *spawned_by* is the session whose shell started this one's runtime,
+        which inherited that session's launched id: its row names it, and one
+        given no name is called after it — the launcher's name in its
+        environment is that session's, not its own.
+
         The arrival and the naming happen under the store's roster lock, so
         two sessions starting together cannot read the same set of taken names
         and both take the free one.
@@ -293,14 +301,14 @@ class RepositoryPeers:
                 delivery=delivery,
                 worktree=str(worktree),
                 wake=wake,
+                spawned_by=spawned_by,
             )
-            chosen = (
-                cli_name
-                or current
-                or store.unique_cli_name(
-                    session_cli_name() or derived_cli_name(worktree), taken
-                )
+            wanted = (
+                f"{self.called(spawned_by) or spawned_by}-spawned"
+                if spawned_by
+                else session_cli_name() or derived_cli_name(worktree)
             )
+            chosen = cli_name or current or store.unique_cli_name(wanted, taken)
             if chosen != current:
                 self.record_name(member_id, chosen)
             return peer
@@ -539,29 +547,31 @@ class RepositoryPeers:
 
         A member whose pulse stopped has its file moved to the departed, so a
         reader that lists the directory agrees with one that stats the file; a
-        departed stub past the retention window is deleted, which is what
-        keeps the store the size of the population rather than of its history.
-        A session that beats again after this re-joins on its next call, which
-        the roster's own idempotence allows once the file has moved.
+        departed stub past the retention window is deleted, and so is every
+        message on the mail record sent before that window opened, which is
+        what keeps the store the size of the population rather than of its
+        history. A session that beats again after this re-joins on its next
+        call, which the roster's own idempotence allows once the file has
+        moved.
 
         A claim needs no sweeping and *by* names nobody: a claim stands or it
         does not, and the filesystem is what says which. Whoever swept is a
         parameter the surfaces pass and this has no record to attribute to
         them.
         """
+        moment = now or utc_now()
         # lup: defer: nothing deletes what the member-file store replaced in
         # this directory -- `touches.jsonl`, `roster.jsonl`, `messages.jsonl`,
         # `names.jsonl`, `delivery/`, `heartbeats/` and `resets/` stay on every
         # clone that ran 0.2.x; the user settled that the first sweep of this
         # store deletes them, and no sweep or migration does
-        # lup: defer: nothing bounds `mail.jsonl` -- every message posted in
+        # lup: solved: nothing bounds `mail.jsonl` -- every message posted in
         # this clone stays on it, and the dashboard reads all of it; the user
         # has not settled whether this sweep keeps it to the retention window
         # (taking the dashboard's older history with it) or it stays whole
-        return [
-            folded_member(member)
-            for member in store.swept(self.root, now, self.pulse.stale_after_seconds)
-        ]
+        retired = store.swept(self.root, moment, self.pulse.stale_after_seconds)
+        bare_mail.trimmed(self.root, self.retention.since(moment))
+        return [folded_member(member) for member in retired]
 
     def send(
         self,
@@ -628,6 +638,16 @@ class RepositoryPeers:
         delivery = mailbox.waiting()
         mailbox.commit(delivery)
         return delivery
+
+    def delivered(self, member_id: str, delivery: ActorDelivery) -> None:
+        """Record exactly these messages as handed over to this member by something else.
+
+        What a wake the member's runtime accepted does: it carried them whole,
+        so the member's own hook must not hand them over a second time. The
+        rest of the mailbox — what arrived since, or what no wake carried —
+        stays for that hook.
+        """
+        self.cohort.mailbox(self.actor(member_id)).commit(delivery)
 
     def live_ids(self) -> list[str]:
         """Every member still working here, by id, which is what expires a claim.
@@ -726,3 +746,30 @@ def launched_member(root: Path, name: str | None = None) -> LaunchedMember:
         member_id=mint_member_id(),
         cli_name=store.unique_cli_name(wanted, peers.names_taken()),
     )
+
+
+class RuntimeMember(BaseModel, frozen=True):
+    """Who one runtime's processes are on the roster, and whose shell started it."""
+
+    member_id: str
+    spawned_by: str = ""
+    """The session whose launched id this runtime inherited, empty where the id is its own."""
+
+
+def runtime_member(
+    root: Path, launched: str, fallback: str, runtime: Runtime
+) -> RuntimeMember:
+    """The member a process of *runtime* answers as in *root*'s roster.
+
+    *launched* is the id a launcher exported, which every process the
+    launched runtime starts inherits: where *runtime* is not the one it was
+    minted for, it is a member of its own, spawned by that session. With no
+    launched id, *fallback* — what the runtime itself calls this session —
+    is all there is, and no other runtime carries it.
+    """
+    if not launched:
+        return RuntimeMember(member_id=fallback)
+    own = store.own_member(coordination_root(root), launched, runtime)
+    if own == launched:
+        return RuntimeMember(member_id=launched)
+    return RuntimeMember(member_id=own, spawned_by=launched)

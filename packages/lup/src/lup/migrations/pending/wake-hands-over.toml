@@ -1,0 +1,27 @@
+subjects = [
+    "WakeReceipts",
+    "WakeReceipts.route",
+    "WakeReceipts.message_ids",
+    "MailboxRelay.receipt_path",
+]
+reason = """
+a wake the member's runtime accepted carried the mail whole, and the \
+delivery hook handed the same mail over again at the member's next tool \
+call; a wake that reached now hands over what it carried, so there is no \
+accepted-but-waiting mail left for a receipt to remember"""
+
+[[steps]]
+instruction = """
+Drop anything that read a relay's receipts: a message the native queue \
+accepted has left the member's mailbox, and the mail record keeps what was \
+said. Where you logged or cleaned `MailboxRelay.receipt_path`, use \
+`MailboxRelay.lock_path`, the lock every relay for the member shares; a \
+`wake-relay/*.json` file an earlier relay left is read by nothing and can be \
+deleted."""
+
+[[steps]]
+instruction = """
+Where your code sends mail and then wakes the recipient with `wake()`, call \
+`lup.coordination.watch.roused(peers, member, messages, cwd)` instead: it \
+wakes with the messages whole and hands them over when the runtime accepts \
+the wake, so the recipient's hook does not deliver them a second time."""

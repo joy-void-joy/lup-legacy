@@ -144,6 +144,15 @@ class RosterMember(BaseModel, frozen=True):
     the session it runs in — listed beneath it, and gone when it is.
     """
 
+    spawned_by: str = ""
+    """The session whose shell started this member's runtime, empty for every other member.
+
+    A `claude -p`, a `codex exec` or a pipeline run from a session's shell
+    carries that session's launched id and is somebody else: a member of its
+    own, with a runtime, a presence and an ending of its own, which names the
+    session it came from rather than being listed as part of it.
+    """
+
     cli_name: str = ""
     """What this member is called now, empty until something named it.
 
@@ -219,6 +228,7 @@ def folded_member(member: store.Member) -> RosterMember:
         ),
         delivery=carried(store.text(member.get("delivery")), Delivery.HOOK),
         parent=store.parent_of(member),
+        spawned_by=store.text(member.get("spawned_by")),
         cli_name=store.current_name(member),
         transcript=store.text(conversation.get("transcript")),
     )
@@ -251,6 +261,7 @@ class Roster:
         delivery: Delivery = Delivery.WAITING,
         worktree: str = "",
         wake: WakePath = WakePath(),
+        spawned_by: str = "",
     ) -> None:
         """Put this member's file down, unless one is already standing for it.
 
@@ -273,6 +284,7 @@ class Roster:
         member["liveness"] = liveness
         member["delivery"] = delivery.value
         member["worktree"] = worktree
+        member["spawned_by"] = spawned_by
         member["wake"] = store.Wake(
             runtime=wake.runtime,
             handle=wake.handle,
@@ -294,9 +306,10 @@ class Roster:
         delivery: Delivery = Delivery.WAITING,
         worktree: str = "",
         wake: WakePath = WakePath(),
+        spawned_by: str = "",
     ) -> None:
         """Record that a peer nobody spawned is present, and how to reach it."""
-        self.announce(actor, task, liveness, delivery, worktree, wake)
+        self.announce(actor, task, liveness, delivery, worktree, wake, spawned_by)
 
     def describes(self, actor: ActorRef, description: str) -> None:
         """Record what this member is doing now, under its own lock."""

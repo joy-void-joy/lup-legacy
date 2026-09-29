@@ -23,6 +23,7 @@ process boundary, and a closure built at runtime has none.
 """
 
 import asyncio
+import os
 import sys
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Sequence
@@ -41,8 +42,10 @@ from pydantic import (
     model_validator,
 )
 
+from lup.coordination.bare.runtime import runtime_of
 from lup.coordination.identity import MEMBER_ENV, mint_member_id
 from lup.coordination.policy import COORDINATION_SERVER
+from lup.coordination.repository import runtime_member
 from lup.harness.environment import tool_server_env
 from lup.ledger.models import LedgerEdge, LedgerNode
 from lup.ledger.store import LedgerLayout
@@ -459,15 +462,19 @@ def opened_needs(root: Path, session_dir: Path, environment: EnvVars) -> Session
 
     Its identity is the one its environment names, where a launcher minted
     one for it, and a new one otherwise: a session opened here is a session,
-    and joins the roster as itself rather than as whoever opened it.
+    and joins the roster as itself rather than as whoever opened it. A
+    process that inherited the launcher's id from another session's shell —
+    a pipeline run there — is not that session, and its sessions are a
+    member of their own, spawned by it.
     """
+    launched = environment[MEMBER_ENV] if MEMBER_ENV in environment else ""
+    member = runtime_member(root, launched, mint_member_id(), runtime_of(os.getpid()))
     return SessionNeeds(
         session_dir=session_dir,
         root=root,
         gate=ReviewGate(),
-        member=(
-            environment[MEMBER_ENV] if MEMBER_ENV in environment else mint_member_id()
-        ),
+        member=member.member_id,
+        spawned_by=member.spawned_by,
     )
 
 

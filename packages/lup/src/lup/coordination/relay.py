@@ -3,13 +3,16 @@
 The stdio coordination server owns this companion; an in-process registration
 without companion lifecycle does not provide it. The server reads its own
 hook-bound route, so mail shared across containers needs no remote execution.
-Native acceptance is recorded separately from delivery and never consumes mail.
+What the native queue accepted is handed over then, as any wake's is
+(:func:`~lup.coordination.watch.roused`): the session's delivery hook hands
+over only what no wake carried.
 
-Delivery is at-least-once: a crash after queue acceptance but before receipt
-publication can repeat a nudge. A direct sender or external watcher does not
-share these receipts and can race this relay, and a hook can consume the mail
-between the relay's snapshot and queue call. Neither duplicate notifications
-nor queue acceptance prove that an idle model took a turn or read the mail.
+Delivery is at-least-once: a crash after queue acceptance but before the
+hand-over repeats a nudge, a direct sender or external watcher can race this
+relay, and a hook can consume the mail between the relay's snapshot and its
+queue call. Queue acceptance does not prove that an idle model took a turn
+or read the mail, and a thread replaced after it accepted takes that mail
+with it; the mail record keeps what was said either way.
 """
 
 import asyncio
@@ -18,30 +21,22 @@ import hashlib
 import logging
 from pathlib import Path
 
-from pydantic import BaseModel, Field
+from pydantic import Field
 
-from lup.channels.models import publish_atomic
 from lup.coordination.repository import RepositoryPeers
-from lup.coordination.wake import WakePath, Woken, wake
-from lup.coordination.watch import nudge_text
+from lup.coordination.wake import Woken
+from lup.coordination.watch import roused
 from lup.tools.mcp import ServerCompanion
 
 logger = logging.getLogger(__name__)
 
 
-class WakeReceipts(BaseModel, frozen=True):
-    """Messages accepted by one native route, still distinct from mail delivery."""
-
-    route: WakePath
-    message_ids: list[str] = []
-
-
 class MailboxRelay(ServerCompanion, frozen=True):
     """One stdio server's receiver, bounded by the server's own lifetime.
 
-    Every instance for the same member shares a file lock and receipt. Receipt
-    identities include the native session, home and execution scope through the
-    full route, so pending mail can reach a session whose binding changed.
+    Every instance for the same member shares one file lock, so the several
+    servers one runtime can start for a session queue a message once between
+    them.
     """
 
     root: Path
@@ -51,60 +46,42 @@ class MailboxRelay(ServerCompanion, frozen=True):
     """Native request deadline, matching the account readiness probe's default."""
 
     @property
-    def receipt_path(self) -> Path:
-        """The member's acceptance state; mail bodies never appear in this file."""
+    def lock_path(self) -> Path:
+        """The lock every relay for this member takes around one batch."""
         identity = hashlib.sha256(self.member_id.encode()).hexdigest()
-        return RepositoryPeers(self.root).root / "wake-relay" / f"{identity}.json"
+        return RepositoryPeers(self.root).root / "wake-relay" / f"{identity}.lock"
 
     def tick(self) -> Woken | None:
-        """Try one batch without acknowledging it; a failed queue remains retryable."""
+        """Queue what waits for this member, handing it over once the queue accepts it.
+
+        Nothing where nothing waits, or another relay holds the batch; a
+        failed queue leaves the mail waiting for the next tick to retry.
+        """
         peers = RepositoryPeers(self.root)
         row = peers.row(self.member_id)
         if row is None or not row.running or not row.wake.receiver_local:
             return None
-        receipt = self.receipt_path
-        receipt.parent.mkdir(parents=True, exist_ok=True)
-        with receipt.with_suffix(".lock").open("a", encoding="utf-8") as lock:
+        lock = self.lock_path
+        lock.parent.mkdir(parents=True, exist_ok=True)
+        with lock.open("a", encoding="utf-8") as held:
             try:
-                fcntl.flock(lock.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                fcntl.flock(held.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
             except BlockingIOError:
                 return None
             # Binding and delivery can move before the lock is acquired.
             row = peers.row(self.member_id)
             if row is None or not row.running or not row.wake.receiver_local:
                 return None
-            previous = (
-                WakeReceipts.model_validate_json(receipt.read_text(encoding="utf-8"))
-                if receipt.exists()
-                else WakeReceipts(route=row.wake)
-            )
             waiting = peers.waiting(self.member_id).messages
-            accepted = [
-                message.id
-                for message in waiting
-                if previous.route == row.wake and message.id in previous.message_ids
-            ]
-            fresh = [message for message in waiting if message.id not in accepted]
-            if not fresh:
-                if previous.message_ids != accepted:
-                    publish_atomic(
-                        receipt, WakeReceipts(route=row.wake, message_ids=accepted)
-                    )
+            if not waiting:
                 return None
-            outcome = wake(
-                row.wake,
-                nudge_text(fresh),
+            return roused(
+                peers,
+                row,
+                waiting,
                 self.root,
                 queue_timeout_seconds=self.queue_timeout_seconds,
             )
-            if outcome.reached:
-                publish_atomic(
-                    receipt,
-                    WakeReceipts(
-                        route=row.wake, message_ids=[message.id for message in waiting]
-                    ),
-                )
-            return outcome
 
     async def run(self) -> None:
         """Serve until cancelled, joining any bounded native call before stopping."""
@@ -120,7 +97,7 @@ class MailboxRelay(ServerCompanion, frozen=True):
                 raise
             except Exception as error:
                 current = type(error).__name__
-                detail = f"{current}; check receipt {self.receipt_path} and store permissions"
+                detail = f"{current}; check lock {self.lock_path} and store permissions"
             else:
                 current = (
                     outcome.error_type or "NativeQueueRejected"

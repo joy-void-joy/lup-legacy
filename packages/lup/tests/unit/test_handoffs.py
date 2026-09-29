@@ -12,17 +12,20 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
+from lup.coordination import watch as watching
 from lup.coordination.briefs import (
     DetachedBrief,
     PeerBrief,
     PersonBrief,
     render_brief,
 )
+from lup.coordination.delegate import delegate
 from lup.coordination.handoffs import Established, Handoff, hand_off
 from lup.coordination.identity import member_ref, mint_member_id
 from lup.coordination.refs import ActorRef
 from lup.coordination.repository import RepositoryPeers
 from lup.coordination.tasks import Task
+from lup.coordination.wake import WakePath, Woken
 from lup.ledger.journal import LedgerStore
 
 
@@ -163,6 +166,69 @@ def test_a_name_nobody_answers_to_leaves_the_work_rather_than_refusing(
     assert not result.to
     assert result.transferred == [task.id]
     assert "nobody" in result.note
+
+
+def woken_receiver(
+    peers: RepositoryPeers, root: Path, monkeypatch: pytest.MonkeyPatch
+) -> tuple[str, list[str]]:
+    """A receiver whose runtime accepts every wake, and every wake it was sent."""
+    receiver = mint_member_id()
+    peers.join(
+        receiver,
+        root / "other",
+        cli_name="receiver",
+        wake=WakePath(runtime="claude", handle=str(root / "receiver.sock")),
+    )
+    woken: list[str] = []
+
+    def nudged(
+        path: WakePath,
+        message: str,
+        cwd: Path | None = None,
+        *,
+        queue_timeout_seconds: float = 20.0,
+    ) -> Woken:
+        del path, cwd, queue_timeout_seconds
+        woken.append(message)
+        return Woken(reached=True)
+
+    monkeypatch.setattr(watching, "wake", nudged)
+    return receiver, woken
+
+
+def test_a_handoff_the_wake_carried_is_not_handed_over_again(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The wake carries the mail whole, so the receiver's hook at its next call
+    has nothing of it left to put in front of it a second time.
+    """
+    peers, store, _member = repository(tmp_path)
+    receiver, woken = woken_receiver(peers, tmp_path, monkeypatch)
+
+    result = hand_off(
+        peers,
+        store,
+        "the parser work",
+        open_questions=["whether escapes nest"],
+        to="receiver",
+    )
+
+    assert result.woken
+    assert len(woken) == 1 and "the parser work" in woken[0]
+    assert peers.waiting(receiver).messages == []
+
+
+def test_a_delegation_the_wake_carried_is_not_handed_over_again(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    peers, store, _member = repository(tmp_path)
+    receiver, woken = woken_receiver(peers, tmp_path, monkeypatch)
+
+    result = delegate(peers, store, "finish the parser", to="receiver")
+
+    assert result.woken
+    assert len(woken) == 1 and "finish the parser" in woken[0]
+    assert peers.waiting(receiver).messages == []
 
 
 def written(root: Path) -> tuple[Handoff, list[Task]]:

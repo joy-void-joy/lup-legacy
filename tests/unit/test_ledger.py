@@ -337,6 +337,7 @@ def test_every_field_an_arrival_carries_reaches_the_member_it_becomes(
         "delivery": Delivery.HOOK,
         "worktree": "/tmp/tree",
         "wake": WakePath(runtime="codex", handle="thread-1"),
+        "spawned_by": "lead",
     }
     shared = set(Member.__annotations__) & set(RosterMember.model_fields)
     roster = Roster(tmp_path)

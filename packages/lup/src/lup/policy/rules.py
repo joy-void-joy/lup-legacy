@@ -51,7 +51,7 @@ from lup.policy.assets.host import (
     unleased_write_targets,
     peer_store,
 )
-from lup.coordination.bare.store import claim_holders
+from lup.coordination.bare.store import claim_holders, commanding
 from lup.policy.kernel.effects import STRENGTH
 from lup.policy.kernel.lex import (
     authored_writes,
@@ -925,16 +925,21 @@ class EditPolicy(DecisionPolicy[EditBatch]):
         Found by the lookups the dispatchers' `foreign_claim_decision` makes --
         the store beneath the shared git directory, and who holds the path in
         it -- and judged by the kernel function both paths call. The asker is
-        whoever this process's environment names, which a session hands every
-        process it starts.
+        the session this process's environment names, which a session hands
+        every process it starts -- and, where one of that session's
+        conversations is running the command this process is (`dev policy`
+        from a subagent's shell), that conversation, as the dispatcher judged
+        its own call.
         """
         peers = self.peer_policy
         directory = None if peers is None else peer_store(root, peers["store"])
         if peers is None or directory is None:
             return None
+        session = declared_identity(peers["member_env"])
+        asking = commanding(directory, session) or session
         return decide_foreign_claim(
             path,
-            claim_holders(directory, path, declared_identity(peers["member_env"])),
+            claim_holders(directory, path, asking, session=session),
             peers,
         )
 

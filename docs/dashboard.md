@@ -94,7 +94,8 @@ as waiting in its mailbox or taken. Choose a repository's name to read every
 message its sessions sent each other as one conversation. Messages come from
 the repository's mail record, `mail.jsonl` in its coordination store, where
 every message posted lands as well as in its reader's mailbox, so what was said
-stays readable after its reader took it.
+stays readable after its reader took it — for the roster's retention window,
+past which the sweep cuts it from the record.
 
 ## Writing to a session
 

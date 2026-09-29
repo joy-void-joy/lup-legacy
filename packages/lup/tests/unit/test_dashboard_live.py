@@ -12,12 +12,13 @@ from pathlib import Path
 import pytest
 
 from lup.channels.models import Door
+from lup.coordination import watch as watching
 from lup.coordination.bare import store
 from lup.coordination.bare.changes import changes
 from lup.coordination.identity import mint_member_id
+from lup.coordination.mail import ActorMail, MailCursor
 from lup.coordination.repository import PeerDepartedError, RepositoryPeers
 from lup.coordination.wake import WakePath, Woken
-from lup.devtools.dashboard import live
 from lup.devtools.dashboard.companion import KnownRepository
 from lup.devtools.dashboard.live import (
     RepositoryWatch,
@@ -231,30 +232,60 @@ def test_a_session_counts_what_waits_for_it(tmp_path: Path) -> None:
     assert rows[lead].waiting == 2
 
 
+def waking(monkeypatch: pytest.MonkeyPatch, reached: bool) -> list[str]:
+    """Every wake a reply makes, answered *reached* rather than written anywhere."""
+    woken: list[str] = []
+
+    def nudged(
+        path: WakePath,
+        message: str,
+        cwd: Path | None = None,
+        *,
+        queue_timeout_seconds: float = 20.0,
+    ) -> Woken:
+        del path, cwd, queue_timeout_seconds
+        woken.append(message)
+        return Woken(reached=reached, reason="" if reached else "nobody listening")
+
+    monkeypatch.setattr(watching, "wake", nudged)
+    return woken
+
+
 def test_a_reply_reaches_a_session_as_the_user_and_wakes_it(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     peers = RepositoryPeers(tmp_path)
     lead = session(peers, tmp_path, "lead")
-    woken: list[str] = []
-
-    def nudged(path: WakePath, message: str, cwd: Path | None = None) -> Woken:
-        del path, cwd
-        woken.append(message)
-        return Woken(reached=True)
-
-    monkeypatch.setattr(live, "wake", nudged)
+    woken = waking(monkeypatch, reached=True)
 
     outcome = reply(known(tmp_path), lead, "stop and rebase onto staging")
 
-    waiting = peers.waiting(lead).messages
-    assert [(m.sender, m.door, m.text) for m in waiting] == [
+    posted = ActorMail(peers.root).posted(MailCursor()).messages
+    assert [(m.message.sender, m.message.door, m.message.text) for m in posted] == [
         ("user", Door.PAGE, "stop and rebase onto staging")
     ]
     assert outcome.queued and outcome.woken
     assert outcome.session == f"{known(tmp_path).key()}/{lead}"
     assert len(woken) == 1
     assert "from user by page —\nstop and rebase onto staging" in woken[0]
+    # The wake carried it whole, so the session's hook has nothing of it to
+    # hand over again at its next tool call.
+    assert peers.waiting(lead).messages == []
+
+
+def test_a_reply_nothing_woke_for_waits_for_the_next_call(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    peers = RepositoryPeers(tmp_path)
+    lead = session(peers, tmp_path, "lead")
+    waking(monkeypatch, reached=False)
+
+    outcome = reply(known(tmp_path), lead, "stop and rebase onto staging")
+
+    assert outcome.queued and not outcome.woken
+    assert [m.text for m in peers.waiting(lead).messages] == [
+        "stop and rebase onto staging"
+    ]
 
 
 def test_a_reply_to_a_subagent_waits_for_its_next_call(tmp_path: Path) -> None:

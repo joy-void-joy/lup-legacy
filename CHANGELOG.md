@@ -2,6 +2,39 @@
 
 ## Unreleased
 
+### A runtime started from a session's shell is a member of its own
+
+`LUP_COORDINATION_MEMBER` reaches every process a launched session starts,
+so a `claude -p`, `codex exec` or pipeline run from its shell acted as that
+session: its ending ended the session's row, its tool calls were handed the
+session's mail, and its prompts cleared what the session said it was doing.
+Every hook and tool server reads which runtime it serves, and one that is
+neither the runtime the row names nor one that started it answers as
+`<id>_<digest>` — the same for all of that runtime's processes — whose row
+names the session it was `spawned_by` and is called `<name>-spawned`; one
+outliving the session never takes its ended row. `RosterMember`,
+`SessionNeeds`, `RosterPulse`, `create_peer_tools` and `RepositoryPeers.join`
+carry `spawned_by`; `lup.coordination.repository.runtime_member` resolves a
+process's member. `dev policy` run from a subagent's shell reads as that
+subagent while its command is the one its session has running.
+
+### A wake that reached hands over the mail it carried
+
+A reply woken into a session, a watcher's nudge, a delegation, a handoff and
+the Codex mailbox relay carried the mail whole, and the delivery hook handed
+it over again at the session's next tool call. `lup.coordination.watch.roused`
+wakes a member and, once its runtime accepts the wake, records what it
+carried as delivered, so the hook hands over only what no wake carried.
+`WakeReceipts` and `MailboxRelay.receipt_path` are gone; the relay keeps
+`lock_path`.
+
+### The mail record holds the roster's retention window
+
+The sweep cuts every message sent before the window off the head of
+`mail.jsonl` and leaves a first line counting the lines cut, so a line keeps
+its number; `MailCursor` gains `cut` and `inode`, and a reader following the
+record is carried across a cut, handed only what it had not read.
+
 ### The dashboard shows every session live, and writes to any of them
 
 Everything live reaches the page on one stream, `GET /api/stream`: a fresh tab
