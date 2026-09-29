@@ -180,25 +180,193 @@ def option_values(arguments: list[str], option: str) -> list[str]:
     ]
 
 
+class SearchGrammar(TypedDict):
+    """Which of one searching tool's options take a value, and what that value is.
+
+    A pattern and a program are text the tool matches or runs, where a file
+    of patterns is a file it opens: `grep -e X` hands it a pattern and `grep
+    -f X` a path, and the first operand is the pattern only where neither
+    was given.
+    """
+
+    valued: str
+    """Short option letters whose value is the next word, when not attached."""
+
+    named: tuple[str, ...]
+    """Long options whose value is the next word, when not after `=`."""
+
+    patterns: str
+    """Short letters among ``valued`` whose value is a pattern or a program."""
+
+    pattern_names: tuple[str, ...]
+    """Long options among ``named`` whose value is a pattern or a program."""
+
+    files: str
+    """Short letters among ``valued`` whose value is a file of patterns."""
+
+    file_names: tuple[str, ...]
+    """Long options among ``named`` whose value is a file of patterns."""
+
+
+SEARCH_GRAMMARS: dict[str, SearchGrammar] = {
+    "grep": SearchGrammar(
+        valued="ABCDdefm",
+        named=(
+            "--regexp",
+            "--file",
+            "--directories",
+            "--devices",
+            "--include",
+            "--exclude",
+            "--exclude-dir",
+            "--exclude-from",
+            "--max-count",
+            "--after-context",
+            "--before-context",
+            "--context",
+            "--label",
+            "--binary-files",
+        ),
+        patterns="e",
+        pattern_names=("--regexp",),
+        files="f",
+        file_names=("--file",),
+    ),
+    "rg": SearchGrammar(
+        valued="ABCEMTdefgjmrt",
+        named=(
+            "--regexp",
+            "--file",
+            "--glob",
+            "--iglob",
+            "--type",
+            "--type-not",
+            "--type-add",
+            "--type-clear",
+            "--max-count",
+            "--max-depth",
+            "--after-context",
+            "--before-context",
+            "--context",
+            "--threads",
+            "--max-columns",
+            "--max-filesize",
+            "--encoding",
+            "--engine",
+            "--replace",
+            "--ignore-file",
+            "--pre",
+            "--pre-glob",
+            "--sort",
+            "--sortr",
+            "--colors",
+            "--path-separator",
+        ),
+        patterns="e",
+        pattern_names=("--regexp",),
+        files="f",
+        file_names=("--file",),
+    ),
+    "awk": SearchGrammar(
+        valued="fFv",
+        named=("--file", "--field-separator", "--assign"),
+        patterns="",
+        pattern_names=(),
+        files="f",
+        file_names=("--file",),
+    ),
+}
+"""Each searching tool's grammar, keyed by the executable read with it."""
+
+
+class ReadArgument(TypedDict):
+    """One word of a search, and what its grammar makes of it."""
+
+    at: int
+    role: str
+    """``pattern``, ``file``, ``value``, ``option`` or ``operand``."""
+
+
+def search_arguments(words: list[str], rules: SearchGrammar) -> Iterator[ReadArgument]:
+    """Each word of one search, read by its tool's grammar, in order.
+
+    An option's attached value stays in its word, and a detached one is the
+    next word; a word after `--` or not spelled as an option is an operand,
+    wherever it stands, since these tools read options after operands too.
+    """
+    pending = ""
+    literal = False
+    for index, word in enumerate(words[1:], start=1):
+        if pending:
+            yield ReadArgument(at=index, role=pending)
+            pending = ""
+            continue
+        if literal or not word.startswith("-") or word == "-":
+            yield ReadArgument(at=index, role="operand")
+            continue
+        if word == "--":
+            literal = True
+            continue
+        # lup: ignore[string-split] — an argv word's attached value, whose only parser is the program's own
+        option, attached, _value = word.partition("=")
+        letters = "" if word.startswith("--") else word[1:]
+        valued = next(
+            (at for at, letter in enumerate(letters) if letter in rules["valued"]),
+            None,
+        )
+        role = (
+            "pattern"
+            if option in rules["pattern_names"]
+            or (valued is not None and letters[valued] in rules["patterns"])
+            else "file"
+            if option in rules["file_names"]
+            or (valued is not None and letters[valued] in rules["files"])
+            else "value"
+        )
+        inline = (
+            bool(attached)
+            if word.startswith("--")
+            else (valued is not None and valued + 1 < len(letters))
+        )
+        takes = option in rules["named"] or valued is not None
+        yield ReadArgument(at=index, role=role if takes and inline else "option")
+        pending = role if takes and not inline else ""
+
+
+def pattern_positions(
+    words: list[str], grammars: dict[str, SearchGrammar] = SEARCH_GRAMMARS
+) -> list[int]:
+    """Where a search or an awk program is handed text rather than a path.
+
+    A pattern or a program is matched or run, never opened, so it names no
+    file whatever it spells: `grep '.*/token' src` searches for a pattern,
+    and `.*/token` is not a path beneath a home. The value of a pattern
+    option, and the first operand where no pattern or pattern file was
+    given anywhere in the command. A file of patterns stays a path, and so
+    does every other operand. An option the grammar does not list is read as
+    consuming nothing, which can only leave a word read as the path it
+    might be.
+    """
+    executable = posixpath.basename(words[0]) if words else ""
+    family = {"egrep": "grep", "fgrep": "grep", "gawk": "awk", "mawk": "awk"}
+    name = family[executable] if executable in family else executable
+    if name not in grammars:
+        return []
+    read = list(search_arguments(words, grammars[name]))
+    patterned = any(argument["role"] in ("pattern", "file") for argument in read)
+    first = next(
+        (argument["at"] for argument in read if argument["role"] == "operand"), None
+    )
+    return [
+        *(argument["at"] for argument in read if argument["role"] == "pattern"),
+        *([] if patterned or first is None else [first]),
+    ]
+
+
 def grep_split(
     arguments: list[str],
-    valued: str = "ABCDdefm",
-    named: tuple[str, ...] = (
-        "--regexp",
-        "--file",
-        "--directories",
-        "--devices",
-        "--include",
-        "--exclude",
-        "--exclude-dir",
-        "--exclude-from",
-        "--max-count",
-        "--after-context",
-        "--before-context",
-        "--context",
-        "--label",
-        "--binary-files",
-    ),
+    valued: str = SEARCH_GRAMMARS["grep"]["valued"],
+    named: tuple[str, ...] = SEARCH_GRAMMARS["grep"]["named"],
 ) -> SplitWords:
     """grep's arguments parted into its options and its pattern and paths.
 
@@ -232,35 +400,8 @@ def grep_roots(arguments: list[str]) -> list[WalkedRoot]:
 
 def rg_roots(
     arguments: list[str],
-    valued: str = "ABCEMTdefgjmrt",
-    named: tuple[str, ...] = (
-        "--regexp",
-        "--file",
-        "--glob",
-        "--iglob",
-        "--type",
-        "--type-not",
-        "--type-add",
-        "--type-clear",
-        "--max-count",
-        "--max-depth",
-        "--after-context",
-        "--before-context",
-        "--context",
-        "--threads",
-        "--max-columns",
-        "--max-filesize",
-        "--encoding",
-        "--engine",
-        "--replace",
-        "--ignore-file",
-        "--pre",
-        "--pre-glob",
-        "--sort",
-        "--sortr",
-        "--colors",
-        "--path-separator",
-    ),
+    valued: str = SEARCH_GRAMMARS["rg"]["valued"],
+    named: tuple[str, ...] = SEARCH_GRAMMARS["rg"]["named"],
 ) -> list[WalkedRoot]:
     """`rg`, which always walks, and reads dot names only when told to.
 

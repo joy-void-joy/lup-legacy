@@ -2549,6 +2549,10 @@ class SedInvocation(TypedDict):
     """
 
     scripts: list[str]
+    scripted: list[int]
+    """Where each script was read from: the word holding it, so a reader asking
+    which words name a file can leave the program out."""
+
     options: list[str]
     backup: str
     targets: list[str]
@@ -2576,6 +2580,7 @@ def sed_invocation(words: list[str]) -> SedInvocation | KernelDecision:
     empty parse a caller could mistake for a harmless call.
     """
     scripts: list[str] = []
+    scripted: list[int] = []
     options: list[str] = []
     backup = ""
     positional: list[PathWord] = []
@@ -2587,6 +2592,7 @@ def sed_invocation(words: list[str]) -> SedInvocation | KernelDecision:
     for index, word in enumerate(words[1:], start=1):
         if script_expected:
             scripts.append(word)
+            scripted.append(index)
             script_expected = False
             continue
         if end_options:
@@ -2613,6 +2619,7 @@ def sed_invocation(words: list[str]) -> SedInvocation | KernelDecision:
             if name == "--expression":
                 if separator:
                     scripts.append(value)
+                    scripted.append(index)
                 script_expected = not separator
                 script_from_options = True
                 continue
@@ -2648,9 +2655,12 @@ def sed_invocation(words: list[str]) -> SedInvocation | KernelDecision:
     if script_expected:
         return unjudged("sed expression flag has no script")
     if not script_from_options and positional:
-        scripts.append(positional.pop(0)["path"])
+        first = positional.pop(0)
+        scripts.append(first["path"])
+        scripted.append(first["at"])
     return SedInvocation(
         scripts=scripts,
+        scripted=scripted,
         options=options,
         backup=backup,
         targets=[target["path"] for target in positional],

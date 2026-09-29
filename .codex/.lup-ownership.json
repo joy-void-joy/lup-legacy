@@ -380,21 +380,21 @@
     {
       "path": ".codex/plugins/lup/hooks/runtime/kernel/walks.py",
       "category": "generated",
-      "sha256": "be15b0a1a46fa1103136f19da314344e813961fa6fa2610390969fd10588bbee",
+      "sha256": "5b4a0b2b142651a97a4f315d6cab4f3f8e129f6c8190ce416f2def0fef62f5c5",
       "semantic_id": "hooks.lup-policy",
       "executable": false
     },
     {
       "path": ".codex/plugins/lup/hooks/runtime/kernel/withheld.py",
       "category": "generated",
-      "sha256": "4fef0872cb4211d84985b84613b0f674f37ff0e217db6ef37f03082ffee0f5e2",
+      "sha256": "c043d0d11973a135f3ea925ef7be801da2f966b6a24b8312e3fd49af7412332a",
       "semantic_id": "hooks.lup-policy",
       "executable": false
     },
     {
       "path": ".codex/plugins/lup/hooks/runtime/kernel/words.py",
       "category": "generated",
-      "sha256": "65745e4ce1db6b30fb8962907b1cc7aab0c5be9a089813ad83aeab7b2b4414e1",
+      "sha256": "43a17f286a66f30880eda82aaf7150aa8fae1802f42753f44a155da2a49d7575",
       "semantic_id": "hooks.lup-policy",
       "executable": false
     },

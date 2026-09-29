@@ -520,7 +520,13 @@ A glob reaches what it could expand to, except a dot-named file an unspelled
 dot skips, and a run of names that is all glob reaches a home's file only
 where the word spells the home: `~/.*` is refused, `ls -d .*` in the checkout
 is not. `exempt` passes a word only when all it could name is exempt:
-`~/.ssh/*.pub` reads, `~/.ssh/*` does not. The file tools meet the same
+`~/.ssh/*.pub` reads, `~/.ssh/*` does not. A program or a pattern a command
+is handed is text it runs or matches, never a file it opens, so it names no
+path whatever words it holds: a sed script, a grep or rg pattern (an `-e`
+value, or the first operand where none was given) and an awk program are
+left out, read by each tool's grammar — `sed 's/.*/takeToken/' f` and `grep
+-rn '.*/token' src` read — while a file of patterns (`grep -f`, `awk -f`) and
+every other operand are read as ever. The file tools meet the same
 declaration at the path they resolve, before any destination policy is
 consulted: an `Edit`, a `Write` or an `apply_patch` of a withheld path is
 refused on both runtimes, since authoring a login file is naming it as surely

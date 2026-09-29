@@ -2332,6 +2332,29 @@ SHELL_POLICY_CASES = [
     DecisionCase(input="du -sh $HOME/.*", effect="deny"),
     DecisionCase(input="cat src/auth.json", effect="allow"),
     DecisionCase(input="cat .env", effect="allow"),
+    # A program or a pattern handed to a command is text it runs or matches,
+    # not a file it opens, whatever words it holds: a sed script, a grep or rg
+    # pattern and an awk program are never read as a path. A file one of them
+    # is told to read -- `-f`, an operand -- still is.
+    DecisionCase(
+        input="sed -e 's/.*/import { readToken, takeToken }/' tmp/a.tsx",
+        effect="allow",
+    ),
+    DecisionCase(input="sed -n '2s/.*/secret/p' tmp/a", effect="allow"),
+    DecisionCase(input="grep -rn '.*/import' src", effect="allow"),
+    DecisionCase(input="grep -e '.*/secret' tmp/a", effect="allow"),
+    DecisionCase(input="grep -n '~/.netrc' tmp/a", effect="allow"),
+    DecisionCase(input="rg '.*/token' src", effect="allow"),
+    DecisionCase(input="rg -e '.*/credentials' src", effect="allow"),
+    DecisionCase(input="awk '/.*secret/ {print}' tmp/a", effect="allow"),
+    DecisionCase(input="grep token ~/.netrc", effect="deny"),
+    DecisionCase(input="grep -f ~/.netrc tmp/a", effect="deny"),
+    DecisionCase(input="grep -e x ~/.netrc", effect="deny"),
+    DecisionCase(input="rg -f ~/.netrc src", effect="deny"),
+    DecisionCase(input="awk -f ~/.netrc tmp/a", effect="deny"),
+    DecisionCase(input="awk '{print}' ~/.netrc", effect="deny"),
+    DecisionCase(input="sed -n p ~/.netrc", effect="deny"),
+    DecisionCase(input="sed -e p -- ~/.netrc", effect="deny"),
     # A raw frame written to a peer's wake socket starts its turn with
     # nothing on the roster, so the directory the image binds them in
     # is refused by every spelling of a connection the kernel can read.
@@ -4497,6 +4520,26 @@ def test_shell_policy_preserves_golden_compound_and_wrapper_outcomes(
             secret_variables=policy.secret_variables,
         ).effect
         assert bundled_effect == case.effect, case.input
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "perl -pe 's/.*/secret/' tmp/a",
+        "python3 -c 'print(\"~/.netrc\")'",
+        "node -e 'x=\"~/.ssh/id_rsa\"'",
+    ],
+)
+def test_inline_code_is_refused_as_code_and_not_as_a_path_it_spells(
+    command: str, tmp_path: Path
+) -> None:
+    """The refusal a session reads says what is wrong: code nobody can review."""
+    decided = ShellPolicy(SHELL_RULES).decide(
+        ShellCommand(command=command, cwd=tmp_path)
+    )
+
+    assert decided.effect == "deny"
+    assert "key or a login" not in decided.reason
 
 
 def test_write_targets_name_only_the_paths_a_command_opens_for_writing() -> None:
