@@ -402,6 +402,25 @@ def deadline_passed() -> bool:
     return hook_seconds_left(float("inf")) <= 0.0
 
 
+def unjudged_reason(error: Exception, read: bool) -> str:
+    """Why a call went unjudged, named by what failed rather than by one guess.
+
+    Every failure is refused alike -- the call went unjudged, and that is
+    the whole of what the verdict can say -- but the reason is what somebody
+    reads to fix it, and each cause has a different fix: a hook that ran
+    out of time, a payload that is not one (``read`` false), and a failure
+    judging a payload that was.
+    """
+    if deadline_passed():
+        return (
+            "this hook reached its deadline before a verdict, so the call is"
+            " refused unjudged"
+        )
+    if not read:
+        return f"the hook input is malformed, so the call is refused unjudged: {error}"
+    return f"Lup could not judge this call ({type(error).__name__}: {error})"
+
+
 def hook_seconds_left(ceiling: float) -> float:
     """How long a step may still take: ``ceiling``, or less where the hook's deadline is nearer.
 
@@ -4631,8 +4650,12 @@ def main():
     payload = {}
     permission_request = False
     review_notice = False
+    read = False
     try:
         payload = json.load(sys.stdin)
+        if not isinstance(payload, dict):
+            raise ValueError("hook input must be an object")
+        read = True
         permission_request = (
             "hook_event_name" in payload
             and payload["hook_event_name"] == "PermissionRequest"
@@ -4686,8 +4709,9 @@ def main():
     # one answer is right for all of them. Naming the exceptions instead is
     # what let a plain unreadable file escape, and a traceback exit is not the
     # fail-closed exit this boundary takes, so the call proceeded ungoverned.
-    # Nothing is swallowed: the reason carries whatever went wrong, and an
-    # interrupt still passes through as the BaseException it is.
+    # Nothing is swallowed: the reason names which cause it was, carrying
+    # whatever went wrong, and an interrupt still passes through as the
+    # BaseException it is.
     except Exception as error:
         record_hook_evidence(
             plugin_data_root(),
@@ -4696,9 +4720,7 @@ def main():
             "error",
             f"{type(error).__name__}: {error}",
         )
-        decision = KernelDecision(
-            "deny", f"Malformed hook input requires approval: {error}"
-        )
+        decision = KernelDecision("deny", unjudged_reason(error, read))
         if not permission_request:
             sys.stderr.write(decision.addressed())
             raise SystemExit(2) from error

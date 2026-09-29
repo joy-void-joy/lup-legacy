@@ -1544,7 +1544,10 @@ failure it already answers — no checker looked, so the gate asks; Git could
 not say, so no capture is claimed. What nothing can hand a timeout to — a
 review-queue lock another writer holds, a read that never returns, the
 classifier itself — is stopped by an alarm two seconds past the deadline,
-and the dispatcher refuses the call as one it could not judge. A process the
+and the dispatcher refuses the call as one it could not judge. Every such
+refusal says which cause it was, since each has a different fix: the
+deadline reached, input that is not a hook payload at all, or a failure
+judging one that is (`host.unjudged_reason`, on both runtimes). A process the
 hook starts inherits the deadline and cannot extend it. `dev policy` opens
 the same deadline for each reading it takes, from the same declaration
 (`lup.policy.bundle.hook_deadline`), so a reading that would wait past it is

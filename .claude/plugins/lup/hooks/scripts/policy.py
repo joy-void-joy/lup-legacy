@@ -400,6 +400,25 @@ def deadline_passed() -> bool:
     return hook_seconds_left(float("inf")) <= 0.0
 
 
+def unjudged_reason(error: Exception, read: bool) -> str:
+    """Why a call went unjudged, named by what failed rather than by one guess.
+
+    Every failure is refused alike -- the call went unjudged, and that is
+    the whole of what the verdict can say -- but the reason is what somebody
+    reads to fix it, and each cause has a different fix: a hook that ran
+    out of time, a payload that is not one (``read`` false), and a failure
+    judging a payload that was.
+    """
+    if deadline_passed():
+        return (
+            "this hook reached its deadline before a verdict, so the call is"
+            " refused unjudged"
+        )
+    if not read:
+        return f"the hook input is malformed, so the call is refused unjudged: {error}"
+    return f"Lup could not judge this call ({type(error).__name__}: {error})"
+
+
 def hook_seconds_left(ceiling: float) -> float:
     """How long a step may still take: ``ceiling``, or less where the hook's deadline is nearer.
 
@@ -4711,10 +4730,12 @@ def main():
     placed = None
     attached = ""
     failed = False
+    read = False
     try:
         payload = json.load(sys.stdin)
         if not isinstance(payload, dict):
             raise ValueError("hook input must be an object")
+        read = True
         record_hook_evidence(plugin_data_root(), payload, "started")
         event = payload["hook_event_name"] if "hook_event_name" in payload else ""
         # Watching and deciding are separate events, and this one returns
@@ -4763,7 +4784,7 @@ def main():
     # interrupt still passes through as the BaseException it is.
     except Exception as error:
         failed = True
-        decision = KernelDecision("deny", f"Lup could not judge this call: {error}")
+        decision = KernelDecision("deny", unjudged_reason(error, read))
         record_hook_evidence(
             plugin_data_root(),
             payload if isinstance(payload, dict) else {},
