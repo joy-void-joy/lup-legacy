@@ -46,6 +46,7 @@ from lup.policy.relay import PersistentQuestion, QuestionRelay
 from lup.policy.review import ReviewedFile
 from lup.web import serve as web_serve
 from lup.web.serve import page_app
+from tests.unit.native import bound
 
 BASE_URL: Final = "http://127.0.0.1:8765"
 TOKEN: Final = "test-operator-secret"
@@ -95,14 +96,16 @@ def parked(root: Path, question_id: str = "q-1") -> PersistentQuestion:
         worktree=root,
     )
     return relay(root).record(
-        PersistentQuestion(
-            id=question_id,
-            operation=operation,
-            fingerprint=operation.fingerprint(),
-            reason="The operator reviews this command before it may run.",
-            rule="shell:test",
-            eligible=["operator"],
-            resumption="native_retry",
+        bound(
+            PersistentQuestion(
+                id=question_id,
+                operation=operation,
+                fingerprint="",
+                reason="The operator reviews this command before it may run.",
+                rule="shell:test",
+                eligible=["operator"],
+                resumption="native_retry",
+            )
         )
     )
 
@@ -304,12 +307,14 @@ async def test_file_detail_uses_the_captured_preimage_and_preserves_both_documen
     operation = entry.operation.model_copy(
         update={"tool": "Write", "payload": {"file_path": str(path), "content": after}}
     )
-    entry = entry.model_copy(
-        update={
-            "operation": operation,
-            "fingerprint": operation.fingerprint(),
-            "preconditions": {path: before},
-        }
+    entry = bound(
+        entry.model_copy(
+            update={
+                "operation": operation,
+                "execution_payload": None,
+                "preconditions": {path: before},
+            }
+        )
     )
     relay(tmp_path).record(entry)
     path.write_text("somebody else's intervening edit\n", encoding="utf-8")

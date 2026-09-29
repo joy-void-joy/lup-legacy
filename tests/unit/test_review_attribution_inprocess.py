@@ -194,7 +194,7 @@ def test_parked_attribution_is_durable_and_cannot_reuse_a_different_receipt(
         after_sha256=document_digest("after\n"),
     )
     assert running.park(operation, changed, None).id != question.id
-    approved = running.relay.answer(question.id, "person", approved=True)
+    running.relay.answer(question.id, "person", approved=True)
     assert running.resume(question.id, operation).stage == "prepared"
     assert (
         running.resume(
@@ -203,8 +203,11 @@ def test_parked_attribution_is_durable_and_cannot_reuse_a_different_receipt(
         ).stage
         == "refused"
     )
+    # The one record a session can still write is its question's: an answer
+    # is the host's. Rewritten under the same id, the question keeps the
+    # operator's answer and loses the attribution that answer was bound to.
     running.relay.record(
-        approved.model_copy(
+        recorded.model_copy(
             update={
                 "file_reviews": [
                     recorded.file_reviews[0].model_copy(update={"effect": "allow"})

@@ -18,7 +18,6 @@ import sh
 from typer.testing import CliRunner
 
 from lup.coordination.identity import MEMBER_ENV
-from lup.devtools.dashboard.address import DASHBOARD_URL_ENV
 from lup.devtools.dashboard.companion import (
     Dashboard,
     DashboardRegistry,
@@ -30,12 +29,15 @@ from lup.devtools.dashboard.companion import (
 )
 from lup.devtools.dashboard.reviews import create_operator_dashboard_app
 from lup.devtools.harness.launch import held_services
+from lup.devtools.review.answers import ReviewAnswers
 from lup.devtools.review.app import relay
 from lup.harness.models import Harness, PromptDocument
 from lup.launch.companions import CompanionLaunch, LiveProcess, held_companions
 from lup.launch.preflight import NONCE_VARIABLE
+from lup.policy.identity import DASHBOARD_URL_ENV
 from lup.policy.operations import Operation
 from lup.policy.relay import PersistentQuestion
+from tests.unit.reviews import bound
 
 
 def free_port() -> int:
@@ -80,13 +82,15 @@ def parked(root: Path, question_id: str = "q-1") -> PersistentQuestion:
         worktree=root,
     )
     return relay(root).record(
-        PersistentQuestion(
-            id=question_id,
-            operation=operation,
-            fingerprint=operation.fingerprint(),
-            reason="The operator reviews this command.",
-            eligible=["operator"],
-            resumption="native_retry",
+        bound(
+            PersistentQuestion(
+                id=question_id,
+                operation=operation,
+                fingerprint="",
+                reason="The operator reviews this command.",
+                eligible=["operator"],
+                resumption="native_retry",
+            )
         )
     )
 
@@ -247,6 +251,7 @@ def test_inside_a_session_the_dashboard_is_only_its_advertised_address(
 
 
 def test_a_harness_taking_the_module_holds_the_dashboard_at_every_launch() -> None:
+    """The answers are lent whether or not a dashboard serves: a parked call is answered either way."""
     declared = Harness(
         generator_version="0",
         plugins=[],
@@ -254,8 +259,14 @@ def test_a_harness_taking_the_module_holds_the_dashboard_at_every_launch() -> No
         dashboard=True,
     )
 
-    assert [type(each) for each in held_services(declared)] == [Dashboard]
-    assert held_services(declared.model_copy(update={"dashboard": False})) == []
+    assert [type(each) for each in held_services(declared)] == [
+        ReviewAnswers,
+        Dashboard,
+    ]
+    assert [
+        type(each)
+        for each in held_services(declared.model_copy(update={"dashboard": False}))
+    ] == [ReviewAnswers]
 
 
 def test_a_launch_record_whose_launcher_died_is_swept(tmp_path: Path) -> None:

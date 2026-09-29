@@ -16,6 +16,7 @@ from lup.devtools.review.app import (
 )
 from lup.policy.operations import Operation
 from lup.policy.relay import PersistentQuestion
+from tests.unit.reviews import bound
 
 
 def parked(
@@ -31,14 +32,16 @@ def parked(
         worktree=root,
     )
     return relay(root).record(
-        PersistentQuestion(
-            id=question_id,
-            operation=operation,
-            fingerprint=operation.fingerprint(),
-            reason="The operator reviews this command.",
-            eligible=["operator"],
-            resumption="native_retry",
-            created=created or datetime.now(UTC),
+        bound(
+            PersistentQuestion(
+                id=question_id,
+                operation=operation,
+                fingerprint="",
+                reason="The operator reviews this command.",
+                eligible=["operator"],
+                resumption="native_retry",
+                created=created or datetime.now(UTC),
+            )
         )
     )
 

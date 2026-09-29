@@ -40,6 +40,7 @@ from lup.providers.codex.app_server import (
 from lup.types import JsonObject, JsonValue
 from lup.harness.environment import tool_server_env
 from lup.mcp import Coordination
+from tests.unit.native import bound
 
 pytestmark = pytest.mark.integration
 BASE_URL: Final = "http://127.0.0.1:8765"
@@ -297,14 +298,16 @@ async def test_browser_answer_starts_an_idle_codex_turn_through_the_relay(
                     worktree=root,
                 )
                 entry = review.relay(root).record(
-                    PersistentQuestion(
-                        id="idle-review-question",
-                        operation=operation,
-                        fingerprint=operation.fingerprint(),
-                        reason="The operator reviews the command before its retry.",
-                        rule="shell:test",
-                        eligible=["operator"],
-                        resumption="native_retry",
+                    bound(
+                        PersistentQuestion(
+                            id="idle-review-question",
+                            operation=operation,
+                            fingerprint="",
+                            reason="The operator reviews the command before its retry.",
+                            rule="shell:test",
+                            eligible=["operator"],
+                            resumption="native_retry",
+                        )
                     )
                 )
                 with monkeypatch.context() as host:

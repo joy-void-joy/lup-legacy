@@ -33,7 +33,7 @@ from pydantic import BaseModel, Field, ValidationError
 from pydantic_settings import BaseSettings
 
 from lup.coordination.identity import MEMBER_ENV, NAME_ENV
-from lup.devtools.dashboard.address import DASHBOARD_URL_ENV, AdvertisedDashboard
+from lup.devtools.dashboard.address import AdvertisedDashboard
 from lup.harness.notice import Notice
 from lup.harness.requirements import SENTINEL_VARIABLE
 from lup.launch.companions import (
@@ -49,7 +49,7 @@ from lup.launch.companions import (
     SharedProcess,
 )
 from lup.launch.preflight import NONCE_VARIABLE
-from lup.policy.identity import AGENT_IDENTITY_ENV
+from lup.policy.identity import AGENT_IDENTITY_ENV, DASHBOARD_URL_ENV
 from lup.sandbox.rail import repository_layout, sibling_worktrees
 from lup.types import EnvVars
 from lup.workspace.context import SESSION_DIR_ENV, SESSION_ID_ENV
@@ -116,15 +116,15 @@ def inside_a_container(environment: EnvVars) -> bool:
     return "LUP_CONTAINED" in environment and environment["LUP_CONTAINED"] == "1"
 
 
-def refuse_inside_a_session(verb: str) -> None:
-    """Refuse a verb that reaches the operator's capability from inside a session.
+def refuse_inside_a_session(command: str) -> None:
+    """Refuse a command that is the operator's alone when run from inside a session.
 
     The policy refuses the command before it runs; this is the same answer
     given by the command itself, for a caller the policy never saw.
     """
     if SessionMarkers().inside_a_session():
         raise PermissionError(
-            f"`dashboard {verb}` is the operator's: run it from a terminal "
+            f"`{command}` is the operator's: run it from a terminal "
             "outside the agent session"
         )
 
@@ -511,7 +511,7 @@ def private_url(dashboard: Dashboard, root: Path) -> str:
     Refused where nothing serves, rather than starting a dashboard no
     session holds and so nothing would ever stop.
     """
-    refuse_inside_a_session("open")
+    refuse_inside_a_session("dashboard open")
     standing = dashboard.standing(root)
     if standing.serving is None:
         raise LookupError(

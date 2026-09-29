@@ -1965,12 +1965,22 @@
           "title": "Id",
           "type": "string"
         },
+        "member": {
+          "default": "",
+          "title": "Member",
+          "type": "string"
+        },
         "operation": {
           "$ref": "#/$defs/Operation"
         },
         "outcome": {
           "default": "",
           "title": "Outcome",
+          "type": "string"
+        },
+        "policy_identity": {
+          "default": "",
+          "title": "Policy Identity",
           "type": "string"
         },
         "preconditions": {
@@ -2009,6 +2019,18 @@
         "requirement": {
           "$ref": "#/$defs/ReviewerRequirement",
           "default": "human_only"
+        },
+        "resolved": {
+          "additionalProperties": {
+            "format": "path",
+            "type": "string"
+          },
+          "default": {},
+          "propertyNames": {
+            "format": "path"
+          },
+          "title": "Resolved",
+          "type": "object"
         },
         "resumption": {
           "default": "coordinator",
@@ -2051,7 +2073,10 @@
         "completed",
         "outcome",
         "execution_id",
-        "execution_payload"
+        "execution_payload",
+        "policy_identity",
+        "resolved",
+        "member"
       ],
       "title": "PersistentQuestion",
       "type": "object"

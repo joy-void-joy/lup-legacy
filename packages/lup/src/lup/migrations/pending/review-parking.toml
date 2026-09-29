@@ -1,0 +1,43 @@
+subjects = [
+    "RelaySignature",
+    "RelaySignature.size",
+    "RelaySignature.modified",
+    "RelaySignature.inode",
+    "RelaySignature.of",
+    "reviewed_decision",
+    "refuse_inside_a_session",
+]
+reason = """
+an operator's answer to a parked review is written on the host, where no \
+session writes, rather than into the checkout's relay the session writes, and \
+a parked call is carried out by `review wait` in the session that asked; the \
+relay's two files are one queue with one signature, and a review verb the \
+operator alone may run refuses a caller inside a session by the whole command"""
+
+[[steps]]
+instruction = """
+Answers are read from the host's store, $XDG_STATE_HOME/lup/reviews, and never \
+from .lup/questions.jsonl: a record there claiming `approved` or `rejected` is \
+ignored, so a review answered before this change reads as pending again and is \
+answered anew (the dashboard expires those whose session has ended). \
+QuestionRelay(path) finds the host's file itself; pass answers= to name \
+another."""
+
+[[steps]]
+instruction = """
+Where lup.devtools.dashboard.reviews.RelaySignature.of(relay(root).path) was \
+read, call relay(root).signature(): lup.policy.relay.RelaySignature now holds \
+both files' FileSignature (questions, answers), and FileSignature carries the \
+size, modified and inode fields RelaySignature had."""
+
+[[steps]]
+instruction = """
+A dispatcher built on reviewed_decision passes a waiting callable after the \
+preconditions -- the runtime's own words for starting `review wait <id>` -- \
+and reads the returned Reviewed's decision and notice; the notice is the \
+operator's line, the decision's recovery the agent's."""
+
+[[steps]]
+instruction = """
+refuse_inside_a_session(command) takes the whole command it refuses, such as \
+"dashboard open" or "review approve", where it took the dashboard verb alone."""

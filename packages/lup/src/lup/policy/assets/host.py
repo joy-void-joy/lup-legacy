@@ -779,11 +779,18 @@ def append_review_record(path: Path, encoded: str) -> None:
 
 
 def native_review_records(path: Path) -> dict[str, dict]:
-    """Read only native receipts with the fields used by the hermetic boundary."""
+    """Read only native receipts with the fields used by the hermetic boundary.
+
+    A record claiming an answer is skipped: the checkout's relay is the
+    session's to write, so an answer found there is one the session could
+    have written, and the answer is read from the host instead.
+    """
 
     def valid():
         for entry in review_records(path):
             match entry:
+                case {"state": "approved" | "rejected"}:
+                    continue
                 case {
                     "id": str(),
                     "fingerprint": str(),
@@ -803,6 +810,144 @@ def native_review_records(path: Path) -> dict[str, dict]:
     return {entry["id"]: entry for entry in valid()}
 
 
+def review_answers_home(variable: str) -> Path:
+    """Where the operator's answers to parked reviews are kept: the host's, per person.
+
+    The directory a launch names in *variable*, which is how a contained
+    session finds the host's store at the path the host has it, mounted
+    read-only; otherwise `$XDG_STATE_HOME/lup/reviews`, or
+    `~/.local/state/lup/reviews` where that is unset or relative.
+    """
+    declared = declared_identity(variable)
+    if declared:
+        return Path(declared)
+    state = declared_identity("XDG_STATE_HOME")
+    base = (
+        Path(state)
+        if state and Path(state).is_absolute()
+        else Path.home() / ".local" / "state"
+    )
+    return base / "lup" / "reviews"
+
+
+def review_answers(relay: Path, home: Path) -> Path:
+    """The file the operator's answers to one relay's reviews are kept in.
+
+    One directory per repository, named for its shared git directory, so a
+    launch lends a session its own repository's answers and no other's; one
+    file per relay inside it, so each checkout reads only its own.
+    """
+    located = relay.resolve()
+    shared = shared_git_directory(str(located.parent))
+    repository = sha256((shared or str(located.parent)).encode()).hexdigest()[:16]
+    checkout = sha256(str(located).encode()).hexdigest()[:16]
+    return home / repository / f"{checkout}.jsonl"
+
+
+def recorded_answers(path: Path) -> dict[str, dict]:
+    """The first answer the operator recorded for each review, by its id.
+
+    The first rather than the last: a review is answered once, so an answer
+    after it is one the relay refused to record, and nothing later replaces it.
+    """
+
+    def valid():
+        for entry in review_records(path):
+            match entry:
+                case {
+                    "question": str(),
+                    "fingerprint": str(),
+                    "answer": {
+                        "approved": bool(),
+                        "principal": str(),
+                        "receipt": str(),
+                    },
+                }:
+                    yield entry
+
+    return {entry["question"]: entry for entry in reversed(list(valid()))}
+
+
+def review_fingerprint(
+    session: str,
+    root: str,
+    tool: str,
+    payload: dict,
+    before: dict,
+    reason: str,
+    rule: str,
+    purpose: str,
+    reviewer: str,
+    expected: dict,
+    policy_identity: str,
+    resolved: dict,
+    evidence: list[dict] | None,
+) -> str:
+    """The digest one parked call is approved under: everything the approver reads."""
+    material = json.dumps(
+        [
+            session,
+            root,
+            tool,
+            payload,
+            before,
+            reason,
+            rule,
+            purpose,
+            reviewer,
+            expected,
+            policy_identity,
+            resolved,
+            evidence,
+        ],
+        sort_keys=True,
+    )
+    return sha256(material.encode()).hexdigest()
+
+
+def recorded_fingerprint(entry: dict) -> str:
+    """The digest a parked record's own fields hash to, or "" where it lacks one.
+
+    What binds the record an approver reads to the call its fingerprint names:
+    a record whose fields hash to another digest shows one call and carries
+    another's authority, and nothing may answer or spend it.
+    """
+    match entry:
+        case {
+            "operation": {
+                "session": str() as session,
+                "cwd": str() as root,
+                "tool": str() as tool,
+                "payload": dict() as payload,
+            },
+            "preconditions": dict() as before,
+            "reason": str() as reason,
+            "rule": str() as rule,
+            "requirement": str() as reviewer,
+            "execution_payload": dict() as expected,
+            "policy_identity": str() as policy_identity,
+            "resolved": dict() as resolved,
+        }:
+            purpose = entry["purpose"] if "purpose" in entry else None
+            evidence = entry["file_reviews"] if "file_reviews" in entry else None
+            return review_fingerprint(
+                session,
+                root,
+                tool,
+                payload,
+                before,
+                reason,
+                rule,
+                purpose if isinstance(purpose, str) else "",
+                reviewer,
+                expected,
+                policy_identity,
+                resolved,
+                evidence if isinstance(evidence, list) else None,
+            )
+    return ""
+
+
 def review_hook_call(
     root: Path,
     session: str,
@@ -819,8 +964,17 @@ def review_hook_call(
     execution_payload: str | None = None,
     policy_identity: str = "",
     file_reviews: str = "null",
+    answers: str = "",
+    member: str = "",
+    placement: str = "ambient",
+    provider: str = "",
 ) -> dict[Literal["state", "id", "reason"], str]:
     """Park a call or spend its explicit, single-use reviewer answer.
+
+    The answer is read from *answers*, the host's file for this relay, and
+    never from the relay: the relay is the session's to write. A parked
+    record is matched only where its own fields hash to the call's
+    fingerprint, so a record rewritten to show another call spends nothing.
 
     A declared successor stage may spend one further claim for that same
     identified invocation. The immutable primary claim proves which stage
@@ -839,30 +993,30 @@ def review_hook_call(
     )
     before = json.loads(preconditions)
     evidence = json.loads(file_reviews)
-    material = json.dumps(
-        [
-            session,
-            str(root),
-            tool,
-            payload,
-            before,
-            reason,
-            rule,
-            purpose,
-            reviewer,
-            expected,
-            policy_identity,
-            {path: str(Path(path).resolve()) for path in before},
-            evidence,
-        ],
-        sort_keys=True,
+    resolved = {path: str(Path(path).resolve()) for path in before}
+    fingerprint = review_fingerprint(
+        session,
+        str(root),
+        tool,
+        payload,
+        before,
+        reason,
+        rule,
+        purpose,
+        reviewer,
+        expected,
+        policy_identity,
+        resolved,
+        evidence,
     )
-    fingerprint = sha256(material.encode()).hexdigest()
     log = root / ".lup/questions.jsonl"
 
     entries = native_review_records(log)
     matches = [
-        entry for entry in entries.values() if entry["fingerprint"] == fingerprint
+        entry
+        for entry in entries.values()
+        if entry["fingerprint"] == fingerprint
+        and recorded_fingerprint(entry) == fingerprint
     ]
     continuations = [
         entry
@@ -880,12 +1034,12 @@ def review_hook_call(
         claim = root / ".lup/review-claims" / entry["id"]
         with claim.open(encoding="utf-8") as handle:
             consumed = json.load(handle)
-        expected = {
+        spent_by = {
             "fingerprint": fingerprint,
             "execution_id": execution_id,
             "stage": predecessor,
         }
-        if consumed == expected:
+        if consumed == spent_by:
             successor = (
                 root
                 / ".lup/review-stage-claims"
@@ -895,23 +1049,32 @@ def review_hook_call(
             successor.parent.mkdir(parents=True, exist_ok=True)
             try:
                 with successor.open("x", encoding="utf-8") as handle:
-                    handle.write(json.dumps(expected, sort_keys=True))
+                    handle.write(json.dumps(spent_by, sort_keys=True))
             except FileExistsError:
                 pass
             else:
                 return {"state": "approved", "id": entry["id"], "reason": ""}
     entry = matches[-1] if matches else None
-    if entry is not None and entry["state"] == "approved":
-        match entry:
-            case {
-                "answer": {
-                    "approved": True,
-                    "principal": str() as principal,
-                    "receipt": "recorded",
-                }
-            } if principal and principal not in (
-                session,
-                entry["operation"]["requester"],
+    granted = recorded_answers(Path(answers)) if answers and entry is not None else {}
+    answer = (
+        granted[entry["id"]]["answer"]
+        if entry is not None
+        and entry["state"] == "pending"
+        and entry["id"] in granted
+        and granted[entry["id"]]["fingerprint"] == fingerprint
+        else None
+    )
+    if entry is not None and answer is not None and not answer["approved"]:
+        return {
+            "state": "rejected",
+            "id": entry["id"],
+            "reason": answer["note"] if "note" in answer and answer["note"] else "",
+        }
+    if entry is not None and answer is not None:
+        match answer:
+            case {"principal": str() as principal, "receipt": "recorded"} if (
+                principal
+                and principal not in (session, entry["operation"]["requester"])
             ):
                 pass
             case _:
@@ -938,14 +1101,8 @@ def review_hook_call(
             entry["execution_id"] = execution_id
             append_review_record(log, json.dumps(entry, sort_keys=True))
             return {"state": "approved", "id": entry["id"], "reason": ""}
-    if entry is not None and entry["state"] in ("pending", "rejected"):
-        answer = entry["answer"] if "answer" in entry else None
-        note = answer["note"] if answer and "note" in answer else ""
-        return {
-            "state": entry["state"],
-            "id": entry["id"],
-            "reason": note or entry["reason"],
-        }
+    if entry is not None and entry["state"] == "pending":
+        return {"state": "pending", "id": entry["id"], "reason": entry["reason"]}
     identifier = os.urandom(16).hex()
     entry = {
         "id": identifier,
@@ -961,8 +1118,11 @@ def review_hook_call(
         "execution_payload": expected,
         "created": datetime.now(UTC).isoformat(),
         "preconditions": before,
+        "resolved": resolved,
+        "policy_identity": policy_identity,
         "file_reviews": evidence,
         "resumption": "native_retry",
+        "member": member,
         "operation": {
             "id": identifier,
             "session": session,
@@ -971,6 +1131,8 @@ def review_hook_call(
             "payload": payload,
             "cwd": str(root),
             "worktree": str(root),
+            "placement": placement,
+            "provider": provider,
         },
     }
     append_review_record(log, json.dumps(entry, sort_keys=True))
