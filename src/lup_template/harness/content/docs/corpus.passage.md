@@ -2,7 +2,7 @@
 
 A corpus is a body of claims somebody is prepared to be held to, together with
 the evidence that backs each one and the corrections that have since retired
-some. The scaffold's corpus types live in `src/lup_template/corpus.py`:
+some. The scaffold's corpus types live in {{ corpus_py }}:
 `Claim`, `Question`, `Evidence` as artifact or certificate, `Source`,
 `Correction`, and the edges between them, and the ledger's generic commands
 record, relate, list and check whatever a project declares.
@@ -10,7 +10,7 @@ record, relate, list and check whatever a project declares.
 **This repository declares none of them.** What it records in its ledger is
 coordination — tasks, handoffs, and the sessions and outputs indexed as
 pointers — and what it knows about itself it writes in `docs/`, where a
-reader finds it without a log to query; `src/lup_template/kinds.py` is the
+reader finds it without a log to query; {{ kinds_py }} is the
 declaration and says so. An adopter that wants a corpus turns it on there:
 list the corpus's kinds in `NODE_KINDS` and its edges in `EDGE_KINDS` beside
 `Task`, and place them committed in `LAYOUT` so the corpus travels with the
@@ -151,7 +151,7 @@ edge because only the edge sees both ends.
 
 ## Grades are ours
 
-`Claim.grade` is validated against `GRADES` in `src/lup_template/corpus.py`,
+`Claim.grade` is validated against `GRADES` in {{ corpus_py_2 }},
 six words with their meanings, taken from the mathematics corpus the design
 came from. An adopting project replaces the table and nothing else.
 
@@ -166,7 +166,7 @@ from the corpus instead, which is what writeups are.
 
 ## Writeups
 
-`src/lup_template/writeups.py` declares this repository's generated documents
+{{ writeups_py }} declares this repository's generated documents
 the way guidance is declared: as parts. `docs/work-status.md` is the one it
 declares — the tasks not yet finished, what among them waits on a person and
 what each costs, the handoffs still open, and a stamp naming the newest

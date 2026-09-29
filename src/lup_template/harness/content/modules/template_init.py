@@ -28,6 +28,7 @@ work, which is the ordering this module's position in the roster produces.
 """
 
 import lup_template.harness.content.guidance as guidance
+from lup.harness.content.application import ApplicationLayout
 from lup.harness.models import ContentRoster
 from lup.harness.modules import Module
 from lup_template.harness.content.modules.specs import TEMPLATE_INIT
@@ -36,10 +37,10 @@ from lup_template.harness.content.skills.init import SKILL as SKILL_INIT
 from lup_template.harness.content.skills.install import SKILL as SKILL_INSTALL
 
 
-def module() -> Module:
-    """Standing a project up as one value."""
+def module(layout: ApplicationLayout) -> Module:
+    """Standing a project up as one value, its configuration named in its own layout."""
     return Module(
         spec=TEMPLATE_INIT,
         content=ContentRoster(skills=[SKILL_DISTILL, SKILL_INIT, SKILL_INSTALL]),
-        guidance=[guidance.CONFIGURATION],
+        guidance=[guidance.configuration(layout)],
     )

@@ -332,13 +332,24 @@ def find_stale_references(root: Path) -> list[str]:
     or not yet added, and never what its ignore rules keep out: a scratch
     tree or a runtime's write journal is nobody's to triage, and a line
     reported from one sits in front of the lines somebody has to repair.
+
+    Passages too, which name the application's paths through layout values:
+    a literal left in one goes on naming the old package in every page
+    generated from it. Not the passages whose subject is initialization,
+    which name the template's package on purpose.
     """
     scan_files = [
         path
-        for rel in sorted(tracked_files(others=True, suffixes=(".py",), root=root))
+        for rel in sorted(
+            tracked_files(others=True, suffixes=(".py", ".md"), root=root)
+        )
         if PurePosixPath(rel).parts[0] in ["src", "tests"]
         and (path := root / rel).is_file()
         and not is_renamer_module(path)
+        and (
+            path.suffix == ".py"
+            or (path.name.endswith(".passage.md") and not about_initialization(path))
+        )
     ]
     pyproject = root / "pyproject.toml"
     if pyproject.is_file():

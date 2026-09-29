@@ -139,6 +139,8 @@ CLOSING_PARTS: list[models.PromptPart] = [
         module=__name__,
         name="template",
         values={
+            "application": models.code(LAYOUT.package),
+            "application_2": models.code(LAYOUT.package),
             # The setup page is the setup module's, the pane showing it the
             # dashboard's, and the page it shares its loopback guard with the
             # resolver's: each sentence stays only where its module does.

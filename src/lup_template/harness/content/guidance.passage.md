@@ -37,13 +37,13 @@ The type comes from `docs/contributing.md`'s table, which the commit skill rende
 
 ## Code Conventions
 
-Build on `lup` and pydantic; prefer an existing PyPI library to raw HTTP or a rebuilt wheel. No module under `src/lup_template/` imports a provider SDK, and `seam-boundary` holds adapter imports to the composition roots naming them. `docs/conventions.md` names each library, its typed forms, and a `@lup_tool` handler's contract.
+Build on `lup` and pydantic; prefer an existing PyPI library to raw HTTP or a rebuilt wheel. No module under {{ application }} imports a provider SDK, and `seam-boundary` holds adapter imports to the composition roots naming them. `docs/conventions.md` names each library, its typed forms, and a `@lup_tool` handler's contract.
 
 **Model selection.** Default to the **strongest** tier everywhere — main agent, subagents, reviewers, background agents — on a subscription where the best model is the point. Reach for **balanced** only where latency or cost provably dominates quality, **fast** almost never; a role warranting less declares its tier with a reason, naming a tier rather than a model id.
 
 **Error handling.** Raise for unrecoverable errors, wrap transient ones in `with_retry`, validate inputs early, never swallow one silently; a catch-all `except Exception` is fine at a boundary that logs, handles, or re-raises — a task loop, a subagent delegation.
 
-**Placement, in this repository.** The library is `packages/lup/`, the application `src/lup_template/`; logic already in `lup` is imported rather than copied, and `dev relocate old.module=new.module` moves a module across, repointing every import.
+**Placement, in this repository.** The library is `packages/lup/`, the application {{ application }}; logic already in `lup` is imported rather than copied, and `dev relocate old.module=new.module` moves a module across, repointing every import.
 
 
 <!-- passage: tooling -->
@@ -57,7 +57,7 @@ An approved `escalate[sandbox]` never lifts a launch's read-only mounts — the 
 
 ### lup-devtools
 
-`lup-devtools` is the development CLI, composed from `packages/lup/` and this repository's `src/lup_template/`. **Use it instead of ad-hoc commands**, and running the same one repeatedly means **add a command** to the half that would reuse it. Inline Python is denied: to **compute once**, run a script under gitignored `tmp/` with `uv run python <script.py>`. To **read** code, **prefer the `dev py` group or `codeintel` for anything about a name**, `rename_symbol` over `replace_all`; read the real tree with `dev pending`, as sandbox-masked dotfiles can look untracked to Git. `docs/contributing.md` carries that reviewability ladder and how a persisted result is read, `docs/commands.md` every command the CLI serves — read it to find one you did not know to look for.
+`lup-devtools` is the development CLI, composed from `packages/lup/` and this repository's {{ application }}. **Use it instead of ad-hoc commands**, and running the same one repeatedly means **add a command** to the half that would reuse it. Inline Python is denied: to **compute once**, run a script under gitignored `tmp/` with `uv run python <script.py>`. To **read** code, **prefer the `dev py` group or `codeintel` for anything about a name**, `rename_symbol` over `replace_all`; read the real tree with `dev pending`, as sandbox-masked dotfiles can look untracked to Git. `docs/contributing.md` carries that reviewability ladder and how a persisted result is read, `docs/commands.md` every command the CLI serves — read it to find one you did not know to look for.
 
 ### Generated Trees
 
@@ -71,7 +71,7 @@ Skills and agents render from typed catalogs, one per half: change the catalog t
 
 ## Configuration
 
-Settings load through pydantic-settings in `src/lup_template/agent/config.py`, the only module reading the environment; `docs/template.md` lists them and how gitignored `.env.local` overrides `.env`.
+Settings load through pydantic-settings in {{ config_py }}, the only module reading the environment; `docs/template.md` lists them and how gitignored `.env.local` overrides `.env`.
 
 **A committed declaration is consumer-independent**: no fact about *this* machine — a path, a device, a client, a login — sits in one. Those go in `.env.local` for the application's settings, `sync.json.local` for what the launcher grants sessions here, a flag for one launch. Nor does a `# lup: template:` marker ask what two machines running one commit would answer differently.
 
