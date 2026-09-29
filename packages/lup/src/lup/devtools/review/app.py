@@ -14,7 +14,7 @@ command" is one that changes when somebody adds a tool.
 """
 
 from collections.abc import Iterator
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 from difflib import SequenceMatcher
 from hashlib import sha256
 from pathlib import Path
@@ -28,6 +28,8 @@ from pydantic import BaseModel
 from rich.console import Console
 from rich.syntax import Syntax
 
+from lup.coordination.bare import store as roster
+from lup.coordination.repository import RepositoryPeers
 from lup.devtools.review.notifications import (
     ReviewNotification,
     ReviewNotifications,
@@ -53,14 +55,30 @@ from lup.providers.harness import patch_review
 
 
 class ReviewRoot(BaseModel, frozen=True):
-    """One operator-selected checkout and its opaque browser address."""
+    """One operator-selected checkout, its opaque browser address, and its repository."""
 
     id: str
     path: str
+    repository: str = ""
+    """The repository it is a checkout of, by its shared git directory."""
+
+    repository_name: str = ""
+    """What a reader calls that repository."""
 
     @classmethod
     def of(cls, root: Path) -> "ReviewRoot":
         return cls(id=str(uuid5(NAMESPACE_URL, root.as_uri())), path=str(root))
+
+    def within(self, repository: Path) -> "ReviewRoot":
+        """This checkout, grouped under the repository it belongs to."""
+        name = (
+            repository.parent.name
+            if repository.name == ".git"
+            else repository.name.removesuffix(".git")
+        )
+        return self.model_copy(
+            update={"repository": str(repository), "repository_name": name}
+        )
 
 
 class ReviewSummary(BaseModel, frozen=True):
@@ -79,6 +97,8 @@ class ReviewSummary(BaseModel, frozen=True):
     rule: str
     created: datetime
     answerable: bool
+    session: str = ""
+    """What the roster calls the session that asked, where it knows it."""
 
     @staticmethod
     def key_for(root: Path, question_id: str) -> str:
@@ -545,13 +565,105 @@ def relay(root: Path, log: Path = Path(".lup/questions.jsonl")) -> QuestionRelay
     return QuestionRelay(root / log)
 
 
+class Sighting(BaseModel, frozen=True):
+    """What the roster says of one session: what it is called, and whether it runs."""
+
+    name: str = ""
+    running: bool
+
+
+class RequesterPresence(BaseModel, frozen=True):
+    """Every session one repository's roster knows, by each identity it answers to.
+
+    Read once for a whole checkout, so asking after every review in a long
+    record costs one roster read rather than one each.
+    """
+
+    sessions: dict[str, Sighting] = {}
+
+    @classmethod
+    def of(cls, root: Path) -> "RequesterPresence":
+        peers = RepositoryPeers(root)
+        members = peers.present()
+        called = roster.called(peers.root)
+
+        def sighted(running: bool) -> dict[str, Sighting]:
+            return {
+                identity: Sighting(
+                    name=called[member.actor.id] if member.actor.id in called else "",
+                    running=member.running,
+                )
+                for member in members
+                if member.running is running
+                for identity in (member.actor.id, member.wake.session)
+                if identity
+            }
+
+        return cls(sessions={**sighted(False), **sighted(True)})
+
+    def sightings(self, question: PersistentQuestion) -> list[Sighting]:
+        """What the roster knows of the session that asked, by either identity."""
+        operation = question.operation
+        return [
+            self.sessions[identity]
+            for identity in (operation.requester, operation.session)
+            if identity and identity in self.sessions
+        ]
+
+    def called(self, question: PersistentQuestion) -> str:
+        """What the session that asked is called: its roster name, else its id."""
+        operation = question.operation
+        return next(
+            (sighting.name for sighting in self.sightings(question) if sighting.name),
+            operation.requester or operation.session,
+        )
+
+    def gone(
+        self, question: PersistentQuestion, now: datetime, grace: timedelta
+    ) -> bool:
+        """Whether no session that could retry this question runs any more.
+
+        Gone at once where the roster saw its requester leave; after ``grace``
+        where the roster never knew it, since a session the roster never
+        recorded cannot be told apart from one that has not joined yet.
+        """
+        sightings = self.sightings(question)
+        if any(sighting.running for sighting in sightings):
+            return False
+        return bool(sightings) or now - question.created >= grace
+
+
+def expire_orphaned(
+    root: Path,
+    presence: RequesterPresence | None = None,
+    grace: timedelta = timedelta(hours=1),
+) -> list[PersistentQuestion]:
+    """Expire every review in this checkout whose requester is gone.
+
+    Its answer could release nothing: a native retry comes only from the
+    session that asked, and a coordinator dispatches only for the run that
+    parked it. Left pending, such a review is a question nobody is waiting
+    on, and a queue of them buries the ones somebody is.
+    """
+    seen = presence if presence is not None else RequesterPresence.of(root)
+    now = datetime.now(UTC)
+    store = relay(root)
+    return store.expire(
+        [entry.id for entry in store.pending() if seen.gone(entry, now, grace)],
+        "its requester ended: no session that could retry it is running",
+    )
+
+
 def listing(root: Path, principal: str, everything: bool, as_json: bool) -> None:
     """Print what is waiting, narrowed to what this principal may answer.
 
     Narrowed by eligibility rather than by ownership, because a supervisor
     shown a question it may not answer is a supervisor about to try — and the
     refusal it then gets teaches it nothing about which questions are its.
+    A review whose requester is gone is expired first, so what is listed as
+    waiting is something a session still waits on.
     """
+    expire_orphaned(root)
     store = relay(root)
     questions = store.questions() if everything else store.pending(principal)
     if as_json:

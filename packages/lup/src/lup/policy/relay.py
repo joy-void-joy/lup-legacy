@@ -388,6 +388,36 @@ class QuestionRelay:
                 entry.model_copy(update={"state": "cancelled", "outcome": reason})
             )
 
+    def expire(self, questions: list[str], reason: str) -> list[PersistentQuestion]:
+        """Expire each of these questions still waiting, saying why.
+
+        For questions nobody can use any more — their requester is gone, so
+        no retry will ever read the answer — which is not the same as ones
+        their requester withdrew. Settled in one transaction over one read, so
+        an answer recorded a moment before is never overwritten by the sweep,
+        and a sweep over a long record reads it once.
+        """
+        expired = datetime.now(UTC)
+        with self.transaction():
+            waiting = {
+                entry.id: entry
+                for entry in self.questions()
+                if entry.state == "pending"
+            }
+            return [
+                self.record(
+                    waiting[question].model_copy(
+                        update={
+                            "state": "expired",
+                            "outcome": reason,
+                            "expires": expired,
+                        }
+                    )
+                )
+                for question in questions
+                if question in waiting
+            ]
+
     def advance(
         self, question: str, state: QuestionState, outcome: str = ""
     ) -> PersistentQuestion:
