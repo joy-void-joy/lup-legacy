@@ -25,7 +25,6 @@ from lup.providers.claude.native import (
     ClaudeEventDecoder,
     ClaudeHookPayload,
     ClaudeUnknownOperation,
-    ClaudeDecisionRenderer,
     parse_claude_before_tool,
 )
 from lup.providers.codex.native import (
@@ -34,7 +33,6 @@ from lup.providers.codex.native import (
     CodexFileChange,
     CodexFileChangeOperation,
     CodexUnknownOperation,
-    CodexDecisionRenderer,
 )
 from lup.harness.enforcement import (
     declared_path_rules,
@@ -47,6 +45,7 @@ from lup.harness.codescan.boundaries import native_import_boundaries
 from lup.harness.codescan.common import RuleSelection
 from lup.types import JsonObject
 from lup.policy.chain import UnknownToolPolicy
+from lup.policy.enforcement import policy_hook_output
 from lup.policy.grants import LeaseGrants, write_allowance_grants
 from lup.policy.identity import ConcernAllowance
 from lup.policy.bundle import (
@@ -116,6 +115,7 @@ from lup_template.harness.catalog import (
     declared_hook_set,
     portable_harness,
 )
+from tests.unit.native import claude_answer, codex_answer
 from tests.unit.repos import initialized_repo
 
 SHELL_RULES = declared_hook_set().resolved_shell_rules()
@@ -3363,17 +3363,12 @@ def test_malformed_native_fetch_urls_become_conservative_unknown_tools() -> None
     assert isinstance(codex.tool, UnknownTool)
 
 
-def test_native_decision_renderers_preserve_or_fail_closed_on_ask() -> None:
+async def test_an_ask_reaches_claude_as_a_question_and_codex_as_a_decline() -> None:
+    """Codex's approval reply has no channel for a question, so it fails closed."""
     decision = Decision(effect="ask", reason="approval required")
 
-    claude = ClaudeDecisionRenderer().render(decision)
-    codex = CodexDecisionRenderer(supports_ask=False).render(decision)
-
-    assert claude.permission_decision == "ask"
-    assert codex.exit_code == 2
-    assert codex.approximation == "ask rendered as fail-closed denial"
-    with pytest.raises(ValueError, match="not been evidenced"):
-        CodexDecisionRenderer(supports_ask=True)
+    assert claude_answer(decision).get("permissionDecision") == "ask"
+    assert await codex_answer(decision) == "decline"
 
 
 def test_the_decision_effect_stays_closed_at_four_members() -> None:
@@ -3409,25 +3404,32 @@ def test_the_settled_sandbox_composition_rows_render_as_decided() -> None:
     by a session that never left the container it was really about.
     """
     shell: JsonObject = {"command": "git ls-remote origin HEAD"}
-    render = ClaudeDecisionRenderer().render
 
-    asked = render(
+    asked = claude_answer(
         Decision(effect="ask", reason="needs a human", sandbox="outside"), shell
     )
-    denied = render(Decision(effect="deny", reason="refused", sandbox="outside"), shell)
-    confined = render(Decision(effect="allow", sandbox="inside"), shell)
-    ambient = render(Decision(effect="allow", sandbox="ambient"), shell)
-    escaped = render(Decision(effect="allow", sandbox="outside"), shell)
+    denied = claude_answer(
+        Decision(effect="deny", reason="refused", sandbox="outside"), shell
+    )
+    confined = claude_answer(Decision(effect="allow", sandbox="inside"), shell)
+    ambient = claude_answer(Decision(effect="allow", sandbox="ambient"), shell)
+    escaped = claude_answer(Decision(effect="allow", sandbox="outside"), shell)
 
-    assert asked.permission_decision == "ask"
-    assert asked.reason == (
+    assert asked.get("permissionDecision") == "ask"
+    assert asked.get("permissionDecisionReason") == (
         "needs a human — this will run on the host, outside the boundary"
     )
-    assert asked.updated_input == {**shell, "dangerouslyDisableSandbox": True}
-    assert (denied.permission_decision, denied.updated_input) == ("deny", None)
-    assert confined.updated_input == {**shell, "dangerouslyDisableSandbox": False}
-    assert (ambient.permission_decision, ambient.updated_input) == ("allow", None)
-    assert escaped.updated_input == {**shell, "dangerouslyDisableSandbox": True}
+    assert asked.get("updatedInput") == {**shell, "dangerouslyDisableSandbox": True}
+    assert (denied.get("permissionDecision"), denied.get("updatedInput")) == (
+        "deny",
+        None,
+    )
+    assert confined.get("updatedInput") == {**shell, "dangerouslyDisableSandbox": False}
+    assert (ambient.get("permissionDecision"), ambient.get("updatedInput")) == (
+        "allow",
+        None,
+    )
+    assert escaped.get("updatedInput") == {**shell, "dangerouslyDisableSandbox": True}
 
 
 def test_a_deny_short_circuits_whatever_the_sandbox_says() -> None:
@@ -3447,7 +3449,7 @@ def test_a_deny_short_circuits_whatever_the_sandbox_says() -> None:
     assert (refused.sandbox, placed.reason) == ("ambient", "refused")
 
 
-def test_a_runtime_that_cannot_place_a_call_renders_the_plain_effect() -> None:
+async def test_a_runtime_that_cannot_place_a_call_renders_the_plain_effect() -> None:
     """A Codex verdict rewrites nothing, so an intent it cannot perform is dropped.
 
     Degrading in silence is the failure this pins: an escape rendered into a
@@ -3457,17 +3459,15 @@ def test_a_runtime_that_cannot_place_a_call_renders_the_plain_effect() -> None:
     escaped = Decision(effect="allow", reason="fine", sandbox="outside")
     asked = Decision(effect="ask", reason="needs a human", sandbox="outside")
 
-    codex = CodexDecisionRenderer(supports_ask=False)
-
-    assert codex.render(escaped).exit_code == 0
-    assert "outside the sandbox" not in codex.render(asked).stderr
+    assert await codex_answer(escaped) == "accept"
+    assert "outside" not in policy_hook_output(asked, escapable=False).reason
     assert escaped.placed(escapable=False) == Decision(effect="allow", reason="fine")
 
 
 def test_which_placements_leave_is_one_answer_two_renderers_cannot_differ() -> None:
     """Four boundaries render the crossing, so the condition is written once.
 
-    Both hook factories, the in-process renderer, and each compiled dispatcher
+    Both hook factories, the in-process rewrite, and each compiled dispatcher
     fill the same field. A condition spelled at four sites is one that can be
     spelled differently at four sites, which is how a placement came to be
     honoured on one path and stripped on the other.
@@ -3488,9 +3488,12 @@ def test_a_placement_lup_states_is_not_the_call_asking_for_itself() -> None:
     held = Decision(effect="allow", reason="fine", sandbox="inside")
     asked_out: JsonObject = {"command": "x", "dangerouslyDisableSandbox": True}
 
-    rendered = ClaudeDecisionRenderer().render(held, asked_out)
+    rendered = claude_answer(held, asked_out)
 
-    assert rendered.updated_input == {**asked_out, "dangerouslyDisableSandbox": False}
+    assert rendered.get("updatedInput") == {
+        **asked_out,
+        "dangerouslyDisableSandbox": False,
+    }
 
 
 def test_fetch_policy_normalizes_origin_and_rejects_lookalikes() -> None:

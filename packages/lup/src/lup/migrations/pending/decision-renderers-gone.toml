@@ -1,0 +1,40 @@
+subjects = [
+    "ClaudeDecisionOutput",
+    "ClaudeDecisionOutput.hook_event_name",
+    "ClaudeDecisionOutput.permission_decision",
+    "ClaudeDecisionOutput.reason",
+    "ClaudeDecisionOutput.updated_input",
+    "ClaudeDecisionOutput.additional_context",
+    "ClaudeDecisionRenderer",
+    "ClaudeDecisionRenderer.render",
+    "CodexDecisionOutput",
+    "CodexDecisionOutput.exit_code",
+    "CodexDecisionOutput.stdout",
+    "CodexDecisionOutput.stderr",
+    "CodexDecisionOutput.approximation",
+    "CodexDecisionRenderer",
+    "CodexDecisionRenderer.__init__",
+    "CodexDecisionRenderer.render",
+]
+reason = """
+a verdict reached each runtime by two paths — the renderer classes only the \
+tests called, and the hooks a session actually runs — and the two had \
+already drifted (Codex's rendered a deferred approval as a pass where the \
+session declines it), so the renderers went and the tests read the live \
+hooks"""
+
+[[steps]]
+instruction = """
+Render a verdict for Claude as its session does: \
+`output = policy_hook_output(decision, escapable=True)` \
+(lup.policy.enforcement), then `lup_hook_output_to_claude(output, \
+placed_input=claude_placed_input(tool_name, tool_input, output.sandbox))` \
+(lup.providers.claude.hooks), in place of \
+`ClaudeDecisionRenderer().render(decision, tool_input)`."""
+
+[[steps]]
+instruction = """
+Answer a Codex approval through `CodexApprovalResponder(hooks=...).decide(method, params)` \
+(lup.providers.codex.hooks), which accepts only what a hook allowed, in \
+place of `CodexDecisionRenderer(supports_ask=False).render(decision)`; a \
+generated Codex hook plugin renders its own exit status."""
