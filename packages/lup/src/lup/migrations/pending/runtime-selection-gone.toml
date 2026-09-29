@@ -1,0 +1,82 @@
+subjects = [
+    "Runtime",
+    "Runtime.name",
+    "Runtime.login",
+    "Runtime.open",
+    "Runtime.workspace_home",
+    "Runtime.session_factory",
+    "Runtime.homed",
+    "Runtime.workspace_environment",
+    "SessionAutonomy",
+    "SessionModel",
+    "SessionTools",
+    "SessionTools.builtin",
+    "SessionTools.mcp",
+    "SessionTools.servers_are_named_apart",
+    "SessionRequest",
+    "SessionRequest.model",
+    "SessionRequest.instructions",
+    "SessionRequest.cwd",
+    "SessionRequest.autonomy",
+    "SessionRequest.effort",
+    "SessionRequest.sandbox",
+    "SessionRequest.contained_program",
+    "SessionRequest.tools",
+    "SessionRequest.allowed_tools",
+    "SessionRequest.disallowed_tools",
+    "SessionRequest.max_turns",
+    "SessionRequest.max_thinking_tokens",
+    "SessionRequest.environment",
+    "SessionRequest.hooks",
+    "SessionRequest.submission_gate",
+    "SessionRequest.the_container_is_named_where_it_is_asked_for",
+    "SessionOpener",
+    "WorkspaceHome",
+    "CLAUDE_AUTONOMY",
+    "CLAUDE_EFFORT",
+    "claude_config",
+    "CLAUDE_RUNTIME",
+    "CODEX_AUTONOMY",
+    "CODEX_EFFORT",
+    "codex_config",
+    "codex_workspace_home",
+    "CODEX_RUNTIME",
+]
+reason = """
+nothing opened a session through a portable request: an application \
+declares the runtime's own agent, which already takes every field the \
+request rendered into, so `lup.providers.selection` and both adapters' \
+`selection` modules went; `SessionEffort` stays, in `lup.providers.catalog`"""
+
+[[steps]]
+instruction = """
+Construct `Claude(...)` or `Codex(...)` (from lup) where you built a \
+`SessionRequest` and opened it through `CLAUDE_RUNTIME`/`CODEX_RUNTIME`, \
+`claude_config` or `codex_config`: `instructions=` is `system_prompt=`, \
+`tools=SessionTools(builtin=..., mcp=[...])` is \
+`tools=ClaudeTools(...)`/`CodexTools(...)`, `effort=`, `sandbox=`, \
+`hooks=`, `environment=` and `cwd=` keep their names, `submission_gate=` is \
+`submission_gate_resolver=`, and `contained_program=` is Claude's \
+`cli_path=` or Codex's `executable=`. `max_turns`, `max_thinking_tokens`, \
+`allowed_tools` and `disallowed_tools` are Claude's alone, as they were."""
+
+[[steps]]
+instruction = """
+Name what `autonomy=` asked for in each runtime's own word: on Claude, \
+`permission_mode=` (`ask` was `"manual"`, `accept_edits` `"acceptEdits"`, \
+`plan` `"plan"`, `unattended` `"bypassPermissions"`); on Codex, \
+`sandbox_mode=` (`ask` and `plan` were `"read-only"`, `accept_edits` \
+`"workspace-write"`, `unattended` `"danger-full-access"`), left unset \
+behind `OuterContainer()`, and `writable_roots=[cwd]` where the session \
+writes or runs a shell."""
+
+[[steps]]
+instruction = """
+Take a runtime's login and workspace home from their own modules where a \
+`Runtime` carried them: `CLAUDE_LOGIN` (lup.providers.claude.login) with \
+`workspace_config_environment` (lup.providers.claude.config_home), and \
+`CODEX_LOGIN` (lup.providers.codex.login) with `select_codex_home` \
+(lup.providers.codex.home); an agent naming no home is given one when it \
+opens. To choose the runtime from a model name, \
+`catalog_provider(model)` (lup.providers.routing) says which catalog \
+lists it."""

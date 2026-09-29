@@ -828,7 +828,7 @@
     {
       "path": "docs/orchestration.md",
       "category": "generated",
-      "sha256": "1a1bb0c0c0dbad570fba66effb103fa36305e5a6b4b9c1eb6fb20759567dbe84",
+      "sha256": "fcebca98b97393a489db316caa1a503f3bcaa2271d4cd48a39d186943ff20bc5",
       "semantic_id": "docs.orchestration",
       "executable": false
     },
@@ -849,7 +849,7 @@
     {
       "path": "docs/platform-differentiation.md",
       "category": "generated",
-      "sha256": "433d91265bf010bf7a0a853f30e0b5e2a53873a746778ce11270603dd4f66668",
+      "sha256": "02b2c7b3802549483c4d81a75de4710e549d2431066a8a0260f6fe49a4044b50",
       "semantic_id": "docs.platform-differentiation",
       "executable": false
     },

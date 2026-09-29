@@ -21,14 +21,11 @@ import lup.providers.codex.install as installation
 import lup.providers.codex.runtime as runtime
 from lup.providers.codex import CODEX_PROGRAM, Codex
 import lup.providers.codex.home as codex_home
-import lup.providers.codex.selection as codex_selection
 from lup.harness.clipboard import ClipboardBridge
 from lup.policy.identity import POLICY_ROOT_ENV
 from lup.providers.codex.login import CODEX_HOME, CODEX_LOGIN
 from lup.providers.codex.marketplace import CodexMarketplace
 from lup.providers.codex.trust import CodexHookReport
-from lup.providers.codex.selection import codex_config
-from lup.providers.selection import SessionRequest
 from lup.types import JsonObject
 from lup.providers.codex.harness_runtime import (
     CodexPluginInstaller,
@@ -190,17 +187,6 @@ def test_matching_cache_is_not_proof_of_native_plugin_discovery(
     )
     with pytest.raises(RuntimeError, match="does not discover"):
         installer.verify(evidence, tmp_path)
-
-
-def test_portable_requests_keep_the_executables_execution_boundary(
-    tmp_path: Path,
-) -> None:
-    config = codex_config(
-        SessionRequest(
-            cwd=tmp_path, sandbox=OuterContainer(), contained_program=tmp_path / "enter"
-        )
-    )
-    assert config.sandbox == OuterContainer()
 
 
 @pytest.mark.parametrize("wall", [OuterContainer(), NoSandbox(), InnerSandbox()])
@@ -370,12 +356,10 @@ async def test_a_project_without_declared_policy_opens_with_its_native_default_h
 @pytest.mark.parametrize(
     "evidence", ["ready", "missing", "untrusted", "unresolved", "warning", "skill-only"]
 )
-@pytest.mark.parametrize("portable", [False, True])
 async def test_application_policy_is_verified_in_an_external_native_workspace(
     tmp_lup_project: Path,
     monkeypatch: pytest.MonkeyPatch,
     evidence: str,
-    portable: bool,
 ) -> None:
     project = tmp_lup_project
     workspace = project.parent / f"{project.name}-native"
@@ -400,16 +384,11 @@ async def test_application_policy_is_verified_in_an_external_native_workspace(
             else {"name": "lup", "hooks": "./hooks/hooks.json"}
         )
     )
-    config = (
-        codex_config(SessionRequest(cwd=workspace, environment={CODEX_HOME: str(home)}))
-        if portable
-        else Codex(
-            cwd=workspace, policy_root=project, environment={CODEX_HOME: str(home)}
-        )
+    config = Codex(
+        cwd=workspace, policy_root=project, environment={CODEX_HOME: str(home)}
     )
     assert config.policy_root == project
     assert config.cwd == workspace
-    monkeypatch.setattr(codex_selection, "project_root", lambda: workspace)
     installer = Mock()
     monkeypatch.setattr(
         codex_home, "CodexPluginInstaller", Mock(return_value=installer)

@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 from pydantic import BaseModel, ValidationError
 
-from lup.mcp import Toolset, hosted_servers, opened_needs
+from lup.mcp import External, Toolset, hosted_servers, opened_needs
 from lup.providers.claude import Claude, ClaudeTools
 from lup.providers.claude.runtime import ClaudeSessionOpener, build_claude_options
 from lup.providers.codex.app_server import CodexAppServer, RpcMessage
@@ -15,12 +15,10 @@ from lup.providers.codex.runtime import (
     CodexConversationState,
     CodexSessionOpener,
     CodexTurnChannel,
+    codex_mcp_server,
     codex_serving,
 )
 from lup.providers.codex.builtins import CodexBuiltins
-from lup.providers.claude.selection import claude_config
-from lup.providers.codex.selection import codex_config
-from lup.providers.selection import SessionRequest, SessionTools
 from lup.tools.mcp import LupMcpServerConfig, create_mcp_server, lup_tool
 from lup.types import JsonObject
 
@@ -180,8 +178,8 @@ async def test_codex_validates_explicit_app_calls_and_rejects_foreign_or_stale_t
         effects.append(params.value)
         return params
 
-    granted = SessionTools(builtin="none", mcp=[Toolset([record], name="app")])
-    config = codex_config(SessionRequest(cwd=tmp_path, tools=granted))
+    granted = CodexTools(builtin="none", mcp=[Toolset([record], name="app")])
+    config = Codex(cwd=tmp_path, tools=granted)
     serving = codex_serving(
         hosted_servers(config.tools.mcp, opened_needs(tmp_path, tmp_path, {}))
     )
@@ -217,7 +215,7 @@ async def test_codex_validates_explicit_app_calls_and_rejects_foreign_or_stale_t
     assert effects == ["accepted"]
 
 
-def test_selection_preserves_app_tools_under_none_for_both_runtimes(
+def test_app_tools_survive_no_built_ins_on_both_runtimes(
     tmp_path: Path,
 ) -> None:
     @lup_tool("Echo one value.")
@@ -226,13 +224,10 @@ def test_selection_preserves_app_tools_under_none_for_both_runtimes(
 
     needs = opened_needs(tmp_path, tmp_path, {})
     server = Toolset([echo], name="app")
-    request = SessionRequest(
-        cwd=Path("."), tools=SessionTools(builtin="none", mcp=[server])
-    )
-    assert claude_config(request).tools.mcp == [server]
-    served = codex_serving(hosted_servers(codex_config(request).tools.mcp, needs))
+    assert Claude(tools=ClaudeTools(builtin="none", mcp=[server])).tools.mcp == [server]
+    granted = CodexTools(builtin="none", mcp=[server])
+    served = codex_serving(hosted_servers(Codex(tools=granted).tools.mcp, needs))
     assert served.applications["lup_app_app__echo"] is echo
-    assert codex_config(request).writable_roots == []
     codex = Codex(model="gpt-6-astra", tools=CodexTools(mcp=[Toolset([echo])]))
     applications = codex_serving(hosted_servers(codex.tools.mcp, needs)).applications
     assert applications["lup_app_tools__echo"] is echo
@@ -254,18 +249,52 @@ def test_dynamic_tool_names_cannot_shadow_another_explicit_handler(
         return params
 
     needs = opened_needs(tmp_path, tmp_path, {})
-    request = SessionRequest(
-        cwd=Path("."),
-        tools=SessionTools(
-            mcp=[Toolset([first], name="a__b"), Toolset([second], name="a")]
-        ),
+    shadowing = CodexTools(
+        mcp=[Toolset([first], name="a__b"), Toolset([second], name="a")]
     )
     with pytest.raises(ValueError, match="collide"):
-        codex_serving(hosted_servers(codex_config(request).tools.mcp, needs))
+        codex_serving(hosted_servers(shadowing.mcp, needs))
     with pytest.raises(ValueError, match="uniquely"):
         CodexTools(mcp=[Toolset([first], name="a"), Toolset([second], name="a")])
     with pytest.raises(ValueError, match="names a tool twice"):
         Toolset([first, first])
+
+
+def test_codex_starts_an_external_tool_group_as_its_own_subprocess(
+    tmp_path: Path,
+) -> None:
+    group = External(name="group", server={"command": "uv", "args": ["run", "tools"]})
+    config = Codex(cwd=tmp_path, tools=CodexTools(builtin="stock", mcp=[group]))
+
+    needs = opened_needs(tmp_path, tmp_path, {})
+    served = codex_serving(hosted_servers(config.tools.mcp, needs)).servers
+    assert served["group"].command == "uv"
+    assert served["group"].args == ["run", "tools"]
+
+
+def test_codex_rejects_a_tool_group_it_cannot_launch() -> None:
+    with pytest.raises(ValueError, match="subprocess"):
+        codex_mcp_server("group", {"type": "sse", "url": "https://example.test"})
+
+
+def test_codex_will_not_relaunch_a_hosted_tool_group_as_a_subprocess() -> None:
+    """A hosted group is answered in this process, never started as a subprocess.
+
+    A hosted server reads the process hosting it — the context variables
+    scoping the session it answers inside, its clients, its caches. Relaunched
+    as a subprocess it would not fail: it would answer every call from
+    defaults, confidently, and nothing downstream could tell the difference.
+    So its tools become the thread's dynamic tools, answered here.
+    """
+
+    @lup_tool("Echo one value.")
+    async def echo(params: Value) -> Value:
+        return params
+
+    served = codex_serving({"group": create_mcp_server("group", tools=[echo])})
+
+    assert served.servers == {}
+    assert served.applications == {"lup_app_group__echo": echo}
 
 
 async def test_unknown_inherited_model_is_refused_before_start(
