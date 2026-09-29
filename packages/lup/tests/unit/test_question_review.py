@@ -193,3 +193,20 @@ def test_uncaptured_patch_never_reads_current_files(tmp_path: Path) -> None:
     (tmp_path / "design.md").write_text("original\n")
     command = "*** Begin Patch\n*** Add File: design.md\n+approved\n*** End Patch"
     assert patch_review(command, tmp_path, {}, False) == []
+
+
+def test_a_change_to_another_checkout_is_labelled_with_that_checkout() -> None:
+    """The label names where the call acts, not where the session that asked sits."""
+    elsewhere = Operation(
+        id="op",
+        session="session",
+        requester="session",
+        tool="Edit",
+        payload={},
+        cwd=ROOT,
+        worktree=Path("/tree/feature"),
+    )
+    beneath = elsewhere.model_copy(update={"cwd": ROOT / "packages", "worktree": ROOT})
+
+    assert elsewhere.summary() == "Edit in /tree/feature"
+    assert beneath.summary() == "Edit in /repo/packages"
