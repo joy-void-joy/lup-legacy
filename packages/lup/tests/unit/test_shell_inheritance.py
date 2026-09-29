@@ -53,6 +53,7 @@ ALLOWED_UNDER_A_RESTRICTIVE_PARENT = (
     "git cat-file",
     "git blame",
     "git annotate",
+    "git archive",
     "git describe",
     "git shortlog",
     "git rev-list",

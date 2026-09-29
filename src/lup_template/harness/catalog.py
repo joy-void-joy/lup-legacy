@@ -33,6 +33,7 @@ from lup.providers.claude.harness import ClaudeSpellings
 from lup.providers.claude.login import CLAUDE_LOGIN
 from lup.providers.codex.harness import CodexSpellings
 from lup.providers.codex.login import CODEX_LOGIN
+from lup.policy.bundle import compilation_sources
 from lup.policy.refused_paths import credential_files
 from lup.policy.rules import dependency_declarations
 from lup.harness.codescan.common import ApplicationRoots
@@ -768,16 +769,6 @@ def portable_harness(
                 # Gitignored is not a substitute. The gate is who may write
                 # it, and nothing was asking.
                 Path("sync.json.local"),
-                Path(".lup/preflight"),
-                Path(".lup/policy-snapshots"),
-                # The review queue, and the claims that spend an answer once.
-                # A hook parks a question here and releases the retry an
-                # approved row names, writing both from its own process; the
-                # session's own call writing either is the requester recording
-                # its own answer, or putting a spent approval back.
-                Path(".lup/questions.jsonl"),
-                Path(".lup/review-claims"),
-                Path(".lup/review-stage-claims"),
                 # What the agent is allowed to do at all is declared here, and
                 # an agent that can widen its own policy without a question
                 # has a preference rather than a boundary. Protected so the
@@ -795,6 +786,11 @@ def portable_harness(
                 Path(LAYOUT.path("harness", "content", "catalog.py")),
                 Path(LAYOUT.path("harness", "content", "shell_vocabulary.py")),
                 Path("packages/lup/src/lup/harness/codescan"),
+                # And what compiles all of it into the hooks, or into a
+                # session composed here: an edit there and a regeneration
+                # change what judges the session as an edit of the policy
+                # would. Read off the compilation's imports, not listed.
+                *(Path("packages/lup/src/lup", path) for path in compilation_sources()),
             ],
             # lup: template: what each tree in this domain is *for*. A role is
             # how a gate tells a fixture from production and a build product

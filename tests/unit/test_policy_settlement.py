@@ -15,6 +15,8 @@ reaches alone.
 
 from lup.policy.kernel.decision import (
     CONTAINED_ESCAPE_NOTICE,
+    ESCALATE_HINT,
+    RESHAPE_HINT,
     SANDBOX_ESCAPE_NOTICE,
     SANDBOX_TRAPPED_REASON,
     KernelDecision,
@@ -103,6 +105,22 @@ def local_loss(reason: str = "a reset discards work") -> KernelDecision:
     return KernelDecision(
         "ask", reason, checkpoint="targeted", purpose="unrecovered_local_mutation"
     )
+
+
+def test_a_hard_prohibition_points_at_no_escalation_it_would_not_honour() -> None:
+    """The way through a refusal nobody may override is another route, not a reviewer.
+
+    Hinted with the escalation marker, a cloud metadata fetch or an
+    operator-only verb told the agent to resubmit for review, and the
+    resubmission met the same refusal.
+    """
+    settled = settle(
+        SettlementFacts(KernelDecision("deny", "no", hard=True), hint=ESCALATE_HINT)
+    )
+
+    assert settled.effect == "deny"
+    assert "escalate[decision]" not in settled.recovery
+    assert RESHAPE_HINT in settled.recovery
 
 
 def test_a_hard_prohibition_is_not_moved_by_asking_about_it() -> None:

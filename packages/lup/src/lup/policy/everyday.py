@@ -172,6 +172,11 @@ RUNNING_THE_CHECKERS = (
     "uv run ruff format --check .",
     "uv run pyright",
     "uv run python tmp/script.py",
+    # The same checkers, reached without `uv run`: one program, one verdict.
+    "pytest -q",
+    "ruff check .",
+    ".venv/bin/pytest -q",
+    ".venv/bin/pyright",
 )
 
 WRITING_WHERE_NOTHING_IS_REVIEWED = (

@@ -10,10 +10,14 @@ as one unit against the kernel beside it. No decision logic lives here; the
 kernel decides.
 """
 
+import ast
+import importlib.util
 import json
 import urllib.parse
 from collections.abc import Iterator
-from pathlib import Path
+from functools import cache
+from importlib.machinery import ModuleSpec
+from pathlib import Path, PurePosixPath
 
 from pydantic import BaseModel
 
@@ -23,6 +27,7 @@ from lup.formats.banner import REGENERATE_COMMAND, GeneratedBanner
 from lup.policy.grants import ALLOWANCE_GRANTS_ENV, known_allowances
 from lup.policy.identity import AGENT_IDENTITY_ENV, POLICY_ROOT_ENV
 import lup.policy.kernel as kernel
+from lup.policy.kernel.imports import import_references
 from lup.policy.kernel.typescript import TYPESCRIPT_SUFFIXES
 from lup.policy.kernel.effects import EffectRow, effect_row_values
 from lup.policy.kernel.semantics import UnjudgedAmbient
@@ -59,6 +64,7 @@ from lup.policy.shell_rules import (
 from lup.policy.rules import (
     antipattern_row,
     human_owned_path_rule,
+    invariant_path_rules,
     path_rule_row,
     protected_root_rule,
 )
@@ -93,6 +99,103 @@ def policy_kernel_modules() -> list[KernelModule]:
         KernelModule(name=path.name, source=path.read_text(encoding="utf-8"))
         for path in sorted(directory.glob("*.py"))
     ]
+
+
+@cache
+def compilation_sources(
+    renderers: tuple[str, ...] = (
+        "lup.providers.claude.harness",
+        "lup.providers.codex.harness",
+    ),
+    composers: tuple[str, ...] = ("lup.harness.enforcement",),
+    policy: str = "lup.policy",
+) -> tuple[PurePosixPath, ...]:
+    """Every library source a hook set's compiled policy is made from.
+
+    The policy package is protected as the policy is, and what compiles it
+    decides as much: an edit there and a regeneration change the hooks
+    judging the session. A hook set is compiled in each runtime's renderer
+    and in the composition a session in this process judges by, and the rest
+    is read off their imports rather than listed, so a module the compilation
+    comes to import is covered the day it does.
+
+    An import is followed only into a module that itself imports from
+    ``policy``, since that is the way the compilation reaches the policy:
+    following every import takes in the whole library the renderers also
+    use for skills, prompts and launches. Each renderer's package ships its
+    ``assets/`` into the tree verbatim -- the dispatcher a runtime runs as
+    its hook -- so that directory comes too. Paths are relative to the
+    library's package directory; the policy package itself is not repeated.
+    """
+    package = Path(__file__).resolve().parents[1]
+
+    def located(name: str) -> ModuleSpec | None:
+        """Where one of the library's modules is defined, if it is one."""
+        if name != package.name and not name.startswith(f"{package.name}."):
+            return None
+        try:
+            found = importlib.util.find_spec(name)
+        except ModuleNotFoundError:
+            # An imported name inside a module rather than a module of its own.
+            return None
+        return found if found is not None and found.origin else None
+
+    def imported(name: str) -> list[str]:
+        """The library modules one module imports from, relative ones resolved."""
+        spec = located(name)
+        if spec is None or spec.origin is None:
+            return []
+        tree = ast.parse(Path(spec.origin).read_text(encoding="utf-8"))
+        return list(
+            dict.fromkeys(
+                reference["module"]
+                for reference in import_references(tree, spec.parent or "")
+                if located(reference["module"]) is not None
+            )
+        )
+
+    def reaches_policy(name: str) -> bool:
+        return any(
+            module == policy or module.startswith(f"{policy}.")
+            for module in imported(name)
+        )
+
+    reached = [name for name in [*renderers, *composers] if located(name) is not None]
+    for name in reached:
+        reached.extend(
+            module
+            for module in imported(name)
+            if module not in reached
+            and not module.startswith(f"{policy}.")
+            and reaches_policy(module)
+        )
+    origins = [
+        Path(spec.origin) for name in reached if (spec := located(name)) and spec.origin
+    ]
+    assets = [
+        Path(spec.origin).parent / "assets"
+        for name in renderers
+        if (spec := located(name)) and spec.origin
+    ]
+    return tuple(
+        PurePosixPath(path.resolve().relative_to(package).as_posix())
+        for path in [
+            *origins,
+            *(directory for directory in assets if directory.is_dir()),
+        ]
+    )
+
+
+def hook_deadline(hook_timeout: int, verdict_reserve: float = 5.0) -> float:
+    """How long a verdict may take, given what the runtime gives the hook.
+
+    That timeout less ``verdict_reserve``, the time starting the interpreter
+    and writing the verdict take, so everything the verdict waits on has
+    ended while the runtime is still listening. Read by each dispatcher, and
+    by a reading taken in this process, so `dev policy` is bounded as the
+    hook it previews is.
+    """
+    return hook_timeout - verdict_reserve
 
 
 def bundled_antipattern_rows(
@@ -138,20 +241,7 @@ def runtime_path_rules(
     return [
         *[path_rule_row(protected_root_rule(root)) for root in protected_roots],
         *[path_rule_row(human_owned_path_rule(path)) for path in human_owned_files],
-        PathRuleRow(
-            kind="name_prefix",
-            value=".env",
-            reason="protected path requires approval",
-            recovery="",
-            allow_autonomous=False,
-        ),
-        PathRuleRow(
-            kind="new_devtools",
-            value="src",
-            reason="new devtools module requires approval",
-            recovery="",
-            allow_autonomous=False,
-        ),
+        *[path_rule_row(rule) for rule in invariant_path_rules()],
     ]
 
 
@@ -604,7 +694,6 @@ def render_policy_data(
     refused_paths: list[RefusedPaths] | None = None,
     secret_variables: list[str] | None = None,
     hook_timeout: int = 30,
-    verdict_reserve: float = 5.0,
 ) -> str:
     """Render one plugin's canonical policy rows without executable logic.
 
@@ -618,9 +707,7 @@ def render_policy_data(
 
     ``hook_timeout`` is what the runtime gives the policy hook, the same value
     its hooks file declares, and the hook's deadline is derived from it rather
-    than restated beside it: that timeout less ``verdict_reserve``, the time
-    starting the interpreter and writing the verdict take, so everything the
-    verdict waits on has ended while the runtime is still listening.
+    than restated beside it, by :func:`hook_deadline`.
     """
     body = "\n\n".join(
         [
@@ -681,7 +768,7 @@ def render_policy_data(
             "RESOLUTION_COMMAND: list[str] = "
             + string_rows_literal(resolution_command),
             "REPAIR_COMMAND: list[str] = " + string_rows_literal(repair_command),
-            "HOOK_DEADLINE_SECONDS = " + json.dumps(hook_timeout - verdict_reserve),
+            "HOOK_DEADLINE_SECONDS = " + json.dumps(hook_deadline(hook_timeout)),
         ]
     )
     return (

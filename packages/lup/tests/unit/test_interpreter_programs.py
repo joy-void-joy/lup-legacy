@@ -53,6 +53,18 @@ from lup.policy.kernel.programs import ProgramKind, read_program
         ("python -Sc 'x'", "inline", "-Sc"),
         ("perl -w x.pl", "unread", "-w"),
         ("perl -e 'x'", "inline", "-e"),
+        ("bash --version", "informational", "--version"),
+        ("bash -h", "bare", ""),
+        ("python3 -V", "informational", "-V"),
+        ("python -VV", "informational", "-VV"),
+        ("python --help-all", "informational", "--help-all"),
+        ("node -v", "informational", "-v"),
+        ("bun --revision", "informational", "--revision"),
+        ("deno --version", "informational", "--version"),
+        ("deno -V", "informational", "-V"),
+        ("perl -v", "informational", "-v"),
+        ("bash --version -c ls", "inline", "-c"),
+        ("python3 -V tmp/x.py", "script", "tmp/x.py"),
     ],
 )
 def test_the_program_is_where_the_options_stop(

@@ -1658,6 +1658,23 @@ def git_rule(
             ],
             reason="opening matches in an arbitrary program requires approval",
         ),
+        # An archive of a tree reads it, and the file `-o` lands is judged
+        # where it lands, as `log --output` is. `--remote` fetches the tree
+        # from another repository instead, and `--exec` names the program that
+        # serves it -- run here where that repository is a local path.
+        ShellSubcommandRule(
+            name="archive",
+            effects=[declare("reads_path", scope="project")],
+            write_flags=["-o", "--output"],
+            ask_flags=["--remote", "--exec"],
+            flag_effects=[
+                declare("fetches", scope="undeclared"),
+                declare("runs_undeclared_program", scope="a program a flag names"),
+            ],
+            checkpoint="boundary_wide",
+            reason="archiving another repository, or through a program a flag"
+            " names, requires approval",
+        ),
         ShellSubcommandRule(
             name="rebase",
             # Rewrites commits the reflog still holds, which is what makes
@@ -1992,6 +2009,26 @@ def git_rule(
                 ShellOperationRule(
                     name="repair",
                     effects=[declare("mutates_repository", scope="reversible")],
+                ),
+                # A lock is undone by the unlock beside it.
+                ShellOperationRule(
+                    name="lock",
+                    effects=[declare("mutates_repository", scope="reversible")],
+                ),
+                # An unlock releases a hold another session may own -- the one
+                # a worktree is held by for the session that made it -- and
+                # nothing this session does puts that hold back for its owner.
+                ShellOperationRule(
+                    name="unlock",
+                    effects=[
+                        declare(
+                            "destroys_uncaptured",
+                            scope="unrecoverable",
+                            reach="host_later",
+                        )
+                    ],
+                    reason="unlocking a worktree releases a hold another session"
+                    " may own",
                 ),
                 # A worktree holds whatever was not committed in it, and no
                 # capture of this checkout reaches into another one.

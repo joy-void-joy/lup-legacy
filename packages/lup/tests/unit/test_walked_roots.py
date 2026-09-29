@@ -11,7 +11,7 @@ import pytest
 
 from lup.policy.kernel.rows import RefusedPathRow, WithheldWalkRow
 from lup.policy.kernel.shell import decide_shell
-from lup.policy.kernel.walks import walked_roots
+from lup.policy.kernel.walks import reads_names, skipped_file, walked_roots
 from lup.policy.refused_paths import credential_files
 from lup.policy.shell_rules import erase_shell_rules
 from lup.policy.vocabulary import default_vocabulary
@@ -47,12 +47,55 @@ ROWS: list[RefusedPathRow] = [credential_files().erased()]
         ("ls -R ~", []),
         ("find ~ -name id_rsa", []),
         ("du -sh ~", []),
+        # A payload handed every name find yields reads each of them.
+        ("find ~ -exec cat {} +", ["~"]),
+        ("find -L ~ /etc -type f -exec grep -l x {} ;", ["~", "/etc"]),
+        ("find ~ -execdir cat {} ;", ["~"]),
+        ("find -exec cat {} +", ["."]),
+        ("find ~ -exec echo done ;", []),
     ],
 )
 def test_a_recursive_reader_walks_the_roots_its_grammar_names(
     command: str, roots: list[str]
 ) -> None:
     assert [root["path"] for root in walked_roots(command.split())] == roots
+
+
+@pytest.mark.parametrize(
+    ("command", "roots"),
+    [
+        ("find ~ -name id_rsa", ["~"]),
+        ("ls -R ~", ["~"]),
+        ("ls ~", []),
+        ("du -a ~", ["~"]),
+        ("tree ~ /etc", ["~", "/etc"]),
+        ("fd id_rsa ~", ["~"]),
+        ("rg --files ~", ["~"]),
+    ],
+)
+def test_a_listing_read_through_a_pipeline_walks_what_it_lists(
+    command: str, roots: list[str]
+) -> None:
+    """A name is not the secret, until something downstream reads each one."""
+    assert [
+        root["path"] for root in walked_roots(command.split(), listed=True)
+    ] == roots
+
+
+@pytest.mark.parametrize(
+    ("command", "consumed"),
+    [
+        ("xargs cat", True),
+        ("xargs -0 grep -l token", True),
+        ("read -r f", True),
+        ("xargs", False),
+        ("cat", False),
+    ],
+)
+def test_names_read_from_input_are_handed_to_a_program(
+    command: str, consumed: bool
+) -> None:
+    assert reads_names(command.split()) is consumed
 
 
 @pytest.mark.parametrize(
@@ -110,3 +153,22 @@ def test_a_walk_the_host_found_reaching_a_key_is_refused() -> None:
     assert refused.effect == "deny"
     assert "/home/u/.ssh/id_rsa" in refused.reason
     assert unfound.effect == "allow"
+
+
+@pytest.mark.parametrize(
+    ("command", "yielded"),
+    [
+        ("find . -name *.py -exec grep -l x {} +", ["*.py"]),
+        ("find . -name *.py -o -name *.json -exec cat {} +", []),
+        ("find . -iname *.MD -type f -exec cat {} +", ["*.MD"]),
+        ("find ~ -exec cat {} +", []),
+    ],
+)
+def test_a_find_yields_only_the_names_its_plain_tests_admit(
+    command: str, yielded: list[str]
+) -> None:
+    """`find . -name '*.py' | xargs grep` never hands its reader a login."""
+    (root,) = walked_roots(command.split())
+
+    assert root["yielded"] == yielded
+    assert skipped_file("auth.json", root) is bool(yielded)
