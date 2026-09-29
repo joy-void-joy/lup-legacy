@@ -108,6 +108,27 @@ address resolves as an id before a name. `PeerPolicy` gains a required
 `server`, the tool server the coordination verbs are served from, which
 `lup.coordination.policy.peer_policy` fills with `COORDINATION_SERVER`.
 
+### A session is present while its runtime runs
+
+A stopped session read as running (#503). A runtime started from a
+session's own shell inherits its coordination id, and its tool server joined
+under it like any other: it put a cleanly ended session's row back within
+one tick and beat for it for as long as that runtime lived. A session's row
+now names its runtime process — the one feeding its tool server's input, by
+pid, start time and pid namespace — and a server beats only for a row
+naming its own runtime, never puts back a departure written under another,
+and ends its row with `its runtime stopped` once that runtime has gone.
+
+Readers ask the runtime itself where they share its namespace, so a killed
+session reads as gone at once and a live one stays present, claims and
+description whole, across a suspended machine. A reader in another container
+tests the `<member>.pulse` lock the answering server holds, and falls back
+to the two-minute window only where neither speaks. One server of a runtime
+holds the pulse at a time, so the server Codex keeps for each subagent
+answers for the session only where the session's own stopped while the
+runtime runs on. `SessionNeeds.runtime` and `RosterPulse.runtime` carry the
+process, and `create_peer_tools` takes it as `runtime=`.
+
 ### `dev check --changed` reads a branch from where it left its base
 
 It diffed against the integration branch's tip, so a feature branch answered
