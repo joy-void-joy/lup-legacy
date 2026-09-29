@@ -282,6 +282,7 @@ def withheld_walk(
     checkout_root: str,
     walks: list[WithheldWalkRow],
     rows: list[RefusedPathRow],
+    listed: bool = False,
 ) -> KernelDecision | None:
     """The refusal a recursive read earns where its root holds a withheld path.
 
@@ -296,7 +297,7 @@ def withheld_walk(
     reached = next(
         (
             walk
-            for root in walked_roots(words)
+            for root in walked_roots(words, listed)
             for walk in walks
             if walk["root"] == placed_root(root["path"], directory)
         ),

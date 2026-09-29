@@ -551,9 +551,20 @@ directory or file out, so a refused search of a checkout names the two that
 read the same tree — `rg token .`, which skips hidden and ignored paths, and
 `grep -r --exclude-dir=.lup token .` — in the command's own words, and
 both are allowed. A walk the hook's deadline cut short is refused too, since a root
-nobody finished walking is not one known to hold nothing. `find` walks as
-well, but hands its payload only what its predicates select, which the run
-alone evaluates, so its payload is judged as the command it is.
+nobody finished walking is not one known to hold nothing.
+
+A listing prints names, and a name is not the secret, until something reads
+each name it printed. A `find` handing `{}` to an `-exec`, `-execdir`, `-ok`
+or `-okdir` payload names every file it meets to that payload, and a line
+that hands names read from its input to a program — `xargs` with a payload,
+a `while read` loop — reads what its listings (`find`, `ls -R`, `du`,
+`tree`, `fd`, `rg --files`) yield; each is read as the walk it feeds, over
+the whole line, since a pipe, a file and a loop all carry the names. So
+`find ~ | xargs cat`, `find ~ -exec cat {} +` and `find ~ | while read f; do
+cat "$f"; done` are refused as `grep -r x ~` is, while `find ~ -name x` and
+`find src | xargs cat` read. A `find` whose expression is a plain AND of
+`-name` and `-iname` tests yields only names they admit, so `find . -name
+'*.py' | xargs grep x` walks past a login it never hands on.
 
 `HookSet.secret_variables` names the variables no command may print, matched
 without case: `printenv NAME`, `echo`/`printf`/`print` of an expansion, and a

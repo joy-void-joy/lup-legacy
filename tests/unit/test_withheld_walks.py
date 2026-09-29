@@ -35,6 +35,13 @@ WALKS_INTO = [
     pytest.param("cp -r ~ tmp/home", id="copy-home"),
     pytest.param("zip -r tmp/out.zip ~", id="zip-home"),
     pytest.param("grep -r token .", id="grep-checkout-login"),
+    # What a listing yields, read by whatever it is handed to, is the walk.
+    pytest.param("find ~ | xargs cat", id="find-into-xargs"),
+    pytest.param("find ~ -print0 | xargs -0 cat", id="find-into-xargs-null"),
+    pytest.param("find ~ -type f -exec cat {{}} +", id="find-exec"),
+    pytest.param("find ~ -type f -exec cat {{}} \\;", id="find-exec-each"),
+    pytest.param('find ~ | while read f; do cat "$f"; done', id="find-read-loop"),
+    pytest.param("ls -R ~ | xargs cat", id="ls-into-xargs"),
 ]
 """Walks the host finds holding a key or a login beneath the root they spell."""
 
@@ -46,6 +53,13 @@ STAYS_OUT = [
     pytest.param("rg token .", id="rg-checkout"),
     pytest.param("grep -r --exclude-dir=.lup token .", id="grep-excluding-attached"),
     pytest.param("grep -r --exclude-dir .lup token .", id="grep-excluding-apart"),
+    pytest.param("find ~ -name notes.txt", id="find-lists-names"),
+    pytest.param("find src | xargs cat", id="find-source-into-xargs"),
+    pytest.param("find src -exec cat {{}} +", id="find-exec-source"),
+    pytest.param("find ~ -name *.txt | xargs cat", id="find-yielding-text-into-xargs"),
+    pytest.param(
+        "find . -name *.py -exec grep -l token {{}} +", id="find-exec-yielding"
+    ),
 ]
 """Reads that name no withheld path and walk into none."""
 

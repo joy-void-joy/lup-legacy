@@ -7,11 +7,12 @@ grammar, so it is read here one utility at a time, and the host then says
 whether anything withheld lies beneath each root -- a fact only a filesystem
 has.
 
-A listing is not a read: `ls -R`, `du` and `tree` print names, and a name is
-not the secret. `find` walks as well, but what it hands a payload is decided
-by predicates only the run evaluates, and the payload is judged as the command
-it is, so its roots are not read as walked here. `git grep` reads what Git
-tracks, which a login never is.
+A listing is not a read: `ls -R`, `du`, `tree` and `find` print names, and a
+name is not the secret -- until something reads each name it printed. A
+`find` handing `{}` to a payload names every file it meets to that payload,
+and a line that also hands names read from its input to a program (`xargs
+cat`, a `while read` loop) reads what its listings yield, so each is read as
+the walk it feeds. `git grep` reads what Git tracks, which a login never is.
 
 Every reading errs toward naming more roots rather than fewer. A word read as
 a root that is really an option's value names a path the host finds nothing
@@ -25,6 +26,7 @@ from typing import TypedDict
 
 from .lex import placed_path, read_segments
 from .rows import ShellRuleRow
+from .words import xargs_payload
 
 
 class WalkedRoot(TypedDict):
@@ -50,10 +52,25 @@ class WalkedRoot(TypedDict):
     Kept apart from ``excluded`` because each option reaches only its own
     kind: `--exclude=.lup` still descends into a directory named `.lup`."""
 
+    yielded: list[str]
+    """File names the walk yields only, as globs every yielded name matches.
+
+    Empty yields every name. `find . -name '*.py' | xargs grep x` hands its
+    reader Python files alone, so a login beneath the root is never among
+    what is read; matched without regard to case, which can only yield more."""
+
 
 def excluded_name(name: str, globs: list[str]) -> bool:
     """Whether a walk told to leave out these globs leaves out this directory."""
     return any(fnmatchcase(name, glob) for glob in globs)
+
+
+def skipped_file(name: str, root: WalkedRoot) -> bool:
+    """Whether a walk leaves this file out, by what it skips or what it yields."""
+    folded = name.lower()
+    return excluded_name(name, root["skipped"]) or any(
+        not fnmatchcase(folded, glob.lower()) for glob in root["yielded"]
+    )
 
 
 class SplitWords(TypedDict):
@@ -140,7 +157,9 @@ def searched_roots(
     operands = split["operands"]
     roots = operands if patterned(split["options"]) else operands[1:]
     return [
-        WalkedRoot(path=root, hidden=hidden, excluded=excluded, skipped=skipped)
+        WalkedRoot(
+            path=root, hidden=hidden, excluded=excluded, skipped=skipped, yielded=[]
+        )
         for root in roots or ["."]
     ]
 
@@ -309,21 +328,149 @@ def copied_roots(
     operands = split["operands"]
     read = operands[:-1] if sources else operands
     return [
-        WalkedRoot(path=root, hidden=True, excluded=[], skipped=[]) for root in read
+        WalkedRoot(path=root, hidden=True, excluded=[], skipped=[], yielded=[])
+        for root in read
     ]
 
 
-def walked_roots(words: list[str]) -> list[WalkedRoot]:
-    """Every root one command reads everything beneath, by its own grammar."""
+def find_roots(arguments: list[str]) -> list[str]:
+    """The starting points `find` walks from: the operands before its expression.
+
+    Past the options that come first (`-H`, `-L`, `-P`, `-D <list>`,
+    `-O<level>`), every word up to the first that opens the expression --
+    an option, `(`, `!` -- names a root. Naming none, it walks where it
+    stands.
+    """
+    leading = 0
+    for index, word in enumerate(arguments):
+        if index < leading:
+            continue
+        if word not in ("-H", "-L", "-P", "-D") and not word.startswith("-O"):
+            break
+        leading = index + (2 if word == "-D" else 1)
+    rest = arguments[leading:]
+    opened = next(
+        (
+            index
+            for index, word in enumerate(rest)
+            if word.startswith("-") or word in ("(", "!", ")", ",")
+        ),
+        len(rest),
+    )
+    return rest[:opened] or ["."]
+
+
+def names_every_file(arguments: list[str]) -> bool:
+    """Whether a `find` hands each file it meets to a program by name.
+
+    An `-exec`, `-execdir`, `-ok` or `-okdir` whose payload carries `{}`,
+    which find replaces with every name it yields.
+    """
+
+    def payload(start: int) -> list[str]:
+        """The words one action runs, up to the `;` or `+` ending it."""
+        rest = arguments[start + 1 :]
+        ended = next(
+            (index for index, word in enumerate(rest) if word in (";", "+")),
+            len(rest),
+        )
+        return rest[:ended]
+
+    actions = ("-exec", "-execdir", "-ok", "-okdir")
+    return any(
+        "{}" in word
+        for start, action in enumerate(arguments)
+        if action in actions
+        for word in payload(start)
+    )
+
+
+def find_names(arguments: list[str]) -> list[str]:
+    """The name globs a `find` expression yields only, where it is a plain AND.
+
+    `-name` and `-iname` tests joined by nothing but juxtaposition restrict
+    every name it yields; an `-o`, a `!` or `-not`, a `,` or a parenthesis
+    makes it an expression this does not evaluate, so it yields every name.
+    """
+    joined = ("-o", "-or", "!", "-not", ",", "(", ")")
+    if any(word in joined for word in arguments):
+        return []
+    return [
+        value
+        for test, value in zip(arguments, arguments[1:], strict=False)
+        if test in ("-name", "-iname")
+    ]
+
+
+def listed_roots(words: list[str]) -> list[str]:
+    """The roots a listing prints every name beneath, read or not.
+
+    `find`, `du` and `tree` always walk; `ls` only with `-R`; `fd` and `rg
+    --files` take a pattern before their roots, and `rg --files` none.
+    """
     arguments = words[1:]
+    split = split_options(arguments)
+    operands = split["operands"]
     match posixpath.basename(words[0]) if words else "":
+        case "find":
+            return find_roots(arguments)
+        case "du" | "tree":
+            return operands or ["."]
+        case "ls" if recursing(split["options"], "R", ("--recursive",)):
+            return operands or ["."]
+        case "fd" | "fdfind":
+            return operands[1:] or ["."]
+        case "rg" if "--files" in split["options"]:
+            return operands or ["."]
+        case _:
+            return []
+
+
+def reads_names(words: list[str]) -> bool:
+    """Whether a command runs a program over names it reads from its input.
+
+    `xargs` with a payload -- or with options nobody read, which could hide
+    one -- and `read` or `mapfile` binding names a loop then hands on.
+    `xargs` alone prints what it read.
+    """
+    match posixpath.basename(words[0]) if words else "":
+        case "xargs":
+            payload = xargs_payload(words)
+            return payload is None or bool(payload)
+        case "read" | "mapfile" | "readarray":
+            return True
+        case _:
+            return False
+
+
+def walked_roots(words: list[str], listed: bool = False) -> list[WalkedRoot]:
+    """Every root one command reads everything beneath, by its own grammar.
+
+    ``listed`` says the line reads each name its listings print, which makes
+    every listing's roots walked roots too.
+    """
+    arguments = words[1:]
+    executable = posixpath.basename(words[0]) if words else ""
+    if listed or (executable == "find" and names_every_file(arguments)):
+        roots = listed_roots(words)
+        yielded = find_names(arguments) if executable == "find" else []
+        if roots:
+            return [
+                WalkedRoot(
+                    path=root, hidden=True, excluded=[], skipped=[], yielded=yielded
+                )
+                for root in roots
+            ]
+    match executable:
         case "grep" | "egrep" | "fgrep":
             return grep_roots(arguments)
         case "rg":
             return rg_roots(arguments)
         case "tar":
             return [
-                WalkedRoot(path=member, hidden=True, excluded=[], skipped=[])
+                WalkedRoot(
+                    path=member, hidden=True, excluded=[], skipped=[], yielded=[]
+                )
                 for member in tar_members(arguments)
             ]
         case "zip":
@@ -332,7 +479,9 @@ def walked_roots(words: list[str]) -> list[WalkedRoot]:
             if not recursing(split["options"], "rR", spelled):
                 return []
             return [
-                WalkedRoot(path=member, hidden=True, excluded=[], skipped=[])
+                WalkedRoot(
+                    path=member, hidden=True, excluded=[], skipped=[], yielded=[]
+                )
                 for member in split["operands"][1:]
             ]
         case "cp":
@@ -367,15 +516,31 @@ def shell_walked_roots(command: str, rows: list[ShellRuleRow]) -> list[WalkedRoo
     it was. A root a `cd` left unreadable is not placed, and the segment's own
     reading answers it.
     """
+    segments = read_segments(command, rows)
+    listed = names_read(command, rows)
     return [
         WalkedRoot(
             path=placed,
             hidden=root["hidden"],
             excluded=root["excluded"],
             skipped=root["skipped"],
+            yielded=root["yielded"],
         )
-        for segment in read_segments(command, rows)
-        for root in walked_roots(segment["words"])
+        for segment in segments
+        for root in walked_roots(segment["words"], listed)
         for placed in [placed_root(root["path"], segment["directory"])]
         if placed is not None
     ]
+
+
+def names_read(command: str, rows: list[ShellRuleRow]) -> bool:
+    """Whether a line hands names read from its input to a program anywhere.
+
+    Read over the whole line rather than one pipeline, because a listing can
+    reach its reader by more than a pipe -- a file written first, a `while
+    read` loop over a substitution -- and every reading here errs toward
+    naming more roots rather than fewer.
+    """
+    return any(
+        reads_names(segment["words"]) for segment in read_segments(command, rows)
+    )

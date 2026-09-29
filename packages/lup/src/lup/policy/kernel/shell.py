@@ -81,6 +81,7 @@ from .programs import (
     program_verdict,
     read_program,
 )
+from .walks import names_read
 from .withheld import (
     printed_secret,
     secret_name,
@@ -215,6 +216,13 @@ class ShellContext(TypedDict):
     arrives from the host per call; absent, nothing was walked and nothing is
     refused for what lies beneath."""
 
+    names_read: bool
+    """Whether this line hands names read from its input to a program.
+
+    Read once over the whole line, since a listing's names reach their
+    reader through a pipe, a file or a loop: where they do, every listing
+    in the line is read as the walk it feeds."""
+
     secret_variables: list[str]
     """Name patterns of the variables whose values no command may print."""
 
@@ -308,6 +316,7 @@ def shell_context(
     displaced_targets: list[DisplacedTargetRow] | None = None,
     host_ports: list[int] | None = None,
     withheld_walks: list[WithheldWalkRow] | None = None,
+    names_read: bool = False,
 ) -> ShellContext:
     """Bundle one classification's declarations, normalizing absent lists.
 
@@ -343,6 +352,7 @@ def shell_context(
         unscoped_fetch=unscoped_fetch,
         refused_paths=refused_paths or [],
         withheld_walks=withheld_walks or [],
+        names_read=names_read,
         secret_variables=secret_variables or [],
         antipattern_rows=antipattern_rows or {},
         edit_rules=edit_rules or [],
@@ -974,6 +984,7 @@ def decide_shell_segment(
         context["checkout_root"],
         context["withheld_walks"],
         context["refused_paths"],
+        context["names_read"],
     )
     if withheld is not None:
         return withheld
@@ -1574,6 +1585,7 @@ def classify_shell(
         unproduced_documents=unproduced_documents,
         displaced_targets=displaced_targets,
         host_ports=host_ports,
+        names_read=names_read(command, rows),
     )
     tree = parse_shell(command)
     if isinstance(tree, KernelDecision):
