@@ -43,7 +43,7 @@ def revisions_home(cache: Path | None = None) -> Path:
     environments, and mounted by no lease, so nothing a session reaches can
     rewrite one.
     """
-    # lup: defer: one revision accumulates here per plugin revision a
+    # lup: solved: one revision accumulates here per plugin revision a
     # contained session ran, and nothing sweeps them; `harness clean` should
     # list and remove the ones no running container holds, as it does the
     # environments

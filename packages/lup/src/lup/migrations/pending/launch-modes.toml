@@ -1,0 +1,64 @@
+subjects = [
+    "LaunchSession",
+    "LaunchSession.__call__",
+    "LaunchMode.model",
+    "LaunchMode.record_root",
+    "LaunchMode.arguments",
+    "LaunchMode.session",
+    "LaunchMode.max_recursive_agent",
+    "LaunchMode.transcribe_session",
+    "LaunchMode.command_words",
+    "LaunchMode.native_model",
+    "LaunchMode.transcript_root",
+    "LaunchMode.transcribes",
+    "LaunchMode.recursive_agent_limit",
+    "LaunchMode.opened",
+    "LaunchSelection",
+    "LaunchSelection.mode",
+    "LaunchSelection.arguments",
+    "extract_launch_mode",
+    "ModeSession",
+    "ModeSession.mode",
+    "ModeSession.runtime",
+    "ModeSession.transcribe",
+    "ModeSession.held",
+    "LaunchRequest.named_model",
+    "LaunchRequest.launch_words",
+    "LaunchRequest.transcribes",
+    "LaunchRequest.companions",
+]
+reason = """
+a launch mode is one named preset of the project's declaration, selected by \
+`--mode <name>` on `harness claude|codex` rather than a `--<name>` flag of its \
+own: a `Claude(...)` and its `Codex(...)` variant stating only what the mode \
+changes, laid over the declaration the launch builds (the command line laid \
+over both), and an `OuterContainer` for what it grants its container, between \
+the command line and the person's `[container]` config"""
+
+[[steps]]
+instruction = """
+Launch a mode with `harness claude --mode <name>` (and `harness codex --mode \
+<name>`) where you typed `--<name>`; `harness claude --help` lists the modes a \
+project declares."""
+
+[[steps]]
+instruction = """
+Rewrite each `LaunchMode(...)` as a preset: `model=lambda runtime: ...` becomes \
+`claude=Claude(model=...)` and `codex=Codex(model=...)`; `record_root=` and \
+`transcribe_session=` become `claude=Claude(record=Recording(root=..., \
+transcript=...))` (a relative root is the checkout's) and the same on `codex=`; \
+`max_recursive_agent=` becomes that field on each preset; `arguments=` becomes \
+the declaration fields the words meant, such as `system_prompt=`; and what \
+`session=` opened around the run is a `HostCompanion` in each preset's \
+`companions=`, handed the run's journal in `CompanionLaunch.journal`. `targets=` \
+is optional now, the project's own trees where a mode compiles none."""
+
+[[steps]]
+instruction = """
+Where a caller read `LaunchRequest.launch_words(runtime)`, read \
+`LaunchRequest.words`; `LaunchRequest.allowance()` takes the runtime; \
+`selected_mode(modes, name)` answers what `extract_launch_mode(modes, words)` \
+selected, and the mode's own fields reach the declaration through \
+`claude_declaration`/`codex_declaration` rather than `named_model`, \
+`transcribes` and `companions`."""
+command = ["uv", "run", "lup-devtools", "dev", "py", "text", "LaunchMode(", "."]

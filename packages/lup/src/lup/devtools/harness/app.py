@@ -21,7 +21,7 @@ import lup.devtools.harness.clean as clean
 import lup.devtools.harness.doctor as doctor
 import lup.devtools.harness.drift as drift
 import lup.devtools.harness.launch as launch
-from lup.launch.declaration import LaunchSandbox
+from lup.launch.declaration import LaunchSandbox, OuterContainer
 import lup.devtools.harness.policy_refresh as policy_refresh
 import lup.devtools.harness.reconcile as reconcile
 import lup.devtools.harness.resolve as resolve
@@ -57,6 +57,7 @@ from lup.providers.runtime_homes import runtime_logins
 from lup.devtools.harness.drift import RepositoryWriter
 from lup.workspace.paths import project_root
 from lup.policy.assets.host import boundary_description
+from lup.sandbox.models import NetworkMode
 from lup.sandbox.observed import unheld
 
 
@@ -69,6 +70,7 @@ def create_harness_app(
     checkpoint: launch.LaunchCheckpoint | None = None,
     node_classes: list[type[LedgerNode]] | None = None,
     ledger: LedgerLayout = LedgerLayout(),
+    container: OuterContainer = OuterContainer(),
 ) -> typer.Typer:
     """Wire the harness command tree over the targets one project declares.
 
@@ -76,10 +78,10 @@ def create_harness_app(
     person's own, under their lup config home, which every checkout shares —
     so one name selects the same account here as in any other repository.
 
-    ``launch_modes`` are that project's own kinds of session. Each adds a flag
-    to every launcher; selecting one compiles the tree it declares instead of
-    the default, so the mode reaches the artifacts a runtime reads at startup
-    rather than only the command line this tree assembles.
+    ``launch_modes`` are that project's own kinds of session, each selected
+    by ``--mode <name>`` on every launcher: a preset laid over the
+    declaration a launch builds, and the tree it declares compiled instead of
+    the default where it declares one.
 
     ``checkpoint`` saves application data before generation and after closing.
 
@@ -87,6 +89,9 @@ def create_harness_app(
     a launch that finds the session kinds among them records itself in the
     ledger as a pointer at its transcript directory, and one that does not
     records nothing.
+
+    ``container`` is what the project's contained sessions are granted, under
+    the person's ``[container]`` config, a mode and the command line.
     """
     directory = profiles or claude_profile_directory()
     modes = launch_modes or []
@@ -413,12 +418,14 @@ def create_harness_app(
     ) -> None:
         """List everything lup keeps for contained sessions, and what nothing points at.
 
-        Images, volumes, project environments and egress proxies, each with its
-        size and what points at it. A dry run unless ``--yes``: then this
-        repository's old shared config home is split into one per runtime, and
-        every image no checkout points at, every environment whose checkout is
-        gone, every stopped proxy and every sandbox workspace no container
-        holds is removed. A repository's own config home is never removed here.
+        Images, volumes, project environments, held Codex revisions and egress
+        proxies, each with its size and what points at it. A dry run unless
+        ``--yes``: then this repository's old shared config home is split into
+        one per runtime, and every image no checkout points at, every
+        environment whose checkout is gone, every Codex revision no running
+        container binds, every stopped proxy and every sandbox workspace no
+        container holds is removed. A repository's own config home is never
+        removed here.
         """
         root = project_root()
         compositions = targets.resolve(targets.every, root)
@@ -490,10 +497,10 @@ def create_harness_app(
         judged by the tree it opened against rather than by what was asked
         for.
         """
-        source = mode.targets_at(allowance) if mode is not None else targets
+        source = (mode.targets_at(allowance) if mode is not None else None) or targets
         build = source.builder(runtime)
         if build is None:
-            named = f"--{mode.name} " if mode is not None else ""
+            named = f"--mode {mode.name} " if mode is not None else ""
             raise typer.BadParameter(f"{named}declares no {runtime} tree")
         return build(project_root(), every_rule_retired() if relaxed else None)
 
@@ -512,7 +519,7 @@ def create_harness_app(
         opened, and projecting it into a tree nobody is opening would leave
         that runtime on disk judged by rules its source never declared.
         """
-        source = mode.targets_at(allowance) if mode is not None else targets
+        source = (mode.targets_at(allowance) if mode is not None else None) or targets
         return [
             composition
             for composition in source.resolve(source.every, project_root())
@@ -521,8 +528,7 @@ def create_harness_app(
 
     def launch_help(subject: str) -> str:
         """One launcher's help, with whatever modes this project declares."""
-        flags = "".join(f"  --{mode.name}: {mode.help}" for mode in modes)
-        return f"{subject}{flags}"
+        return f"{subject}{launch.modes_help(modes)}"
 
     claude_target = targets.builder("claude")
     if claude_target is not None:
@@ -637,6 +643,44 @@ def create_harness_app(
                     "launch only",
                 ),
             ] = [],
+            sudo: Annotated[
+                bool | None,
+                typer.Option(
+                    "--sudo/--no-sudo",
+                    help="Let the contained session become its container's "
+                    "root through sudo, on a rootless engine only; default: "
+                    "the mode's, your [container] config's, or the project's",
+                ),
+            ] = None,
+            network: Annotated[
+                NetworkMode | None,
+                typer.Option(
+                    "--network",
+                    help="The container's network: filtered (behind the "
+                    "egress proxy), bridge, host or none; default: the "
+                    "mode's, your [container] config's, or the image's",
+                ),
+            ] = None,
+            memory: Annotated[
+                str | None,
+                typer.Option(
+                    "--memory",
+                    help="How much memory the container may hold: an amount "
+                    "such as 12GiB, or a share such as 75%; default: the "
+                    "mode's, your [container] config's, or no limit",
+                ),
+            ] = None,
+            hold_generated: Annotated[
+                bool | None,
+                typer.Option(
+                    "--hold-generated/--release-generated",
+                    help="Hold the generated trees the runtime runs from "
+                    "read-only in the container, so the session cannot change "
+                    "the hooks judging it, and regenerates on the host; "
+                    "default: the mode's, your [container] config's, or the "
+                    "project's",
+                ),
+            ] = None,
             max_recursive_agent: Annotated[
                 int | None,
                 typer.Option(
@@ -652,10 +696,18 @@ def create_harness_app(
                     help="Mirror the native CLI transcript when this mode disables it",
                 ),
             ] = False,
+            mode: Annotated[
+                str | None,
+                typer.Option(
+                    "--mode",
+                    help="Open a kind of session this project declares, laid "
+                    "over its own declaration",
+                ),
+            ] = None,
         ) -> None:
-            selection = launch.extract_launch_mode(modes, ctx.args)
+            selected = launch.selected_mode(modes, mode)
             request = launch.LaunchRequest(
-                words=selection.arguments,
+                words=list(ctx.args),
                 model=model,
                 effort=effort,
                 profile=profile,
@@ -664,22 +716,25 @@ def create_harness_app(
                 mounts=mount,
                 read_only=mount_ro,
                 devices=device,
+                sudo=sudo,
+                hold_generated=hold_generated,
+                network=network,
+                memory=launch.memory_limit(memory),
+                container=container,
                 max_recursive_agent=max_recursive_agent,
                 transcribe_session=transcribe_session,
                 relaxed=ignore_antipatterns,
-                mode=selection.mode,
+                mode=selected,
                 recorder=recorder_for("claude"),
             )
-            allowance = request.allowance()
+            allowance = request.allowance("claude")
             launch.launch_claude(
-                selected_target(
-                    selection.mode, "claude", allowance, ignore_antipatterns
-                ),
+                selected_target(selected, "claude", allowance, ignore_antipatterns),
                 request,
                 directory,
                 generate_only,
                 checkpoint=checkpoint,
-                companions=companion_targets(selection.mode, "claude", allowance),
+                companions=companion_targets(selected, "claude", allowance),
                 repository_writers=repository_writers,
             )
 
@@ -833,6 +888,44 @@ def create_harness_app(
                     "launch only",
                 ),
             ] = [],
+            sudo: Annotated[
+                bool | None,
+                typer.Option(
+                    "--sudo/--no-sudo",
+                    help="Let the contained session become its container's "
+                    "root through sudo, on a rootless engine only; default: "
+                    "the mode's, your [container] config's, or the project's",
+                ),
+            ] = None,
+            network: Annotated[
+                NetworkMode | None,
+                typer.Option(
+                    "--network",
+                    help="The container's network: filtered (behind the "
+                    "egress proxy), bridge, host or none; default: the "
+                    "mode's, your [container] config's, or the image's",
+                ),
+            ] = None,
+            memory: Annotated[
+                str | None,
+                typer.Option(
+                    "--memory",
+                    help="How much memory the container may hold: an amount "
+                    "such as 12GiB, or a share such as 75%; default: the "
+                    "mode's, your [container] config's, or no limit",
+                ),
+            ] = None,
+            hold_generated: Annotated[
+                bool | None,
+                typer.Option(
+                    "--hold-generated/--release-generated",
+                    help="Hold the generated trees the runtime runs from "
+                    "read-only in the container, so the session cannot change "
+                    "the hooks judging it, and regenerates on the host; "
+                    "default: the mode's, your [container] config's, or the "
+                    "project's",
+                ),
+            ] = None,
             max_recursive_agent: Annotated[
                 int | None,
                 typer.Option(
@@ -848,10 +941,18 @@ def create_harness_app(
                     help="Mirror the native CLI transcript when this mode disables it",
                 ),
             ] = False,
+            mode: Annotated[
+                str | None,
+                typer.Option(
+                    "--mode",
+                    help="Open a kind of session this project declares, laid "
+                    "over its own declaration",
+                ),
+            ] = None,
         ) -> None:
-            selection = launch.extract_launch_mode(modes, ctx.args)
+            selected = launch.selected_mode(modes, mode)
             request = launch.LaunchRequest(
-                words=selection.arguments,
+                words=list(ctx.args),
                 model=model,
                 effort=effort,
                 profile=profile,
@@ -860,23 +961,26 @@ def create_harness_app(
                 mounts=mount,
                 read_only=mount_ro,
                 devices=device,
+                sudo=sudo,
+                hold_generated=hold_generated,
+                network=network,
+                memory=launch.memory_limit(memory),
+                container=container,
                 max_recursive_agent=max_recursive_agent,
                 transcribe_session=transcribe_session,
                 relaxed=ignore_antipatterns,
-                mode=selection.mode,
+                mode=selected,
                 recorder=recorder_for("codex"),
             )
-            allowance = request.allowance()
+            allowance = request.allowance("codex")
             launch.launch_codex(
-                selected_target(
-                    selection.mode, "codex", allowance, ignore_antipatterns
-                ),
+                selected_target(selected, "codex", allowance, ignore_antipatterns),
                 request,
                 codex_home,
                 generate_only,
                 force_install,
                 checkpoint=checkpoint,
-                companions=companion_targets(selection.mode, "codex", allowance),
+                companions=companion_targets(selected, "codex", allowance),
                 repository_writers=repository_writers,
             )
 

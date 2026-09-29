@@ -16,7 +16,8 @@ launch adds to an agent's declaration -- the wall its session opens behind
 tree it reaches (`Mount`), its coordination identity (`Member`), what is kept
 of it (`Recording`), the session it reopens (`Latest`, `Pick`, `Reopen`),
 and what it keeps running on the host beside it (`HostCompanion`, most often
-a `SharedProcess`, with the values one is written in) -- defined beside the
+a `SharedProcess`, with the values one is written in, or a `HostService` it
+reaches on the host's loopback) -- defined beside the
 harness, policy and sandbox machinery a launch composes. Bound here, either would have `import lup` pull several hundred
 modules on behalf of a caller who may have wanted a type annotation.
 
@@ -58,6 +59,7 @@ if TYPE_CHECKING:
         CompanionScope,
         Contribution,
         HostCompanion,
+        HostService,
         SharedProcess,
     )
     from lup.launch.declaration import (
@@ -91,6 +93,7 @@ LAZY_EXPORTS = {
     "CompanionScope": "lup.launch.companions",
     "Contribution": "lup.launch.companions",
     "HostCompanion": "lup.launch.companions",
+    "HostService": "lup.launch.companions",
     "InnerSandbox": "lup.launch.declaration",
     "Latest": "lup.launch.declaration",
     "Member": "lup.launch.declaration",
@@ -115,6 +118,7 @@ def __getattr__(
     | CompanionScope
     | Contribution
     | HostCompanion
+    | HostService
     | InnerSandbox
     | Latest
     | Member
@@ -150,6 +154,7 @@ __all__ = [  # lup: ignore[all-export] -- the package-root public API
     "Conversation",
     "CustomModel",
     "HostCompanion",
+    "HostService",
     "InnerSandbox",
     "Latest",
     "Member",

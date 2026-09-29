@@ -197,6 +197,27 @@ LAUNCH_FIELDS = {
     "host companions": FieldExample(
         example="launch_companions.py", call="Claude", keyword="companions"
     ),
+    "container network": FieldExample(
+        example="launch_network.py", call="OuterContainer", keyword="network"
+    ),
+    "container memory": FieldExample(
+        example="launch_memory.py", call="OuterContainer", keyword="memory"
+    ),
+    "how much the runtime asks": FieldExample(
+        example="launch_asking.py", call="Codex", keyword="approvals_reviewer"
+    ),
+    "a kind of session's own guidance": FieldExample(
+        example="launch_guidance.py", call="OuterContainer", keyword="guidance"
+    ),
+    "a companion's host-only secrets": FieldExample(
+        example="launch_companion_secrets.py", call="Preview", keyword="secrets"
+    ),
+    "named host services": FieldExample(
+        example="launch_host_service.py", call="HostService"
+    ),
+    "held generated trees": FieldExample(
+        example="launch_held_trees.py", call="OuterContainer", keyword="hold_generated"
+    ),
 }
 
 

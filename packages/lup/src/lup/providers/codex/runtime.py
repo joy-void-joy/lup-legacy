@@ -37,7 +37,7 @@ from lup.launch.compilation import (
     kept_record,
     semantic_hooks,
 )
-from lup.launch.declaration import Reopening
+from lup.launch.declaration import Reopening, loopback_relayed
 from lup.providers.codex.launch import (
     codex_account_environment,
     codex_plugin_root,
@@ -688,6 +688,9 @@ class CodexConversationState:
             params["sandbox"] = mode
         if self.config.approval_policy is not None:
             params["approvalPolicy"] = self.config.approval_policy
+        if self.config.approvals_reviewer is not None:
+            configuration["approvals_reviewer"] = self.config.approvals_reviewer
+            params["config"] = configuration
         native = self.config.builtins()
         if native.write and mode is None:
             params["sandbox"] = "workspace-write"
@@ -1153,7 +1156,22 @@ class CodexSessionOpener:
         fork_from: SessionId | None = None,
         fork_at: TurnId | None = None,
     ) -> AsyncGenerator[CodexSession]:
-        """Open one session, its host companions held for as long as it is open."""
+        """Open one session, its host companions held for as long as it is open.
+
+        An approval policy that asks makes the app-server send approval
+        requests back here, and only declared hooks answer them. Without
+        those the transport refuses every request as unhandled, which stalls
+        the turn on its first command — so such a session is refused before
+        anything starts rather than at its first act.
+        """
+        if self.config.approval_policy not in {None, "never"} and (
+            self.config.hooks is None
+        ):
+            raise ValueError(
+                f"approval_policy {self.config.approval_policy!r} makes the "
+                "app-server ask this session for decisions; supply hooks to "
+                "answer them, or use 'never'"
+            )
         if (
             self.config.sandbox.posture().contained()
             and self.config.executable == CODEX_PROGRAM
@@ -1167,6 +1185,7 @@ class CodexSessionOpener:
             root=declared.workspace(),
             runtime="codex",
             environment={**inherited_environment(), **declared.environment},
+            relayed=loopback_relayed(declared.plugin, declared.sandbox),
         )
         async with held_around(declared.companions, launch) as joined:
             for notice in joined.notices:

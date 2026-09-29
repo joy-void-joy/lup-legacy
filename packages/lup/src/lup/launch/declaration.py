@@ -14,16 +14,17 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Protocol, Self, runtime_checkable
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from lup.harness.devices import Device
-from lup.harness.image import Image, SessionPrivileges, detected_client
+from lup.harness.image import Image, MemoryLimit, SessionPrivileges, detected_client
 from lup.harness.messaging import WakeSockets
-from lup.harness.models import Harness, HookSet, Resumption
+from lup.harness.models import Harness, HookSet, PromptDocument, Resumption
 from lup.harness.notice import Notice
 from lup.harness.requirements import Manifest
 from lup.observability.sessions import SessionRecorder
 from lup.policy.enforcement import SandboxPosture
+from lup.sandbox.models import NetworkMode
 from lup.sandbox.rail import AccessibleRoot, NestedRepository
 from lup.sessions.events import SessionId, SessionSummary
 from lup.types import EnvVars
@@ -133,9 +134,25 @@ class Sandbox(BaseModel, ABC, frozen=True, extra="forbid"):
         """The image this wall's container runs, where it names one."""
         return None
 
+    def networked(self, image: Image) -> Image:
+        """``image`` on the network this wall's container joins; a host wall joins none."""
+        return image
+
     def privileges(self) -> SessionPrivileges:
         """What this wall lets a session's processes come to hold: nothing, unless it grants sudo."""
         return SessionPrivileges()
+
+    def memory_limit(self) -> MemoryLimit | None:
+        """How much memory this wall's container may hold, where it bounds it."""
+        return None
+
+    def holds_generated(self) -> bool:
+        """Whether this wall holds the generated trees the runtime runs from read-only."""
+        return False
+
+    def held_guidance(self) -> PromptDocument | None:
+        """The guidance this wall puts over the committed one, where it swaps it."""
+        return None
 
     def nested(self) -> list[NestedRepository]:
         """The repositories inside the checkout this wall holds as it holds the checkout's own."""
@@ -153,6 +170,12 @@ class OuterContainer(Sandbox, frozen=True):
     plainly which wall is load-bearing: in an unprivileged container the
     runtime's own confinement cannot start, so inside one the container and
     its egress proxy are the whole boundary.
+
+    What the container grants its session — its network, memory, sudo,
+    devices, folders and held trees — may be stated by several hands at
+    once, each an ``OuterContainer`` saying only what it sets, laid one over
+    the next by :meth:`over`: a launch's command line over its mode, over the
+    person's config, over the project.
     """
 
     devices: list[Device] = []
@@ -178,6 +201,45 @@ class OuterContainer(Sandbox, frozen=True):
     at every launch. One marked ``create`` is initialized on the host when
     absent, so no session writes its configuration first."""
 
+    network: NetworkMode | None = None
+    """The network the container joins: ``filtered`` behind the egress proxy,
+    ``bridge``, ``host`` or ``none``, as :class:`~lup.harness.egress.SessionEgress`
+    describes each. Unset, the image's own."""
+
+    memory: MemoryLimit | None = None
+    """How much memory the container may hold, an amount or a share of what
+    the engine can hand out; unset, the engine's default, which is no limit."""
+
+    hold_generated: bool = False
+    """Whether the generated trees the runtime runs from are held read-only:
+    the plugin whose hooks judge the session, and the project settings and
+    guidance the runtime reads, so a session cannot change what judges it.
+    Regenerating them is then the host's work — a session asking is told so
+    before anything is written — as is any git command rewriting them in
+    this checkout: a merge, a switch or a reset that touches them. Only this
+    checkout's trees; a sibling worktree's stay the session's to regenerate."""
+
+    guidance: PromptDocument | None = None
+    """The always-loaded document a session in this container reads instead
+    of the committed one: rendered for the runtime the way generation renders
+    the project's, held to the same budget, and mounted read-only over the
+    committed file's path inside the container, so the tree on the host never
+    changes. It names the module declaring it, as a rendered file does. Only
+    a container can put one file over another; a host session refuses one."""
+
+    @field_validator("guidance")
+    @classmethod
+    def guidance_names_its_source(
+        cls, value: PromptDocument | None
+    ) -> PromptDocument | None:
+        """Refuse guidance naming no module, which the file it renders to must name."""
+        if value is not None and value.source is None:
+            raise ValueError(
+                "guidance a container holds renders to a file of its own, so it "
+                "names the module declaring it: PromptDocument(parts=..., source=...)"
+            )
+        return value
+
     def posture(self) -> LaunchSandbox:
         return LaunchSandbox.OUTER
 
@@ -190,11 +252,51 @@ class OuterContainer(Sandbox, frozen=True):
     def named_image(self) -> Image | None:
         return self.image
 
+    def networked(self, image: Image) -> Image:
+        if self.network is None:
+            return image
+        egress = image.egress.model_copy(update={"mode": self.network})
+        return image.model_copy(update={"egress": egress})
+
     def privileges(self) -> SessionPrivileges:
         return SessionPrivileges(sudo=self.sudo)
 
+    def memory_limit(self) -> MemoryLimit | None:
+        return self.memory
+
+    def holds_generated(self) -> bool:
+        return self.hold_generated
+
+    def held_guidance(self) -> PromptDocument | None:
+        return self.guidance
+
     def nested(self) -> list[NestedRepository]:
         return list(self.nested_repositories)
+
+    def over(self, lower: "OuterContainer") -> "OuterContainer":
+        """These settings laid over ``lower``'s, as a higher hand's over a lower one's.
+
+        A setting this one states wins, even said as its default, so a
+        ``--no-sudo`` takes back a mode's sudo; one it leaves is ``lower``'s.
+        The folders, devices and nested repositories either names are all
+        granted, this one's first, since a grant is not something a higher
+        hand overrules by naming another. The result remembers what either
+        stated, so it lays over the next one down the same way.
+        """
+        granted = {
+            "mounts": list(dict.fromkeys([*self.mounts, *lower.mounts])),
+            "devices": list(dict.fromkeys([*self.devices, *lower.devices])),
+            "nested_repositories": list(
+                dict.fromkeys([*self.nested_repositories, *lower.nested_repositories])
+            ),
+        }
+        stated = {
+            name: getattr(self, name)
+            for name in self.model_fields_set
+            if name not in granted
+        }
+        joined = {name: value for name, value in granted.items() if value}
+        return lower.model_copy(update={**stated, **joined})
 
 
 class InnerSandbox(Sandbox, frozen=True):
@@ -262,6 +364,31 @@ type SessionSandbox = OuterContainer | InnerSandbox | NoSandbox
 """Which wall a session opens behind."""
 
 
+def laid_over[T: BaseModel](preset: T, base: T) -> T:
+    """``base`` with every field ``preset`` states taken from it: a preset over a declaration.
+
+    A preset states only what it changes — a ``Claude(permission_mode="auto")``
+    names one field and leaves the rest — so what it left unstated is
+    ``base``'s, and one it states is its own even said as the default. A field
+    holding a declaration of the same kind on both sides is laid the same
+    way, field by field, so a preset moving its record's ``root`` keeps the
+    ledger the base records to; anything else it states, a list included,
+    replaces the base's whole. The result is validated again as a whole, so a
+    combination neither side refused alone is refused where they meet.
+    """
+
+    stated = {name: getattr(preset, name) for name in preset.model_fields_set}
+    laid = base.model_copy(
+        update={
+            name: laid_over(value, getattr(base, name))
+            if isinstance(value, BaseModel) and type(value) is type(getattr(base, name))
+            else value
+            for name, value in stated.items()
+        }
+    )
+    return type(base).model_validate(laid)
+
+
 def declared_policy(
     plugin: Harness | Path | None, policy: HookSet | None
 ) -> HookSet | None:
@@ -303,11 +430,29 @@ def declared_requirements(
 
 
 def declared_image(plugin: Harness | Path | None, sandbox: "SessionSandbox") -> Image:
-    """The image a contained session runs: the container's own, the harness's, or lup's."""
+    """The image a contained session runs: the container's own, the harness's, or lup's.
+
+    On the network the container names, where it names one, since which
+    network a session joins and the proxy its environment points at are one
+    fact the image's egress holds.
+    """
     named = sandbox.named_image()
     if named is not None:
-        return named
-    return plugin.image if isinstance(plugin, Harness) else Image()
+        return sandbox.networked(named)
+    return sandbox.networked(plugin.image if isinstance(plugin, Harness) else Image())
+
+
+def loopback_relayed(plugin: Harness | Path | None, sandbox: "SessionSandbox") -> bool:
+    """Whether a session behind ``sandbox`` has a loopback of its own.
+
+    A container on any network but the host's does, so a service on the
+    host's loopback reaches it only through a relay; a session on the host,
+    or in a container sharing the host's network, reaches the service itself.
+    """
+    return (
+        sandbox.posture().contained()
+        and not declared_image(plugin, sandbox).egress.shares_host_loopback()
+    )
 
 
 def settled_sandbox(asked: LaunchSandbox | None, stated: str) -> LaunchSandbox:
@@ -386,7 +531,9 @@ class Recording(BaseModel, frozen=True, extra="forbid", arbitrary_types_allowed=
     """Where the session is recorded as opened and closed, or nowhere."""
 
     root: Path | None = None
-    """Where the run's journal and transcript are written; unset, the project's runs."""
+    """Where the run's journal and transcript are written; unset, the project's
+    runs. A relative one is in the checkout the session works in, wherever the
+    launching process stands."""
 
     mode: str | None = None
     """The named kind of session this is, written into its record, so a run

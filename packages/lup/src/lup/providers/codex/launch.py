@@ -9,7 +9,13 @@ from pydantic import BaseModel
 
 from lup.coordination.repository import launched_member
 from lup.harness.generate import ProjectContent, codex_generation_recipe, generate
-from lup.harness.models import CapabilityEvidence, Harness, HookSet, Resumption
+from lup.harness.models import (
+    ArtifactTree,
+    CapabilityEvidence,
+    Harness,
+    HookSet,
+    Resumption,
+)
 from lup.harness.notice import Notice
 from lup.harness.requirements import Finding
 from lup.harness.toolchain import codex_envelope_requirement
@@ -27,12 +33,15 @@ from lup.launch.declaration import (
     declared_image,
     declared_requirements,
     launched_sandbox,
+    loopback_relayed,
     resumption,
 )
 from lup.launch.environments import revisions_home
+from lup.launch.guidance import held_guidance
 from lup.launch.foreground import between_steps, run_in_foreground
 from lup.launch.preflight import LaunchSentinels, release_ledger
 from lup.launch.refusal import LaunchRefused
+from lup.launch.secrets import withheld_secrets
 from lup.launch.session import (
     LaunchOpening,
     cleared_on_the_way_in,
@@ -43,6 +52,8 @@ from lup.launch.session import (
 )
 from lup.observability.audit import TraceJournal
 from lup.providers.codex.confinement import CODEX_CONFINEMENT
+from lup.providers.codex.harness import CodexGuidanceRenderer, CodexSpellings
+from lup.providers.harness import codex_prompt_renderer, reject_oversized_guidance
 from lup.providers.codex.harness_runtime import (
     CodexCliEvidence,
     codex_capability_probes,
@@ -53,7 +64,7 @@ from lup.providers.codex.home import (
     select_codex_home,
 )
 from lup.providers.codex.login import CODEX_HOME, CODEX_LOGIN
-from lup.providers.codex.marketplace import CodexMarketplace
+from lup.providers.codex.marketplace import MARKETPLACE_MANIFEST, CodexMarketplace
 from lup.providers.codex.model_choice import (
     codex_default_effort,
     codex_effort_arguments,
@@ -314,6 +325,51 @@ def codex_sandbox_mode(
             return declared
 
 
+def codex_held_trees(root: Path, offered: CodexMarketplace | None) -> list[Path]:
+    """The generated trees a Codex session in ``root`` runs from, as a container holds them.
+
+    The plugin the session's home installs from, whole, and its rules file
+    where the checkout offers one; then the generated agents, the project
+    configuration Codex reads, the marketplace offering the plugin and the
+    guidance, each alone. The machine's rendered skills and the checkout's
+    local configuration stay writable, being nobody's generation. Only what
+    is there, since a bind whose source is missing refuses the container.
+    """
+    checkout = root.resolve()
+    offering = (
+        [offered.source, checkout / ".codex" / "rules" / f"{offered.plugin}.rules"]
+        if offered is not None and offered.source.is_relative_to(checkout)
+        else []
+    )
+    alone = [
+        checkout / ".codex" / "agents",
+        checkout / ".codex" / "config.toml",
+        checkout / MARKETPLACE_MANIFEST,
+        checkout / "AGENTS.md",
+    ]
+    return [path for path in [*offering, *alone] if path.exists()]
+
+
+def codex_guidance(root: Path, sandbox: Sandbox) -> dict[Path, str]:
+    """The guidance a Codex session's container holds over ``AGENTS.md``.
+
+    Rendered the way generation renders the project's and held to its
+    budget, then written outside the checkout; nothing where the wall swaps
+    no guidance in.
+    """
+    document = sandbox.held_guidance()
+    if document is None:
+        return {}
+    try:
+        rendered = CodexGuidanceRenderer(
+            codex_prompt_renderer(), CodexSpellings()
+        ).guidance(document)
+        reject_oversized_guidance(ArtifactTree(artifacts=[rendered]))
+    except ValueError as refused:
+        raise LaunchRefused(f"this session's guidance: {refused}") from refused
+    return held_guidance(root, rendered.path, rendered.content)
+
+
 def codex_account_environment(agent: "Codex") -> EnvVars:
     """The account a session runs as: the home named outright, or its profile's.
 
@@ -505,6 +561,14 @@ def codex_arguments(
             else []
         ),
         *(
+            [
+                "--config",
+                f"approvals_reviewer={json.dumps(config.approvals_reviewer)}",
+            ]
+            if config.approvals_reviewer is not None
+            else []
+        ),
+        *(
             ["--config", f"model_provider={json.dumps(config.model_provider)}"]
             if config.model_provider is not None
             else []
@@ -675,7 +739,7 @@ def codex_opening(
     posture = config.sandbox.posture()
     policy = config.enforced_policy()
     member = launched_member(root, config.identity.name if config.identity else None)
-    environment = inherited_environment()
+    environment = withheld_secrets(inherited_environment(), root)
     environment.update(config.environment)
     environment.update(joined.environment)
     environment.update(allowance_environment(config.max_recursive_agent, environment))
@@ -753,6 +817,13 @@ def codex_opening(
         forwarded=list(joined.environment),
         privileges=config.sandbox.privileges(),
         nested=config.sandbox.nested(),
+        memory=config.sandbox.memory_limit(),
+        trees=(
+            codex_held_trees(root, CodexMarketplace.declared(offered))
+            if config.sandbox.holds_generated()
+            else []
+        ),
+        overlays=codex_guidance(root, config.sandbox),
     )
     return LaunchCommand(argv=argv, env=environment, cwd=root)
 
@@ -764,8 +835,12 @@ def codex_companions(
     return CompanionLaunch(
         root=root,
         runtime="codex",
-        environment={**inherited_environment(), **compiled_codex(agent).environment},
+        environment={
+            **withheld_secrets(inherited_environment(), root),
+            **compiled_codex(agent).environment,
+        },
         journal=journal,
+        relayed=loopback_relayed(agent.plugin, agent.sandbox),
     )
 
 

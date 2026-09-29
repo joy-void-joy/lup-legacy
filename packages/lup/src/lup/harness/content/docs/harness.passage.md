@@ -597,9 +597,24 @@ revision again from the plugin source on the host, under
 source's content, and mounts it read-only over the plugin's whole cache in the
 home, after the volume it nests in. The session runs the hooks it was
 launched with and sees no other revision; the rest of the home stays
-writable. A Claude Code session loads its plugin from the checkout's
-generated tree, which a contained session can write — holding the generated
-trees is its own piece of work.
+writable.
+
+A Claude Code session loads its plugin from the checkout's generated tree,
+which a contained session can write, so it could rewrite the hooks judging it.
+`OuterContainer(hold_generated=True)` — `--hold-generated` on the command
+line, or `hold_generated = true` in a mode, a person's `[container]` or the
+project's declared container — holds what the runtime runs from read-only:
+Claude Code's plugin directory whole with its marketplace, the project
+settings and `.claude/CLAUDE.md`; Codex's plugin source with its rules, the
+generated agents, `.codex/config.toml`, the marketplace and `AGENTS.md`. Only
+this checkout's, so a sibling worktree stays the session's to regenerate. The
+cost is that regenerating this checkout's trees is the host's work: `harness
+generate all` in such a session refuses before writing anything, "these trees
+are read-only in this session; run `uv run lup-devtools harness generate all`
+on the host", `dev check`'s drift line says the same, and so is any git command
+rewriting them here — a merge, a switch or a reset that touches them. Off by
+default, since a project whose sessions regenerate their own checkout would
+lose that.
 
 `lup-devtools harness claude|codex` launches a declaration. Each flag is a
 field of the `Claude(...)` or `Codex(...)` it builds from this repository's
@@ -622,14 +637,46 @@ describes the declaration.
 | `--sandbox outer\|inner\|none` | `OuterContainer(image=..., mounts=..., devices=...)`, `InnerSandbox(escapable=True)` on Claude and `InnerSandbox()` on Codex, `NoSandbox()`; unnamed, outer where Docker or Podman answers and inner with a warning where neither does |
 | `--mount`, `--mount-ro`, `sync.json.local` | `Mount(path, writable=...)` on the sandbox, the command line's first |
 | `--device`, `sync.json.local` grants | `devices=` on `OuterContainer`; said and not granted on the host |
+| `--sudo`/`--no-sudo`, `--network`, `--memory`, `--hold-generated`/`--release-generated` | `sudo=`, `network=`, `memory=MemoryLimit(...)`, `hold_generated=` on `OuterContainer`; said and not granted on the host |
 | `--continue` / `--resume` / `--session ID` | `resume=Latest()` / `Pick()` / `Reopen(session=...)` |
 | `--max-recursive-agent` | `max_recursive_agent=`, a mode's default where it names none |
 | `--transcribe-session`, a mode's record | `record=Recording(transcript=..., root=..., mode=..., ledger=...)` |
 | `--generate-only` | every tree regenerated, then `prepare()` — the home a host session opens against |
 | `--force-install` (Codex) | `prepare(force=True)`, and `launch(force=True)` |
 | `--ignore-antipatterns` | the plugin compiled with every rule retired |
-| a launch mode | its targets compile the plugin; its model, words, record root and allowance are fields; what it opens around the run is a host companion |
+| `--mode <name>` | the mode's `claude=` or `codex=` preset laid over the declaration (`laid_over`), under this table's other flags; its `container=` between them and your `[container]`; its targets, where it declares any, compile the plugin |
 | passthrough words | `launch(*words)`, after everything the declaration compiles to |
+
+### Modes: a named kind of session
+
+A project declares its kinds of session as `LaunchMode`s on
+`DevtoolsDeclarations.launch_modes`, and `harness claude|codex --mode <name>`
+opens one. A mode is a preset of the declaration the launch builds, never a
+second vocabulary: a `Claude(...)` and its `Codex(...)` variant stating only
+what the mode changes, each laid over the project's declaration by
+`laid_over` — a nested declaration field by field, so a mode moving its
+`Recording(root=...)` keeps the ledger — with the command line laid over both,
+so `--model` still wins. How much the runtime asks is already a field of each:
+
+```python
+FREE = LaunchMode(
+    name="free",
+    help="explore without being asked; a later session tidies up",
+    claude=Claude(permission_mode="auto"),
+    codex=Codex(approval_policy="on-request", approvals_reviewer="auto_review"),
+    container=OuterContainer(sudo=True, guidance=FREE_GUIDANCE),
+)
+```
+
+What it grants the container is its `container=`, between the command line
+and your `[container]`. A mode taking away what only a container stands in
+for — Claude Code's `auto` or `bypassPermissions`, Codex never asking or its
+`auto_review` reviewer, Codex's own sandbox stood down, or guidance of its own,
+which the container mounts read-only over `.claude/CLAUDE.md` or `AGENTS.md` —
+is refused on the host. The wall itself is `--sandbox`'s, so a preset naming a
+`sandbox` is refused where it is declared. A mode's `targets` compile a tree of
+its own where what it adds has to reach the runtime at startup; unset, the
+project's.
 
 ### Opening a session the anti-pattern gate leaves alone
 
@@ -719,6 +766,11 @@ animations = false
 
 [cleanup]
 superseded_volumes_after_days = 14   # an old config volume's history, kept this long
+
+[container]                 # what every contained session is granted: over the
+network = "bridge"          # project's, under a mode and the command line
+memory = "75%"              # an amount such as "12GiB", or a share of the engine's
+sudo = true                 # rootless engines only
 ```
 
 A value is chosen the same way everywhere: lup's default, then this file, then
@@ -728,6 +780,17 @@ fields), then what the invocation names (`--model`, `--effort`, `--profile`,
 refused; the file's effort, like lup's, is where the default starts before
 stepping down to a rung the model takes. A file that does not parse refuses the
 launch, naming itself.
+
+The container is the one place the order turns: what a machine can grant is
+its person's to say, so `[container]` overrules the project's declared
+container (`DevtoolsDeclarations.launch_container`, over the harness's image
+and the folders and devices `sync.json.local` registers), and a mode's
+`container=` and the command line's `--sudo`, `--network`, `--memory`,
+`--mount` and `--device` overrule it in turn. Each is an `OuterContainer`
+stating only what it sets, laid one over the next by `OuterContainer.over`: a
+setting stated higher wins even said as its default, and the folders and
+devices every layer names are all granted. A person's config names no image
+and no nested repositories, which are one repository's own.
 
 The theme is the one exception, because it is the account's rather than the
 launch's: a session's `/theme` is kept. A launch writes a theme into the
@@ -781,8 +844,10 @@ What contained sessions leave on the machine is swept as it goes: a launch
 that builds an image removes the ones no checkout points at, every launch
 removes project environments whose worktree is gone and other projects'
 stopped egress proxies, and removing a worktree removes its environment.
-`harness clean` lists all of it with sizes and what points at each, and
-`harness clean --yes` removes what nothing does.
+`harness clean` lists all of it with sizes and what points at each — the
+Codex revisions contained sessions ran their hooks from among them, each kept
+while a running container binds it — and `harness clean --yes` removes what
+nothing does.
 
 A profile names one account and the configuration home it runs under. Each
 profile is a directory, with each runtime's home in the subdirectory that

@@ -71,7 +71,7 @@ def test_claude_command_is_what_the_harness_runs(
     )
     launch.launch_claude(composition(root, "claude"), request, profiles(), False)
     agent = launch.claude_declaration(composition(root, "claude"), request, profiles())
-    command = agent.command(*request.launch_words("claude"))
+    command = agent.command(*request.words)
 
     assert command.argv == caught.argv
     assert command.env == caught.env
@@ -88,7 +88,7 @@ def test_codex_command_is_what_the_harness_runs(
     )
     launch.launch_codex(composition(root, "codex"), request, None, False, False)
     agent = launch.codex_declaration(composition(root, "codex"), request, None)
-    command = agent.command(*request.launch_words("codex"))
+    command = agent.command(*request.words)
 
     assert command.argv == caught.argv
     assert command.env == caught.env

@@ -416,12 +416,6 @@ async def test_app_server_eof_fails_current_turn_with_partial_evidence(
     assert raised.value.failure.blocks == [TurnTextBlock(text="partial")]
 
 
-def test_codex_config_rejects_approvals_nothing_would_answer(tmp_path: Path) -> None:
-    """An asking policy with no hooks stalls the turn on its first command."""
-    with pytest.raises(ValueError, match="supply hooks to answer them"):
-        Codex(model=CustomModel(id="gpt"), cwd=tmp_path, approval_policy="on-request")
-
-
 def test_codex_config_accepts_approvals_its_hooks_can_answer(tmp_path: Path) -> None:
     """Declared hooks are what makes an asking policy answerable."""
     config = Codex(

@@ -40,7 +40,7 @@ from lup.devtools.dashboard.wizard import (
     StepStanding,
     Wizard,
 )
-from lup.devtools.setup import Integration, read_env_local, write_env_local
+from lup.devtools.setup import Integration
 from lup.types import EnvVars
 from lup.web.serve import serve_local_page
 
@@ -85,7 +85,12 @@ class IntegrationStep(SetupStep[EnvScope], frozen=True):
     integration: Integration
 
     def standing(self, scope: EnvScope) -> StepStanding:
-        status = self.integration.check_status(read_env_local())
+        status = self.integration.check_status(self.integration.stored())
+        refused = self.integration.refused_here()
+        if refused:
+            return StepStanding(
+                done=status.ok, detail=status.detail, offered=False, blocked=refused
+            )
         if self.integration.setup_func is not None and not self.integration.fields:
             return StepStanding(
                 done=status.ok,
@@ -116,8 +121,10 @@ class IntegrationStep(SetupStep[EnvScope], frozen=True):
         given = self.answered(answers)
         if not given:
             return StepOutcome(ok=False, message="Nothing was filled in.")
-        write_env_local(given)
-        return StepOutcome(ok=True, message=f"Saved {', '.join(sorted(given))}.")
+        where = self.integration.save(given)
+        return StepOutcome(
+            ok=True, message=f"Saved {', '.join(sorted(given))} to {where}."
+        )
 
 
 def guide_lines(intro: str | None) -> list[str]:

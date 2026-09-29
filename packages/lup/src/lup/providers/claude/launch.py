@@ -17,7 +17,7 @@ from lup.harness.generate import (
     claude_generation_recipe,
     generate,
 )
-from lup.harness.models import CapabilityEvidence, Harness, Resumption
+from lup.harness.models import ArtifactTree, CapabilityEvidence, Harness, Resumption
 from lup.harness.requirements import Finding
 from lup.harness.toolchain import bubblewrap_requirement, socat_requirement
 from lup.launch.boundary import apply_sandbox_environment
@@ -29,14 +29,18 @@ from lup.launch.declaration import (
     LaunchStep,
     Member,
     Recording,
+    Sandbox,
     declared_image,
     declared_requirements,
     launched_sandbox,
+    loopback_relayed,
     resumption,
 )
 from lup.launch.foreground import between_steps, run_in_foreground
+from lup.launch.guidance import held_guidance
 from lup.launch.preflight import LaunchSentinels, release_ledger
 from lup.launch.refusal import LaunchRefused
+from lup.launch.secrets import withheld_secrets
 from lup.launch.session import (
     LaunchOpening,
     cleared_on_the_way_in,
@@ -51,7 +55,8 @@ from lup.providers.claude.config_home import (
     selected_config_home,
 )
 from lup.providers.claude.confinement import CLAUDE_SANDBOX_OFF
-from lup.providers.claude.harness import CLAUDE_OVERLAY
+from lup.providers.claude.harness import CLAUDE_OVERLAY, ClaudeGuidanceRenderer
+from lup.providers.harness import claude_prompt_renderer, reject_oversized_guidance
 from lup.providers.claude.harness_runtime import (
     ClaudeCliEvidence,
     claude_capability_probes,
@@ -170,6 +175,48 @@ def claude_plugin_directory(agent: "Claude", root: Path) -> Path | None:
             return built
         case Harness() | None:
             return None
+
+
+def claude_held_trees(root: Path, plugin: Path | None) -> list[Path]:
+    """The generated trees a Claude Code session in ``root`` runs from, as a container holds them.
+
+    Its plugin directory whole — the hooks judging the session, their
+    dispatcher and policy — where the checkout keeps it, then the marketplace
+    naming it, the project settings and the guidance Claude Code reads, each
+    alone. The machine's overlay and the plugins a checkout keeps by hand
+    stay writable, being nobody's generation. Only what is there, since a
+    bind whose source is missing refuses the container.
+    """
+    checkout = root.resolve()
+    within = (
+        [plugin.resolve()]
+        if plugin is not None and plugin.resolve().is_relative_to(checkout)
+        else []
+    )
+    alone = [
+        checkout / ".claude" / "plugins" / ".claude-plugin" / "marketplace.json",
+        checkout / ".claude" / "settings.json",
+        checkout / ".claude" / "CLAUDE.md",
+    ]
+    return [path for path in [*within, *alone] if path.exists()]
+
+
+def claude_guidance(root: Path, sandbox: Sandbox) -> dict[Path, str]:
+    """The guidance a Claude Code session's container holds over ``.claude/CLAUDE.md``.
+
+    Rendered the way generation renders the project's and held to its
+    budget, then written outside the checkout; nothing where the wall swaps
+    no guidance in.
+    """
+    document = sandbox.held_guidance()
+    if document is None:
+        return {}
+    try:
+        rendered = ClaudeGuidanceRenderer(claude_prompt_renderer()).guidance(document)
+        reject_oversized_guidance(ArtifactTree(artifacts=[rendered]))
+    except ValueError as refused:
+        raise LaunchRefused(f"this session's guidance: {refused}") from refused
+    return held_guidance(root, rendered.path, rendered.content)
 
 
 def compiled_claude(agent: "Claude") -> "Claude":
@@ -630,7 +677,7 @@ def claude_opening(
     )
     environment = {
         **claude_server_environment(config.tools),
-        **inherited_environment(),
+        **withheld_secrets(inherited_environment(), root),
         **config.environment,
         **joined.environment,
     }
@@ -669,6 +716,13 @@ def claude_opening(
         forwarded=list(joined.environment),
         privileges=config.sandbox.privileges(),
         nested=config.sandbox.nested(),
+        memory=config.sandbox.memory_limit(),
+        trees=(
+            claude_held_trees(root, claude_plugin_directory(launched, root))
+            if config.sandbox.holds_generated()
+            else []
+        ),
+        overlays=claude_guidance(root, config.sandbox),
     )
     return LaunchCommand(argv=argv, env=environment, cwd=root)
 
@@ -680,8 +734,12 @@ def claude_companions(
     return CompanionLaunch(
         root=root,
         runtime="claude",
-        environment={**inherited_environment(), **compiled_claude(agent).environment},
+        environment={
+            **withheld_secrets(inherited_environment(), root),
+            **compiled_claude(agent).environment,
+        },
         journal=journal,
+        relayed=loopback_relayed(agent.plugin, agent.sandbox),
     )
 
 
