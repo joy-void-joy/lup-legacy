@@ -161,7 +161,32 @@ def test_a_wait_no_step_can_bound_is_refused_at_the_deadline(
 
     assert elapsed < INHERITED + 5
     assert effect == "deny"
-    assert "deadline" in detail
+    assert "reached its deadline before a verdict" in detail
+    assert "Malformed hook input" not in detail
+
+
+@pytest.mark.parametrize("runtime", ["claude", "codex"])
+def test_a_call_nobody_could_read_is_refused_as_malformed(
+    checkout: Path, runtime: str
+) -> None:
+    """A refusal names its cause: input that is not a hook payload at all."""
+    result = sh.Command(sys.executable)(
+        "-I",
+        "-S",
+        str(checkout / f".{runtime}/plugins/lup/hooks/scripts/policy.py"),
+        _in="not json",
+        _ok_code=[0, 2],
+        _return_cmd=True,
+        _timeout=RUNTIME_LIMIT,
+        _env={**os.environ, "PLUGIN_DATA": str(checkout.parent / "plugin-data")},
+    )
+    assert isinstance(result, sh.RunningCommand)
+    said = result.stderr.decode() if result.exit_code == 2 else str(result)
+
+    assert runtime == "claude" or result.exit_code == 2
+    assert '"permissionDecision": "deny"' in said or result.exit_code == 2
+    assert "hook input is malformed" in said
+    assert "deadline" not in said
 
 
 def test_the_alarm_interrupts_a_wait_nothing_else_bounds() -> None:

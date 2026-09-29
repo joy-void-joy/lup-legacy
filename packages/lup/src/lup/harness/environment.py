@@ -42,6 +42,17 @@ def non_interactive_environment(
     return {name: value for name, value in merged.items() if name != "VIRTUAL_ENV"}
 
 
+def inside_a_container(environment: EnvVars) -> bool:
+    """Whether a process runs inside a session's container rather than on the host.
+
+    The image's baked marker, read as a placement hint only, never as a
+    boundary: a shell that exported it on the host costs that process what
+    the hint withholds there — a launch its dashboard, the wizard its
+    host-only secrets — and nothing else.
+    """
+    return "LUP_CONTAINED" in environment and environment["LUP_CONTAINED"] == "1"
+
+
 LAUNCHER_DECIDED_ENV: list[str] = [
     "LUP_CONTAINED",
     "LUP_BOUNDARY_NONCE",

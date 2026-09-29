@@ -419,7 +419,10 @@ def targets_write_verdict(
     for target in targets:
         known = facts["existing"]
         protected = protected_write_target(
-            [target], facts["path_rules"], known is None or target in known
+            [target],
+            facts["path_rules"],
+            known is None or target in known,
+            facts["path_roles"],
         )
         if protected is not None:
             return protected
@@ -2686,7 +2689,10 @@ def git_restore_source(words: list[str]) -> KernelDecision | None:
 
 
 def git_restore_unchanged(
-    words: list[str], recoverable_targets: list[str], path_rules: list[PathRuleRow]
+    words: list[str],
+    recoverable_targets: list[str],
+    path_rules: list[PathRuleRow],
+    path_roles: list[PathRoleRow],
 ) -> KernelDecision | None:
     """Recognize an index-sourced ``git restore`` whose paths hold no pending work.
 
@@ -2713,7 +2719,7 @@ def git_restore_unchanged(
         return None
     if not all(path in recoverable_targets for path in parsed["paths"]):
         return None
-    protected = protected_write_target(parsed["paths"], path_rules, True)
+    protected = protected_write_target(parsed["paths"], path_rules, True, path_roles)
     if protected is not None:
         return protected
     return KernelDecision("allow", "every restored path already matches the index")

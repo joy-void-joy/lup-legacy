@@ -67,6 +67,7 @@ from host import (
     record_hook_evidence,
     repaired_directives,
     sandbox_active,
+    unjudged_reason,
 )
 from kernel.decision import KernelDecision, sandbox_escaped
 from caller_payload import caller_of
@@ -638,10 +639,12 @@ def main():
     attached = ""
     notice = ""
     failed = False
+    read = False
     try:
         payload = json.load(sys.stdin)
         if not isinstance(payload, dict):
             raise ValueError("hook input must be an object")
+        read = True
         record_hook_evidence(plugin_data_root(), payload, "started")
         event = payload["hook_event_name"] if "hook_event_name" in payload else ""
         # Watching and deciding are separate events, and this one returns
@@ -693,7 +696,7 @@ def main():
     # interrupt still passes through as the BaseException it is.
     except Exception as error:
         failed = True
-        decision = KernelDecision("deny", f"Lup could not judge this call: {error}")
+        decision = KernelDecision("deny", unjudged_reason(error, read))
         record_hook_evidence(
             plugin_data_root(),
             payload if isinstance(payload, dict) else {},

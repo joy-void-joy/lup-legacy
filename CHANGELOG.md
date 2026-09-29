@@ -2,6 +2,136 @@
 
 ## Unreleased
 
+### A runtime started from a session's shell is a member of its own
+
+`LUP_COORDINATION_MEMBER` reaches every process a launched session starts,
+so a `claude -p`, `codex exec` or pipeline run from its shell acted as that
+session: its ending ended the session's row, its tool calls were handed the
+session's mail, and its prompts cleared what the session said it was doing.
+Every hook and tool server reads which runtime it serves, and one that is
+neither the runtime the row names nor one that started it answers as
+`<id>_<digest>` — the same for all of that runtime's processes — whose row
+names the session it was `spawned_by` and is called `<name>-spawned`; one
+outliving the session never takes its ended row. `RosterMember`,
+`SessionNeeds`, `RosterPulse`, `create_peer_tools` and `RepositoryPeers.join`
+carry `spawned_by`; `lup.coordination.repository.runtime_member` resolves a
+process's member. `dev policy` run from a subagent's shell reads as that
+subagent while its command is the one its session has running.
+
+### A wake that reached hands over the mail it carried
+
+A reply woken into a session, a watcher's nudge, a delegation, a handoff and
+the Codex mailbox relay carried the mail whole, and the delivery hook handed
+it over again at the session's next tool call. `lup.coordination.watch.roused`
+wakes a member and, once its runtime accepts the wake, records what it
+carried as delivered, so the hook hands over only what no wake carried.
+`WakeReceipts` and `MailboxRelay.receipt_path` are gone; the relay keeps
+`lock_path`.
+
+### The mail record holds the roster's retention window
+
+The sweep cuts every message sent before the window off the head of
+`mail.jsonl` and leaves a first line counting the lines cut, so a line keeps
+its number; `MailCursor` gains `cut` and `inode`, and a reader following the
+record is carried across a cut, handed only what it had not read.
+
+### A nested uv project is declared once and checked by every gate
+
+`SubProject(root, python, …)` in the catalog's `declared_sub_projects()`
+compiles, through `harness generate all`, into Pyright execution environments
+for the project and its `tmp/<root>` scratch on its own Python and packages,
+its root in Pyright's `include`, Ruff's per-file target version, a test root
+whose files carry the test role, and scratch roles for every environment
+directory at any depth. A fresh worktree and the gate's Pyright sync its
+environment first. A pytest root takes its test role from its own
+`testpaths`, a suite spreads over workers only where its own environment
+holds pytest-xdist (or its `TestRoot` declares `parallel`), a gate with no
+suite declared says `tests: no suites declared`, and a module is named from
+the segment its first `src/` introduces, whatever that package is called.
+`parallel_arguments` and `scanned_roots` are gone.
+
+### A mode is a named preset of the declaration, selected by `--mode`
+
+`harness claude|codex --mode <name>` opens a kind of session the project
+declares. A `LaunchMode` states a `Claude(...)` and its `Codex(...)` variant
+naming only what it changes, laid over the declaration the launch builds by
+`laid_over` — a nested declaration field by field — with the command line laid
+over both, and an `OuterContainer` for what it grants its container. How much
+the runtime asks is those declarations' own fields; a mode switching the asking
+off, or carrying guidance of its own, is refused on the host. The per-mode
+`--<name>` flags, `LaunchSession` and the mode's `model`, `arguments`,
+`record_root` and `session` callables are gone (`migrations/pending/launch-modes.toml`).
+
+### A container's settings are one `OuterContainer`, stated by each hand in turn
+
+Network, memory, sudo, devices, folders and the held generated trees are
+`OuterContainer` fields, and the command line (`--network`, `--memory`,
+`--sudo/--no-sudo`, `--hold-generated/--release-generated`, `--mount`,
+`--device`) lays over a mode's, over the person's `[container]` config, over
+the project's `launch_container`. A memory share is resolved against what the
+engine can hand out, and refused where nothing says.
+
+### A contained session may be held from the trees that judge it
+
+`OuterContainer(hold_generated=True)` binds the runtime's generated plugin,
+settings and guidance read-only in the checkout's container, so a session
+cannot change the hooks judging it; `harness generate all` in such a session
+refuses before writing anything, naming the host command, and the drift line
+says the same.
+
+### A container may put guidance of its own over the committed one
+
+`OuterContainer(guidance=PromptDocument(...))` is rendered as generation renders
+the project's guidance, held to its budget, and mounted read-only over
+`.claude/CLAUDE.md` or `AGENTS.md`; the host tree never changes.
+
+### A service on the host's loopback, reached by its declared name
+
+`HostService(name, port, variable)` hands a session the service's address;
+a container whose loopback is its own reaches it through a socket the launch
+relays for that one port, bound inside by the image's entrypoint.
+
+### Host-only secrets
+
+`$XDG_CONFIG_HOME/lup/secrets/<project>.env` keeps the keys a host companion
+is started with: `Integration(host_only=True)` answers into it, `setup secret
+<KEY> [--unset]` sets one no integration declares, a `SharedProcess` is handed
+only the keys its `secrets` names, and a launched session inherits none of
+them. Inside a container each write refuses, naming the host command.
+
+### Codex says who answers what it asks
+
+`Codex.approvals_reviewer` (`user` or `auto_review`) reaches both a launched
+CLI and a thread opened here. An asking `approval_policy` is refused where a
+session opens in this process without hooks to answer it, rather than where
+it is declared, so a launched Codex may ask its person.
+
+### `harness clean` sweeps held Codex revisions
+
+A revision a contained Codex session ran its hooks from is listed with its
+size, and removed by `--yes` once no running container binds it.
+
+### The dashboard shows every session live, and writes to any of them
+
+Everything live reaches the page on one stream, `GET /api/stream`: a fresh tab
+gets the whole state once and then each numbered change, and a reconnecting
+tab resumes after the last cursor it saw. A Sessions view lists every
+repository's sessions with their subagents nested beneath them — what each
+says it is doing, the call it is waiting on and what it last said, read from
+the transcript its roster row names, what it holds, and every message to and
+from it — and a box writes to a session as `user`, through its mailbox and
+then its wake socket or `codex queue`. Reviews ride the same stream;
+`SnapshotFeed` and `/api/events` are gone.
+
+### Mail names who sent it, and stays on a record
+
+A message is signed with the address a reply reaches — the sending member's
+id, or `user` — and read as `[message from <sender> by <door>] …`. Every
+message posted also lands on the coordination store's `mail.jsonl`, which
+`ActorMail.posted` follows from a cursor. `bare.mail.post` takes the
+recipient rather than a mailbox's name, and a cohort no longer signs with its
+run id.
+
 ### Every launch holds one dashboard per person
 
 `harness claude|codex` holds the dashboard as a host companion: the first

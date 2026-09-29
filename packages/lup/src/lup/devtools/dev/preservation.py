@@ -308,7 +308,7 @@ def surfaces(
     a repository that declared nothing means.
     """
     for source in sources:
-        module = module_name(source.path, roots)
+        module = module_name(source.path)
         parts = name_parts(module)
         if (
             parts is not None

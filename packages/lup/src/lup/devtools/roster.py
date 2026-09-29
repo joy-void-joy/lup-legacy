@@ -46,6 +46,7 @@ from lup.devtools.harness.composition import NativeTargets
 from lup.devtools.harness.drift import RepositoryWriter
 from lup.devtools.harness.launch import LaunchCheckpoint, LaunchMode
 from lup.devtools.harness.resolve import ConfiguredModel
+from lup.launch.declaration import OuterContainer
 from lup.devtools.resolve.app import create_resolve_app
 from lup.devtools.review.app import create_review_app
 from lup.devtools.run.app import create_run_app
@@ -125,6 +126,11 @@ class DevtoolsDeclarations(BaseModel, frozen=True, arbitrary_types_allowed=True)
 
     launch_checkpoint: LaunchCheckpoint | None = None
     """Application data saved before generation and after the native CLI closes."""
+
+    launch_container: OuterContainer = OuterContainer()
+    """What this project's contained sessions are granted — network, memory,
+    sudo, devices, folders, held trees — under a person's ``[container]``
+    config, a mode and the command line, each of which may overrule it."""
 
     node_classes: list[type[LedgerNode]] = []
     """The node types this project records, for the reader that shows all.
@@ -338,6 +344,7 @@ LIBRARY_ROSTER = [
             declared.launch_checkpoint,
             node_classes=declared.node_classes,
             ledger=declared.ledger,
+            container=declared.launch_container,
         ),
     ),
     RosterEntry(

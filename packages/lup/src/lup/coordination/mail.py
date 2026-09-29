@@ -26,11 +26,13 @@ that member's first turn, and at every turn after, because it has not
 stopped being true.
 """
 
+import os
+from collections.abc import Iterator
 from datetime import datetime
 from pathlib import Path
 from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, TypeAdapter, ValidationError
 
 from lup.channels.models import Door, utc_now
 from lup.coordination.bare import mail
@@ -54,8 +56,20 @@ class ActorMessage(BaseModel, frozen=True):
     door: Door
     sent_at: datetime
     sender: str = ""
+    """Whoever said it, by the address a reply reaches: a member's id, or `user`.
+
+    Empty where a door with no address of its own said it — a run's own
+    orchestration steering its workers.
+    """
+
     in_reply_to: str = ""
     redirect: bool = False
+
+    def heading(self) -> str:
+        """What its reader is told before the text: what it is, who sent it, through what."""
+        kind = "redirected" if self.redirect else "message"
+        signed = f" from {self.sender}" if self.sender else ""
+        return f"[{kind}{signed} by {self.door}]"
 
 
 class StandingNotice(BaseModel, frozen=True):
@@ -179,6 +193,43 @@ def folded_notice(notice: mail.Notice) -> StandingNotice:
     )
 
 
+POSTED = TypeAdapter(mail.Posted)
+
+
+class MailCursor(BaseModel, frozen=True):
+    """Where a reader of the mail record stopped: the byte it resumes at, and the line."""
+
+    offset: int = 0
+    seq: int = 0
+    cut: int = 0
+    """How many lines had been cut off the head of the record the offset is into."""
+
+    inode: int = 0
+    """Which file the offset is into, so one that replaced it is not read from there."""
+
+
+class PostedMessage(BaseModel, frozen=True):
+    """One message as the record keeps it: its line, and whose mailbox it was put in."""
+
+    seq: int
+    recipient: ActorRef
+    message: ActorMessage
+
+
+class RecordLine(BaseModel, frozen=True):
+    """One whole line of the record, and the byte just past it."""
+
+    end: int
+    content: bytes
+
+
+class MailPage(BaseModel, frozen=True):
+    """What the record gained since a cursor, and the cursor to resume from."""
+
+    messages: list[PostedMessage] = []
+    cursor: MailCursor = MailCursor()
+
+
 class ActorMail:
     """Every member's mailbox, and the notices standing over all of them.
 
@@ -208,7 +259,9 @@ class ActorMail:
             in_reply_to=in_reply_to,
             redirect=redirect,
         )
-        mail.post(self.root, to.conversation(), message)
+        mail.post(
+            self.root, store.Actor(kind=to.kind, id=to.id, round=to.round), message
+        )
         return folded_message(message)
 
     def waiting(self, actor: ActorRef) -> ActorDelivery:
@@ -235,6 +288,81 @@ class ActorMail:
             self.root,
             actor.conversation(),
             [mail.Message(id=message.id) for message in delivery.messages],
+        )
+
+    def posted(self, cursor: MailCursor) -> MailPage:
+        """Every message the record gained since *cursor*, each at the line it sits on.
+
+        Whole lines only: one a sender is still writing waits for the next
+        read. A line keeps its number for as long as it is on the record: a
+        sweep that cuts the record's head replaces it with one whose first
+        line counts what was cut, so a reader the cut moved from under is
+        carried to where it was in the replacement and handed only what it
+        had not read. A record replaced by anything else, or shorter than the
+        cursor, is read again from its start. A line that will not parse keeps
+        its number and yields nothing, so every other line keeps the number it
+        always had.
+        """
+        try:
+            record = (self.root / store.MAIL_RECORD).open("rb")
+        except OSError:
+            return MailPage()
+        with record:
+            head = record.readline()
+            cut = mail.cut_of(head)
+            found = os.fstat(record.fileno())
+            here = MailCursor(
+                offset=len(head) if cut is not None else 0,
+                seq=cut or 0,
+                cut=cut or 0,
+                inode=found.st_ino,
+            )
+            following = (cursor.inode, cursor.cut) == (here.inode, here.cut) and (
+                found.st_size >= cursor.offset
+            )
+            start = cursor if following else here
+            floor = cursor.seq if not following and here.cut > cursor.cut else 0
+            record.seek(start.offset)
+
+            def lines() -> Iterator[RecordLine]:
+                offset = start.offset
+                for line in record:
+                    if not line.endswith(b"\n"):
+                        return
+                    offset += len(line)
+                    yield RecordLine(end=offset, content=line)
+
+            read = list(lines())
+
+        def messages() -> Iterator[PostedMessage]:
+            for seq, line in enumerate(read, start=start.seq):
+                if seq < floor:
+                    continue
+                try:
+                    posted = POSTED.validate_json(line.content)
+                except ValidationError:
+                    continue
+                recipient = posted.get("recipient") or store.Actor()
+                if not store.actor_kind(recipient):
+                    continue
+                yield PostedMessage(
+                    seq=seq,
+                    recipient=ActorRef(
+                        kind=store.actor_kind(recipient),
+                        id=store.actor_id(recipient),
+                        round=store.actor_round(recipient) or 1,
+                    ),
+                    message=folded_message(posted.get("message") or mail.Message()),
+                )
+
+        return MailPage(
+            messages=list(messages()),
+            cursor=MailCursor(
+                offset=read[-1].end if read else start.offset,
+                seq=start.seq + len(read),
+                cut=here.cut,
+                inode=here.inode,
+            ),
         )
 
     def standing(self) -> list[StandingNotice]:

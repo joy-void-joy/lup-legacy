@@ -31,7 +31,10 @@ from lup.formats.banner import (
 from lup.harness.evidence import WireContract
 from lup.harness.materialization import (
     AtomicMaterializer,
+    MaterializationRefusedError,
     discard_staged_write,
+    held_read_only,
+    mounted_read_only,
     refused_write,
 )
 from lup.harness.models import (
@@ -221,6 +224,24 @@ class HarnessGenerationConflict(RuntimeError):
         self.conflicts = conflicts
 
 
+class GeneratedTreesHeld(MaterializationRefusedError):
+    """A tree this generation would write is held read-only in this session.
+
+    A container may hold the generated trees its runtime runs from, so a
+    session cannot change the hooks judging it; regenerating them is then
+    the host's work. Raised before anything is written, since a rename
+    refused halfway leaves a tree matching neither its source nor its proof.
+    """
+
+    def __init__(self, held: list[Path]) -> None:
+        super().__init__(
+            "these trees are read-only in this session: "
+            + ", ".join(str(path) for path in held)
+            + f"; run `{REGENERATE_COMMAND}` on the host"
+        )
+        self.held = held
+
+
 class DeclarationObstruction(BaseModel, frozen=True):
     """Why something generated would not compile, in its declaration's terms.
 
@@ -314,6 +335,12 @@ class DriftReport(BaseModel, frozen=True):
     """
 
     proposal: ReconciliationProposal
+
+    held: list[Path] = []
+    """What a regeneration would write that is read-only in this session.
+
+    A contained session may hold its runtime's generated trees, and then a
+    tree behind its source is regenerated on the host rather than here."""
 
     @property
     def clean(self) -> bool:
@@ -526,22 +553,41 @@ def manifest_of(recipe: GenerationRecipe) -> OwnershipManifest:
 
 
 def inspect_generation(recipe: GenerationRecipe) -> DriftReport:
-    """Compute ownership-aware drift without changing the working tree."""
+    """Compute ownership-aware drift without changing the working tree.
+
+    Every path a regeneration would write — each artifact written or
+    removed, and the proof where it moves — is asked whether this session
+    holds it read-only, so a held tree is said before anything touches it.
+    """
     current = recipe.reader.read(recipe.root)
+    manifest_current = recipe.prior == manifest_of(recipe)
+    proposal = recipe.reconciler.propose(current, recipe.desired)
+    touched = [
+        *(recipe.root / write.artifact.path for write in proposal.writes),
+        *(recipe.root / delete.path for delete in proposal.deletes),
+        *([] if manifest_current else [recipe.manifest_path]),
+    ]
     return DriftReport(
         target=recipe.label,
         ownership_present=recipe.prior is not None,
-        manifest_current=recipe.prior == manifest_of(recipe),
-        proposal=recipe.reconciler.propose(current, recipe.desired),
+        manifest_current=manifest_current,
+        proposal=proposal,
+        held=held_read_only(touched, mounted_read_only),
     )
 
 
 def generate(recipe: GenerationRecipe) -> GenerationReport:
-    """Compile, reconcile, materialize, then update proof—never source prompts."""
+    """Compile, reconcile, materialize, then update proof—never source prompts.
+
+    Refused before anything is written where this session holds a tree it
+    would write read-only, naming the host command that writes it instead.
+    """
     drift = inspect_generation(recipe)
     proposal = drift.proposal
     if proposal.conflicts:
         raise HarnessGenerationConflict(proposal.conflicts)
+    if drift.held:
+        raise GeneratedTreesHeld(drift.held)
     try:
         result = AtomicMaterializer().apply(proposal)
     except OSError as error:

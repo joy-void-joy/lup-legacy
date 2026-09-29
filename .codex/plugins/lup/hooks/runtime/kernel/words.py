@@ -15,7 +15,7 @@ from .decision import (
     SUBSTITUTION_SENTINEL,
     unjudged,
 )
-from .edit import path_rule_matches, protected_path_reason
+from .edit import path_rule_matches, protected_path_reason, yields_to_scratch
 from .programs import InterpreterGrammar, ReadOption, grammar, read_options
 from .roles import (
     GENERATED_PLUGIN_RECOVERY,
@@ -1253,7 +1253,10 @@ def asks_before_removing_a_directory(
 
 
 def protected_write_target(
-    targets: list[str], path_rules: list[PathRuleRow], path_exists: bool
+    targets: list[str],
+    path_rules: list[PathRuleRow],
+    path_exists: bool,
+    path_roles: list[PathRoleRow],
 ) -> KernelDecision | None:
     """Ask before granting a write to a path the declared rules protect.
 
@@ -1272,7 +1275,12 @@ def protected_write_target(
     """
     for word in targets:
         matched = next(
-            (row for row in path_rules if path_rule_matches(word, path_exists, row)),
+            (
+                row
+                for row in path_rules
+                if path_rule_matches(word, path_exists, row)
+                and not yields_to_scratch(word, row, path_roles)
+            ),
             None,
         )
         if matched is not None:
@@ -1316,6 +1324,112 @@ def deletes_protected(operand: str, row: PathRuleRow) -> bool:
     named = PurePosixPath(posixpath.normpath(operand)).parts
     return len(named) <= len(held) and all(
         expands_to(word, name) for word, name in zip(named, held)
+    )
+
+
+GIT_INIT_GRAMMAR = grammar(
+    valued=(
+        "-b",
+        "--initial-branch",
+        "--template",
+        "--separate-git-dir",
+        "--object-format",
+        "--ref-format",
+    ),
+    flags=("-q", "--quiet", "--bare", "--shared", "--no-template"),
+)
+"""The options `git init` reads, and which of them consume the next word.
+
+`--shared` takes its permissions only attached, so it consumes nothing."""
+
+
+class InitOperands(TypedDict):
+    """Where one `git init` makes a repository, and whether that could be read."""
+
+    named: list[PathWord]
+    """Each directory it names: the work tree's, and a separate git dir's."""
+
+    directories: int
+    """How many operands name the work tree; none means wherever git stands."""
+
+    read: bool
+    """Whether every option is one the grammar lists and none copies files in.
+
+    `--template` copies a directory into the new repository, which is a read
+    of wherever it names, so a reading carrying one is not a plain create."""
+
+
+def git_init_operands(words: list[str], at: int) -> InitOperands | None:
+    """The directories one `git init` makes, or ``None`` where it is not one.
+
+    ``at`` is where the caller reads the subcommand, as for a restore: a grant
+    reads it where it is written, since a global such as `--git-dir` moves the
+    repository itself, and a reader naming paths reads it past the globals.
+    """
+    if posixpath.basename(words[0]) != "git" or words[at : at + 1] != ["init"]:
+        return None
+    named: list[PathWord] = []
+    directories = 0
+    read = True
+    literal = False
+    position = at + 1
+    while position < len(words):
+        word = words[position]
+        if literal or word == "-" or not word.startswith("-"):
+            named.append(PathWord(at=position, prefix="", path=word))
+            directories += 1
+            position += 1
+            continue
+        if word == "--":
+            literal = True
+            position += 1
+            continue
+        options = read_options(word, words[position + 1 :], GIT_INIT_GRAMMAR)
+        if options is None:
+            read = False
+            position += 1
+            continue
+        for option in options["options"]:
+            read = read and option["name"] != "--template"
+            if option["name"] == "--separate-git-dir" and option["value"]:
+                attached = options["width"] == 1
+                named.append(
+                    PathWord(
+                        at=position if attached else position + 1,
+                        prefix=f"{option['name']}=" if attached else "",
+                        path=option["value"],
+                    )
+                )
+        position += options["width"]
+    return InitOperands(named=named, directories=directories, read=read)
+
+
+def git_init_in_scratch(
+    words: list[str], path_roles: list[PathRoleRow], checkout: str = ""
+) -> KernelDecision | None:
+    """Recognize a `git init` whose repository is made in declared scratch.
+
+    A repository made there is as disposable as the scratch holding it, and a
+    project scaffolded under `tmp/` needs one. Every directory it makes has
+    to be named and sit under a scratch root this checkout declares: a work
+    tree left to wherever git stands is this checkout's own, and a separate
+    git dir anywhere else would move the repository out from under it. The
+    words are the placed ones, so a `cd` or `git -C` is already in them, and
+    a link a directory crosses is the host's to resolve like any write's.
+    """
+    reading = git_init_operands(words, 1)
+    if reading is None or not reading["read"] or reading["directories"] != 1:
+        return None
+    places = [named["path"] for named in reading["named"]]
+    if any(opaque_argument(place) for place in places):
+        return None
+    if not all(
+        declared_scratch(repository_relative(place, checkout), path_roles)
+        for place in places
+    ):
+        return None
+    return KernelDecision(
+        "allow", "a repository made in scratch is as disposable as the scratch"
     )
 
 
@@ -1365,6 +1479,7 @@ def protected_deletion(
     words: list[str],
     path_rules: list[PathRuleRow],
     rows: list[ShellRuleRow],
+    path_roles: list[PathRoleRow],
     checkout: str = "",
 ) -> KernelDecision | None:
     """Ask before `rm` or `git rm` deletes a path the declared rules protect.
@@ -1380,7 +1495,13 @@ def protected_deletion(
     for operand in deleted_operands(words, rows):
         spelled = repository_relative(operand, checkout)
         matched = next(
-            (row for row in path_rules if deletes_protected(spelled, row)), None
+            (
+                row
+                for row in path_rules
+                if deletes_protected(spelled, row)
+                and not yields_to_scratch(spelled, row, path_roles)
+            ),
+            None,
         )
         if matched is None:
             continue
@@ -1397,6 +1518,7 @@ def protected_placement(
     words: list[str],
     path_rules: list[PathRuleRow],
     rows: list[ShellRuleRow],
+    path_roles: list[PathRoleRow],
     existing: list[str] | None = None,
     checkout: str = "",
 ) -> KernelDecision | None:
@@ -1438,7 +1560,12 @@ def protected_placement(
         spelled = repository_relative(word, checkout)
         present = existing is None or word in existing
         matched = next(
-            (row for row in path_rules if path_rule_matches(spelled, present, row)),
+            (
+                row
+                for row in path_rules
+                if path_rule_matches(spelled, present, row)
+                and not yields_to_scratch(spelled, row, path_roles)
+            ),
             None,
         )
         if matched is not None:
@@ -1465,7 +1592,13 @@ def protected_placement(
     for word, verb in reached:
         spelled = repository_relative(word, checkout)
         matched = next(
-            (row for row in path_rules if deletes_protected(spelled, row)), None
+            (
+                row
+                for row in path_rules
+                if deletes_protected(spelled, row)
+                and not yields_to_scratch(spelled, row, path_roles)
+            ),
+            None,
         )
         if matched is None:
             continue
@@ -1542,7 +1675,7 @@ def confined_to_recoverable_roots(
         return None
     if len(restorable) > recoverable_target_limit:
         return None
-    protected = protected_write_target(targets, path_rules or [], True)
+    protected = protected_write_target(targets, path_rules or [], True, path_roles)
     if protected is not None:
         return protected
     return KernelDecision("allow", "confined to recoverable roots")
@@ -1621,7 +1754,7 @@ def archive_lands_on_nothing(
             return None
         if directory in existing_targets and directory not in (empty_directories or []):
             return None
-    protected = protected_write_target(named, path_rules or [], True)
+    protected = protected_write_target(named, path_rules or [], True, path_roles)
     if protected is not None:
         return protected
     return KernelDecision("allow", "archive lands where nothing stands")
@@ -2416,6 +2549,10 @@ class SedInvocation(TypedDict):
     """
 
     scripts: list[str]
+    scripted: list[int]
+    """Where each script was read from: the word holding it, so a reader asking
+    which words name a file can leave the program out."""
+
     options: list[str]
     backup: str
     targets: list[str]
@@ -2443,6 +2580,7 @@ def sed_invocation(words: list[str]) -> SedInvocation | KernelDecision:
     empty parse a caller could mistake for a harmless call.
     """
     scripts: list[str] = []
+    scripted: list[int] = []
     options: list[str] = []
     backup = ""
     positional: list[PathWord] = []
@@ -2454,6 +2592,7 @@ def sed_invocation(words: list[str]) -> SedInvocation | KernelDecision:
     for index, word in enumerate(words[1:], start=1):
         if script_expected:
             scripts.append(word)
+            scripted.append(index)
             script_expected = False
             continue
         if end_options:
@@ -2480,6 +2619,7 @@ def sed_invocation(words: list[str]) -> SedInvocation | KernelDecision:
             if name == "--expression":
                 if separator:
                     scripts.append(value)
+                    scripted.append(index)
                 script_expected = not separator
                 script_from_options = True
                 continue
@@ -2515,9 +2655,12 @@ def sed_invocation(words: list[str]) -> SedInvocation | KernelDecision:
     if script_expected:
         return unjudged("sed expression flag has no script")
     if not script_from_options and positional:
-        scripts.append(positional.pop(0)["path"])
+        first = positional.pop(0)
+        scripts.append(first["path"])
+        scripted.append(first["at"])
     return SedInvocation(
         scripts=scripts,
+        scripted=scripted,
         options=options,
         backup=backup,
         targets=[target["path"] for target in positional],

@@ -158,6 +158,7 @@ KERNEL_IMPORT_ALLOWLIST = (
     "fnmatch",
     "functools",
     "io",
+    "ipaddress",
     "pathlib",
     "posixpath",
     "re",

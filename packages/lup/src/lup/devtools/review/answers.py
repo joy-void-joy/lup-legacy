@@ -12,7 +12,7 @@ reads them at the path the host has them and can write none.
 from collections.abc import Iterator
 from contextlib import contextmanager
 
-from lup.devtools.dashboard.companion import inside_a_container
+from lup.harness.environment import inside_a_container
 from lup.launch.companions import (
     CompanionLaunch,
     CompanionName,

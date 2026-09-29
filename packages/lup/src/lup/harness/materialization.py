@@ -7,6 +7,8 @@ defined here because materializers are the only producers.
 """
 
 import hashlib
+import os
+from collections.abc import Callable, Iterable
 from pathlib import Path
 
 from pydantic import BaseModel
@@ -33,6 +35,32 @@ class MaterializationRefusedError(RuntimeError):
     the artifact is correct, the base is current, and the boundary the
     session runs behind is what said no.
     """
+
+
+def mounted_read_only(path: Path) -> bool:
+    """Whether ``path`` sits on a read-only mount, asked of the nearest place that exists.
+
+    Asked of the mount rather than of the file's mode: a container holds a
+    tree read-only by binding it, which leaves every permission bit as it
+    was and refuses the write with a busy device or a read-only filesystem.
+    """
+    existing = next(
+        (candidate for candidate in [path, *path.parents] if candidate.exists()), None
+    )
+    if existing is None:
+        return False
+    try:
+        return bool(os.statvfs(existing).f_flag & os.ST_RDONLY)
+    except OSError:
+        return False
+
+
+def held_read_only(
+    paths: Iterable[Path],
+    mounted_read_only: Callable[[Path], bool] = mounted_read_only,
+) -> list[Path]:
+    """Every one of ``paths`` a mount holds read-only here, in the order given."""
+    return [path for path in paths if mounted_read_only(path)]
 
 
 def discard_staged_write(error: OSError) -> None:

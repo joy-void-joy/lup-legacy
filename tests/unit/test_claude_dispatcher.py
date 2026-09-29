@@ -52,7 +52,7 @@ def decide(payload: object) -> dict[str, object]:  # lup: ignore[dict-str-payloa
     return json.loads(output)
 
 
-MULTI_SITE = "packages/lup/src/lup/harness/enforcement.py"
+MULTI_SITE = "packages/lup/src/lup/devtools/project.py"
 """A production file carrying one preimage at several sites.
 
 Production because the edit gates below are what these tests are about, and
@@ -72,14 +72,21 @@ def edit_payload(path: str, old: str, new: str, replace_all: bool) -> JsonObject
 
 
 @pytest.mark.parametrize(
-    "payload", [None, [], {}, {"tool_name": "Bash", "tool_input": {}}]
+    ("payload", "cause"),
+    [
+        (None, "hook input is malformed"),
+        ([], "hook input is malformed"),
+        ({}, "could not judge"),
+        ({"tool_name": "Bash", "tool_input": {}}, "could not judge"),
+    ],
 )
-def test_malformed_payload_fails_closed(payload: object) -> None:
+def test_malformed_payload_fails_closed(payload: object, cause: str) -> None:
+    """Refused either way, and named for what it was: no payload, or one unjudged."""
     decision = decide(payload)
     specific = decision["hookSpecificOutput"]
     assert isinstance(specific, dict)
     assert specific["permissionDecision"] == "deny"
-    assert "could not judge" in str(specific["permissionDecisionReason"])
+    assert cause in str(specific["permissionDecisionReason"])
 
 
 def test_a_replace_all_edit_is_judged_rather_than_refused() -> None:

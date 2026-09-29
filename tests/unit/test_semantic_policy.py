@@ -613,6 +613,49 @@ SHELL_POLICY_CASES = [
     DecisionCase(input="node --frobnicate tmp/x.js", effect="deny"),
     DecisionCase(input="python tmp/x.py", effect="deny"),
     DecisionCase(input="python3 tmp/x.py", effect="deny"),
+    # Asking an interpreter what it is runs no program at all: its version or
+    # usage, and nothing beside them, is a read.
+    DecisionCase(input="python3 --version", effect="allow"),
+    DecisionCase(input="python3 -V", effect="allow"),
+    DecisionCase(input="python -VV", effect="allow"),
+    DecisionCase(input="uv run python --version", effect="allow"),
+    DecisionCase(input="uv run python -V", effect="allow"),
+    DecisionCase(input="node --version", effect="allow"),
+    DecisionCase(input="node -v", effect="allow"),
+    DecisionCase(input="bun --version", effect="allow"),
+    DecisionCase(input="bash --version", effect="allow"),
+    DecisionCase(input="deno --version", effect="allow"),
+    DecisionCase(input="python3 --version; uv --version", effect="allow"),
+    DecisionCase(input="uv --version; uv add --help", effect="allow"),
+    DecisionCase(input="python3 --version -c 'x'", effect="deny"),
+    DecisionCase(input="bash --version -c ls", effect="deny"),
+    DecisionCase(input="node -v -e 'x'", effect="deny"),
+    DecisionCase(input="python3 -V tmp/x.py", effect="deny"),
+    DecisionCase(input="x=$(ls) && bash $x", effect="deny", sandboxed=True),
+    DecisionCase(input="bash $(ls)", effect="deny", sandboxed=True),
+    DecisionCase(input="x=$(ls) && node $x", effect="deny", sandboxed=True),
+    DecisionCase(input="x=$(ls) && uv run python $x", effect="deny", sandboxed=True),
+    DecisionCase(input="x=$(ls) && bash tmp/x.sh $x", effect="allow", sandboxed=True),
+    # A `--help` the program is handed is the program's argument, not a
+    # question the interpreter answers: `bash -c ls --help` runs `ls`, and
+    # `bash -h` hashes commands while it runs what its input carries. Whatever
+    # carries the interpreter, its refusal stands.
+    DecisionCase(input="bash -c ls --help", effect="deny"),
+    DecisionCase(input="sh -c reboot --help", effect="deny"),
+    DecisionCase(input="python3 -c exit --help", effect="deny"),
+    DecisionCase(input="python3 x.py --help", effect="deny"),
+    DecisionCase(input="perl -e 1 --help", effect="deny"),
+    DecisionCase(input="echo ls | bash -h", effect="deny"),
+    DecisionCase(input="env bash -c ls --help", effect="deny"),
+    DecisionCase(input="timeout 5 bash -c ls --help", effect="deny"),
+    DecisionCase(input="uv run bash -c ls --help", effect="deny"),
+    DecisionCase(input="uv run python -c exit --help", effect="deny"),
+    DecisionCase(input="xargs bash -c ls --help", effect="deny"),
+    DecisionCase(input="find . -exec sh -c ls --help +", effect="deny"),
+    DecisionCase(input="bash -c ls --help", effect="deny", sandboxed=True),
+    DecisionCase(input="bash tmp/x.sh --help", effect="allow"),
+    DecisionCase(input="python3 --help", effect="allow"),
+    DecisionCase(input="frobnicate --help", effect="allow"),
     DecisionCase(input="uv run node -e 'x'", effect="deny"),
     DecisionCase(input="uv run python -W ignore", effect="deny"),
     DecisionCase(input="uv run bun install", effect="deny"),
@@ -646,6 +689,21 @@ SHELL_POLICY_CASES = [
     # marker expression: reading that as a module would refuse the way this
     # project runs a slice of its own tests.
     DecisionCase(input="uv run pytest -m slow", effect="allow"),
+    # A target is one program however it is reached: bare on the path, or
+    # from this checkout's environment, it is judged as `uv run` judges it.
+    # A file that only shares its name -- anywhere else -- is not the target.
+    DecisionCase(input="pytest tests/unit", effect="allow"),
+    DecisionCase(input=".venv/bin/pytest -q tests", effect="allow"),
+    DecisionCase(input="pytest -m slow", effect="allow"),
+    DecisionCase(input="ruff check packages", effect="allow"),
+    DecisionCase(input=".venv/bin/ruff check .", effect="allow"),
+    DecisionCase(input="ruff format --check .", effect="allow"),
+    DecisionCase(input="ruff check --fix .", effect="allow"),
+    DecisionCase(input="pyright src", effect="allow"),
+    DecisionCase(input="pytest tests/unit", effect="allow", sandboxed=True),
+    DecisionCase(input="tmp/pytest tests", effect="ask"),
+    DecisionCase(input="../other/.venv/bin/pytest tests", effect="ask"),
+    DecisionCase(input="lup-devtools dev check", effect="deny"),
     DecisionCase(input="find . -name '*.py' | xargs grep TODO", effect="allow"),
     DecisionCase(input="echo x | xargs rm -rf", effect="ask"),
     # xargs appends what it reads to the payload, so a payload that changes
@@ -1195,6 +1253,15 @@ SHELL_POLICY_CASES = [
     DecisionCase(input="echo x > .github/actions/setup/action.yml", effect="ask"),
     DecisionCase(input="cat uv.lock web/package.json", effect="allow"),
     DecisionCase(input="echo x > docs/pyproject.toml.md", effect="allow"),
+    # Named anywhere, a manifest is named by what it is, and one a scratch
+    # root holds is a disposable copy no install trusts: a project scaffolded
+    # under `tmp/` writes its own.
+    DecisionCase(input="echo x > tmp/adopter/pyproject.toml", effect="allow"),
+    DecisionCase(input="cp tmp/a tmp/adopter/pyproject.toml", effect="allow"),
+    DecisionCase(input="mv tmp/a tmp/adopter/uv.lock", effect="allow"),
+    DecisionCase(input="rm tmp/adopter/package.json", effect="allow"),
+    DecisionCase(input="cd tmp/adopter && echo x > pyproject.toml", effect="allow"),
+    DecisionCase(input="cp tmp/adopter/pyproject.toml pyproject.toml", effect="ask"),
     DecisionCase(input="uv lock", effect="allow"),
     DecisionCase(input="echo x > docs/fresh-note.md", effect="allow"),
     # Housekeeping confined to the disposable roots is as safe as writing
@@ -1276,6 +1343,47 @@ SHELL_POLICY_CASES = [
     DecisionCase(input="sort -o ../wt/.git tmp/a", effect="deny"),
     DecisionCase(input="truncate -s0 .git/refs/heads/main", effect="ask"),
     DecisionCase(input="git worktree move ../wt ../moved", effect="allow"),
+    # Locking a worktree is undone by unlocking it; unlocking releases a hold
+    # another session may own, which nothing here can put back for it.
+    DecisionCase(input="git worktree lock ../wt", effect="allow"),
+    DecisionCase(input="git worktree lock --reason busy ../wt", effect="allow"),
+    DecisionCase(input="git worktree unlock ../wt", effect="ask"),
+    DecisionCase(input="git worktree unlock ../wt", effect="ask", sandboxed=True),
+    # An archive of a tree is a read of it, and the file `-o` lands is judged
+    # where it lands; one fetched from another repository, or produced by a
+    # program `--exec` names, asks.
+    DecisionCase(input="git archive HEAD", effect="allow"),
+    DecisionCase(input="git archive -o tmp/out.tar HEAD", effect="allow"),
+    DecisionCase(
+        input="git archive --format=zip --output=tmp/o.zip HEAD", effect="allow"
+    ),
+    DecisionCase(input="git archive HEAD > tmp/out.tar", effect="allow"),
+    DecisionCase(input="git archive -o .claude/out.tar HEAD", effect="ask"),
+    DecisionCase(input="git archive --remote=origin HEAD", effect="ask"),
+    DecisionCase(input="git archive --remote=. --exec=/bin/sh HEAD", effect="ask"),
+    # A repository made in scratch is as disposable as the scratch holding it,
+    # so a `git init` naming a scratch directory -- and a separate git dir
+    # there too -- is a scratch write. Anywhere else, or where the work tree
+    # is wherever git stands, it stays unclassified.
+    DecisionCase(input="git init tmp/scratch-proj", effect="allow"),
+    DecisionCase(input="git init -q -b main tmp/p", effect="allow"),
+    DecisionCase(input="git init --bare tmp/p.git", effect="allow"),
+    DecisionCase(input="cd tmp && git init proj", effect="allow"),
+    DecisionCase(input="git -C tmp init proj", effect="allow"),
+    DecisionCase(input="git init --separate-git-dir tmp/p.git tmp/p", effect="allow"),
+    DecisionCase(input="git init packages/lup/tmp/p", effect="allow"),
+    DecisionCase(input="git init", effect="deny"),
+    DecisionCase(input="git init .", effect="deny"),
+    DecisionCase(input="cd tmp/p && git init", effect="deny"),
+    DecisionCase(input="git init ../elsewhere", effect="deny"),
+    DecisionCase(input="git init src/nested", effect="deny"),
+    DecisionCase(input="git init tmp/../src/nested", effect="deny"),
+    DecisionCase(input="git init --separate-git-dir=tmp/g", effect="deny"),
+    DecisionCase(input="git init --separate-git-dir=.git tmp/p", effect="deny"),
+    DecisionCase(input="git init --template=/srv/t tmp/p", effect="deny"),
+    DecisionCase(input="git init --frobnicate tmp/p", effect="deny"),
+    DecisionCase(input="git --git-dir=/srv/x init tmp/p", effect="deny"),
+    DecisionCase(input="git init tmp/p $X", effect="deny"),
     DecisionCase(input="cat .git ../repo.git/worktrees/wt/gitdir", effect="allow"),
     DecisionCase(input="echo x > tmp/refs/heads/main", effect="allow"),
     # A sibling worktree's scratch is scratch for every write and every
@@ -1458,6 +1566,31 @@ SHELL_POLICY_CASES = [
     # produced the document the edit gates judge, and the rewrite is asked
     # about rather than granted.
     DecisionCase(input="for x in -i; do sed \"$x\" 's/a/b/' f; done", effect="ask"),
+    # A literal word list is read once per word for the whole line, so a
+    # redirection, a `tee` or a `cd` in the body names the path each pass
+    # reaches, and the targets are judged as spelled. A body that assigns the
+    # loop's own name makes a later reference some other value, so it is not
+    # read as the word: `f=README.md; rm $f` removes README.md, not `tmp/a`.
+    DecisionCase(input="for f in tmp/a tmp/b; do echo x > $f; done", effect="allow"),
+    DecisionCase(
+        input="for f in tmp/a tmp/b; do echo x | tee $f; done", effect="allow"
+    ),
+    DecisionCase(input="for f in tmp/a README.md; do echo x > $f; done", effect="ask"),
+    DecisionCase(
+        input="for d in tmp/a tmp/b; do cd $d && echo x > out; done", effect="allow"
+    ),
+    DecisionCase(
+        input="for a in tmp/x tmp/y; do for b in 1 2; do echo x > $a/$b; done; done",
+        effect="allow",
+    ),
+    DecisionCase(input="for f in tmp/a; do f=README.md; rm $f; done", effect="deny"),
+    DecisionCase(
+        input="for f in tmp/a; do f=README.md; echo x > $f; done", effect="ask"
+    ),
+    DecisionCase(
+        input="for f in a b c d e f g h i j k l m n o p q; do echo x > tmp/$f; done",
+        effect="ask",
+    ),
     DecisionCase(input='for f in *.txt; do sort "$f"; done', effect="deny"),
     DecisionCase(input='for f in a; do python "$f"; done', effect="deny"),
     DecisionCase(input='for f in a; do wc "$f"', effect="deny"),
@@ -2219,6 +2352,29 @@ SHELL_POLICY_CASES = [
     DecisionCase(input="du -sh $HOME/.*", effect="deny"),
     DecisionCase(input="cat src/auth.json", effect="allow"),
     DecisionCase(input="cat .env", effect="allow"),
+    # A program or a pattern handed to a command is text it runs or matches,
+    # not a file it opens, whatever words it holds: a sed script, a grep or rg
+    # pattern and an awk program are never read as a path. A file one of them
+    # is told to read -- `-f`, an operand -- still is.
+    DecisionCase(
+        input="sed -e 's/.*/import { readToken, takeToken }/' tmp/a.tsx",
+        effect="allow",
+    ),
+    DecisionCase(input="sed -n '2s/.*/secret/p' tmp/a", effect="allow"),
+    DecisionCase(input="grep -rn '.*/import' src", effect="allow"),
+    DecisionCase(input="grep -e '.*/secret' tmp/a", effect="allow"),
+    DecisionCase(input="grep -n '~/.netrc' tmp/a", effect="allow"),
+    DecisionCase(input="rg '.*/token' src", effect="allow"),
+    DecisionCase(input="rg -e '.*/credentials' src", effect="allow"),
+    DecisionCase(input="awk '/.*secret/ {print}' tmp/a", effect="allow"),
+    DecisionCase(input="grep token ~/.netrc", effect="deny"),
+    DecisionCase(input="grep -f ~/.netrc tmp/a", effect="deny"),
+    DecisionCase(input="grep -e x ~/.netrc", effect="deny"),
+    DecisionCase(input="rg -f ~/.netrc src", effect="deny"),
+    DecisionCase(input="awk -f ~/.netrc tmp/a", effect="deny"),
+    DecisionCase(input="awk '{print}' ~/.netrc", effect="deny"),
+    DecisionCase(input="sed -n p ~/.netrc", effect="deny"),
+    DecisionCase(input="sed -e p -- ~/.netrc", effect="deny"),
     # A raw frame written to a peer's wake socket starts its turn with
     # nothing on the roster, so the directory the image binds them in
     # is refused by every spelling of a connection the kernel can read.
@@ -2432,6 +2588,23 @@ FETCH_POLICY_CASES = [
     DecisionCase(input="https://raw.cdn.example.org/asset.js", effect="allow"),
     DecisionCase(input="https://one.two.cdn.example.org/asset.js", effect="allow"),
     DecisionCase(input="https://evilcdn.example.org/asset.js", effect="ask"),
+    # A cloud's metadata service hands whoever asks the credentials of the
+    # machine it answers on, so its addresses are refused however they are
+    # spelled, and a LAN address beside them is only an unlisted origin.
+    DecisionCase(input="http://169.254.169.254/latest/meta-data/", effect="deny"),
+    DecisionCase(input="http://169.254.170.2/v2/credentials", effect="deny"),
+    DecisionCase(input="http://[fd00:ec2::254]/latest/meta-data/", effect="deny"),
+    DecisionCase(
+        input="http://metadata.google.internal/computeMetadata/v1/", effect="deny"
+    ),
+    DecisionCase(input="http://METADATA.Google.Internal./", effect="deny"),
+    DecisionCase(input="http://2852039166/latest/", effect="deny"),
+    DecisionCase(input="http://0xa9.0xfe.0xa9.0xfe/latest/", effect="deny"),
+    DecisionCase(input="http://0251.0376.0251.0376/latest/", effect="deny"),
+    DecisionCase(input="http://[::ffff:169.254.169.254]/latest/", effect="deny"),
+    DecisionCase(input="https://169.254.169.254:8443/x", effect="deny"),
+    DecisionCase(input="http://192.168.1.10/", effect="ask"),
+    DecisionCase(input="http://10.0.0.5:8080/health", effect="ask"),
 ]
 
 EDIT_POLICY_CASES = [
@@ -3430,6 +3603,21 @@ def test_bundled_fetch_matches_canonical_scheme_port_and_path(tmp_path: Path) ->
 
 DOWNLOAD_CASES = [
     DecisionCase(input="curl -s https://docs.example.com/api/one", effect="allow"),
+    # A metadata address is refused wherever the session sits, since what it
+    # answers is the host's own identity, which no boundary puts back.
+    DecisionCase(input="curl http://169.254.169.254/latest/meta-data/", effect="deny"),
+    DecisionCase(
+        input="curl http://169.254.169.254/latest/meta-data/",
+        effect="deny",
+        sandboxed=True,
+    ),
+    DecisionCase(
+        input="wget -qO- http://metadata.google.internal/computeMetadata/v1/",
+        effect="deny",
+        sandboxed=True,
+    ),
+    DecisionCase(input="curl -s http://[fd00:ec2::254]/latest/", effect="deny"),
+    DecisionCase(input="curl http://192.168.1.10/", effect="ask"),
     # A cluster is one word to the shell and to curl, so it is judged as the
     # flags it spells rather than as an option nobody declared.
     DecisionCase(input="curl -sI https://docs.example.com/", effect="allow"),
@@ -4356,6 +4544,41 @@ def test_shell_policy_preserves_golden_compound_and_wrapper_outcomes(
         assert bundled_effect == case.effect, case.input
 
 
+@pytest.mark.parametrize(
+    "command",
+    [
+        "perl -pe 's/.*/secret/' tmp/a",
+        "python3 -c 'print(\"~/.netrc\")'",
+        "node -e 'x=\"~/.ssh/id_rsa\"'",
+    ],
+)
+def test_inline_code_is_refused_as_code_and_not_as_a_path_it_spells(
+    command: str, tmp_path: Path
+) -> None:
+    """The refusal a session reads says what is wrong: code nobody can review."""
+    decided = ShellPolicy(SHELL_RULES).decide(
+        ShellCommand(command=command, cwd=tmp_path)
+    )
+
+    assert decided.effect == "deny"
+    assert "key or a login" not in decided.reason
+
+
+def test_a_variable_nobody_can_read_says_how_to_spell_it_readably(
+    tmp_path: Path,
+) -> None:
+    """The strict reading stands, and the refusal names the way through it."""
+    decided = ShellPolicy(SHELL_RULES).decide(
+        ShellCommand(
+            command='start=$(grep -n x f | cut -d: -f1) && sed -i "${start},\\$d" f',
+            cwd=tmp_path,
+        )
+    )
+
+    assert decided.effect == "deny"
+    assert "script file" in decided.recovery
+
+
 def test_write_targets_name_only_the_paths_a_command_opens_for_writing() -> None:
     assert shell_write_targets("echo x > out.txt") == ["out.txt"]
     assert shell_write_targets("echo x >> notes.log") == ["notes.log"]
@@ -4365,6 +4588,10 @@ def test_write_targets_name_only_the_paths_a_command_opens_for_writing() -> None
     assert shell_write_targets("ls >&2") == []
     assert shell_write_targets("a > one.txt | b > two.txt") == ["one.txt", "two.txt"]
     assert shell_write_targets("frobnicate --weird") == []
+    assert shell_write_targets("for f in tmp/a tmp/b; do echo x > $f; done") == [
+        "tmp/a",
+        "tmp/b",
+    ]
 
 
 def test_whether_a_file_was_already_there_no_longer_decides_a_redirection(
@@ -5473,6 +5700,46 @@ def test_a_composed_session_enforces_the_rules_the_generated_tree_does() -> None
     assert composed == generated
 
 
+@pytest.mark.parametrize(
+    "state",
+    [
+        ".lup/preflight/launch.json",
+        ".lup/policy-snapshots/abc.json",
+        ".lup/questions.jsonl",
+        ".lup/review-claims/abc",
+        ".lup/review-stage-claims/abc",
+    ],
+)
+def test_the_state_the_hooks_write_is_protected_whatever_a_project_declares(
+    tmp_path: Path, state: str
+) -> None:
+    """The library writes these, so the library protects them.
+
+    A launch's measured ledger, the policy snapshots, the review queue and
+    the claims spending an answer once are written by the hooks and the
+    operator's commands from their own processes. A project declaring no
+    protected root at all still has them, on both enforcement paths, the way
+    it has `.env`.
+    """
+    hooks = declared_hook_set().model_copy(
+        update={"protected_edit_roots": [], "human_owned_files": []}
+    )
+    change = EditBatch(
+        changes=[EditChange(path=Path(state), before="a\n", after="b\n")]
+    )
+    canonical = EditPolicy(declared_path_rules(hooks)).decide(change)
+    generated = load_bundled_kernel(tmp_path, "edit").decide_edit(
+        state,
+        "a\n",
+        "b\n",
+        path_exists=True,
+        path_rules=runtime_path_rules([], []),
+        antipattern_rows=[],
+    )
+
+    assert canonical.effect == generated.effect == "ask"
+
+
 @pytest.mark.parametrize("autonomous", [False, True])
 @pytest.mark.parametrize(
     ("path", "effect", "named"),
@@ -5485,6 +5752,11 @@ def test_a_composed_session_enforces_the_rules_the_generated_tree_does() -> None
         ("crates/core/Cargo.lock", "ask", "matches **/Cargo.lock"),
         (".github/workflows/ci.yml", "ask", "is under .github"),
         ("docs/package.json.md", "allow", ""),
+        # A project scaffolded in scratch carries its own manifest, and a
+        # scratch root is disposable by declaration: nothing installs from it.
+        ("tmp/adopter/pyproject.toml", "allow", ""),
+        ("tmp/adopter/uv.lock", "allow", ""),
+        ("packages/lup/tmp/web/package.json", "allow", ""),
     ],
 )
 def test_manifests_lockfiles_and_ci_ask_every_identity(
@@ -5519,6 +5791,38 @@ def test_manifests_lockfiles_and_ci_ask_every_identity(
 
     assert canonical.effect == generated.effect == effect
     assert named in generated.reason
+
+
+@pytest.mark.parametrize(
+    ("path", "effect"),
+    [
+        ("packages/lup/src/lup/harness/enforcement.py", "ask"),
+        ("packages/lup/src/lup/harness/models.py", "ask"),
+        ("packages/lup/src/lup/providers/claude/harness.py", "ask"),
+        ("packages/lup/src/lup/providers/codex/harness.py", "ask"),
+        ("packages/lup/src/lup/providers/claude/assets/policy_dispatcher.py", "ask"),
+        ("packages/lup/src/lup/providers/codex/assets/policy_dispatcher.py", "ask"),
+        ("packages/lup/src/lup/coordination/pulse.py", "allow"),
+        ("packages/lup/src/lup/formats/yaml.py", "allow"),
+    ],
+)
+def test_what_compiles_the_policy_is_protected_as_the_policy_is(
+    path: str, effect: str
+) -> None:
+    """Editing what compiles the hooks, then regenerating, changes the hooks.
+
+    So the modules the compilation reaches through the policy, and the hook
+    scripts each runtime ships verbatim, ask as the policy source does --
+    read off the compilation's imports rather than listed, so a module the
+    compilation comes to import is covered the day it does.
+    """
+    decision = EditPolicy(FIXTURE_PATH_RULES, path_roles=FIXTURE_PATH_ROLES).decide(
+        EditBatch(
+            changes=[EditChange(path=Path(path), before="a = 1\n", after="a = 2\n")]
+        )
+    )
+
+    assert decision.effect == effect
 
 
 def test_canonical_edit_policy_preserves_shared_security_outcomes() -> None:

@@ -1,0 +1,102 @@
+import { describe, expect, test } from "bun:test";
+import type { DashboardEvent, LiveMessage, LiveSession, ReviewSummary, StreamFrame } from "../generated/views";
+import { applied, called, conversation, repositoryMessages, sessionTree, type LiveState } from "./live";
+
+const repository = { key: "r1", name: "lup", repository: "/src/lup.git", checkout: "/src/lup.git/tree/dev" };
+
+function row(id: string, fields: Partial<LiveSession> = {}): LiveSession {
+  return {
+    key: `r1/${id}`, repository: "r1", id, parent: "", kind: "session", name: id, doing: "", task: "", running: true,
+    worktree: "", holding: [], contested: [], delivery: "hook", wake: "claude", arrived: null, heard: null,
+    summary: "", error: "", waiting: 0,
+    activity: { said: "", calling: "", arguments: {}, at: null, transcript: "" },
+    ...fields,
+  };
+}
+
+function message(id: string, fields: Partial<LiveMessage> = {}): LiveMessage {
+  return {
+    key: `r1/${id}`, repository: "r1", id, seq: 0, sender: "", recipient: "lead", recipient_kind: "session",
+    text: id, door: "agent", redirect: false, in_reply_to: "", sent_at: "2026-09-29T10:00:00Z", waiting: true,
+    ...fields,
+  };
+}
+
+function review(key: string, created: string): ReviewSummary {
+  return {
+    key, root_id: "root", id: key, state: "pending", requester: "lead", reason: "", title: key, paths: [],
+    total_files: 0, operation: "Bash", rule: "", created, answerable: true, session: "lead",
+  };
+}
+
+let seq = 0;
+function frame(event: DashboardEvent): StreamFrame {
+  seq += 1;
+  return { cursor: `{"epoch":"e","seq":${seq}}`, event };
+}
+
+function snapshot(): LiveState {
+  return applied(null, frame({
+    type: "snapshot",
+    repositories: [repository],
+    sessions: [row("lead"), row("lead-a1", { parent: "lead", kind: "subagent", name: "scout" }), row("other", { running: false })],
+    messages: [message("m1", { sender: "other" })],
+    reviews: { roots: [], errors: [], reviews: [review("q1", "2026-09-29T09:00:00Z")] },
+  }));
+}
+
+describe("live state", () => {
+  test("a snapshot is the whole state, and each frame moves it by one difference", () => {
+    const whole = snapshot();
+    const described = applied(whole, frame({ type: "session", session: row("lead", { doing: "reviewing" }) }));
+    const gone = applied(described, frame({ type: "session_gone", key: "r1/other" }));
+    const told = applied(gone, frame({ type: "message", message: message("m1", { sender: "other", waiting: false }) }));
+
+    expect(described.sessions.get("r1/lead")?.doing).toBe("reviewing");
+    expect(gone.sessions.has("r1/other")).toBe(false);
+    expect(told.messages.get("r1/m1")?.waiting).toBe(false);
+    expect(told.cursor).toBe(`{"epoch":"e","seq":${seq}}`);
+  });
+
+  test("reviews keep the newest first and keep their identity through frames that are not theirs", () => {
+    const whole = snapshot();
+    const described = applied(whole, frame({ type: "session", session: row("lead", { doing: "x" }) }));
+    const parked = applied(described, frame({ type: "review", review: review("q2", "2026-09-29T11:00:00Z") }));
+    const settled = applied(parked, frame({ type: "review", review: { ...review("q1", "2026-09-29T09:00:00Z"), state: "approved" } }));
+    const dropped = applied(settled, frame({ type: "review_gone", key: "q2" }));
+    const scoped = applied(dropped, frame({ type: "review_scope", roots: [{ id: "root", path: "/tree", repository: "", repository_name: "" }], errors: [] }));
+
+    expect(described.reviews).toBe(whole.reviews);
+    expect(parked.reviews.reviews.map((each) => each.key)).toEqual(["q2", "q1"]);
+    expect(settled.reviews.reviews.map((each) => each.state)).toEqual(["pending", "approved"]);
+    expect(dropped.reviews.reviews.map((each) => each.key)).toEqual(["q1"]);
+    expect(scoped.reviews.roots.map((each) => each.path)).toEqual(["/tree"]);
+  });
+
+  test("sessions nest their subagents beneath them, working ones first", () => {
+    const [group] = sessionTree(snapshot());
+    expect(group?.repository.name).toBe("lup");
+    expect(group?.sessions.map((node) => [node.session.id, node.subagents.map((each) => each.name)])).toEqual([
+      ["lead", ["scout"]],
+      ["other", []],
+    ]);
+  });
+
+  test("a session's conversation is what it was sent and what it sent, oldest first", () => {
+    const state = applied(snapshot(), frame({
+      type: "message",
+      message: message("m2", { sender: "lead", recipient: "other", sent_at: "2026-09-29T10:05:00Z" }),
+    }));
+    const unrelated = applied(state, frame({ type: "message", message: message("m3", { sender: "user", recipient: "other" }) }));
+
+    expect(conversation(unrelated, "r1", "lead").map((each) => each.id)).toEqual(["m1", "m2"]);
+    expect(repositoryMessages(unrelated, "r1").map((each) => each.id)).toEqual(["m1", "m3", "m2"]);
+  });
+
+  test("an id reads as the name its roster row carries, and the person as the operator", () => {
+    const state = snapshot();
+    expect(called(state, "r1", "lead-a1")).toBe("scout");
+    expect(called(state, "r1", "user")).toBe("you");
+    expect(called(state, "r1", "unknown-id")).toBe("unknown-id");
+  });
+});

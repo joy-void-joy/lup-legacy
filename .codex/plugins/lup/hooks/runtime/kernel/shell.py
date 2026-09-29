@@ -46,6 +46,7 @@ from .words import (
     dangerous_assignment_reason,
     dangerous_env_name,
     effective_command,
+    git_init_in_scratch,
     global_span,
     is_help_probe,
     is_trusted_script,
@@ -69,12 +70,19 @@ from .bindings import (
     bind_script,
     carried_words,
     expanded_script,
-    literal_loop_word,
     pure_assignment_names,
     references,
+    unrollable,
 )
 from .escalation import read_escalation
-from .programs import SCRIPT_INTERPRETERS, program_verdict, read_program
+from .programs import (
+    PROGRAM_RULE,
+    SCRIPT_INTERPRETERS,
+    program_verdict,
+    read_program,
+)
+from .roles import repository_relative
+from .walks import names_read
 from .withheld import (
     printed_secret,
     secret_name,
@@ -209,6 +217,13 @@ class ShellContext(TypedDict):
     arrives from the host per call; absent, nothing was walked and nothing is
     refused for what lies beneath."""
 
+    names_read: bool
+    """Whether this line hands names read from its input to a program.
+
+    Read once over the whole line, since a listing's names reach their
+    reader through a pipe, a file or a loop: where they do, every listing
+    in the line is read as the walk it feeds."""
+
     secret_variables: list[str]
     """Name patterns of the variables whose values no command may print."""
 
@@ -302,6 +317,7 @@ def shell_context(
     displaced_targets: list[DisplacedTargetRow] | None = None,
     host_ports: list[int] | None = None,
     withheld_walks: list[WithheldWalkRow] | None = None,
+    names_read: bool = False,
 ) -> ShellContext:
     """Bundle one classification's declarations, normalizing absent lists.
 
@@ -337,6 +353,7 @@ def shell_context(
         unscoped_fetch=unscoped_fetch,
         refused_paths=refused_paths or [],
         withheld_walks=withheld_walks or [],
+        names_read=names_read,
         secret_variables=secret_variables or [],
         antipattern_rows=antipattern_rows or {},
         edit_rules=edit_rules or [],
@@ -612,6 +629,9 @@ def decide_interpreter_words(
     executable = posixpath.basename(words[0])
     declared = declares_command(executable, context["rows"])
     reading = read_program(words)
+    # Its version or usage runs no program, whichever interpreter prints it.
+    if reading["kind"] == "informational":
+        return program_verdict(executable, reading)
     if executable in runs_scripts:
         verdict = program_verdict(executable, reading)
         if verdict is not None and (
@@ -629,6 +649,8 @@ def decide_interpreter_words(
         recovery="Write the code to a named script file and run it through"
         " `uv run python <script>`; a bare interpreter is refused even"
         " over a file.",
+        # A subcommand is the tool's own, and reads its own `--help`.
+        rule="" if reading["kind"] == "subcommand" else PROGRAM_RULE,
     )
 
 
@@ -645,15 +667,29 @@ def standing_interpreter_refusal(
     nobody can read, rather than being handed to a boundary with it:
     `perl -pi -e … $files` is the inline code `perl -pi -e …` is.
 
-    An interpreter a project declared keeps its row, and one whose first
-    operand is unread could be handed a script this policy trusts or allows,
-    so neither stands here: those keep the abstention they had.
+    The program itself unread is judged as the strictest one it could be:
+    `bash $x` runs whatever `$x` holds, and that could as well be `-c` and
+    code split out of the word, or `-` and its input, as a script file. So
+    it is refused on every posture, declared interpreter or not, and through
+    `uv run` as directly. An interpreter a project declared otherwise keeps
+    its row.
     """
     if not words or opaque_argument(words[0]):
         return None
     executable = posixpath.basename(words[0])
+    if executable == "uv":
+        normalized = uv_command_words(words)
+        handed = (
+            uv_run_words(normalized)
+            if normalized is not None and normalized[1:2] == ["run"]
+            else []
+        )
+        return standing_interpreter_refusal(handed, context) if handed else None
     if executable not in INTERPRETERS:
         return None
+    program = read_program(words)
+    if program["kind"] == "unread" and opaque_argument(program["subject"]):
+        return program_verdict(executable, program)
     verdict = decide_interpreter_words(words, context)
     if verdict is None or verdict.effect != "deny":
         return None
@@ -747,7 +783,10 @@ def decide_segment_words(
             (checkout if held else None)
             or (git_restore_source(words) if held else None)
             or git_restore_unchanged(
-                words, context["recoverable_targets"], context["path_rules"]
+                words,
+                context["recoverable_targets"],
+                context["path_rules"],
+                context["path_roles"],
             )
             or git_symbolic_ref_read(words)
         )
@@ -764,6 +803,7 @@ def decide_segment_words(
             [words[0], *words[at:]],
             context["recoverable_targets"],
             context["path_rules"],
+            context["path_roles"],
         )
         if owned is not None and owned.effect != "allow":
             return owned
@@ -776,11 +816,16 @@ def decide_segment_words(
     if refused is not None:
         return refused
     deleted = protected_deletion(
-        words, context["path_rules"], context["rows"], context["checkout_root"]
+        words,
+        context["path_rules"],
+        context["rows"],
+        context["path_roles"],
+        context["checkout_root"],
     ) or protected_placement(
         words,
         context["path_rules"],
         context["rows"],
+        context["path_roles"],
         context["existing_targets"],
         context["checkout_root"],
     )
@@ -886,6 +931,17 @@ def decide_segment_words(
             if handed is None
             else decide_shell_segment(handed["words"], context, handed["directory"]),
         )
+    target = reached_target(words[0], directory, context)
+    if target:
+        # The same program `uv run` reaches, spelled without it: one row for
+        # it, whichever spelling found it.
+        return decide_uv(
+            ["uv", "run", target, *words[1:]],
+            context["runner_targets"],
+            context["target_tables"],
+            write_facts(context),
+            rows=context["rows"],
+        )
     decided = decide_command_rows(words, context["rows"], write_facts(context))
     # A variable a later command sees stays in this process, unless it is one
     # that swaps who that command acts as: the row states the first, and the
@@ -893,6 +949,30 @@ def decide_segment_words(
     if executable in BINDING_BUILTINS and decided.reach == "container":
         return decided.revised(reach=binding_reach(bound_names(words[1:])))
     return decided
+
+
+def reached_target(word: str, directory: str | None, context: ShellContext) -> str:
+    """The runner target a command word reaches without `uv run`, or nothing.
+
+    A declared target is one program however a session reaches it: `uv run
+    pytest`, `pytest` found on the path, and `.venv/bin/pytest` from this
+    checkout's own environment run the same code, so each is judged by the
+    one row `uv run` reads rather than by a row per spelling. A file that
+    only shares the name -- under `tmp/`, in another project's environment
+    -- is some other program. A command the vocabulary states a row for
+    answers by that row instead, which is where a project declines a
+    spelling on purpose.
+    """
+    name = posixpath.basename(word)
+    if not any(row["name"] == name for row in context["runner_targets"]):
+        return ""
+    if declares_command(name, context["rows"]):
+        return ""
+    if word == name:
+        return name
+    placed = placed_path(word, directory)
+    spelled = repository_relative(placed, context["checkout_root"]) if placed else ""
+    return name if posixpath.normpath(spelled) == f".venv/bin/{name}" else ""
 
 
 def decide_shell_segment(
@@ -954,6 +1034,7 @@ def decide_shell_segment(
         context["checkout_root"],
         context["withheld_walks"],
         context["refused_paths"],
+        context["names_read"],
     )
     if withheld is not None:
         return withheld
@@ -972,6 +1053,16 @@ def decide_shell_segment(
         if not moved
         else joined_directory(directory, moved)
     )
+    # Read off the placed words, where a `cd` and `git -C` already stand, and
+    # only where no `--git-dir` moved the repository: consumed with the other
+    # globals, it is the one of them that says where `init` makes one.
+    head = words[: global_span(words, context["rows"])]
+    if not any(word == "--git-dir" or word.startswith("--git-dir=") for word in head):
+        made = git_init_in_scratch(
+            placed, context["path_roles"], context["checkout_root"]
+        )
+        if made is not None:
+            return made
     # A command word nobody can read is read as each program whose verb the
     # words after it name, and the spelling's own verdict is the floor.
     verdict = strictest_reading(
@@ -1052,7 +1143,7 @@ def decide_placed_words(
             unread_readings(words, context["rows"], write_facts(context)),
         )
     decision = decide_segment_words(words, context, directory, operands_judged)
-    if is_help_probe(words[1:]):
+    if is_help_probe(words[1:]) and not refuses_a_program(decision):
         return decision.revised(
             effect="allow",
             reason="a help probe only prints usage",
@@ -1061,6 +1152,21 @@ def decide_placed_words(
             abstention=None,
         )
     return decision
+
+
+def refuses_a_program(decision: KernelDecision) -> bool:
+    """Whether an interpreter's refusal of the program it runs is in this verdict.
+
+    A help probe answers for the command that reads the `--help`, and one an
+    interpreter's program is handed is that program's argument: `bash -c ls
+    --help` runs `ls`, and `bash -h` is a flag while stdin carries the
+    program. Read through every part, since a carrier -- `uv run`, `xargs`,
+    `find -exec` -- hands the payload's refusal on as its own or beside
+    another, and the carrier's words hold the same `--help`.
+    """
+    return decision.rule == PROGRAM_RULE or any(
+        refuses_a_program(part) for part in decision.findings
+    )
 
 
 def uv_post_target_words_safe(
@@ -1176,6 +1282,11 @@ def gate_references(
         if not effective or not argument_safe_words(effective, context):
             return standing_interpreter_refusal(effective, context) or unjudged(
                 "an opaquely bound variable could become a guarded flag"
+            ).advising(
+                "Run what computes the value in its own call and write the"
+                " literal it printed into this one, or do the whole computation"
+                " in a script file (`uv run python tmp/<name>.py`), which is read"
+                " as the file it is."
             )
     return None
 
@@ -1200,10 +1311,13 @@ def decide_for_body(
 ) -> list[KernelDecision]:
     """Classify a ``for`` body once per literal loop word, or gated when opaque.
 
-    A literal word list instantiates the body exactly, so a word landing in a
-    guarded flag position is judged as the flag it becomes. A non-literal list
-    (globs, expansions) can become any word, so every command referencing the
-    variable must name an argument-safe command before one placeholder pass.
+    A literal word list instantiates the body exactly -- once per word, in the
+    binding pass every reader shares -- so a word landing in a guarded flag
+    position is judged as the flag it becomes. A non-literal list (globs,
+    expansions) can become any word, and a body assigning the loop's name
+    makes a later reference some other value, so there every command
+    referencing the variable must name an argument-safe command before one
+    placeholder pass.
     """
     name = command["name"]
     if dangerous_env_name(name):
@@ -1230,16 +1344,18 @@ def decide_for_body(
             )["decisions"]
         ]
 
-    if all(literal_loop_word(word) for word in loop_words):
-        return instantiations([word_text(word) for word in loop_words] or ["x"])
+    # The binding pass read a literal list's body once per word already, for
+    # every reader of the line, so each pass is in the body as it stands.
+    if unrollable(command):
+        return decide_list(command["body"], context, depth + 1, bindings)["decisions"]
     for inner in simple_commands(command["body"]):
         if references(inner["words"], name):
             words = command_words([word_text(word) for word in inner["words"]])
             if not words or not argument_safe_words(words, context):
                 return [
                     unjudged(
-                        "loop words are not literal, so a variable argument"
-                        " could become a guarded flag"
+                        "the loop variable is not one literal word on every pass,"
+                        " so an argument could become a guarded flag"
                     )
                 ]
     return instantiations(["x"])
@@ -1524,6 +1640,7 @@ def classify_shell(
         unproduced_documents=unproduced_documents,
         displaced_targets=displaced_targets,
         host_ports=host_ports,
+        names_read=names_read(command, rows),
     )
     tree = parse_shell(command)
     if isinstance(tree, KernelDecision):

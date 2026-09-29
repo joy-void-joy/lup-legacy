@@ -1,18 +1,19 @@
-"""The operator's dashboard over the review queues of every repository it serves.
+"""The operator's dashboard over the review queues and sessions of every repository it serves.
 
 One loopback page reads every worktree of every repository it was given — the
 operator's `--root`s, or every repository a launch held the dashboard for —
 so a review parked by any session in any of them is one list away, grouped by
-the repository and the session that asked. The page holds a capability
-carried in the URL fragment, checks Host and Origin on every request, and
-answers a review only against the fingerprint it displayed and the preimages
-still on disk. It never runs the operation: an approval releases one exact
-retry of the call that asked.
+the repository and the session that asked, beside every session and what it
+is doing. The page holds a capability carried in the URL fragment, checks
+Host and Origin on every request, and answers a review only against the
+fingerprint it displayed and the preimages still on disk. It never runs the
+operation: an approval releases one exact retry of the call that asked.
 
-One producer serves every open tab. A checkout's queue is re-read only when
-its relay changed on disk, and a settled review's row is projected once,
-since nothing about it can change again — so an idle page costs a few stats
-a second, however long the history behind it.
+Everything live reaches the page on one stream (:mod:`.stream`). A
+checkout's queue is re-read only when its relay changed on disk, and a
+settled review's row is projected once, since nothing about it can change
+again — so an idle page costs a few stats a second, however long the history
+behind it.
 
 What a review *is* — its projection into files, hunks and captured
 evidence — is :mod:`lup.devtools.review.app`'s; this module is what exists
@@ -24,9 +25,8 @@ import asyncio
 import hmac
 import logging
 import secrets
-import time
 import webbrowser
-from collections.abc import AsyncIterator, Awaitable, Callable, Iterator
+from collections.abc import Awaitable, Callable, Iterator
 from functools import partial
 from pathlib import Path
 from tempfile import mkdtemp
@@ -37,6 +37,7 @@ import sh
 import typer
 from pydantic import BaseModel, Field
 
+from lup.coordination.repository import PeerDepartedError
 from lup.devtools.dashboard.companion import (
     Dashboard,
     DashboardHealth,
@@ -107,6 +108,8 @@ class ReviewHeaders(BaseModel, frozen=True):
     authorization: str = ""
     origin: str = ""
     content_type: str = Field(default="", alias="content-type")
+    last_event_id: str = Field(default="", alias="last-event-id")
+    """The cursor of the last frame a reconnecting tab saw on the stream."""
 
 
 class LocatedReview(BaseModel, frozen=True):
@@ -360,78 +363,6 @@ class ReviewStore(BaseModel, frozen=True):
         )
 
 
-class SnapshotFeed:
-    """One producer per server, however many tabs follow it.
-
-    A tab following the stream is handed the snapshot the producer last took,
-    whenever it changes and at least every ``resend_after`` seconds; the
-    producer runs while anybody follows, and every ``sweep_every`` ticks
-    expires what no session waits on any more.
-    """
-
-    def __init__(
-        self,
-        store: ReviewStore,
-        interval: float = 1.0,
-        resend_after: float = 15.0,
-        sweep_every: int = 10,
-    ) -> None:
-        self.store = store
-        self.interval = interval
-        self.resend_after = resend_after
-        self.sweep_every = sweep_every
-        self.encoded = ""
-        self.version = 0
-        self.followers = 0
-        self.published = asyncio.Event()
-        self.producer: asyncio.Task[None] | None = None
-
-    async def produce(self) -> None:
-        """Take a snapshot a tick while anybody follows, publishing what changed."""
-        tick = 0
-        while self.followers:
-            if tick % self.sweep_every == 0:
-                await asyncio.to_thread(self.store.sweep)
-            snapshot = await asyncio.to_thread(self.store.snapshot)
-            encoded = snapshot.model_dump_json()
-            if encoded != self.encoded:
-                self.encoded = encoded
-                self.version += 1
-                published, self.published = self.published, asyncio.Event()
-                published.set()
-            tick += 1
-            await asyncio.sleep(self.interval)
-        self.producer = None
-
-    async def published_within(self, seconds: float) -> None:
-        """Wait for the next snapshot published, or for ``seconds``, whichever comes first."""
-        waiter = asyncio.ensure_future(self.published.wait())
-        finished, _ = await asyncio.wait({waiter}, timeout=seconds)
-        if not finished:
-            waiter.cancel()
-
-    async def follow(
-        self, disconnected: Callable[[], Awaitable[bool]]
-    ) -> AsyncIterator[str]:
-        """One tab's stream: every snapshot published while it stays connected."""
-        self.followers += 1
-        if self.producer is None:
-            self.producer = asyncio.create_task(self.produce())
-        seen = 0
-        sent = time.monotonic()
-        try:
-            while not await disconnected():
-                if self.version != seen or (
-                    self.version and time.monotonic() - sent >= self.resend_after
-                ):
-                    seen = self.version
-                    sent = time.monotonic()
-                    yield self.encoded + "\n"
-                await self.published_within(self.interval)
-        finally:
-            self.followers -= 1
-
-
 def forwarded_headers(port: int, content_type: str) -> StringMap:
     """What a pane's request carries to the page serving it: that page's own Host."""
     return {
@@ -451,15 +382,21 @@ def dashboard_app(
     health: DashboardHealth | None = None,
     panes: SetupPanes | None = None,
 ) -> "FastAPI":
-    """Build the dashboard: an authenticated browser surface over the review queues.
+    """Build the dashboard: an authenticated browser surface over reviews and sessions.
 
     ``health`` is what a running dashboard answers its launcher with, and
     ``panes`` each repository's setup page; neither is served where not given.
+    The repositories whose sessions it shows are the ``roots`` named and
+    every one the ``registry`` knows.
     """
-    from fastapi import BackgroundTasks, Request
+    from fastapi import BackgroundTasks, HTTPException, Request
     from fastapi.responses import JSONResponse, Response, StreamingResponse
 
+    from lup.devtools.dashboard.live import ReplyOutcome, ReplyRequest, reply
+    from lup.devtools.dashboard.stream import LiveFeed
     from lup.web.serve import bundle_app
+
+    named = named_repositories(roots)
 
     def anchor(root: Path) -> Path:
         try:
@@ -476,7 +413,11 @@ def dashboard_app(
         else bundle_app("Dashboard", url, "dashboard", bundles)
     )
     store = ReviewStore(roots=roots, discover=discover, registry=registry)
-    feed = SnapshotFeed(store)
+
+    def watched() -> list[KnownRepository]:
+        return [*named, *(registry.repositories() if registry is not None else [])]
+
+    feed = LiveFeed(watched, store)
 
     @app.middleware("http")
     async def authorize(
@@ -520,11 +461,27 @@ def dashboard_app(
     ) -> ReviewDecision:
         return store.answer(key, decision, background_tasks)
 
-    @app.get("/api/events")
-    async def events(request: Request) -> StreamingResponse:
+    @app.get("/api/stream")
+    async def stream(request: Request) -> StreamingResponse:
+        """Everything live, as server-sent events resuming after ``Last-Event-ID``."""
+        resume = ReviewHeaders.model_validate(request.headers).last_event_id
         return StreamingResponse(
-            feed.follow(request.is_disconnected), media_type="application/x-ndjson"
+            feed.follow(resume, request.is_disconnected),
+            media_type="text/event-stream",
         )
+
+    @app.post("/api/repositories/{repository}/sessions/{member}/messages")
+    def message(repository: str, member: str, request: ReplyRequest) -> ReplyOutcome:
+        """The operator's message to one session or subagent, by its member id."""
+        known = next((each for each in feed.served() if each.key() == repository), None)
+        if known is None:
+            raise HTTPException(status_code=404, detail="No repository has that key")
+        try:
+            return reply(known, member, request.text)
+        except PeerDepartedError as departed:
+            raise HTTPException(status_code=409, detail=str(departed)) from departed
+        except LookupError as missing:
+            raise HTTPException(status_code=404, detail=str(missing)) from missing
 
     @app.get("/api/setup")
     def setup_panes() -> list[SetupPane]:

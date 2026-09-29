@@ -82,6 +82,7 @@ def test_root_exports_only_portable_runtime_conveniences() -> None:
         # argument a root agent takes accepts.
         "CustomModel",
         "HostCompanion",
+        "HostService",
         # The fields a launch adds to an agent's declaration.
         "InnerSandbox",
         "Latest",

@@ -26,6 +26,7 @@ from pydantic.json_schema import SkipJsonSchema
 from lup.channels.models import Door
 from lup.coordination.bare.runtime import (
     Runtime,
+    beneath,
     process_scope,
     runtime_alive,
     runtime_of,
@@ -102,6 +103,8 @@ class RosterPulse(ServerCompanion, frozen=True):
     its input before anything else read it; one hosted in the process that
     opened its session answers for that process, which it cannot outlive.
     """
+    spawned_by: str = ""
+    """The session whose shell started this runtime, which the row it joins names."""
 
     def rejoin_wake(self, previous: RosterMember | None) -> WakePath:
         """Keep this owner's retained binding only inside its original boundary."""
@@ -153,7 +156,13 @@ class RosterPulse(ServerCompanion, frozen=True):
         peers.beat(self.member_id)
         wake = self.rejoin_wake(peers.row(self.member_id))
         peers.sweep(by=member_ref(self.member_id))
-        peers.join(self.member_id, self.root, delivery=Delivery.HOOK, wake=wake)
+        peers.join(
+            self.member_id,
+            self.root,
+            delivery=Delivery.HOOK,
+            wake=wake,
+            spawned_by=self.spawned_by,
+        )
         adopt(peers.root, member, self.runtime)
         peers.beat(self.member_id)
         return True
@@ -167,12 +176,15 @@ class RosterPulse(ServerCompanion, frozen=True):
         before this server joins again. A row naming a live runtime other than
         this server's is that runtime's; a server that meets one cedes the
         session for good, being a runtime started from that session's shell
-        and carrying its id. One named where this server cannot ask is left
-        alone.
+        and carrying its id — unless this server's runtime is the one that
+        started it, having reached a fresh store's row after it did. One named
+        where this server cannot ask is left alone.
         """
         if hold.ceded:
             return False
         if not named or same_runtime(named, self.runtime):
+            return True
+        if beneath(named, self.runtime, scope):
             return True
         match runtime_alive(named, scope):
             case True:
@@ -304,11 +316,13 @@ def create_peer_tools(
     wake: WakePath = WakePath(),
     door: Door = Door.AGENT,
     runtime: Runtime | None = None,
+    spawned_by: str = "",
 ) -> list[LupMcpTool]:
     """The repository verbs, bound to one roster and one session's identity.
 
     *runtime* is the process the session is, which a row these verbs put down
-    names, and this process where none is given.
+    names, and this process where none is given. *spawned_by* is the session
+    whose shell started it, where it inherited that session's launched id.
 
     The identity is bound here rather than taken as an argument for the reason
     a resolver worker's concern is: a session that could name itself in a call
@@ -350,7 +364,13 @@ def create_peer_tools(
         first beat, and a row naming nobody would be taken by whichever
         runtime carrying the same id beat first.
         """
-        peers.join(member_id, worktree, delivery=Delivery.HOOK, wake=wake)
+        peers.join(
+            member_id,
+            worktree,
+            delivery=Delivery.HOOK,
+            wake=wake,
+            spawned_by=spawned_by,
+        )
         adopt(peers.root, session_actor(member_id), answering)
         if not caller.get("agent_id"):
             return member_ref(member_id)
@@ -474,7 +494,7 @@ def create_peer_tools(
                 "`coordination_peers` lists the others"
             )
         try:
-            found = peers.send(params.address, params.text, door=door)
+            found = peers.send(params.address, params.text, door=door, sender=acting.id)
         except PeerDepartedError as departed:
             raise ToolError(
                 f"{departed}; `coordination_peers` lists who is here"
@@ -504,9 +524,7 @@ def create_peer_tools(
         delivery = peers.take(present(params.caller).id)
         return MailboxOutput(
             messages=[
-                f"[{'redirect' if message.redirect else 'message'} by "
-                f"{message.door}] {message.text}"
-                for message in delivery.messages
+                f"{message.heading()} {message.text}" for message in delivery.messages
             ]
         )
 

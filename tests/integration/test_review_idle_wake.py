@@ -20,6 +20,7 @@ from websockets.asyncio.client import unix_connect
 
 import lup.coordination.bare.arrival as arrival
 import lup.coordination.wake as routing
+from lup.channels.wait import wait_until
 from lup.coordination.bare import store
 from lup.coordination.identity import MEMBER_ENV, NAME_ENV, member_ref
 from lup.coordination.relay import MailboxRelay
@@ -347,7 +348,6 @@ async def test_browser_answer_starts_an_idle_codex_turn_through_the_relay(
                     .notification
                 )
                 assert outcome is not None and outcome.queued and not outcome.woken
-                [mail] = peers.waiting("recipient").messages
                 await completed(2)
                 relay = MailboxRelay(root=root, member_id="recipient")
 
@@ -355,8 +355,13 @@ async def test_browser_answer_starts_an_idle_codex_turn_through_the_relay(
                 assert NOTE in json.dumps(requests[1])
                 assert entry.id in json.dumps(requests[1])
                 assert sum(event.method == "turn/started" for event in observed) == 2
+                # Handed over once the served relay's queue call returns, which
+                # can be after the turn it started has completed.
+                assert await wait_until(
+                    lambda: True if not peers.waiting("recipient").messages else None,
+                    wait_seconds=20,
+                )
                 assert relay.tick() is None
-                assert peers.waiting("recipient").messages == [mail]
                 assert review.relay(root).find(entry.id) == decision.review.question
                 assert not target.exists()
     finally:

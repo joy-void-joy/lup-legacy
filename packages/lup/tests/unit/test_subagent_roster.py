@@ -245,7 +245,9 @@ async def test_a_message_to_a_subagent_waits_in_its_own_mailbox(
     taken = answer(
         await tools["coordination_mailbox"].handler(by("a0cacac5", worktree))
     )
-    assert taken["messages"] == ["[message by agent] rebase before you commit"]
+    assert taken["messages"] == [
+        f"[message from {SESSION} by agent] rebase before you commit"
+    ]
     assert peers.waiting(SESSION).messages == []
 
 

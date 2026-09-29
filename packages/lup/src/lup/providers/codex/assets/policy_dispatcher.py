@@ -65,6 +65,7 @@ from host import (
     record_hook_evidence,
     repaired_directives,
     sandbox_active,
+    unjudged_reason,
 )
 from kernel.decision import KernelDecision
 from kernel.review import literal_input
@@ -458,8 +459,12 @@ def main():
     payload = {}
     permission_request = False
     review_notice = ""
+    read = False
     try:
         payload = json.load(sys.stdin)
+        if not isinstance(payload, dict):
+            raise ValueError("hook input must be an object")
+        read = True
         permission_request = (
             "hook_event_name" in payload
             and payload["hook_event_name"] == "PermissionRequest"
@@ -514,8 +519,9 @@ def main():
     # one answer is right for all of them. Naming the exceptions instead is
     # what let a plain unreadable file escape, and a traceback exit is not the
     # fail-closed exit this boundary takes, so the call proceeded ungoverned.
-    # Nothing is swallowed: the reason carries whatever went wrong, and an
-    # interrupt still passes through as the BaseException it is.
+    # Nothing is swallowed: the reason names which cause it was, carrying
+    # whatever went wrong, and an interrupt still passes through as the
+    # BaseException it is.
     except Exception as error:
         record_hook_evidence(
             plugin_data_root(),
@@ -524,9 +530,7 @@ def main():
             "error",
             f"{type(error).__name__}: {error}",
         )
-        decision = KernelDecision(
-            "deny", f"Malformed hook input requires approval: {error}"
-        )
+        decision = KernelDecision("deny", unjudged_reason(error, read))
         if not permission_request:
             sys.stderr.write(decision.addressed())
             raise SystemExit(2) from error

@@ -99,7 +99,11 @@ reaches the session that dispatched it at that session's address. What a
 subagent's calls change is held on its row, so a sibling writing there is
 asked, and the session writing under a subagent it has running is asked too;
 a subagent is not asked about its own session's claims, since the session
-dispatched it into that work.
+dispatched it into that work. `dev policy` run from a subagent's shell carries
+only the session's id; it reads as that subagent while the subagent's command
+is the one the session's family has running — the dispatcher opens a window
+keyed by the calling conversation around each command — and as the session
+where no single one is.
 
 A launcher mints both halves and exports them as `LUP_COORDINATION_MEMBER` and
 `LUP_COORDINATION_NAME`, and can prove them, the way `LUP_AGENT_IDENTITY` is
@@ -111,6 +115,27 @@ answering to `dev-2` would be two names for one session. A bare session in a
 worktree has the plugin and no launcher, so it falls back to the identity its
 own runtime gave it and is named after its worktree when it joins, numbered
 the same way. It is a full peer that cannot prove who started it.
+
+**A runtime started from a session's shell is somebody else.** Every process
+the launched runtime starts inherits those two variables — and so does a
+`claude -p`, a `codex exec` or a pipeline run from the session's shell, which
+then joined, described, departed and read mail as that session: its ending
+ended the session's row, its tool calls were handed the session's mail, and
+its prompts, from another transcript, read as the session's conversation
+rewound and cleared what the session said it was doing. The id was minted
+for one runtime, and the row names the runtime it answers for, so each hook
+and tool server asks which runtime it serves — the process feeding its input
+— and a runtime that is neither the one the row names nor the one that
+started it is a member of its own: its id is the session's followed by `_`
+and a digest of its process (pid, start time and namespace), which its
+hooks and servers each arrive at without asking one another, and its row
+names the session it was `spawned_by` and is called after it
+(`<name>-spawned`). That holds after the session has stopped, so a runtime
+outliving it never takes its ended row. The first runtime to reach a row
+naming nobody takes it, and a session whose own runtime started the one that
+got there first — possible only in a store nobody had joined — takes its row
+back. A lup CLI verb run from a shell has no input to read a runtime from
+and acts as the session the environment names.
 
 **Every verb but describing is refused until the session has described
 itself.** The roster is read by sessions deciding whether they can touch the
@@ -303,7 +328,11 @@ is not enough to work from, something was still living in the sender's head.
 
 Mail is written first, always. A wake that cannot be made costs latency and
 never the work, which is what makes the asymmetry below tolerable rather than
-a gap.
+a gap. A wake carries every message waiting whole, so one the member's
+runtime accepted — a frame its wake socket took, a message its queue took —
+hands over what it carried then, the way the member's own delivery hook
+does: that hook, at the member's next tool call, hands over only what no wake
+carried, and a message is put in front of the member once.
 
 The asymmetry is the runtime's own. One of them serves a command that reaches
 a session from any process, so waking finishes the job itself. The other has
@@ -394,7 +423,8 @@ can outlive it: measured with real tool servers under stand-in runtimes, one
 put a cleanly ended session back on the roster within a tick and beat for it
 for as long as it lived, and one freeze past the window took a live session's
 description off its row at the next sweep. Neither can happen to a row naming
-another runtime, or answered for by a pulse somebody holds.
+another runtime, or answered for by a pulse somebody holds — and such a
+runtime's server answers for a member of its own, spawned by the session.
 
 **The one place this spends more is the stat**, because settling a claim means
 asking the filesystem rather than reading a record. Measured on 2026-09-19
@@ -430,6 +460,19 @@ written by the sender and deleted by that member once it has been handed over,
 so "what is waiting for me" is a directory listing. There is no position for
 anybody to keep: nothing to commit after a crash but what was never handed
 over, and no way for a second reader to be behind a first.
+
+A message is signed with the address a reply reaches — the sending member's
+id, or `user` for the person — and its reader is handed it as
+`[message from <sender> by <door>] …`; a door with no address of its own, a
+run steering its workers, signs nothing and reads `[message by <door>] …`.
+Every message posted also lands on the store's mail record, `mail.jsonl`, one
+line naming the member it went to: the mailbox is its reader's position and
+empties as it is read, so what was said to a member, and by whom, is read
+from the record — the dashboard follows it from a cursor. The record holds
+the roster's retention window, as the departed do: the sweep cuts every
+message sent before it off the record's head, leaving a first line that
+counts what was cut, so a line keeps its number and a reader following the
+record is carried across the cut.
 
 **A notice is neither.** "The base moved under all of you" is a fact about the
 population rather than about its recipients: it stays true after it is said,
@@ -505,10 +548,11 @@ Everything here is an append-only file, and nothing pushes: a session folds
 the files again on its own next call, which serves a session and nobody else.
 `coordination watch` is the fold run on a clock, saying only what is different
 from the last look — who arrived and left, what a session now says it is on,
-and what reached whose mailbox. It consumes nothing: mail is read the way a peek
-reads it, so a person watching a peer's mailbox is never the reason the peer did
-not see a message. The first look is a baseline rather than a replay, the same
-convention a run follower keeps when attaching to work already under way.
+and what reached whose mailbox. Noticing consumes nothing: mail is read the way
+a peek reads it, so a person watching a peer's mailbox is never the reason the
+peer did not see a message. The first look is a baseline rather than a replay,
+the same convention a run follower keeps when attaching to work already under
+way.
 
 The same watcher is a **run** for the case where nobody is at the terminal.
 `coordination watch --as-run <dir>` declares it as a pipeline, so it survives

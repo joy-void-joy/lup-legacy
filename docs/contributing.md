@@ -429,8 +429,36 @@ It starts a separate pytest process in each declared test root, preserving
 each suite's configuration and imports. A raw pytest invocation naming both
 roots can fail while importing `tests.conftest`, because both independently
 installed suites use that package name. Recover with `dev test` over the same
-paths; changing import mode does not separate those packages. The runner uses
-parallel workers only when pytest-xdist is installed; otherwise it runs serially.
+paths; changing import mode does not separate those packages. The runner spreads
+a suite over parallel workers only where the suite's own environment holds
+pytest-xdist — asked of the environment `uv run` builds from the suite's
+directory, not the gate's — and runs it serially otherwise; a `TestRoot` that
+declares `parallel=True` or `parallel=False` is taken at its word. A gate with
+no suite declared prints `tests: no suites declared` where the suites would
+report, so a tally of passing checks never stands in for tests nobody ran.
+
+A uv project nested inside the repository — a directory with its own
+`pyproject.toml`, lockfile and environment, often on another Python — is
+declared once, as a `SubProject` in `declared_sub_projects()` in the
+catalog: `SubProject(root=Path("studio"), python="3.13")`. `harness generate
+all` compiles it into `pyproject.toml`: a Pyright execution environment rooted
+at it, on its Python, searching its `src` and its environment's
+`site-packages` under every name `environments` lists (uv's `.venv` and the
+image's own); a second one rooted at its scratch directory, `tmp/studio/` by
+default, so a script run with `uv run --project studio` is checked where it
+runs; its root in Pyright's `include`; and Ruff's per-file target version for
+both. It records the roots it placed as `[tool.lup] sub-project-roots`, so a
+dropped declaration takes its entries with it, and it replaces an environment
+the project wrote by hand at the same root. The same declaration adds a test
+root whose files carry the test role from the suite's own `testpaths`, marks
+every environment directory scratch at any depth, syncs the sub-project's
+environment in a fresh worktree, and syncs it again before the gate's Pyright
+reads its packages. Pin the sub-project's interpreter to the declared version
+(`uv python pin 3.13` in its root): Pyright is handed the environment's
+`lib/python3.13/site-packages`, which names nothing if uv built it on another.
+A module anywhere is named from the segment its first `src/` introduces, so
+`studio/src/studio/eyes/grade.py` is `studio.eyes.grade` to the rule scan, as
+its importers spell it.
 
 The generated trees include the frontend bundles under `lup.web`'s package
 data, built from `packages/lup/web/` by Vite, so the gate needs `bun`. The

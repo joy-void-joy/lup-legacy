@@ -35,7 +35,7 @@ from pydantic import BaseModel, Field
 
 from lup.coordination.repository import RepositoryPeers
 from lup.coordination.tasks import Task
-from lup.coordination.wake import wake
+from lup.coordination.watch import roused
 from lup.ledger.journal import LedgerStore
 from lup.ledger.models import LedgerEdge, LedgerNode, Standing, Surroundings
 from lup.types import JsonValue
@@ -297,11 +297,15 @@ def hand_off(
         taken.append(str(target))
 
     message = f"{handoff.id}: {title}" + (f"\n{text}" if text else "")
-    peers.send(to, message)
+    peers.send(to, message, sender=sender.id)
     reached = next(
         (view for view in peers.listing() if view.member.actor.id == member.id), None
     )
-    roused = wake(reached.member.wake, message, root) if reached is not None else None
+    woken = (
+        roused(peers, reached.member, peers.waiting(member.id).messages, root)
+        if reached is not None
+        else None
+    )
     return Handover(
         handoff=handoff,
         to=to,
@@ -309,6 +313,6 @@ def hand_off(
         locked=taken,
         contested=disputed,
         delivered=True,
-        woken=roused.reached if roused else False,
-        note=roused.reason if roused else "",
+        woken=woken.reached if woken else False,
+        note=woken.reason if woken else "",
     )

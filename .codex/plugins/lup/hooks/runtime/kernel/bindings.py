@@ -429,6 +429,44 @@ def expanded_script(script: Script, bindings: tuple[ShellBinding, ...]) -> Scrip
     return mapped_commands(script, rebuild)
 
 
+def unrollable(command: Command, limit: int = 16) -> bool:
+    """Whether every pass of a `for` loop can be read off its literal words.
+
+    A listed loop over one to ``limit`` words, each exactly the text it reads
+    as, whose body never assigns the loop's own name: each reference in the
+    body is then that word on its pass and nothing else. A body assigning the
+    name -- or able to, through `eval` -- makes a later reference some other
+    value (`f=README.md; rm $f` removes README.md whatever the list said),
+    and a longer list costs more readings than one line is worth.
+    """
+    words = command["words"]
+    if command["kind"] != "for" or not command["listed"]:
+        return False
+    if not words or len(words) > limit:
+        return False
+    if not all(literal_loop_word(word) for word in words):
+        return False
+    assigned = unsettled_names(command["body"], standing=False)
+    return assigned is not None and command["name"] not in assigned
+
+
+def unrolled_body(command: Command) -> Script:
+    """A literal loop's body once per word, in order: every pass it makes.
+
+    Sequential rather than side by side, because a pass leaves the shell
+    where its `cd` took it for the next one, which is where the placing pass
+    reads each copy's words from.
+    """
+    passes = [
+        expanded_script(
+            command["body"],
+            (ShellBinding(name=command["name"], value=word_text(word)),),
+        )
+        for word in command["words"]
+    ]
+    return Script(items=[item for body in passes for item in body["items"]])
+
+
 class BoundList(TypedDict):
     """A list with its words expanded, and the bindings standing after it."""
 
@@ -463,6 +501,13 @@ def bound_list(
                 inner = bound_list(command["body"], bindings, unsettled, here)
                 bindings = inner["bindings"]
                 return rebuilt_lists(expanded, lambda _body: inner["script"])
+            case "for" if unrollable(expanded):
+                # Read once per word here, for every reader of the line: a
+                # redirection's target or a `cd`'s directory in the body then
+                # names each path a pass reaches, where it named the variable.
+                scope = bindings
+                passes = bound_list(unrolled_body(expanded), scope, unsettled, False)
+                return rebuilt_lists(expanded, lambda _body: passes["script"])
             case _:
                 scope = bindings
                 return rebuilt_lists(

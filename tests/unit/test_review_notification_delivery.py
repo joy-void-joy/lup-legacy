@@ -12,7 +12,7 @@ from pydantic import BaseModel
 import lup.coordination.bare.arrival as arrival
 import lup.coordination.wake as routing
 from lup.channels.models import Door, publish_atomic
-from lup.coordination.relay import MailboxRelay, WakeReceipts
+from lup.coordination.relay import MailboxRelay
 from lup.coordination.repository import RepositoryPeers
 from lup.coordination.wake import WakePath
 from lup.devtools.dashboard.reviews import (
@@ -162,7 +162,7 @@ async def test_browser_decision_relays_from_the_recipient_scope_once(
     relay = MailboxRelay(root=consumer, member_id=MEMBER, queue_timeout_seconds=0.2)
     foreign = relay.tick()
     assert foreign is not None and not foreign.reached
-    assert not relay.receipt_path.exists()
+    assert RepositoryPeers(consumer).waiting(MEMBER).messages == [message]
     native_queue.assert_not_called()
     monkeypatch.setattr(routing, "execution_scope", lambda: "recipient-scope")
     delivered = relay.tick()
@@ -179,14 +179,9 @@ async def test_browser_decision_relays_from_the_recipient_scope_once(
     )
     assert message.text in native_queue.call_args.args[6]
     assert native_queue.call_args.kwargs == {"_cwd": str(consumer), "_timeout": 0.2}
-    receipt = WakeReceipts.model_validate_json(relay.receipt_path.read_text())
-    assert receipt.message_ids == [message.id]
-    assert receipt.route.handle == THREAD
-    assert receipt.route.home == str(home)
-    assert receipt.route.scope == "recipient-scope"
     assert relay.tick() is None
     assert MailboxRelay(root=consumer, member_id=MEMBER).tick() is None
     native_queue.assert_called_once()
-    assert RepositoryPeers(consumer).waiting(MEMBER).messages == [message]
+    assert RepositoryPeers(consumer).waiting(MEMBER).messages == []
     assert review.relay(upstream).find(entry.id) == settled
     assert not target.exists()

@@ -29,6 +29,8 @@ from lup.observability.native import (
     NativeRecordOrigin,
     NativeSemanticBlock,
     NativeTranscripts,
+    NativeTurn,
+    NativeTurns,
     blocks_by_type,
     first_string,
 )
@@ -400,6 +402,26 @@ class ClaudeTranscripts(NativeTranscripts):
             if (summary := session_summary(path)) is not None
         ]
         return sorted(summaries, key=lambda summary: summary.updated_at, reverse=True)
+
+
+class ClaudeTurns(NativeTurns):
+    """Read one Claude Code transcript line as a turn, and find a subagent's transcript."""
+
+    def turn(self, record: JsonObject) -> NativeTurn | None:
+        try:
+            entry = TranscriptEntry.model_validate(record)
+        except ValidationError:
+            return None
+        if not entry.spoken() or entry.is_meta:
+            return None
+        message = TranscriptRecord(position=0, entry=entry, native=record).message()
+        return NativeTurn(message=message, at=entry.timestamp) if message else None
+
+    def subagent(self, transcript: Path, agent: str) -> Path | None:
+        # Measured on 2.1.283: a subagent's records go to a file of its own
+        # beside the session's, named for the subagent's id.
+        kept = transcript.with_suffix("") / "subagents" / f"agent-{agent}.jsonl"
+        return kept if kept.is_file() else None
 
 
 def session_summary(path: Path) -> SessionSummary | None:

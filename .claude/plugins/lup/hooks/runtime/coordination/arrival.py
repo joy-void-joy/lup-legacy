@@ -1,9 +1,11 @@
 """Bind a launcher-owned roster member to its root native session.
 
-The hook supplies the authoritative native session id. A child that inherited
-the launcher's environment cannot take its parent's wake address. A missing
-member stays missing; prompt-time retries handle a tool server joining after
-the native startup event. The runtime argument belongs to the adapter.
+The hook supplies the authoritative native session id. A runtime that
+inherited the launcher's environment from the session's shell binds the
+member it is (:func:`.store.own_member`), so it cannot take its parent's wake
+address. A missing member stays missing; prompt-time retries handle a tool
+server joining after the native startup event. The runtime argument belongs to
+the adapter.
 """
 
 import json
@@ -11,7 +13,16 @@ import sys
 from pathlib import Path
 from typing import TypedDict
 
-from .store import MEMBER_KIND, Member, Wake, revised, session_actor, text
+from .runtime import stdin_runtime
+from .store import (
+    MEMBER_KIND,
+    Member,
+    Wake,
+    own_member,
+    revised,
+    session_actor,
+    text,
+)
 from .scope import execution_scope
 
 
@@ -73,7 +84,8 @@ def bind(
 def main() -> None:
     """Best-effort binding; unavailable roster metadata never blocks a prompt."""
     try:
-        root, member, runtime = Path(sys.argv[1]), sys.argv[2], sys.argv[3]
+        root, launched, runtime = Path(sys.argv[1]), sys.argv[2], sys.argv[3]
+        member = own_member(root, launched, stdin_runtime())
         arrival: Arrival = json.load(sys.stdin)
         bind(root, member, runtime, arrival, tuple(sys.argv[5:]), sys.argv[4])
     except Exception as error:

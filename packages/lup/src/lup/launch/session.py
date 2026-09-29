@@ -74,7 +74,7 @@ from lup.types import EnvVars, JsonObject, JsonValue
 from lup.workspace.paths import agent_version, harness_runs_path
 from lup.harness.clipboard import ClipboardTransport
 from lup.harness.generate import RuntimeReadiness
-from lup.harness.image import Image, SessionPrivileges
+from lup.harness.image import Image, MemoryLimit, SessionPrivileges
 from lup.launch.preflight import (
     LaunchSentinels,
     ROOT_VARIABLE,
@@ -240,7 +240,8 @@ def start_harness_transcript(
     to scan, because where a runtime keeps its sessions and how one of its
     records names itself are the runtime's business, not this launcher's.
 
-    ``record_root`` is where the transcript tree is rooted, so a launch mode
+    ``record_root`` is where the transcript tree is rooted, a relative one
+    in the checkout the session works in, so a launch mode
     whose records are kept to a different standard keeps them somewhere a
     reader can tell apart without opening one. ``mode`` puts the same fact
     inside the record, because a directory is renameable and a run that has
@@ -259,7 +260,7 @@ def start_harness_transcript(
     run_id = (
         f"{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}_{provider}_{uuid4().hex[:8]}"
     )
-    runs = record_root or harness_runs_path()
+    runs = root / record_root if record_root is not None else harness_runs_path()
     trace_path = runs / provider / run_id / "observable.jsonl"
     journal = TraceJournal(
         trace_path,
@@ -509,6 +510,7 @@ def verify_inside(
     skipped: Sequence[str] = (),
     accessible: Sequence[AccessibleRoot] = (),
     nested: Sequence[NestedRepository] = (),
+    trees: Sequence[Path] = (),
 ) -> list[Finding]:
     """Exercise the image half behind an argv somebody already assembled.
 
@@ -529,7 +531,7 @@ def verify_inside(
         environ: EnvVars = dict(os.environ)  # lup: ignore[os-environ]
     else:
         environ = dict(environment)
-    leased = held_lease(root, fleet_lease(root, list(accessible)), nested)
+    leased = held_lease(root, fleet_lease(root, list(accessible)), nested, trees)
     return reported(
         manifest.check_inside(
             environ,
@@ -678,6 +680,7 @@ def settle_boundary(
     accessible: list[AccessibleRoot] = [],
     runtime: str = "",
     nested: Sequence[NestedRepository] = (),
+    trees: Sequence[Path] = (),
 ) -> BoundaryPreflight:
     """Compile what this launch promised, measure it, and refuse if it fell short.
 
@@ -727,7 +730,7 @@ def settle_boundary(
     # A container holds its launch record read-only, so the boundary its
     # ledger describes carries the holds the policy then refuses writes to.
     leased = fleet_lease(root, accessible=accessible)
-    lease = held_lease(root, leased, nested) if sandbox.contained() else leased
+    lease = held_lease(root, leased, nested, trees) if sandbox.contained() else leased
     if exposed := launcher_state_exposure(lease):
         raise LaunchRefused(exposed)
     boundary = compile_boundary(
@@ -802,6 +805,9 @@ def session_argv(
     forwarded: Sequence[str] = (),
     privileges: SessionPrivileges = SessionPrivileges(),
     nested: Sequence[NestedRepository] = (),
+    memory: MemoryLimit | None = None,
+    trees: Sequence[Path] = (),
+    overlays: Mapping[Path, str] | None = None,
 ) -> list[str]:
     """The argv that opens a session, inside the declared container or on the host.
 
@@ -840,8 +846,12 @@ def session_argv(
     name into its container, as the launch's own variables are.
 
     ``privileges`` is what the wall grants a contained session's processes,
-    which a host posture has no container to grant, and ``nested`` the
-    repositories inside the checkout its container holds.
+    which a host posture has no container to grant, ``nested`` the
+    repositories inside the checkout its container holds, ``memory`` how
+    much its container may hold, ``trees`` the generated trees it holds
+    read-only, which the boundary it records names as it names every hold,
+    and ``overlays`` the files it holds over a path in the checkout -- a
+    kind of session's own guidance -- keyed by where each is on the host.
 
     ``prepare`` readies the runtime's home through the argv the session
     opens with, and answers with what the session should find held
@@ -873,6 +883,8 @@ def session_argv(
     environment[POLICY_ROOT_ENV] = str(root)
 
     accessible = list(mounts)
+    # A file something is held over is held by that, and one bind to a path.
+    held_trees = [path for path in trees if str(path) not in (overlays or {}).values()]
     if not sandbox.contained():
         # A host posture holds the host's devices already, so a flag asking
         # for one describes a container this launch does not open. Said
@@ -950,6 +962,9 @@ def session_argv(
         home_seed=home_seed,
         privileges=privileges,
         nested=nested,
+        memory=memory,
+        trees=held_trees,
+        overlays=overlays,
     )
     # Verified on the way in, rather than asserted. This is §6's whole point
     # and the launch is where it has to happen: the boundary was built two
@@ -971,6 +986,7 @@ def session_argv(
         in_passing=True,
         accessible=accessible,
         nested=nested,
+        trees=held_trees,
     )
     if prepare is not None:
         # What preparing the home installed and asks to be held -- a
@@ -1005,6 +1021,7 @@ def session_argv(
         accessible,
         runtime=cli,
         nested=nested,
+        trees=held_trees,
     )
     say_opening(cleared, measured_here, transcript)
     native = image.clipboard.wrap([cli, *arguments], clipboard)

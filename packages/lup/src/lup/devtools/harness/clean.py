@@ -22,18 +22,24 @@ volumes
 environments
     The checkout each was made for, while it exists
     (:mod:`lup.launch.environments`).
+revisions
+    A running container binding it: the plugin revision a contained Codex
+    session runs its hooks from, written on the host and held read-only in
+    its home (:func:`~lup.launch.environments.revisions_home`). One nothing
+    running binds is finished; the next launch needing it writes it again.
 containers
     Egress proxies, which are left standing when they stop so their log can
     be read; a stopped one is finished. Sandbox and job containers keep
     lifecycles of their own and are not this command's to judge.
 """
 
+import shutil
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Literal
 
 import sh
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel, Field, TypeAdapter, ValidationError
 
 from lup.launch.config_volume import (
     HomeHelper,
@@ -53,7 +59,11 @@ from lup.launch.container import (
     state_volume_name,
     superseded_images,
 )
-from lup.launch.environments import HeldEnvironment, recorded_environments
+from lup.launch.environments import (
+    HeldEnvironment,
+    recorded_environments,
+    revisions_home,
+)
 from lup.launch.superseded import SupersededFile
 from lup.harness.egress import PROXY_LABEL
 from lup.harness.image import ContainerEngine, Image
@@ -61,7 +71,7 @@ from lup.harness.notice import Notice
 from lup.providers.login import ProviderLogin
 from lup.sandbox.rail import sibling_worktrees
 
-type HeldKind = Literal["image", "volume", "environment", "container"]
+type HeldKind = Literal["image", "volume", "environment", "revision", "container"]
 """Which kind of thing lup keeps for contained sessions."""
 
 # lup: ignore[constant-declaration] — the name every sandbox workspace volume
@@ -258,6 +268,82 @@ def environments(root: Path) -> list[Held]:
     ]
 
 
+class BoundMount(BaseModel, frozen=True):
+    """One mount of a container, as the engine's inspection spells it."""
+
+    source: str = Field(alias="Source")
+
+
+def bound_mounts(engine: ContainerEngine) -> list[BoundMount] | None:
+    """Every mount a running container holds, or ``None`` where the engine does not say."""
+    try:
+        running = str(sh.Command(engine.binary)("ps", "-q")).split()
+        answered = [
+            str(
+                sh.Command(engine.binary)(
+                    "inspect", "--format", "{{json .Mounts}}", container
+                )
+            )
+            for container in running
+        ]
+    except (sh.CommandNotFound, sh.ErrorReturnCode):
+        return None
+    try:
+        return [
+            mount
+            for inspected in answered
+            for mount in TypeAdapter(list[BoundMount]).validate_json(inspected)
+        ]
+    except ValidationError:
+        return None
+
+
+def revisions(engine: ContainerEngine | None) -> list[Held]:
+    """Every held Codex revision on this machine, sized, the ones nothing running binds marked."""
+    home = revisions_home()
+    if not home.is_dir():
+        return []
+    held = sorted(
+        path
+        for path in home.iterdir()
+        if path.is_dir() and not path.name.startswith(".")
+    )
+    mounts = bound_mounts(engine) if engine is not None and held else None
+    bound = None if mounts is None else {Path(mount.source) for mount in mounts}
+
+    def judged(directory: Path) -> Held:
+        size = readable_size(
+            sum(
+                path.lstat().st_size
+                for path in directory.rglob("*")
+                if path.is_file() and not path.is_symlink()
+            )
+        )
+        if bound is None:
+            return Held(
+                kind="revision",
+                name=str(directory),
+                size=size,
+                why="no container engine said what binds it",
+            )
+        if directory in bound:
+            return Held(
+                kind="revision",
+                name=str(directory),
+                size=size,
+                why="a running container holds it",
+            )
+        return Held(
+            kind="revision",
+            name=str(directory),
+            size=size,
+            why="no running container holds it; a launch needing it writes it again",
+            finished=True,
+        )
+
+    return [judged(directory) for directory in held]
+
+
 def containers(engine: ContainerEngine) -> list[Held]:
     """Every egress proxy lup started, the stopped ones marked."""
     try:
@@ -298,12 +384,12 @@ def inventory(
         if engine is not None
         else []
     )
-    return [*engined, *environments(root)]
+    return [*engined, *environments(root), *revisions(engine)]
 
 
 def listing(held: list[Held], engine: ContainerEngine | None) -> list[str]:
     """The inventory as a person reads it, kind by kind."""
-    kinds: list[HeldKind] = ["image", "volume", "environment", "container"]
+    kinds: list[HeldKind] = ["image", "volume", "environment", "revision", "container"]
     unasked = (
         "No container client answered, so images, volumes and containers are unlisted."
     )
@@ -389,7 +475,15 @@ def cleaned(
     environments_gone = [item for item in finished if item.kind == "environment"]
     for item in environments_gone:
         HeldEnvironment(directory=Path(item.name)).remove()
-    gone = [*gone, *superseded, *(item.name for item in environments_gone)]
+    revisions_gone = [item for item in finished if item.kind == "revision"]
+    for item in revisions_gone:
+        shutil.rmtree(item.name)
+    gone = [
+        *gone,
+        *superseded,
+        *(item.name for item in environments_gone),
+        *(item.name for item in revisions_gone),
+    ]
     return [
         *split,
         Notice(

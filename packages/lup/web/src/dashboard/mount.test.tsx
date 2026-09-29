@@ -7,6 +7,23 @@ import { click, labelled, mount, one, until, type Mounted } from "../testing";
 const originalFetch = globalThis.fetch;
 const originalStorage = Object.getOwnPropertyDescriptor(globalThis, "localStorage");
 const root = { id: "tree", path: "/project/tree/feature" };
+
+let frameSeq = 0;
+let liveRepositories: object[] = [];
+let liveSessions: object[] = [];
+let liveMessages: object[] = [];
+
+/** One frame as the dashboard's stream sends it: its cursor as the event id, the frame as data. */
+function sent(event: object): string {
+  frameSeq += 1;
+  const frame = { cursor: JSON.stringify({ epoch: "fixture", seq: frameSeq }), event };
+  return `id: ${frame.cursor}\ndata: ${JSON.stringify(frame)}\n\n`;
+}
+
+/** The whole state as one frame, over the fixture's reviews and whatever sessions and messages it holds. */
+function framed(reviews: unknown): string {
+  return sent({ type: "snapshot", repositories: liveRepositories, sessions: liveSessions, messages: liveMessages, reviews });
+}
 const summary = {
   key: "tree-q1", root_id: root.id, id: "q1", state: "pending", requester: "codex-session",
   reason: "Review the complete replacement", operation: "apply_patch in /project", rule: "whole-file",
@@ -57,6 +74,7 @@ describe("dashboard page", () => {
   let streamingAborted = false;
   let requests: { path: string; method: string; body: unknown; authorization: string | null }[] = [];
   let panes: { key: string; repository: string; name: string; path: string }[] = [];
+  let replyStatus = 200;
   const queue = () => ({ roots, reviews: rows, errors: issues });
 
   beforeEach(() => {
@@ -74,6 +92,10 @@ describe("dashboard page", () => {
     streamingAborted = false;
     requests = [];
     panes = [];
+    replyStatus = 200;
+    liveRepositories = [];
+    liveSessions = [];
+    liveMessages = [];
     sessionStorage.clear();
     localStorage.clear();
     window.history.replaceState(null, "", "/#token=browser-secret");
@@ -81,11 +103,11 @@ describe("dashboard page", () => {
       const path = String(input);
       requests.push({ path, method: options?.method ?? "GET", body: typeof options?.body === "string" ? JSON.parse(options.body) : null,
         authorization: new Headers(options?.headers).get("Authorization") });
-      if (path === "api/events" && refreshStatus !== 200) return Response.json({ detail: "Refresh unavailable" }, { status: refreshStatus });
-      if (path === "api/events") return new Response(new ReadableStream<Uint8Array>({
+      if (path === "api/stream" && refreshStatus !== 200) return Response.json({ detail: "Refresh unavailable" }, { status: refreshStatus });
+      if (path === "api/stream") return new Response(new ReadableStream<Uint8Array>({
         start(controller) {
           stream = controller;
-          if (streamImmediately) controller.enqueue(new TextEncoder().encode(`${JSON.stringify(queue())}\n`));
+          if (streamImmediately) controller.enqueue(new TextEncoder().encode(framed(queue())));
           options?.signal?.addEventListener("abort", () => {
             streamingAborted = true;
             controller.error(new DOMException("Stopped", "AbortError"));
@@ -108,6 +130,10 @@ describe("dashboard page", () => {
         details.set(key, settled);
         rows = rows.map((row) => row.key === key ? settled.summary : row);
         return Response.json({ review: settled, notification: { queued: true, woken: false, detail: "Decision queued for the requesting session." } });
+      }
+      if (path.startsWith("api/repositories/") && path.endsWith("/messages")) {
+        if (replyStatus !== 200) return Response.json({ detail: "lead left at noon" }, { status: replyStatus });
+        return Response.json({ session: "r1/lead", queued: true, woken: true, detail: "Queued in its mailbox, and its runtime accepted the wake." });
       }
       return Response.json({ detail: `Unknown fixture route ${path}` }, { status: 404 });
     }, { preconnect() {} });
@@ -199,6 +225,148 @@ describe("dashboard page", () => {
     await until(() => page.root.querySelector(".decision") !== null, "the review again");
   });
 
+  const lupRepository = { key: "r1", name: "lup", repository: "/src/lup.git", checkout: "/src/lup.git/tree/dev" };
+
+  function liveRow(id: string, fields: object = {}) {
+    return {
+      key: `r1/${id}`, repository: "r1", id, parent: "", kind: "session", name: id, doing: "", task: "", running: true,
+      worktree: `/src/lup.git/tree/${id}`, holding: [], contested: [], delivery: "hook", wake: "claude",
+      arrived: "2026-09-29T08:00:00Z", heard: "2026-09-29T10:00:00Z", summary: "", error: "", waiting: 0,
+      activity: { said: "", calling: "", arguments: {}, at: null, transcript: "" },
+      ...fields,
+    };
+  }
+
+  function liveMessage(id: string, fields: object = {}) {
+    return {
+      key: `r1/${id}`, repository: "r1", id, seq: 0, sender: "", recipient: "lead", recipient_kind: "session",
+      text: id, door: "agent", redirect: false, in_reply_to: "", sent_at: "2026-09-29T10:00:00Z", waiting: false, ...fields,
+    };
+  }
+
+  function sessionsFixture() {
+    liveRepositories = [lupRepository];
+    liveSessions = [
+      liveRow("lead", {
+        name: "dev", doing: "rebuilding the dashboard", holding: ["at /src/lup.git/tree/dev/live.py"], waiting: 1,
+        activity: { said: "Reading the roster.", calling: "Read", arguments: { file_path: "roster.py" }, at: "2026-09-29T10:00:00Z", transcript: "/t/lead.jsonl" },
+      }),
+      liveRow("lead-a1", { parent: "lead", kind: "subagent", name: "scout", doing: "searching the store", delivery: "hook", wake: "" }),
+      liveRow("other", { name: "reviewer", running: false, summary: "done" }),
+    ];
+    liveMessages = [
+      liveMessage("m1", { sender: "other", text: "rebase onto staging first", waiting: true }),
+      liveMessage("m2", { sender: "lead", recipient: "other", text: "on it", sent_at: "2026-09-29T10:01:00Z" }),
+    ];
+  }
+
+  async function sessionsView(): Promise<Mounted> {
+    sessionsFixture();
+    const page = await open();
+    const sessions = [...page.root.querySelectorAll<HTMLElement>(".views button")].find((button) => button.textContent?.startsWith("Sessions"));
+    if (sessions === undefined) throw new Error("no Sessions view button");
+    await click(sessions);
+    await until(() => page.root.querySelector(".sessions") !== null, "the sessions view");
+    return page;
+  }
+
+  test("the sessions view lists each repository's sessions with their subagents and what each is doing", async () => {
+    const page = await sessionsView();
+    expect(labelled(page.root, ".views button", "Sessions (1)")).toBeDefined();
+    const group = one(page.root, ".session-tree");
+    expect(one(group, ".tree-repository").textContent).toContain("lup");
+    const lead = one(group, "[data-session='r1/lead']");
+    expect(lead.textContent).toContain("dev");
+    expect(lead.textContent).toContain("rebuilding the dashboard");
+    expect(lead.textContent).toContain("Read");
+    expect(lead.textContent).toContain("1 waiting");
+    const scout = one(group, "[data-session='r1/lead-a1']");
+    expect(scout.closest(".subagents")).not.toBeNull();
+    expect(scout.textContent).toContain("scout");
+    expect(one(group, "[data-session='r1/other']").textContent).toContain("stopped");
+  });
+
+  test("a session shows what it is doing, what it holds and what was said, and a reply goes to it", async () => {
+    const page = await sessionsView();
+    await click(one(page.root, "[data-session='r1/lead'] button"));
+    await until(() => page.root.querySelector(".session-detail") !== null, "the session's detail");
+    const detailed = one(page.root, ".session-detail");
+    expect(detailed.textContent).toContain("Reading the roster.");
+    expect(detailed.textContent).toContain("roster.py");
+    expect(detailed.textContent).toContain("at /src/lup.git/tree/dev/live.py");
+    const said = [...detailed.querySelectorAll(".message")].map((node) => node.textContent ?? "");
+    expect(said[0]).toContain("reviewer → dev");
+    expect(said[0]).toContain("rebase onto staging first");
+    expect(said[0]).toContain("waiting");
+    expect(said[1]).toContain("dev → reviewer");
+    const box = one<HTMLTextAreaElement>(detailed, "textarea");
+    const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set;
+    await act(async () => {
+      setter?.call(box, "stop and look at the stream");
+      box.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await click(labelled(detailed, "button", "Send"));
+    await until(() => detailed.querySelector(".reply-outcome") !== null, "the reply's outcome");
+    const posted = requests.find((request) => request.path === "api/repositories/r1/sessions/lead/messages");
+    expect(posted?.method).toBe("POST");
+    expect(posted?.body).toEqual({ text: "stop and look at the stream" });
+    expect(posted?.authorization).toBe("Bearer browser-secret");
+    expect(one(detailed, ".reply-outcome").textContent).toContain("runtime accepted the wake");
+    expect(one<HTMLTextAreaElement>(detailed, "textarea").value).toBe("");
+  });
+
+  test("a frame moves a session's activity and conversation in place", async () => {
+    const page = await sessionsView();
+    await click(one(page.root, "[data-session='r1/lead'] button"));
+    await until(() => page.root.querySelector(".session-detail") !== null, "the session's detail");
+    const before = requests.length;
+    await act(async () => {
+      stream?.enqueue(new TextEncoder().encode(sent({ type: "session", session: liveRow("lead", { name: "dev", activity: { said: "Now testing the stream.", calling: "", arguments: {}, at: null, transcript: "/t/lead.jsonl" } }) })));
+      stream?.enqueue(new TextEncoder().encode(sent({ type: "message", message: liveMessage("m3", { sender: "user", text: "keep going", sent_at: "2026-09-29T10:02:00Z", waiting: true }) })));
+    });
+    await until(() => page.root.querySelector(".session-detail")?.textContent?.includes("Now testing the stream.") === true, "the new activity");
+    await until(() => page.root.querySelector(".session-detail")?.textContent?.includes("keep going") === true, "the operator's message");
+    expect([...page.root.querySelectorAll(".session-detail .message")].at(-1)?.textContent).toContain("you → dev");
+    expect(requests.length).toBe(before);
+  });
+
+  test("a stopped session is shown as stopped, with nothing to reply through", async () => {
+    const page = await sessionsView();
+    await click(one(page.root, "[data-session='r1/other'] button"));
+    await until(() => page.root.querySelector(".session-detail") !== null, "the session's detail");
+    const detailed = one(page.root, ".session-detail");
+    expect(detailed.textContent).toContain("stopped");
+    expect(detailed.textContent).toContain("done");
+    expect(detailed.querySelector("textarea")).toBeNull();
+  });
+
+  test("a refused reply keeps what was written and says why", async () => {
+    replyStatus = 409;
+    const page = await sessionsView();
+    await click(one(page.root, "[data-session='r1/lead'] button"));
+    await until(() => page.root.querySelector(".session-detail textarea") !== null, "the reply box");
+    const box = one<HTMLTextAreaElement>(page.root, ".session-detail textarea");
+    const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set;
+    await act(async () => {
+      setter?.call(box, "are you there");
+      box.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await click(labelled(page.root, ".session-detail button", "Send"));
+    await until(() => page.root.querySelector(".session-detail .error") !== null, "the refusal");
+    expect(one(page.root, ".session-detail .error").textContent).toContain("lead left at noon");
+    expect(one<HTMLTextAreaElement>(page.root, ".session-detail textarea").value).toBe("are you there");
+  });
+
+  test("a repository's messages read as one conversation between its sessions", async () => {
+    const page = await sessionsView();
+    await click(labelled(page.root, ".tree-repository button", "lup"));
+    await until(() => page.root.querySelector(".repository-messages") !== null, "the repository's messages");
+    const said = [...page.root.querySelectorAll(".repository-messages .message")].map((node) => node.textContent ?? "");
+    expect(said).toHaveLength(2);
+    expect(said[0]).toContain("reviewer → dev");
+    expect(said[1]).toContain("dev → reviewer");
+  });
+
   test("checkout and target identity preserve full literal paths in compact scrollable lines", async () => {
     const file = detail.files[0];
     if (file === undefined) throw new Error("fixture lacks a file");
@@ -266,21 +434,21 @@ describe("dashboard page", () => {
 
   test("the first stream snapshot loads the selected request without duplicate reads", async () => {
     const page = await open();
-    expect(requests.map((request) => request.path)).toEqual(["api/events", "api/reviews/tree-q1"]);
+    expect(requests.map((request) => request.path)).toEqual(["api/stream", "api/reviews/tree-q1"]);
     expect(page.root.textContent).toContain("Live");
   });
 
   test("a slow first snapshot shows unknown counts instead of claiming the queue is empty", async () => {
     streamImmediately = false;
     shown = mount(<App />);
-    await until(() => requests.some((request) => request.path === "api/events"), "the connecting stream");
+    await until(() => requests.some((request) => request.path === "api/stream"), "the connecting stream");
     expect(shown.root.textContent).toContain("Pending (?)");
     expect(shown.root.textContent).toContain("Loading review queue…");
     expect(shown.root.textContent).not.toContain("Pending (0)");
     expect(shown.root.textContent).not.toContain("Queue complete");
     expect(shown.root.textContent).not.toContain("No requests waiting");
     expect(shown.root.querySelector(".queue")?.getAttribute("aria-busy")).toBe("true");
-    await act(async () => stream?.enqueue(new TextEncoder().encode(`${JSON.stringify(queue())}\n`)));
+    await act(async () => stream?.enqueue(new TextEncoder().encode(framed(queue()))));
     await until(() => shown?.root.querySelector(".request h2") !== null, "the loaded request");
     expect(shown.root.textContent).toContain("Pending (1)");
     expect(shown.root.querySelector(".queue")?.getAttribute("aria-busy")).toBe("false");
@@ -293,7 +461,7 @@ describe("dashboard page", () => {
     await until(() => requests.length > 0, "the linked stream");
     expect(shown.root.textContent).toContain("Loading requested review…");
     expect(shown.root.textContent).not.toContain("Request not found");
-    await act(async () => stream?.enqueue(new TextEncoder().encode(`${JSON.stringify(queue())}\n`)));
+    await act(async () => stream?.enqueue(new TextEncoder().encode(framed(queue()))));
     await until(() => shown?.root.querySelector(".request h2") !== null, "the exact linked request");
   });
 
@@ -303,12 +471,12 @@ describe("dashboard page", () => {
     await until(() => shown?.root.textContent?.includes("Queue complete") ?? false, "the confirmed empty queue");
     streamImmediately = false;
     await click(labelled(shown.root, "button", "Reconnect"));
-    await until(() => requests.filter((request) => request.path === "api/events").length === 2, "the replacement stream");
+    await until(() => requests.filter((request) => request.path === "api/stream").length === 2, "the replacement stream");
     expect(shown.root.textContent).toContain("Pending (?)");
     expect(shown.root.textContent).toContain("Refreshing review queue…");
     expect(shown.root.textContent).not.toContain("Queue complete");
     expect(shown.root.textContent).not.toContain("No requests waiting");
-    await act(async () => stream?.enqueue(new TextEncoder().encode(`${JSON.stringify(queue())}\n`)));
+    await act(async () => stream?.enqueue(new TextEncoder().encode(framed(queue()))));
     await until(() => shown?.root.textContent?.includes("Queue complete") ?? false, "the refreshed empty queue");
   });
 
@@ -321,7 +489,7 @@ describe("dashboard page", () => {
     expect(page.root.textContent).toContain("Queue could not be read");
     expect(page.root.textContent).not.toContain("Queue complete");
     rows = [];
-    await act(async () => stream?.enqueue(new TextEncoder().encode(`${JSON.stringify(queue())}\n`)));
+    await act(async () => stream?.enqueue(new TextEncoder().encode(framed(queue()))));
     expect(page.root.textContent).not.toContain("No requests waiting");
     expect(page.root.textContent).not.toContain("Request not found");
     expect(page.root.textContent).toContain("Requested review unavailable");
@@ -344,13 +512,13 @@ describe("dashboard page", () => {
     shown = mount(<App />);
     await until(() => requests.some((request) => request.path === "api/reviews/tree-q1"), "the detail fetch");
     for (const _heartbeat of [1, 2]) {
-      await act(async () => stream?.enqueue(new TextEncoder().encode(`${JSON.stringify(queue())}\n`)));
+      await act(async () => stream?.enqueue(new TextEncoder().encode(framed(queue()))));
     }
     expect(requests.filter((request) => request.path === "api/reviews/tree-q1")).toHaveLength(1);
     await act(async () => finish());
     await until(() => shown?.root.querySelector(".request h2") !== null, "the uninterrupted detail result");
     detail.stale_reason = "The file changed while the queue was open.";
-    await act(async () => stream?.enqueue(new TextEncoder().encode(`${JSON.stringify(queue())}\n`)));
+    await act(async () => stream?.enqueue(new TextEncoder().encode(framed(queue()))));
     await until(() => shown?.root.textContent?.includes(detail.stale_reason) ?? false, "a completed request's next safety refresh");
     expect(requests.filter((request) => request.path === "api/reviews/tree-q1")).toHaveLength(2);
   });
@@ -362,10 +530,10 @@ describe("dashboard page", () => {
     const later = addRequest("tree-later");
     streamImmediately = false;
     await act(async () => { window.location.hash = "review=tree-later"; });
-    await until(() => requests.filter((request) => request.path === "api/events").length === 2, "a fresh stream for the direct link");
+    await until(() => requests.filter((request) => request.path === "api/stream").length === 2, "a fresh stream for the direct link");
     expect(shown.root.textContent).toContain("Loading requested review…");
     expect(shown.root.textContent).not.toContain("Request not found");
-    await act(async () => stream?.enqueue(new TextEncoder().encode(`${JSON.stringify(queue())}\n`)));
+    await act(async () => stream?.enqueue(new TextEncoder().encode(framed(queue()))));
     await until(() => shown?.root.querySelector(".request .reason")?.textContent === later.summary.reason, "the freshly linked request");
   });
 
@@ -390,7 +558,7 @@ describe("dashboard page", () => {
     const page = await open();
     await comment("Keep the draft during live safety checks.");
     detail.stale_reason = "The captured file changed on disk.";
-    await act(async () => stream?.enqueue(new TextEncoder().encode(`${JSON.stringify(queue())}\n`)));
+    await act(async () => stream?.enqueue(new TextEncoder().encode(framed(queue()))));
     await until(() => page.root.textContent?.includes(detail.stale_reason) ?? false, "fresh stale-preimage status");
     expect(requests.filter((request) => request.path === "api/reviews/tree-q1")).toHaveLength(2);
     expect(labelled<HTMLButtonElement>(page.root, "button", "Approve").disabled).toBe(true);
@@ -466,7 +634,7 @@ describe("dashboard page", () => {
     await keyup("A", "KeyA");
     expect(requests.filter((request) => request.method === "POST")).toHaveLength(0);
     addRequest();
-    await act(async () => stream?.enqueue(new TextEncoder().encode(`${JSON.stringify(queue())}\n`)));
+    await act(async () => stream?.enqueue(new TextEncoder().encode(framed(queue()))));
     await until(() => page.root.querySelectorAll(".queue-row").length === 2, "the new queued request");
     page.unmount();
     shown = null;
@@ -489,7 +657,7 @@ describe("dashboard page", () => {
     await comment("This comment belongs to the first request.");
     const newer = addRequest();
     rows = [newer.summary, { ...summary }];
-    await act(async () => stream?.enqueue(new TextEncoder().encode(`${JSON.stringify(queue())}\n`)));
+    await act(async () => stream?.enqueue(new TextEncoder().encode(framed(queue()))));
     await until(() => page.root.querySelectorAll(".queue-row").length === 2, "the newer request");
     expect(one(page.root, ".queue-row.selected").textContent).toContain(summary.title);
     expect(one(page.root, ".request .reason").textContent).toBe(summary.reason);
@@ -507,10 +675,10 @@ describe("dashboard page", () => {
     await until(() => page.root.textContent?.includes("Reconnecting") ?? false, "the reconnect status");
     streamImmediately = false;
     await click(labelled(page.root, "button", "Reconnect"));
-    await until(() => requests.filter((request) => request.path === "api/events").length === 2, "a fresh stream");
+    await until(() => requests.filter((request) => request.path === "api/stream").length === 2, "a fresh stream");
     expect(one<HTMLTextAreaElement>(page.root, "textarea").value).toBe("Preserve this draft.");
     expect(page.root.textContent).toContain("Pending (?)");
-    await act(async () => stream?.enqueue(new TextEncoder().encode(`${JSON.stringify(queue())}\n`)));
+    await act(async () => stream?.enqueue(new TextEncoder().encode(framed(queue()))));
     expect(page.root.textContent).toContain("Live");
   });
 
@@ -704,13 +872,13 @@ describe("dashboard page", () => {
     const page = await open();
     await click(labelled(page.root, "button", "Approve"));
     await until(() => page.root.querySelector(".request .reason")?.textContent === "Request tree-q2", "the next request");
-    await act(async () => stream?.enqueue(new TextEncoder().encode(`${JSON.stringify(previous)}\n`)));
+    await act(async () => stream?.enqueue(new TextEncoder().encode(framed(previous))));
     expect(labelled(page.root, "button", "Pending (1)")).toBeTruthy();
     expect(page.root.querySelectorAll(".queue-row")).toHaveLength(1);
     const completed = rows.find((row) => row.key === "tree-q1");
     if (completed === undefined) throw new Error("fixture lacks the completed request");
     completed.title = "Server-confirmed history title";
-    await act(async () => stream?.enqueue(new TextEncoder().encode(`${JSON.stringify(queue())}\n`)));
+    await act(async () => stream?.enqueue(new TextEncoder().encode(framed(queue()))));
     await click(labelled(page.root, "button", "History (1)"));
     expect(one(page.root, ".queue-row").textContent).toContain("Server-confirmed history title");
   });
@@ -725,7 +893,7 @@ describe("dashboard page", () => {
     const settled = details.get("tree-q1");
     if (settled === undefined) throw new Error("fixture lacks the settled request");
     settled.notification = { queued: true, woken: true, detail: "The native runtime accepted the notification." };
-    await act(async () => stream?.enqueue(new TextEncoder().encode(`${JSON.stringify(queue())}\n`)));
+    await act(async () => stream?.enqueue(new TextEncoder().encode(framed(queue()))));
     await until(() => page.root.querySelector(".notification-status summary")?.textContent?.includes("accepted by runtime") ?? false, "the refreshed transport outcome");
     expect(one(page.root, ".notification-status p").textContent).toBe(settled.notification.detail);
     expect(page.root.textContent).not.toContain("agent read");
@@ -1176,7 +1344,7 @@ describe("dashboard page", () => {
     expect(shown.root.querySelector(".request")).toBeNull();
     expect(requests.some((request) => request.path === "api/reviews/tree-q1")).toBe(false);
     const later = addRequest("tree-later");
-    await act(async () => stream?.enqueue(new TextEncoder().encode(`${JSON.stringify(queue())}\n`)));
+    await act(async () => stream?.enqueue(new TextEncoder().encode(framed(queue()))));
     await until(() => shown?.root.querySelector(".request .reason")?.textContent === later.summary.reason, "the linked request arrival");
   });
 

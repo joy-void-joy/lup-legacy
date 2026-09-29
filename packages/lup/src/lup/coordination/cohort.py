@@ -407,6 +407,7 @@ class ActorCohort:
         redirect: bool = False,
         door: Door = Door.AGENT,
         in_reply_to: str = "",
+        sender: str = "",
     ) -> None:
         """Put something in front of one agent's next tool call.
 
@@ -416,7 +417,12 @@ class ActorCohort:
         keeps going.
         """
         self.post(
-            actor.label(), text, redirect=redirect, door=door, in_reply_to=in_reply_to
+            actor.label(),
+            text,
+            redirect=redirect,
+            door=door,
+            in_reply_to=in_reply_to,
+            sender=sender,
         )
 
     def notify(self, text: str, door: Door = Door.AGENT, by: str = "") -> None:
@@ -472,6 +478,7 @@ class ActorCohort:
         redirect: bool = False,
         door: Door = Door.AGENT,
         in_reply_to: str = "",
+        sender: str = "",
     ) -> bool:
         """Write one message to whatever address a caller already holds.
 
@@ -479,6 +486,10 @@ class ActorCohort:
         and a caller with a ref reach one member's mailbox the same way — and
         the one place the address is resolved, because a mailbox belongs to a
         member and a spelling that reaches nobody has no mailbox to go in.
+
+        *sender* is the address a reply to it reaches — a member's id, or
+        `user` for the person — and blank where a door with no address of its
+        own is speaking.
 
         Says whether it landed. A door that was told "sent" for an address the
         population never heard of is a door that goes on believing somebody
@@ -491,7 +502,7 @@ class ActorCohort:
             member,
             text,
             door=door,
-            sender=self.run_id,
+            sender=sender,
             in_reply_to=in_reply_to,
             redirect=redirect,
         )

@@ -18,7 +18,7 @@ failure mode the design forbids, so a caller that asked to be contained and
 cannot be gets a refusal naming what was missing, and the operator decides.
 """
 
-from collections.abc import Iterator, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
 import hashlib
 import json
 import os
@@ -57,6 +57,7 @@ from lup.harness.egress import PROXY_LABEL, SessionEgress
 from lup.harness.image import (
     ContainerEngine,
     Image,
+    MemoryLimit,
     SessionPrivileges,
     SessionStreams,
     detected_client,
@@ -840,6 +841,57 @@ def record_boundary(
     )
 
 
+def host_memory() -> int | None:
+    """What this host holds, as the kernel counts its pages; nothing where it cannot say."""
+    try:
+        return os.sysconf("SC_PHYS_PAGES") * os.sysconf("SC_PAGE_SIZE")
+    except (ValueError, OSError):
+        return None
+
+
+class HeldMemory(BaseModel, frozen=True):
+    """The bytes a container may hold, and the line its launch says them in."""
+
+    limit: int | None = None
+    notices: list[Notice] = []
+
+
+def held_memory(
+    declared: MemoryLimit | None,
+    engine: ContainerEngine,
+    host_total: Callable[[], int | None] = host_memory,
+) -> HeldMemory:
+    """The memory limit a container runs under, in bytes, and the line saying it.
+
+    A share is resolved against what the engine says it can hand out, and
+    only where it says nothing against the host's own total -- the two part
+    exactly where a share would go wrong, an engine inside a virtual machine
+    handing out the machine's memory rather than the laptop's. A share
+    neither can resolve refuses the launch rather than dropping the limit,
+    because a declared bound that silently is not there is the one failure a
+    boundary may not have.
+    """
+    if declared is None:
+        return HeldMemory()
+    total = engine.memory_total() or host_total()
+    if total is None and declared.percent is not None:
+        raise LaunchRefused(
+            f"The memory limit is {declared.percent}% of what the engine can "
+            "hand out, and neither the engine nor the host says how much that "
+            "is. Launch stopped. Declare an amount instead, such as 12GiB."
+        )
+    limit = declared.resolved(total or 0)
+    return HeldMemory(
+        limit=limit,
+        notices=[
+            Notice(
+                text=f"Memory: {declared.described(total or limit)}",
+                urgency="boundary",
+            )
+        ],
+    )
+
+
 def readied_nested(root: Path, declared: Sequence[NestedRepository]) -> list[Notice]:
     """Ready each declared repository inside the checkout for its hold, on the host.
 
@@ -889,7 +941,10 @@ def readied_nested(root: Path, declared: Sequence[NestedRepository]) -> list[Not
 
 
 def held_lease(
-    root: Path, lease: Lease, nested: Sequence[NestedRepository] = ()
+    root: Path,
+    lease: Lease,
+    nested: Sequence[NestedRepository] = (),
+    trees: Sequence[Path] = (),
 ) -> Lease:
     """What a container at ``root`` mounts: ``lease``, its launch record held, every hold rooted.
 
@@ -909,6 +964,10 @@ def held_lease(
     ``nested`` are the repositories the wall declares inside the checkout,
     each held as a plain checkout's own is -- ``config`` and ``hooks/`` --
     where it is there to hold; :func:`readied_nested` readies them first.
+
+    ``trees`` are the generated trees the runtime runs from, where the wall
+    holds them: each directory whole, so a host regeneration renaming a file
+    inside it leaves the hold standing, and each lone file as itself.
     """
     # lup: defer: a sibling worktree's launch record stays writable here, so a
     # contained session can rewrite the ledger a session in that sibling reads
@@ -923,7 +982,9 @@ def held_lease(
         if (root / repository.path / ".git" / name).exists()
     ]
     held = [
-        path for path in [*launch_record(root), *anchors] if lease.writable_at(path)
+        path
+        for path in [*launch_record(root), *anchors, *trees]
+        if lease.writable_at(path)
     ]
     return rooted(merged([lease, Lease(read_only=same_path(held))]))
 
@@ -1751,6 +1812,9 @@ def contained_argv(
     home_seed: HomeSeedPlaces | None = None,
     privileges: SessionPrivileges = SessionPrivileges(),
     nested: Sequence[NestedRepository] = (),
+    memory: MemoryLimit | None = None,
+    trees: Sequence[Path] = (),
+    overlays: Mapping[Path, str] | None = None,
 ) -> list[str]:
     """The argv that opens a session in this project's container.
 
@@ -1811,6 +1875,12 @@ def contained_argv(
     ``nested`` are the repositories the wall declares inside the checkout,
     readied on the host and held as the checkout's own -- see
     :func:`held_lease`.
+
+    ``memory`` is the limit the wall declares, resolved against this
+    engine by :func:`held_memory`, ``trees`` the generated trees it holds
+    read-only -- see :func:`held_lease` -- and ``overlays`` the files it
+    holds read-only over a path in the checkout, keyed by where each is on
+    the host.
     """
     said = banner if banner is not None else Banner()
     if engine is not None:
@@ -1850,6 +1920,8 @@ def contained_argv(
                 )
             ]
         )
+    bounded = held_memory(memory, client)
+    said.add(bounded.notices)
     # Every root this launch mounts, before host git reads any of them -- the
     # lease's own layout questions and the prune guard below both run git
     # there -- and before a broker is started, which a refusal would strand.
@@ -1868,7 +1940,10 @@ def contained_argv(
     said.add(preparation_notice(prepared_across(readied, SHARED_STATE)))
     said.add(readied_nested(root, nested))
     lease = held_lease(
-        root, lease if lease is not None else fleet_lease(root, accessible), nested
+        root,
+        lease if lease is not None else fleet_lease(root, accessible),
+        nested,
+        trees,
     )
     if exposed := launcher_state_exposure(lease):
         raise LaunchRefused(exposed)
@@ -2055,6 +2130,8 @@ def contained_argv(
         home_seed=home_seed.seed if home_seed is not None else None,
         trust_document=login.trust_document,
         privileges=privileges,
+        memory=bounded.limit,
+        overlays=overlays,
     )
 
 

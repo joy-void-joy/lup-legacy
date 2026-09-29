@@ -6,11 +6,10 @@ import tomllib
 from datetime import UTC, datetime, timedelta
 from hashlib import sha256
 from tempfile import gettempdir
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import nullcontext
 from functools import partial
-from importlib.util import find_spec
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 from time import perf_counter
@@ -56,6 +55,7 @@ from lup.devtools.dev.branches import (
 from lup.devtools.dev.git_guards import GitGuard, read_hooks
 from lup.devtools.dev.worktree import OWNERSHIP_MERGE_DRIVER, MergeDriver
 from lup.devtools.dev.cites import sweep_cites
+from lup.devtools.dev.collection import PytestCollection
 from lup.devtools.dev.comments import FoundComment, scan_tracked
 from lup.devtools.dev.commands import CommandSurface
 from lup.devtools.dev.documented import generated_files, unresolved
@@ -327,6 +327,7 @@ def pyright_check(
     excluded_roots: list[str],
     scope: list[str] | None = None,
     abandoned_after: timedelta = timedelta(hours=1),
+    environments: Sequence[Path] = (),
 ) -> CheckReport:
     """Whether the code-bearing workspace type-checks.
 
@@ -353,6 +354,15 @@ def pyright_check(
     gap is wide enough that no live run is ever inside it — and overridable
     because it is a judgement about how long is long, which a slower tree
     would make differently.
+
+    ``environments`` are the declared sub-projects, each synced before
+    Pyright starts: their execution environments name the packages on disk,
+    and the sub-project's own suite, which would build that environment
+    too, runs beside Pyright rather than before it — so a fresh clone's
+    gate would report every third-party import resolved or not by which
+    finished first. Inexact, the way `uv run` syncs, so nothing a worktree's
+    own sync installed is taken away; a sync that fails is this row's
+    verdict, in uv's words.
     """
     root = project_root()
     sweep_pyright_scratch(root, abandoned_after)
@@ -377,49 +387,45 @@ def pyright_check(
             },
             stream,
         )
-    try:
-        return ran(
+
+    def checked() -> None:
+        """Every sub-project's environment readied, then the one Pyright run."""
+        for environment in environments:
+            uv("sync", "--inexact", _cwd=str(root / environment))
+        uv(
+            "run",
             "pyright",
-            lambda: uv(
-                "run",
-                "pyright",
-                "--project",
-                str(configuration),
-                *python_arguments,
-                *(scope or []),
-            ),
+            "--project",
+            str(configuration),
+            *python_arguments,
+            *(scope or []),
         )
+
+    try:
+        return ran("pyright", checked)
     finally:
         configuration.unlink(missing_ok=True)
 
 
-def parallel_arguments(workers: int) -> list[str]:
-    """The flag that spreads a suite over processes, where one answers for it.
+def importable(directory: Path, module: str) -> bool:
+    """Whether the environment `uv run` builds for *directory* can import *module*.
 
-    `-n` belongs to pytest-xdist, and a project building on this library has
-    no reason to hold it: a package declares what it needs to run, and a
-    dependency group installs for the project that writes it rather than for
-    anyone depending on that project. Declaring the plugin would therefore
-    either reach this library's own developers alone or push test parallelism
-    into every adopter's runtime install, so the flag is offered where it is
-    importable and dropped where it is not. Pytest rejects an unrecognized
-    argument before collecting anything, and a gate that failed on that would
-    be reporting on its own speed rather than on the suite.
-
-    Fewer than two workers spells serial, so the count descends into running
-    the same tests behind a single interpreter rather than needing a second
-    way of saying nothing.
-
-    Scheduled by work stealing rather than xdist's default, because a suite
-    costs its busiest worker. The default hands each worker its share up
-    front, and a share holding a module of git-driving tests left one worker
-    running for a minute after the rest were idle — measured, the library
-    suite's busiest worker at 1.7 to 2.8 times the median, where stealing
-    held it to 1.1 to 1.3, and the template suite's from 1.2 to 1.05.
+    Asked of that environment's own interpreter, from that directory, because
+    that is where a suite runs: `uv run pytest` from the suite's root, which
+    for a nested project is a different environment from the one running the
+    gate, on a different Python. A uv that cannot build the environment
+    answers no; the suite's own run then fails in uv's words, which say more
+    than this could.
     """
-    if workers < 2 or find_spec("xdist") is None:
-        return []
-    return ["-n", str(workers), "--dist", "worksteal"]
+    program = (
+        "import importlib.util, sys; "
+        f"sys.exit(importlib.util.find_spec({module!r}) is None)"
+    )
+    try:
+        uv("run", "python", "-c", program, _cwd=str(directory))
+    except (sh.ErrorReturnCode, sh.ForkException):
+        return False
+    return True
 
 
 def ignored_arguments(excluded_roots: list[str]) -> list[str]:
@@ -435,6 +441,13 @@ class TestRoot(BaseModel):
 
     name: str
     directory: Path
+    parallel: bool | None = None
+    """Whether this suite spreads over processes, where the project says.
+
+    Unsaid, the suite's own environment is asked whether it holds
+    pytest-xdist — the gate's environment is the wrong one to ask, since a
+    nested project installs its own. A suite whose answer the project already
+    knows says it here and spares every run the question."""
 
     def restored_workspaces(self) -> list[Path]:
         """The toolchain workspaces this suite restores from a lockfile before it runs.
@@ -446,16 +459,69 @@ class TestRoot(BaseModel):
         """
         return []
 
+    def spelled(self) -> Path | None:
+        """This suite's directory as the repository top spells it, None outside it.
+
+        A root is named relative to the working directory the gate runs from,
+        which is the top, or — as the template's first root is — as that
+        directory itself. Either way a role pattern is read from the top, and
+        a generated tree may carry no machine's absolute path, so both
+        spellings become the one relative path. A suite outside the checkout
+        holds nothing the policy judges.
+        """
+        located = self.directory.resolve()
+        top = Path.cwd().resolve()
+        return located.relative_to(top) if located.is_relative_to(top) else None
+
     def collected(self) -> list[Path]:
         """The files this suite collects as tests, as patterns from the repository top.
 
         What the policy reads to give those files the test role, so the suite
         the gate runs and the role table cannot name different files. A
-        pytest suite answers nothing here: it collects by the `testpaths` its
-        configuration declares, which a project spells as a role root
-        outright.
+        pytest suite collects by the ``testpaths`` its own configuration
+        declares, read the way pytest reads it
+        (:class:`~lup.devtools.dev.collection.PytestCollection`), so a
+        nested project's tests are tests the moment its suite is declared.
         """
-        return []
+        spelled = self.spelled()
+        if spelled is None:
+            return []
+        return PytestCollection.read(self.directory).patterns(spelled)
+
+    def spread(self, workers: int) -> list[str]:
+        """The flag that spreads this suite over processes, where it can take one.
+
+        `-n` belongs to pytest-xdist, and a project building on this library
+        has no reason to hold it: a package declares what it needs to run, and
+        a dependency group installs for the project that writes it rather than
+        for anyone depending on that project. Declaring the plugin would
+        therefore either reach this library's own developers alone or push
+        test parallelism into every adopter's runtime install, so the flag is
+        offered where this suite's environment can import it and dropped where
+        it cannot. Pytest rejects an unrecognized argument before collecting
+        anything, and a gate that failed on that would be reporting on its own
+        speed rather than on the suite.
+
+        Fewer than two workers spells serial, so the count descends into
+        running the same tests behind a single interpreter rather than needing
+        a second way of saying nothing — and asks the environment nothing.
+
+        Scheduled by work stealing rather than xdist's default, because a
+        suite costs its busiest worker. The default hands each worker its
+        share up front, and a share holding a module of git-driving tests left
+        one worker running for a minute after the rest were idle — measured,
+        the library suite's busiest worker at 1.7 to 2.8 times the median,
+        where stealing held it to 1.1 to 1.3, and the template suite's from
+        1.2 to 1.05.
+        """
+        if workers < 2:
+            return []
+        match self.parallel:
+            case None:
+                parallel = importable(self.directory, "xdist")
+            case declared:
+                parallel = declared
+        return ["-n", str(workers), "--dist", "worksteal"] if parallel else []
 
     def absent(self) -> CheckReport:
         """The verdict a root naming a directory this checkout lacks earns.
@@ -518,7 +584,7 @@ class TestRoot(BaseModel):
             "pytest",
             *paths,
             f"--basetemp={self.basetemp()}",
-            *parallel_arguments(workers),
+            *self.spread(workers),
             *ignored_arguments(excluded_roots),
             _cwd=str(self.directory),
             _fg=foreground,
@@ -553,8 +619,11 @@ class BunTestRoot(TestRoot):
     extensions: tuple[str, ...] = ("js", "jsx", "ts", "tsx")
 
     def collected(self) -> list[Path]:
+        spelled = self.spelled()
+        if spelled is None:
+            return []
         names = (f"{shape}.{ext}" for shape in self.shapes for ext in self.extensions)
-        return [self.directory / "**" / name for name in names]
+        return [spelled / "**" / name for name in names]
 
     def restored_workspaces(self) -> list[Path]:
         return [self.directory]
@@ -1559,13 +1628,22 @@ def run_checks(
     spread: Spread | None = None,
     migration_base: str | None = None,
     release_tag_prefix: str = "v",
+    environments: Sequence[Path] = (),
 ) -> None:
     """Run ruff format, ruff check, pyright, pytest, and this gate's own sweeps.
 
     Read-only by default (reports issues without modifying files).
     Pass *fix* to auto-fix formatting and lint issues. ``scope`` narrows the
-    note and anti-pattern gates to paths this tree is answerable for, and
-    ``migration_base`` names the commit removed capabilities are judged from.
+    note and anti-pattern gates to paths this tree is answerable for,
+    ``migration_base`` names the commit removed capabilities are judged from,
+    and ``environments`` are the sub-projects Pyright reads through their own.
+
+    A gate with no suite to run says so in a row of its own, where the suites
+    would have reported. A tally counting only what ran reads the same
+    whether the tests passed or nobody declared any, and a project whose code
+    all sits in a nested one met exactly that: every check passed while the
+    nested suite, run by nobody, had been failing. Advisory, because declaring
+    none is a choice the gate reports rather than refuses.
     """
     started = perf_counter()
     excluded_roots = non_code_roots(project)
@@ -1587,7 +1665,7 @@ def run_checks(
         tools: list[Callable[[], CheckReport]] = [
             partial(ruff_format_check, fix, excluded_roots),
             partial(ruff_lint_check, fix, excluded_roots),
-            partial(pyright_check, excluded_roots),
+            partial(pyright_check, excluded_roots, environments=environments),
             *(
                 partial(root.checked, admission.workers, excluded_roots)
                 for root in suites
@@ -1633,7 +1711,16 @@ def run_checks(
                 scanned = sweeps()
                 tooled = [job.result() for job in running]
 
-    reports = [*tooled, *scanned]
+    undeclared = (
+        []
+        if no_test or test_roots
+        else [
+            CheckReport(
+                name="tests", lines=["tests: no suites declared"], counted=False
+            )
+        ]
+    )
+    reports = [*tooled, *undeclared, *scanned]
     # Ahead of the reports, because it says what the numbers below were
     # measured under: a run that took its share of a busy machine is not a
     # run that was slow, and a reader given the timings alone reads it as one.
@@ -1688,6 +1775,7 @@ def run_changed(
     test_roots: list[TestRoot],
     spread: Spread | None = None,
     fix: bool = False,
+    environments: Sequence[Path] = (),
 ) -> None:
     """Check the files this tree changed, and say plainly what went unchecked.
 
@@ -1731,7 +1819,9 @@ def run_changed(
         [
             partial(ruff_format_check, fix, excluded_roots, scope.checked),
             partial(ruff_lint_check, fix, excluded_roots, scope.checked),
-            partial(pyright_check, excluded_roots, scope.checked),
+            partial(
+                pyright_check, excluded_roots, scope.checked, environments=environments
+            ),
         ]
         if scope.checked
         else []

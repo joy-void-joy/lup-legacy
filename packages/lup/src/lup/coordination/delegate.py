@@ -15,14 +15,16 @@ says which happened, so a skill can report it rather than having to guess.
 **A wake is never a substitute for the record.** Mail is written whether or
 not anything can nudge the peer, and the two runtimes differ in whether this
 library can do the nudging at all — :mod:`lup.coordination.wake` carries that
-asymmetry so this does not have to.
+asymmetry so this does not have to. A wake carries the mail whole, so what one
+the peer's runtime accepted carried is handed over with it, and the peer's
+hook does not hand it over again.
 """
 
 from pathlib import Path
 
 from lup.coordination.repository import RepositoryPeers
 from lup.coordination.tasks import Delegation, Needs, Task
-from lup.coordination.wake import wake
+from lup.coordination.watch import roused
 from lup.ledger.journal import LedgerStore
 from lup.types import JsonValue
 
@@ -73,16 +75,20 @@ def delegate(
     for path in locked:
         peers.lock(member.id, Path(path))
     message = f"{task.id}: {title}" + (f"\n{text}" if text else "")
-    peers.send(to, message)
+    peers.send(to, message, sender=store.author.id)
     reached = next(
         (view for view in peers.listing() if view.member.actor.id == member.id), None
     )
-    roused = wake(reached.member.wake, message, root) if reached is not None else None
+    woken = (
+        roused(peers, reached.member, peers.waiting(member.id).messages, root)
+        if reached is not None
+        else None
+    )
     return Delegation(
         task=task,
         holder=to,
         locked=locked,
         delivered=True,
-        woken=roused.reached if roused else False,
-        note=roused.reason if roused else "",
+        woken=woken.reached if woken else False,
+        note=woken.reason if woken else "",
     )

@@ -17,6 +17,7 @@ import lup.devtools.dev.git_guards as git_guards_mod
 import lup.devtools.dev.reach as reach
 from lup.devtools.dev.release import ReleaseSpec
 from lup.devtools.dev.scaffold import ScaffoldSource
+from lup.devtools.dev.subprojects import SubProjects
 from lup.devtools.project import DevProject
 from lup.harness.models import HookSet, Plugin
 
@@ -33,6 +34,15 @@ class DevDeclarations(BaseModel, frozen=True):
     hooks: HookSet
     plugin: Plugin
     test_roots: list[check.TestRoot]
+    sub_projects: SubProjects = SubProjects()
+    """The uv projects nested in this repository, each with its own environment.
+
+    Their suites are among ``test_roots`` already, since the policy derives
+    the test role from that one list; what is read here is the environments
+    themselves — synced in a fresh worktree, and before the gate's Pyright
+    reads their packages. None is the answer for a repository that is one
+    project."""
+
     git_guards: list[git_guards_mod.GitGuard] = git_guards_mod.DECLARED_GUARDS
     """Which checks this repository installs as git hooks.
 

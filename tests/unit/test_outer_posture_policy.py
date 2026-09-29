@@ -167,6 +167,14 @@ GUARDED = [
     pytest.param(
         "node -e 'console.log(1)' $(ls)", "deny", id="node-inline-substituted"
     ),
+    # The program an interpreter is handed, where nobody can read it, is the
+    # strictest one it could be: code split out of the word, or its input.
+    pytest.param("x=$(ls) && bash $x", "deny", id="bash-unread-program"),
+    pytest.param("bash $(ls)", "deny", id="bash-substituted-program"),
+    pytest.param("x=$(ls) && node $x", "deny", id="node-unread-program"),
+    pytest.param("x=$(ls) && python $x", "deny", id="python-unread-program"),
+    pytest.param("x=$(ls) && bun $x", "deny", id="bun-unread-program"),
+    pytest.param("x=$(ls) && uv run python $x", "deny", id="uv-python-unread-program"),
     # An interpreter build arrives from an index and runs everything after it.
     pytest.param("uv python install 3.13", "ask", id="uv-python-install"),
     pytest.param("uv python pin 3.13", "ask", id="uv-python-pin"),

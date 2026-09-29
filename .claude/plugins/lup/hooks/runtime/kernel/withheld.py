@@ -29,8 +29,8 @@ from .decision import KernelDecision
 from .lex import placed_path, placed_redirects
 from .rows import RefusedPathRow, WithheldWalkRow
 from .syntax import Redirect, Script, Word, WordPart, word_text
-from .walks import grep_split, placed_root, walked_roots
-from .words import expands_to
+from .walks import grep_split, pattern_positions, placed_root, walked_roots
+from .words import expands_to, sed_invocation
 
 # lup: ignore[library-default] — the shell builtins that write their operands to stdout
 PRINTING_BUILTINS = ("echo", "printf", "print")
@@ -221,11 +221,23 @@ def withheld_operand(
     # `tar czf out ~` -- names no withheld path and walks into one anyway;
     # catching it needs which verbs recurse, since `ls ~` and `cd ~` must not
     # be refused for sitting above a key.
+    invocation = (
+        sed_invocation(words) if posixpath.basename(words[0]) == "sed" else None
+    )
+    scripted = (
+        invocation["scripted"]
+        if invocation is not None and not isinstance(invocation, KernelDecision)
+        else []
+    )
+    # A program or a pattern is text the command runs or matches, and names
+    # no file whatever it spells: `sed 's/.*/token/' f` opens `f` alone.
+    texts = [*scripted, *pattern_positions(words)]
     return next(
         (
             refused
-            for word in words[1:]
-            if (refused := withheld_path(word, directory, checkout_root, rows))
+            for index, word in enumerate(words[1:], start=1)
+            if index not in texts
+            and (refused := withheld_path(word, directory, checkout_root, rows))
             is not None
         ),
         None,
@@ -282,6 +294,7 @@ def withheld_walk(
     checkout_root: str,
     walks: list[WithheldWalkRow],
     rows: list[RefusedPathRow],
+    listed: bool = False,
 ) -> KernelDecision | None:
     """The refusal a recursive read earns where its root holds a withheld path.
 
@@ -296,7 +309,7 @@ def withheld_walk(
     reached = next(
         (
             walk
-            for root in walked_roots(words)
+            for root in walked_roots(words, listed)
             for walk in walks
             if walk["root"] == placed_root(root["path"], directory)
         ),

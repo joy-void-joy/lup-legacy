@@ -11,13 +11,15 @@ dispatcher on every posture, with `dev policy`'s reading beside it.
 import json
 import os
 import sys
+import time
 from pathlib import Path
 from typing import Literal
 
 import pytest
 import sh
 
-from lup.devtools.dev.policy_explain import verdict_for
+from lup.devtools.dev import policy_explain
+from lup.devtools.dev.policy_explain import PLACEMENTS, verdict_for
 from lup.harness.enforcement import semantic_policy_for
 from lup.policy.models import ShellCommand
 from lup.types import JsonObject
@@ -35,6 +37,13 @@ WALKS_INTO = [
     pytest.param("cp -r ~ tmp/home", id="copy-home"),
     pytest.param("zip -r tmp/out.zip ~", id="zip-home"),
     pytest.param("grep -r token .", id="grep-checkout-login"),
+    # What a listing yields, read by whatever it is handed to, is the walk.
+    pytest.param("find ~ | xargs cat", id="find-into-xargs"),
+    pytest.param("find ~ -print0 | xargs -0 cat", id="find-into-xargs-null"),
+    pytest.param("find ~ -type f -exec cat {{}} +", id="find-exec"),
+    pytest.param("find ~ -type f -exec cat {{}} \\;", id="find-exec-each"),
+    pytest.param('find ~ | while read f; do cat "$f"; done', id="find-read-loop"),
+    pytest.param("ls -R ~ | xargs cat", id="ls-into-xargs"),
 ]
 """Walks the host finds holding a key or a login beneath the root they spell."""
 
@@ -46,6 +55,13 @@ STAYS_OUT = [
     pytest.param("rg token .", id="rg-checkout"),
     pytest.param("grep -r --exclude-dir=.lup token .", id="grep-excluding-attached"),
     pytest.param("grep -r --exclude-dir .lup token .", id="grep-excluding-apart"),
+    pytest.param("find ~ -name notes.txt", id="find-lists-names"),
+    pytest.param("find src | xargs cat", id="find-source-into-xargs"),
+    pytest.param("find src -exec cat {{}} +", id="find-exec-source"),
+    pytest.param("find ~ -name *.txt | xargs cat", id="find-yielding-text-into-xargs"),
+    pytest.param(
+        "find . -name *.py -exec grep -l token {{}} +", id="find-exec-yielding"
+    ),
 ]
 """Reads that name no withheld path and walk into none."""
 
@@ -199,3 +215,35 @@ def test_a_read_that_walks_into_none_stays_a_read(
         "allow"
     }
     assert previewed(command, checkout, home, monkeypatch) == {"allow"}
+
+
+class Stalled:
+    """A policy whose verdict never comes, as a walk of a whole disk would not."""
+
+    def decide(self, event: ShellCommand) -> None:
+        time.sleep(30)
+
+
+def stalled(*_args: object, **_kwargs: object) -> Stalled:
+    return Stalled()
+
+
+def test_a_reading_in_process_is_bounded_as_a_hook_is(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """`dev policy` meets the deadline each dispatcher opens, from one declaration.
+
+    Unbounded, a reading waiting on something that never returns -- a walk
+    of a whole disk -- hangs the command a session reaches for before it
+    spends a turn, where the hook it previews has already refused.
+    """
+    monkeypatch.setattr(policy_explain, "semantic_policy_for", stalled)
+    hooks = declared_hook_set().model_copy(update={"policy_timeout": 1})
+    started = time.monotonic()
+
+    verdict = verdict_for("ls", "shell", False, tmp_path, hooks, PLACEMENTS[:1])
+
+    assert time.monotonic() - started < 10
+    (reading,) = verdict.readings
+    assert reading.effect == "deny"
+    assert "deadline" in reading.reason

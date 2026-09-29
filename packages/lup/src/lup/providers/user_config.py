@@ -14,7 +14,10 @@ Every field carries lup's own answer, so a person who writes nothing gets it
 and one line changes one answer. The same precedence holds wherever a value is
 chosen: lup's default, then this file, then what the project declares, then
 what the invocation names — each overruling the one before, so this file never
-decides what a project or a flag already did.
+decides what a project or a flag already did. The container a session opens
+in is the one exception, since what a machine can grant is its person's to
+say: ``[container]`` overrules the project's, and a mode and a flag overrule
+it.
 
 Read where a run starts rather than cached, so an edit reaches the next launch
 with nothing to restart; and refused when it does not parse, because a
@@ -25,13 +28,14 @@ from pathlib import Path
 from typing import Literal
 
 import tomlkit
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, Field, ValidationError, field_validator
 from pydantic_settings import BaseSettings
 from tomlkit.exceptions import TOMLKitError
 from tomlkit.items import Table
 
 from lup.channels.models import write_atomic
 from lup.harness.models import NativeName
+from lup.launch.declaration import OuterContainer
 from lup.providers.claude.theme import ClaudeTheme
 from lup.providers.selection import SessionEffort
 from lup.types import JsonObject, JsonValue, ModelTier
@@ -111,6 +115,29 @@ class UserConfig(BaseModel, frozen=True, extra="forbid"):
     """``[codex.settings]``: Codex configuration handed to every session."""
 
     cleanup: UserCleanup = UserCleanup()
+
+    container: OuterContainer = OuterContainer()
+    """``[container]``: what every contained session this person launches is
+    granted — its network, memory, sudo, devices, folders and held trees —
+    over what the project declares and under a mode and the command line.
+    A repository's own facts, its image, the repositories kept inside it and
+    the guidance a kind of its sessions reads, are not a person's to state."""
+
+    @field_validator("container")
+    @classmethod
+    def container_states_no_repository_s_facts(
+        cls, value: OuterContainer
+    ) -> OuterContainer:
+        """Refuse an image, nested repositories or guidance, which are one repository's own."""
+        named = sorted(
+            {"image", "nested_repositories", "guidance"} & value.model_fields_set
+        )
+        if named:
+            raise ValueError(
+                f"[container] names {', '.join(named)}, which are one repository's "
+                "own; declare them in that repository's OuterContainer"
+            )
+        return value
 
 
 class UserConfigHome(BaseSettings):

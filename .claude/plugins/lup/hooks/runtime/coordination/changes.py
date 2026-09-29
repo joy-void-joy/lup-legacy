@@ -48,6 +48,7 @@ from pathlib import Path
 from typing import TypedDict
 
 from .mail import Notice, notices
+from .runtime import stdin_runtime
 from .store import (
     LOOKS_DIR,
     MEMBER_KIND,
@@ -58,6 +59,7 @@ from .store import (
     beat,
     called,
     held,
+    own_member,
     parent_of,
     present,
     session_actor,
@@ -552,15 +554,18 @@ def main() -> None:
     The store root, this member's launcher-proven id (blank where nothing
     launched it) and the event name arrive as arguments; the prompt payload on
     stdin supplies the session's own id as the fallback, the checkout the
-    prompt was submitted from, and the transcript it belongs to. Every failure
-    is silence, because a prompt is not something a broken roster may stop.
+    prompt was submitted from, and the transcript it belongs to. A runtime
+    that inherited the launcher's id from the session's shell folds as the
+    member it is, not as that session. Every failure is silence, because a
+    prompt is not something a broken roster may stop.
     """
     try:
         root, member, event = Path(sys.argv[1]), sys.argv[2], sys.argv[3]
+        runtime = stdin_runtime()
         prompt: Prompt = json.load(sys.stdin)
         lines = changes(
             root,
-            member or prompt.get("session_id", ""),
+            own_member(root, member, runtime) or prompt.get("session_id", ""),
             Path(prompt.get("cwd", "")),
             prompt.get("transcript_path", ""),
         )

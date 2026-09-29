@@ -36,6 +36,7 @@ def declared() -> DevDeclarations:
         hooks=catalog.declared_hook_set(),
         plugin=catalog.declared_plugin(),
         test_roots=catalog.declared_test_roots(),
+        sub_projects=catalog.declared_sub_projects(),
         spread=catalog.declared_spread(),
         scaffold=catalog.declared_scaffold(),
         release=catalog.declared_release(),

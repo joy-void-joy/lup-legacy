@@ -75,16 +75,14 @@ def test_a_probe_does_not_release_a_denied_neighbor() -> None:
 
 
 @pytest.mark.parametrize("arguments", ["", " --dry-run", " --dry-run=false"])
-def test_an_unclassified_runner_wrapper_remains_denied(arguments: str) -> None:
+def test_a_runner_wrapper_is_judged_as_the_program_it_runs(arguments: str) -> None:
     policy = ShellPolicy(default_vocabulary(), runner_targets=runner_target_rules())
+    command = f"lup-devtools dev migrate pyright-environment{arguments}"
 
-    decision = policy.decide(
-        ShellCommand(
-            command=f"uv run env lup-devtools dev migrate pyright-environment{arguments}"
-        )
-    )
+    wrapped = policy.decide(ShellCommand(command=f"uv run env {command}"))
+    direct = policy.decide(ShellCommand(command=f"uv run {command}"))
 
-    assert decision.effect == "deny"
+    assert wrapped.effect == direct.effect
 
 
 def test_other_migration_queries_keep_their_existing_admission() -> None:

@@ -33,8 +33,10 @@ from lup.coordination.bare.store import (
     MAILBOX_DIR,
     MEMBER_KIND,
     STORE_DIR,
+    SUBAGENT_KIND,
     Actor,
     conversation_of,
+    spawned_prefix,
     subagent_actor,
 )
 from lup.formats.banner import (
@@ -83,6 +85,13 @@ def guard_body() -> str:
     subagent's waiting mail starts the reader for any call of the session
     until that subagent's next call takes it.
 
+    So do the mailboxes of the runtimes started beneath the session, which
+    carry its id in their environment and are members of their own — keyed
+    by :func:`~lup.coordination.bare.store.spawned_prefix` so this guard,
+    which reads no file, can name them. The reader works out which of them
+    a call is, and a spawned runtime's mail starts it for the session's calls
+    too until that runtime's next call takes it.
+
     The globs are expanded into the positional parameters and each word
     tested, because an unmatched glob in a POSIX shell stays literal: `[ -e ]`
     on that word is false, which is the answer wanted, and no `ls` is started
@@ -93,9 +102,12 @@ def guard_body() -> str:
     way is mail arriving one call later, and the cost of the other way is a
     session that cannot work.
     """
-    member = "$LUP_COORDINATION_MEMBER"
+    member = "${LUP_COORDINATION_MEMBER}"
     session = conversation_of(Actor(kind=MEMBER_KIND, id=member))
     subagents = conversation_of(subagent_actor(member, ""))
+    spawned = spawned_prefix(member)
+    beneath = conversation_of(Actor(kind=MEMBER_KIND, id=spawned))
+    theirs = conversation_of(Actor(kind=SUBAGENT_KIND, id=spawned))
     return f"""#!/bin/sh
 [ -n "{member}" ] || exit 0
 command -v python3 >/dev/null 2>&1 || exit 0
@@ -105,7 +117,8 @@ case "$shared" in
     *) shared="$PWD/$shared" ;;
 esac
 root="$shared/{STORE_DIR}/{COORDINATION_DIR}"
-set -- "$root/{MAILBOX_DIR}/{session}"/*.json "$root/{MAILBOX_DIR}/{subagents}"*/*.json
+mail="$root/{MAILBOX_DIR}"
+set -- "$mail/{session}"/*.json "$mail/{subagents}"*/*.json "$mail/{beneath}"*/*.json "$mail/{theirs}"*/*.json
 for waiting do
     [ -e "$waiting" ] || continue
     exec python3 -s "${{0%/*}}/../runtime/{RUNTIME_MODULE}" "$root" "{member}"

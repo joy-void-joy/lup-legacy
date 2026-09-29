@@ -587,3 +587,26 @@ def test_no_tree_this_repository_generates_lands_under_its_scratch() -> None:
     ]
 
     assert landing == []
+
+
+def test_a_repository_made_in_scratch_is_made_where_a_link_lands(
+    runtime: Runtime, base: Path
+) -> None:
+    """`git init` into scratch is a scratch write, and read as one.
+
+    A link planted under `tmp/` moves where the repository is made, so the
+    directory it names is resolved by the host as any write target is, and a
+    landing outside scratch keeps the question every other write through a
+    link meets.
+    """
+    (base / "checkout/src").mkdir()
+    (base / "checkout/tmp/into-src").symlink_to(base / "checkout/src")
+
+    made = verdict(runtime, shell("PreToolUse", "git init tmp/fresh", base), base)
+    linked = verdict(
+        runtime, shell("PreToolUse", "git init tmp/into-src/fresh", base), base
+    )
+
+    assert made[0] == "allow"
+    assert linked[0] == "ask"
+    assert "symlink" in linked[1]

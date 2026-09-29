@@ -280,7 +280,7 @@ def test_event_handoff_never_infers_a_missing_or_corrupt_primary_claim(
     response = hook(root, replacement(), event="PermissionRequest")
     decision = json.loads(response.stdout)["hookSpecificOutput"]["decision"]
     assert decision["behavior"] == "deny"
-    assert "Malformed hook input" in decision["message"]
+    assert "Lup could not judge this call" in decision["message"]
 
 
 def test_rejection_does_not_create_another_question(root: Path) -> None:

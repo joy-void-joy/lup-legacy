@@ -1,6 +1,5 @@
 """A browser decision retains the relay's authority and the operation shown."""
 
-import asyncio
 import json
 import secrets
 import subprocess
@@ -17,7 +16,6 @@ import typer
 import uvicorn
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
-from starlette.types import Message, Scope
 from typer.testing import CliRunner
 
 from lup.channels.models import Door
@@ -119,7 +117,7 @@ async def only_key(http: AsyncClient) -> str:
 
 
 @pytest.mark.parametrize(
-    "route", ["/api/reviews", "/api/reviews/unknown", "/api/events"]
+    "route", ["/api/reviews", "/api/reviews/unknown", "/api/stream"]
 )
 @pytest.mark.parametrize("authorization", ["", "Bearer wrong", f"Basic {TOKEN}"])
 async def test_api_reads_require_the_operator_token(
@@ -686,59 +684,6 @@ async def test_notification_failure_cannot_undo_the_recorded_answer(
     persisted = ReviewNotifications(root=tmp_path).read(decision.review.question)
     assert persisted is not None
     assert "notification transport unavailable" in persisted.detail
-
-
-async def test_event_stream_sends_a_snapshot_then_queue_changes(tmp_path: Path) -> None:
-    parked(tmp_path)
-    app = dashboard.dashboard_app(BASE_URL, TOKEN, (tmp_path,))
-    snapshots: list[ReviewSnapshot] = []
-    disconnected = asyncio.Event()
-    started = asyncio.Event()
-    statuses: list[int] = []
-    scope: Scope = {
-        "type": "http",
-        "asgi": {"version": "3.0", "spec_version": "2.3"},
-        "http_version": "1.1",
-        "method": "GET",
-        "scheme": "http",
-        "path": "/api/events",
-        "raw_path": b"/api/events",
-        "query_string": b"",
-        "root_path": "",
-        "headers": [
-            (b"host", b"127.0.0.1:8765"),
-            (b"authorization", f"Bearer {TOKEN}".encode()),
-        ],
-        "client": ("127.0.0.1", 12345),
-        "server": ("127.0.0.1", 8765),
-    }
-
-    async def receive() -> Message:
-        if not started.is_set():
-            started.set()
-            return {"type": "http.request", "body": b"", "more_body": False}
-        await disconnected.wait()
-        return {"type": "http.disconnect"}
-
-    async def send(message: Message) -> None:
-        match message["type"]:
-            case "http.response.start":
-                statuses.append(message["status"])
-            case "http.response.body" if message.get("body"):
-                for line in message["body"].splitlines():
-                    if not line:
-                        continue
-                    snapshots.append(ReviewSnapshot.model_validate_json(line))
-                if len(snapshots) == 1:
-                    parked(tmp_path, "q-2")
-                else:
-                    disconnected.set()
-
-    await asyncio.wait_for(app(scope, receive, send), timeout=5)
-
-    assert statuses == [200]
-    assert {item.id for item in snapshots[0].reviews} == {"q-1"}
-    assert {item.id for item in snapshots[1].reviews} == {"q-1", "q-2"}
 
 
 def test_root_discovery_keeps_only_named_repositories_and_their_worktrees(

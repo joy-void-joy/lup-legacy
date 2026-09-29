@@ -620,6 +620,42 @@ class SyncedEnvironment(SetupStep, frozen=True):
         sync_dependencies(self.worktree)
 
 
+class SyncedSubProject(SetupStep, frozen=True):
+    """A declared sub-project's own environment, synced inside the worktree.
+
+    Its execution environment names the packages that environment holds, so
+    until the sync runs the per-edit check reports every third-party import
+    in the sub-project unresolved — the same false alarm the root's own sync
+    exists to prevent, from a project the root's sync never reaches.
+
+    Not required: a worktree whose sub-project is not synced is one to work
+    in, and the gate syncs it before reading it anyway. A sub-project the new
+    tree does not hold — cut from a branch older than its declaration — is
+    nothing to sync.
+    """
+
+    worktree: Path
+    project: Path
+    """Where the sub-project's `pyproject.toml` lives, relative to the worktree."""
+
+    def label(self) -> str:
+        return f"the synced sub-project environment ({self.project})"
+
+    def satisfied(self) -> bool:
+        held = self.worktree / self.project
+        return (
+            not (held / "pyproject.toml").is_file()
+            or project_environment(held).is_dir()
+        )
+
+    def run(self) -> None:
+        typer.echo(f"Running uv sync in {self.project}...")
+        sync_dependencies(self.worktree / self.project)
+
+    def required(self) -> bool:
+        return False
+
+
 class RestoredWorkspace(SetupStep, frozen=True):
     """A bun workspace's dependencies, restored from its lockfile in the worktree.
 
@@ -850,12 +886,14 @@ def create(
     extras: list[str] = GITIGNORED_EXTRAS,
     guards: list[GitGuard] = DECLARED_GUARDS,
     workspaces: Sequence[Path] = (),
+    projects: Sequence[Path] = (),
 ) -> None:
     """Create a git worktree, re-attach one, or finish one left half-made.
 
     ``workspaces`` are the bun workspaces restored beside the environment,
-    relative to the worktree; ``no_sync`` skips both, since both are the
-    same act for two toolchains.
+    and ``projects`` the declared sub-projects whose own environments are
+    synced beside it, both relative to the worktree; ``no_sync`` skips all
+    three, since they are the same act for each environment.
 
     Nothing here reaches origin. A branch that has no commits of its own can
     only publish a ref holding what origin already had, and rebuilding the
@@ -942,6 +980,8 @@ def create(
             )
         if not no_sync:
             yield SyncedEnvironment(worktree=worktree_path)
+            for project in projects:
+                yield SyncedSubProject(worktree=worktree_path, project=project)
             for workspace in workspaces:
                 yield RestoredWorkspace(worktree=worktree_path, workspace=workspace)
 

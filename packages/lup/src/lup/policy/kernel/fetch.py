@@ -1,5 +1,6 @@
 """URL scope matching for the fetch policy."""
 
+import ipaddress
 import urllib.parse
 
 from .decision import KernelDecision
@@ -56,6 +57,88 @@ def scope_text(scope: UrlScopeRow) -> str:
     host = ("*." if scope["include_subdomains"] else "") + scope["host"]
     port = "" if scope["any_port"] or scope["port"] is None else f":{scope['port']}"
     return f"{scope['scheme']}://{host}{port}{scope['path_prefix']}"
+
+
+def ipv4_number(hostname: str) -> int | None:
+    """The IPv4 address a host names as a number, however it spells one.
+
+    The URL standard's IPv4 host grammar, which curl and every browser read
+    by: one to four dot-separated parts, each decimal, `0x` hex or `0`-led
+    octal, the last filling every byte the others left, and one trailing dot.
+    `169.254.169.254`, `2852039166`, `0xa9fea9fe` and `0251.0376.0251.0376`
+    reach one address, so they are read as one. ``None`` for a name.
+    """
+
+    def part_number(piece: str) -> int | None:
+        """One part's value, in the base its prefix says, or ``None``."""
+        match (piece[:2].lower(), piece[:1], len(piece) > 1):
+            case ("0x", _, _):
+                digits, base = piece[2:] or "0", 16
+            case (_, "0", True):
+                digits, base = piece[1:], 8
+            case _:
+                digits, base = piece, 10
+        allowed = "0123456789abcdef"[:base]
+        if not digits or any(character not in allowed for character in digits.lower()):
+            return None
+        return int(digits, base)
+
+    # lup: ignore[string-split] — the URL standard's IPv4 host grammar, which no stdlib parser reads
+    parts = [part_number(piece) for piece in hostname.removesuffix(".").split(".")]
+    numbers = [number for number in parts if number is not None]
+    if not 1 <= len(parts) <= 4 or len(numbers) != len(parts):
+        return None
+    *leading, last = numbers
+    if any(number > 255 for number in leading) or last >= 256 ** (5 - len(numbers)):
+        return None
+    shifted = [number << (8 * (3 - index)) for index, number in enumerate(leading)]
+    return sum(shifted) + last
+
+
+def host_address(name: str) -> ipaddress.IPv4Address | ipaddress.IPv6Address | None:
+    """The address a URL's host spells, as the address it reaches, or ``None``.
+
+    An IPv6 form that carries an IPv4 address -- mapped, or under the NAT64
+    prefix a translating network sends on -- reaches that IPv4 address, so
+    it is read as it.
+    """
+    if ":" not in name:
+        number = ipv4_number(name)
+        return None if number is None else ipaddress.IPv4Address(number)
+    try:
+        spelled = ipaddress.IPv6Address(name)
+    except ValueError:
+        return None
+    if spelled in ipaddress.IPv6Network("64:ff9b::/96"):
+        return ipaddress.IPv4Address(int(spelled) & 0xFFFFFFFF)
+    return spelled.ipv4_mapped or spelled
+
+
+def metadata_address(
+    hostname: str,
+    withheld: tuple[str, ...] = (
+        "169.254.0.0/16",
+        "fd00:ec2::254/128",
+        "metadata.google.internal",
+    ),
+) -> bool:
+    """Whether a host is a cloud metadata service, however its address is spelled.
+
+    A metadata service answers whoever asks with the identity and credentials
+    of the machine it serves, so what a fetch of one reads is the host's own
+    secret. The IPv4 link-local block holds every provider's IPv4 service
+    (and ECS's task endpoint beside it); `fd00:ec2::254` is the IPv6 one and
+    `metadata.google.internal` the name one provider resolves. An address is
+    compared as the address it is, in any spelling; a name that only resolves
+    there (`169.254.169.254.nip.io`) is the network's to stop.
+    """
+    name = hostname.lower().removesuffix(".")
+    address = host_address(name)
+    if address is None:
+        return name in withheld
+    return any(
+        address in ipaddress.ip_network(entry) for entry in withheld if "/" in entry
+    )
 
 
 def loopback_port(url: str) -> int | None:
@@ -134,6 +217,17 @@ def decide_fetch(
     if not parsed.scheme or hostname is None:
         missing = "scheme" if not parsed.scheme else "host"
         return KernelDecision("ask", f"the URL {url!r} names no {missing}")
+    # Read before any scope, since no declaration makes one safe: what it
+    # answers is the machine's own identity, which no boundary puts back.
+    if metadata_address(hostname):
+        return KernelDecision(
+            "deny",
+            f"{hostname} is a cloud metadata service, which answers with the"
+            " credentials of the machine it serves",
+            cause="deliberate",
+            hard=True,
+            recovery="Ask the operator for what you needed from it.",
+        )
     denied = next(
         (
             scope

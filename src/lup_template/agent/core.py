@@ -1,6 +1,7 @@
 """Application composition roots over Lup's provider-neutral runtime."""
 
 import logging
+import os
 from collections.abc import Awaitable, Callable
 from datetime import datetime
 from pathlib import Path
@@ -495,16 +496,23 @@ def build_session_factory(
         declared_tool_servers,
     )
     from lup_template.agent.toolsets import session_needs as project_needs
-    from lup.coordination.identity import member_ref, session_member_id
+    from lup.coordination.bare.runtime import runtime_of
+    from lup.coordination.identity import MemberEnv, member_ref
+    from lup.coordination.repository import runtime_member
     from lup_template.kinds import NODE_KINDS, LAYOUT
 
     engine = engine_for_settings(model)
+    # A run started from a launched session's shell inherits that session's
+    # id, and is a member of its own spawned by it rather than that session.
+    member = runtime_member(
+        project_root(), MemberEnv().member_id, session_id, runtime_of(os.getpid())
+    )
     # Sessions and their results are indexed in the ledger as pointers,
     # under the identity the session's own tool group records with, so the
     # opening and what the session later claims share one author.
     recorder = session_recorder(
         project_root(),
-        member_ref(session_member_id(session_id)),
+        member_ref(member.member_id),
         NODE_KINDS,
         LAYOUT,
     )
@@ -538,7 +546,8 @@ def build_session_factory(
             outputs_dir=notes.output.parent,
             sandbox=sandbox,
             realtime_dir=realtime_dir,
-            member=session_member_id(session_id),
+            member=member.member_id,
+            spawned_by=member.spawned_by,
         )
 
     match toolless, engine:

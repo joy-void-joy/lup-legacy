@@ -20,7 +20,7 @@ reason attached.
 """
 
 import re
-from collections.abc import Callable, Set as AbstractSet
+from collections.abc import Callable
 from functools import cache
 from pathlib import Path, PurePosixPath
 from typing import Literal, Self, get_args
@@ -419,10 +419,12 @@ def file_level_ignore(text: str, max_lines: int = 10) -> FileIgnore | None:
 LIBRARY_PACKAGE_ROOT = "lup"
 
 PACKAGE_ROOTS = frozenset({LIBRARY_PACKAGE_ROOT})  # lup: ignore[frozenset-shape]
-"""Import roots a scan resolves module names against, by default this library's
-own. An application adds the package it publishes, whose name it alone knows —
-initialization renames it, so a value written down here would go on naming a
-package that no longer exists and silently resolve nothing."""
+"""The import roots this library publishes, which a walk of the surface a
+checkout offers covers while it vendors the library. An application adds the
+package it publishes, whose name it alone knows — initialization renames it, so
+a value written down here would go on naming a package that no longer exists.
+A module's *name* reads none of this: :func:`module_name` takes the segment
+``src`` introduces, whichever package that is."""
 
 
 class PythonSource(BaseModel, frozen=True):
@@ -491,23 +493,37 @@ NO_APPLICATION = ApplicationRoots()
 """What an adopter sanctions before it says so: nothing beyond the library."""
 
 
-def module_name(path: Path, roots: AbstractSet[str] = PACKAGE_ROOTS) -> str:
+def module_name(path: Path) -> str:
     """Infer a dotted module name from a repository-relative Python path.
 
-    A distribution laid out as ``packages/<name>/src/<name>/…`` repeats its
-    name in the directory above ``src``, so the import root is the one ``src``
-    introduces rather than the first segment that happens to match. Taking the
-    first match instead resolves ``packages/lup/src/lup/harness/models.py`` to
-    ``lup.src.lup.harness.models``, which no import ever names — every
-    cross-module lookup against it silently misses.
+    The segment a ``src`` directory introduces is an import root, whatever it
+    is called and however deep the ``src`` sits: that is what a ``src`` layout
+    means, and it is the one fact the library under ``packages/lup/src/``, the
+    application under ``src/`` and a nested project under ``studio/src/`` all
+    share. A distribution repeats its name above ``src``, so the first segment
+    that merely matches a package name is the wrong one —
+    ``packages/lup/src/lup/harness/models.py`` read that way is
+    ``lup.src.lup.harness.models``, which no import ever names. Nor can the
+    roots be a list of packages somebody declared: a nested project's modules
+    read ``studio.src.studio.*`` while every importer spelled
+    ``studio.eyes.grade``, so each cross-module lookup against them silently
+    missed and a rule reported less than it should.
+
+    The first ``src`` is the one, so a package holding a subpackage that
+    happens to be called ``src`` keeps it in its module path. A path with no
+    ``src`` above it is named from the repository top, the way a test tree or
+    an example is imported from there.
     """
     parts = list(PurePosixPath(path.as_posix()).parts)
-    matched = [
-        index
-        for index, part in enumerate(parts)
-        if part in roots and (index == 0 or parts[index - 1] == "src")
-    ]
-    selected = parts[matched[-1] if matched else 0 :]
+    introduced = next(
+        (
+            index
+            for index in range(1, len(parts))
+            if parts[index - 1] == "src" and parts[index] != "__init__.py"
+        ),
+        0,
+    )
+    selected = parts[introduced:]
     if selected[-1] == "__init__.py":
         selected = selected[:-1]
     else:
@@ -515,14 +531,12 @@ def module_name(path: Path, roots: AbstractSet[str] = PACKAGE_ROOTS) -> str:
     return ".".join(selected)
 
 
-def sources_from_paths(
-    paths: list[Path], roots: AbstractSet[str] = PACKAGE_ROOTS
-) -> list[PythonSource]:
+def sources_from_paths(paths: list[Path]) -> list[PythonSource]:
     """Read source files and assign import-resolvable module names."""
     return [
         PythonSource(
             path=path,
-            module=module_name(path, roots),
+            module=module_name(path),
             text=path.read_text(encoding="utf-8"),
         )
         for path in paths

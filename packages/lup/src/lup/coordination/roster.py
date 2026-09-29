@@ -144,6 +144,15 @@ class RosterMember(BaseModel, frozen=True):
     the session it runs in — listed beneath it, and gone when it is.
     """
 
+    spawned_by: str = ""
+    """The session whose shell started this member's runtime, empty for every other member.
+
+    A `claude -p`, a `codex exec` or a pipeline run from a session's shell
+    carries that session's launched id and is somebody else: a member of its
+    own, with a runtime, a presence and an ending of its own, which names the
+    session it came from rather than being listed as part of it.
+    """
+
     cli_name: str = ""
     """What this member is called now, empty until something named it.
 
@@ -151,6 +160,14 @@ class RosterMember(BaseModel, frozen=True):
     always be read together and a rename is the member changing rather than an
     event about it. What it *was* called stays in its file, so a reference
     somebody wrote down still resolves.
+    """
+
+    transcript: str = ""
+    """The runtime's own transcript of this member's conversation, empty where none is known.
+
+    What its prompt fold last recorded, so a reader following what the member
+    is doing reads the file the runtime writes rather than guessing where a
+    runtime keeps one.
     """
 
     @computed_field
@@ -186,6 +203,7 @@ def folded_member(member: store.Member) -> RosterMember:
     still able to say who is here. What a malformed field costs is that field.
     """
     wake = member.get("wake") or store.Wake()
+    conversation = member.get("conversation") or store.Conversation()
     return RosterMember(
         actor=ActorRef(
             kind=store.text(member.get("kind")),
@@ -210,7 +228,9 @@ def folded_member(member: store.Member) -> RosterMember:
         ),
         delivery=carried(store.text(member.get("delivery")), Delivery.HOOK),
         parent=store.parent_of(member),
+        spawned_by=store.text(member.get("spawned_by")),
         cli_name=store.current_name(member),
+        transcript=store.text(conversation.get("transcript")),
     )
 
 
@@ -241,6 +261,7 @@ class Roster:
         delivery: Delivery = Delivery.WAITING,
         worktree: str = "",
         wake: WakePath = WakePath(),
+        spawned_by: str = "",
     ) -> None:
         """Put this member's file down, unless one is already standing for it.
 
@@ -263,6 +284,7 @@ class Roster:
         member["liveness"] = liveness
         member["delivery"] = delivery.value
         member["worktree"] = worktree
+        member["spawned_by"] = spawned_by
         member["wake"] = store.Wake(
             runtime=wake.runtime,
             handle=wake.handle,
@@ -284,9 +306,10 @@ class Roster:
         delivery: Delivery = Delivery.WAITING,
         worktree: str = "",
         wake: WakePath = WakePath(),
+        spawned_by: str = "",
     ) -> None:
         """Record that a peer nobody spawned is present, and how to reach it."""
-        self.announce(actor, task, liveness, delivery, worktree, wake)
+        self.announce(actor, task, liveness, delivery, worktree, wake, spawned_by)
 
     def describes(self, actor: ActorRef, description: str) -> None:
         """Record what this member is doing now, under its own lock."""

@@ -28,6 +28,7 @@ pass it is in.
 from collections.abc import Iterator
 
 from .decision import (
+    RESHAPE_HINT,
     SANDBOX_TRAPPED_REASON,
     KernelDecision,
     contributions,
@@ -254,8 +255,10 @@ class HardProhibition(SettlementRule):
     id = "hard-prohibition"
 
     def reached(self, facts: SettlementFacts) -> KernelDecision | None:
+        # Only another route moves it, so the hint says so rather than
+        # pointing at a reviewer or a relay the refusal would meet again.
         if facts.decision.effect == "deny" and facts.decision.hard:
-            return facts.decision.advising(facts.hint)
+            return facts.decision.advising(RESHAPE_HINT)
         return None
 
 

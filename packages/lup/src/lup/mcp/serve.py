@@ -20,13 +20,15 @@ Run as ``python -m lup.mcp.serve``, the program a
 command a composed CLI mounts.
 """
 
+import os
 from typing import Annotated
 
 import typer
 from pydantic import ImportString, TypeAdapter
 
-from lup.coordination.bare.runtime import stdin_runtime
-from lup.coordination.identity import session_cli_name, session_member_id
+from lup.coordination.bare.runtime import Runtime, runtime_of, stdin_runtime
+from lup.coordination.identity import MemberEnv, session_cli_name
+from lup.coordination.repository import runtime_member
 from lup.coordination.wake import WakePath
 from lup.observability.metrics import configure_metrics, metrics_path
 from lup.orchestration.reflection import ReviewGate
@@ -62,21 +64,32 @@ def harness_session_context(name: str) -> SessionContext:
 
 
 def context_needs(
-    context: SessionContext, identity: str, wake: WakePath = WakePath()
+    context: SessionContext,
+    identity: str,
+    wake: WakePath = WakePath(),
+    runtime: Runtime | None = None,
 ) -> SessionNeeds:
     """What one opened session gives the groups built for it.
 
     *identity* is what the roster knows the session by where no launcher
-    minted a member id, which the launcher's id outranks.
+    minted a member id, which the launcher's id outranks — for the runtime it
+    was minted for. *runtime* is the process the session is: one that
+    inherited the launcher's id from another session's shell serves a member
+    of its own, spawned by that session.
     """
+    root = project_root()
+    served = runtime or runtime_of(os.getpid())
+    member = runtime_member(root, MemberEnv().member_id, identity, served)
     return SessionNeeds(
         session_dir=context.session_dir,
-        root=project_root(),
+        root=root,
         gate=ReviewGate(flag_path=context.gate_flag),
         outputs_dir=context.outputs_dir,
         realtime_dir=context.realtime_dir,
-        member=session_member_id(identity),
+        member=member.member_id,
+        spawned_by=member.spawned_by,
         wake=wake,
+        runtime=served,
     )
 
 
@@ -98,18 +111,20 @@ def resolved_needs(session: str | None, runtime: str | None) -> SessionNeeds | N
     served = stdin_runtime()
     match read_session_context(), session, runtime:
         case SessionContext() as context, _, _:
-            needs = context_needs(context, context.session_id or "")
+            needs = context_needs(context, context.session_id or "", runtime=served)
         case None, str(), str():
             context = harness_session_context(session)
             wake = native_wake(runtime, session_cli_name())
-            needs = context_needs(context, native_session_id(runtime), wake)
+            needs = context_needs(
+                context, native_session_id(runtime), wake, runtime=served
+            )
         case None, str(), None:
             context = harness_session_context(session)
-            needs = context_needs(context, "")
+            needs = context_needs(context, "", runtime=served)
         case _:
             return None
     configure_metrics(metrics_path(context.session_dir))
-    return needs.model_copy(update={"runtime": served})
+    return needs
 
 
 def serve(

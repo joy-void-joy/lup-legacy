@@ -32,6 +32,7 @@ from lup.policy.rules import (
     ShellPolicy,
     UrlScope,
     human_owned_path_rule,
+    invariant_path_rules,
     protected_root_rule,
 )
 
@@ -50,23 +51,14 @@ def declared_scope(scope: HookUrlScope) -> UrlScope:
 def declared_path_rules(hooks: HookSet) -> list[PathRule]:
     """Every protected-path rule this hook set implies.
 
-    The last two are not declared by an application and are not optional for
-    one: an `.env` file and a new devtools module are approvals regardless of
-    what any adopter listed.
+    The library's invariants follow what the application declared, and are
+    not optional for one: the state the hooks write, an `.env` file and a
+    new devtools module are approvals regardless of what any adopter listed.
     """
     return [
         *[protected_root_rule(root.as_posix()) for root in hooks.protected_edit_roots],
         *[human_owned_path_rule(path.as_posix()) for path in hooks.human_owned_files],
-        PathRule(
-            kind="name_prefix",
-            value=".env",
-            reason="protected path requires approval",
-        ),
-        PathRule(
-            kind="new_devtools",
-            value="src",
-            reason="new devtools module requires approval",
-        ),
+        *invariant_path_rules(),
     ]
 
 

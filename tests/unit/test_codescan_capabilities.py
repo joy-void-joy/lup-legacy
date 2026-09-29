@@ -7,8 +7,6 @@ reports fewer findings, which reads exactly like a clean repository.
 from pathlib import Path
 
 from lup.harness.codescan.common import module_name
-from lup.devtools.dev.antipatterns import scanned_roots
-from lup.devtools.project import DevProject
 
 
 def test_a_package_under_a_distribution_directory_resolves_to_the_package() -> None:
@@ -22,15 +20,22 @@ def test_a_package_under_a_distribution_directory_resolves_to_the_package() -> N
     )
 
 
-def test_an_application_module_resolves_from_its_own_root() -> None:
-    """The library knows only its own root; the application supplies the rest."""
-    application = DevProject(package="lup_template")
-    assert module_name(
-        Path("src/lup_template/devtools/app.py"), scanned_roots(application)
-    ) == ("lup_template.devtools.app")
+def test_an_application_module_resolves_from_the_root_src_introduces() -> None:
+    """Whatever the package under `src/` is called, it is the import root.
+
+    Initialization renames the application's package, and a nested project
+    publishes one the library was never told about; a name resolved against
+    a list of known roots missed both, and read as `src.<package>.*`.
+    """
     assert module_name(Path("src/lup_template/devtools/app.py")) == (
-        "src.lup_template.devtools.app"
+        "lup_template.devtools.app"
     )
+
+
+def test_a_package_named_src_inside_the_import_root_stays_in_the_name() -> None:
+    # The first `src` introduces the root; a subpackage that happens to be
+    # called `src` is part of the module path under it.
+    assert module_name(Path("src/app/src/build.py")) == "app.src.build"
 
 
 def test_a_package_init_names_the_package_itself() -> None:
