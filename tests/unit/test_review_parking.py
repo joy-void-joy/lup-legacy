@@ -91,7 +91,9 @@ def test_with_a_dashboard_held_the_same_question_is_parked_and_said_to_be(
     assert f"Queued for the operator as review {question.id} — not refused." in reason
     assert "Don't change the command; carry on with other work." in reason
     assert f"lup-devtools review wait {question.id}` in the background" in reason
-    assert "(run_in_background)" in reason
+    assert "(run_in_background, with the longest timeout the tool takes, " in reason
+    assert "7200000" in reason
+    assert "if it is stopped before the operator answers, start it again" in reason
     assert DASHBOARD in reason
     assert question.id in spoken["systemMessage"]
     assert DASHBOARD in spoken["systemMessage"]
