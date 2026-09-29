@@ -41,7 +41,6 @@ from lup.harness.codescan.antipatterns import (
     patterns_for_suffix,
 )
 from lup.harness.codescan.common import (
-    PACKAGE_ROOTS,
     AntiPattern,
     PythonContext,
     PythonSource,
@@ -68,16 +67,6 @@ from lup.devtools.dev.pyright_oracle import default_oracle
 from lup.devtools.dev.tracked import tracked_files
 from lup.devtools.project import DevProject
 from lup.devtools.utils import output_json
-
-
-def scanned_roots(project: DevProject) -> AbstractSet[str]:
-    """The import roots a repository's scans resolve module names against.
-
-    The library knows its own; the application names the package it publishes,
-    so renaming it during initialization moves the root with it rather than
-    leaving scans resolving against a package that is gone.
-    """
-    return PACKAGE_ROOTS | {project.package}
 
 
 class FoundAntiPattern(AntiPatternFinding):
@@ -236,7 +225,7 @@ def scan_antipatterns(
     declaration_sources = [
         PythonSource(
             path=item.path,
-            module=module_name(item.path, scanned_roots(project)),
+            module=module_name(item.path),
             text=item.text,
         )
         for item in all_scanned
@@ -434,7 +423,7 @@ def retire_directives(project: DevProject, rule_id: str) -> list[RetiredDirectiv
                 continue
             source = PythonSource(
                 path=item.path,
-                module=module_name(item.path, scanned_roots(project)),
+                module=module_name(item.path),
                 text=item.text,
             )
             revised = retired_suppressions(source, rule_id)
@@ -484,8 +473,6 @@ def repair_spurious(
     if not by_file:
         return []
 
-    roots = scanned_roots(project)
-
     def repaired() -> Iterator[RepairedDirective]:
         for item in scanned_files(project):
             if item.rel not in by_file or item.path.suffix.lower() not in {
@@ -499,7 +486,7 @@ def repair_spurious(
             for finding in sorted(by_file[item.rel], key=lambda f: -f.line):
                 source = PythonSource(
                     path=item.path,
-                    module=module_name(item.path, roots),
+                    module=module_name(item.path),
                     text=text,
                 )
                 revised = retired_suppressions(
@@ -748,9 +735,7 @@ def report_refutations(project: DevProject, path: Path, text: str) -> None:
     if oracle is None:
         output_json({"resolved": False, **ResolutionRow(refuted={}, unresolved={})})
         return
-    source = PythonSource(
-        path=path, module=module_name(path, scanned_roots(project)), text=text
-    )
+    source = PythonSource(path=path, module=module_name(path), text=text)
     found = refute([source], oracle, declared_rules(project).python)
     rows = found[path.as_posix()] if path.as_posix() in found else []
 

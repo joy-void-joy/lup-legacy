@@ -10,42 +10,97 @@ for every project that installed the library.
 
 import os
 import shutil
-from importlib.machinery import ModuleSpec
+import sys
 from pathlib import Path
 
 import pytest
+import sh
 import typer
 
 import lup.devtools.dev.check as check
 
 
-def test_the_worker_flag_is_offered_where_the_plugin_answers_for_it(
-    monkeypatch: pytest.MonkeyPatch,
+def test_the_worker_flag_is_offered_where_the_suite_declares_it_takes_it() -> None:
+    root = check.TestRoot(name="pytest", directory=Path(), parallel=True)
+
+    assert root.spread(4) == ["-n", "4", "--dist", "worksteal"]
+
+
+def test_no_worker_flag_where_the_suite_declares_it_runs_serially() -> None:
+    assert (
+        check.TestRoot(name="pytest", directory=Path(), parallel=False).spread(4) == []
+    )
+
+
+def test_one_worker_spells_serial(monkeypatch: pytest.MonkeyPatch) -> None:
+    # The count is the off switch: a worker count no higher than one is the
+    # same run without the interpreter boot, so nothing else has to say it —
+    # and nothing is asked of the suite's environment to find that out.
+    monkeypatch.setattr(check, "uv", refuse_probe)
+    root = check.TestRoot(name="pytest", directory=Path())
+
+    assert root.spread(1) == []
+    assert root.spread(0) == []
+
+
+def refuse_probe(*_: object, **__: object) -> None:
+    raise AssertionError("the suite's environment was asked about a serial run")
+
+
+def test_an_undeclared_suite_asks_its_own_environment_where_it_runs(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr(check, "find_spec", lambda name: ModuleSpec(name, None))
+    """The suite runs under `uv run` from its own directory, so that is where to ask.
 
-    assert check.parallel_arguments(4) == ["-n", "4", "--dist", "worksteal"]
+    Asked in the gate's interpreter, adlib's nested studio would have been
+    handed `-n` by a gate whose own environment held pytest-xdist, and the
+    studio's pytest, which did not, refuses the flag before collecting a test.
+    """
+    asked: list[object] = []  # lup: ignore[empty-collection] — call record
+
+    def answered(*arguments: str, **options: object) -> None:
+        asked.append((arguments[:2], options["_cwd"]))
+
+    monkeypatch.setattr(check, "uv", answered)
+
+    spread = check.TestRoot(name="pytest (studio)", directory=tmp_path).spread(4)
+
+    assert spread == ["-n", "4", "--dist", "worksteal"]
+    assert asked == [(("run", "python"), str(tmp_path))]
 
 
-def test_no_worker_flag_where_the_plugin_is_absent(
-    monkeypatch: pytest.MonkeyPatch,
+def test_a_suite_whose_environment_lacks_xdist_runs_serially(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     # An adopter installs the library's dependencies, which carry no
     # pytest-xdist, and pytest rejects `-n` before collecting anything. The
     # pytest row then read FAIL on every branch whatever the suite did, which
     # is indistinguishable from a real regression.
-    monkeypatch.setattr(check, "find_spec", lambda name: None)
+    def absent(*arguments: str, **_: object) -> None:
+        raise sh.ErrorReturnCode_1(" ".join(arguments), b"", b"")
 
-    assert check.parallel_arguments(4) == []
+    monkeypatch.setattr(check, "uv", absent)
+
+    assert check.TestRoot(name="pytest", directory=tmp_path).spread(4) == []
 
 
-def test_one_worker_spells_serial(monkeypatch: pytest.MonkeyPatch) -> None:
-    # The count is the off switch: a worker count no higher than one is the
-    # same run without the interpreter boot, so nothing else has to say it.
-    monkeypatch.setattr(check, "find_spec", lambda name: ModuleSpec(name, None))
+def test_the_probe_reads_the_real_environment_of_the_suite(tmp_path: Path) -> None:
+    """Measured against uv itself: the library's suite has xdist, a bare project not.
 
-    assert check.parallel_arguments(1) == []
-    assert check.parallel_arguments(0) == []
+    The bare project depends on nothing and asks for the interpreter running
+    this test, so `uv run` builds its environment without reaching an index.
+    """
+    library = Path(__file__).resolve().parents[2]
+    bare = tmp_path / "bare"
+    bare.mkdir()
+    (bare / "pyproject.toml").write_text(
+        '[project]\nname = "bare"\nversion = "0"\n'
+        f'requires-python = ">={sys.version_info.major}.{sys.version_info.minor}"\n',
+        encoding="utf-8",
+    )
+
+    assert check.TestRoot(name="pytest (lup)", directory=library).spread(2)
+    assert check.TestRoot(name="pytest (bare)", directory=bare).spread(2) == []
 
 
 def test_a_root_whose_directory_is_missing_reports_instead_of_raising(
@@ -257,22 +312,146 @@ def test_only_the_bun_root_names_a_workspace_to_restore(tmp_path: Path) -> None:
     assert bun_root.restored_workspaces() == [tmp_path / "web"]
 
 
-def test_the_bun_root_collects_tests_beside_their_source(tmp_path: Path) -> None:
+def test_the_bun_root_collects_tests_beside_their_source(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """The files bun runs are the files the policy gives the test role.
 
     Bun collects four stems over four extensions from the workspace down,
-    so the role names each as a file pattern under the workspace; pytest
-    collects by its configured `testpaths`, which a project declares as a
-    role root itself, so a pytest root derives nothing.
+    so the role names each as a file pattern under the workspace.
     """
-    pytest_root = check.TestRoot(name="pytest", directory=tmp_path)
+    monkeypatch.chdir(tmp_path)
     bun_root = check.BunTestRoot(name="bun test", directory=Path("web"))
 
-    assert pytest_root.collected() == []
     assert len(bun_root.collected()) == 16
     assert Path("web/**/*.test.tsx") in bun_root.collected()
     assert Path("web/**/*_spec.js") in bun_root.collected()
 
-    roles = check.collected_test_roles([pytest_root, bun_root])
+    roles = check.collected_test_roles([bun_root])
     assert [role.root for role in roles] == bun_root.collected()
     assert {role.role for role in roles} == {"test"}
+
+
+def suite_configured(directory: Path, name: str, text: str) -> None:
+    directory.mkdir(parents=True, exist_ok=True)
+    (directory / name).write_text(text, encoding="utf-8")
+
+
+@pytest.mark.parametrize(
+    ("name", "text"),
+    [
+        (
+            "pyproject.toml",
+            '[tool.pytest.ini_options]\ntestpaths = ["tests", "checks"]\n',
+        ),
+        ("pyproject.toml", '[tool.pytest]\ntestpaths = ["tests", "checks"]\n'),
+        ("pytest.toml", '[pytest]\ntestpaths = ["tests", "checks"]\n'),
+        ("pytest.ini", "[pytest]\ntestpaths = tests checks\n"),
+        ("tox.ini", "[pytest]\ntestpaths =\n    tests\n    checks\n"),
+        ("setup.cfg", "[tool:pytest]\ntestpaths = tests checks\n"),
+    ],
+)
+def test_a_pytest_root_collects_the_testpaths_its_configuration_declares(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, name: str, text: str
+) -> None:
+    """Every file pytest reads its configuration from, in the spelling each takes.
+
+    A pytest root that derived nothing left adlib's nested `studio/tests`
+    judged as production: every test longer than three lines went to the
+    operator as a size question.
+    """
+    monkeypatch.chdir(tmp_path)
+    suite_configured(tmp_path / "studio", name, text)
+
+    root = check.TestRoot(name="pytest (studio)", directory=Path("studio"))
+
+    assert root.collected() == [Path("studio/tests"), Path("studio/checks")]
+
+
+def test_the_first_configuration_pytest_would_read_is_the_one_read(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # `pytest.ini` answers even where it says nothing, and the table in the
+    # manifest beside it is then not pytest's configuration at all.
+    monkeypatch.chdir(tmp_path)
+    suite_configured(tmp_path, "pytest.ini", "[pytest]\n")
+    suite_configured(
+        tmp_path, "pyproject.toml", '[tool.pytest.ini_options]\ntestpaths = ["tests"]\n'
+    )
+
+    assert check.TestRoot(name="pytest", directory=Path()).collected() == [
+        Path("**/test_*.py"),
+        Path("**/*_test.py"),
+        Path("**/conftest.py"),
+    ]
+
+
+def test_a_suite_without_testpaths_collects_by_its_file_patterns(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    suite_configured(
+        tmp_path / "tools",
+        "pyproject.toml",
+        '[tool.pytest.ini_options]\npython_files = "check_*.py"\n',
+    )
+
+    assert check.TestRoot(name="pytest", directory=Path("tools")).collected() == [
+        Path("tools/**/check_*.py"),
+        Path("tools/**/conftest.py"),
+    ]
+
+
+def test_a_root_spelled_from_the_working_directory_is_named_from_the_top(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The template spells its first root `Path.cwd()`; the policy reads patterns
+    from the repository top, and a generated tree may hold no machine's path."""
+    monkeypatch.chdir(tmp_path)
+    suite_configured(
+        tmp_path, "pyproject.toml", '[tool.pytest.ini_options]\ntestpaths = ["tests"]\n'
+    )
+
+    assert check.TestRoot(name="pytest", directory=tmp_path).collected() == [
+        Path("tests")
+    ]
+
+
+def test_a_suite_outside_the_checkout_gives_nothing_a_role(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    checkout = tmp_path / "checkout"
+    checkout.mkdir()
+    monkeypatch.chdir(checkout)
+    suite_configured(
+        tmp_path / "elsewhere", "pytest.ini", "[pytest]\ntestpaths = tests\n"
+    )
+
+    elsewhere = check.TestRoot(name="pytest", directory=tmp_path / "elsewhere")
+
+    assert elsewhere.collected() == []
+
+
+@pytest.mark.parametrize("name", ["pyproject.toml", "pytest.ini", "setup.cfg"])
+def test_a_configuration_a_merge_holds_open_configures_nothing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, name: str
+) -> None:
+    """The role table compiles whenever the toolchain starts, conflicts or not.
+
+    The CLI reads it on import, and resolving a conflicted manifest is done
+    through that CLI; a decode error escaping here stopped `lup-devtools`
+    starting at all, in the one checkout that needed it to.
+    """
+    monkeypatch.chdir(tmp_path)
+    suite_configured(
+        tmp_path,
+        name,
+        '[tool.pytest.ini_options]\n<<<<<<< ours\ntestpaths = ["tests"]\n'
+        '=======\ntestpaths = ["checks"]\n>>>>>>> theirs\n',
+    )
+
+    assert check.TestRoot(name="pytest", directory=Path()).collected() == [
+        Path("**/test_*.py"),
+        Path("**/*_test.py"),
+        Path("**/conftest.py"),
+    ]

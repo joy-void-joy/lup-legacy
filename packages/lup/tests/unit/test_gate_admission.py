@@ -239,6 +239,37 @@ def gate(suites: list[check.TestRoot], no_test: bool) -> None:
     )
 
 
+def test_a_gate_with_no_suite_declared_says_its_test_stage_is_empty(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A gate that tests nothing says so, and that is not a failure of the branch.
+
+    adlib declared no test root, its code all living in a nested project, and
+    `dev check` answered "17/17 checks passed" with no word about tests. The
+    nested suite ran only when somebody ran it by hand, and when it finally
+    did, one of its tests had been failing all along.
+    """
+    monkeypatch.setattr(check, "project_root", lambda: tmp_path)
+    quietly(monkeypatch)
+
+    gate([], no_test=False)
+
+    printed = capsys.readouterr().out
+    assert "tests: no suites declared" in printed
+    assert "3/3 checks passed" in printed
+
+
+def test_a_gate_told_to_skip_its_suites_does_not_call_them_undeclared(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setattr(check, "project_root", lambda: tmp_path)
+    quietly(monkeypatch)
+
+    gate([], no_test=True)
+
+    assert "no suites declared" not in capsys.readouterr().out
+
+
 def test_a_gate_over_its_suites_holds_a_slot_while_they_run(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

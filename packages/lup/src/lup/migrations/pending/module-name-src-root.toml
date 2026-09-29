@@ -1,0 +1,19 @@
+subjects = ["scanned_roots"]
+reason = """
+a module is named from its path alone: the segment a `src` directory \
+introduces is its import root whatever that package is called, so a nested \
+project's modules are named the way their importers spell them rather than \
+as `studio.src.studio.*`, and no list of known roots is kept to resolve against"""
+
+[[steps]]
+instruction = """
+Drop the second argument from calls to \
+lup.harness.codescan.common.module_name and sources_from_paths. \
+module_name(path) takes the segment after the first `src/` as the import \
+root, so the roots it used to be handed decide nothing."""
+
+[[steps]]
+instruction = """
+Remove calls to lup.devtools.dev.antipatterns.scanned_roots(project). Where \
+one fed module_name, drop that argument; where something else still needs \
+the set, PACKAGE_ROOTS | {project.package} spells it."""

@@ -133,6 +133,7 @@ def create_git_app(declared: Callable[[], DevDeclarations]) -> typer.Typer:
             clipboard=clipboard,
             guards=declared().git_guards,
             workspaces=declared().restored_workspaces(),
+            projects=declared().sub_projects.synced(),
         )
 
     @worktree_app.command("list")

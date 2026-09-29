@@ -421,6 +421,7 @@ def create_dev_app(
                 declarations.test_roots,
                 declarations.spread,
                 fix=fix,
+                environments=declarations.sub_projects.synced(),
             )
             return
         if antipatterns:
@@ -456,6 +457,7 @@ def create_dev_app(
             scaffold_source=declarations.scaffold,
             spread=declarations.spread,
             migration_base=check.named_gate_base(base) if base is not None else None,
+            environments=declarations.sub_projects.synced(),
         )
 
     # -- test command --

@@ -46,7 +46,6 @@ from lup_template.harness.catalog import (
     application_roots,
     dev_project,
 )
-from lup.devtools.dev.antipatterns import scanned_roots
 from lup.harness.codescan.common import PythonSource, module_name
 from lup.harness.codescan.project import RuleFinding
 from lup.policy.kernel.roles import path_role
@@ -613,7 +612,7 @@ def test_the_live_tree_leaves_no_constant_unresolved() -> None:
         [
             PythonSource(
                 path=source.path,
-                module=module_name(source.path, scanned_roots(project)),
+                module=module_name(source.path),
                 text=source.text,
             )
             for source in tracked_python_sources()

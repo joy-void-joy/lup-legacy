@@ -13,7 +13,6 @@ from lup.devtools.dev.antipatterns import (
     ScannedFile,
     declared_rules,
     scanned_files,
-    scanned_roots,
 )
 from lup.devtools.dev.pyright_oracle import default_oracle
 from lup.devtools.project import DevProject
@@ -174,7 +173,7 @@ def audit_candidate(
     sources = [
         PythonSource(
             path=item.path,
-            module=module_name(item.path, scanned_roots(project)),
+            module=module_name(item.path),
             text=item.text,
         )
         for item in staged
@@ -184,9 +183,7 @@ def audit_candidate(
     resolution_sources = [
         *candidates,
         *(
-            PythonSource(
-                path=path, module=module_name(path, scanned_roots(project)), text=""
-            )
+            PythonSource(path=path, module=module_name(path), text="")
             for path, change in changed.items()
             if change.after is None
             and path.suffix.lower() in {".py", ".pyi"}
