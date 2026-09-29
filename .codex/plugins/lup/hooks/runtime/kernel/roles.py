@@ -426,6 +426,23 @@ def path_role(path: str, rows: list[PathRoleRow]) -> PathRoleName:
     return "production"
 
 
+def unscratched(
+    targets: list[str], rows: list[PathRoleRow], checkout: str
+) -> list[str]:
+    """The targets no declared scratch root holds, where a loss wants a capture.
+
+    Scratch is disposable by declaration, so what is lost there needs no
+    capture to put back, and whether Git ignores it -- which decides whether
+    the undo snapshot took it -- says nothing about it. Read from the
+    checkout's own spelling, as a role always is.
+    """
+    return [
+        target
+        for target in targets
+        if path_role(repository_relative(target, checkout), rows) != "scratch"
+    ]
+
+
 def sibling_scratch_rows(
     trees: list[str], rows: list[PathRoleRow]
 ) -> list[PathRoleRow]:

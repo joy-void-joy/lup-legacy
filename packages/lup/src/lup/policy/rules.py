@@ -64,7 +64,11 @@ from lup.policy.kernel.lex import (
     shell_written_targets,
 )
 from lup.policy.kernel.peers import decide_foreign_claim, settled_with_claim
-from lup.policy.kernel.roles import displaced_targets, sibling_scratch_rows
+from lup.policy.kernel.roles import (
+    displaced_targets,
+    sibling_scratch_rows,
+    unscratched,
+)
 from lup.policy.kernel.rows import (
     AcceptanceGuardRow,
     AntiPatternRow,
@@ -545,13 +549,18 @@ class ShellPolicy(DecisionPolicy[ShellCommand]):
                 escapable=self.escapable,
                 unjudged_ambient=self.unjudged_ambient,
                 # The capture this session holds takes nothing Git ignores, so
-                # one ignored target leaves the loss uncaptured.
+                # one ignored target outside declared scratch, which needs no
+                # capture, leaves the loss uncaptured.
                 recovered=self.recovered
                 and not ignored_write_targets(
-                    [
-                        *shell_write_targets(event.command),
-                        *shell_written_targets(event.command, self.rules),
-                    ],
+                    unscratched(
+                        [
+                            *shell_write_targets(event.command),
+                            *shell_written_targets(event.command, self.rules),
+                        ],
+                        self.path_roles,
+                        str(root),
+                    ),
                     root,
                 ),
                 contained=self.contained,

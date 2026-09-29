@@ -454,6 +454,13 @@ def test_a_session_writing_its_own_review_queue_is_asked_on_every_posture(
         pytest.param("rm state/run.json", False, id="ignored-file"),
         pytest.param("mv state/run.json tmp/run.json", False, id="ignored-moved-away"),
         pytest.param("rm notes.txt", True, id="untracked-file"),
+        # Declared scratch is disposable whether or not Git ignores it, so a
+        # loss there asks for no capture: the scratch grant's own reading,
+        # reached here by a flag that grant does not read.
+        pytest.param("cp --archive tmp/a tmp/b", True, id="ignored-scratch"),
+        pytest.param(
+            "install -m755 tmp/a tmp/bin/b", True, id="ignored-scratch-install"
+        ),
     ],
 )
 def test_a_capture_claims_only_what_it_holds(
@@ -469,10 +476,12 @@ def test_a_capture_claims_only_what_it_holds(
     a sentence about a file no snapshot has ever seen. An untracked file Git
     does not ignore is taken, and its loss stays settled.
     """
-    (checkout / ".gitignore").write_text("state/\n", encoding="utf-8")
+    (checkout / ".gitignore").write_text("state/\ntmp/\n", encoding="utf-8")
     (checkout / "state").mkdir()
     (checkout / "state" / "run.json").write_text("{}\n", encoding="utf-8")
     (checkout / "notes.txt").write_text("draft\n", encoding="utf-8")
+    (checkout / "tmp").mkdir()
+    (checkout / "tmp" / "a").write_text("scratch\n", encoding="utf-8")
     postures: tuple[Posture, ...] = ("none", "inner", "outer")
     expected = "allow" if captured else "ask"
     # Codex parks a question with the preimage of every file it names, and a

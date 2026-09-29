@@ -83,7 +83,7 @@ from kernel.rows import (
 )
 from kernel.spawns import decide_spawn, spawn_name
 from kernel.words import INTERPRETERS
-from kernel.roles import displaced_targets, sibling_scratch_rows
+from kernel.roles import displaced_targets, sibling_scratch_rows, unscratched
 from kernel.shell import decide_shell, sandbox_excluded, shell_posture_targets
 from kernel.tools import decide_tool
 from kernel.walks import excluded_name, shell_walked_roots
@@ -3360,13 +3360,18 @@ def bash_decision(
             else []
         ),
         # A snapshot proves a capture only of what it took, and it takes
-        # nothing Git ignores: one ignored target leaves the loss uncaptured.
+        # nothing Git ignores: one ignored target outside declared scratch,
+        # which needs no capture, leaves the loss uncaptured.
         recovered=bool(reference)
         and not ignored_write_targets(
-            [
-                *shell_write_targets(command),
-                *shell_written_targets(command, SHELL_RULES),
-            ],
+            unscratched(
+                [
+                    *shell_write_targets(command),
+                    *shell_written_targets(command, SHELL_RULES),
+                ],
+                PATH_ROLES,
+                str(cwd or Path.cwd()),
+            ),
             cwd,
         ),
     )
