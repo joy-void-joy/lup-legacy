@@ -250,14 +250,16 @@ def test_the_installed_hook_runs_the_drift_check(tmp_path: Path) -> None:
     assert state.path.stat().st_mode & 0o111
 
 
-def test_the_declared_guard_arms_the_commit_moment_and_no_other(
+def test_the_declared_guards_arm_the_commit_and_the_merge_moments_only(
     tmp_path: Path,
 ) -> None:
-    """One moment, one hook, running the command the pipeline runs.
+    """The drift check at the commit, the settle where a merge commit is made.
 
     What earns a hook is the ratio. Reading the generated artifacts back
     costs about a second and catches a staleness that would otherwise be
-    written into history, so it is charged to every commit. The whole gate
+    written into history, so it is charged to every commit. Regenerating over
+    a merge commit is charged only where one is made, and saves the
+    regenerate-and-commit every such merge otherwise needed. The whole gate
     costs two minutes and refuses the same work in CI, where a runner pays
     for it instead of the person who is still working.
     """
@@ -269,7 +271,7 @@ def test_the_declared_guard_arms_the_commit_moment_and_no_other(
         for state in install_guards(DECLARED_GUARDS, work)
     }
 
-    assert list(installed) == ["pre-commit"]
+    assert list(installed) == ["pre-commit", "post-merge", "post-commit"]
     assert installed["pre-commit"].endswith(f"exec {DRIFT_COMMAND}\n")
 
 

@@ -47,7 +47,7 @@ uv run lup-devtools git pr sync-base --json
 
 A `guessed` base exits non-zero having merged nothing -- settle the base as above and rerun with `--base <branch>`. If conflicts are reported, resolve with `/lup:merge` (no argument) first.
 
-Merging the base commonly leaves a generated tree behind its source -- most often the ownership manifest, which the next `dev check` reports as `harness drift: FAIL` with a stale proof. That is the merge working, not a conflict: run `lup-devtools harness generate all` until it reports `ownership=present`, and commit what it writes.
+Merging the base commonly leaves a generated tree behind its source -- most often the ownership manifest, which the next `dev check` reports as `harness drift: FAIL` with a stale proof. That is the merge working, not a conflict, and the settle guards answer it: at `post-merge` and `post-commit` they regenerate over the merge commit and fold what that writes into it. Where `uv run lup-devtools git hooks status` shows them unarmed, `uv run lup-devtools git settle` does the same by hand.
 
 ### 2b. Confirm the base matches its remote
 

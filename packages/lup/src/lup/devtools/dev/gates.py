@@ -56,7 +56,12 @@ from typing import ClassVar
 import sh
 from pydantic import BaseModel
 
-from lup.harness.codescan.markers import MarkerComment, find_feedback, scan_mode_for
+from lup.harness.codescan.markers import (
+    MarkerComment,
+    NoteKind,
+    find_feedback,
+    scan_mode_for,
+)
 from lup.devtools.dev.branches import get_integration_branch, is_ancestor
 from lup.devtools.dev.comments import FoundComment
 from lup.devtools.dev.records import read_record
@@ -322,7 +327,27 @@ def inbound_notes(
     those are read back and parsed. A blob that has stopped being valid UTF-8
     or has vanished between the two calls is skipped, the way the working-tree
     scan skips what it cannot decode.
+
+    A note the working tree has already answered is not delivered. Resolving
+    a woken deferral is rewriting it as `solved:` with its words unchanged,
+    and the branch it names does that in its own tree while the integration
+    copy keeps the deferral until the branch lands — so reading the copy alone
+    kept the one branch that had done what the note asked failing, with
+    nothing it could do about it but land.
     """
+
+    def answered(rel: str) -> list[str]:
+        """The words of every note the working tree's copy of *rel* claims solved."""
+        try:
+            here = (project_root() / rel).read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            return []
+        return [
+            note.text
+            for note in find(here, scan_mode_for(Path(rel)))
+            if note.kind == NoteKind.solved
+        ]
+
     if not branch:
         return []
     aimed_here = f"{BranchInPlay.keyword}:{branch}"
@@ -354,13 +379,14 @@ def inbound_notes(
         except sh.ErrorReturnCode:
             continue
         lines = text.splitlines()
+        claimed = answered(rel)
         for comment in find(text, scan_mode_for(Path(rel))):
             # The grep names files, not notes, so a file that carries one note
             # aimed here carries all its others into this loop too. Keeping
             # them would let a deferral about some other branch fire on this
             # one purely for sharing a file, which is the noise the naming
             # rule exists to prevent.
-            if comment.condition != aimed_here:
+            if comment.condition != aimed_here or comment.text in claimed:
                 continue
             context = "\n".join(lines[comment.read_start - 1 : comment.read_end])
             found.append(

@@ -8,8 +8,10 @@
 # will not parse, and the permission boundary answers every Bash and Edit call
 # in that session by refusing, so the merge cannot even be aborted from inside.
 #
-# The `lup-ownership` driver keeps one side so the merge resolves, and the next
-# `lup-devtools harness generate all` settles the tree against the merged source.
+# The `lup-ownership` driver keeps one side so the merge resolves, and the
+# settle guard `git hooks install` arms at post-merge and post-commit runs
+# `lup-devtools git settle`, which regenerates the tree against the merged
+# source and folds what that writes into the merge commit.
 #
 # The driver is per-clone git config, which no repository can ship. Register it
 # with `lup-devtools dev merge-driver`; without it git falls back to the text

@@ -101,6 +101,28 @@ two and matches neither declaration.
 """
 
 
+# lup: ignore[constant-declaration] — the command a reader types, whose words
+# are the CLI's own rather than a preference this module holds
+SETTLE_COMMAND = "uv run lup-devtools git settle"
+"""What folds regenerated trees into the merge commit a merge just made.
+
+Hung off two moments because git makes a merge commit at two: the merge it
+completes itself runs `post-merge`, and one concluded by hand after a
+conflict runs `post-commit` — no single hook sees both.
+"""
+
+
+# lup: ignore[constant-declaration] — git's own history read in shell, not a
+# judgement a project could hold differently: a commit with a second parent
+SETTLE_STANDDOWN = """\
+# Only a merge commit holds a tree two branches' generated files were merged
+# into; every other commit carries a tree one side generated, and runs
+# nothing here.
+git rev-parse -q --verify HEAD^2 >/dev/null || exit 0
+"""
+"""What the settling moments read before paying for a regeneration."""
+
+
 # lup: ignore[constant-declaration] — git's own pre-push stdin protocol written
 # in shell, not a judgement a project could hold differently; and as a field
 # default it would arm the commit moment too, silently disarming that guard
@@ -213,7 +235,21 @@ class GitGuard(BaseModel, frozen=True):
         )
 
 
-DECLARED_GUARDS = [GitGuard(standdown=MERGE_STANDDOWN)]
+DECLARED_GUARDS = [
+    GitGuard(standdown=MERGE_STANDDOWN),
+    *(
+        GitGuard(
+            command=SETTLE_COMMAND,
+            hook=moment,
+            standdown=SETTLE_STANDDOWN,
+            refusal=(
+                "Refuses nothing: folds what regeneration writes over a merge\n"
+                "# commit into that commit, so no merge leaves a stale proof."
+            ),
+        )
+        for moment in ("post-merge", "post-commit")
+    ),
+]
 """The hooks lup arms, offered to a project as the set it usually wants.
 
 A default rather than a fixture: a project that runs its gate somewhere else,
@@ -221,6 +257,12 @@ or that has a second moment worth guarding, names its own list. What makes
 drift the one lup arms is the ratio in :data:`DRIFT_COMMAND`'s favour — a
 second, against a staleness that is otherwise written into history and read
 back by whoever next regenerates.
+
+The two settling moments are the other half of that guard. A merge of two
+branches that both regenerated leaves the kept side's ownership proof stale,
+which the drift guard refuses at the next commit, so the settle regenerates
+there and then, once per merge commit, and a merge stops being followed by a
+regenerate-and-commit by hand.
 """
 
 

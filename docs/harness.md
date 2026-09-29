@@ -130,6 +130,19 @@ The manifests are committed because a fresh clone and CI need the recorded
 digests: without them the drift check cannot run and the generator cannot
 prove which bytes it owns, so it would refuse to replace anything.
 
+A merge is where a manifest goes stale on its own. The generated trees merge
+under the `lup-ownership` driver, which keeps one side; git takes whichever
+side changed an artifact only one branch regenerated, so the artifacts come
+out right, but both branches rewrote the manifest, and the side kept lists
+its own digests for every file the other side changed. The settle guards,
+armed with the others by `uv run lup-devtools git hooks install`, answer it
+where the merge commit is made — `post-merge` for a merge git completes,
+`post-commit` for one concluded by hand — by running `uv run lup-devtools git
+settle`, which regenerates and replaces the merge commit with one carrying
+what that wrote: same parents, message and author, nothing else staged. It
+leaves alone any commit with one parent, a merge another branch already
+holds, and a rebase in flight.
+
 ### Every generated path and its source
 
 [generated-paths.md](generated-paths.md) is that map, one row per artifact,
