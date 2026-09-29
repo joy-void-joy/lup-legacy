@@ -262,12 +262,28 @@ def shell(event: str, command: str, base: Path) -> JsonObject:
 
 
 def reported(runtime: Runtime, command: str, base: Path) -> str:
-    """What one runtime's review of a command that already ran tells the agent."""
+    """What one runtime's review of a command that already ran tells the agent.
+
+    Both channels: what still refuses, and what is only worth knowing.
+    """
     result = dispatched(runtime, shell("PostToolUse", command, base), base)
-    if runtime == "codex":
-        return result.stderr.decode() if result.exit_code == 2 else ""
-    answered = json.loads(str(result))
-    return str(answered["reason"]) if "reason" in answered else ""
+    if runtime == "codex" and result.exit_code == 2:
+        return result.stderr.decode()
+    printed = str(result).strip()
+    answered = json.loads(printed) if printed else {}
+    specific = (
+        answered["hookSpecificOutput"] if "hookSpecificOutput" in answered else {}
+    )
+    return "\n".join(
+        [
+            *([str(answered["reason"])] if "reason" in answered else []),
+            *(
+                [str(specific["additionalContext"])]
+                if "additionalContext" in specific
+                else []
+            ),
+        ]
+    )
 
 
 def test_an_edit_inside_a_kit_under_scratch_is_scratch(

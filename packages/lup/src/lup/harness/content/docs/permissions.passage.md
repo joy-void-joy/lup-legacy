@@ -1474,14 +1474,35 @@ settled by adding it to a list that asserts allow.
 
 ## Hook execution evidence
 
-Claude reports post-edit diagnostics through its
-[structured post-edit feedback](https://code.claude.com/docs/en/hooks#posttooluse-decision-control):
-exit 0 with `decision: "block"` and a `reason`. This gives the agent the findings
-beside the completed edit. It does not undo the edit or report a crashed hook.
-Diagnostics name the file, line, severity, and message. Codex delivers its
-post-tool findings through stderr and exit 2. Its patch parser reads every
-touched path without replaying the old file contents, so both runtimes run
-the same per-file repairs and type checks after an edit, including moves.
+After a write, the hooks sweep the written file with the whole-tree rule check
+scoped to it (`repair_command`), then type-check it (`diagnostics_command`).
+The sweep runs every rule over every span, project rules included, so what
+the gate ahead of the write cannot see is reported per write rather than
+first met at the end. It removes dead directives and says so; where the
+policy the session loaded would refuse taking a directive out, which happens
+when the sources moved since launch, it puts the file back and says the two
+disagree.
+
+What reaches the agent comes in two parts. What a gate still refuses is
+*blocking*. Claude gets it as
+[structured post-edit feedback](https://code.claude.com/docs/en/hooks#posttooluse-decision-control)
+(exit 0 with `decision: "block"` and a `reason`), and Codex through stderr
+and exit 2. What is only worth knowing is *context*: a removed directive, a
+name used before a later edit supplies it (`reportUndefinedVariable`, an
+unresolved import, an unknown symbol on an import line), what a question
+would have asked about a shell write, or another repository's referral.
+Claude and Codex both get it as `hookSpecificOutput.additionalContext`. When
+something also blocks, Codex adds it after the refusal. Nothing here undoes
+an edit or reports a crashed hook. Another repository's referral is said in
+full once per repository per session.
+
+A shell command is reviewed by what it changed, not by what its words name:
+the claim window's before-and-after comparison gives every file that moved
+from the commit, so a script's writes get the same rule scan as a redirect's.
+Only a file the words name meets the path gates as well: a generator rewrites
+its own trees, which those gates refuse editing by hand. Codex's patch parser reads every touched path without replaying the old file
+contents, so both runtimes run the same sweep and type check after an edit,
+including moves.
 
 Both plugins register a short command invoking the generated
 `hooks/scripts/policy.sh`. That guard runs `policy.py`, preserves its output

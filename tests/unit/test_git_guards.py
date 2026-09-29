@@ -219,7 +219,7 @@ def test_a_hooks_directory_that_is_gone_reads_as_unreachable(tmp_path: Path) -> 
 
     assert reading.directory == tmp_path / "gone"
     assert not reading.reachable
-    assert len(reading.unarmed()) == len(DECLARED_GUARDS)
+    assert len(reading.unarmed()) == len({guard.hook for guard in DECLARED_GUARDS})
 
 
 def test_an_armed_checkout_reads_as_reachable_with_nothing_unarmed(
@@ -272,7 +272,11 @@ def test_the_declared_guards_arm_the_commit_and_the_merge_moments_only(
     }
 
     assert list(installed) == ["pre-commit", "post-merge", "post-commit"]
-    assert installed["pre-commit"].endswith(f"exec {DRIFT_COMMAND}\n")
+    # Drift, then what a merge left behind, which no merge stands down.
+    assert f"exec {DRIFT_COMMAND}\n" in installed["pre-commit"]
+    assert installed["pre-commit"].endswith(
+        "exec uv run lup-devtools dev check --conflict-markers --staged\n"
+    )
 
 
 def test_a_hook_armed_under_the_previous_marker_is_still_recognized(
@@ -313,7 +317,7 @@ def test_arming_a_checkout_it_cannot_write_reports_instead_of_failing(
 
     reported = arm(DECLARED_GUARDS, outside)
 
-    assert len(reported) == len(DECLARED_GUARDS)
+    assert len(reported) == len({guard.hook for guard in DECLARED_GUARDS})
     assert all("not installed" in line for line in reported)
 
 

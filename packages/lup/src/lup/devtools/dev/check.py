@@ -57,6 +57,8 @@ from lup.devtools.dev.worktree import OWNERSHIP_MERGE_DRIVER, MergeDriver
 from lup.devtools.dev.cites import sweep_cites
 from lup.devtools.dev.collection import PytestCollection
 from lup.devtools.dev.comments import FoundComment, scan_tracked
+from lup.devtools.dev.conflicts import conflict_blocks, staged_paths, staged_text
+from lup.devtools.dev.tracked import tracked_files
 from lup.devtools.dev.commands import CommandSurface
 from lup.devtools.dev.documented import generated_files, unresolved
 from lup.ledger.models import LedgerNode
@@ -569,6 +571,7 @@ class TestRoot(BaseModel):
         workers: int,
         excluded_roots: list[str],
         foreground: bool = False,
+        integration: bool = False,
     ) -> None:
         """Run this suite over these paths, or the whole of it for none.
 
@@ -578,6 +581,9 @@ class TestRoot(BaseModel):
         root and fails there, which is the only place that difference shows.
         ``foreground`` hands the runner's own output to the terminal as it
         arrives, for a caller who named one file and wants its report whole.
+        ``integration`` lifts the marker expression the suite's configuration
+        deselects by, last so it overrides the one ``addopts`` carries: an
+        integration test named outright otherwise runs nothing.
         """
         uv(
             "run",
@@ -586,6 +592,7 @@ class TestRoot(BaseModel):
             f"--basetemp={self.basetemp()}",
             *self.spread(workers),
             *ignored_arguments(excluded_roots),
+            *(["-m", ""] if integration else []),
             _cwd=str(self.directory),
             _fg=foreground,
         )
@@ -634,10 +641,11 @@ class BunTestRoot(TestRoot):
         workers: int,
         excluded_roots: list[str],
         foreground: bool = False,
+        integration: bool = False,
     ) -> None:
-        # Workers and the ignored roots are pytest's vocabulary; bun runs the
-        # workspace's tests in its own way and reads neither.
-        del workers, excluded_roots
+        # Workers, the ignored roots and the marker are pytest's vocabulary;
+        # bun runs the workspace's tests in its own way and reads none of them.
+        del workers, excluded_roots, integration
         restore_dependencies(self.directory)
         BUN("test", *paths, _cwd=str(self.directory), _fg=foreground)
 
@@ -692,6 +700,23 @@ def owning_index(test_roots: list[TestRoot], selection: Path) -> int | None:
     )
 
 
+def absent_selections(selections: list[str]) -> list[str]:
+    """The named tests nothing on disk answers, spelled as they were named.
+
+    A node id names its test after the file holding it, so the file is what
+    is looked for. Handed a name nothing answers, pytest collected nothing,
+    and the run reported "no tests ran" and a failed suite without saying
+    which name was wrong.
+    """
+    return [
+        selection
+        for selection in selections
+        # lup: ignore[string-split] — pytest's node-id separator, which pytest
+        # exposes no parser for
+        if not Path(selection.partition("::")[0]).exists()
+    ]
+
+
 def group_by_root(
     test_roots: list[TestRoot], selections: list[str]
 ) -> list[RootSelection]:
@@ -728,6 +753,7 @@ def run_selected(
     selections: list[str],
     excluded_roots: list[str],
     workers: int = TEST_WORKERS,
+    integration: bool = False,
 ) -> None:
     """Run each named path in the suite that installs it, reporting per suite.
 
@@ -745,8 +771,12 @@ def run_selected(
     are said as they arise rather than after, because this output streams:
     a run queued behind four others says so before it waits, not after.
     The selection is read before a slot is asked for, so a path under no
-    suite is refused at once rather than after a wait.
+    suite, or one nothing on disk answers, is refused at once rather than
+    after a wait. ``integration`` runs what the suites deselect by marker.
     """
+    absent = absent_selections(selections)
+    if absent:
+        raise typer.BadParameter(f"nothing on disk answers {', '.join(absent)}")
     groups = group_by_root(test_roots, selections)
     failed: list[str] = []
     with admitted(project_root(), workers, announce=Notice.say) as admission:
@@ -759,7 +789,11 @@ def run_selected(
             typer.echo(f"\n{group.root.name}  ({group.root.directory})")
             try:
                 group.root.run(
-                    group.paths, admission.workers, excluded_roots, foreground=True
+                    group.paths,
+                    admission.workers,
+                    excluded_roots,
+                    foreground=True,
+                    integration=integration,
                 )
             except sh.ErrorReturnCode:
                 failed.append(group.root.name)
@@ -978,7 +1012,10 @@ def branch_record_reports(pending: list[str]) -> list[CheckReport]:
 
 
 def migration_reports(
-    project: DevProject, spread: Spread | None, base: str | None
+    project: DevProject,
+    spread: Spread | None,
+    base: str | None,
+    record: MigrationRecord = MigrationRecord(),
 ) -> list[CheckReport]:
     """What this checkout owes the projects built on it, judged from ``base``.
 
@@ -1012,7 +1049,7 @@ def migration_reports(
                 )
             ]
         case (_, str(judged)):
-            owed = undeclared_breaks(project, judged)
+            owed = undeclared_breaks(project, judged, record)
             return [
                 CheckReport(
                     name="declared migrations",
@@ -1021,7 +1058,7 @@ def migration_reports(
                         f"declared migrations: FAIL ({len(owed)} gone with nothing "
                         "to read)",
                         *(f"  {capability.spelled()}" for capability in owed),
-                        f"  {MigrationRecord().instruction(project_root())}",
+                        f"  {record.instruction(project_root())}",
                     ]
                     if owed
                     else ["declared migrations: ok"],
@@ -1160,6 +1197,65 @@ def changed_scope(since: str) -> ChangedScope:
     )
 
 
+def conflict_marker_report(
+    paths: list[str], read: Callable[[str], str | None]
+) -> CheckReport:
+    """Every file and line a merge's conflict block opens on, or ok.
+
+    Gating: a block is a resolution nobody finished, whatever language the
+    file is in, and nothing else this gate runs reads markdown or a page for
+    one — a merge committed its markers into a passage and the page generated
+    from it, and the whole gate passed. *read* answers a path's text, or
+    ``None`` for one that does not read as text.
+    """
+    found = [
+        f"  {path}:{line}"
+        for path in paths
+        for text in [read(path)]
+        if text is not None
+        for line in conflict_blocks(text)
+    ]
+    return CheckReport(
+        name="conflict markers",
+        passed=not found,
+        lines=[
+            f"conflict markers: FAIL ({len(found)} block(s) a merge left behind)",
+            *found,
+            "  resolve each, or excuse a fixture holding one on purpose with a "
+            "`lup: ignore[conflict-marker]` line heading its paragraph",
+        ]
+        if found
+        else ["conflict markers: ok"],
+    )
+
+
+def worktree_text(path: str) -> str | None:
+    """A file's text as the working tree holds it, or ``None``."""
+    try:
+        return Path(path).read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return None
+
+
+def run_conflict_markers(staged: bool) -> None:
+    """Refuse what holds a conflict block: the tracked tree, or the next commit.
+
+    *staged* reads what the index holds for the paths the next commit adds or
+    changes, which is what the commit hook asks about — the working tree can
+    already hold the resolution of a block the index still carries.
+    """
+    root = project_root()
+    report = (
+        conflict_marker_report(staged_paths(root), partial(staged_text, root))
+        if staged
+        else conflict_marker_report(tracked_files(), worktree_text)
+    )
+    for line in report.lines:
+        typer.echo(line)
+    if not report.passed:
+        raise typer.Exit(1)
+
+
 def owned_comments(
     found: list[FoundComment], scope: list[str] | None
 ) -> list[FoundComment]:
@@ -1200,6 +1296,11 @@ def scan_reports(
     def reported() -> Iterator[CheckReport]:
         # advisory — a note asks somebody for something, and a tree is expected
         # to carry open ones; worth reading, not worth refusing over
+        # gating — see conflict_marker_report
+        yield conflict_marker_report(
+            tracked_files() if scope is None else scope, worktree_text
+        )
+
         found = owned_comments(scan_tracked(find_feedback), scope)
         scaffold = is_template_scaffold(project_root())
         yield CheckReport(
@@ -1776,6 +1877,7 @@ def run_changed(
     spread: Spread | None = None,
     fix: bool = False,
     environments: Sequence[Path] = (),
+    record: MigrationRecord = MigrationRecord(),
 ) -> None:
     """Check the files this tree changed, and say plainly what went unchecked.
 
@@ -1793,7 +1895,8 @@ def run_changed(
     base — and a public name removed is a one-file mistake, which the loop is
     the place to catch rather than the whole gate. It runs whether or not any
     Python file survives, because deleting a module is the removal it exists
-    to see.
+    to see. It parses every declaration in ``record``, so a changed one it
+    read is not listed as unread.
 
     **Tests are not narrowed, and not run.** Which tests reach a change is a
     question about the import graph, and this repository reaches modules
@@ -1828,8 +1931,13 @@ def run_changed(
     )
     with ThreadPoolExecutor(max_workers=len(tools) + 1) as pool:
         running = [pool.submit(tool) for tool in tools]
-        migrated = migration_reports(project, spread, base.commit)
-        reports = [*(job.result() for job in running), *migrated]
+        migrated = migration_reports(project, spread, base.commit, record)
+        marked = conflict_marker_report([*scope.checked, *scope.unread], worktree_text)
+        reports = [*(job.result() for job in running), *migrated, marked]
+    unread = [
+        path for path in scope.unread if not (migrated and record.holds(Path(path)))
+    ]
+    scope = scope.model_copy(update={"unread": unread})
 
     if not scope.checked:
         typer.echo("No Python file changed, so neither ruff nor pyright ran.")

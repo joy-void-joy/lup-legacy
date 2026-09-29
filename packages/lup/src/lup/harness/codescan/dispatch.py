@@ -192,7 +192,9 @@ def dispatched_models(
 
 
 def audit_own_model_dispatch(
-    sources: list[PythonSource], model_bases: set[str] = MODEL_BASES
+    sources: list[PythonSource],
+    model_bases: set[str] = MODEL_BASES,
+    judged: list[PythonSource] | None = None,
 ) -> list[RuleFinding]:
     """Build the project index, enforce the rule, and audit its suppressions.
 
@@ -202,12 +204,13 @@ def audit_own_model_dispatch(
     ``model_bases`` are the roots whose descendants count as the project's
     own models.
     """
+    reported = sources if judged is None else judged
     symbols = project_index(sources)
     models = descendants_of(symbols, model_bases)
     violations = dispatch_violations(
-        sources, dispatched_models(sources, symbols, models)
+        reported, dispatched_models(sources, symbols, models)
     )
-    return audit_suppressions(sources, violations, RULE_ID)
+    return audit_suppressions(reported, violations, RULE_ID)
 
 
 DISPATCH_RULE = ProjectRule(
@@ -257,6 +260,8 @@ DISPATCH_RULE = ProjectRule(
         "type, and a case arm over it is a value test with no union base "
         "for the remedy to name."
     ),
-    audit=lambda audited: audit_own_model_dispatch(audited.sources),
+    audit=lambda audited: audit_own_model_dispatch(
+        audited.sources, judged=audited.judged_sources()
+    ),
 )
 """The own-model-dispatch rule, declared beside the audit that decides it."""

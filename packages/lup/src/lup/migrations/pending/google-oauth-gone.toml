@@ -1,0 +1,21 @@
+subjects = [
+    "MANUAL_REDIRECT_URI",
+    "Consent",
+    "Consent.url",
+    "Consent.state",
+    "Consent.code_verifier",
+    "client_type",
+    "build_consent_url",
+    "exchange_code",
+]
+reason = """
+the Google installed-app OAuth round-trip is one vendor's flow in a \
+provider-neutral library, and nothing here called it, so it left \
+`lup.web`, and the `web` extra no longer pulls in google-auth-oauthlib"""
+
+[[steps]]
+instruction = """
+Keep the flow in the project that runs it: copy `lup.web.google_oauth` from \
+the release before this one into your own package, and add \
+google-auth-oauthlib to your own dependencies, since `lup-agents[web]` no \
+longer brings it."""

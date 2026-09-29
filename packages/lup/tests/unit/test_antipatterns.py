@@ -1603,3 +1603,41 @@ def test_each_project_rule_answers_its_own_examples(
                 f"{rule.id} claims a refuted example, but a project rule has no "
                 "hook verdict for the sweep to take back"
             )
+
+
+def example_project() -> list[PythonSource]:
+    """Every project rule's examples as one tree, one module per path they name.
+
+    Examples sharing a path share a module, so the tree holds violations of
+    several rules side by side, and of one rule in several files.
+    """
+    by_path: dict[str, list[str]] = {}
+    for rule in PROJECT_RULES:
+        for example in rule.examples:
+            by_path.setdefault(example.path, []).append(example.code)
+    return [
+        PythonSource(
+            path=Path(path),
+            module=module_name(Path(path)),
+            text="\n\n".join(codes) + "\n",
+        )
+        for path, codes in by_path.items()
+    ]
+
+
+@pytest.mark.parametrize("rule", PROJECT_RULES, ids=lambda rule: rule.id)
+def test_a_scoped_audit_says_what_the_whole_one_says_about_its_scope(
+    rule: ProjectRule,
+) -> None:
+    """Judging one file reads the whole project and reports that file alone.
+
+    The post-edit sweep asks about the file just written. Judging every
+    module and discarding all but one cost a median 18 seconds per edit, and
+    the slowest ran past the hook's deadline and reported nothing.
+    """
+    sources = example_project()
+    whole = rule.audit(AuditedProject(sources=sources))
+
+    for source in sources:
+        scoped = rule.audit(AuditedProject(sources=sources, judged=[source.path]))
+        assert scoped == [finding for finding in whole if finding.path == source.path]

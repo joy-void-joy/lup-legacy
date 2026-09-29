@@ -40,10 +40,13 @@ from decisions import (
     claim_window_closed,
     claim_window_opened,
     fetch_decision,
+    merged,
     named_claim_recorded,
+    referred_once,
     refused_tool_decision,
     review_policy_identity,
     reviewed_decision,
+    reviewed_writes,
     session_contained,
     shell_preimages,
     spawn_decision,
@@ -56,24 +59,22 @@ from host import (
     boundary_account,
     closed_deadline,
     declared_identity,
-    file_diagnostics,
     note_ran,
     observe_hook_call,
     opened_deadline,
     publish_edition,
     read_document,
     record_hook_evidence,
-    repaired_directives,
     sandbox_active,
     unjudged_reason,
 )
+from kernel.rows import PostToolReport
 from kernel.decision import KernelDecision
 from kernel.review import literal_input
 from kernel.shell import auto_escape_matches
 from caller_payload import caller_of
 from policy_data import AUTO_ESCAPE_PREFIXES
 from policy_data import AGENT_IDENTITY_ENV, AUTONOMOUS_AGENT_IDENTITIES
-from policy_data import DIAGNOSTICS_COMMAND, REPAIR_COMMAND
 from policy_data import HOOK_DEADLINE_SECONDS
 
 
@@ -129,19 +130,24 @@ def patch_changes(command, cwd):
     return changes
 
 
-def patch_decision(command, cwd, autonomous, caller):
+def patch_decision(command, cwd, autonomous, caller, session=""):
     """Judge every decoded path, including the source of a move and peer claims."""
     return joined(
         [
             edit_claim_decision(
-                edit_decision(
+                referred_once(
+                    edit_decision(
+                        change.path,
+                        change.before,
+                        change.after,
+                        change.path_exists,
+                        autonomous,
+                        change.operation(),
+                        cwd,
+                    ),
                     change.path,
-                    change.before,
-                    change.after,
-                    change.path_exists,
-                    autonomous,
-                    change.operation(),
                     cwd,
+                    session,
                 ),
                 change.path,
                 cwd,
@@ -173,10 +179,13 @@ def dispatch(payload, permission_request=False):
     # what it is asked about are its own roster row's — a subagent's where
     # one called — read the way the caller hook reads it for the tool server.
     caller = caller_of(payload)
+    session = payload["session_id"] if "session_id" in payload else ""
     if name == "Bash":
         envelope = literal_input(tool_input["command"], "apply_patch")
         if envelope is not None:
-            return patch_decision(envelope, session_directory, autonomous, caller)
+            return patch_decision(
+                envelope, session_directory, autonomous, caller, session
+            )
         requested_escape = spent_escape(tool_input)
         # The snapshot a comparison afterwards is read against, taken only on
         # the event that runs immediately before the call: a permission
@@ -229,7 +238,7 @@ def dispatch(payload, permission_request=False):
         return fetch_decision(tool_input["url"], session_directory)
     if name == "apply_patch":
         return patch_decision(
-            tool_input["command"], session_directory, autonomous, caller
+            tool_input["command"], session_directory, autonomous, caller, session
         )
     if name == "collaborationspawn_agent":
         # Measured on 0.155.1 and 0.158.0: the spawn carries `task_name` and
@@ -405,7 +414,7 @@ def observe(payload):
     tool_input = payload["tool_input"] if "tool_input" in payload else {}
     command = tool_input["command"] if "command" in tool_input else ""
     if not command:
-        return []
+        return PostToolReport(blocking=[], context=[])
     name = payload["tool_name"] if "tool_name" in payload else ""
     envelope = (
         command if name == "apply_patch" else literal_input(command, "apply_patch")
@@ -414,9 +423,12 @@ def observe(payload):
         directory = Path(root) if root else Path.cwd()
         snapshot = patch_snapshot(payload)
         if snapshot is None or not snapshot.is_file():
-            return [
-                "Patch diagnostics have no matching PreToolUse snapshot; run dev check to verify the result."
-            ]
+            return PostToolReport(
+                blocking=[
+                    "Patch diagnostics have no matching PreToolUse snapshot; run dev check to verify the result."
+                ],
+                context=[],
+            )
         before = json.loads(snapshot.read_text(encoding="utf-8"))
         snapshot.unlink()
         after = patch_stamps(payload)
@@ -429,25 +441,60 @@ def observe(payload):
         for target in changed:
             publish_edition(target, str(directory))
             named_claim_recorded(target, directory, caller_of(payload))
-        return [
-            finding
-            for target in changed
-            for check, command in (
-                (repaired_directives, REPAIR_COMMAND),
-                (file_diagnostics, DIAGNOSTICS_COMMAND),
-            )
-            for finding in check(target, command)
-        ]
+        return reviewed_writes(changed, directory)
     # What the command changed, read against the snapshot its own PreToolUse
     # took, and contested where another session had a window open across it.
-    claim_window_closed(Path(root) if root else None, caller_of(payload))
-    return [
-        *written_review(command, Path(root) if root else Path.cwd()),
-        *boundary_account(
-            payload["tool_response"] if "tool_response" in payload else "",
-            Path(root) if root else None,
-        ),
-    ]
+    changed = claim_window_closed(Path(root) if root else None, caller_of(payload))
+    return merged(
+        [
+            written_review(
+                command,
+                Path(root) if root else Path.cwd(),
+                changed,
+                payload["session_id"] if "session_id" in payload else "",
+            ),
+            PostToolReport(
+                blocking=[],
+                context=boundary_account(
+                    payload["tool_response"] if "tool_response" in payload else "",
+                    Path(root) if root else None,
+                ),
+            ),
+        ]
+    )
+
+
+def post_tool_answer(report):
+    """One post-tool report, in the two channels this runtime reads it by.
+
+    What a gate still refuses goes through stderr and exit 2, the channel
+    measured carrying post-tool feedback here; what is only worth knowing
+    joins it after a blank line. With nothing refused, what is worth
+    knowing goes as ``hookSpecificOutput.additionalContext`` on stdout and
+    the hook exits normally, which Codex adds as developer context beside
+    the result (https://learn.chatgpt.com/docs/hooks, PostToolUse) — so a
+    removed directive or a name an edit is about to supply no longer
+    replaces the tool's result as if something had failed.
+    """
+    if report["blocking"]:
+        sys.stderr.write(
+            "\n\n".join(
+                "\n".join(lines)
+                for lines in (report["blocking"], report["context"])
+                if lines
+            )
+        )
+        raise SystemExit(2)
+    if report["context"]:
+        json.dump(
+            {
+                "hookSpecificOutput": {
+                    "hookEventName": "PostToolUse",
+                    "additionalContext": "\n".join(report["context"]),
+                }
+            },
+            sys.stdout,
+        )
 
 
 def main():
@@ -477,23 +524,21 @@ def main():
         event = payload["hook_event_name"] if "hook_event_name" in payload else ""
         if event == "PostToolUse":
             remembered_run(payload)
-            found = observe_hook_call(
+            observed = observe_hook_call(
                 Path(payload["cwd"]) if "cwd" in payload else Path.cwd(),
                 payload["session_id"] if "session_id" in payload else "",
                 payload["tool_name"],
                 payload["tool_input"],
                 payload["tool_use_id"] if "tool_use_id" in payload else "",
-            ) + observe(payload)
-            # Codex receives post-tool findings through stderr and exit 2.
-            # A clean result needs no feedback.
-            if found:
-                detail = "\n".join(found)
-                record_hook_evidence(
-                    plugin_data_root(), payload, "completed", "observed", detail
-                )
-                sys.stderr.write(detail)
-                raise SystemExit(2)
-            record_hook_evidence(plugin_data_root(), payload, "completed", "observed")
+            )
+            report = merged(
+                [PostToolReport(blocking=observed, context=[]), observe(payload)]
+            )
+            detail = "\n".join([*report["blocking"], *report["context"]])
+            record_hook_evidence(
+                plugin_data_root(), payload, "completed", "observed", detail or None
+            )
+            post_tool_answer(report)
             return
         decision = dispatch(payload, permission_request)
         # A verdict from here places nothing: this hook answers, and the call

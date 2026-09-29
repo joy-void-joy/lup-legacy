@@ -45,7 +45,6 @@ codex = []
 docker = ["docker>=7.1.0"]
 web = [
     "fastapi>=0.139.0",
-    "google-auth-oauthlib>=1.4.0",
     "uvicorn[standard]>=0.49.0",
 ]
 conversation = [

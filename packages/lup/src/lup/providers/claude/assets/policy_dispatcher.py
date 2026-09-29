@@ -37,15 +37,18 @@ from decisions import (
     claim_window_opened,
     edit_claim_decision,
     fetch_decision,
+    merged,
     named_claim_recorded,
     peer_listing_attachment,
     peer_listing_decision,
     peer_send_decision,
     placed_document,
     placed_edit_text,
+    referred_once,
     refused_tool_decision,
     review_policy_identity,
     reviewed_decision,
+    reviewed_writes,
     session_contained,
     shell_preimages,
     spawn_decision,
@@ -58,25 +61,22 @@ from host import (
     boundary_account,
     closed_deadline,
     declared_identity,
-    file_diagnostics,
     note_ran,
     observe_hook_call,
     opened_deadline,
     publish_edition,
     read_document,
     record_hook_evidence,
-    repaired_directives,
     sandbox_active,
     unjudged_reason,
 )
+from kernel.rows import PostToolReport
 from kernel.decision import KernelDecision, sandbox_escaped
 from caller_payload import caller_of
 from policy_data import (
     AGENT_IDENTITY_ENV,
     AUTONOMOUS_AGENT_IDENTITIES,
-    DIAGNOSTICS_COMMAND,
     HOOK_DEADLINE_SECONDS,
-    REPAIR_COMMAND,
 )
 
 
@@ -334,6 +334,7 @@ def dispatch(payload):
     # what it is asked about are its own roster row's — a subagent's where
     # one called — read the way the caller hook reads it for the tool server.
     caller = caller_of(payload)
+    session = payload["session_id"] if "session_id" in payload else ""
     if name == "Bash":
         unsandboxed = spent_escape(tool_input)
         # A command names no file it will write, so what it changed can only
@@ -372,15 +373,20 @@ def dispatch(payload):
             "replace_all" in tool_input and tool_input["replace_all"] is True,
         )
         return edit_claim_decision(
-            edit_decision(
+            referred_once(
+                edit_decision(
+                    path,
+                    before,
+                    after,
+                    Path(path).exists(),
+                    autonomous,
+                    "modify",
+                    session_directory,
+                    agent_identity=agent_identity,
+                ),
                 path,
-                before,
-                after,
-                Path(path).exists(),
-                autonomous,
-                "modify",
                 session_directory,
-                agent_identity=agent_identity,
+                session,
             ),
             path,
             session_directory,
@@ -390,15 +396,20 @@ def dispatch(payload):
         path = tool_input["file_path"]
         exists = Path(path).exists()
         return edit_claim_decision(
-            edit_decision(
+            referred_once(
+                edit_decision(
+                    path,
+                    read_document(path),
+                    tool_input["content"],
+                    exists,
+                    autonomous,
+                    "overwrite" if exists else "create",
+                    session_directory,
+                    agent_identity=agent_identity,
+                ),
                 path,
-                read_document(path),
-                tool_input["content"],
-                exists,
-                autonomous,
-                "overwrite" if exists else "create",
                 session_directory,
-                agent_identity=agent_identity,
+                session,
             ),
             path,
             session_directory,
@@ -614,28 +625,59 @@ def observe(payload):
         # The tier that needs no comparison: the call said which file, so the
         # claim it leaves is one another session can act on unqualified.
         named_claim_recorded(path, session_root(payload), caller_of(payload))
-        # Repaired before checked, because the repair rewrites the file: run
-        # the other way round and the diagnostics describe lines that have
-        # already moved. Both reports reach the agent together, which is the
-        # one channel this event has.
-        return repaired_directives(path, REPAIR_COMMAND) + file_diagnostics(
-            path, DIAGNOSTICS_COMMAND
-        )
+        return reviewed_writes([path], session_root(payload))
     command = tool_input["command"] if "command" in tool_input else ""
     if not command:
-        return []
+        return PostToolReport(blocking=[], context=[])
     # What the command changed, read against the snapshot its own PreToolUse
     # took, and contested where another session had a window open across it.
-    claim_window_closed(session_root(payload), caller_of(payload))
-    return [
-        *written_review(command, session_root(payload) or Path.cwd()),
-        # What the boundary refused, named as the boundary rather than left
-        # as an errno the agent would debug as a broken disk.
-        *boundary_account(
-            payload["tool_response"] if "tool_response" in payload else "",
-            session_root(payload),
-        ),
-    ]
+    changed = claim_window_closed(session_root(payload), caller_of(payload))
+    return merged(
+        [
+            written_review(
+                command,
+                session_root(payload) or Path.cwd(),
+                changed,
+                payload["session_id"] if "session_id" in payload else "",
+            ),
+            # What the boundary refused, named as the boundary rather than
+            # left as an errno the agent would debug as a broken disk.
+            PostToolReport(
+                blocking=[],
+                context=boundary_account(
+                    payload["tool_response"] if "tool_response" in payload else "",
+                    session_root(payload),
+                ),
+            ),
+        ]
+    )
+
+
+def post_tool_answer(report):
+    """One post-tool report, in the two channels this runtime reads it by.
+
+    What a gate still refuses goes as ``decision: "block"``, whose reason
+    Claude Code shows the agent as feedback to act on before it moves on.
+    What is only worth knowing goes as ``additionalContext``, which the
+    runtime wraps as a system reminder beside the result and does not label
+    as an error: https://code.claude.com/docs/en/hooks, "PostToolUse
+    decision control". One channel for both labelled a name another edit
+    was about to supply, and a justified suppression, as a blocking error.
+    """
+    answer = (
+        {"decision": "block", "reason": "\n".join(report["blocking"])}
+        if report["blocking"]
+        else {}
+    )
+    if not report["context"]:
+        return answer
+    return {
+        **answer,
+        "hookSpecificOutput": {
+            "hookEventName": "PostToolUse",
+            "additionalContext": "\n".join(report["context"]),
+        },
+    }
 
 
 def main():
@@ -664,24 +706,23 @@ def main():
         # approval prompt for work already done.
         if event == "PostToolUse":
             remembered_run(payload)
-            found = observe_hook_call(
+            observed = observe_hook_call(
                 session_root(payload) or Path.cwd(),
                 payload["session_id"] if "session_id" in payload else "",
                 payload["tool_name"],
                 payload["tool_input"],
                 payload["tool_use_id"] if "tool_use_id" in payload else "",
-            ) + observe(payload)
+            )
+            report = merged(
+                [PostToolReport(blocking=observed, context=[]), observe(payload)]
+            )
             # Structured feedback reaches the agent beside the completed tool.
             # A file diagnostic is a successful check, so it exits normally.
-            if found:
-                detail = "\n".join(found)
-                record_hook_evidence(
-                    plugin_data_root(), payload, "completed", "observed", detail
-                )
-                json.dump({"decision": "block", "reason": detail}, sys.stdout)
-                return
-            json.dump({}, sys.stdout)
-            record_hook_evidence(plugin_data_root(), payload, "completed", "observed")
+            detail = "\n".join([*report["blocking"], *report["context"]])
+            record_hook_evidence(
+                plugin_data_root(), payload, "completed", "observed", detail or None
+            )
+            json.dump(post_tool_answer(report), sys.stdout)
             return
         decision = dispatch(payload)
         placed = placed_input(payload)

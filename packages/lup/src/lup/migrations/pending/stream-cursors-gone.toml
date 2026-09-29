@@ -1,0 +1,21 @@
+subjects = [
+    "ReaderPosition",
+    "ReaderPosition.offset",
+    "StreamCursors",
+    "StreamCursors.__init__",
+    "StreamCursors.path",
+    "StreamCursors.offset",
+    "StreamCursors.commit",
+    "StreamCursors.readers",
+]
+reason = """
+nothing read a stream through a committed per-reader position: `Stream` \
+hands each item the offset that consumes it, and the readers that resume \
+follow the journal by sequence, so `lup.channels.cursor` went"""
+
+[[steps]]
+instruction = """
+Keep a reader's position where the reader lives: store the `commit_offset` \
+of the last item `Stream.read_from(offset)` handed you (with \
+`publish_atomic` from lup.channels.models, as `StreamCursors.commit` did) \
+and pass it back to `read_from` when the reader resumes."""

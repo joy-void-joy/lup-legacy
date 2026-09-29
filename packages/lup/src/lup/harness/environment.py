@@ -123,6 +123,7 @@ def tool_server_env() -> list[str]:
 def launcher_decided_names(
     environ: Mapping[str, str],  # lup: ignore[dict-str-payload] — open env-var map
     declared: list[str] = LAUNCHER_DECIDED_ENV,
+    prefix: str = "LUP_",
 ) -> list[str]:
     """Every variable name a launcher set, with the numbered ones expanded.
 
@@ -137,6 +138,11 @@ def launcher_decided_names(
     reads it as the length of a numbered series. Clearing the count is enough
     to stop git reading the pairs and leaves them behind for whoever reads the
     environment next, and a half-cleared scope is worse than either.
+
+    Every name carrying lup's own *prefix* is taken too. The declared list
+    says what a launch is known to export, and trails what launches actually
+    export: a credential key, a policy root and a trust document each reached
+    a session's environment without joining it.
     """
     counted = (
         environ["GIT_CONFIG_COUNT"].strip() if "GIT_CONFIG_COUNT" in environ else ""
@@ -148,4 +154,5 @@ def launcher_decided_names(
             for index in range(int(counted) if counted.isdigit() else 0)
             for half in ("KEY", "VALUE")
         ),
+        *(name for name in environ if name.startswith(prefix)),
     ]

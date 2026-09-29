@@ -22,6 +22,10 @@ here.
 
 from lup.coordination.wake import WakePath
 
+# lup: ignore[constant-declaration] — the prefix Codex's own variables carry
+CODEX_ENV_PREFIXES = ("CODEX_",)
+"""Every name Codex exports to the processes a session starts begins so."""
+
 
 def codex_session_id() -> str:
     """Blank: Codex documents no session id reaching a server it starts."""

@@ -353,6 +353,37 @@ def test_a_derived_home_under_no_named_home_carries_the_one_beside_it(
     assert load_document(document)["theme"] == SEEDED_THEME
 
 
+def test_a_derived_home_is_the_operator_s_whatever_home_a_session_names(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A session's own ``HOME`` is for the tools it runs, and the session still
+    authenticates as the operator: with no home named, the account it derives
+    from is the operator's, though Claude Code left to choose would join the
+    session's ``HOME``."""
+    operator = tmp_path / "operator"
+    monkeypatch.setenv("HOME", str(operator))
+    monkeypatch.delenv(CLAUDE_CONFIG_DIR, raising=False)
+    monkeypatch.delenv(CLAUDE_OAUTH_URL_ENV, raising=False)
+    login = CLAUDE_LOGIN.model_copy(
+        update={"ambient_home": operator / CLAUDE_LOGIN.ambient_home.name}
+    )
+    monkeypatch.setattr("lup.providers.claude.config_home.CLAUDE_LOGIN", login)
+    elsewhere = tmp_path / "elsewhere"
+    for user in (operator, elsewhere):
+        account = user / CLAUDE_LOGIN.ambient_home.name
+        account.mkdir(parents=True)
+        credentials = json.dumps({"account": user.name})
+        CLAUDE_LOGIN.credentials_path(account).write_text(credentials, encoding="utf-8")
+        save_document(user / CLAUDE_HOME_DOCUMENT, {"account": user.name})
+
+    derived = workspace_config_environment({"HOME": str(elsewhere)}, tmp_path / "lease")
+    home = Path(derived[CLAUDE_CONFIG_DIR])
+
+    linked = CLAUDE_LOGIN.credentials_path(home).resolve()
+    assert linked == login.credentials_path(login.ambient_home).resolve()
+    assert load_document(home / CLAUDE_HOME_DOCUMENT) == {"account": "operator"}
+
+
 def test_a_derived_home_keeps_a_legacy_seed_under_the_current_name(
     tmp_path: Path,
 ) -> None:

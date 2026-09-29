@@ -15,7 +15,7 @@ import pytest
 from lup.coordination.identity import LaunchedMember
 from lup.launch.preflight import NONCE_VARIABLE, ROOT_VARIABLE
 from lup.policy.assets.host import measured_boundary
-from lup.providers.identity import RUNTIME_DECIDED_ENV
+from lup.providers.identity import RUNTIME_DECIDED_ENV, runtime_decided_names
 from lup.harness.environment import (
     NON_INTERACTIVE_SHELL_ENV,
     launcher_decided_names,
@@ -103,3 +103,35 @@ def test_launcher_isolation_removes_the_live_write_authority(
         monkeypatch.delenv(name, raising=False)
     assert measured_boundary(tmp_path) == {}
     assert ROOT_VARIABLE not in os.environ
+
+
+def test_every_variable_the_launcher_prefix_names_is_taken_away() -> None:
+    """A launcher variable nobody listed is still the launcher's.
+
+    The declared list is what a launch is known to export, and it trails
+    what launches actually export: a credential key, a policy root, a trust
+    document each arrived in a session's environment without joining it.
+    """
+    taken = launcher_decided_names({"LUP_POLICY_ROOT": "/live", "HOME": "/home/u"})
+
+    assert "LUP_POLICY_ROOT" in taken
+    assert "HOME" not in taken
+
+
+def test_every_variable_a_runtime_prefix_names_is_taken_away() -> None:
+    """What a runtime exported for its session, whether or not a list named it.
+
+    A test that read an inherited configuration directory wrote the live
+    runtime's settings through it: the name was one no list here carried.
+    """
+    inherited = {
+        "CLAUDE_CONFIG_DIR": "/cfg/claude",
+        "CLAUDECODE": "1",
+        "CODEX_HOME": "/cfg/codex",
+        "PATH": "/usr/bin",
+    }
+
+    taken = runtime_decided_names(inherited)
+
+    assert {"CLAUDE_CONFIG_DIR", "CLAUDECODE", "CODEX_HOME"} <= set(taken)
+    assert "PATH" not in taken

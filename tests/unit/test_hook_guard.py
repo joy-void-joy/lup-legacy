@@ -27,6 +27,7 @@ from lup.policy.dispatcher import (
 
 PLUGIN_ROOT_ENV = "LUP_TEST_PLUGIN_ROOT"
 
+# lup: ignore[conflict-marker] — a merged dispatcher, held on purpose
 CONFLICTED = """#!/usr/bin/env python3
 <<<<<<< HEAD
 x = 1

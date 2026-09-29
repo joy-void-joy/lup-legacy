@@ -28,9 +28,7 @@ import pytest
 from pydantic import BaseModel, Field
 
 from lup.providers.codex import Codex, CodexTools
-from lup.providers.codex.selection import CODEX_RUNTIME
 from lup.sessions.surface import Agent
-from lup.providers.selection import SessionRequest, SessionTools
 from lup.workspace.paths import find_project_root
 
 pytestmark = pytest.mark.integration
@@ -79,23 +77,25 @@ def personal_home_session(cwd: Path) -> Codex:
     )
 
 
-def workspace_request(cwd: Path) -> SessionRequest:
-    """What a real Lup session asks for, in the words every runtime shares.
+def application_session(cwd: Path) -> Codex:
+    """What a real Lup session is declared as: an agent naming no home.
 
-    Opened through :meth:`Runtime.session_factory`, which is the difference
-    that matters: it calls ``contained()`` first, pointing the session at a
-    worktree-scoped home seeded with credentials and a config and **no
-    plugins**. This is the arm that describes a forecasting agent.
+    Opening one selects its home the way an application's session does,
+    which is the difference that matters: with none named, the session is
+    pointed at a worktree-scoped home seeded with credentials and a config
+    and **no plugins**. This is the arm that describes a forecasting agent.
 
-    The portable request grants built-ins by preset alone, so the shell this
-    probe runs arrives with the stock preset rather than as ``Bash`` alone.
+    An application grants built-ins by preset, so the shell this probe runs
+    arrives with the stock preset rather than as ``Bash`` alone.
     """
-    return SessionRequest(
+    return Codex(
         model=PROBE_MODEL,
-        instructions=INSTRUCTIONS,
+        system_prompt=INSTRUCTIONS,
         cwd=cwd,
-        autonomy="unattended",
-        tools=SessionTools(builtin="stock"),
+        sandbox_mode="danger-full-access",
+        tools=CodexTools(builtin="stock"),
+        writable_roots=[cwd],
+        approval_policy="never",
     )
 
 
@@ -110,7 +110,7 @@ async def attempt(command: str) -> ShellAttempt:
 async def attempt_as_lup_opens_one(command: str) -> ShellAttempt:
     """Drive one session exactly as an application does, scoped home and all."""
     return await ask(
-        CODEX_RUNTIME.session_factory(workspace_request(find_project_root())),
+        application_session(find_project_root()),
         command,
     )
 
@@ -171,9 +171,9 @@ async def test_whether_a_denied_command_is_refused_by_the_project_hook() -> None
 async def test_a_session_opened_the_way_an_application_opens_one() -> None:
     """The arm that describes a real agent, and the only one that decides it.
 
-    The difference from the arm above is one call. `Runtime.session_factory`
-    runs `contained()` first, which points the session at a worktree-scoped
-    home seeded with credentials and a config and nothing else — no plugins
+    The difference from the arm above is the declaration an application
+    writes: naming no home, the session is pointed at a worktree-scoped home
+    seeded with credentials and a config and nothing else — no plugins
     directory, and none of the hook trust the CLI accumulated in the personal
     home. If the policy still refuses here, the generated tree governs agents
     as well as terminals; if it does not, it governs only terminals, and the

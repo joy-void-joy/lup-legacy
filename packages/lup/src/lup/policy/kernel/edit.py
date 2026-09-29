@@ -3262,6 +3262,37 @@ def spurious_refusal(number: int, dead: list[str], live: list[str]) -> KernelDec
     )
 
 
+class LineVerdict(TypedDict):
+    """One verdict the gate reached about one line of an edit."""
+
+    line: int
+    decision: KernelDecision
+
+
+def every_verdict(found: list[LineVerdict]) -> KernelDecision:
+    """Every verdict of one effect an edit earned, as a single answer.
+
+    The gate used to answer with the first it met, so an edit came back once
+    per violation: a whole file breaking four rules was refused four times
+    running, each refusal costing a resend of the file. Named together, one
+    resend can fix every one. They are named in the order the file holds
+    them, each way through beside the line it is for, and a lone verdict is
+    returned exactly as it was made.
+    """
+    ordered = sorted(found, key=lambda verdict: verdict["line"])
+    if len(ordered) == 1:
+        return ordered[0]["decision"]
+    return KernelDecision(
+        ordered[0]["decision"].effect,
+        f"{len(ordered)} findings in this edit, every one named here:\n"
+        + "\n".join(verdict["decision"].reason for verdict in ordered),
+        recovery="\n".join(
+            f"line {verdict['line']}: {verdict['decision'].recovery}"
+            for verdict in ordered
+        ),
+    )
+
+
 def antipattern_decision(
     before: str | None,
     after: str,
@@ -3455,10 +3486,16 @@ def antipattern_decision(
     # A strong rule outranks every suppression below it, including the declared
     # gate: its replacement is right every time, so a directive beside it
     # expresses nothing a human should be asked to approve — and approving one
-    # would admit an edit `dev check` then refuses.
-    for hit in hits:
-        if hit["row"]["strength"] == "strong":
-            return anti_pattern_denial(hit["line"], hit["row"])
+    # would admit an edit `dev check` then refuses. Every refusal below is
+    # gathered rather than returned, so one answer names all of them.
+    refusals = [
+        LineVerdict(
+            line=hit["line"], decision=anti_pattern_denial(hit["line"], hit["row"])
+        )
+        for hit in hits
+        if hit["row"]["strength"] == "strong"
+    ]
+    questions: list[LineVerdict] = []
 
     known_ids = {row["id"] for row in rows}
     for number in judged:
@@ -3476,8 +3513,9 @@ def antipattern_decision(
         fired = {hit["row"]["id"] for hit in guarded_hits(number)}
         dead = [rule for rule in named if rule in known_ids and rule not in fired]
         if dead:
-            return spurious_refusal(
-                number, dead, [rule for rule in sorted(fired) if rule not in named]
+            live = [rule for rule in sorted(fired) if rule not in named]
+            refusals.append(
+                LineVerdict(line=number, decision=spurious_refusal(number, dead, live))
             )
 
     # The same precedence the strong-rule loop above takes, applied to the rest
@@ -3490,7 +3528,9 @@ def antipattern_decision(
     for hit in hits:
         number = hit["line"]
         rule_id = hit["row"]["id"]
-        if has_file_ignore and (disabled_ids is None or rule_id in disabled_ids):
+        if hit["row"]["strength"] == "strong" or (
+            has_file_ignore and (disabled_ids is None or rule_id in disabled_ids)
+        ):
             continue
         holder = covering_suppression_line(original_lines, number, comment_columns)
         original = original_lines[holder - 1] if holder else ""
@@ -3515,10 +3555,15 @@ def antipattern_decision(
         # stated. The regex is wider than the defect for a resolution-required
         # rule, and what settles the difference is a declaration nothing here
         # resolved — so a denial would be the audit's opposite, and the two
-        # would block on states no version of the file satisfies at once.
+        # would block on states no version of the file satisfies at once. It is
+        # asked only once nothing is refused, or its approval would carry the
+        # refusal beside it through unsaid.
         if resolution is None and hit["row"]["resolution"] == "required":
-            return unresolved_anti_pattern_ask(number, hit["row"])
-        return anti_pattern_denial(number, hit["row"])
+            ask = unresolved_anti_pattern_ask(number, hit["row"])
+            questions.append(LineVerdict(line=number, decision=ask))
+            continue
+        denial = anti_pattern_denial(number, hit["row"])
+        refusals.append(LineVerdict(line=number, decision=denial))
 
     # The mirror of the loop above, for the violation an edit exposes without
     # touching it. Withdrawing a directive leaves the line it covered exactly
@@ -3566,7 +3611,12 @@ def antipattern_decision(
                     continue
             if (rule_id, number) in open_lines:
                 continue
-            return withdrawn_suppression_denial(number, hit["row"])
+            denial = withdrawn_suppression_denial(number, hit["row"])
+            refusals.append(LineVerdict(line=number, decision=denial))
+    if refusals:
+        return every_verdict(refusals)
+    if questions:
+        return every_verdict(questions)
 
     def sites_at(numbers: list[int]) -> list[str]:
         """The directives written on these lines, rendered for the prompt."""

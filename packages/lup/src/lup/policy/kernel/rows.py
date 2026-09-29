@@ -248,6 +248,23 @@ class RewrittenDocumentRow(TypedDict):
     """A host-resolved owner decision, including caller write restrictions."""
 
 
+class PostToolReport(TypedDict):
+    """What a finished call is told, split by whether it is asked to act.
+
+    ``blocking`` is what a gate still refuses about what landed, and each
+    runtime delivers it as the feedback that stops the turn to be read.
+    ``context`` is what the agent should know and need not act on — a
+    directive the sweep removed, a name an edit still to come may supply —
+    delivered beside the result. One label for both taught agents to read
+    every notice as an order: a justified suppression reported as a
+    "blocking error" left the agent unable to tell whether anything was
+    asked of it.
+    """
+
+    blocking: list[str]
+    context: list[str]
+
+
 class ImportBoundaryRow(TypedDict):
     """Module families whose dependencies belong in declared repository roots."""
 
