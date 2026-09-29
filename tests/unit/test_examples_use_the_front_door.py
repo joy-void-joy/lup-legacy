@@ -203,6 +203,12 @@ LAUNCH_FIELDS = {
     "container memory": FieldExample(
         example="launch_memory.py", call="OuterContainer", keyword="memory"
     ),
+    "how much the runtime asks": FieldExample(
+        example="launch_asking.py", call="Codex", keyword="approvals_reviewer"
+    ),
+    "a kind of session's own guidance": FieldExample(
+        example="launch_guidance.py", call="OuterContainer", keyword="guidance"
+    ),
     "held generated trees": FieldExample(
         example="launch_held_trees.py", call="OuterContainer", keyword="hold_generated"
     ),

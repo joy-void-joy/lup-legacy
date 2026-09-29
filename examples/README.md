@@ -72,14 +72,17 @@ uv run -m examples.launch_sudo
 uv run -m examples.launch_network
 uv run -m examples.launch_memory
 uv run -m examples.launch_held_trees
+uv run -m examples.launch_asking
+uv run -m examples.launch_guidance
 uv run -m examples.launch_nested_repositories
 uv run -m examples.launch_companions
 ```
 
 `launch_profile` expects a profile named `work` among yours
 (`uv run lup-devtools harness profile list`), `launch_outer_container`,
-`launch_devices`, `launch_network`, `launch_memory`, `launch_held_trees` and
-`launch_nested_repositories` a Docker or Podman engine,
+`launch_devices`, `launch_network`, `launch_memory`, `launch_held_trees`,
+`launch_asking`, `launch_guidance` and `launch_nested_repositories` a Docker or
+Podman engine,
 and `launch_sudo` a rootless one.
 
 Each composition declares its agent at the application boundary. The
