@@ -83,7 +83,9 @@ def showable(rule: Rule, verdict: ExampleVerdict) -> list[str]:
     multi-line examples of a verdict shows its first one flattened rather
     than showing nothing at all.
     """
-    declared = [example.code for example in rule.examples if example.verdict == verdict]
+    declared = [
+        example.shown() for example in rule.examples if example.verdict == verdict
+    ]
     single = [code for code in declared if "\n" not in code]
     return single or declared[:1]
 

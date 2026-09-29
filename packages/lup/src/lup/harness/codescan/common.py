@@ -179,6 +179,18 @@ class RuleExample(BaseModel, frozen=True):
     and ordinary anywhere else. A line rule reads the code alone, and leaves
     the default standing."""
 
+    def shown(self) -> str:
+        """The snippet as a reader is shown it, with the path it named, if any.
+
+        A verdict that turns on the path reads as the rule contradicting
+        itself when two examples of one snippet are shown bare, one flagged
+        and one cleared. The path goes in as a comment, so what is shown is
+        still code somebody could paste.
+        """
+        if "path" not in self.model_fields_set:
+            return self.code
+        return f"{self.code}  # in {self.path}"
+
 
 class Rule(BaseModel, arbitrary_types_allowed=True):
     """What every rule declares, whichever surface decides it.
