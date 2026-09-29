@@ -72,7 +72,7 @@
     {
       "path": ".claude/plugins/lup/commands/analyze.md",
       "category": "generated",
-      "sha256": "7b669145daeba2a50d79cfb328357a2e7c0521987289abcc13d64933dc8e5ffd",
+      "sha256": "3df7a3200a9930fb7fef2a2af6d5de5d3a7dc0c4fc8938638fdfc2a0a48da570",
       "semantic_id": "skill.analyze",
       "executable": false
     },

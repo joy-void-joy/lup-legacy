@@ -133,9 +133,8 @@ CONVERSATION = ModuleSpec(
         "skill that answers from one."
     ),
     default_on=True,
-    # Retention drives a browser the operator signed in through `setup
-    # conversation`, which is where the skill sends them when it is missing.
-    requires=["setup"],
+    # Retention drives a browser the operator signed in through `conversation
+    # setup`, its own tree, so the module needs no other.
     subapps=["conversation"],
 )
 

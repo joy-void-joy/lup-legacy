@@ -485,7 +485,7 @@
     {
       "path": ".codex/plugins/lup/skills/analyze/SKILL.md",
       "category": "generated",
-      "sha256": "4b4cf80ee5abd273df452fa21a332869a254f76fc80b6dc1a21b5d6778fff66c",
+      "sha256": "6236055715b937bba2a2ee3414226264c31feb950b8530c2186a2cf5dcfa872c",
       "semantic_id": "skill.analyze",
       "executable": false
     },
