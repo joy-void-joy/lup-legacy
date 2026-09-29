@@ -155,6 +155,23 @@ def test_every_cache_volume_says_what_needed_it() -> None:
     assert all(cache.because for cache in Image().caches)
 
 
+def test_the_interpreters_uv_installs_outlive_the_container() -> None:
+    """A project pinning a Python the image lacks keeps the one uv downloaded.
+
+    Left on the container's throwaway layer, every start downloaded it again
+    and rebuilt the environment linking to it. Its own volume rather than a
+    corner of uv's cache, which `uv cache clean` empties whole.
+    """
+    image = Image()
+    kept = {cache.variable: cache for cache in image.caches}
+
+    assert (
+        image.environment()["UV_PYTHON_INSTALL_DIR"]
+        == kept["UV_PYTHON_INSTALL_DIR"].path
+    )
+    assert kept["UV_PYTHON_INSTALL_DIR"].name != kept["UV_CACHE_DIR"].name
+
+
 def test_the_trust_seed_names_no_host_path() -> None:
     """A portable image cannot carry one machine's filesystem layout.
 
@@ -534,7 +551,10 @@ def test_metadata_that_changes_together_is_one_instruction_each() -> None:
     assert sum(line.startswith("ENV ") for line in lines) == 3
     assert sum(line.startswith("VOLUME ") for line in lines) == 1
     assert sum(line.startswith("RUN chmod +x") for line in lines) == 1
-    assert 'VOLUME ["/cache/uv", "/cache/bun", "/cache/ruff"]' in rendered
+    assert (
+        'VOLUME ["/cache/uv", "/cache/uv-python", "/cache/bun", "/cache/ruff"]'
+        in rendered
+    )
 
 
 def test_the_base_is_pinned_by_digest() -> None:

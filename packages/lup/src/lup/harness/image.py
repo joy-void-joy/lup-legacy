@@ -833,6 +833,15 @@ class Image(BaseModel, frozen=True):
                 "the whole dependency tree without it",
             ),
             CacheVolume(
+                name="lup-uv-python",
+                path="/cache/uv-python",
+                variable="UV_PYTHON_INSTALL_DIR",
+                because="a project pinning a Python the image lacks: uv "
+                "downloaded it again at every container start and rebuilt the "
+                "environment linking to it; beside the cache rather than in "
+                "it, since `uv cache clean` empties that whole",
+            ),
+            CacheVolume(
                 name="lup-bun",
                 path="/cache/bun",
                 variable="BUN_INSTALL_CACHE_DIR",
