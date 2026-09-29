@@ -143,6 +143,29 @@ GUARDED = [
     # Code another tool runs later, with none of this policy in front of it.
     pytest.param("echo '{}' > .vscode/tasks.json", "ask", id="vscode-task"),
     pytest.param("cp README.md .pre-commit-config.yaml", "ask", id="pre-commit"),
+    # Inline code leaves nothing behind to review whatever its arguments turn
+    # out to be, so an argument nobody can read does not hand it to a wall.
+    pytest.param(
+        "files=$(git ls-files) && perl -pi -e 's/a/b/' $files",
+        "deny",
+        id="perl-inline-bound-operands",
+    ),
+    pytest.param(
+        "perl -pi -e 's/a/b/' $(git ls-files)",
+        "deny",
+        id="perl-inline-substituted-operands",
+    ),
+    pytest.param("x=$(ls) && perl -e 'print 1' $x", "deny", id="perl-inline-bound"),
+    pytest.param(
+        "x=$(ls) && python -c 'print(1)' $x", "deny", id="python-inline-bound"
+    ),
+    pytest.param("python3 -c 'print(1)' $(ls)", "deny", id="python-inline-substituted"),
+    pytest.param(
+        "x=$(ls) && node -e 'console.log(1)' $x", "deny", id="node-inline-bound"
+    ),
+    pytest.param(
+        "node -e 'console.log(1)' $(ls)", "deny", id="node-inline-substituted"
+    ),
     # An interpreter build arrives from an index and runs everything after it.
     pytest.param("uv python install 3.13", "ask", id="uv-python-install"),
     pytest.param("uv python pin 3.13", "ask", id="uv-python-pin"),

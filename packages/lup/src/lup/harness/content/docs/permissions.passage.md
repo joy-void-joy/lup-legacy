@@ -380,7 +380,12 @@ vocabulary names the interpreter too, so `bun --eval` is refused beside the
 `bun` subcommands its row declares. Python runs through `uv run python
 <script>`, in this project's environment, so `python <script>` keeps its
 refusal and names that route, and `uv run <interpreter>` reads the same
-grammar.
+grammar. The refusal is decided by the words up to the code, so an argument
+after it that nobody can read — a variable a substitution bound, a `$(...)`
+result — does not hand it to a boundary: `perl -pi -e … $files`, `python -c
+… $x` and `node -e … $(ls)` are refused on every posture as their spelled
+forms are. An unread first operand keeps its abstention, since it could be
+the script file a named interpreter is allowed to run.
 
 A target may also carry subcommands, because a toolchain reached through
 `uv run` is one target and many commands — a devtools CLI that mostly reads

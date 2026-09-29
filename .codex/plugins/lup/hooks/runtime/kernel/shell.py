@@ -632,6 +632,47 @@ def decide_interpreter_words(
     )
 
 
+def standing_interpreter_refusal(
+    words: list[str], context: ShellContext
+) -> KernelDecision | None:
+    """An interpreter's refusal that no word nobody can read could lift.
+
+    Inline code and a program fetched from elsewhere leave nothing behind to
+    review whatever the words after them turn out to be, and an interpreter
+    this project does not run directly is refused over any file. Where the
+    words deciding that are spelled out -- the interpreter, and every word up
+    to the one naming the code -- the refusal stands beside an argument
+    nobody can read, rather than being handed to a boundary with it:
+    `perl -pi -e … $files` is the inline code `perl -pi -e …` is.
+
+    An interpreter a project declared keeps its row, and one whose first
+    operand is unread could be handed a script this policy trusts or allows,
+    so neither stands here: those keep the abstention they had.
+    """
+    if not words or opaque_argument(words[0]):
+        return None
+    executable = posixpath.basename(words[0])
+    if executable not in INTERPRETERS:
+        return None
+    verdict = decide_interpreter_words(words, context)
+    if verdict is None or verdict.effect != "deny":
+        return None
+    unread = next(
+        (index for index, word in enumerate(words) if opaque_argument(word)),
+        len(words),
+    )
+    if executable not in SCRIPT_INTERPRETERS:
+        return verdict if unread > 1 else None
+    reading = read_program(words)
+    deciding = next(
+        (index for index, word in enumerate(words) if word == reading["subject"]),
+        unread,
+    )
+    if reading["kind"] in ("inline", "remote") and deciding < unread:
+        return verdict
+    return None
+
+
 def decide_segment_words(
     words: list[str],
     context: ShellContext,
@@ -989,6 +1030,9 @@ def decide_placed_words(
     if any(
         SUBSTITUTION_SENTINEL in word for word in words[1:]
     ) and not argument_safe_words(words, context):
+        refused = standing_interpreter_refusal(words, context)
+        if refused is not None:
+            return refused
         # Abstaining is the floor rather than the answer: a result standing
         # where a verb or a guarded flag goes is read as the strictest one it
         # could be, as any other word nobody can read is. The floor carries
@@ -1126,7 +1170,9 @@ def gate_references(
             continue
         effective = command_words([word_text(word) for word in words])
         if not effective or not argument_safe_words(effective, context):
-            return unjudged("an opaquely bound variable could become a guarded flag")
+            return standing_interpreter_refusal(effective, context) or unjudged(
+                "an opaquely bound variable could become a guarded flag"
+            )
     return None
 
 
