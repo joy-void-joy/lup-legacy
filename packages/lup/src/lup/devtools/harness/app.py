@@ -237,8 +237,15 @@ def create_harness_app(
         add --launch-only to run only the checks used at startup.
 
         Exits nonzero if a needed capability fails a check. Optional
-        conveniences alone do not cause failure.
+        conveniences alone do not cause failure. Refused inside a session's
+        container, where neither half can answer: run it on the host, and
+        `harness binds` to check from inside that the read-only binds hold.
         """
+        refuse_inside_a_container(
+            "harness requirements",
+            "the host's checks would take the container for the host and "
+            "--inside cannot start one",
+        )
         compositions = targets.resolve(target, project_root())
         # The two halves span the targets differently, because they answer
         # differently-scoped questions. What the image must carry is the

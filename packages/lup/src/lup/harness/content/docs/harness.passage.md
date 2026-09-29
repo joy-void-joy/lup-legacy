@@ -59,7 +59,10 @@ actually provide it; repeating an unchanged build is not a general repair.
 Run `uv run lup-devtools harness requirements` to check host dependencies,
 including tools for sessions running on the host. Add `--inside` to check
 the container, or `--inside --launch-only` to run just its startup checks.
-Full container checks include a test model turn.
+Full container checks include a test model turn. Both run on the host: inside
+a session's container the command refuses, since the host's checks would take
+the container for the host and `--inside` has no engine to start one with;
+`harness binds` checks from inside that the read-only binds still hold.
 
 Host setup checks include `harness sandbox-check`: a disposable, network-disabled
 Python sandbox evaluates `1 + 1` through the persistent REPL and is removed

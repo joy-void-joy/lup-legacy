@@ -119,6 +119,24 @@ def test_all_container_requirements_select_each_runtimes_default_home(
     ]
 
 
+@pytest.mark.parametrize("inside", [[], ["--inside"]])
+def test_requirements_inside_a_container_say_to_run_them_on_the_host(
+    monkeypatch: pytest.MonkeyPatch, inside: list[str]
+) -> None:
+    """Neither half answers from here: the host half would call the container
+    the host, and `--inside` starts a container, which only the host can."""
+    checks = Mock(return_value=[])
+    monkeypatch.setattr(harness_app, "report_inside_requirements", checks)
+    monkeypatch.setattr(harness_app, "report_requirements", checks)
+    monkeypatch.setenv("LUP_CONTAINED", "1")
+
+    result = runner.invoke(app, ["harness", "requirements", "claude", *inside])
+
+    assert result.exit_code == 1
+    assert "`uv run lup-devtools harness requirements`" in result.output
+    checks.assert_not_called()
+
+
 @pytest.fixture(scope="module")
 def cli_main() -> Callable[..., object]:
     """The whole command tree as click runs it, built once for the help sweep.
