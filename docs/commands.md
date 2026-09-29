@@ -113,6 +113,7 @@ Run any of them with `uv run lup-devtools <command>`, and add `--help` for its a
 | `dev py layers` | Show how a package&#x27;s top-level entries import each other, and which pairs close. |
 | `dev py text` | Search literal source text within explicitly selected Python paths. |
 | `dev py search` | Search project source and installed package exports by name. |
+| `dev report` | Everything left to implement, in one place |
 | `dev usage claude` | Show live Claude Code usage with pacing bars (Anthropic OAuth). |
 | `dev usage codex` | Show live Codex usage with pacing bars (ChatGPT plan). |
 | `dev init rename-package` | Rename the lup Python package to a project-specific name. |
@@ -224,6 +225,7 @@ Run any of them with `uv run lup-devtools <command>`, and add `--help` for its a
 
 | Command | What it does |
 | --- | --- |
+| `resolve` | Drive a resolver run, and watch or answer it |
 | `resolve status` | Say whether a run is alive, where it stands, and what it last did. |
 | `resolve cost` | Report journal timing, unresolved intervals, actor turns, failures, and idle gaps. |
 | `resolve recover-integration` | Reconcile integration explicitly, retaining answers and completed concern work. |
@@ -267,6 +269,7 @@ Run any of them with `uv run lup-devtools <command>`, and add `--help` for its a
 
 | Command | What it does |
 | --- | --- |
+| `setup` | Interactive setup wizard, and its page |
 | `setup status` | Show current integration status. |
 | `setup slack` | Set up Slack tokens. |
 | `setup google` | Set up Google OAuth. |
@@ -281,6 +284,7 @@ Run any of them with `uv run lup-devtools <command>`, and add `--help` for its a
 | `setup profile use` | Select the profile a launch uses when none is named, in this checkout. |
 | `setup profile remove` | Forget a profile in this checkout, leaving its configuration home on disk. |
 | `setup profile migrate` | Move this checkout&#x27;s profiles, and the old ~/.lup registry&#x27;s, to global. |
+| `setup dashboard` | Host the local setup dashboard |
 
 ## `sync`
 
@@ -319,5 +323,6 @@ Run any of them with `uv run lup-devtools <command>`, and add `--help` for its a
 
 | Command | What it does |
 | --- | --- |
+| `version` | Agent version, changelog, and bump |
 | `version changelog` | Show changes since a version tag, classified by type. |
 | `version bump` | Bump agent version, record the release, and create a git tag. |

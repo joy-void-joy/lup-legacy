@@ -55,6 +55,32 @@ def test_nested_sub_apps_are_reached_at_the_depth_a_reader_types() -> None:
     assert "dev init rename-package" in spelled
 
 
+def test_a_group_that_runs_on_its_own_is_a_command_on_the_page() -> None:
+    """A sub-app mounted as a callback runs when typed, subcommands or none."""
+    app = typer.Typer()
+    page = typer.Typer(invoke_without_command=True)
+    leads = typer.Typer(no_args_is_help=True)
+
+    @page.callback()
+    def page_cmd() -> None:
+        """Host the page."""
+
+    @leads.command("only")
+    def only_cmd() -> None:
+        """The one thing the group leads to."""
+
+    app.add_typer(page, name="page")
+    app.add_typer(leads, name="leads")
+    # The composed CLI's own instances: the ones a hand-written list had lost.
+    spelled = {entry.spelled() for entry in served()}
+
+    assert [entry.spelled() for entry in CommandEntry.served_by(app)] == [
+        "page",
+        "leads only",
+    ]
+    assert {"setup dashboard", "dev report", "setup"} <= spelled
+
+
 def test_every_command_carries_a_summary() -> None:
     """A row with an empty cell is a command whose docstring never got written."""
     silent = [entry.spelled() for entry in served() if not entry.summary]
