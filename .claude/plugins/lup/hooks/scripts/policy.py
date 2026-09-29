@@ -841,8 +841,8 @@ def referral_noted(
     path = root / ledger
     now = datetime.now(UTC)
 
-    def recent(entry: object) -> bool:
-        if not isinstance(entry, dict) or "repositories" not in entry:
+    def recent(entry: dict) -> bool:
+        if "repositories" not in entry:
             return False
         try:
             stamped = datetime.fromisoformat(str(entry["at"]))
@@ -855,7 +855,11 @@ def referral_noted(
     except (OSError, ValueError):
         loaded = {}
     held = loaded if isinstance(loaded, dict) else {}
-    kept = {name: entry for name, entry in held.items() if recent(entry)}
+    kept = {
+        name: entry
+        for name, entry in held.items()
+        if isinstance(entry, dict) and recent(entry)
+    }
     seen = kept[session]["repositories"] if session in kept else []
     if repository in seen:
         return True
