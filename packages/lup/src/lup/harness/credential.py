@@ -1211,22 +1211,33 @@ class GitAccess(BaseModel, frozen=True):
         is the boundary's only chance to get a sentence in at the moment
         somebody needs it -- git's own account of an unanswerable challenge
         names the URL and never the variable that would have answered it, and
-        the launch notice that did name it has scrolled past by then.
+        the launch notice that did name it has scrolled past by then. A
+        project selecting no credential at all is not invited to export one:
+        its sessions hold none by design, and its pushes happen on the host.
 
         Installed on an ssh session too, where it answers for every remote
         the rewrite did not touch: a submodule on another forge, a
         `pip install` from an HTTPS repository. Those are the ones that would
         otherwise meet a prompt.
         """
-        answered = (
-            f"echo username={self.username}; echo password=${self.token_variable}"
-            if granted
-            else (
-                f'echo "lup: no token in {self.token_variable}, so this '
-                "session cannot authenticate over HTTPS; export it on the "
-                'host before the launch" >&2; exit 1'
-            )
-        )
+        match granted, self.source:
+            case True, _:
+                answered = (
+                    f"echo username={self.username}; "
+                    f"echo password=${self.token_variable}"
+                )
+            case False, "none":
+                answered = (
+                    'echo "lup: this project gives its sessions no credential, '
+                    "so git cannot authenticate over HTTPS here; pushes happen "
+                    'on the host" >&2; exit 1'
+                )
+            case False, _:
+                answered = (
+                    f'echo "lup: no token in {self.token_variable}, so this '
+                    "session cannot authenticate over HTTPS; export it on the "
+                    'host before the launch" >&2; exit 1'
+                )
         return GitSetting(key="credential.helper", value=f"!f() {{ {answered}; }}; f")
 
     def configuration(
