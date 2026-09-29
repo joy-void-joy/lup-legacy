@@ -984,7 +984,9 @@ def constant_declaration_violations(
 
 
 def audit_constant_declarations(
-    sources: list[PythonSource], application: ApplicationRoots = NO_APPLICATION
+    sources: list[PythonSource],
+    application: ApplicationRoots = NO_APPLICATION,
+    judged: list[PythonSource] | None = None,
 ) -> list[RuleFinding]:
     """Judge every frozen constant in a project against how it is reached.
 
@@ -1007,7 +1009,8 @@ def audit_constant_declarations(
     # modules' constants apart
     overridable = {name for source in sources for name in declared_defaults(source)}
     carved = {name for source in sources for name in carved_names(source.text)}
-    authored = [source for source in sources if not application.renders(source.path)]
+    reported = sources if judged is None else judged
+    authored = [source for source in reported if not application.renders(source.path)]
     violations = [
         RuleViolation(
             path=source.path,
@@ -1251,7 +1254,7 @@ def import_boundary_findings(
     owned = [boundary for boundary in declared if boundary.rule_id == rule_id]
     return [
         rule_finding(source.path, finding)
-        for source in audited.sources
+        for source in audited.judged_sources()
         for finding in audit_rule(
             source.text,
             rule_id,
@@ -1264,7 +1267,7 @@ def native_spelling_findings(audited: AuditedProject) -> list[RuleFinding]:
     """Every native spelling in a module the application did not sanction."""
     return [
         rule_finding(source.path, finding)
-        for source in audited.sources
+        for source in audited.judged_sources()
         if not native_spelling_path_is_sanctioned(source.path, audited.application)
         for finding in audit_rule(
             source.text, RuleId.NATIVE_SPELLING, native_spelling_violations(source.text)
@@ -1276,7 +1279,7 @@ def kernel_import_findings(audited: AuditedProject) -> list[RuleFinding]:
     """Every import outside the pinned allowlist, in the kernel's own files."""
     return [
         rule_finding(source.path, finding)
-        for source in audited.sources
+        for source in audited.judged_sources()
         if source.path.as_posix().startswith(KERNEL_ROOT)
         for finding in audit_kernel_imports(source.text)
     ]
@@ -1297,10 +1300,10 @@ def front_door_findings(audited: AuditedProject) -> list[RuleFinding]:
         for name, module in front_door_exports(source.text).items()
     }
     return audit_suppressions(
-        audited.sources,
+        audited.judged_sources(),
         [
             violation
-            for source in audited.sources
+            for source in audited.judged_sources()
             if source.path.as_posix().startswith(LIBRARY_ROOT)
             and source.path.as_posix() != FRONT_DOOR_PATH
             for violation in front_door_violations(source, exports)
@@ -1324,10 +1327,11 @@ def library_default_findings(audited: AuditedProject) -> list[RuleFinding]:
         if source.path.as_posix().startswith(LIBRARY_ROOT)
     ]
     overridable = {name for source in library for name in declared_defaults(source)}
+    judged = {source.path for source in audited.judged_sources()}
     return [
         rule_finding(source.path, finding)
         for source in library
-        if library_placement_path_is_audited(source.path)
+        if source.path in judged and library_placement_path_is_audited(source.path)
         for finding in audit_library_defaults(source.text, overridable, source.module)
     ]
 
@@ -1519,7 +1523,7 @@ CONSTANT_DECLARATION_RULE = ProjectRule(
         "the two partition every declaration and neither reaches the other's."
     ),
     audit=lambda audited: audit_constant_declarations(
-        audited.sources, audited.application
+        audited.sources, audited.application, audited.judged_sources()
     ),
 )
 """The constant-declaration rule: a judgement reaches its callers as a default."""

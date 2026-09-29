@@ -272,12 +272,13 @@ def scan_antipatterns(
     # are assembled in their own order once both halves are in.
     # Every project rule the set holds, over the whole tree: the class index
     # and the names a library's callers can replace are properties of the
-    # project, so a scoped sweep hands the rules everything and keeps only
-    # the findings inside its scope.
+    # project, so a scoped sweep hands the rules everything to read and names
+    # the files it asks them to judge.
     audited = AuditedProject(
         sources=declaration_sources,
         application=project.roots,
         boundaries=project.resolved_import_boundaries(),
+        judged=None if paths is None else [source.path for source in sources],
     )
     with ThreadPoolExecutor(max_workers=1) as pool:
         resolving = pool.submit(resolving_refutations)
