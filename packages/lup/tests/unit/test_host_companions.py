@@ -226,6 +226,28 @@ def test_a_changed_declaration_replaces_what_runs(state: Path, tmp_path: Path) -
             assert not replaced.process.running()
 
 
+def test_a_companion_leaves_what_it_unsets_and_is_stopped_from_outside(
+    state: Path, tmp_path: Path
+) -> None:
+    class Unmarked(Served, frozen=True):
+        def process(self, place: CompanionPlace, root: Path) -> CompanionProcess:
+            return super().process(place, root).model_copy(update={"unset": ["MARKED"]})
+
+    served = Unmarked(name="served", ports={"web": free_port()})
+    marked = CompanionLaunch(
+        root=tmp_path, runtime="claude", environment={"MARKED": "the session's"}
+    )
+
+    with served.held(marked):
+        standing = served.standing(tmp_path)
+        assert standing.serving is not None and standing.leases == 1
+        environ = Path(f"/proc/{standing.serving.pid}/environ").read_bytes()
+        assert b"MARKED=" not in environ
+        assert served.stopped(tmp_path)
+        assert served.standing(tmp_path).serving is None
+        assert not served.stopped(tmp_path)
+
+
 def test_a_lease_whose_launcher_died_is_swept(state: Path, tmp_path: Path) -> None:
     served = Served(name="served", ports={"web": free_port()})
     slot = served.slot(tmp_path)

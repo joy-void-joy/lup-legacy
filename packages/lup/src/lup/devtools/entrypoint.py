@@ -1,9 +1,9 @@
 """Import-safe dispatch for a project's composed ``lup-devtools`` CLI.
 
-The conflict workflow repairs source that may not import. Its console script
-therefore enters this library module, recognizes that one command family, and
-builds only the library-owned repair tree. Every other command loads the
-project's full Typer application from installed package metadata.
+Conflict repair and pending-migration reports must run while project source
+cannot import. The console script recognizes those routes and builds only
+their library-owned command trees. Every other command loads the project's
+full Typer application from installed package metadata.
 
 The metadata is materialized when the environment is synced, so reading it
 does not parse a currently conflicted ``pyproject.toml``.
@@ -92,10 +92,29 @@ def conflict_application() -> typer.Typer:
     return root_app
 
 
+def migration_application() -> typer.Typer:
+    """Read installed migrations independently of the project's source state."""
+    from lup.devtools.dev.migrations import migrate_pending_cmd
+
+    root_app = typer.Typer(
+        help="lup-devtools: import-safe migration reports",
+        pretty_exceptions_show_locals=False,
+        no_args_is_help=True,
+    )
+    dev_app = typer.Typer(no_args_is_help=True)
+    migrate_app = typer.Typer(no_args_is_help=True)
+    migrate_app.command("pending")(migrate_pending_cmd)
+    dev_app.add_typer(migrate_app, name="migrate", help="Library migration reports")
+    root_app.add_typer(dev_app, name="dev", help="Development tools")
+    return root_app
+
+
 def main() -> None:
-    """Dispatch conflict repair without importing the project's application."""
+    """Dispatch import-safe library routes before the project's application."""
     match sys.argv:
         case [_, "git", "conflict", *_]:
             conflict_application()()
+        case [_, "dev", "migrate", "pending", *_]:
+            migration_application()()
         case _:
             project_application()()

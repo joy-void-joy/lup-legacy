@@ -112,8 +112,6 @@ include = [
     ".codex/plugins/lup/hooks",
 ]
 pythonVersion = "3.14"
-venvPath = "."
-venv = ".venv"
 
 # `kernel`, `policy_data`, and `codex_patch` are top-level modules only inside
 # a generated plugin's `hooks/runtime`. Naming that directory as the search

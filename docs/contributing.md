@@ -409,12 +409,19 @@ uv run lup-devtools harness check all      # generated-tree drift
 uv run lup-devtools dev rules --check      # the generated rule reference
 ```
 
-The gate type-checks against the environment `uv` runs it in: the
-configuration it hands Pyright names the environment `UV_PROJECT_ENVIRONMENT`
-redirects to, resolved against the project the way `uv` resolves it, so a
-session keeping its environment elsewhere is not checked against a stale
-`.venv` beside it; with the variable unset, the root configuration's `.venv`
-stands.
+The type-checking gate, code intelligence, and rule resolver give Pyright
+the interpreter selected for the requested checkout. `UV_PROJECT_ENVIRONMENT`
+is resolved against that project; with the variable unset, `uv` selects
+`.venv`. The scaffold leaves `venvPath` and `venv` unset:
+Pyright gives an explicit pair priority over that interpreter. Deliberate
+project environment declarations retain that priority for both code
+intelligence and the type-checking gate. After adopting a
+scaffold that supplied `venvPath = "."` and `venv = ".venv"`, run
+`uv run lup-devtools dev migrate pyright-environment --dry-run`, then omit
+`--dry-run` to retire exactly that unchanged pair. The migration preserves
+custom or partial selectors, configurations using `extends`, and separate
+`pyrightconfig.json` files. Restart an already-running code-intelligence
+server after changing its environment configuration.
 
 For tests spanning the application and library, use
 `uv run lup-devtools dev test tests/unit/test_toolsets.py packages/lup/tests/unit/test_lup_tool.py`.

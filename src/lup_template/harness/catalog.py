@@ -40,7 +40,7 @@ from lup.harness.codescan.boundaries import (
     generated_tree_paths,
     native_import_boundaries,
 )
-from lup.harness.content.modules.specs import RESOLVER
+from lup.harness.content.modules.specs import DASHBOARD, RESOLVER
 from lup.devtools.dev.documented import MENTION, WrittenCommand
 from lup.harness.dependencies import Published
 from lup_template.harness.content.modules.specs import TEMPLATE_INIT
@@ -710,7 +710,7 @@ def portable_harness(
                 ),
                 HookUrlScope(origin=AnyHttpUrl("https://pypi.org")),
                 HookUrlScope(origin=AnyHttpUrl("https://files.pythonhosted.org")),
-                # This machine's own services: the setup dashboard, the
+                # This machine's own services: the dashboard, the setup page, the
                 # resolver supervisor, and whatever a session is running to
                 # look at. Reaching one is how a session establishes that it
                 # came up at all, and asking for that is asking about a
@@ -1017,4 +1017,5 @@ def portable_harness(
             if RESOLVER.id in composed.taken()
             else None
         ),
+        dashboard=DASHBOARD.id in composed.taken(),
     )

@@ -8,6 +8,7 @@ import pytest
 from lup.policy.assets.host import document_digest, sed_output
 
 from lup.devtools.review.app import ReviewDetail, ReviewFile
+from lup.devtools.dev.edit_prepare import native_patch
 from lup.policy.assets.host import review_hook_call
 from lup.policy.kernel.decision import (
     DecisionEffect,
@@ -15,6 +16,7 @@ from lup.policy.kernel.decision import (
     captured_edit_decision,
 )
 from lup.policy.operations import Operation
+from lup.policy.models import EditBatch, EditChange
 from lup.policy.relay import CapturedFileReview, PersistentQuestion, QuestionRelay
 from lup.policy.review import ReviewedFile
 
@@ -43,12 +45,14 @@ def test_actual_verdict_controls_focus_regardless_of_path(
     assert ReviewFile.of(change, [captured(change, "ask")]).review_effect == "ask"
     assert ReviewFile.of(change, [captured(change, "allow")]).review_effect == "allow"
     assert ReviewFile.of(change, [captured(change, "deny")]).review_effect == "deny"
+    assert ReviewFile.of(change, [captured(change, "defer")]).review_effect == "defer"
     assert ReviewFile.of(change).review_effect == "unknown"
 
 
 @pytest.mark.parametrize("changed", ["before", "after", "path"])
+@pytest.mark.parametrize("effect", ["allow", "defer"])
 def test_only_both_exact_images_and_path_can_hide_a_file(
-    tmp_path: Path, changed: str
+    tmp_path: Path, changed: str, effect: DecisionEffect
 ) -> None:
     original = ReviewedFile(path=tmp_path / "app.py", before="old\n", after="new\n")
     revised = original.model_copy(
@@ -58,13 +62,12 @@ def test_only_both_exact_images_and_path_can_hide_a_file(
             else "racing content\n"
         }
     )
-    shown = ReviewFile.of(revised, [captured(original, "allow")])
+    shown = ReviewFile.of(revised, [captured(original, effect)])
     assert shown.review_effect == "unknown"
 
 
-def test_duplicate_or_deferred_capture_is_unknown(tmp_path: Path) -> None:
+def test_duplicate_capture_is_unknown(tmp_path: Path) -> None:
     change = ReviewedFile(path=tmp_path / "app.py", before="old\n", after="new\n")
-    assert ReviewFile.of(change, [captured(change, "defer")]).review_effect == "unknown"
     assert (
         ReviewFile.of(
             change, [captured(change, "allow"), captured(change, "ask")]
@@ -165,8 +168,10 @@ def test_mixed_batch_summary_references_only_original_asks(tmp_path: Path) -> No
     assert detail.question.fingerprint == "unchanged-binding"
 
 
-def test_shell_only_question_keeps_command_gate_when_all_files_allow(
+@pytest.mark.parametrize("effect", ["allow", "defer"])
+def test_shell_only_question_keeps_command_gate_when_no_file_asks(
     tmp_path: Path,
+    effect: DecisionEffect,
 ) -> None:
     change = ReviewedFile(path=tmp_path / "app.txt", before="old\n", after="new\n")
     command = "sed -i s/old/new/ app.txt"
@@ -185,13 +190,66 @@ def test_shell_only_question_keeps_command_gate_when_all_files_allow(
         fingerprint="bound",
         reason="shell-level gate",
         preconditions={change.path: change.before},
-        file_reviews=[captured(change, "allow")],
+        file_reviews=[captured(change, effect)],
     )
     detail = ReviewDetail.of(tmp_path, question, "operator")
     assert detail.command == command
     assert detail.summary.reason == "shell-level gate"
-    assert detail.files[0].review_effect == "allow"
+    assert detail.files[0].review_effect == effect
+    assert detail.summary.paths == []
     assert detail.question.fingerprint == "bound"
+
+
+def test_twenty_file_review_focuses_three_asks_and_keeps_the_exact_operation(
+    tmp_path: Path,
+) -> None:
+    counts: list[tuple[DecisionEffect, int]] = [("ask", 3), ("allow", 8), ("defer", 9)]
+    effects: list[DecisionEffect] = [
+        effect for effect, count in counts for _ in range(count)
+    ]
+    changes = [
+        ReviewedFile(path=tmp_path / f"file-{index}.txt", before="old\n", after="new\n")
+        for index in range(len(effects))
+    ]
+    patch = native_patch(
+        EditBatch(
+            changes=[
+                EditChange(path=change.path, before=change.before, after=change.after)
+                for change in changes
+            ],
+            cwd=tmp_path,
+        )
+    )
+    question = PersistentQuestion(
+        id="review",
+        operation=Operation(
+            id="op",
+            session="s",
+            requester="s",
+            tool="apply_patch",
+            payload={"command": patch},
+            cwd=tmp_path,
+            worktree=tmp_path,
+        ),
+        fingerprint="unchanged-twenty-file-binding",
+        reason="protected files require approval",
+        preconditions={change.path: change.before for change in changes},
+        file_reviews=[
+            captured(change, effect)
+            for change, effect in zip(changes, effects, strict=True)
+        ],
+    )
+
+    detail = ReviewDetail.of(tmp_path, question, "operator")
+
+    assert detail.summary.paths == ["file-0.txt", "file-1.txt", "file-2.txt"]
+    assert detail.summary.title.startswith("Change 3 files")
+    assert detail.summary.total_files == 20
+    assert len(detail.files) == 20
+    assert [file.review_effect for file in detail.files] == effects
+    assert detail.question is question
+    assert detail.question.operation.payload == {"command": patch}
+    assert detail.question.fingerprint == "unchanged-twenty-file-binding"
 
 
 def test_captured_attribution_changes_require_fresh_native_review(

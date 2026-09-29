@@ -18,6 +18,7 @@ function commonDirectory(files: ReviewFile[]): string {
 function reviewLabel(effect: ReviewFile["review_effect"]): string {
   switch (effect) {
     case "allow": return "Automatic";
+    case "defer": return "Native decision";
     case "ask": return "Needs approval";
     case "deny": return "Blocked";
     default: return "Unclassified";
@@ -36,13 +37,13 @@ export function Files({ files, navigation, command }: { files: ReviewFile[]; nav
   const viewport = useRef<HTMLDivElement>(null);
   const diffLines = useRef(new Map<number, HTMLTableRowElement>());
   const sourceLines = useRef(new Map<number, HTMLSpanElement>());
-  const required = files.filter((item) => item.review_effect !== "allow");
+  const required = files.filter((item) => item.review_effect !== "allow" && item.review_effect !== "defer");
   const scoped = full ? files : required;
   const visible = scoped.filter((item) => item.path.toLocaleLowerCase().includes(query.toLocaleLowerCase()));
   const file = scoped.find((item) => item.path === selected) ?? scoped[0];
   const additions = visible.reduce((total, item) => total + item.additions, 0);
   const deletions = visible.reduce((total, item) => total + item.deletions, 0);
-  const exceptionsFor = (item: ReviewFile) => item.suppressions.filter((suppression) => full || suppression.review_effect !== "allow");
+  const exceptionsFor = (item: ReviewFile) => item.suppressions.filter((suppression) => full || (suppression.review_effect !== "allow" && suppression.review_effect !== "defer"));
   const suppressions = visible.flatMap((item) => exceptionsFor(item).map((suppression) => ({ file: item, suppression, key: `${item.path}:${suppression.line}` })));
   const marked = new Set(file === undefined ? [] : exceptionsFor(file).map((suppression) => suppression.line));
   const groups = new Map<string, typeof suppressions>();
@@ -150,8 +151,8 @@ export function Files({ files, navigation, command }: { files: ReviewFile[]; nav
           <span className="change-counts"><span className="added">+{file.additions}</span> <span className="removed">−{file.deletions}</span></span>
           <span className="file-paging"><button type="button" disabled={visible.length === 0 || fileIndex === 0} aria-label="Previous file" aria-keyshortcuts="[" onClick={() => moveFile(-1)}>←</button>
             <span>{fileIndex < 0 ? "Outside search" : `${fileIndex + 1} / ${visible.length}`}</span><button type="button" disabled={visible.length === 0 || fileIndex + 1 >= visible.length} aria-label="Next file" aria-keyshortcuts="]" onClick={() => moveFile(1)}>→</button></span></span>
-        <details className="file-review"><summary>{reviewLabel(file.review_effect)} · Why</summary><p>{file.review_reason}</p></details>
-        <details className="file-prefix"><summary>Full path</summary><code>{file.path}</code></details>
+        <details className="file-review"><summary>{reviewLabel(file.review_effect)} · Why</summary><p>{file.review_effect === "defer" && "No Lup approval requested; the native provider decides. "}{file.review_reason}</p></details>
+        <div className="file-target"><span>Target file</span><code tabIndex={0}>{file.path}</code></div>
       </header>
       <div className="evidence-tabs" aria-label="File evidence">
         {([['diff', 'Diff'], ['before', 'Before'], ['after', 'After'], ['raw', 'Raw diff']] as const).map(([value, label]) => <button key={value} type="button" aria-pressed={view === value} onClick={() => { setView(value); setJump(null); }}>{label}</button>)}

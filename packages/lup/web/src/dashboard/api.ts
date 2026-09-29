@@ -1,4 +1,4 @@
-import type { ReviewAnswer, ReviewDecision, ReviewDetail, ReviewSnapshot } from "../generated/views";
+import type { ReviewAnswer, ReviewDecision, ReviewDetail, ReviewSnapshot, SetupPane } from "../generated/views";
 
 /** Where this origin keeps the operator's capability, and the key a storage event names. */
 export const TOKEN_KEY = "lup-dashboard-token";
@@ -57,6 +57,11 @@ export function reviewLink(id: string, root: string | null = null): string {
   return url.href;
 }
 
+/** Each repository's setup pane, by the path that opens it. */
+export async function readSetupPanes(token: string, signal?: AbortSignal): Promise<SetupPane[]> {
+  return (await accepted(await fetch("api/setup", { headers: authorization(token), signal }))).json();
+}
+
 export async function readReviews(token: string, signal?: AbortSignal): Promise<ReviewSnapshot> {
   return (await accepted(await fetch("api/reviews", { headers: authorization(token), signal }))).json();
 }
@@ -75,8 +80,11 @@ export async function answerReview(key: string, answer: ReviewAnswer, token: str
   }))).json();
 }
 
-/** Decode complete NDJSON records even when UTF-8 or a record spans chunks. */
-export async function* followReviews(token: string, signal: AbortSignal): AsyncGenerator<ReviewSnapshot> {
+/**
+ * Decode complete NDJSON records even when UTF-8 or a record spans chunks.
+ * Initial scans may take longer; once snapshots arrive, bound silent connections.
+ */
+export async function* followReviews(token: string, signal: AbortSignal, silenceMs = 60_000): AsyncGenerator<ReviewSnapshot> {
   const response = await accepted(await fetch("api/events", {
     headers: authorization(token), signal,
   }));
@@ -84,15 +92,24 @@ export async function* followReviews(token: string, signal: AbortSignal): AsyncG
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let buffered = "";
+  let received = false;
+  let timer: ReturnType<typeof setTimeout> | undefined;
   try {
     for (;;) {
-      const chunk = await reader.read();
+      const reading = reader.read();
+      const chunk = received ? await Promise.race([reading, new Promise<never>((_resolve, reject) => {
+        timer = setTimeout(() => reject(new Error("The review stream stopped updating.")), silenceMs);
+      })]) : await reading;
+      clearTimeout(timer);
       buffered += decoder.decode(chunk.value, { stream: !chunk.done });
       let newline = buffered.indexOf("\n");
       for (; newline !== -1; newline = buffered.indexOf("\n")) {
         const record = buffered.slice(0, newline);
         buffered = buffered.slice(newline + 1);
-        if (record.trim() !== "") yield JSON.parse(record) as ReviewSnapshot;
+        if (record.trim() !== "") {
+          received = true;
+          yield JSON.parse(record) as ReviewSnapshot;
+        }
       }
       if (chunk.done) {
         if (buffered.trim() !== "") yield JSON.parse(buffered) as ReviewSnapshot;
@@ -100,6 +117,7 @@ export async function* followReviews(token: string, signal: AbortSignal): AsyncG
       }
     }
   } finally {
+    clearTimeout(timer);
     try {
       await reader.cancel();
     } finally {

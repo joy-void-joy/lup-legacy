@@ -318,11 +318,15 @@ def codeintel_group(name: str = "codeintel") -> ToolGroup:
     """Resolving a name through a language server, where one is installed."""
 
     def tools(needs: SessionNeeds) -> list[LupMcpTool]:
-        from lup.devtools.dev.pyright_oracle import langserver_path
+        from lup.devtools.dev.pyright_oracle import langserver_path, pyright_settings
         from lup.tools.lsp.tools import create_codeintel_tools
 
         server = langserver_path()
-        return [] if server is None else create_codeintel_tools(server, needs.root)
+        return (
+            []
+            if server is None
+            else create_codeintel_tools(server, needs.root, settings=pyright_settings)
+        )
 
     return ToolGroup(name=name, tools=tools)
 

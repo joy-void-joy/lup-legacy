@@ -12,7 +12,7 @@ otherwise be one POST away from running a step it never drew.
 
 from pydantic import BaseModel
 
-from lup.devtools.dashboard.app import EnvScope, guide_lines, integration_step
+from lup.devtools.dashboard.setup_page import EnvScope, guide_lines, integration_step
 from lup.devtools.dashboard.wizard import (
     Answer,
     Row,

@@ -7,6 +7,7 @@ import pytest
 from lup.coordination.identity import MEMBER_ENV, NAME_ENV
 from lup.coordination.peer_tools import RosterPulse
 from lup.coordination.relay import MailboxRelay
+from lup.devtools.launcher import ENVIRONMENT_VARIABLE
 from lup.harness.environment import tool_server_env
 from lup.mcp import Coordination
 from lup.mcp.serve import context_needs
@@ -45,3 +46,8 @@ def test_the_forwarded_identity_is_the_one_the_served_coordination_group_joins_a
     assert isinstance(pulse, RosterPulse) and isinstance(relay, MailboxRelay)
     assert pulse.member_id == relay.member_id == parent[MEMBER_ENV]
     assert group.tools(needs)
+
+
+def test_a_tool_server_is_told_which_project_environment_the_session_selected() -> None:
+    """Its language server and interpreter follow the checkout's toolchain."""
+    assert ENVIRONMENT_VARIABLE in tool_server_env()

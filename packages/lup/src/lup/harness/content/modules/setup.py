@@ -1,10 +1,10 @@
 """Interactive configuration: keys, integrations, profiles.
 
-The wizard and the local page are one subject seen twice — the dashboard is
-literally "host the local setup dashboard", the same declarations rendered for
-somebody who would rather click than answer prompts. Keeping them in one
-module is what stops a project from declining one and keeping the other, which
-would leave a page serving a wizard nobody can run.
+The wizard and its page are one subject seen twice — the same declarations
+rendered for somebody who would rather click than answer prompts, shown as
+this repository's pane of the dashboard. Keeping them in one module is what
+stops a project from declining one and keeping the other, which would leave a
+page serving a wizard nobody can run.
 
 This is deliberately *not* ``template-init``'s. Standing a project up happens
 once; configuring its keys and integrations happens whenever a key rotates, so

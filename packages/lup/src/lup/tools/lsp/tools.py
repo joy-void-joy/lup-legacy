@@ -20,13 +20,14 @@ asked about.
 """
 
 import asyncio
-from collections.abc import Awaitable
+from collections.abc import AsyncIterator, Awaitable, Callable
+from contextlib import asynccontextmanager
 from pathlib import Path
 from urllib.parse import unquote, urlparse
 
 from pydantic import BaseModel, Field, ValidationError
 
-from lup.tools.lsp.client import lsp_session
+from lup.tools.lsp.client import LspSession, lsp_session
 from lup.tools.lsp.replies import (
     DOCUMENT_SYMBOLS,
     HOVER,
@@ -34,7 +35,7 @@ from lup.tools.lsp.replies import (
     WORKSPACE_EDIT,
 )
 from lup.tools.mcp import LupMcpTool, ToolDeclaration, ToolError, lup_tool
-from lup.types import JsonValue
+from lup.types import JsonObject, JsonValue
 from lup.workspace.edition import edition_path, read_edition
 
 REQUEST_TIMEOUT_SECONDS = 120.0
@@ -287,6 +288,7 @@ def create_codeintel_tools(
     request_timeout: float = REQUEST_TIMEOUT_SECONDS,
     markers: tuple[str, ...] = WORKSPACE_MARKERS,
     edition: Path | None = None,
+    settings: Callable[[Path], JsonObject] | None = None,
 ) -> list[LupMcpTool]:
     """Build the code-intelligence tools driving *server* over *root*.
 
@@ -300,6 +302,8 @@ def create_codeintel_tools(
             repository, which is the only one either can name without being
             told; a caller supplies its own to keep a test out of the real
             repository's state.
+        settings: Language-server configuration derived for the requested
+            file's workspace, which may differ from the launch checkout.
 
     Returns:
         Tools answering definition, reference, hover, symbol, and rename
@@ -338,14 +342,23 @@ def create_codeintel_tools(
         published = read_edition(edition or edition_path(root))
         return published.workspace if published is not None else None
 
+    @asynccontextmanager
+    async def session_for(path: Path) -> AsyncIterator[LspSession]:
+        workspace = workspace_for(path, root, markers)
+        async with lsp_session(
+            server,
+            workspace,
+            name=server.name,
+            settings=None if settings is None else settings(workspace),
+        ) as session:
+            yield session
+
     async def at_position(method: str, params: PositionInput) -> JsonValue:
         resolved = located(params.path)
         pointed(resolved, params)
 
         async def run() -> JsonValue:
-            async with lsp_session(
-                server, workspace_for(resolved, root, markers), name=server.name
-            ) as session:
+            async with session_for(resolved) as session:
                 return await session.request(
                     method,
                     await session.position_in(resolved, params.line, params.column),
@@ -365,9 +378,7 @@ def create_codeintel_tools(
         pointed(resolved, params)
 
         async def run() -> JsonValue:
-            async with lsp_session(
-                server, workspace_for(resolved, root, markers), name=server.name
-            ) as session:
+            async with session_for(resolved) as session:
                 request = await session.position_in(
                     resolved, params.line, params.column
                 )
@@ -390,9 +401,7 @@ def create_codeintel_tools(
         resolved = located(params.path)
 
         async def run() -> JsonValue:
-            async with lsp_session(
-                server, workspace_for(resolved, root, markers), name=server.name
-            ) as session:
+            async with session_for(resolved) as session:
                 await session.open(resolved)
                 return await session.request(
                     "textDocument/documentSymbol",
@@ -418,9 +427,7 @@ def create_codeintel_tools(
         pointed(resolved, params)
 
         async def run() -> JsonValue:
-            async with lsp_session(
-                server, workspace_for(resolved, root, markers), name=server.name
-            ) as session:
+            async with session_for(resolved) as session:
                 request = await session.position_in(
                     resolved, params.line, params.column
                 )

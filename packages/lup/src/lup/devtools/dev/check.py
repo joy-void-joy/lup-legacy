@@ -14,7 +14,6 @@ from importlib.util import find_spec
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 from time import perf_counter
-from typing import Literal
 
 import sh
 import typer
@@ -45,6 +44,7 @@ from lup.policy.everyday import SESSION_SHAPES
 from lup.workspace.paths import is_template_scaffold, project_root
 
 from lup.devtools.dev.admission import Admission, admitted
+from lup.devtools.launcher import project_python
 from lup.devtools.dev.antipatterns import scan_antipatterns
 from lup.devtools.project import DevProject
 from lup.devtools.dev.boundaries import scan_application_placement
@@ -279,38 +279,6 @@ def pyright_base_configuration(root: Path) -> Path | None:
             return None
 
 
-def pyright_environment(root: Path) -> dict[Literal["venvPath", "venv"], str]:
-    """The environment keys the gate's configuration overrides the base with.
-
-    The base names ``.venv`` beside the manifest, which is where `uv` keeps
-    an environment until ``UV_PROJECT_ENVIRONMENT`` says otherwise. The gate
-    is `uv run`, so the packages it installs land wherever that variable
-    points — and Pyright, reading the base alone, checks against whatever
-    ``.venv`` was left beside it, missing every package the lockfile added
-    since, or falls back to the interpreter on ``PATH`` where none was. Asked
-    of the variable rather than of `uv`: no subcommand prints the environment
-    as data — `uv python find` answers the interpreter on ``PATH`` even with
-    the variable set, and `uv sync --dry-run` says it in prose on stderr, at
-    the cost of a resolve — while the variable is what `uv` itself reads. The
-    path comes from `project_environment`, the one reading of it, resolved
-    against the project the way `uv` resolves a relative value; its parent
-    and its name are what Pyright's two keys want, the parent spelled
-    absolute because Pyright resolves a relative one against the
-    configuration file rather than the project.
-
-    Nothing when the variable is unset, so the base's answer stands: a
-    project checking against no environment at all is not handed one that
-    is not there.
-    """
-    environ = os.environ  # lup: ignore[os-environ] — whether uv was told where
-    # its environment is decides whether the base's answer stands; the path
-    # itself is read once, in project_environment
-    if "UV_PROJECT_ENVIRONMENT" not in environ:
-        return {}
-    environment = project_environment(root)
-    return {"venvPath": str(environment.parent), "venv": environment.name}
-
-
 # lup: ignore[constant-declaration] — an identity this repository defines: the
 # name lup's own scratch file answers to, which the writer and the sweep must
 # spell alike for one to find the other
@@ -389,6 +357,10 @@ def pyright_check(
     root = project_root()
     sweep_pyright_scratch(root, abandoned_after)
     base = pyright_base_configuration(root)
+    interpreter = project_python(root)
+    python_arguments = (
+        ["--pythonpath", str(interpreter)] if interpreter is not None else []
+    )
     with NamedTemporaryFile(
         mode="w",
         encoding="utf-8",
@@ -402,7 +374,6 @@ def pyright_check(
             {
                 **({"extends": str(base)} if base is not None else {"include": ["."]}),
                 "exclude": excluded_roots,
-                **pyright_environment(root),
             },
             stream,
         )
@@ -410,7 +381,12 @@ def pyright_check(
         return ran(
             "pyright",
             lambda: uv(
-                "run", "pyright", "--project", str(configuration), *(scope or [])
+                "run",
+                "pyright",
+                "--project",
+                str(configuration),
+                *python_arguments,
+                *(scope or []),
             ),
         )
     finally:

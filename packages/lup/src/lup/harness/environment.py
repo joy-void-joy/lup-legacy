@@ -14,6 +14,8 @@ the child project must select its own environment from its working directory.
 from collections.abc import Mapping
 
 from lup.coordination.identity import MEMBER_ENV, NAME_ENV, MemberEnv
+from lup.devtools.dashboard.address import DASHBOARD_URL_ENV
+from lup.devtools.launcher import ENVIRONMENT_VARIABLE
 from lup.sessions.recursion import RecursiveAgentSettings
 from lup.types import EnvVars
 
@@ -47,6 +49,7 @@ LAUNCHER_DECIDED_ENV: list[str] = [
     "GIT_CONFIG_COUNT",
     MEMBER_ENV,
     NAME_ENV,
+    DASHBOARD_URL_ENV,
 ]
 """What a launched process is told about where it is, rather than what it does.
 
@@ -54,7 +57,9 @@ The coordination pair is one session's own identity: a launcher mints the id
 and the name together and exports both, so a process that inherits them and is
 not that session answers to somebody else's address. It arrives by reference
 rather than respelled, because a second spelling is a second place a variable
-has to be added, and the one that is missed is the one nobody takes away.
+has to be added, and the one that is missed is the one nobody takes away. The
+dashboard's address is where that launch's companion listens, which a process
+that did not hold it has no business reporting as its own.
 
 A suite is the case that matters. A test joining a roster without saying what
 to call the session is named after whichever worktree pytest was started from
@@ -78,6 +83,8 @@ def tool_server_env() -> list[str]:
     joins under and answers to; the recursion allowance is how many more agent
     levels its tools may open. A server that sees none of them serves a session
     nobody can address and opens agents without limit, and neither says so.
+    The project-environment selector keeps a tool server's interpreter and
+    language-server settings aligned with the checkout's selected toolchain.
 
     Read off the settings that read them rather than listed beside them, so a
     variable either grows is forwarded with nobody remembering to. Declared as
@@ -94,7 +101,7 @@ def tool_server_env() -> list[str]:
         for settings in (MemberEnv, RecursiveAgentSettings)
         for field in settings.model_fields.values()
         if isinstance(field.validation_alias, str)
-    ]
+    ] + [ENVIRONMENT_VARIABLE]
 
 
 def launcher_decided_names(

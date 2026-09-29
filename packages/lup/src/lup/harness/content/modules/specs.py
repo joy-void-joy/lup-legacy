@@ -36,7 +36,7 @@ CORE = ModuleSpec(
     # The debug skill reads a session's trace, which is the one command tree
     # it needs and does not own.
     requires=["observability"],
-    subapps=["dev", "harness", "git", "tools", "review", "dashboard"],
+    subapps=["dev", "harness", "git", "tools", "review"],
     tool_groups=["codeintel"],
 )
 
@@ -114,12 +114,24 @@ SANDBOX = ModuleSpec(
     requirements=["container runtime", "Python sandbox"],
 )
 
+DASHBOARD = ModuleSpec(
+    id="dashboard",
+    title="Dashboard",
+    summary=(
+        "One page per person over every session's parked reviews, in every "
+        "repository, with each repository's setup beside them — a service "
+        "every launch holds and the last session's end stops."
+    ),
+    default_on=True,
+    subapps=["dashboard"],
+)
+
 SETUP = ModuleSpec(
     id="setup",
     title="Setup",
     summary=(
         "Interactive configuration of keys, integrations, and profiles — the "
-        "wizard, and the local page that is the same thing in a browser."
+        "wizard, and the page that is the same thing in the dashboard."
     ),
     default_on=True,
     subapps=["setup"],
@@ -133,9 +145,8 @@ CONVERSATION = ModuleSpec(
         "skill that answers from one."
     ),
     default_on=True,
-    # Retention drives a browser the operator signed in through `setup
-    # conversation`, which is where the skill sends them when it is missing.
-    requires=["setup"],
+    # Retention drives a browser the operator signed in through `conversation
+    # setup`, its own tree, so the module needs no other.
     subapps=["conversation"],
 )
 
@@ -250,6 +261,7 @@ LIBRARY_SPECS = [
     VERSION,
     OBSERVABILITY,
     SANDBOX,
+    DASHBOARD,
     SETUP,
     CONVERSATION,
     FEEDBACK_LOOP,

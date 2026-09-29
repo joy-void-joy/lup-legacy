@@ -20,6 +20,8 @@ Run any of them with `uv run lup-devtools <command>`, and add `--help` for its a
 | --- | --- |
 | `conversation chatgpt` | Retain ChatGPT conversations and their downloadable attachments. |
 | `conversation claude` | Retain Claude conversations and their API-provided attachments. |
+| `conversation setup chatgpt` | Open a browser to authenticate ChatGPT conversation access. |
+| `conversation setup claude` | Open a browser to authenticate Claude conversation access. |
 
 ## `coordination`
 
@@ -45,7 +47,10 @@ Run any of them with `uv run lup-devtools <command>`, and add `--help` for its a
 
 | Command | What it does |
 | --- | --- |
-| `dashboard serve` | Serve the dashboard over every worktree of the selected repositories. |
+| `dashboard serve` | Serve the dashboard in this terminal, over the selected repositories, until Ctrl+C. |
+| `dashboard open` | Open the dashboard the running sessions hold, in this machine&#x27;s browser. |
+| `dashboard status` | Say whether the dashboard runs, where, and for how many sessions. |
+| `dashboard stop` | Stop the running dashboard now; the next session&#x27;s launch starts it again. |
 
 ## `dev`
 
@@ -83,6 +88,7 @@ Run any of them with `uv run lup-devtools <command>`, and add `--help` for its a
 | `dev tracker reopen` | Reopen an issue, here or on a declared tracker. |
 | `dev tracker list` | Which repositories this project may reach, and what each is for. |
 | `dev migrate map` | Print the relocation that repoints an importer across a range. |
+| `dev migrate pyright-environment` | Retire unchanged scaffold Pyright environment defaults. |
 | `dev migrate pending` | What a project standing at that commit still owes, beyond the map. |
 | `dev migrate check` | Refuse a capability that went with no migration speaking for it. |
 | `dev library status` | Report where the lup library is resolved from. |
@@ -277,14 +283,11 @@ Run any of them with `uv run lup-devtools <command>`, and add `--help` for its a
 | `setup api-key` | Set up Example API key. |
 | `setup codex` | Set Codex/OpenAI per-MTok pricing (enables budget caps). |
 | `setup timezone` | Set timezone. |
-| `setup conversation chatgpt` | Open a browser to authenticate ChatGPT conversation access. |
-| `setup conversation claude` | Open a browser to authenticate Claude conversation access. |
 | `setup profile list` | Show every profile, local and global, and which one a launch selects. |
 | `setup profile add` | Register a runtime configuration home under a name, in this checkout. |
 | `setup profile use` | Select the profile a launch uses when none is named, in this checkout. |
 | `setup profile remove` | Forget a profile in this checkout, leaving its configuration home on disk. |
 | `setup profile migrate` | Move this checkout&#x27;s profiles, and the old ~/.lup registry&#x27;s, to global. |
-| `setup dashboard` | Host the local setup dashboard |
 
 ## `sync`
 

@@ -61,8 +61,6 @@ def test_analyze_leaves_with_the_conversation_module() -> None:
     assert "analyze" not in [skill.name for skill in composed_content(without).skills]
 
 
-def test_retention_requires_the_setup_it_sends_the_operator_to() -> None:
-    """The login the skill names when a browser session is missing is setup's."""
-    assert unmet_requirements([CONVERSATION]) == [
-        "module 'conversation' requires 'setup', which this project does not take"
-    ]
+def test_retention_logs_in_through_its_own_command_tree() -> None:
+    """The login the skill names when a browser session is missing is `conversation setup`."""
+    assert unmet_requirements([CONVERSATION]) == []

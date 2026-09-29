@@ -416,6 +416,10 @@ own effects as the default beneath them. One statement serves both halves:
 while the runner row stated a verdict of its own, a target could bless itself
 and refuse its own verbs with nothing noticing.
 
+`uv run lup-devtools dev migrate pyright-environment` rewrites the protected
+`pyproject.toml` configuration and requires review. Its literal `--dry-run`
+form only reports the proposed change and is admitted as a read-only probe.
+
 Every axis cascades down a table's nesting, and absence means one thing
 everywhere: a subcommand or operation omitting `effects`, `refuses` or
 `sandbox` inherits the level above it, and one stating any of them overrides
@@ -1093,99 +1097,21 @@ Codex delivers that denial as a supported structured `deny` carrying
 hook events; its agent still receives the same refusal and review commands.
 Neither surface turns a policy question into an implicit approval.
 
-The operator can keep one dashboard open over every parked review by running
-this from a terminal outside the agent session:
+The operator reviews every parked request, of every repository and session, on one page: the dashboard, in `docs/dashboard.md`. The verbs reaching its capability are `operator_only` too.
 
-```bash
-uv run lup-devtools dashboard serve
-```
-
-It listens on `127.0.0.1:8766` and opens the browser. Without `--root`, it
-follows the launch repository's worktrees. Each `--root <checkout>` selects a
-repository to watch; when supplied, only those repositories and their worktrees
-are included. Repeat `--root` to watch several repositories, use `--no-open` to
-open the printed address manually, and choose another port with `--port`. Leave
-the terminal command running while reviewing; Ctrl-C stops its server.
-
-The dashboard titles requests from captured evidence: a file's action and path,
-the number of files, or the command to run. The exact operation, requester,
-rule, reason, command or captured file diff, and recorded answer remain visible.
-The default view includes files that require review and highlights newly
-introduced rule exceptions. Files the policy allows automatically and existing
-exceptions remain available in the full-operation view. Approval still applies
-to the exact complete submission. Where recorded evidence cannot establish a
-file's status, it remains visible rather than being treated as automatically allowed.
-The file navigator shows change counts and supports searching paths. Select
-one file to inspect its colored, numbered diff or complete Before, After and
-Raw views; `[` and `]` move between files. A shared directory appears once,
-with complete paths available for inspection. The queue, navigator and evidence
-panels scroll independently; smaller screens offer panel switches.
-Typed `lup: ignore[...]` comments are highlighted in the code and grouped by
-rule; existing exceptions appear only in the full-operation view. Expand a
-group for written reasons and occurrence links, or use `n` and `p` to jump
-between exceptions.
-
-Approve or decline one review with an optional note. Auto-advance opens the
-next pending request after a successful decision; turn it off to stay on the
-answered request. New arrivals do not move a selection already under review.
-Use `j` / `k` for next / previous request, `Shift+A` to approve, `Shift+D` to
-decline, `c` to open and focus the collapsed comment, and `?` for shortcut help.
-Decision buttons stay visible beneath the selected evidence. Shortcuts pause
-in text fields, and holding a decision key cannot answer another request.
-
-Use **Copy link** to share a request without sharing a credential. Links use
-`#review=<question-id>`; copied links also name the checkout to distinguish
-identical IDs. They open the exact pending or historical request,
-including in another tab of an already authorized browser. Back, forward, and
-changed links select the corresponding request. A missing ID stays selected
-while the dashboard watches for it; it never silently opens a different request.
-
-The decision is recorded in the
-same durable relay that the terminal commands use, so a browser and terminal
-answering concurrently cannot replace each other's answer. Session notification
-is best effort after the answer is saved. The browser can advance while the
-server completes delivery; a missing route or failed delivery does not erase
-the answer. Each browser answer retains a separate notification outcome
-in `.lup/review-notifications/`, bound to its question, fingerprint and answer
-timestamp. Answered requests show a compact status with expandable details:
-mail queued, native queue accepted, failed or unconfirmed. Interrupted attempts
-remain unconfirmed; diagnostics failures never undo the recorded approval.
-Native retries notify only a unique registered requester whose bound native
-session matches the request. Queue acceptance does not prove the agent read
-the message. A native-hook approval still requires the agent to retry the exact
-tool call. The dashboard never executes a reconstructed command.
-
-The server mints a capability for that invocation and puts it in the printed
-browser URL's fragment, which HTTP requests do not send to the server. The
-page removes the credential from the address and keeps it in local storage for
-that exact origin: scheme, hostname, and port. Tabs at that origin authenticate
-queue API requests with its bearer credential, so shared request links carry
-only review identity. The credential is never a cookie or read from stale
-session storage. A fresh launch link updates other open tabs through storage
-events; opening it in the same tab keeps the selected review and draft comment.
-If browser storage is blocked, the page explains that access is limited to the
-tab that opened the launch link. The page and its assets contain no credential.
-Restarting the server replaces the capability; reopen its printed launch link.
-Treat the full address as an operator credential and keep it out of agent
-messages. The server binds loopback, checks Host against DNS rebinding, and
-checks the origin of answer submissions. These controls protect the browser
-surface; they are not isolation against arbitrary processes running as the
-operator's user. The session's filesystem and process boundary remains part
-of the authority boundary.
-
-The terminal surface remains available: run `uv run lup-devtools review show
+The terminal answers every review: run `uv run lup-devtools review show
 <id>` from the indicated checkout, then `uv run lup-devtools review approve
 <id> --as operator` or `uv run lup-devtools review decline <id> --as
-operator` outside the agent session. Review answers and the dashboard server
-that mints browser review credentials are declared `operator_only` in the shell
-vocabulary; an escalation cannot grant the requester authority to answer
-itself. The file those verbs write is guarded the same way:
-`.lup/questions.jsonl`, and the claims under `.lup/review-claims` and
-`.lup/review-stage-claims` that spend an answer once, are protected roots. The
-hooks and the operator's commands write them from their own processes, so a
-session's own write — a row appended, a copy over the file, a claim retired —
-asks, because an approved row naming any other principal is what releases the
-retry. Nested command paths are declared with `ShellOperationRule.parents`,
+operator` outside the agent session. Review answers are declared
+`operator_only` in the shell vocabulary; an escalation cannot grant the
+requester authority to answer itself. The file those verbs write is guarded
+the same way: `.lup/questions.jsonl`, and the claims under
+`.lup/review-claims` and `.lup/review-stage-claims` that spend an answer once,
+are protected roots. The hooks and the operator's commands write them from
+their own processes, so a session's own write — a row appended, a copy over
+the file, a claim retired — asks, because an approved row naming any other
+principal is what releases the retry. Nested command paths are declared with
+`ShellOperationRule.parents`,
 and the deepest matching path decides.
 
 Approval releases one exact retry in the same session and directory.

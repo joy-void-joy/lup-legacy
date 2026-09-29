@@ -1445,45 +1445,25 @@ def create_dev_app(
             for move in unmapped:
                 typer.echo(f"  {move.spelled()}")
 
-    @migrate_app.command("pending")
-    def migrate_pending_cmd(
-        revision: Annotated[
-            str,
-            typer.Argument(help="Where the project stands, as a commit of this one"),
-        ],
-        repository: Annotated[
-            Path | None,
-            typer.Option(help="Upstream checkout holding the migration commits"),
-        ] = None,
-        as_json: Annotated[
-            bool,
-            typer.Option("--json", help="Render an installed-library report as JSON"),
+    @migrate_app.command("pyright-environment")
+    def migrate_pyright_environment_cmd(
+        dry_run: Annotated[
+            bool, typer.Option("--dry-run", help="Describe changes without writing")
         ] = False,
     ) -> None:
-        """What a project standing at that commit still owes, beyond the map.
+        """Retire unchanged scaffold Pyright environment defaults.
 
-        The declared residue: a signature that gained parameters, a refusal
-        that split. Read from every release's record and the pending window,
-        so a project crossing several releases hears each one's; a project
-        already past the commit that made a break has applied it, and is told
-        nothing.
+        Custom and partial selectors, inherited configurations, and a separate
+        pyrightconfig.json remain the project's own declarations.
         """
-        owed = migrations.unapplied(
-            migrations.MigrationRecord().declared(), revision, repository or Path.cwd()
-        )
-        if as_json:
-            output_json(
-                migrations.RenderedMigrations(
-                    count=len(owed), lines=migrations.rendered(owed)
-                )
-            )
+        changes = migrations.retire_pyright_environment(project_root(), dry_run=dry_run)
+        if not changes:
+            typer.echo("No unchanged scaffold Pyright environment defaults to retire.")
             return
-        if not owed:
-            typer.echo(f"nothing declared since {revision}")
-            return
-        typer.echo(f"{len(owed)} migration(s) since {revision}:")
-        for line in migrations.rendered(owed):
-            typer.echo(f"  {line}")
+        for change in changes:
+            typer.echo(f"{'Would change' if dry_run else 'Changed'}: {change}")
+
+    migrate_app.command("pending")(migrations.migrate_pending_cmd)
 
     @app.command("release")
     def release_cmd(

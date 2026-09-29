@@ -91,6 +91,53 @@ describe("review capability", () => {
 });
 
 describe("review stream", () => {
+  test("a stalled live stream expires and releases its network reader", async () => {
+    let cancelled = false;
+    globalThis.fetch = Object.assign(async () => new Response(new ReadableStream<Uint8Array>({
+      start(controller) { controller.enqueue(new TextEncoder().encode(`${JSON.stringify(snapshot)}\n`)); },
+      cancel() { cancelled = true; },
+    })), { preconnect() {} });
+    const reader = followReviews("secret", new AbortController().signal, 10);
+    expect((await reader.next()).value).toEqual(snapshot);
+    await expect(reader.next()).rejects.toThrow("The review stream stopped updating.");
+    expect(cancelled).toBe(true);
+  });
+
+  test("slow first snapshots are not repeatedly cancelled by the live heartbeat deadline", async () => {
+    globalThis.fetch = Object.assign(async () => new Response(new ReadableStream<Uint8Array>({
+      start(controller) {
+        setTimeout(() => {
+          controller.enqueue(new TextEncoder().encode(`${JSON.stringify(snapshot)}\n`));
+          controller.close();
+        }, 30);
+      },
+    })), { preconnect() {} });
+    const reader = followReviews("secret", new AbortController().signal, 5);
+    expect((await reader.next()).value).toEqual(snapshot);
+    expect((await reader.next()).done).toBe(true);
+  });
+
+  test("heartbeat records keep a live stream available and closing clears its watchdog", async () => {
+    let stream: ReadableStreamDefaultController<Uint8Array> | null = null;
+    let cancelled = false;
+    globalThis.fetch = Object.assign(async () => new Response(new ReadableStream<Uint8Array>({
+      start(controller) {
+        stream = controller;
+        controller.enqueue(new TextEncoder().encode(`${JSON.stringify(snapshot)}\n`));
+      },
+      cancel() { cancelled = true; },
+    })), { preconnect() {} });
+    const reader = followReviews("secret", new AbortController().signal, 100);
+    await reader.next();
+    const heartbeat = reader.next();
+    await new Promise<void>((resolve) => setTimeout(resolve, 10));
+    const sending = stream as ReadableStreamDefaultController<Uint8Array> | null;
+    sending?.enqueue(new TextEncoder().encode(`${JSON.stringify(snapshot)}\n`));
+    expect((await heartbeat).value).toEqual(snapshot);
+    await reader.return(undefined);
+    expect(cancelled).toBe(true);
+  });
+
   test("decodes records and UTF-8 across arbitrary byte boundaries", async () => {
     const wanted = { ...snapshot, errors: [{ root: "é/check", message: "Readable" }] };
     const encoded = new TextEncoder().encode(`${JSON.stringify(wanted)}\n\n${JSON.stringify(snapshot)}`);

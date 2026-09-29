@@ -50,6 +50,7 @@ from urllib.parse import unquote, urlparse
 import typer
 from pydantic import BaseModel, ValidationError
 
+from lup.devtools.launcher import project_python
 from lup.tools.lsp.client import Call, LspSession, lsp_session
 from lup.tools.lsp.replies import LOCATIONS
 from lup.harness.codescan.oracle import (
@@ -63,7 +64,7 @@ from lup.harness.codescan.oracle import (
     UnknownDeclaration,
 )
 from lup.policy.kernel.edit import name_position, nodes_of
-from lup.types import JsonValue
+from lup.types import JsonObject, JsonValue
 from lup.workspace.paths import project_root
 
 # lup: ignore[constant-declaration] — the binary pyright installs under
@@ -110,6 +111,14 @@ def langserver_path() -> Path | None:
         return beside
     located = shutil.which(SERVER_NAME)
     return Path(located) if located is not None else None
+
+
+def pyright_settings(root: Path) -> JsonObject:
+    """Select this checkout's interpreter, leaving explicit Pyright config intact."""
+    interpreter = project_python(root)
+    return (
+        {"python": {"pythonPath": str(interpreter)}} if interpreter is not None else {}
+    )
 
 
 class DeclarationSite(BaseModel, frozen=True):
@@ -521,7 +530,9 @@ class Shard(BaseModel, frozen=True):
         self, server: Path, root: Path, workspace: Workspace
     ) -> list[Declaration]:
         """Run one language-server session and answer this share in full."""
-        async with lsp_session(server, root, name=SERVER_NAME) as session:
+        async with lsp_session(
+            server, root, name=SERVER_NAME, settings=pyright_settings(root)
+        ) as session:
             return await Resolver(session, workspace).resolve(self.queries)
 
 

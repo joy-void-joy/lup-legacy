@@ -37,9 +37,11 @@ import shlex
 import tomllib
 from collections.abc import Collection
 from pathlib import Path
+from typing import Annotated
 
 import sh
 import tomlkit
+import typer
 from pydantic import BaseModel, ValidationError
 from semver import Version
 
@@ -47,6 +49,7 @@ from lup.devtools.dev.branches import detect_base_branch
 from lup.devtools.dev.preservation import Capability, Span
 from lup.devtools.dev.release import RELEASE_SUBJECT_PREFIX
 from lup.devtools.project import DevProject
+from lup.devtools.utils import output_json
 from lup.execution.shell import git
 from lup.workspace.history import parse_semver
 
@@ -328,6 +331,30 @@ class RenderedMigrations(BaseModel, frozen=True):
     lines: list[str]
 
 
+def retire_pyright_environment(root: Path, *, dry_run: bool = False) -> list[str]:
+    """Remove only the scaffold's unchanged environment selectors.
+
+    These defaults name a physical installation, while the project launcher
+    selects the interpreter used for a session. A customized or incomplete
+    pair belongs to the adopter. An extending configuration may deliberately
+    override its base with this pair, so it also stays untouched.
+    """
+    manifest = root / "pyproject.toml"
+    document = tomlkit.parse(manifest.read_text(encoding="utf-8"))
+    match document.unwrap():
+        case {"tool": {"pyright": {"venvPath": ".", "venv": ".venv"} as config}} if (
+            "extends" not in config
+        ):
+            settings = document["tool"]["pyright"]
+            del settings["venvPath"]
+            del settings["venv"]
+        case _:
+            return []
+    if not dry_run:
+        manifest.write_text(tomlkit.dumps(document), encoding="utf-8")
+    return ["pyproject.toml: remove scaffold Pyright venvPath='.' and venv='.venv'"]
+
+
 def unapplied(
     declared: list[Migration], revision: str, root: Path = Path()
 ) -> list[Migration]:
@@ -478,3 +505,37 @@ def rendered(declared: list[Migration]) -> list[str]:
     stale the next time one module moves.
     """
     return [line for migration in declared for line in migration.spelled()]
+
+
+def migrate_pending_cmd(
+    revision: Annotated[
+        str,
+        typer.Argument(help="Where the project stands, as a commit of this one"),
+    ],
+    repository: Annotated[
+        Path | None,
+        typer.Option(help="Upstream checkout holding the migration commits"),
+    ] = None,
+    as_json: Annotated[
+        bool,
+        typer.Option("--json", help="Render an installed-library report as JSON"),
+    ] = False,
+) -> None:
+    """What a project standing at that commit still owes, beyond the map.
+
+    The declared residue: a signature that gained parameters, a refusal
+    that split. Read from every release's record and the pending window,
+    so a project crossing several releases hears each one's; a project
+    already past the commit that made a break has applied it, and is told
+    nothing.
+    """
+    owed = unapplied(MigrationRecord().declared(), revision, repository or Path.cwd())
+    if as_json:
+        output_json(RenderedMigrations(count=len(owed), lines=rendered(owed)))
+        return
+    if not owed:
+        typer.echo(f"nothing declared since {revision}")
+        return
+    typer.echo(f"{len(owed)} migration(s) since {revision}:")
+    for line in rendered(owed):
+        typer.echo(f"  {line}")

@@ -431,13 +431,14 @@ def report_requirements(
     starts a container is a cost no session should pay to be told something
     that was equally true yesterday.
     """
-    # The host sentinel reaches a probe through this process's own environment
-    # rather than through an argument, because an exercise runs as a
-    # subprocess of this one and inherits it. Set here, at the one place the
-    # host roster runs, so a probe asking which side it is on has an answer
-    # before it is asked -- and so nothing else has to carry the value.
-    os.environ.update(sentinels.outside())  # lup: ignore[os-environ]
-    environ: EnvVars = dict(os.environ)  # lup: ignore[os-environ]
+    # The host sentinel reaches the probe observing it in that exercise's own
+    # environment, and never through this process's: the launcher is the
+    # operator's, and a sentinel left in its environment would make everything
+    # it runs afterwards read as a launched session.
+    environ: EnvVars = {
+        **os.environ,  # lup: ignore[os-environ]
+        **sentinels.outside(),
+    }
     # Pointed at this host's client here rather than declared as one, because
     # the declaration is hashed into the ownership digest and a container
     # client is a fact about the machine. This is the only place the

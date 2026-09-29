@@ -1,0 +1,12 @@
+subjects = ["setup conversation chatgpt", "setup conversation claude"]
+reason = """
+conversation authentication belongs to the conversation module, so declining \
+it also removes its browser login commands and imports"""
+
+[[steps]]
+instruction = """
+Replace `lup-devtools setup conversation <provider>` with `lup-devtools \
+conversation setup <provider>` in scripts and operator instructions. The \
+provider and --profile arguments are unchanged, and the login lands in the \
+same profile directory the retention commands read. Projects declining \
+conversation need no setup."""

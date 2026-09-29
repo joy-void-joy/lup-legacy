@@ -140,7 +140,7 @@ rebinding — where the browser treats this origin as the attacker's own, so the
 same-origin policy does not apply and CORS cannot help. The `Host` header is
 what still differs.
 
-Both halves live in `lup.web.loopback` and the setup dashboard keeps the same
+Both halves live in `lup.web.loopback` and the setup page keeps the same
 posture, because what a local surface is worth attacking is decided by what it
 writes: this one answers a resolver's questions and decides its review branch,
 and that one writes the user's credentials into `.env.local`. A surface that

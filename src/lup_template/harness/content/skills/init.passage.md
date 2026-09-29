@@ -527,7 +527,7 @@ Customize the interactive setup wizard for the domain's integrations:
 - Update the `INTEGRATIONS` list — each entry is an `Integration(name, env_keys, setup_func, status_func)`
 - Add corresponding `@app.command()` subcommands for individual integration setup
 - Update env var names in `config.py` to match what the setup wizard writes to `.env.local`
-- Verify `lup-devtools setup dashboard` exposes the same registry: declarative fields become browser forms, while bespoke flows link back to their CLI command
+- Verify the setup page (`lup-devtools setup serve`, which the dashboard shows as this repository's setup pane) exposes the same registry: declarative fields become browser forms, while bespoke flows link back to their CLI command
 
 The framework (env helpers, status table, mask, clipboard, browser open, wizard flow) is reusable — only the integration functions and registry need customization.
 

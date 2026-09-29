@@ -12,6 +12,7 @@ from lup.devtools.dashboard.reviews import (
     ReviewDecision,
     ReviewSnapshot,
 )
+from lup.devtools.dashboard.panes import SetupPane
 from lup.devtools.dashboard.serve import RowRequest, ScopeRequest, StepReply
 from lup.devtools.dashboard.wizard import StepAnswers, WizardView
 from lup.devtools.review.app import ReviewDetail
@@ -55,9 +56,9 @@ SUPERVISOR = Surface(
 
 DASHBOARD = Surface(
     name="dashboard",
-    models=[ReviewSnapshot, ReviewDetail, ReviewAnswer, ReviewDecision],
+    models=[ReviewSnapshot, ReviewDetail, ReviewAnswer, ReviewDecision, SetupPane],
 )
-"""The operator's dashboard: parked reviews, captured changes and exact decisions."""
+"""The operator's dashboard: parked reviews, captured changes, exact decisions, setup panes."""
 
 
 # lup: ignore[library-default] — the surfaces this library authors, so the

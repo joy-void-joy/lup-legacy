@@ -61,6 +61,12 @@ def sandbox_module() -> Module:
     return module()
 
 
+def dashboard_module() -> Module:
+    from lup.harness.content.modules.dashboard import module
+
+    return module()
+
+
 def setup_module() -> Module:
     from lup.harness.content.modules.setup import module
 
@@ -130,6 +136,7 @@ def library_modules(
         ModuleEntry(spec=specs.VERSION, build=lambda: version_module(layout)),
         ModuleEntry(spec=specs.OBSERVABILITY, build=observability_module),
         ModuleEntry(spec=specs.SANDBOX, build=sandbox_module),
+        ModuleEntry(spec=specs.DASHBOARD, build=dashboard_module),
         ModuleEntry(spec=specs.SETUP, build=setup_module),
         ModuleEntry(spec=specs.CONVERSATION, build=conversation_module),
         ModuleEntry(

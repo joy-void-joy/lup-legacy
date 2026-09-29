@@ -2506,6 +2506,7 @@
             "allow",
             "ask",
             "deny",
+            "defer",
             "unknown"
           ],
           "title": "Review Effect",
@@ -2703,7 +2704,7 @@
     },
     "ReviewRoot": {
       "additionalProperties": false,
-      "description": "One operator-selected checkout and its opaque browser address.",
+      "description": "One operator-selected checkout, its opaque browser address, and its repository.",
       "properties": {
         "id": {
           "title": "Id",
@@ -2712,11 +2713,23 @@
         "path": {
           "title": "Path",
           "type": "string"
+        },
+        "repository": {
+          "default": "",
+          "title": "Repository",
+          "type": "string"
+        },
+        "repository_name": {
+          "default": "",
+          "title": "Repository Name",
+          "type": "string"
         }
       },
       "required": [
         "id",
-        "path"
+        "path",
+        "repository",
+        "repository_name"
       ],
       "title": "ReviewRoot",
       "type": "object"
@@ -2805,6 +2818,11 @@
           "title": "Rule",
           "type": "string"
         },
+        "session": {
+          "default": "",
+          "title": "Session",
+          "type": "string"
+        },
         "state": {
           "title": "State",
           "type": "string"
@@ -2832,7 +2850,8 @@
         "operation",
         "rule",
         "created",
-        "answerable"
+        "answerable",
+        "session"
       ],
       "title": "ReviewSummary",
       "type": "object"
@@ -2859,6 +2878,7 @@
             "allow",
             "ask",
             "deny",
+            "defer",
             "unknown"
           ],
           "title": "Review Effect",
@@ -3297,6 +3317,36 @@
         "value"
       ],
       "title": "SessionId",
+      "type": "object"
+    },
+    "SetupPane": {
+      "additionalProperties": false,
+      "description": "One repository's setup page as the dashboard lists it.",
+      "properties": {
+        "key": {
+          "title": "Key",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "path": {
+          "title": "Path",
+          "type": "string"
+        },
+        "repository": {
+          "title": "Repository",
+          "type": "string"
+        }
+      },
+      "required": [
+        "key",
+        "repository",
+        "name",
+        "path"
+      ],
+      "title": "SetupPane",
       "type": "object"
     },
     "StepAnswers": {

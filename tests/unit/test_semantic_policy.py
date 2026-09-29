@@ -4154,6 +4154,8 @@ def test_a_tee_and_a_redirect_answer_alike_in_a_confined_session(
         "review approve abc --as operator",
         "review decline abc --as operator",
         "dashboard serve --no-open --root /example",
+        "dashboard open",
+        "dashboard stop",
         "harness policy-refresh",
     ],
 )

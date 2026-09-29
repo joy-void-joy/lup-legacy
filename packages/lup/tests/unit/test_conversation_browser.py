@@ -17,7 +17,6 @@ from lup.devtools.conversation import chatgpt
 from lup.devtools.conversation import selection
 from lup.providers.profile_tree import profile_directory
 from lup.providers.user_config import UserConfigFile
-from lup.devtools.setup import create_setup_app
 
 
 @pytest.mark.asyncio
@@ -255,22 +254,35 @@ async def test_download_refuses_with_the_explicit_setup_command(
     )
 
     assert attempts[0].destination is None
-    assert "uv run lup-devtools setup conversation chatgpt" in attempts[0].error
+    assert "uv run lup-devtools conversation setup chatgpt" in attempts[0].error
     interactive_login.assert_not_awaited()
 
 
-def test_only_setup_opens_an_interactive_conversation_login(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+@pytest.mark.parametrize(
+    ("provider", "url", "label"),
+    [
+        ("chatgpt", "https://chatgpt.com/", "ChatGPT"),
+        ("claude", "https://claude.ai/", "Claude"),
+    ],
+)
+def test_only_conversation_setup_opens_an_interactive_login(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    provider: str,
+    url: str,
+    label: str,
 ) -> None:
     interactive_login = AsyncMock()
     monkeypatch.setattr(conversation_app, "project_root", lambda: tmp_path)
     monkeypatch.setattr(conversation_app, "login", interactive_login)
 
-    result = CliRunner().invoke(create_setup_app([], None), ["conversation", "chatgpt"])
+    result = CliRunner().invoke(
+        conversation_app.create_conversation_app(), ["setup", provider]
+    )
 
     assert result.exit_code == 0
     interactive_login.assert_awaited_once_with(
-        tmp_path / ".lup" / "conversations" / "chatgpt-web",
-        "https://chatgpt.com/",
-        "ChatGPT",
+        tmp_path / ".lup" / "conversations" / f"{provider}-web",
+        url,
+        label,
     )

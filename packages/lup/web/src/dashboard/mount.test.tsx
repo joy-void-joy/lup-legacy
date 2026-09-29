@@ -11,7 +11,7 @@ const summary = {
   key: "tree-q1", root_id: root.id, id: "q1", state: "pending", requester: "codex-session",
   reason: "Review the complete replacement", operation: "apply_patch in /project", rule: "whole-file",
   title: "Update project/file.py", paths: ["project/file.py"], total_files: 1,
-  created: "2026-09-24T12:00:00Z", answerable: true,
+  created: "2026-09-24T12:00:00Z", answerable: true, session: "",
 };
 
 function review(key = "tree-q1") {
@@ -19,7 +19,7 @@ function review(key = "tree-q1") {
     summary: { ...summary, key, id: key === "tree-q1" ? "q1" : key },
     question: {
       fingerprint: `bound-${key}`, resumption: "native_retry", answer: null as null | { approved: boolean; principal: string; note: string },
-      operation: { tool: "apply_patch", payload: { patch: "Complete requested patch" } },
+      operation: { tool: "apply_patch", cwd: "/project", payload: { patch: "Complete requested patch" } },
     },
     files: [{ path: "/project/file.py", operation: "modify", before: "before\n", after: "after\n",
       review_effect: "ask" as ReviewFile["review_effect"], review_reason: "This file requires approval.",
@@ -46,26 +46,34 @@ describe("dashboard page", () => {
   let detail = review();
   let details = new Map<string, ReturnType<typeof review>>();
   let rows = [{ ...summary }];
+  let roots = [root];
   let answerStatus = 200;
   let answerWait: Promise<void> | null = null;
   let detailWait = new Map<string, Promise<void>>();
   let refreshStatus = 200;
+  let streamImmediately = true;
+  let issues: { root: string; message: string }[] = [];
   let stream: ReadableStreamDefaultController<Uint8Array> | null = null;
   let streamingAborted = false;
   let requests: { path: string; method: string; body: unknown; authorization: string | null }[] = [];
-  const queue = () => ({ roots: [root], reviews: rows, errors: [] });
+  let panes: { key: string; repository: string; name: string; path: string }[] = [];
+  const queue = () => ({ roots, reviews: rows, errors: issues });
 
   beforeEach(() => {
     detail = review();
     details = new Map([[detail.summary.key, detail]]);
     rows = [{ ...summary }];
+    roots = [root];
     answerStatus = 200;
     answerWait = null;
     detailWait = new Map();
     refreshStatus = 200;
+    streamImmediately = true;
+    issues = [];
     stream = null;
     streamingAborted = false;
     requests = [];
+    panes = [];
     sessionStorage.clear();
     localStorage.clear();
     window.history.replaceState(null, "", "/#token=browser-secret");
@@ -77,7 +85,7 @@ describe("dashboard page", () => {
       if (path === "api/events") return new Response(new ReadableStream<Uint8Array>({
         start(controller) {
           stream = controller;
-          controller.enqueue(new TextEncoder().encode(`${JSON.stringify(queue())}\n`));
+          if (streamImmediately) controller.enqueue(new TextEncoder().encode(`${JSON.stringify(queue())}\n`));
           options?.signal?.addEventListener("abort", () => {
             streamingAborted = true;
             controller.error(new DOMException("Stopped", "AbortError"));
@@ -85,6 +93,7 @@ describe("dashboard page", () => {
         },
       }));
       if (path === "api/reviews") return refreshStatus === 200 ? Response.json(queue()) : Response.json({ detail: "Refresh unavailable" }, { status: refreshStatus });
+      if (path === "api/setup") return Response.json(panes);
       for (const [key, captured] of details) {
         if (path === `api/reviews/${key}`) {
           await detailWait.get(key);
@@ -121,6 +130,98 @@ describe("dashboard page", () => {
     rows.push(item.summary);
     return item;
   }
+
+  test("watched queue, operation directory and foreign target paths are labelled separately", async () => {
+    const file = detail.files[0];
+    if (file === undefined) throw new Error("fixture lacks a file");
+    const checkout = "/projects/live-translator/tree/setup";
+    roots = [{ id: root.id, path: checkout }];
+    detail.question.operation.cwd = "/projects/live-translator/tree/setup";
+    file.path = "/projects/lup/tree/review-queue/packages/lup/review.py";
+    const page = await open();
+    expect(one(page.root, ".masthead .watched-checkout").textContent).toBe(`Watching queue ${checkout}`);
+    expect([...page.root.querySelectorAll(".request-location dt")].map((node) => node.textContent)).toEqual(["Queue checkout", "Operation directory"]);
+    expect([...page.root.querySelectorAll(".request-location code")].map((node) => node.textContent)).toEqual([checkout, detail.question.operation.cwd]);
+    expect(one(page.root, ".file-target").textContent).toBe(`Target file${file.path}`);
+    expect(one(page.root, ".queue-row .root-path").textContent).toBe(`Queue: ${checkout}`);
+    expect(labelled(page.root, "button", "Approve").closest(".request-inspection")).toBeNull();
+  });
+
+  test("multiple watched checkouts remain visible while selected request identity follows navigation", async () => {
+    const secondRoot = { id: "library", path: "/projects/lup/tree/feature" };
+    roots = [root, secondRoot];
+    const next = addRequest();
+    next.summary.root_id = secondRoot.id;
+    next.question.operation.cwd = "/projects/lup/tree/feature/packages/lup";
+    const page = await open();
+    expect(one(page.root, ".masthead .roots summary").textContent).toBe("Watching 2 checkout queues");
+    expect([...page.root.querySelectorAll(".masthead .roots code")].map((node) => node.textContent)).toEqual([root.path, secondRoot.path]);
+    expect(one(page.root, ".request-location code").textContent).toBe(root.path);
+    await keydown("j", "KeyJ");
+    await keyup("j", "KeyJ");
+    await until(() => page.root.querySelector(".request-location code")?.textContent === secondRoot.path, "the next request's queue checkout");
+    expect([...page.root.querySelectorAll(".request-location code")].map((node) => node.textContent)).toEqual([secondRoot.path, next.question.operation.cwd]);
+    expect(one(page.root, ".masthead .roots summary").textContent).toBe("Watching 2 checkout queues");
+  });
+
+  test("the queue groups reviews by repository, then by the session that asked, and moves in that order", async () => {
+    const other = { id: "other", path: "/projects/other/main", repository: "/projects/other/.git", repository_name: "other" };
+    roots = [{ ...root, repository: "/project/.git", repository_name: "project" }, other];
+    rows = [{ ...summary, session: "builder" }];
+    const second = addRequest("tree-q2");
+    second.summary.root_id = other.id;
+    second.summary.session = "reviewer";
+    const third = addRequest("tree-q3");
+    third.summary.session = "builder";
+    const page = await open();
+    expect([...page.root.querySelectorAll(".repository-name")].map((node) => node.textContent)).toEqual(["project (2)", "other (1)"]);
+    expect([...page.root.querySelectorAll(".session-name")].map((node) => node.textContent)).toEqual(["Asked by builder (2)", "Asked by reviewer (1)"]);
+    await keydown("j", "KeyJ");
+    await keyup("j", "KeyJ");
+    await until(() => page.root.querySelector(".queue-row.selected strong")?.closest(".session-group")?.querySelector(".session-name")?.textContent === "Asked by builder (2)"
+      && [...page.root.querySelectorAll(".queue-row")].indexOf(one(page.root, ".queue-row.selected")) === 1, "the second request of the first session");
+  });
+
+  test("the setup view lists each repository's pane and shows the one chosen", async () => {
+    panes = [
+      { key: "first", repository: "/project/.git", name: "project", path: "/setup/first/capability-one/" },
+      { key: "second", repository: "/projects/other/.git", name: "other", path: "/setup/second/capability-two/" },
+    ];
+    const page = await open();
+    await click(labelled(page.root, ".views button", "Setup"));
+    await until(() => page.root.querySelector(".setup-frame") !== null, "the setup pane");
+    expect(one<HTMLIFrameElement>(page.root, ".setup-frame").getAttribute("src")).toBe("/setup/first/capability-one/");
+    expect(requests.find((request) => request.path === "api/setup")?.authorization).toBe("Bearer browser-secret");
+    await click(labelled(page.root, ".setup-list button", "other"));
+    await until(() => page.root.querySelector(".setup-frame")?.getAttribute("src") === "/setup/second/capability-two/", "the second pane");
+    expect(one<HTMLIFrameElement>(page.root, ".setup-frame").title).toBe("Setup · other");
+    await click(labelled(page.root, ".views button", "Reviews"));
+    await until(() => page.root.querySelector(".decision") !== null, "the review again");
+  });
+
+  test("checkout and target identity preserve full literal paths in compact scrollable lines", async () => {
+    const file = detail.files[0];
+    if (file === undefined) throw new Error("fixture lacks a file");
+    const path = `/projects/100%done/日本語 #?%2F/${"nested/".repeat(50)}feature`;
+    roots = [{ id: root.id, path }];
+    detail.question.operation.cwd = path;
+    file.path = `${path}/source.py`;
+    const style = document.createElement("style");
+    style.textContent = await Bun.file(new URL("./styles.css", import.meta.url)).text();
+    document.head.append(style);
+    try {
+      const page = await open();
+      expect(one(page.root, ".watched-checkout code").textContent).toBe(path);
+      expect(one(page.root, ".file-target code").textContent).toBe(file.path);
+      for (const node of page.root.querySelectorAll<HTMLElement>(".watched-checkout code, .request-location code, .file-target code")) {
+        expect(getComputedStyle(node).whiteSpace).toBe("pre");
+        expect(getComputedStyle(node).overflow).toBe("auto");
+        expect(node.tabIndex).toBe(0);
+      }
+    } finally {
+      style.remove();
+    }
+  });
 
   test("an answered request retains notification failure diagnostics when reopened", async () => {
     detail.summary.state = "approved";
@@ -167,6 +268,122 @@ describe("dashboard page", () => {
     const page = await open();
     expect(requests.map((request) => request.path)).toEqual(["api/events", "api/reviews/tree-q1"]);
     expect(page.root.textContent).toContain("Live");
+  });
+
+  test("a slow first snapshot shows unknown counts instead of claiming the queue is empty", async () => {
+    streamImmediately = false;
+    shown = mount(<App />);
+    await until(() => requests.some((request) => request.path === "api/events"), "the connecting stream");
+    expect(shown.root.textContent).toContain("Pending (?)");
+    expect(shown.root.textContent).toContain("Loading review queue…");
+    expect(shown.root.textContent).not.toContain("Pending (0)");
+    expect(shown.root.textContent).not.toContain("Queue complete");
+    expect(shown.root.textContent).not.toContain("No requests waiting");
+    expect(shown.root.querySelector(".queue")?.getAttribute("aria-busy")).toBe("true");
+    await act(async () => stream?.enqueue(new TextEncoder().encode(`${JSON.stringify(queue())}\n`)));
+    await until(() => shown?.root.querySelector(".request h2") !== null, "the loaded request");
+    expect(shown.root.textContent).toContain("Pending (1)");
+    expect(shown.root.querySelector(".queue")?.getAttribute("aria-busy")).toBe("false");
+  });
+
+  test("a linked request is loading until its first snapshot resolves the identity", async () => {
+    streamImmediately = false;
+    window.history.replaceState(null, "", "/#token=browser-secret&review=q1");
+    shown = mount(<App />);
+    await until(() => requests.length > 0, "the linked stream");
+    expect(shown.root.textContent).toContain("Loading requested review…");
+    expect(shown.root.textContent).not.toContain("Request not found");
+    await act(async () => stream?.enqueue(new TextEncoder().encode(`${JSON.stringify(queue())}\n`)));
+    await until(() => shown?.root.querySelector(".request h2") !== null, "the exact linked request");
+  });
+
+  test("reconnecting an empty queue does not present its previous zero count as current", async () => {
+    rows = [];
+    shown = mount(<App />);
+    await until(() => shown?.root.textContent?.includes("Queue complete") ?? false, "the confirmed empty queue");
+    streamImmediately = false;
+    await click(labelled(shown.root, "button", "Reconnect"));
+    await until(() => requests.filter((request) => request.path === "api/events").length === 2, "the replacement stream");
+    expect(shown.root.textContent).toContain("Pending (?)");
+    expect(shown.root.textContent).toContain("Refreshing review queue…");
+    expect(shown.root.textContent).not.toContain("Queue complete");
+    expect(shown.root.textContent).not.toContain("No requests waiting");
+    await act(async () => stream?.enqueue(new TextEncoder().encode(`${JSON.stringify(queue())}\n`)));
+    await until(() => shown?.root.textContent?.includes("Queue complete") ?? false, "the refreshed empty queue");
+  });
+
+  test("failed checkout reads leave counts unknown while retaining known requests", async () => {
+    issues = [{ root: "/project/tree/other", message: "Queue could not be read" }];
+    const page = await open();
+    expect(page.root.textContent).toContain("Pending (?)");
+    expect(page.root.textContent).toContain("Some checkout queues are unavailable");
+    expect(page.root.querySelectorAll(".queue-row")).toHaveLength(1);
+    expect(page.root.textContent).toContain("Queue could not be read");
+    expect(page.root.textContent).not.toContain("Queue complete");
+    rows = [];
+    await act(async () => stream?.enqueue(new TextEncoder().encode(`${JSON.stringify(queue())}\n`)));
+    expect(page.root.textContent).not.toContain("No requests waiting");
+    expect(page.root.textContent).not.toContain("Request not found");
+    expect(page.root.textContent).toContain("Requested review unavailable");
+  });
+
+  test("a disconnected empty queue stays unknown during the automatic reconnect delay", async () => {
+    rows = [];
+    shown = mount(<App />);
+    await until(() => shown?.root.textContent?.includes("Queue complete") ?? false, "the empty snapshot");
+    await act(async () => stream?.error(new Error("Connection lost")));
+    await until(() => shown?.root.textContent?.includes("Reconnecting") ?? false, "the retry status");
+    expect(shown.root.textContent).toContain("Pending (?)");
+    expect(shown.root.textContent).not.toContain("Queue complete");
+    expect(shown.root.textContent).not.toContain("No requests waiting");
+  });
+
+  test("identical heartbeats do not cancel a request detail that is still loading", async () => {
+    let finish = () => {};
+    detailWait.set("tree-q1", new Promise<void>((resolve) => { finish = resolve; }));
+    shown = mount(<App />);
+    await until(() => requests.some((request) => request.path === "api/reviews/tree-q1"), "the detail fetch");
+    for (const _heartbeat of [1, 2]) {
+      await act(async () => stream?.enqueue(new TextEncoder().encode(`${JSON.stringify(queue())}\n`)));
+    }
+    expect(requests.filter((request) => request.path === "api/reviews/tree-q1")).toHaveLength(1);
+    await act(async () => finish());
+    await until(() => shown?.root.querySelector(".request h2") !== null, "the uninterrupted detail result");
+    detail.stale_reason = "The file changed while the queue was open.";
+    await act(async () => stream?.enqueue(new TextEncoder().encode(`${JSON.stringify(queue())}\n`)));
+    await until(() => shown?.root.textContent?.includes(detail.stale_reason) ?? false, "a completed request's next safety refresh");
+    expect(requests.filter((request) => request.path === "api/reviews/tree-q1")).toHaveLength(2);
+  });
+
+  test("opening a new deep link refreshes the queue instead of trusting an old empty snapshot", async () => {
+    rows = [];
+    shown = mount(<App />);
+    await until(() => shown?.root.textContent?.includes("Queue complete") ?? false, "the first empty snapshot");
+    const later = addRequest("tree-later");
+    streamImmediately = false;
+    await act(async () => { window.location.hash = "review=tree-later"; });
+    await until(() => requests.filter((request) => request.path === "api/events").length === 2, "a fresh stream for the direct link");
+    expect(shown.root.textContent).toContain("Loading requested review…");
+    expect(shown.root.textContent).not.toContain("Request not found");
+    await act(async () => stream?.enqueue(new TextEncoder().encode(`${JSON.stringify(queue())}\n`)));
+    await until(() => shown?.root.querySelector(".request .reason")?.textContent === later.summary.reason, "the freshly linked request");
+  });
+
+  test.each(["explicit", "automatic"])("%s reconnect releases a held detail fetch and ignores its late response", async (mode) => {
+    let finish = () => {};
+    detailWait.set("tree-q1", new Promise<void>((resolve) => { finish = resolve; }));
+    shown = mount(<App />);
+    await until(() => requests.some((request) => request.path === "api/reviews/tree-q1"), "the held detail request");
+    const fresh = review();
+    fresh.summary.title = "Fresh request after reconnect";
+    details.set("tree-q1", fresh);
+    detailWait.delete("tree-q1");
+    if (mode === "explicit") await click(labelled(shown.root, "button", "Reconnect"));
+    else await act(async () => stream?.error(new Error("Connection lost")));
+    await until(() => shown?.root.querySelector(".request h2")?.textContent === fresh.summary.title, "a fresh detail fetch after reconnect", 1000);
+    expect(requests.filter((request) => request.path === "api/reviews/tree-q1")).toHaveLength(2);
+    await act(async () => finish());
+    expect(shown.root.querySelector(".request h2")?.textContent).toBe(fresh.summary.title);
   });
 
   test("unchanged queue heartbeats still refresh selected file safety checks", async () => {
@@ -288,9 +505,12 @@ describe("dashboard page", () => {
     await comment("Preserve this draft.");
     await act(async () => stream?.error(new Error("Connection lost")));
     await until(() => page.root.textContent?.includes("Reconnecting") ?? false, "the reconnect status");
+    streamImmediately = false;
     await click(labelled(page.root, "button", "Reconnect"));
     await until(() => requests.filter((request) => request.path === "api/events").length === 2, "a fresh stream");
     expect(one<HTMLTextAreaElement>(page.root, "textarea").value).toBe("Preserve this draft.");
+    expect(page.root.textContent).toContain("Pending (?)");
+    await act(async () => stream?.enqueue(new TextEncoder().encode(`${JSON.stringify(queue())}\n`)));
     expect(page.root.textContent).toContain("Live");
   });
 
@@ -336,7 +556,7 @@ describe("dashboard page", () => {
     expect(one(page.root, ".file-heading > code").textContent).toBe("file.py");
     await click(one<HTMLElement>(page.root, ".file-list button"));
     expect(one(page.root, ".file-heading > code").textContent).toBe("nested/percent%#name.py");
-    expect(one(page.root, ".file-heading .file-prefix code").textContent).toBe(other.path);
+    expect(one(page.root, ".file-target code").textContent).toBe(other.path);
   });
 
   test.each(["/project/100%done/", "/project/literal%20/日本語 #?%2F/"])("file navigation preserves literal directory characters in %s", async (directory) => {
@@ -352,7 +572,7 @@ describe("dashboard page", () => {
     expect(one(page.root, ".file-list li:nth-child(2) code").getAttribute("title")).toBe(other.path);
     await click(one<HTMLElement>(page.root, ".file-list li:nth-child(2) button"));
     expect(one(page.root, ".file-heading > code").textContent).toBe("second%20.py");
-    expect(one(page.root, ".file-heading .file-prefix code").textContent).toBe(other.path);
+    expect(one(page.root, ".file-target code").textContent).toBe(other.path);
   });
 
   test("expanded inspection disclosures stay inside their scroll region and outside the decision footer", async () => {
@@ -584,6 +804,87 @@ describe("dashboard page", () => {
     expect([...page.root.querySelectorAll(".queue-files code")].map((node) => node.textContent)).toEqual(detail.summary.paths);
   });
 
+  test("captured native deferrals stay outside review counts and navigation while unknown files stay visible", async () => {
+    const asked = detail.files[0];
+    const automatic = review().files[0];
+    const deferred = review().files[0];
+    const unknown = review().files[0];
+    if (asked === undefined || automatic === undefined || deferred === undefined || unknown === undefined) throw new Error("fixture lacks files");
+    asked.path = "/project/asked.py";
+    automatic.path = "/project/automatic.py";
+    automatic.review_effect = "allow";
+    automatic.additions = 50;
+    deferred.path = "/project/native.py";
+    deferred.review_effect = "defer";
+    deferred.review_reason = "The native provider applies its own permission policy.";
+    deferred.additions = 100;
+    unknown.path = "/project/unknown.py";
+    unknown.review_effect = "unknown";
+    detail.files = [automatic, asked, deferred, unknown];
+    const page = await open();
+    expect(one(page.root, ".file-heading > code").textContent).toBe("asked.py");
+    expect([...page.root.querySelectorAll(".file-list code")].map((node) => node.textContent)).toEqual(["asked.py", "unknown.py"]);
+    expect(one(page.root, ".file-overview-heading .change-counts").textContent).toBe("+2 −2");
+    await keydown("]", "BracketRight");
+    await keyup("]", "BracketRight");
+    expect(one(page.root, ".file-heading > code").textContent).toBe("unknown.py");
+    expect(one(page.root, ".file-paging > span").textContent).toBe("2 / 2");
+    await keydown("[", "BracketLeft");
+    await keyup("[", "BracketLeft");
+    expect(one(page.root, ".file-heading > code").textContent).toBe("asked.py");
+    await click(labelled(page.root, "button", "Full operation (4)"));
+    expect(page.root.querySelectorAll(".file-list li")).toHaveLength(4);
+    const native = one<HTMLElement>(page.root, ".file-list li:nth-child(3) button");
+    expect(one(native, ".file-review-state").textContent).toBe("Native decision");
+    await click(native);
+    await click(one<HTMLElement>(page.root, ".file-review summary"));
+    expect(one(page.root, ".file-review p").textContent).toBe(`No Lup approval requested; the native provider decides. ${deferred.review_reason}`);
+    await click(labelled(page.root, "button", "Needs review (2)"));
+    expect(one(page.root, ".file-heading > code").textContent).toBe("asked.py");
+    expect(page.root.querySelectorAll(".file-list li")).toHaveLength(2);
+    await click(labelled(page.root, "button", "Approve"));
+    await until(() => requests.some((request) => request.method === "POST"), "the complete operation approval");
+    expect(requests.find((request) => request.method === "POST")?.body).toEqual({ approved: true, note: "", fingerprint: "bound-tree-q1" });
+  });
+
+  test("native-deferred exceptions stay out of review highlights and exception shortcuts", async () => {
+    const file = detail.files[0];
+    const added = file?.hunks[0]?.lines[1];
+    if (file === undefined || added === undefined) throw new Error("fixture lacks its change");
+    const asked = exception({ line: 1, rule_ids: ["asked-rule"], reason: "Needs review", introduced: true });
+    const deferred = exception({ line: 2, rule_ids: ["native-rule"], reason: "Native decision", introduced: true });
+    deferred.review_effect = "defer";
+    deferred.review_reason = "No Lup approval requested.";
+    file.suppressions = [asked, deferred];
+    added.text = "# lup: ignore[asked-rule]\n";
+    added.suppression = true;
+    file.hunks[0]?.lines.push({ kind: "add", text: "# lup: ignore[native-rule]\n", old_line: null, new_line: 2, suppression: true });
+    file.after = `${added.text}# lup: ignore[native-rule]\n`;
+    const page = await open();
+    expect(page.root.querySelectorAll(".diff-line.suppression")).toHaveLength(1);
+    await click(labelled(page.root, "button", "Exceptions (1)"));
+    expect([...page.root.querySelectorAll(".suppression-group summary code")].map((node) => node.textContent)).toEqual(["asked-rule"]);
+    await keydown("n", "KeyN");
+    await keyup("n", "KeyN");
+    const first = one(page.root, ".diff-line.suppression");
+    expect(document.activeElement).toBe(first);
+    await keydown("n", "KeyN");
+    await keyup("n", "KeyN");
+    expect(document.activeElement).toBe(first);
+    await click(labelled(page.root, "button", "After"));
+    expect(one(page.root, ".source-text").textContent).toBe(file.after);
+    expect(page.root.querySelectorAll(".source-line.suppression")).toHaveLength(1);
+    await click(labelled(page.root, "button", "Full operation (1)"));
+    expect([...page.root.querySelectorAll(".suppression-group summary code")].map((node) => node.textContent)).toEqual(["asked-rule", "native-rule"]);
+    expect(page.root.querySelectorAll(".diff-line.suppression")).toHaveLength(2);
+    expect(one(page.root, ".suppression-group:last-child .file-review-state").textContent).toBe("Native decision");
+    await keydown("n", "KeyN");
+    await keyup("n", "KeyN");
+    await keydown("n", "KeyN");
+    await keyup("n", "KeyN");
+    expect(document.activeElement).toBe(one(page.root, ".diff-line:last-child"));
+  });
+
   test("default exceptions show only the asked rules and leave existing directives unhighlighted", async () => {
     const file = detail.files[0];
     const added = file?.hunks[0]?.lines[1];
@@ -666,9 +967,8 @@ describe("dashboard page", () => {
     try {
       const page = await open();
       await click(one<HTMLElement>(page.root, ".file-review summary"));
-      await click(one<HTMLElement>(page.root, ".file-heading .file-prefix summary"));
       expect(one(page.root, ".file-review p").textContent).toBe(file.review_reason);
-      expect(one(page.root, ".file-heading .file-prefix code").textContent).toBe(file.path);
+      expect(one(page.root, ".file-target code").textContent).toBe(file.path);
       const layout = getComputedStyle(one(page.root, ".file-heading"));
       expect(layout.overflow).toBe("auto");
       expect(layout.maxHeight).not.toBe("none");
@@ -680,11 +980,11 @@ describe("dashboard page", () => {
     }
   });
 
-  test("command-level requests show the exact command when every file passes automatically", async () => {
+  test.each(["allow", "defer"] as const)("command-level requests retain the exact command when every file decision is %s", async (effect) => {
     const file = detail.files[0];
     if (file === undefined) throw new Error("fixture lacks a file");
-    file.review_effect = "allow";
-    file.review_reason = "The file edit passes; the command itself requires approval.";
+    file.review_effect = effect;
+    file.review_reason = "No Lup file approval is requested; the command itself requires approval.";
     detail.command = "sed -i 's/before/after/' /project/file.py";
     const page = await open();
     expect(page.root.querySelectorAll(".file-list li")).toHaveLength(0);

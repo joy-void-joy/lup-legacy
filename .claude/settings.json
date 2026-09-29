@@ -52,6 +52,7 @@
       "Read(//proc/*/environ)",
       "Read(//**/.env.local)",
       "Read(//**/.env.*.local)",
+      "Read(//**/lup/companions/*/dashboard/token)",
       "Read(~/.claude/.credentials.json)",
       "Read(//**/claude-config/.credentials.json)",
       "Read(~/.codex/auth.json)",

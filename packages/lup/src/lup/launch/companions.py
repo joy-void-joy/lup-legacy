@@ -249,6 +249,19 @@ class CompanionProcess(BaseModel, frozen=True):
     environment: EnvVars = {}
     """Variables set over the environment of the session that starts it."""
 
+    unset: list[str] = []
+    """Variables of that session's environment it must not inherit.
+
+    A companion outlives the session that happened to start it and serves
+    every other, so what names that one session — its identity, its
+    boundary — is no part of the companion's own environment.
+    """
+
+    def started_from(self, environment: EnvVars) -> EnvVars:
+        """The environment it runs with, started from a session's."""
+        merged = {**environment, **self.environment}
+        return {name: value for name, value in merged.items() if name not in self.unset}
+
 
 def zombie(pid: int) -> bool:
     """Whether ``pid`` has exited and waits on a parent that has not collected it."""
@@ -604,7 +617,7 @@ class SharedProcess(HostCompanion, ABC, frozen=True):
                 running = sh.Command(program)(
                     *arguments,
                     _cwd=str(command.cwd),
-                    _env={**launch.environment, **command.environment},
+                    _env=command.started_from(launch.environment),
                     _bg=True,
                     _bg_exc=False,
                     _new_session=True,
@@ -646,3 +659,50 @@ class SharedProcess(HostCompanion, ABC, frozen=True):
             running.process.stop(self.grace)
             running = None
         slot.write(state.model_copy(update={"leases": leases, "running": running}))
+
+    def standing(self, root: Path) -> "CompanionStanding":
+        """What serves for a session in ``root`` now, and how many launches hold it.
+
+        Read from outside any launch — an operator asking after it — so it
+        joins nothing and starts nothing.
+        """
+        slot = self.slot(root)
+        with slot.locked():
+            state = slot.read()
+        place = CompanionPlace(state=slot.directory, ports=state.given())
+        running = state.running
+        serving = (
+            running is not None and running.process.running() and self.answers(place)
+        )
+        return CompanionStanding(
+            place=place,
+            serving=running.process if serving and running is not None else None,
+            leases=sum(1 for lease in state.leases if lease.holder.running()),
+        )
+
+    def stopped(self, root: Path) -> bool:
+        """Stop what runs for ``root`` now, whether or not it is held.
+
+        The leases stay: the sessions holding it still hold it, and the next
+        launch finds nothing running and starts it again.
+        """
+        slot = self.slot(root)
+        with slot.locked():
+            state = slot.read()
+            running = state.running
+            if running is None:
+                return False
+            running.process.stop(self.grace)
+            slot.write(state.model_copy(update={"running": None}))
+        return True
+
+
+class CompanionStanding(BaseModel, frozen=True):
+    """One shared companion as an operator reads it: where it is, whether it serves."""
+
+    place: CompanionPlace
+    serving: LiveProcess | None = None
+    """The process serving, where one runs and every port it was given answers."""
+
+    leases: int = 0
+    """How many launches still running hold it."""
