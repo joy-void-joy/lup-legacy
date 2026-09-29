@@ -1182,13 +1182,15 @@ session, its subagents and its `-p` runs alike; and it parks every
 dashboard is held, is rendered as Claude's native permission request.
 
 A `human_only` ask never reaches a prompt, because a prompt is not a person.
-An autonomy mode answers a prompt on the session's behalf — on Claude Code
+An autonomy mode may answer a prompt on the session's behalf — on Claude Code
 2.1.263 an auto-mode classifier let a hook's ask for a ref deletion run with
-no prompt shown — and no field in the hook payload separates a prompt
-somebody saw from one a mode settled. No mode answers a refusal: a hook's
-`deny` held in a `-p` run under both the default and the auto mode on
-2.1.283. Observed execution is evidence of neither: it records that a call
-ran and confers no authority over the next.
+no prompt shown, while on 2.1.283 the same shape raised a prompt that held,
+unanswered, for a minute — and no field in the hook payload separates a
+prompt somebody saw from one a mode settled. What a mode does with a prompt
+moves between releases; a refusal it does not answer: a hook's `deny` held
+in a `-p` run under both the default and the auto mode on 2.1.283. Observed
+execution is evidence of neither: it records that a call ran and confers no
+authority over the next.
 
 The refusal is written for the agent, because a refusal normally means
 "change course" and an agent reading this one that way reshapes the call and

@@ -117,11 +117,11 @@ def test_a_reader_sees_the_standing_before_the_claim() -> None:
 def test_claude_s_auto_mode_claim_is_what_its_dispatcher_does(tmp_path: Path) -> None:
     """The row says a person's question never reaches a prompt; the hook is asked.
 
-    A hook's ask does not survive auto mode: on Claude Code 2.1.263 the mode
-    answered one with no prompt shown. So the row names a mechanism that does
-    not depend on the mode, and this runs the generated dispatcher under an
-    auto-mode payload to hold the row to it: the question is parked, the call
-    refused.
+    What auto mode does with a hook's ask moves between releases: on Claude
+    Code 2.1.263 the mode answered one with no prompt shown, and on 2.1.283
+    one held a prompt. So the row names a mechanism that does not depend on
+    the mode, and this runs the generated dispatcher under an auto-mode
+    payload to hold the row to it: the question is parked, the call refused.
     """
     fact = next(
         fact for fact in CLAUDE_DELIVERY if fact.guarantee == "ask_survives_auto_mode"

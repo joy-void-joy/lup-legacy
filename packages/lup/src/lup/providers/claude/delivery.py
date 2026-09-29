@@ -35,8 +35,10 @@ CLAUDE_DELIVERY: list[DeliveryFact] = [
             " gate, and a hook's refusal held in a `-p` run under both the"
             " default and the auto mode on 2.1.283; a prompt is not a human"
             " receipt -- an auto-mode classifier answered a hook's ask with no"
-            " prompt shown on 2.1.263 -- so only an ask a supervisor may"
-            " answer is left to the prompt, and only where no dashboard is held"
+            " prompt shown on 2.1.263, and on 2.1.283 the same shape raised a"
+            " prompt that held, unanswered, for 60 s, so what a mode does with"
+            " a prompt moves between releases -- and only an ask a supervisor"
+            " may answer is left to the prompt, where no dashboard is held"
         ),
     ),
     DeliveryFact(
