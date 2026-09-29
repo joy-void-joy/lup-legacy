@@ -4,16 +4,13 @@ This module handles:
 1. Saving session results to notes/traces/<version>/sessions/
 2. Loading past sessions for context or analysis (across versions)
 3. Tracking session metadata (submitted, outcome, etc.)
-4. Cross-version iteration over sessions, outputs, and trace logs
+4. Cross-version iteration over sessions and trace logs
 5. Version scope resolution with progressive semver fallback
 
 The feedback loop scripts read from this storage.
 
 All functions accept :class:`pydantic.BaseModel` instances and work
 with raw JSON dicts — no dependency on domain-specific models.
-The ``format_history_for_context`` function accepts a pluggable
-formatter so downstream projects can display domain-specific fields
-without modifying this module.
 
 Examples:
     Save and load session results::
@@ -131,29 +128,6 @@ class SessionRecord(BaseModel, extra="allow"):
     token_usage: Usage | None = None
     tool_metrics: MetricsSummary | None = None
     outcome: JsonValue = None
-
-    def markdown_summary(self) -> str:
-        """Format this session record as a markdown summary.
-
-        Extracts common fields that most domains will have. Downstream
-        projects can provide a custom formatter for domain-specific display.
-        """
-        stamp = self.timestamp or "unknown"
-        lines: list[str] = [f"### {stamp}"]
-
-        output = self.output
-        if "summary" in output:
-            lines.append(f"**Summary**: {output['summary']}")
-        if "confidence" in output:
-            confidence = output["confidence"]
-            if isinstance(confidence, (int, float)):
-                lines.append(f"**Confidence**: {confidence:.1%}")
-
-        if self.outcome:
-            lines.append(f"**Outcome**: {self.outcome}")
-
-        lines.append("")
-        return "\n".join(lines)
 
 
 def save_session(
@@ -311,35 +285,6 @@ def update_session_metadata(
         return False
 
 
-def format_history_for_context(
-    sessions: list[SessionRecord],
-    *,
-    max_sessions: int = 5,
-    formatter: Callable[[SessionRecord], str] | None = None,
-) -> str:
-    """Format past sessions as context for the agent.
-
-    Args:
-        sessions: List of session records (from :func:`load_session_records`).
-        max_sessions: Maximum number of sessions to include.
-        formatter: Callable that formats a single session record into
-            a markdown string. Uses a default formatter if ``None``.
-
-    Returns:
-        Markdown-formatted summary of past sessions.
-    """
-    if not sessions:
-        return ""
-
-    fmt = formatter or SessionRecord.markdown_summary
-
-    lines = ["## Past Sessions\n"]
-    for session in sessions[-max_sessions:]:
-        lines.append(fmt(session))
-
-    return "\n".join(lines)
-
-
 # -- Cross-version data discovery ---------------------------------------------
 
 
@@ -461,30 +406,6 @@ def iter_run_dirs(
 
     unique = {run.resolve(): run for run in reversed(list(found()))}
     yield from reversed(unique.values())
-
-
-def iter_output_dirs(
-    task_id: str | None = None,
-    version: str | None = None,
-) -> Iterator[Path]:
-    """Iterate over output directories across all (or filtered) versions.
-
-    Yields paths like: notes/traces/0.1.0/outputs/my-task/
-    """
-    ver_dirs = [traces_path() / version] if version else version_dirs()
-
-    for ver_dir in ver_dirs:
-        outputs_base = ver_dir / "outputs"
-        if not outputs_base.exists():
-            continue
-        if task_id is not None:
-            candidate = outputs_base / task_id
-            if candidate.exists() and candidate.is_dir():
-                yield candidate
-        else:
-            for d in outputs_base.iterdir():
-                if d.is_dir():
-                    yield d
 
 
 def iter_trace_log_files(

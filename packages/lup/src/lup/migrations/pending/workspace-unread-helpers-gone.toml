@@ -1,0 +1,32 @@
+subjects = [
+    "SessionRecord.markdown_summary",
+    "format_history_for_context",
+    "iter_output_dirs",
+    "ContentSafetyConfig.max_readable_size",
+    "Section",
+    "Section.heading",
+    "Section.text",
+    "HeadingStart",
+    "HeadingStart.line",
+    "HeadingStart.heading",
+    "split_on_headings",
+    "ensure_readable",
+]
+reason = """
+nothing formatted past sessions into context, walked the per-version \
+`outputs/` directories, or split an oversized file at its headings, so \
+those helpers and the size knob only the splitter read went; spilling an \
+oversized tool result is unchanged"""
+
+[[steps]]
+instruction = """
+Format past sessions yourself where you called \
+`format_history_for_context(sessions)`: `load_session_records(session_id)` \
+(lup.workspace.history) still returns them, oldest first."""
+
+[[steps]]
+instruction = """
+Drop `max_readable_size=` from `configure(...)` (lup.workspace.content_safety); \
+the other sizes keep their meaning. Where you split a large Markdown file \
+with `ensure_readable` or `split_on_headings`, split it in your own code."""
+command = ["uv", "run", "lup-devtools", "dev", "py", "text", "max_readable_size", "."]
