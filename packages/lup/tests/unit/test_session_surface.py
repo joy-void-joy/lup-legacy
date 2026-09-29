@@ -248,6 +248,19 @@ def test_layering_an_agent_keeps_its_own_and_adds_the_callers() -> None:
     assert agent.layers.correction is None
 
 
+def test_codex_corrects_a_turn_once_beneath_its_hooks() -> None:
+    """A correction laid on Codex moves beneath its hooks and leaves the outer layers."""
+    agent = Codex().layered(
+        SessionLayers(correction=CorrectionConfig(cycles=1), serialized=True)
+    )
+
+    assert agent.turn_corrections().correction == CorrectionConfig(cycles=1)
+    assert agent.session_layers().correction is None
+    assert agent.session_layers().serialized is True
+    assert Codex().turn_corrections().correction == CorrectionConfig()
+    assert Codex().turn_corrections().continuation is not None
+
+
 @pytest.mark.parametrize("agent", [Claude(), Codex()], ids=["claude", "codex"])
 def test_an_agent_is_declared_without_its_sdk(agent: Agent) -> None:
     """Declaring loads no provider SDK; opening a session is what does."""

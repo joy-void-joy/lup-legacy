@@ -30,6 +30,7 @@ from lup.sessions.events import SessionId, SubmissionDecision
 from lup.sessions.events import AnyTurnBlock, TurnNativeActivityBlock, TurnThinkingBlock
 from lup.sessions.events import TurnResult
 from pydantic import TypeAdapter
+from lup.sessions.layers import SessionLayers
 from lup.sessions.middleware import CorrectionConfig
 from lup.types import JsonObject, JsonValue
 
@@ -398,7 +399,9 @@ async def test_exhausted_validation_keeps_each_attempt_and_usage(
 ) -> None:
     server = scripted_codex
     server.answers.extend(["not JSON", '{"wrong":"shape"}'])
-    config = Codex(cwd=tmp_path, correction=CorrectionConfig(cycles=1))
+    config = Codex(
+        cwd=tmp_path, layers=SessionLayers(correction=CorrectionConfig(cycles=1))
+    )
     async with config.open() as session:
         with pytest.raises(StructuredOutputError) as raised:
             await session.ask("answer", Answer)
