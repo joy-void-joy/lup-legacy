@@ -583,7 +583,7 @@
     {
       "path": ".claude/plugins/lup/hooks/runtime/kernel/settlement.py",
       "category": "generated",
-      "sha256": "98f2c7b249bbdad4067dd2871080303c7ac0f3e3fd3fd6bf9ecff0a27455ae09",
+      "sha256": "20e077c3ec889079315e5d5ea1ca65314419490d40db32c397cbb394882f49e6",
       "semantic_id": "hooks.lup-policy",
       "executable": false
     },
