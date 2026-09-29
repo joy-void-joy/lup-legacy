@@ -36,7 +36,11 @@ from pydantic import BaseModel, Field
 from lup.execution.shell import git
 from lup.harness.requirements import SENTINEL_VARIABLE
 from lup.policy.boundary import BoundaryPreflight
-from lup.policy.snapshots import DestinationPolicy, RepositoryPolicyAuthority
+from lup.policy.snapshots import (
+    DestinationPolicy,
+    RepositoryPolicyAuthority,
+    snapshot_directory,
+)
 from lup.types import EnvVars
 
 # lup: ignore[constant-declaration] — an identity this repository defines, and
@@ -71,6 +75,11 @@ class LaunchSentinels(BaseModel, frozen=True):
         return {SENTINEL_VARIABLE: self.host, NONCE_VARIABLE: self.nonce}
 
 
+def ledger_directory(root: Path, ledger: str = ".lup/preflight") -> Path:
+    """Where every launch in this checkout writes its measurement, one file each."""
+    return root / ledger
+
+
 def ledger_path(root: Path, nonce: str, ledger: str = ".lup/preflight") -> Path:
     """Where this launch's measurement is written, named for the launch.
 
@@ -80,7 +89,41 @@ def ledger_path(root: Path, nonce: str, ledger: str = ".lup/preflight") -> Path:
     same class of wrong answer as an inherited variable, arrived at from the
     other direction.
     """
-    return root / ledger / f"{nonce}.json"
+    return ledger_directory(root, ledger) / f"{nonce}.json"
+
+
+def mount_table(root: Path, table: str = ".lup/boundary.json") -> Path:
+    """Where a contained launch writes the mount table its gate explains refusals from."""
+    return root / table
+
+
+def launch_record(root: Path) -> list[Path]:
+    """What a launch writes under ``.lup/`` for its session's gates to believe, made to exist.
+
+    The measurement ledger, the destination policies a launch accepted, and
+    the mount table. Each is written on the host -- by the launcher, or by
+    ``harness policy-refresh`` from an operator's terminal -- and only read
+    inside, by the hooks: which boundary this session stands behind, which
+    policy judges a destination repository, why a write was refused. A
+    session that could write them could copy in a ledger naming a boundary
+    of its own, so a container holds them read-only; nothing a session
+    legitimately does writes them.
+
+    Beside them and deliberately not held, each with a writer inside the
+    session: the question relay and the review claims the hooks post and
+    spend, the approvals record they note what ran in -- observations that
+    grant nothing -- and the corpora and counters the hooks keep.
+
+    Made to exist here, because a bind whose source is missing refuses the
+    whole container: both directories, and the table's file, left as it
+    stands where there is one.
+    """
+    directories = [ledger_directory(root), snapshot_directory(root)]
+    for directory in directories:
+        directory.mkdir(parents=True, exist_ok=True)
+    table = mount_table(root)
+    table.touch(exist_ok=True)
+    return [*directories, table]
 
 
 def record_preflight(
@@ -171,8 +214,15 @@ def retire_mount_table(root: Path, ledger: str = ".lup/boundary.json") -> None:
     Its own docstring already names staleness as the hazard and per-launch
     rewriting as the answer -- this is the half of that answer the posture
     with no table to write was missing.
+
+    Emptied where it stands rather than removed, since a contained session
+    in this checkout holds the file read-only by its inode, and a file
+    bind is detached when the host replaces or unlinks the file under it.
+    An empty table reads as none.
     """
-    (root / ledger).unlink(missing_ok=True)
+    table = mount_table(root, ledger)
+    if table.is_file():
+        table.write_text("", encoding="utf-8")
 
 
 def release_ledger(root: Path, nonce: str) -> None:
@@ -199,7 +249,7 @@ def sweep_ledgers(root: Path, older_than: timedelta = timedelta(days=7)) -> int:
     somebody is still using, which is the property that makes sweeping safe to
     do on the way in.
     """
-    directory = root / ".lup" / "preflight"
+    directory = ledger_directory(root)
     if not directory.is_dir():
         return 0
     cutoff = datetime.now(UTC) - older_than

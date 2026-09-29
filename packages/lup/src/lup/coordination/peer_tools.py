@@ -17,14 +17,22 @@ be never. A sender told "sent" cannot tell those apart, so nothing here says
 """
 
 import asyncio
+import os
 from pathlib import Path
 
 from pydantic import BaseModel, Field
 from pydantic.json_schema import SkipJsonSchema
 
 from lup.channels.models import Door
+from lup.coordination.bare.runtime import (
+    Runtime,
+    process_scope,
+    runtime_alive,
+    runtime_of,
+    same_runtime,
+)
 from lup.coordination.identity import NameTakenError, member_ref
-from lup.coordination.pulse import Pulse
+from lup.coordination.pulse import Pulse, PulseHold
 from lup.coordination.refs import ActorRef
 from lup.coordination.repository import (
     PeerDepartedError,
@@ -32,28 +40,48 @@ from lup.coordination.repository import (
     RepositoryPeers,
     nested,
 )
-from lup.coordination.bare.store import CALLER_FIELD, MEMBERS_DIR, Caller
 from lup.coordination.bare.scope import execution_scope
+from lup.coordination.bare.store import (
+    CALLER_FIELD,
+    MEMBERS_DIR,
+    Caller,
+    adopt,
+    depart,
+    named_runtime,
+    pulse_path,
+    session_actor,
+)
 from lup.coordination.roster import Delivery, RosterMember
 from lup.coordination.wake import WakePath
 from lup.tools.mcp import LupMcpTool, ServerCompanion, ToolError, lup_tool
 
 
 class RosterPulse(ServerCompanion, frozen=True):
-    """This session's pulse, beaten for as long as its tool server serves.
+    """This session's pulse, beaten while its runtime runs and this server answers for it.
 
-    The server is started when the session opens and stopped when it ends,
-    however that ending comes, so its lifetime is the session's, and a beat
-    every interval is what lets every other process read that. Each tick
-    beats its own row before sweeping, so a delayed owner preserves its bound
-    route while every other row whose pulse stopped is retired on the record
-    by whichever session is up rather than by the one that died; then it
-    joins, which the roster's own idempotence makes free while the row is
-    standing and is what puts it back after a finish the session outlived —
-    a cleared conversation, a rewound one, a sweep that ran while this
-    server was stalled. A retained binding survives that rejoin only when its
-    owner, worktree and execution boundary still match. A session that really
-    ended writes its finish and stops ticking, so that finish stands.
+    A server's lifetime is not its session's. It runs until its input
+    closes, which a runtime killed outright does at once, and one runtime
+    can start several for a session — Codex starts one per conversation,
+    and keeps each after its subagent stops. A runtime started from the
+    session's own shell inherits the session's id and starts servers of its
+    own, which can outlive the session. So a beat answers for the runtime
+    rather than for this process: the row names the runtime it answers for,
+    this server beats only for the row naming its own, and only while
+    holding the session's pulse, which one server at a time does. Each tick
+    asks the runtime first; one that has stopped ends the row, saying so,
+    and the pulse with it — and so does this server stopping after its
+    runtime went, which is how a killed runtime's row ends within a beat.
+
+    A holding tick beats its own row first, so a delayed owner is not the
+    stale row its own sweep retires, then sweeps, so every row whose session
+    stopped is retired on the record by whichever session is up rather than
+    by the one that died; then it joins, which the roster's own idempotence
+    makes free while the row is standing and is what puts it back after a
+    finish the runtime outlived — a cleared conversation, a rewound one, a
+    sweep another session ran while this server was stalled. The native
+    route this session's hooks bound survives that rejoin only while its
+    owner, worktree and execution boundary still match. A departure written
+    under another runtime stands.
 
     Nothing is written where no session has ever joined: a beat or a sweep
     there would create the store, and a session that never coordinates must
@@ -67,6 +95,13 @@ class RosterPulse(ServerCompanion, frozen=True):
     member_id: str
     pulse: Pulse = Pulse()
     wake: WakePath = WakePath()
+    runtime: Runtime = Field(default_factory=lambda: runtime_of(os.getpid()))
+    """The process this server answers for: this one, unless a runtime started it.
+
+    A server a runtime started over stdio is handed that runtime, read off
+    its input before anything else read it; one hosted in the process that
+    opened its session answers for that process, which it cannot outlive.
+    """
 
     def rejoin_wake(self, previous: RosterMember | None) -> WakePath:
         """Keep this owner's retained binding only inside its original boundary."""
@@ -92,20 +127,61 @@ class RosterPulse(ServerCompanion, frozen=True):
 
     async def run(self) -> None:
         peers = RepositoryPeers(self.root, pulse=self.pulse)
-        members = peers.root / MEMBERS_DIR
-        while True:
-            if members.is_dir():
-                peers.beat(self.member_id)
-                wake = self.rejoin_wake(peers.row(self.member_id))
-                peers.sweep(by=member_ref(self.member_id))
-                peers.join(
-                    self.member_id,
-                    self.root,
-                    delivery=Delivery.HOOK,
-                    wake=wake,
-                )
-                peers.beat(self.member_id)
-            await asyncio.sleep(self.pulse.interval_seconds)
+        member = session_actor(self.member_id)
+        hold = PulseHold(pulse_path(peers.root, member))
+        try:
+            while self.beaten(peers, hold):
+                await asyncio.sleep(self.pulse.interval_seconds)
+        finally:
+            if hold.held and runtime_alive(self.runtime, process_scope()) is False:
+                depart(peers.root, member, error="its runtime stopped")
+            hold.release()
+
+    def beaten(self, peers: RepositoryPeers, hold: PulseHold) -> bool:
+        """One tick, saying whether there is another: none once the runtime has stopped."""
+        scope = process_scope()
+        if runtime_alive(self.runtime, scope) is False:
+            return False
+        member = session_actor(self.member_id)
+        if not (peers.root / MEMBERS_DIR).is_dir():
+            return True
+        if not self.owed(named_runtime(peers.root, member), scope, hold):
+            hold.release()
+            return True
+        if not hold.take():
+            return True
+        peers.beat(self.member_id)
+        wake = self.rejoin_wake(peers.row(self.member_id))
+        peers.sweep(by=member_ref(self.member_id))
+        peers.join(self.member_id, self.root, delivery=Delivery.HOOK, wake=wake)
+        adopt(peers.root, member, self.runtime)
+        peers.beat(self.member_id)
+        return True
+
+    def owed(self, named: Runtime, scope: str, hold: PulseHold) -> bool:
+        """Whether the row naming *named* is this server's to answer for.
+
+        Its own runtime's, or nobody's: a row naming none, or naming a runtime
+        that had stopped before this server met it — the one a runtime
+        resuming the session under its id succeeds, which the sweep retires
+        before this server joins again. A row naming a live runtime other than
+        this server's is that runtime's; a server that meets one cedes the
+        session for good, being a runtime started from that session's shell
+        and carrying its id. One named where this server cannot ask is left
+        alone.
+        """
+        if hold.ceded:
+            return False
+        if not named or same_runtime(named, self.runtime):
+            return True
+        match runtime_alive(named, scope):
+            case True:
+                hold.ceded = True
+                return False
+            case False:
+                return True
+            case None:
+                return False
 
 
 class Called(BaseModel):
@@ -227,8 +303,12 @@ def create_peer_tools(
     worktree: Path,
     wake: WakePath = WakePath(),
     door: Door = Door.AGENT,
+    runtime: Runtime | None = None,
 ) -> list[LupMcpTool]:
     """The repository verbs, bound to one roster and one session's identity.
+
+    *runtime* is the process the session is, which a row these verbs put down
+    names, and this process where none is given.
 
     The identity is bound here rather than taken as an argument for the reason
     a resolver worker's concern is: a session that could name itself in a call
@@ -242,6 +322,8 @@ def create_peer_tools(
     It reaches only rows beneath this session: a subagent's row is keyed under
     the session it runs in, so no spelling of a caller names somebody else's.
     """
+
+    answering = runtime or runtime_of(os.getpid())
 
     def present(caller: Caller) -> ActorRef:
         """Put this session, and the subagent calling where one is, on the roster.
@@ -262,8 +344,14 @@ def create_peer_tools(
         ``HOOK`` because this session has the plugin carrying the delivery
         hook. What a member says about itself is what a sender is told, so
         claiming the weaker mode here would understate what a message does.
+
+        The row names this session's runtime as it goes down: in a store
+        nobody had joined, a session's first call comes before its pulse's
+        first beat, and a row naming nobody would be taken by whichever
+        runtime carrying the same id beat first.
         """
         peers.join(member_id, worktree, delivery=Delivery.HOOK, wake=wake)
+        adopt(peers.root, session_actor(member_id), answering)
         if not caller.get("agent_id"):
             return member_ref(member_id)
         return peers.join_subagent(member_id, caller)

@@ -111,10 +111,10 @@ A rail without attribution is worse than no rail.
 """
 
 import posixpath
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 import sh
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from lup.execution.shell import git
 
@@ -161,6 +161,50 @@ class Lease(BaseModel, frozen=True):
     def writable_at(self, path: Path) -> bool:
         """Whether this lease lets a path be written."""
         return self.answers_from(path) in self.writable
+
+
+class NestedRepository(BaseModel, frozen=True, extra="forbid"):
+    """A repository kept inside the checkout, whose git state the host still runs.
+
+    The checkout's own ``config`` and ``hooks/`` are held because the host's
+    next git command runs what they name. A repository inside the checkout
+    -- a directory of generated work with its own history, say -- keeps the
+    same two under the checkout's writable mount, and the operator runs git
+    there too, so it is held the same way: the two bound read-only, as a
+    plain checkout's are, and its pointers verified on the host at every
+    launch, as every worktree's are -- a ``commondir`` planted there would
+    have git read them from elsewhere.
+
+    Declared rather than found by scanning, for three reasons. A scan reads
+    a tree the session writes, so the session would choose what its next
+    launch mounts: a thousand planted ``.git`` directories is a launch that
+    cannot start, the argument that makes :class:`AccessibleRoot` a
+    declaration. A scan holds a repository from the launch *after* it
+    appears, so the session that made it wrote its configuration unheld; a
+    declared one is created by the host first where ``create`` asks. And a
+    scan walks every ignored directory at every launch for an answer the
+    project already has.
+    """
+
+    path: PurePosixPath = Field(description="Where it sits, relative to the checkout")
+    create: bool = Field(
+        default=False,
+        description=(
+            "Initialize it on the host when a launch finds it absent, so no "
+            "session is ever the one that wrote its configuration"
+        ),
+    )
+
+    @field_validator("path")
+    @classmethod
+    def inside_the_checkout(cls, value: PurePosixPath) -> PurePosixPath:
+        """Refuse a path naming the checkout itself or reaching outside it."""
+        if value.is_absolute() or ".." in value.parts or value == PurePosixPath("."):
+            raise ValueError(
+                f"nested repository {value.as_posix()!r} must name a directory "
+                "inside the checkout, relative to its root"
+            )
+        return value
 
 
 class AccessibleRoot(BaseModel, frozen=True):
@@ -248,6 +292,46 @@ def resolved(writable: dict[Path, str], read_only: dict[Path, str]) -> Lease:
         }
 
     return Lease(writable=stated_once(writable), read_only=stated_once(settled))
+
+
+def rooted(lease: Lease) -> Lease:
+    """This lease with every hold kept where it is, not only kept unwritable.
+
+    A read-only mount refuses writes to what it covers. It does not stop the
+    directory *holding* it from being renamed, and a directory with mounts
+    beneath it can be: measured, ``mv .lup .lup2`` succeeded with
+    ``.lup/preflight`` held inside, and nothing then stopped a new
+    ``.lup/preflight`` being written where the host reads it. So every
+    directory between a hold and the writable mount enclosing it is bound
+    writable over itself -- a mount point cannot be renamed or removed from
+    inside -- and each hold is then reachable only by the path the host
+    reads it by.
+
+    Stated after the lease is settled, and never settled again: :func:`resolved`
+    drops a mount an enclosing one of the same mode already makes, which is
+    exactly what a pin is on purpose. Nothing is pinned inside a read-only
+    mount, where nothing can be renamed anyway, so this never makes a path
+    writable that was not; a lease pinned already gains nothing more.
+    """
+    mounts = [*lease.writable, *lease.read_only]
+
+    def between(held: Path) -> list[Path]:
+        """The directories from the mount enclosing ``held`` down to its parent."""
+        enclosing = max(
+            (mount for mount in mounts if mount in held.parents),
+            key=lambda mount: len(mount.parts),
+            default=None,
+        )
+        if enclosing is None or enclosing not in lease.writable:
+            return []
+        return [
+            directory for directory in held.parents if enclosing in directory.parents
+        ]
+
+    pins = same_path(
+        [directory for held in lease.read_only for directory in between(held)]
+    )
+    return Lease(writable={**lease.writable, **pins}, read_only=lease.read_only)
 
 
 def merged(leases: list[Lease]) -> Lease:

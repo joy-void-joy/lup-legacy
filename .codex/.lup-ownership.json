@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "generator_version": "0.2.0",
-  "source_digest": "2213da791a4314bb4281c7395e243052941de88271435fdb76e46668076d9bc1",
+  "source_digest": "5a46b8bf308bb86d4ddd7ae8c03dca354575a10c1feae7b3d94ec4ff3a545b30",
   "target_requirements": [
     "codex-cli>=0.144"
   ],
@@ -126,6 +126,13 @@
       "executable": false
     },
     {
+      "path": ".codex/plugins/lup/hooks/runtime/coordination/runtime.py",
+      "category": "generated",
+      "sha256": "f133a1db3862a5fdd670e5d007b1d646ddf2848b78ec6e6bc5aeb5404e5ec982",
+      "semantic_id": "hooks.lup-policy",
+      "executable": false
+    },
+    {
       "path": ".codex/plugins/lup/hooks/runtime/coordination/scope.py",
       "category": "generated",
       "sha256": "1059abedb85e3bf4271464ec40aaa9ded15883e1760ba24c929c9e4a5579c611",
@@ -135,7 +142,7 @@
     {
       "path": ".codex/plugins/lup/hooks/runtime/coordination/store.py",
       "category": "generated",
-      "sha256": "2b8e3c741c8a512b6e90c50302084044ceb1e8a904f7394e0b39bb6a86447ee8",
+      "sha256": "1bb42408c2167e488e5ca7851c1d7afc074058496275f0ad9ddadaa4afcf35c2",
       "semantic_id": "hooks.lup-policy",
       "executable": false
     },
@@ -443,7 +450,7 @@
     {
       "path": ".codex/plugins/lup/hooks/scripts/policy.py",
       "category": "generated",
-      "sha256": "a946fccbdc289f55aee8011fac55090bd53457f12c925fb3acab327b08801cf8",
+      "sha256": "be627e78fd14b2ba7c6d843ea92e5784e297e354dbae904ec02d784571d3c1bc",
       "semantic_id": "hooks.lup-policy",
       "executable": true
     },
@@ -457,7 +464,7 @@
     {
       "path": ".codex/plugins/lup/hooks/scripts/policy_evaluator.py",
       "category": "generated",
-      "sha256": "0252dbc205b428552fd32498776add2096fcdda52a4d330fd86292ab751addba",
+      "sha256": "8c36bd06c3c76305749b50fdcb49364013ce37f3284ec929c194a7015b376271",
       "semantic_id": "hooks.lup-policy",
       "executable": false
     },
@@ -625,7 +632,7 @@
     {
       "path": ".codex/plugins/lup/skills/land/SKILL.md",
       "category": "generated",
-      "sha256": "4266499a497e10eebf8a7385dc2a4549f5ac867fc57894cbe4fd95743abc8b6a",
+      "sha256": "5a7f0a3255a182fb4b078a2e58647cf10f7540ef692ec42b2576f5a714e48db3",
       "semantic_id": "skill.land",
       "executable": false
     },
@@ -660,7 +667,7 @@
     {
       "path": ".codex/plugins/lup/skills/rebase/SKILL.md",
       "category": "generated",
-      "sha256": "128d275d7d57cacaebde6936d0ba6add3a4cab645b5cbe5387305399d7bc11f6",
+      "sha256": "0263adabaa9386a2299d3206be31b4f771de07ac36aaf74478c0ea993da7e8bf",
       "semantic_id": "skill.rebase",
       "executable": false
     },

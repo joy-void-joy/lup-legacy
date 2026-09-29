@@ -37,6 +37,7 @@ from lup.policy.models import (
 from lup.types import JsonObject
 from lup_template.harness.catalog import declared_hook_set
 from lup_template.harness.composition import TARGETS
+from tests.unit.held import held_argv, holding
 from tests.unit.native import codex_denial
 from tests.unit.repos import commit_file, initialized_repo
 
@@ -60,6 +61,7 @@ class Session:
         self.git = initialized_repo(self.checkout, base / "no-hooks")
         commit_file(self.git, self.checkout, "README.md", "checkout\n", "chore: base")
         self.ledger = base / "launch"
+        self.held = False
         self.environment = {
             name: value
             for name, value in os.environ.items()
@@ -71,7 +73,13 @@ class Session:
         }
 
     def launched(self, writable: list[str], contained: bool) -> None:
-        """Record what this launch measured, as the launcher writes it."""
+        """Record what this launch measured, as the launcher writes it.
+
+        A contained launch's record is then read through a read-only mount of
+        its directory, as that launch holds it: the dispatchers for real, in a
+        namespace of their own, and this process by the held fixture.
+        """
+        self.held = contained
         record = self.ledger / ".lup" / "preflight" / f"{NONCE}.json"
         record.parent.mkdir(parents=True, exist_ok=True)
         record.write_text(
@@ -99,10 +107,17 @@ class Session:
         and answers with a structured refusal naming who can release it, which
         is the same question put where Codex can carry one.
         """
-        result = sh.Command(sys.executable)(
+        dispatching = [
+            sys.executable,
             "-I",
             "-S",
             str(script or DISPATCHERS[runtime].resolve()),
+        ]
+        if self.held:
+            holding()
+            dispatching = held_argv(self.ledger / ".lup" / "preflight", dispatching)
+        result = sh.Command(dispatching[0])(
+            *dispatching[1:],
             _in=json.dumps(
                 {
                     "session_id": "parity",
@@ -232,6 +247,7 @@ def test_a_write_the_launch_did_not_mount_is_judged_alike_everywhere(
     leased: bool,
     contained: bool,
     effect: str,
+    launch_record_held: None,
 ) -> None:
     """The lease is read from the ledger the launch wrote, by every path."""
     session.launched(

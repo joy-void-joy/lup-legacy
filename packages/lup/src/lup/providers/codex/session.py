@@ -7,8 +7,9 @@ through the same execution boundary the session itself runs behind.
 """
 
 import asyncio
+import sys
 from collections.abc import Callable
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 import sh
 from rich.prompt import Confirm
@@ -18,7 +19,8 @@ from lup.launch.config_volume import named_file
 from lup.launch.container import read_config_home
 from lup.providers.codex.login import CODEX_LOGIN
 from lup.providers.codex.account import read_account
-from lup.providers.codex.install import install_codex_plugin
+from lup.providers.codex.harness_runtime import revision_snapshot
+from lup.providers.codex.install import PreparedPlugin, install_codex_plugin
 from lup.providers.codex.marketplace import CodexMarketplace
 from lup.providers.codex.profile import CodexAccountSettings
 from lup.harness.image import Image
@@ -188,7 +190,7 @@ def carry_codex_home(
         ).say()
 
 
-# lup: defer: a contained Codex session runs its hooks from the revision
+# lup: solved: a contained Codex session runs its hooks from the revision
 # installed here, inside its home volume, which the session can write; the
 # Claude plugin is held with the generated trees, this copy is not. Hold the
 # installed revision read-only for the session (a volume sub-mount: Docker's
@@ -203,27 +205,67 @@ def prepare_codex_plugin(
     force: bool = False,
     trusted: bool = False,
     settings: CodexAccountSettings | None = None,
-) -> None:
-    """Prepare the home where the launch runs, through its own execution boundary."""
+) -> PreparedPlugin:
+    """Prepare the home where the launch runs, through its own execution boundary.
+
+    Answers with the revision installed, by its path in the home: read back
+    from the preparation as JSON where it ran inside the container, since
+    only it knows the name the home's own cache made it take. What it says
+    along the way reaches the terminal as it is said.
+    """
     if not prefix:
         if settings is not None:
             settings.install(
                 home, enforce_policy=CodexMarketplace.declared(root) is not None
             )
-        install_codex_plugin(root, home, force, trusted)
-        return
+        return install_codex_plugin(root, home, force, trusted)
     assert CODEX_LOGIN.home_preparation is not None
     command = [
         *prefix,
-        *CODEX_LOGIN.home_preparation.command(root, home, force, settings is not None),
-    ]
-    print(
-        str(
-            sh.Command(command[0])(
-                *command[1:],
-                _env=environment,
-                _in=settings.model_dump_json() if settings is not None else None,
-            )
+        *CODEX_LOGIN.home_preparation.command(
+            root, home, force, settings is not None, report=True
         ),
-        end="",
+    ]
+    reported = sh.Command(command[0])(
+        *command[1:],
+        _env=environment,
+        _in=settings.model_dump_json() if settings is not None else None,
+        _err=sys.stderr,
     )
+    return PreparedPlugin.model_validate_json(str(reported))
+
+
+def held_revision(
+    prepared: PreparedPlugin,
+    declared: CodexMarketplace,
+    config_home: str,
+    snapshots: Path,
+) -> dict[Path, str]:
+    """The installed revision, held read-only over the plugin's cache in the home.
+
+    Codex runs a plugin's hooks from the revision installed in its home, and
+    a contained session's home is the volume it writes -- so the revision is
+    written again on the host, outside the checkout, and mounted read-only
+    over the plugin's whole cache there. The session then runs the hooks it
+    was launched with, and no other revision the volume holds is in its
+    sight, whatever it writes beside them.
+
+    The reported revision has to sit in that cache: the preparation ran in
+    the session's own checkout, and a path anywhere else is refused rather
+    than trusted for where the hold lands.
+    """
+    if prepared.installed_root is None:
+        return {}
+    cache = PurePosixPath(
+        config_home, "plugins", "cache", declared.name, declared.plugin
+    )
+    installed = PurePosixPath(prepared.installed_root)
+    if installed.parent != cache:
+        raise ValueError(
+            f"The Codex home's preparation reported {installed}, outside the "
+            f"plugin's cache at {cache}, so nothing holds the hooks this "
+            "session would run. Launch again; if it recurs, the checkout's "
+            "lup library is not the one this launch installs from."
+        )
+    snapshot = revision_snapshot(declared.source, installed.name, snapshots)
+    return {snapshot: cache.as_posix()}

@@ -12,6 +12,7 @@ from pathlib import Path
 
 import pytest
 
+import lup.policy.assets.host as policy_host
 import lup.providers.profile_tree as profile_tree
 from lup.devtools.gitguard import TEST_IDENTITY, GuardVerdict, RepositoryWatch
 from lup.harness.environment import launcher_decided_names
@@ -149,6 +150,18 @@ def settled(verdict: GuardVerdict) -> None:
         warnings.warn(verdict.notice, stacklevel=2)
     if verdict.failure:
         pytest.fail(verdict.failure, pytrace=False)
+
+
+@pytest.fixture
+def launch_record_held(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Every ledger this process reads, read as a contained launch holds it.
+
+    A policy composed in process believes a ledger's containment only
+    through a read-only mount of its directory, which a test cannot make in
+    its own process; a dispatcher run as its own process is held for real,
+    in a user namespace -- see `tests/unit/held.py`.
+    """
+    monkeypatch.setattr(policy_host, "record_held", lambda *_arguments: True)
 
 
 @pytest.fixture

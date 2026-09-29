@@ -386,6 +386,12 @@ Cleanup checks the live coordination roster as well as Git worktree locks.
 A clean checkout owned by a live session remains protected even with
 `--force`; removal becomes available after the session departs or its pulse
 expires. Cleanup rechecks ownership immediately before removing the tree.
+A session owns a checkout it was launched in, and one it created: `git
+worktree create` locks the new checkout with the creating session's roster id
+as the reason, since that session usually writes there by absolute path from
+another checkout. Only another live session is refused by that hold; the
+creator removes its own, and once it leaves the roster the hold is dropped
+by whichever removal comes next.
 
 Undo snapshots publish and retire duplicate refs in one fsynced Git reference
 transaction. `dev undo` also reports empty or null loose undo refs, which Git

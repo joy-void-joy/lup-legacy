@@ -28,12 +28,14 @@ arrives with the pin. :mod:`lup.mcp` declares each as a server a session
 carries, and :mod:`lup.mcp.serve` serves one to a runtime that launched it.
 """
 
+import os
 from collections.abc import Callable
 from pathlib import Path
 from typing import Literal, Protocol, runtime_checkable
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
+from lup.coordination.bare.runtime import Runtime, runtime_of
 from lup.coordination.policy import COORDINATION_SERVER
 from lup.coordination.wake import WakePath
 from lup.ledger.models import LedgerEdge, LedgerNode
@@ -109,6 +111,15 @@ class SessionNeeds(BaseModel, frozen=True, arbitrary_types_allowed=True):
     neutral shape every builder reads. Empty is a session nothing can nudge,
     which is the honest answer for a runtime with no such path and for one
     nobody asked.
+    """
+
+    runtime: Runtime = Field(default_factory=lambda: runtime_of(os.getpid()))
+    """The process this session is, which its roster row answers for.
+
+    This process where the session is opened in it. A server a runtime
+    started over stdio is handed that runtime instead, read off its input
+    before anything read it — which is the one fact tying the server to the
+    session it serves rather than to its own lifetime.
     """
 
 
@@ -249,7 +260,11 @@ def coordination_group(name: str = COORDINATION_SERVER) -> ToolGroup:
         if not needs.member:
             return []
         return create_peer_tools(
-            RepositoryPeers(needs.root), needs.member, needs.root, wake=needs.wake
+            RepositoryPeers(needs.root),
+            needs.member,
+            needs.root,
+            wake=needs.wake,
+            runtime=needs.runtime,
         )
 
     def companions(needs: SessionNeeds) -> list[ServerCompanion]:
@@ -259,7 +274,12 @@ def coordination_group(name: str = COORDINATION_SERVER) -> ToolGroup:
         if not needs.member:
             return []
         return [
-            RosterPulse(root=needs.root, member_id=needs.member, wake=needs.wake),
+            RosterPulse(
+                root=needs.root,
+                member_id=needs.member,
+                wake=needs.wake,
+                runtime=needs.runtime,
+            ),
             MailboxRelay(root=needs.root, member_id=needs.member),
         ]
 

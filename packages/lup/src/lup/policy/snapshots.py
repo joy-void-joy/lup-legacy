@@ -12,6 +12,11 @@ from lup.policy.assets.host import policy_snapshot_digest, policy_snapshot_files
 from lup.sandbox.rail import AccessibleRoot, Lease, repository_layout, sibling_worktrees
 
 
+def snapshot_directory(root: Path, snapshots: str = ".lup/policy-snapshots") -> Path:
+    """Where a launch keeps the destination policies it accepted, one per digest."""
+    return root / snapshots
+
+
 class DestinationPolicy(BaseModel, frozen=True, extra="forbid"):
     """A checkout and evaluator the operator's launch explicitly made reachable."""
 
@@ -51,7 +56,7 @@ class DestinationPolicy(BaseModel, frozen=True, extra="forbid"):
             if any(path.is_symlink() for path in [source, *source.parents]):
                 raise ValueError(f"Destination policy source has a symlink: {source}")
             digest = policy_snapshot_digest(source)
-            destination = root / ".lup" / "policy-snapshots" / digest
+            destination = snapshot_directory(root) / digest
             destination.parent.mkdir(parents=True, exist_ok=True)
             if not destination.exists():
                 with TemporaryDirectory(

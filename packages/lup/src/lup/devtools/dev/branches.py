@@ -141,6 +141,15 @@ class BranchInfo(BaseModel):
     one nobody has opened, and saying nothing is how it stays reserved for a
     session that is not coming.
     """
+    on_remote: bool | None = None
+    """Whether a remote carries a branch of this name, None where none was read.
+
+    A signal beside the verb, like :attr:`behind`. Work a remote does not
+    carry is one disk away from gone, and nothing else in a row says so: a
+    ``LAND`` branch pushed long ago and one that exists only here read
+    alike, and so does an integration branch whose history reached no
+    remote at all.
+    """
     changes: WorktreeChanges | None = None
     """What this branch's worktree holds uncommitted, where it has one.
 
@@ -210,10 +219,78 @@ class RunHold(BaseModel):
     branches: list[str]
 
 
+class IntegrationStanding(BaseModel):
+    """Where the local integration branch stands against origin's copy of it.
+
+    Every disposition is judged against the local copy, so a sweep is only as
+    right as that copy is current, and the two ways it can be wrong wrong
+    every row differently. Commits only origin's copy holds — a pull request
+    merged on the forge — make the work they carry read as unlanded here.
+    Commits only the local copy holds are on no remote at all, and a sweep
+    that lands more on top of them builds on history nobody else has.
+    """
+
+    branch: str
+    remote: str = ""
+    """Origin's copy, empty where origin carries no branch of that name."""
+
+    ahead: int = 0
+    """Commits the local copy holds that origin's lacks: on no remote yet."""
+
+    behind: int = 0
+    """Commits origin's copy holds that the local one lacks: not pulled yet."""
+
+    def lines(self) -> list[str]:
+        """What a reader of the table has to hear, which is nothing when level."""
+        if not self.remote:
+            return [
+                f"{self.branch} exists only here: origin carries no {self.branch}, "
+                "so none of its history is on a remote"
+            ]
+        return [
+            *(
+                [
+                    f"{self.remote} holds {self.behind} commit(s) {self.branch} "
+                    "lacks: every row is judged against the local copy, so bring "
+                    "it level before acting on one"
+                ]
+                if self.behind
+                else []
+            ),
+            *(
+                [
+                    f"{self.branch} holds {self.ahead} commit(s) {self.remote} "
+                    "lacks: they are on no remote until pushed"
+                ]
+                if self.ahead
+                else []
+            ),
+        ]
+
+
+def integration_standing(integration: str) -> IntegrationStanding:
+    """Count the local integration branch against origin's copy, both ways."""
+    remote = f"origin/{integration}"
+    if not resolvable(remote):
+        return IntegrationStanding(branch=integration)
+    return IntegrationStanding(
+        branch=integration,
+        remote=remote,
+        ahead=count_commits_behind(remote, integration),
+        behind=count_commits_behind(integration, remote),
+    )
+
+
 class SurveyResult(BaseModel):
     integration_branch: str
     current_branch: str
     branches: list[BranchInfo]
+    integration_remote: IntegrationStanding | None = None
+    """How the integration branch stands against origin's copy, None unread.
+
+    Read before any row: every disposition below is judged against the local
+    copy, and this says whether that copy is one a sweep can trust.
+    """
     runs: list[RunHold] = []
     remote_branches: list[RemoteBranchInfo] = []
     """Branches on a remote that no local branch corresponds to.
@@ -672,6 +749,21 @@ The four names cover the two-tier and single-tier conventions in common use;
 a project whose trunk is called something else passes its own set rather than
 forking the functions that consult this one.
 """
+
+
+def scaffold_carrier(branch: str) -> str:
+    """Why the branch a project's copied half is compiled onto is never spent.
+
+    `dev update` compiles upstream's copied half onto it and merges it from
+    there, so once an update lands the branch is an ancestor of the integration
+    branch — the exact shape of a branch whose work is done. It is not done:
+    its tip is the merge base the next update is measured from, and deleting
+    it leaves that update merging the copied half against nothing.
+    """
+    return (
+        f"scaffold carrier: `dev update` compiles the copied half onto {branch} "
+        "and its tip is the next update's merge base"
+    )
 
 
 def disposition_for(
@@ -1818,8 +1910,12 @@ def pr_body(
     typer.echo("\n".join(body_parts))
 
 
-def survey(as_json: bool) -> None:
-    """Collect branch, worktree, PR, and containment data."""
+def survey(as_json: bool, scaffold: str = "") -> None:
+    """Collect branch, worktree, PR, and containment data.
+
+    ``scaffold`` names the branch the project's copied half is compiled onto,
+    empty where it adopted none; its row is kept whatever containment says.
+    """
     complaint = origin_auth_complaint()
     if complaint:
         typer.echo(complaint, err=True)
@@ -1851,6 +1947,7 @@ def survey(as_json: bool) -> None:
     local_names = {b["name"] for b in raw_branches}
     remote_rows = parse_remote_branches() if has_remote else []
     remote_only = [row for row in remote_rows if row["name"] not in local_names]
+    published = {row["name"] for row in remote_rows}
 
     if has_remote and not as_json:
         typer.echo("Querying PR status...", err=True)
@@ -1859,6 +1956,12 @@ def survey(as_json: bool) -> None:
     leased = leased_on_disk(
         live_lease_branches(project_root() / ".lup" / "resolve"), branch_names
     )
+
+    def answerable(name: str) -> str:
+        """Why something outside this sweep already answers for the branch."""
+        if name == scaffold:
+            return scaffold_carrier(name)
+        return leased[name].reason() if name in leased else ""
 
     def info(b: ParsedBranch) -> BranchInfo:
         name = b["name"]
@@ -1885,7 +1988,7 @@ def survey(as_json: bool) -> None:
             contained_in=contained_in,
             pr=pr_map.get(name),
             unique_commits=unique,
-            held=leased[name].reason() if name in leased else "",
+            held=answerable(name),
             related=related,
             reserved=still_at_reservation(name),
             worktree=checkout,
@@ -1906,6 +2009,7 @@ def survey(as_json: bool) -> None:
             reason=verdict.reason,
             rewritten=len(rewrite_suspects(name, integration)) if unique else 0,
             behind=count_commits_behind(name, integration),
+            on_remote=name in published if has_remote else None,
             changes=uncommitted,
         )
 
@@ -1932,6 +2036,7 @@ def survey(as_json: bool) -> None:
             contained_in=[integration] if contained else [],
             pr=pr_map.get(name),
             unique_commits=unique,
+            held=answerable(name),
             related=related,
         )
         return RemoteBranchInfo(
@@ -1952,6 +2057,7 @@ def survey(as_json: bool) -> None:
         integration_branch=integration,
         current_branch=cur,
         branches=branches_list,
+        integration_remote=integration_standing(integration) if has_remote else None,
         runs=runs_holding(leased),
         remote_branches=remote_list,
         remotes_fetched=not complaint,
@@ -1990,6 +2096,22 @@ def survey(as_json: bool) -> None:
             "Reason",
         )
         typer.echo(format_table(headers, [display_row(bi) for bi in branches_list]))
+
+        if result.integration_remote is not None:
+            for line in result.integration_remote.lines():
+                typer.echo(f"\n{line}")
+        # Only work the integration branch lacks: a landed branch's commits
+        # are wherever the integration branch is, which the lines above say.
+        unpublished = [
+            bi.name
+            for bi in branches_list
+            if bi.on_remote is False and bi.unique_commits
+        ]
+        if unpublished:
+            typer.echo(
+                f"\n{len(unpublished)} branch(es) holding unlanded work on no "
+                f"remote, so nothing but this clone holds it: {', '.join(unpublished)}"
+            )
 
         if not result.remotes_fetched:
             typer.echo(
@@ -2051,7 +2173,7 @@ class PlannedAction(BaseModel):
     def render(self) -> str:
         match self.verdict:
             case "ok":
-                return f"{self.description} (ok)"
+                return f"{self.description} (ok{f': {self.detail}' if self.detail else ''})"
             case "forced":
                 return f"{self.description} (force: {self.detail})"
             case "blocked":
@@ -2128,11 +2250,15 @@ def locked_worktrees() -> dict[str, str]:  # lup: ignore[dict-str-payload]
     directory out from under a process still writing there.
 
     The reason is whatever the locker passed, empty when they passed none.
+    Read NUL-separated, because that is the form git prints it in unquoted: a
+    reason carrying a quote comes back C-quoted otherwise, and the hold a
+    session's `git worktree create` writes is JSON.
     """
     locked: dict[str, str] = {}  # lup: ignore[dict-str-payload, empty-collection]
     current_path = ""
 
-    for line in git.lines("worktree", "list", "--porcelain"):
+    listed = git.out("worktree", "list", "--porcelain", "-z")
+    for line in listed.split("\x00"):  # lup: ignore[string-split] — NUL records
         match line.split(maxsplit=1):
             case ["worktree", path]:
                 current_path = path
@@ -2186,6 +2312,34 @@ def upstream_ref(name: str) -> str | None:
     return tracked or (recorded if recorded and resolvable(recorded) else None)
 
 
+def holding_copy(ref: str, integration: str, by_content: bool = False) -> str:
+    """The copy of the integration branch already holding *ref*, local first.
+
+    Origin's copy answers where the local one does not, because a pull
+    request merged on the forge lands there, and the local integration branch
+    holds it only once somebody pulls. Judged against the local copy alone,
+    every branch merged that way read as unmerged in the meantime, and the
+    refusal offered `--force` where nothing was at stake. Either copy holding
+    the commits means deleting the branch discards nothing.
+
+    ``by_content`` also counts a branch every commit of which is in by
+    patch-id, which is the survey's reading of containment; without it only
+    ancestry answers. Empty where neither copy holds it.
+    """
+    return next(
+        (
+            copy
+            for copy in (integration, f"origin/{integration}")
+            if resolvable(copy)
+            and (
+                is_ancestor(ref, copy)
+                or (by_content and count_unique_commits(ref, copy) == 0)
+            )
+        ),
+        "",
+    )
+
+
 def outgrew_upstream(name: str) -> bool:
     """Whether the branch holds commits the upstream it tracks does not.
 
@@ -2201,8 +2355,13 @@ def outgrew_upstream(name: str) -> bool:
 
 
 def plan_worktree_step(path: str, stranded: bool, force: bool) -> PlannedAction:
-    """Judge the worktree removal — the one irreversible step."""
-    from lup.devtools.dev.worktree import live_worktree_owners
+    """Judge the worktree removal — the one irreversible step.
+
+    A lock that is a session's hold, and not a live one, is no refusal: the
+    session that took it has left or is the one asking, and the removal
+    drops it first.
+    """
+    from lup.devtools.dev.worktree import hold_on, live_worktree_owners
 
     if stranded:
         return PlannedAction(
@@ -2218,7 +2377,7 @@ def plan_worktree_step(path: str, stranded: bool, force: bool) -> PlannedAction:
             detail=f"live sessions {', '.join(owners)} use this checkout; wait for their departure",
         )
     lock = locked_worktrees().get(path)
-    if lock is not None:
+    if lock is not None and hold_on(Path(path)) is None:
         return PlannedAction(
             description=description,
             verdict="refused",
@@ -2278,15 +2437,23 @@ def plan_branch_step(name: str, force: bool) -> PlannedAction:
     """
     description = f"Delete local branch: {name}"
     integration = get_integration_branch()
-    unique = count_unique_commits(name, integration)
-    if is_ancestor(name, integration) or unique == 0:
+    landed = holding_copy(name, integration, by_content=True)
+    if landed:
         if outgrew_upstream(name):
             return PlannedAction(
                 description=description,
                 verdict="forced",
-                detail=f"ahead of origin/{name}, which {integration} already contains",
+                detail=f"ahead of origin/{name}, which {landed} already contains",
             )
-        return PlannedAction(description=description)
+        stale = (
+            f"{landed} holds it, and {integration} is "
+            f"{count_commits_behind(integration, landed)} behind it — "
+            "`git pull --ff-only` in the integration checkout"
+            if landed != integration
+            else ""
+        )
+        return PlannedAction(description=description, detail=stale)
+    unique = count_unique_commits(name, integration)
     suspects = rewrite_suspects(name, integration)
     trail = (
         f"; {len(suspects)} of {unique} unique commit(s) share a subject with "
@@ -2434,7 +2601,7 @@ def plan_remote_only_deletion(
                 )
             ],
         )
-    contained = is_ancestor(f"origin/{name}", get_integration_branch())
+    contained = bool(holding_copy(f"origin/{name}", get_integration_branch()))
     return DeletionPlan(
         branch=name,
         has_local=False,
@@ -2444,12 +2611,19 @@ def plan_remote_only_deletion(
     )
 
 
-def plan_deletion(name: str, force: bool, remote: bool | None = None) -> DeletionPlan:
+def plan_deletion(
+    name: str, force: bool, remote: bool | None = None, scaffold: str = ""
+) -> DeletionPlan:
     """Evaluate every precondition a deletion depends on, changing nothing.
 
     A name resolves locally, only on origin, or nowhere, and the three are
     different deletions rather than one with steps that happen to fail:
     :func:`plan_remote_only_deletion` carries the second and the third.
+
+    A name the survey keeps whatever it holds — a protected branch, or
+    ``scaffold``, the branch the project's copied half is compiled onto — is
+    refused before any of that, and no force lifts it: the sweep that reads
+    these as spent is exactly the reader that must not be able to act on it.
 
     A dry run and the real path both read this, so what the dry run promises
     is what the real path went on to check.
@@ -2463,6 +2637,19 @@ def plan_deletion(name: str, force: bool, remote: bool | None = None) -> Deletio
     unless a caller says otherwise in so many words.
     """
     from lup.devtools.dev.worktree import branch_exists
+
+    kept = scaffold_carrier(name) if name == scaffold else ""
+    if kept or name in PROTECTED_BRANCHES:
+        return DeletionPlan(
+            branch=name,
+            actions=[
+                PlannedAction(
+                    description=f"Delete branch: {name}",
+                    verdict="refused",
+                    detail=kept or "a protected branch, which no sweep retires",
+                )
+            ],
+        )
 
     has_remote = remote_branch_exists(name)
     if not branch_exists(name):
@@ -2479,7 +2666,7 @@ def plan_deletion(name: str, force: bool, remote: bool | None = None) -> Deletio
 
     actions.append(plan_branch_step(name, force=force))
 
-    merged = is_ancestor(name, get_integration_branch())
+    merged = bool(holding_copy(name, get_integration_branch()))
     delete_remote = has_remote and (merged if remote is None else remote)
     if delete_remote:
         actions.append(plan_remote_step(name, force=force, contained=merged))
@@ -2562,6 +2749,7 @@ def worktree_left_as_mount_point(path: str) -> bool:
 def run_deletion(plan: DeletionPlan, force: bool) -> None:
     """Carry out a plan whose preflight passed, reporting what actually ran."""
     from lup.devtools.dev.worktree import (
+        drop_the_hold,
         refuse_live_worktree_removal,
         said_environment_removed,
     )
@@ -2569,8 +2757,11 @@ def run_deletion(plan: DeletionPlan, force: bool) -> None:
     completed: list[str] = []
 
     match plan:
-        case DeletionPlan(stranded=True):
+        case DeletionPlan(stranded=True, worktree=str() as worktree):
             try:
+                # A hold would keep the entry through the prune, and the
+                # checkout it held is already gone.
+                drop_the_hold(Path(worktree))
                 git("worktree", "prune")
                 typer.echo(f"Pruned stranded worktree: {plan.worktree}")
                 completed.append("pruned worktree")
@@ -2581,6 +2772,7 @@ def run_deletion(plan: DeletionPlan, force: bool) -> None:
         case DeletionPlan(worktree=str() as worktree):
             refuse_live_worktree_removal(Path(worktree))
             try:
+                drop_the_hold(Path(worktree))
                 git("worktree", "remove", *(["--force"] if force else []), worktree)
                 typer.echo(f"Removed worktree: {worktree}")
                 completed.append("removed worktree")
@@ -2650,13 +2842,14 @@ def delete_branch(
     force: bool,
     remote: bool | None = None,
     preserved: str = "",
+    scaffold: str = "",
 ) -> None:
     """Delete a branch and its worktree, and origin's copy if it is spent.
 
     ``preserved`` names the ref a caller has already parked the commits at,
     for the one path — :func:`run_retirement` — that preserves them before
     deleting. Empty means nobody has, which is the case the warning below is
-    written for.
+    written for. ``scaffold`` names the carrier :func:`plan_deletion` refuses.
 
     ``name`` need not be a local branch: a name origin alone carries is what
     ``git survey`` reports under its own heading and hands a disposition, and
@@ -2667,7 +2860,7 @@ def delete_branch(
         typer.echo(f"Error: cannot delete the current branch ({name})", err=True)
         raise typer.Exit(1)
 
-    plan = plan_deletion(name, force, remote)
+    plan = plan_deletion(name, force, remote, scaffold)
 
     if dry_run:
         typer.echo(f"Would perform {len(plan.actions)} action(s):")
@@ -2686,7 +2879,13 @@ def delete_branch(
         raise typer.Exit(1)
 
     integration = get_integration_branch()
-    contained = is_ancestor(plan.ref(), integration)
+    landed = holding_copy(plan.ref(), integration)
+    contained = bool(landed)
+    if landed not in ("", integration):
+        typer.echo(
+            f"{name} is in {landed}, which {integration} has not pulled: "
+            "`git pull --ff-only` in the integration checkout brings it level"
+        )
     if plan.delete_remote and not contained and not preserved:
         typer.echo(
             f"Warning: {name} holds commits {integration} does not, and origin/{name} "
@@ -2703,7 +2902,7 @@ def delete_branch(
     # the ref the next line removes, and a deferral parked on it asks that
     # question later, when absence is all there is to read and absence is not
     # an answer. So the verdict already reached above is written down.
-    records.record_landing(name, integration if contained else "")
+    records.record_landing(name, landed)
     run_deletion(plan, force)
 
 

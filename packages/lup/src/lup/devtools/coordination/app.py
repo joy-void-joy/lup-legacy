@@ -194,8 +194,8 @@ def create_coordination_app() -> typer.Typer:
     ) -> None:
         """Retire every session whose pulse has stopped, so nothing addresses it again.
 
-        What every coordination server does on each of its ticks, for a
-        roster no server is up on: a machine whose sessions all ended without
+        What the server answering for a session does on each of its ticks,
+        for a roster no server is up on: a machine whose sessions all ended without
         writing a departure, or a store whose sessions never beat at all.
         """
         found = peers()

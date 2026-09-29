@@ -34,6 +34,22 @@ def environments_home(cache: Path | None = None) -> Path:
     return cache or Path.home() / ".cache" / "lup" / "environments"
 
 
+def revisions_home(cache: Path | None = None) -> Path:
+    """Where the plugin revisions contained sessions run their hooks from are kept.
+
+    A runtime whose hooks run from a copy installed in the session's own
+    home has that copy written again here and held read-only for the
+    session. On the host and outside every checkout, beside the project
+    environments, and mounted by no lease, so nothing a session reaches can
+    rewrite one.
+    """
+    # lup: defer: one revision accumulates here per plugin revision a
+    # contained session ran, and nothing sweeps them; `harness clean` should
+    # list and remove the ones no running container holds, as it does the
+    # environments
+    return cache or Path.home() / ".cache" / "lup" / "codex-revisions"
+
+
 def environment_directory(root: Path, cache: Path | None = None) -> Path:
     """Where one project root's container-side environment lives on the host.
 

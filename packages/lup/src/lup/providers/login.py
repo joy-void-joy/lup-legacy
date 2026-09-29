@@ -24,9 +24,18 @@ class HomePreparation(BaseModel, frozen=True):
     executable: str
 
     def command(
-        self, root: Path, home: Path, force: bool = False, settings: bool = False
+        self,
+        root: Path,
+        home: Path,
+        force: bool = False,
+        settings: bool = False,
+        report: bool = False,
     ) -> list[str]:
-        """Run installed library code in the checkout's own Python environment."""
+        """Run installed library code in the checkout's own Python environment.
+
+        ``report`` asks for what was installed as JSON on stdout, and nothing
+        else there.
+        """
         return [
             "uv",
             "run",
@@ -41,6 +50,7 @@ class HomePreparation(BaseModel, frozen=True):
             "--trust-project",
             *(["--force"] if force else []),
             *(["--settings-stdin"] if settings else []),
+            *(["--report"] if report else []),
         ]
 
 

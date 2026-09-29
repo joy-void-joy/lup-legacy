@@ -148,6 +148,7 @@ Run any of them with `uv run lup-devtools <command>`, and add `--help` for its a
 | `git pr-body` | Generate a PR body (summary, commits, test plan) from branch commits. |
 | `git survey` | Full branch inventory: containment, PRs, unique commits, diff sizes. |
 | `git preview` | Say what landing each branch would change, conflict on, and share. |
+| `git settle` | Regenerate over the merge commit HEAD just became, and fold it in. |
 | `git merge-driver` | Register the ownership-manifest merge driver `.gitattributes` names. |
 | `git delete` | Delete a branch and its worktree, and origin&#x27;s copy if it is spent. |
 | `git retire` | Retire a branch through a pull request, so its commits outlive it. |

@@ -25,6 +25,7 @@ from typing import Annotated
 import typer
 from pydantic import ImportString, TypeAdapter
 
+from lup.coordination.bare.runtime import stdin_runtime
 from lup.coordination.identity import session_cli_name, session_member_id
 from lup.coordination.wake import WakePath
 from lup.observability.metrics import configure_metrics, metrics_path
@@ -89,7 +90,12 @@ def resolved_needs(session: str | None, runtime: str | None) -> SessionNeeds | N
     this process, and what would make it look is the runtime's adapter's to
     say. Nothing where neither was given, since every group closes over a
     session's directories.
+
+    Whichever it is, the session is the process feeding this one's input,
+    read before anything else reads it: that is what the roster's row answers
+    for, where this process only serves it.
     """
+    served = stdin_runtime()
     match read_session_context(), session, runtime:
         case SessionContext() as context, _, _:
             needs = context_needs(context, context.session_id or "")
@@ -103,7 +109,7 @@ def resolved_needs(session: str | None, runtime: str | None) -> SessionNeeds | N
         case _:
             return None
     configure_metrics(metrics_path(context.session_dir))
-    return needs
+    return needs.model_copy(update={"runtime": served})
 
 
 def serve(
