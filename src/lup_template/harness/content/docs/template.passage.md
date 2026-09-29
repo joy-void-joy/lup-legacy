@@ -198,11 +198,13 @@ added, never what a session working in the clone did.
 
 <!-- passage: template -->
 
-Run `uv run lup-devtools --help` for the full command tree. The three you will
+Run `uv run lup-devtools --help` for the full command tree. The four you will
 use daily:
 
-- **`dev`** — worktrees, branches, pull requests, conflict resolution, review
-  markers, and the pre-flight `dev check`. This is the git workflow.
+- **`git`** — worktrees, branches, pull requests, and conflict resolution.
+  This is the git workflow.
+- **`dev`** — the pre-flight `dev check` and `dev test`, review markers
+  (`dev comments`), and reading the repository (`dev py`, `dev pending`).
 - **`harness`** — generate, verify, and launch the native trees. See
   [harness.md](harness.md).
 - **`trace`** — read what a session actually did: `trace show`, `trace search`,

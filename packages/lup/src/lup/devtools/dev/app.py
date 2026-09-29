@@ -1,4 +1,4 @@
-"""Typer command tree for dev operations: worktrees, branches, PRs, checks.
+"""Typer command tree for `dev`: read this repository, and hold it to what it settled.
 
 Everything here is workflow rather than domain, so what it needs to know
 about the repository it runs in arrives as a declaration: the project facts

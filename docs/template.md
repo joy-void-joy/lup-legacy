@@ -40,7 +40,7 @@ src/lup_template/
 │   │   ├── inspect_agent.py # Agent configuration inspection: tools, schemas, prompt, subagents.
 │   │   ├── repl.py          # Interactive REPL with the agent via the SDK (continuous session).
 │   │   └── serve.py         # This project's tool groups, built for inspection rather than served.
-│   ├── dev/                 # Dev operations: worktrees, branches, and pre-flight checks.
+│   ├── dev/                 # Dev operations: pre-flight checks, review markers, and reading the repository.
 │   │   ├── app.py           # What only a template adds to the `dev` tree the library already builds.
 │   │   └── init.py          # Package renaming for downstream project initialization.
 │   ├── main.py              # Root CLI app composing all devtools sub-apps.
@@ -191,11 +191,13 @@ display around the readers it names.
 - `trace` — What a session left behind: its trace and its records
 - `version` — Agent version, changelog, and bump
 
-Run `uv run lup-devtools --help` for the full command tree. The three you will
+Run `uv run lup-devtools --help` for the full command tree. The four you will
 use daily:
 
-- **`dev`** — worktrees, branches, pull requests, conflict resolution, review
-  markers, and the pre-flight `dev check`. This is the git workflow.
+- **`git`** — worktrees, branches, pull requests, and conflict resolution.
+  This is the git workflow.
+- **`dev`** — the pre-flight `dev check` and `dev test`, review markers
+  (`dev comments`), and reading the repository (`dev py`, `dev pending`).
 - **`harness`** — generate, verify, and launch the native trees. See
   [harness.md](harness.md).
 - **`trace`** — read what a session actually did: `trace show`, `trace search`,

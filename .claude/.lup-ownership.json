@@ -877,7 +877,7 @@
     {
       "path": "docs/template.md",
       "category": "generated",
-      "sha256": "98c2fa3a167d6bbd690dbba935bf8454b2613a8abd6548156ffa353ebc08bead",
+      "sha256": "550c286856bd2c15288940289d9bf01610ea828a5582784b96abd05a2fdce33e",
       "semantic_id": "docs.template",
       "executable": false
     },

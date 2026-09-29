@@ -1,7 +1,8 @@
 """What only a template adds to the `dev` tree the library already builds.
 
-The workflow commands — worktrees, branches, PRs, the quality gate — are the
-library's, wired over :func:`declared` by the roster every project inherits.
+The workflow commands — the quality gate, review markers, reading the
+repository — are the library's, wired over :func:`declared` by the roster
+every project inherits.
 The one tree added here has template-ness as its subject: renaming the package
 an adopter inherits, dropping the demonstrations the scaffold ships of itself,
 pointing the lup registration it ships at the template it was generated from,
