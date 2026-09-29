@@ -6,14 +6,14 @@ a ``TraceLogger`` via *trace* to also accumulate a markdown trace in the same
 call, or use the logger's methods directly for trace-only logging.
 
 Examples:
-    Display a message with color-coded tool pairing::
+    Display a block with color-coded tool pairing::
 
-        >>> print_message(assistant_message, prefix="  ")
+        >>> print_block(block, prefix="  ")
 
     Display and trace together::
 
         >>> trace = TraceLogger(trace_path=Path("/tmp/trace.md"), title="Session 1")
-        >>> print_message(assistant_message, trace=trace)
+        >>> print_block(block, trace=trace)
 """
 
 import itertools
@@ -24,7 +24,7 @@ from pydantic import BaseModel
 from rich.console import Console
 
 from lup.observability.blocks import extract_block_info, format_tool_result
-from lup.types import LupContentBlock, LupMessage
+from lup.types import LupContentBlock
 
 if TYPE_CHECKING:
     from lup.observability.trace import TraceLogger
@@ -69,9 +69,9 @@ class ColorAssigner:
     across sessions interleaves the palette rotation. ToolUseBlock
     assigns a color; the matching ToolResultBlock pops it. The
     module-level :data:`DEFAULT_COLORS` keeps the single-session
-    default; pass a dedicated instance to ``print_block``/
-    ``print_message`` for concurrent streams (background agents, relay
-    watchers) so their pairings can't cross.
+    default; pass a dedicated instance to ``print_block`` for concurrent
+    streams (background agents, relay watchers) so their pairings can't
+    cross.
     """
 
     def __init__(self, palette: list[str] | None = None) -> None:
@@ -144,18 +144,3 @@ def print_block(
 
     if trace:
         trace.log_block(block)
-
-
-def print_message(
-    message: LupMessage,
-    prefix: str = "",
-    trace: "TraceLogger | None" = None,
-    colors: ColorAssigner | None = None,
-) -> None:
-    """Print all content blocks in a message.
-
-    A message that carries no content blocks — a status line — prints
-    nothing. If *trace* is provided, blocks are also logged to it.
-    """
-    for block in message.content_blocks:
-        print_block(block, prefix=prefix, trace=trace, colors=colors)

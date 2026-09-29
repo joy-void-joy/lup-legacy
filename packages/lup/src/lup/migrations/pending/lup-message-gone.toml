@@ -1,0 +1,40 @@
+subjects = [
+    "print_message",
+    "TraceLogger.log_message",
+    "MessageContentBlock",
+    "LupMessage",
+    "LupMessage.content_blocks",
+    "LupAssistantMessage",
+    "LupAssistantMessage.role",
+    "LupAssistantMessage.content",
+    "LupAssistantMessage.content_blocks",
+    "LupUserMessage",
+    "LupUserMessage.role",
+    "LupUserMessage.content",
+    "LupUserMessage.content_blocks",
+    "LupSystemMessage",
+    "LupSystemMessage.role",
+    "LupSystemMessage.subtype",
+    "LupSystemMessage.data",
+]
+reason = """
+a second message vocabulary stood beside the one sessions speak \
+(`TurnMessage` and its blocks in lup.sessions.events), and only two \
+display helpers no session called read it, so the `LupMessage` family and \
+those helpers went; a content block is still displayed and traced one at a \
+time"""
+
+[[steps]]
+instruction = """
+Display or trace each block where you passed a message: \
+`for block in blocks: print_block(block, trace=trace, colors=colors)` \
+(lup.observability.display) in place of `print_message(message, ...)`, and \
+`trace.log_block(block)` in place of `trace.log_message(message)`."""
+
+[[steps]]
+instruction = """
+Hold a transcript message as `TurnMessage` (lup.sessions.events), whose \
+`blocks` are the portable turn blocks, where you built a \
+`LupAssistantMessage`, `LupUserMessage` or `LupSystemMessage`; a field of \
+content blocks names the concrete `LupContentBlock` subclasses it holds \
+where it named `MessageContentBlock`."""

@@ -1,4 +1,4 @@
-"""Internal content block, message, and response types.
+"""Internal content block and response types.
 
 These types are the shared vocabulary for all consumer code — the
 application's orchestration, the trace logger, the tools. SDK-specific
@@ -14,7 +14,6 @@ from typing import Annotated, Literal
 from pydantic import (
     BaseModel,
     BeforeValidator,
-    Discriminator,
     Field,
     StringConstraints,
 )
@@ -354,22 +353,6 @@ class LupNativeActivityBlock(LupContentBlock):
         return "json"
 
 
-type MessageContentBlock = Annotated[
-    LupTextBlock
-    | LupThinkingBlock
-    | LupToolUseBlock
-    | LupToolResultBlock
-    | LupNativeActivityBlock,
-    Discriminator("type"),
-]
-"""One block as a message *field* validates it: the closed set, discriminated.
-
-Annotations that only read a block name :class:`LupContentBlock`, the base. A
-pydantic field must name this alias instead — validating against the base
-alone would rebuild every block as a base instance and drop its payload.
-"""
-
-
 # ---------------------------------------------------------------------------
 # Subagent specification
 # ---------------------------------------------------------------------------
@@ -424,56 +407,6 @@ class SubagentSpec(BaseModel, extra="forbid"):
         gt=0,
         description="Turn cap for delegated one-shot runs (None = backend default)",
     )
-
-
-# ---------------------------------------------------------------------------
-# Messages
-# ---------------------------------------------------------------------------
-
-
-class LupMessage(BaseModel):
-    """One transcript message, answering every question about itself.
-
-    A walk that wants the blocks of a message asks :attr:`content_blocks`
-    rather than naming the kinds of message that carry them, so a kind added
-    later is reached by every existing walk and a kind that carries none — a
-    status line — declines once, here.
-    """
-
-    @property
-    def content_blocks(self) -> list[LupContentBlock]:
-        """The blocks this message carries, empty when it carries none."""
-        return []
-
-
-class LupAssistantMessage(LupMessage):
-    """Message from the assistant containing content blocks."""
-
-    role: Literal["assistant"] = "assistant"
-    content: list[MessageContentBlock]
-
-    @property
-    def content_blocks(self) -> list[LupContentBlock]:
-        return list(self.content)
-
-
-class LupUserMessage(LupMessage):
-    """Message from the user or tool results."""
-
-    role: Literal["user"] = "user"
-    content: list[MessageContentBlock] | str
-
-    @property
-    def content_blocks(self) -> list[LupContentBlock]:
-        return [] if isinstance(self.content, str) else list(self.content)
-
-
-class LupSystemMessage(LupMessage):
-    """System-level message (status updates, etc.)."""
-
-    role: Literal["system"] = "system"
-    subtype: str
-    data: str
 
 
 class Usage(BaseModel):

@@ -374,7 +374,7 @@ Four tiers, and imports only ever point downward.
    they sit at the top level rather than inside a subject. `lup.types` is the
    portable content and tool vocabulary every other package speaks
    (`JsonValue`/`JsonObject`, `ToolName`/`ToolGrant`, `LupContentBlock`,
-   `LupMessage`, `Usage`, `SubagentSpec`); `lup.channels` is the file-backed
+   `Usage`, `SubagentSpec`); `lup.channels` is the file-backed
    primitive both durable state and inter-process rendezvous are built on;
    `lup.formats` is how a compiled artifact has to be spelled to survive being
    one, the do-not-edit banner and the escaping of a derived table's cells;
