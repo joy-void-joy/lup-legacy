@@ -367,6 +367,14 @@ def create_dev_app(
                 "instead of what it found — parsing, walking, or resolving",
             ),
         ] = False,
+        refutations: Annotated[
+            bool,
+            typer.Option(
+                "--refutations",
+                help="With --antipatterns: list each finding the receiver's type "
+                "refuted or left unresolved, which are otherwise only counted",
+            ),
+        ] = False,
         as_json: Annotated[
             bool,
             typer.Option(
@@ -431,7 +439,11 @@ def create_dev_app(
                     antipatterns_mod.summarize(declarations.project, as_json, path)
                 case _:
                     antipatterns_mod.report(
-                        declarations.project, as_json, path, fix=fix
+                        declarations.project,
+                        as_json,
+                        path,
+                        fix=fix,
+                        refutations=refutations,
                     )
             return
         if boundaries:

@@ -545,7 +545,9 @@ standalone directive goes with it, being a sentence explaining a rule that
 does not fire; prose written above *that* is not its reason and stays. The
 other two kinds are untouched, because both are asking for a judgement:
 "missing" is whether the rule is right or the line is, and "untyped" is a
-reason nobody has written yet.
+reason nobody has written yet. The listing puts what fails the run first,
+then the untyped, and counts the findings a receiver's type refuted or left
+unresolved, which fail nothing; `--refutations` lists each.
 
 In a file's opening comment block the marker goes file-wide — a standalone
 `# lup: ignore` disables anti-pattern checks for the whole file, and

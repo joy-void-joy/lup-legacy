@@ -658,13 +658,16 @@ def report(
     paths: Sequence[str] | None = None,
     advisory: AbstractSet[str] = ADVISORY_KINDS,
     fix: bool = False,
+    refutations: bool = False,
 ) -> None:
     """List anti-pattern findings; exit non-zero when a blocking one remains.
 
     "untyped" findings are advisory (a bare `# lup: ignore` to migrate to a
-    typed one) and never fail the command; "missing" and "spurious" do. Every
-    finding the typed grammar refuted is listed with the declaration that
-    settled it, so a dropped verdict is accountable rather than invisible.
+    typed one) and never fail the command; "missing" and "spurious" do, and
+    are listed first. Every finding the typed grammar refuted is counted, and
+    with *refutations* listed with the declaration that settled it, so a
+    dropped verdict is accountable rather than invisible
+    (:func:`report_lines`).
 
     ``fix`` takes out the dead directives instead of printing them, and the
     sweep runs again over what it wrote so the report is about the tree as it
@@ -689,12 +692,11 @@ def report(
             if not as_json:
                 typer.echo(f"{len(repaired)} dead directive(s) removed\n")
             scan = scan_antipatterns(project, paths)
-    found = scan.findings
-    blocking = [finding for finding in found if finding.kind not in advisory]
+    blocking = [finding for finding in scan.findings if finding.kind not in advisory]
     if as_json:
         output_json(
             {
-                "findings": [finding.model_dump() for finding in found],
+                "findings": [finding.model_dump() for finding in scan.findings],
                 "refuted": [refutation.model_dump() for refutation in scan.refuted],
                 "repaired": [item.model_dump() for item in repaired],
             }
@@ -702,25 +704,59 @@ def report(
         if blocking:
             raise typer.Exit(1)
         return
-    for refutation in scan.refuted:
-        verdict = "refuted" if refutation.settled else "unresolved"
-        typer.echo(
-            f"{refutation.file}:{refutation.line} [{verdict} {refutation.rule_id}] "
-            f"{refutation.evidence}"
-        )
-    if not found:
-        typer.echo("No anti-pattern findings.")
-        return
-    for finding in found:
-        typer.echo(f"{finding.file}:{finding.line} [{finding.kind}] {finding.message}")
-        typer.echo(f"    {finding.text}")
-    files = {finding.file for finding in found}
-    reported = len(found) - len(blocking)
-    tail = f" (+{reported} untyped, advisory)" if reported else ""
-    typer.echo(f"\n{len(blocking)} blocking finding(s){tail} in {len(files)} file(s)")
-    typer.echo(f"Rule reference: {RULE_REFERENCE} (`uv run lup-devtools dev rules`)")
+    for line in report_lines(scan, advisory, refutations):
+        typer.echo(line)
     if blocking:
         raise typer.Exit(1)
+
+
+def report_lines(
+    scan: AntiPatternScan, advisory: AbstractSet[str], refutations: bool = False
+) -> list[str]:
+    """What a sweep's listing says, in the order it is acted on.
+
+    The findings that fail the run come first, then the advisory ones.
+    What the typed grammar refuted or could not settle fails nothing, so it
+    is counted unless *refutations* asks for each: listed ahead of the
+    findings, one adopter's 260 such lines buried the 85 that blocked, and
+    the agent tidying them filtered the listing before it could begin.
+    """
+    blocking = [finding for finding in scan.findings if finding.kind not in advisory]
+    advised = [finding for finding in scan.findings if finding.kind in advisory]
+    listed = [
+        line
+        for finding in [*blocking, *advised]
+        for line in (
+            f"{finding.file}:{finding.line} [{finding.kind}] {finding.message}",
+            f"    {finding.text}",
+        )
+    ]
+    settled = [
+        f"{refutation.file}:{refutation.line} "
+        f"[{'refuted' if refutation.settled else 'unresolved'} {refutation.rule_id}] "
+        f"{refutation.evidence}"
+        for refutation in scan.refuted
+    ]
+    counted = (
+        [
+            f"{len(scan.refuted)} refuted or unresolved by receiver type, which "
+            "fail nothing — `--refutations` lists each"
+        ]
+        if scan.refuted and not refutations
+        else []
+    )
+    if not scan.findings:
+        return [*(settled if refutations else counted), "No anti-pattern findings."]
+    files = {finding.file for finding in scan.findings}
+    tail = f" (+{len(advised)} untyped, advisory)" if advised else ""
+    return [
+        *listed,
+        *(settled if refutations else []),
+        "",
+        f"{len(blocking)} blocking finding(s){tail} in {len(files)} file(s)",
+        *counted,
+        f"Rule reference: {RULE_REFERENCE} (`uv run lup-devtools dev rules`)",
+    ]
 
 
 def report_refutations(project: DevProject, path: Path, text: str) -> None:
