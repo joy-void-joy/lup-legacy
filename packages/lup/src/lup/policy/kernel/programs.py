@@ -20,7 +20,7 @@ a value would come to be read as the script.
 import posixpath
 from typing import Literal, TypedDict
 
-from .decision import KernelDecision
+from .decision import SUBSTITUTION_SENTINEL, KernelDecision
 from .syntax import expands
 
 type ProgramKind = Literal[
@@ -594,6 +594,19 @@ def program_verdict(spelled: str, reading: ProgramReading) -> KernelDecision | N
                 f"{spelled} with no script file runs whatever it is fed, and"
                 " leaves nothing behind to review",
                 recovery="Name a script file.",
+                rule=PROGRAM_RULE,
+            )
+        case "unread" if expands(subject):
+            named = (
+                "a word a command substitution builds"
+                if SUBSTITUTION_SENTINEL in subject
+                else f"`{subject}`"
+            )
+            return KernelDecision(
+                "deny",
+                f"{spelled} runs {named}, which only the run can read, and it"
+                " could as well be inline code or its input as a script file",
+                recovery="Name the script file the interpreter runs.",
                 rule=PROGRAM_RULE,
             )
         case "unread":

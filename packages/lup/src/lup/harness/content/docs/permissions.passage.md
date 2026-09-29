@@ -403,8 +403,12 @@ its input, and each keeps its refusal however it is carried (`env`, `uv run`,
 after it that nobody can read — a variable a substitution bound, a `$(...)`
 result — does not hand it to a boundary: `perl -pi -e … $files`, `python -c
 … $x` and `node -e … $(ls)` are refused on every posture as their spelled
-forms are. An unread first operand keeps its abstention, since it could be
-the script file a named interpreter is allowed to run.
+forms are. A program nobody can read is judged as the strictest one it could
+be: `bash $x` runs whatever `$x` holds, and that could as well be `-c` and
+code split out of the word, or `-` and its input, as a script file — so
+`bash $x`, `bash $(ls)`, `x=$(ls) && node $x` and `uv run python $x` are
+refused on every posture, where an unread argument after a named script
+(`bash tmp/x.sh $x`) keeps the reading an unread argument gets.
 
 A target may also carry subcommands, because a toolchain reached through
 `uv run` is one target and many commands — a devtools CLI that mostly reads

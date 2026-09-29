@@ -631,6 +631,11 @@ SHELL_POLICY_CASES = [
     DecisionCase(input="bash --version -c ls", effect="deny"),
     DecisionCase(input="node -v -e 'x'", effect="deny"),
     DecisionCase(input="python3 -V tmp/x.py", effect="deny"),
+    DecisionCase(input="x=$(ls) && bash $x", effect="deny", sandboxed=True),
+    DecisionCase(input="bash $(ls)", effect="deny", sandboxed=True),
+    DecisionCase(input="x=$(ls) && node $x", effect="deny", sandboxed=True),
+    DecisionCase(input="x=$(ls) && uv run python $x", effect="deny", sandboxed=True),
+    DecisionCase(input="x=$(ls) && bash tmp/x.sh $x", effect="allow", sandboxed=True),
     # A `--help` the program is handed is the program's argument, not a
     # question the interpreter answers: `bash -c ls --help` runs `ls`, and
     # `bash -h` hashes commands while it runs what its input carries. Whatever

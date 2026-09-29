@@ -667,15 +667,29 @@ def standing_interpreter_refusal(
     nobody can read, rather than being handed to a boundary with it:
     `perl -pi -e … $files` is the inline code `perl -pi -e …` is.
 
-    An interpreter a project declared keeps its row, and one whose first
-    operand is unread could be handed a script this policy trusts or allows,
-    so neither stands here: those keep the abstention they had.
+    The program itself unread is judged as the strictest one it could be:
+    `bash $x` runs whatever `$x` holds, and that could as well be `-c` and
+    code split out of the word, or `-` and its input, as a script file. So
+    it is refused on every posture, declared interpreter or not, and through
+    `uv run` as directly. An interpreter a project declared otherwise keeps
+    its row.
     """
     if not words or opaque_argument(words[0]):
         return None
     executable = posixpath.basename(words[0])
+    if executable == "uv":
+        normalized = uv_command_words(words)
+        handed = (
+            uv_run_words(normalized)
+            if normalized is not None and normalized[1:2] == ["run"]
+            else []
+        )
+        return standing_interpreter_refusal(handed, context) if handed else None
     if executable not in INTERPRETERS:
         return None
+    program = read_program(words)
+    if program["kind"] == "unread" and opaque_argument(program["subject"]):
+        return program_verdict(executable, program)
     verdict = decide_interpreter_words(words, context)
     if verdict is None or verdict.effect != "deny":
         return None
