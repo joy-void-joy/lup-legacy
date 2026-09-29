@@ -10,7 +10,7 @@ from pathlib import Path
 
 from typer.testing import CliRunner
 
-from lup.devtools.dev.questions import create_questions_app, relay
+from lup.devtools.review.app import create_review_app, relay
 from lup.policy.operations import Operation
 from lup.policy.relay import PersistentQuestion
 
@@ -50,7 +50,7 @@ def test_a_reviewer_sees_only_what_they_may_answer(tmp_path: Path) -> None:
     reviewer to discover it one refusal at a time.
     """
     parked(tmp_path)
-    app = create_questions_app(tmp_path)
+    app = create_review_app(tmp_path)
 
     theirs = RUNNER.invoke(app, ["list", "--as", "person"])
     not_theirs = RUNNER.invoke(app, ["list", "--as", "lead"])
@@ -69,10 +69,10 @@ def test_the_requester_reads_its_own_question_and_cannot_answer_it(
     a tool.
     """
     parked(tmp_path)
-    app = create_questions_app(tmp_path)
+    app = create_review_app(tmp_path)
 
     read = RUNNER.invoke(app, ["show", "q-1"])
-    answered = RUNNER.invoke(app, ["answer", "q-1", "--as", "worker"])
+    answered = RUNNER.invoke(app, ["approve", "q-1", "--as", "worker"])
 
     assert read.exit_code == 0
     assert "shell:gh.pr.merge" in read.stdout
@@ -90,10 +90,10 @@ def test_an_answer_carries_its_note_and_says_who_resumes_the_operation(
     note travels with the resumption rather than as a second message.
     """
     parked(tmp_path)
-    app = create_questions_app(tmp_path)
+    app = create_review_app(tmp_path)
 
     result = RUNNER.invoke(
-        app, ["answer", "q-1", "--as", "person", "--note", "squash it"]
+        app, ["approve", "q-1", "--as", "person", "--note", "squash it"]
     )
     shown = RUNNER.invoke(app, ["show", "q-1"])
 
@@ -105,9 +105,9 @@ def test_an_answer_carries_its_note_and_says_who_resumes_the_operation(
 def test_a_question_that_does_not_exist_is_a_refusal_and_not_a_silence(
     tmp_path: Path,
 ) -> None:
-    app = create_questions_app(tmp_path)
+    app = create_review_app(tmp_path)
 
     result = RUNNER.invoke(app, ["show", "q-9"])
 
     assert result.exit_code == 2
-    assert "no question" in result.stderr
+    assert "no review" in result.stderr

@@ -295,11 +295,10 @@ def test_external_review_recovery_commands_select_the_application_environment(
         "--project",
         str(project),
         "lup-devtools",
-        "dev",
-        "questions",
+        "review",
     ]
     show = [*prefix, "show", question.id, "--json"]
-    approve = [*prefix, "answer", question.id, "--as", "operator"]
+    approve = [*prefix, "approve", question.id, "--as", "operator"]
     assert shlex.join(show[:-1]) in detail
     assert shlex.join(approve) in detail
     assert (

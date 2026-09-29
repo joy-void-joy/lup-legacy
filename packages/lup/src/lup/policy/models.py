@@ -23,6 +23,7 @@ from lup.policy.kernel.rows import EditOperation
 from lup.policy.kernel.decision import (
     CheckpointRequirement,
     DecisionEffect,
+    FileReviewRow,
     KernelDecision,
     SandboxPlacement,
 )
@@ -331,6 +332,9 @@ class Decision(BaseModel, frozen=True):
     :attr:`~lup.policy.kernel.decision.KernelDecision.findings`.
     """
 
+    file_reviews: tuple[FileReviewRow, ...] = ()
+    """Original routed file verdicts, bound to the documents they judged."""
+
     @field_validator("sandbox")
     @classmethod
     def reached(
@@ -389,6 +393,7 @@ class Decision(BaseModel, frozen=True):
             escalated=decision.escalated,
             hard=decision.hard,
             findings=tuple(cls.of(finding) for finding in decision.findings),
+            file_reviews=decision.file_reviews,
         )
 
     def as_kernel(self) -> KernelDecision:
@@ -416,6 +421,7 @@ class Decision(BaseModel, frozen=True):
             hard=self.hard,
             findings=tuple(finding.as_kernel() for finding in self.findings),
             recovery=self.recovery,
+            file_reviews=self.file_reviews,
         )
 
 

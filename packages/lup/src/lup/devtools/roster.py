@@ -30,6 +30,7 @@ import typer
 from pydantic import BaseModel
 
 from lup.devtools.coordination.app import create_coordination_app
+from lup.devtools.dashboard.reviews import create_operator_dashboard_app
 from lup.devtools.ledger.app import create_ledger_app
 from lup.ledger.models import LedgerEdge, LedgerNode
 from lup.ledger.store import LedgerLayout
@@ -46,6 +47,7 @@ from lup.devtools.harness.drift import RepositoryWriter
 from lup.devtools.harness.launch import LaunchCheckpoint, LaunchMode
 from lup.devtools.harness.resolve import ConfiguredModel
 from lup.devtools.resolve.app import create_resolve_app
+from lup.devtools.review.app import create_review_app
 from lup.devtools.run.app import create_run_app
 from lup.devtools.setup import Integration, create_setup_app
 from lup.devtools.subapps import SubApp, SubAppSpec
@@ -281,6 +283,13 @@ LIBRARY_ROSTER = [
     ),
     RosterEntry(
         spec=SubAppSpec(
+            name="dashboard",
+            help="Serve the operator's page over the parked reviews",
+        ),
+        build=lambda _: create_operator_dashboard_app(Path.cwd()),
+    ),
+    RosterEntry(
+        spec=SubAppSpec(
             name="ledger",
             help="Read and preserve the notes this repository has recorded",
         ),
@@ -338,6 +347,13 @@ LIBRARY_ROSTER = [
         build=lambda declared: create_resolve_app(
             declared.dev, declared.targets, declared.model, declared.profiles
         ),
+    ),
+    RosterEntry(
+        spec=SubAppSpec(
+            name="review",
+            help="The parked reviews an operator answers, and what each waits on",
+        ),
+        build=lambda _: create_review_app(Path.cwd()),
     ),
     RosterEntry(
         spec=SubAppSpec(name="run", help="Follow work that outlives its tool call"),

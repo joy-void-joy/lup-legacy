@@ -19,6 +19,37 @@ from lup.coordination.repository import RepositoryPeers
 from lup.devtools.coordination import app as coordination_app
 
 
+@pytest.mark.parametrize("explicit", ["", "chosen-session"])
+def test_join_preserves_launcher_identity_unless_overridden(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, explicit: str
+) -> None:
+    monkeypatch.setattr(coordination_app, "project_root", lambda: tmp_path)
+    monkeypatch.setenv("LUP_COORDINATION_MEMBER", "launched-session")
+    arguments = ["join", *(["--id", explicit] if explicit else [])]
+
+    result = CliRunner().invoke(coordination_app.create_coordination_app(), arguments)
+
+    chosen = explicit or "launched-session"
+    assert result.exit_code == 0, result.output
+    assert result.output == f"{chosen}\n"
+    assert RepositoryPeers(tmp_path).row(chosen) is not None
+    assert RepositoryPeers(tmp_path).live_ids() == [chosen]
+
+
+def test_join_without_launcher_mints_a_stable_printed_identity(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(coordination_app, "project_root", lambda: tmp_path)
+    monkeypatch.delenv("LUP_COORDINATION_MEMBER", raising=False)
+    monkeypatch.setattr(coordination_app, "mint_member_id", lambda: "minted-session")
+
+    result = CliRunner().invoke(coordination_app.create_coordination_app(), ["join"])
+
+    assert result.exit_code == 0, result.output
+    assert result.output == "minted-session\n"
+    assert RepositoryPeers(tmp_path).row("minted-session") is not None
+
+
 def long_gone(root: Path, name: str) -> tuple[RepositoryPeers, str]:
     """One repository whose only session spoke an hour ago and never beat.
 

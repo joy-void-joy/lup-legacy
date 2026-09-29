@@ -18,7 +18,7 @@ import sh
 
 from typer.testing import CliRunner
 
-from lup.devtools.dev.questions import create_questions_app, relay
+from lup.devtools.review.app import create_review_app, relay
 from lup.types import JsonObject
 
 RUNNER = CliRunner()
@@ -108,12 +108,12 @@ def test_a_reviewer_can_answer_what_the_dispatcher_parked(tmp_path: Path) -> Non
     fixture.
     """
     judged("git push --delete origin feat", tmp_path)
-    app = create_questions_app(tmp_path)
+    app = create_review_app(tmp_path)
     parked = relay(tmp_path).questions()[0]
 
     listed = RUNNER.invoke(app, ["list"])
     answered = RUNNER.invoke(
-        app, ["answer", parked.id, "--as", "person", "--note", "force-with-lease"]
+        app, ["approve", parked.id, "--as", "person", "--note", "force-with-lease"]
     )
     settled = relay(tmp_path).find(parked.id)
 
@@ -135,7 +135,7 @@ def test_rejection_stops_retry_and_preserves_the_rule(tmp_path: Path) -> None:
     judged(command, tmp_path)
     (question,) = relay(tmp_path).pending()
     rejected = RUNNER.invoke(
-        create_questions_app(tmp_path), ["reject", question.id, "--as", "operator"]
+        create_review_app(tmp_path), ["decline", question.id, "--as", "operator"]
     )
     assert rejected.exit_code == 0
     specific = judged(command, tmp_path)["hookSpecificOutput"]
@@ -170,9 +170,7 @@ def test_an_answer_the_dispatcher_could_not_scope_says_so(tmp_path: Path) -> Non
     judged("git push --delete origin feat", tmp_path)
     parked = relay(tmp_path).questions()[0]
 
-    RUNNER.invoke(
-        create_questions_app(tmp_path), ["answer", parked.id, "--as", "person"]
-    )
+    RUNNER.invoke(create_review_app(tmp_path), ["approve", parked.id, "--as", "person"])
     settled = relay(tmp_path).find(parked.id)
 
     assert settled is not None and settled.answer is not None

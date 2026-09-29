@@ -32,7 +32,12 @@ from lup.policy.kernel.escalation import EscalationRequest
 from lup.policy.kernel.settlement import SettlementFacts, settle
 from lup.policy.models import Decision
 from lup.policy.operations import Operation
-from lup.policy.relay import PersistentQuestion, QuestionRelay, SupervisorChain
+from lup.policy.relay import (
+    CapturedFileReview,
+    PersistentQuestion,
+    QuestionRelay,
+    SupervisorChain,
+)
 
 
 def changed_clause(arrived: Operation, approved: Operation) -> str:
@@ -192,11 +197,16 @@ class OperationCoordinator:
         mid-run would silently change who could approve something already
         pending.
         """
+        file_reviews = [
+            CapturedFileReview.model_validate(row) for row in decision.file_reviews
+        ] or None
+        fingerprint = PersistentQuestion.review_fingerprint(operation, file_reviews)
         return self.relay.record(
             PersistentQuestion(
-                id=f"{operation.id}:{operation.fingerprint()[:12]}",
+                id=f"{operation.id}:{fingerprint[:12]}",
                 operation=operation,
-                fingerprint=operation.fingerprint(),
+                fingerprint=fingerprint,
+                file_reviews=file_reviews,
                 reason=decision.reason,
                 rule=decision.rule,
                 purpose=decision.purpose,
@@ -301,7 +311,10 @@ class OperationCoordinator:
                 ),
                 question=entry,
             )
-        if operation.fingerprint() != entry.fingerprint:
+        if (
+            PersistentQuestion.review_fingerprint(operation, entry.file_reviews)
+            != entry.fingerprint
+        ):
             return CoordinatorResult(
                 stage="refused",
                 decision=Decision.of(

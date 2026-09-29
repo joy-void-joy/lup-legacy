@@ -39,7 +39,6 @@ from lup.harness.codescan.common import (
 )
 from lup.policy.imports import ImportBoundary
 from lup.policy.kernel.edit import (
-    IGNORE_RE,
     python_tree,
     suppression_placement,
     suppression_reaches,
@@ -423,7 +422,7 @@ def retired_suppressions(
         """Whether a line opens a real comment holding a directive."""
         if number < 1 or number > len(lines):
             return False
-        found = IGNORE_RE.search(lines[number - 1])
+        found = context.suppression_at(number, lines[number - 1])
         return found is not None and context.comment_at(number, found.start())
 
     def reason_below(number: int) -> int:
@@ -444,7 +443,7 @@ def retired_suppressions(
         for number, line in enumerate(lines, start=1):
             if number < resume:
                 continue
-            match = IGNORE_RE.search(line)
+            match = context.suppression_at(number, line)
             if match is None or not carries_directive(number):
                 yield line
                 continue
@@ -504,7 +503,7 @@ def directives_for(source: PythonSource) -> list[Directive]:
     for line_number, line in enumerate(source.text.splitlines(), start=1):
         if file_ignore is not None and line_number == file_ignore.line:
             continue
-        match = IGNORE_RE.search(line)
+        match = context.suppression_at(line_number, line)
         if match is None or not context.comment_at(line_number, match.start()):
             continue
         directives.append(

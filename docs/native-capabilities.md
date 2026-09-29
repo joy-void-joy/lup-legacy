@@ -83,8 +83,20 @@ part of probing.
   their own hook-bound home and execution scope. Acceptance receipts survive
   restart without consuming mail; failed queues retry, concurrent relays share
   a lock, and shutdown joins the bounded queue attempt. In-process registrations
-  have no companion lifecycle and provide no relay. Tests use fake native queues;
-  authenticated idle-turn startup remains unmeasured. Delivery is at least once:
+  have no companion lifecycle and provide no relay. Deterministic tests cover
+  routing and receipt transitions. On Codex CLI 0.156.1,
+  `tests/integration/test_review_idle_wake.py` also measures a browser decision,
+  durable mail, the owned stdio receiver, and native `codex queue` starting and
+  completing a second turn after the first finished. The native process forwards
+  the fixture's declared launch identity into its actual MCP child. An accelerated
+  owned heartbeat recovers a pulse aged beyond the production 120-second window
+  without dropping its hook-bound native route, and the receiver queues the
+  approval autonomously. An inert local Responses
+  endpoint receives the operator's nonce; no account credentials or external
+  model service are needed. The native queue selects the recipient's default
+  Unix control socket through its recorded configuration home. This verifies
+  that tested native path, not every runtime posture or session configuration.
+  Delivery is at least once:
   a crash after acceptance, a direct sender or an external watcher can repeat a
   wake, and a delivery hook can read the mailbox before a queued nudge arrives.
 
@@ -132,7 +144,7 @@ part of probing.
   The `exec` finding above is not a property of `exec`: the middle verdict is
   missing from every surface Lup can open, so an `ask` is spent as a denial
   wherever an application is the one asking. The fail-closed denial is
-  therefore correct rather than a workaround. And `dev questions` is Codex's
+  therefore correct rather than a workaround. And `review` is Codex's
   review surface rather than its fallback, which is what makes that surface's
   diff rendering load-bearing instead of a convenience. Issue #180 is this gap
   met from a real session; queue settlement requires an independent operator.

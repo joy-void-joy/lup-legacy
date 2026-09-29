@@ -41,6 +41,12 @@ Run any of them with `uv run lup-devtools <command>`, and add `--help` for its a
 | `coordination release` | Give a prefix back, refusing where this session does not hold it. |
 | `coordination watch` | Stream what changes: who arrives and leaves, what they are on, what reaches them. |
 
+## `dashboard`
+
+| Command | What it does |
+| --- | --- |
+| `dashboard serve` | Serve the dashboard over every worktree of the selected repositories. |
+
 ## `dev`
 
 | Command | What it does |
@@ -66,6 +72,7 @@ Run any of them with `uv run lup-devtools <command>`, and add `--help` for its a
 | `dev relocate` | Move a module and repoint every import of it. |
 | `dev update` | Move the library, the native trees, and the copied half to one commit. |
 | `dev release` | Cut a release or a candidate of one, or promote the newest candidate. |
+| `dev edit-prepare` | Audit proposed edits and prepare one patch without writing their targets. |
 | `dev policy` | Show what the declared permission policy decides about an input, and why. |
 | `dev vocabulary` | Show every shell form the declared vocabulary judges, and how. |
 | `dev env status` | Where this project&#x27;s environment is, and who is installed in it. |
@@ -93,11 +100,6 @@ Run any of them with `uv run lup-devtools <command>`, and add `--help` for its a
 | `dev model-config snapshot` | Record the configuration pydantic resolved onto every model. |
 | `dev model-config snapshot-at` | Record the configuration pydantic resolved at a git revision. |
 | `dev model-config compare` | Diff two snapshots; exit non-zero when any model&#x27;s config moved. |
-| `dev questions list` | List the questions this run has parked, and what each is waiting on. |
-| `dev questions show` | Show one question whole, including the operation it would resume. |
-| `dev questions answer` | Approve one question, optionally with a note for the agent. |
-| `dev questions reject` | Refuse one question, optionally saying what to do instead. |
-| `dev questions cancel` | Withdraw a question nobody needs answered any more. |
 | `dev hooks classify` | Say what the policy decides about one shell command, and why. |
 | `dev hooks classify-fetch` | Say whether a URL is inside this project&#x27;s declared fetch scopes. |
 | `dev hooks sweep` | Classify a list of commands at once, and exit non-zero if any is not allowed. |
@@ -243,6 +245,16 @@ Run any of them with `uv run lup-devtools <command>`, and add `--help` for its a
 | `resolve branch` | Create + switch to the resolve/&lt;id&gt; branch (a resolve editor&#x27;s first step). |
 | `resolve review` | Render a resolve manifest and its branch diffs into one static HTML review. |
 | `resolve summary` | Print per-concern verdicts from a resolve manifest. |
+
+## `review`
+
+| Command | What it does |
+| --- | --- |
+| `review list` | List the reviews parked in this checkout, and what each is waiting on. |
+| `review show` | Show one review whole, including the operation it would resume. |
+| `review approve` | Approve one review, optionally with a note for the agent. |
+| `review decline` | Decline one review, optionally saying what to do instead. |
+| `review cancel` | Withdraw a review nobody needs answered any more. |
 
 ## `run`
 

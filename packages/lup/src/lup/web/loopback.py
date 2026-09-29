@@ -64,9 +64,10 @@ def allowed_host_values(url: str) -> list[str]:
     otherwise, and this surface is reached both ways.
     """
     port = urlsplit(url).port
+    authorities = [f"[{host}]" if ":" in host else host for host in LOOPBACK_HOSTS]
     return [
-        *LOOPBACK_HOSTS,
-        *(f"{host}:{port}" for host in LOOPBACK_HOSTS),
+        *authorities,
+        *(f"{host}:{port}" for host in authorities if port is not None),
     ]
 
 
