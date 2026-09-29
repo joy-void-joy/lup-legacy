@@ -163,8 +163,10 @@ nobody advances, which reads exactly like being up to date.
   workaround is a decision this project makes on behalf of every project that
   meets the same defect, and it is the decision nobody else can see.
 - **Report friction you cannot repair.** Where the fix needs a decision that
-  is not yours, or reproduction is the work, `dev report-friction` files it
-  against lup with the command, the error and the recovery cost.
+  is not yours, or reproduction is the work, `dev report-friction` reports it
+  against lup with the command, the error and the recovery cost. Routed to
+  lup's tracker from a project that is not lup, it prints the command naming
+  that tracker with `--repo`, and running that asks.
 - **One branch, one subject.** The fix and whatever this project does about it
   are two changes in two repositories, and a reviewer of either wants only
   their half.

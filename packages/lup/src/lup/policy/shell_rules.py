@@ -342,12 +342,6 @@ class ShellOperationRule(BaseModel, frozen=True):
     The subcommand's column, for a verb nested beneath one: `dev init upstream
     --dry-run` prints the registration it would write and writes none, so the
     question its effects raise is about an effect the probe never performs."""
-    amending_flags: list[str] = []
-    """Flags that point this operation at a record that already exists.
-
-    For a verb whose effects are about creating one: `dev report-friction`
-    files an issue, and `--issue N` corrects the one already filed, which a
-    follow-up restores the way editing an issue does."""
     setting_flags: list[str] = []
     """Guarded flags whose value names the setting the question is about.
 
@@ -765,7 +759,6 @@ def erase_shell_rules(rules: list[ShellCommandRule]) -> list[ShellRuleRow]:
                 allow_flags=[],
                 read_verbs=[],
                 probe_flags=list(operation.probe_flags),
-                amending_flags=list(operation.amending_flags),
                 frozen_flags=[],
                 write_markers=[],
                 guarded_keys=[],
@@ -801,7 +794,6 @@ def erase_shell_rules(rules: list[ShellCommandRule]) -> list[ShellRuleRow]:
             allow_flags=[],
             read_verbs=list(subcommand.read_verbs),
             probe_flags=list(subcommand.probe_flags),
-            amending_flags=[],
             frozen_flags=list(subcommand.frozen_flags),
             write_markers=[],
             guarded_keys=list(subcommand.guarded_keys),
@@ -839,7 +831,6 @@ def erase_shell_rules(rules: list[ShellCommandRule]) -> list[ShellRuleRow]:
             allow_flags=list(command.allow_flags),
             read_verbs=list(command.read_verbs),
             probe_flags=list(command.probe_flags),
-            amending_flags=[],
             frozen_flags=list(command.frozen_flags),
             write_markers=list(command.write_markers),
             guarded_keys=list(command.guarded_keys),

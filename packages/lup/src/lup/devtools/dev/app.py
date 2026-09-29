@@ -813,6 +813,14 @@ def create_dev_app(
         resolver takes every open issue in this repository as evidence, so
         the next run plans a repair it cannot make. A component no declared
         tracker claims stays here, which is every defect this tree owns.
+
+        Filed unasked only here. This runs inside an allowed devtools call,
+        and the permission policy reads its words rather than its routing,
+        so a new unnamed report whose component a declared tracker claims
+        stops, printing the same invocation with `--repo` naming that
+        tracker -- the spelling the policy asks about. A correction
+        (`--issue`) goes wherever routing sends it, as `dev tracker` reaches
+        a declared tracker.
         """
         routes = tracker_routes()
         report = issues_mod.FrictionReport(
@@ -823,6 +831,14 @@ def create_dev_app(
             state=state,
             recovery_cost=recovery_cost,
         )
+        given = ["uv", "run", "lup-devtools", "dev", "report-friction"]
+        given += ["--summary", summary, "--component", component]
+        given += ["--command", command, "--error", error]
+        given += ["--state", state, "--recovery-cost", recovery_cost]
+        elsewhere = routes.claimed_elsewhere(component, given)
+        if elsewhere and issue is None and not repository:
+            typer.echo(elsewhere, err=True)
+            raise typer.Exit(1)
         try:
             target = routes.chosen(
                 ["issue", "create", "--title", summary],

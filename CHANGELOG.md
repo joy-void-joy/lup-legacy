@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+### An issue filed on this repository's own tracker is not a question
+
+`gh issue create` joins the compensable verbs — closing restores what filing
+opened — and allows, as does `gh api repos/{owner}/{repo}/issues`; with
+`-R`/`--repo`, or a literal owner and name, it asks, as a filing on somebody
+else's tracker. `gh_rule(allow_filing=False)` puts the question back, the way
+`allow_authoring=False` does for pull requests. `dev report-friction` allows
+unnamed and asks with `--repo`; a new report whose component a declared
+tracker claims stops before filing and prints the same invocation naming that
+tracker, which is the spelling the policy asks about. `--issue N` corrects a
+report wherever routing sends it, and asks beside `--repo` as `gh issue edit
+--repo` does. `ShellOperationRule.amending_flags` is gone with the one row
+that declared it.
+
 ### A runtime started from a session's shell is a member of its own
 
 `LUP_COORDINATION_MEMBER` reaches every process a launched session starts,

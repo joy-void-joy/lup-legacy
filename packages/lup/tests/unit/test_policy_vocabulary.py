@@ -442,16 +442,40 @@ def test_allow_authoring_moves_only_the_author_describing_their_own_work() -> No
     assert verdict("gh pr view -R other/repo 12", authoring).effect == "allow"
 
 
+def test_allow_filing_moves_only_a_new_issue_on_this_repository() -> None:
+    """A report on the project's own tracker, or a publication worth a question.
+
+    The tracker exists to receive this project's reports, so filing one there
+    allows by default; a project whose issues reach people it would rather
+    ask about first turns it off. Either way another repository's tracker is
+    somebody else's, and asks.
+    """
+    filing = [gh_rule()]
+    publishing = [gh_rule(allow_filing=False)]
+
+    assert verdict("gh issue create --title x", filing).effect == "allow"
+    assert verdict("gh issue create --title x", publishing).effect == "ask"
+    for elsewhere in ("-R", "--repo"):
+        command = f"gh issue create {elsewhere} other/x --title x"
+        assert verdict(command, filing).effect == "ask", command
+        assert verdict(command, publishing).effect == "ask", command
+    # The verbs working an existing issue stay where they were, and the pull
+    # request authoring the other parameter decides is untouched.
+    assert verdict("gh issue edit 3 --title x", publishing).effect == "allow"
+    assert verdict("gh issue close 3", publishing).effect == "allow"
+    assert verdict("gh pr create --fill", publishing).effect == "allow"
+
+
 def test_compensable_collaboration_allows_and_the_events_do_not() -> None:
     """The band a read/write split could not draw.
 
     Opening a pull request, retitling it, commenting, closing and reopening
     are each restored by a normal follow-up operation, and a review round
     performs several of them; the merge that lands it is the workflow's own
-    last step. A new issue notifies the repository's watchers, a merge past
-    the branch's protection overrides it, an approving review says something
-    in the caller's name, and a release publishes — none of which a later
-    action undoes, whatever it compensates.
+    last step. Filing an issue here is restored the same way, by closing it.
+    A merge past the branch's protection overrides it, an approving review
+    says something in the caller's name, and a release publishes — none of
+    which a later action undoes, whatever it compensates.
     """
     rules = [gh_rule()]
 
@@ -466,6 +490,7 @@ def test_compensable_collaboration_allows_and_the_events_do_not() -> None:
         "gh pr reopen 12",
         "gh pr merge 12",
         "gh pr merge 12 --squash --delete-branch",
+        "gh issue create --title x",
         "gh issue edit 3 --title x",
         "gh issue comment 3 --body x",
         "gh issue close 3",
@@ -474,7 +499,6 @@ def test_compensable_collaboration_allows_and_the_events_do_not() -> None:
         assert effect(allowed) == "allow", allowed
 
     for asked in (
-        "gh issue create --title x",
         "gh pr merge 12 --admin",
         "gh release create v1",
         "gh secret set TOKEN",

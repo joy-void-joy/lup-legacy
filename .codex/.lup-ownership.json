@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "generator_version": "0.2.0",
-  "source_digest": "12a6d91c62b63bfb3ac7aeb532a71d1a7d097d66d71ba9cfd3c1ca4326cfd4df",
+  "source_digest": "9d141e33350a28357c60764e57232312f378ef62a3155051ac6b458ffdd5d5c0",
   "target_requirements": [
     "codex-cli>=0.144"
   ],
@@ -212,7 +212,7 @@
     {
       "path": ".codex/plugins/lup/hooks/runtime/kernel/commands.py",
       "category": "generated",
-      "sha256": "ed9a6d1f8310e123fb4f642f2340aff8229ba02a1379b18e810ac7b785faccd8",
+      "sha256": "4708cd808336da0b5045af94af4c7e4701cfa8d689ff3ca3a5660e56ace9e76f",
       "semantic_id": "hooks.lup-policy",
       "executable": false
     },
@@ -317,7 +317,7 @@
     {
       "path": ".codex/plugins/lup/hooks/runtime/kernel/rows.py",
       "category": "generated",
-      "sha256": "74666e69b9dea3ec60affc8daec1fdfb4a6a9d5fbfcdfda620146b3c657c7fe4",
+      "sha256": "ce04cb82e1ae63bb7202e2c9a0f21a7971c0b5d5bfe58a57cba3bbf3c18c8836",
       "semantic_id": "hooks.lup-policy",
       "executable": false
     },
@@ -401,7 +401,7 @@
     {
       "path": ".codex/plugins/lup/hooks/runtime/policy_data.py",
       "category": "generated",
-      "sha256": "602c5285873d64077ef1e53a1719702bff65fe4cc3885d8da1165f7f77da4947",
+      "sha256": "a5cd93779d63c5138188ee9b4c57b5513befb583a7bd99990190e15c29bb5c88",
       "semantic_id": "hooks.lup-policy",
       "executable": false
     },
@@ -716,7 +716,7 @@
     {
       "path": ".codex/plugins/lup/skills/resolve/SKILL.md",
       "category": "generated",
-      "sha256": "b381280e99758031c8d1cb879c25f939e95a7a6c6957200ff4c7d9af4e8fac3f",
+      "sha256": "61a9d8c9ac6ce253d5717b9fb9e2092aabb5fea287edf7e29c1bed960bfaa61a",
       "semantic_id": "skill.resolve",
       "executable": false
     },
@@ -737,7 +737,7 @@
     {
       "path": ".codex/plugins/lup/skills/upstream/SKILL.md",
       "category": "generated",
-      "sha256": "0e4047dbf6ec9c7c155b701eb709b2e5ad07c61d5dc7f8e2c02428ec94ea7c04",
+      "sha256": "382c7900a249799f2bc24d7d8781beaf9d6171c7fe2d0293e8657eb9b309daec",
       "semantic_id": "skill.upstream",
       "executable": false
     },

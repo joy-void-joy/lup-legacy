@@ -12,6 +12,8 @@ hatch has gone stale is worse than one with none: it sends a caller to a
 command that no longer does what it says.
 """
 
+import shlex
+
 import pytest
 
 from lup.devtools.dev.issues import (
@@ -197,6 +199,32 @@ def test_a_report_goes_to_whoever_owns_the_component_it_names(
     somebody else's and a component nobody claims stays where it was found.
     """
     assert routes().chosen(["issue", "create"], component=component) == expected
+
+
+def test_a_new_report_a_declared_tracker_claims_is_named_rather_than_filed() -> None:
+    """Routing says where a report belongs; the policy decides who is asked.
+
+    The policy reads the words, and an unnamed report reads as one filed on
+    this checkout's repository. One whose component a declared tracker claims
+    would reach that project's watchers with nobody asked, so it stops,
+    carrying the same invocation with `--repo` naming the tracker -- the
+    spelling the policy asks about. A component nobody claims has nothing to
+    name, and neither does a tracker that is this checkout written another way.
+    """
+    given = ["uv", "run", "lup-devtools", "dev", "report-friction"]
+    given += ["--summary", "it broke", "--component", "lup/policy"]
+
+    message = routes().claimed_elsewhere("lup/policy", given)
+
+    assert shlex.join([*given, "--repo", "upstream/framework"]) in message
+    assert "acme/widget" in message
+    assert routes().claimed_elsewhere("aib.devtools", given) == ""
+    itself = Tracker(repository="github.com/acme/widget", what="us", components=["lup"])
+    same = TrackerRoutes(own="acme/widget", declared=[itself])
+    assert same.claimed_elsewhere("lup/policy", given) == ""
+    # No repository of its own is not this checkout: the tracker is named.
+    homeless = TrackerRoutes(own="", declared=[UPSTREAM])
+    assert "--repo upstream/framework" in homeless.claimed_elsewhere("lup", given)
 
 
 def test_an_explicit_repository_outranks_the_component_routing() -> None:

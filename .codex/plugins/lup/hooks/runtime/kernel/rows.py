@@ -432,11 +432,6 @@ class ShellRuleRow(TypedDict):
     its verdict past its ``ask_flags`` and ``ask_refspecs``. Destination
     grammar still asks: a probe still contacts the repository it names, and
     where the work would land is guarded as a place, not as a write.
-    ``amending_flags`` name the flags that point an operation at a record
-    that already exists (``dev report-friction --issue N``): what the row
-    asks about is creating one, and amending one a follow-up restores, so a
-    non-allow row de-escalates to allow when one appears among literal words
-    free of guarded flags.
     ``frozen_flags`` name the flags that pin a dependency restore to what its
     lockfile already declares (``bun install --frozen-lockfile``): a non-allow
     row de-escalates to allow when one appears among literal words free of
@@ -630,7 +625,6 @@ class ShellRuleRow(TypedDict):
     allow_flags: list[str]
     read_verbs: list[str]
     probe_flags: list[str]
-    amending_flags: list[str]
     frozen_flags: list[str]
     write_markers: list[str]
     guarded_keys: list[str]
@@ -672,7 +666,6 @@ type ShellRowField = Literal[
     "allow_flags",
     "read_verbs",
     "probe_flags",
-    "amending_flags",
     "frozen_flags",
     "write_markers",
     "guarded_keys",
@@ -736,7 +729,6 @@ def shell_row_values(
         "allow_flags": row["allow_flags"],
         "read_verbs": row["read_verbs"],
         "probe_flags": row["probe_flags"],
-        "amending_flags": row["amending_flags"],
         "frozen_flags": row["frozen_flags"],
         "write_markers": row["write_markers"],
         "guarded_keys": row["guarded_keys"],

@@ -1,0 +1,13 @@
+subjects = ["ShellOperationRule.amending_flags", "ShellRuleRow.amending_flags"]
+reason = """
+the one row that declared it, `dev report-friction`, allows unless `--repo` \
+names a tracker, so no shipped vocabulary asks about creating a record that \
+a flag could point at an existing one instead, and the de-escalation went"""
+
+[[steps]]
+instruction = """
+Drop amending_flags from every ShellOperationRule. An operation that asked \
+about creating a record and allowed amending one is classified by what the \
+creation restores: effect_class="compensable" allows it, with the flags that \
+send it to another repository as its ask_flags, the way gh_rule guards \
+`gh issue create` with -R and --repo."""
