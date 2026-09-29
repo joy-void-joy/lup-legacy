@@ -434,7 +434,11 @@ class LiveFeed:
     async def follow(
         self, resume: str, disconnected: Callable[[], Awaitable[bool]]
     ) -> AsyncIterator[str]:
-        """One tab's stream: what it missed since *resume*, or the whole state, then each change."""
+        """One tab's stream: what it missed since *resume*, or the whole state, then each change.
+
+        Once what it missed is sent, a comment says it is current, so a tab
+        that missed nothing knows as much without a frame to show for it.
+        """
         self.followers += 1
         if self.producer is None:
             self.producer = asyncio.create_task(self.produce())
@@ -443,6 +447,7 @@ class LiveFeed:
             await self.primed.wait()
             position = self.resumed(resume)
             quiet = time.monotonic()
+            current = False
             while not await disconnected():
                 if position is None or self.behind(position):
                     yield self.whole()
@@ -454,6 +459,9 @@ class LiveFeed:
                 if fresh:
                     position = fresh[-1].seq
                     quiet = time.monotonic()
+                if not current:
+                    current = True
+                    yield ": live\n\n"
                 if time.monotonic() - quiet >= self.heartbeat:
                     yield ": keep-alive\n\n"
                     quiet = time.monotonic()

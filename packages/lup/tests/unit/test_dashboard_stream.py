@@ -376,3 +376,30 @@ async def test_a_reply_to_nobody_or_to_a_session_that_left_says_so(
     )
     assert "left" in left.json()["detail"]
     assert empty.status_code == 422
+
+
+async def test_a_tab_is_told_once_it_has_caught_up(tmp_path: Path) -> None:
+    """A resumed tab that missed nothing is handed no frame, and still learns it is current."""
+    session(tmp_path, "lead")
+    source = feed(tmp_path)
+    seen = await frames(source, "", lambda received: len(received) >= 1)
+    done = asyncio.Event()
+
+    async def disconnected() -> bool:
+        return done.is_set()
+
+    async def chunks(resume: str) -> list[str]:
+        received: list[str] = []
+        async for chunk in source.follow(resume, disconnected):
+            received.append(chunk)
+            if chunk == ": live\n\n":
+                return received
+        return received
+
+    fresh = await asyncio.wait_for(chunks(""), timeout=10)
+    resumed = await asyncio.wait_for(chunks(seen[-1].cursor), timeout=10)
+    done.set()
+
+    assert [framed(chunk) is not None for chunk in fresh] == [False, True, False]
+    assert resumed[0].startswith("retry: ")
+    assert resumed[1:] == [": live\n\n"]
