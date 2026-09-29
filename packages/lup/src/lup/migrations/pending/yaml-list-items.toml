@@ -1,0 +1,10 @@
+subjects = ["YamlList.items", "WorkflowStep.node"]
+reason = """
+a sequence item carries the comment explaining it, written above its dash, \
+so each item of a YamlList is a YamlItem holding the node and that comment"""
+
+[[steps]]
+instruction = """
+Wrap each node you pass to YamlList(items=...) as YamlItem(value=node), \
+adding comment="..." where the item wants a reason above it; \
+WorkflowStep.node() returns that YamlItem rather than the bare YamlMap."""

@@ -25,6 +25,7 @@ from lup.formats.yaml import (
     YamlDocument,
     YamlEntry,
     YamlFlow,
+    YamlItem,
     YamlList,
     YamlMap,
     YamlScalar,
@@ -72,13 +73,16 @@ class WorkflowStep(BaseModel, frozen=True):
     run: str = ""
     working_directory: str = ""
 
-    def node(self) -> YamlMap:
-        """This step as the mapping one dash of the job's sequence holds."""
+    comment: str = ""
+    """Why the step is there, written above its dash for whoever reads the file."""
+
+    def node(self) -> YamlItem:
+        """This step as one dash of the job's sequence, with its reason above."""
         configured = [
             YamlEntry(key="with", value=YamlMap(entries=scalars(self.settings)))
         ]
         environment = [YamlEntry(key="env", value=YamlMap(entries=scalars(self.env)))]
-        return YamlMap(
+        mapping = YamlMap(
             entries=[
                 *scalars({"name": self.name, "uses": self.uses}),
                 *(configured if self.settings else []),
@@ -88,6 +92,7 @@ class WorkflowStep(BaseModel, frozen=True):
                 ),
             ]
         )
+        return YamlItem(value=mapping, comment=self.comment)
 
 
 class FrontendSpec(BaseModel, frozen=True):
