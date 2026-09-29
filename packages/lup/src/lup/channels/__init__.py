@@ -9,8 +9,8 @@ the import graph held eleven, and nobody notices a sentence going stale.
 A foundation rather than part of a subject, which is why it sits beside
 :mod:`lup.types` and not under one. It imports nothing else in the library,
 and the two halves it serves belong to different subjects: most callers take
-the atomic write and the timestamp, while the actors take the slot, the
-stream and the cursor they meet each other over. Filing it under storage
+the atomic write and the timestamp, while the actors take the slot and the
+stream they meet each other over. Filing it under storage
 manufactures a cycle — the journals read a stream while a workspace's
 history reads a metrics summary, so the two entries close a loop that is
 otherwise two separate one-way edges.

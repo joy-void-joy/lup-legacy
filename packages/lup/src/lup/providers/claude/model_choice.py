@@ -28,7 +28,7 @@ type ClaudeModelChoice = ClaudeModel | CustomModel | ModelTier
 def claude_model_choice(model: str | CustomModel) -> ClaudeModelChoice:
     """One model a caller named in words both runtimes share, as Claude takes it.
 
-    A portable request can name either runtime's catalog, so a name only the
+    A setting shared by both runtimes can name either catalog, so a name only the
     other runtime lists reaches here too, and is refused rather than sent to
     a CLI that would answer with its own error, later and less plainly.
     """
