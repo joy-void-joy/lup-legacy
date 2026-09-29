@@ -750,6 +750,17 @@ This repository declares `defer`, and keeps `unjudged_ambient` at `ask`:
 reading an unlisted origin is the runtime's question, while a command
 nothing classified stays visible. A denied scope is refused under either.
 
+A cloud metadata service is refused before any scope is read, by every route
+and on every placement, and escalation does not move it: what it answers is
+the credentials of the machine it serves, which no container puts back.
+`lup.policy.kernel.fetch.metadata_address` names the IPv4 link-local block
+(every provider's IPv4 service, and ECS's task endpoint), `fd00:ec2::254`
+and `metadata.google.internal`, and reads an address as the address it is:
+`2852039166`, `0xa9.0xfe.0xa9.0xfe` and `[::ffff:169.254.169.254]` are one
+address to curl and to this. A LAN address is an ordinary unlisted origin and
+keeps answering `unscoped_fetch`; a name that only resolves to a metadata
+address is the network's to stop.
+
 Egress the proxy cannot carry at all — SSH
 under a git remote, a daemon socket — is not a scope question: the sandbox's
 only lever there is `excluded_commands`, which drops the command out of

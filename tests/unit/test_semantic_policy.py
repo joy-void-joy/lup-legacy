@@ -2527,6 +2527,23 @@ FETCH_POLICY_CASES = [
     DecisionCase(input="https://raw.cdn.example.org/asset.js", effect="allow"),
     DecisionCase(input="https://one.two.cdn.example.org/asset.js", effect="allow"),
     DecisionCase(input="https://evilcdn.example.org/asset.js", effect="ask"),
+    # A cloud's metadata service hands whoever asks the credentials of the
+    # machine it answers on, so its addresses are refused however they are
+    # spelled, and a LAN address beside them is only an unlisted origin.
+    DecisionCase(input="http://169.254.169.254/latest/meta-data/", effect="deny"),
+    DecisionCase(input="http://169.254.170.2/v2/credentials", effect="deny"),
+    DecisionCase(input="http://[fd00:ec2::254]/latest/meta-data/", effect="deny"),
+    DecisionCase(
+        input="http://metadata.google.internal/computeMetadata/v1/", effect="deny"
+    ),
+    DecisionCase(input="http://METADATA.Google.Internal./", effect="deny"),
+    DecisionCase(input="http://2852039166/latest/", effect="deny"),
+    DecisionCase(input="http://0xa9.0xfe.0xa9.0xfe/latest/", effect="deny"),
+    DecisionCase(input="http://0251.0376.0251.0376/latest/", effect="deny"),
+    DecisionCase(input="http://[::ffff:169.254.169.254]/latest/", effect="deny"),
+    DecisionCase(input="https://169.254.169.254:8443/x", effect="deny"),
+    DecisionCase(input="http://192.168.1.10/", effect="ask"),
+    DecisionCase(input="http://10.0.0.5:8080/health", effect="ask"),
 ]
 
 EDIT_POLICY_CASES = [
@@ -3525,6 +3542,21 @@ def test_bundled_fetch_matches_canonical_scheme_port_and_path(tmp_path: Path) ->
 
 DOWNLOAD_CASES = [
     DecisionCase(input="curl -s https://docs.example.com/api/one", effect="allow"),
+    # A metadata address is refused wherever the session sits, since what it
+    # answers is the host's own identity, which no boundary puts back.
+    DecisionCase(input="curl http://169.254.169.254/latest/meta-data/", effect="deny"),
+    DecisionCase(
+        input="curl http://169.254.169.254/latest/meta-data/",
+        effect="deny",
+        sandboxed=True,
+    ),
+    DecisionCase(
+        input="wget -qO- http://metadata.google.internal/computeMetadata/v1/",
+        effect="deny",
+        sandboxed=True,
+    ),
+    DecisionCase(input="curl -s http://[fd00:ec2::254]/latest/", effect="deny"),
+    DecisionCase(input="curl http://192.168.1.10/", effect="ask"),
     # A cluster is one word to the shell and to curl, so it is judged as the
     # flags it spells rather than as an option nobody declared.
     DecisionCase(input="curl -sI https://docs.example.com/", effect="allow"),
