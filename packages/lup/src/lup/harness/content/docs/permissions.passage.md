@@ -1364,8 +1364,9 @@ full once per repository per session.
 
 A shell command is reviewed by what it changed, not by what its words name:
 the claim window's before-and-after comparison gives every file that moved
-from the commit, so a script's writes get the same review as a redirect's.
-Codex's patch parser reads every touched path without replaying the old file
+from the commit, so a script's writes get the same rule scan as a redirect's.
+Only a file the words name meets the path gates as well: a generator rewrites
+its own trees, which those gates refuse editing by hand. Codex's patch parser reads every touched path without replaying the old file
 contents, so both runtimes run the same sweep and type check after an edit,
 including moves.
 
