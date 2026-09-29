@@ -173,7 +173,7 @@ Canonical sources live in `lup.harness.content`
 (adapter renderers and the policy bundle).
 
 Three things that map states and the reason for each. The
-30 modules under `hooks/runtime/kernel/` are a verbatim
+31 modules under `hooks/runtime/kernel/` are a verbatim
 copy of `lup/policy/kernel/`, kept byte-identical so it can be diffed against
 the canonical package. The ownership manifests are written by
 `lup.harness.ownership` from the generation result rather than compiled from a

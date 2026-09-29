@@ -1275,20 +1275,34 @@ shell `apply_patch` with a single-quoted argument or a quoted heredoc reaches
 the same edit gates. Relative paths resolve against the hook payload's
 working directory. Add-file operations replacing existing files are judged
 as overwrites. Compound shell commands are never reduced to only their patch.
-Plain two-path `cp` commands capture both source and destination; changes to
-either invalidate approval. Every statically known shell write target also
-contributes its preimage, including redirections, authored content and in-place
-rewrites. The review diff uses the captured documents for
-patches and copies, so it remains the proposal submitted even if another writer
-changes the files before the operator opens it. Recognized `sed -i` commands
-also show a diff from their captured input. The preview preserves supported
-options and transforms that input through sed's sandbox mode; it never runs
-the submitted shell command. A caption identifies the dashboard's environment as
-the source of this simulation. The exact command stays visible beside its diff.
-Because the request does not capture its execution locale, only ASCII input
-and scripts without numeric byte escapes, locale-sensitive ranges, classes, case conversion or
-case-insensitive flags are previewed. Unsupported forms explain that a file
-preview is unavailable and display the complete command for review.
+
+A shell command is read the way the shell runs it: segment by segment, each
+write applied to what the writes before it left, through a `cd` and across
+`&&`, `;` and pipes (`lup.policy.kernel.documents`). An in-place `sed`, with
+every expression and every file it names, runs sandboxed over the text the
+line has left there -- any encoding sed reads, the file never touched; `cp`,
+`mv` and `install` land their source's text, a move's source gone; `rm`
+removes; a heredoc, `echo`, `printf` or `tee` lands the bytes the command
+carries, `>>` after what stands; `patch -pN` and `git apply` are applied by
+Git to a copy of the files they touch. The edit gates judge each file as the
+edit the whole line makes of it, so a second rewrite of a file is read
+against what the first left, and several appends meet the size gate as the one
+change they add up to.
+
+Where somebody is asked, the question keeps that reading as its per-file
+record: each file the line changes, in the order it writes them, with the
+verdict the edit gates gave it and the document it would hold, beside the
+preimage its digest names. The dashboard and `review show` read the record;
+nothing is re-derived or run where a review is read, so the diff is what was
+judged. A file the policy allows on its own -- scratch, a test, a data file
+-- carries `allow`, which leaves it out of the default view and in the full
+one. A step whose result exists only once it runs -- a program's output
+redirected into a file, `sort -o`, a formatter, a script, a loop, a word
+the shell expands into other words -- is listed as that, with the files it
+leaves so, and never run to find out; a file that does not read as text is
+named rather than shown. Every file a step lands the text of, and every
+file a row shows, contributes its preimage, so a change to any of them
+before the call is carried out makes it a fresh question.
 
 
 ## Two markers change a decision

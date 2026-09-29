@@ -32,6 +32,7 @@ from policy_data import HOOK_DEADLINE_SECONDS
 import csv
 import fcntl
 import signal
+import tempfile
 import time
 from datetime import UTC, datetime, timedelta
 
@@ -42,7 +43,17 @@ from typing import Literal
 from urllib.parse import urlsplit
 import shlex
 import policy_data as identity_policy
-from kernel.decision import captured_edit_decision
+from kernel.decision import FileReviewRow, captured_edit_decision
+from kernel.documents import (
+    FollowedDocument,
+    FollowedReading,
+    document_operation,
+    file_steps,
+    followed_documents,
+    judged_documents,
+    rewrite_reading,
+    shown_documents,
+)
 from kernel.policy_protocol import read_response, routing_failure
 from coordination import store
 from coordination.runtime import stdin_runtime
@@ -74,14 +85,11 @@ from kernel.lex import (
 from kernel.rows import (
     DisplacedTargetRow,
     ResolutionRow,
-    RewriteReading,
     RewrittenDocumentRow,
-    UnproducedDocumentRow,
     WithheldWalkRow,
     landing_rows,
-    unproduced_cause,
 )
-from kernel.review import Reviewed, copied_paths
+from kernel.review import Reviewed
 from kernel.spawns import decide_spawn, spawn_name
 from kernel.words import INTERPRETERS
 from kernel.roles import displaced_targets, sibling_scratch_rows, unscratched
@@ -1003,8 +1011,14 @@ def review_fingerprint(
     policy_identity: str,
     resolved: dict,
     evidence: list[dict] | None,
+    unpreviewed: list[dict] | None,
 ) -> str:
-    """The digest one parked call is approved under: everything the approver reads."""
+    """The digest one parked call is approved under: everything the approver reads.
+
+    ``evidence`` is each file's verdict with the document it judged, and
+    ``unpreviewed`` the steps no document states -- the two halves of what a
+    reviewer is shown a command changes.
+    """
     material = json.dumps(
         [
             session,
@@ -1020,6 +1034,7 @@ def review_fingerprint(
             policy_identity,
             resolved,
             evidence,
+            unpreviewed,
         ],
         sort_keys=True,
     )
@@ -1051,6 +1066,7 @@ def recorded_fingerprint(entry: dict) -> str:
         }:
             purpose = entry["purpose"] if "purpose" in entry else None
             evidence = entry["file_reviews"] if "file_reviews" in entry else None
+            unpreviewed = entry["unpreviewed"] if "unpreviewed" in entry else None
             return review_fingerprint(
                 session,
                 root,
@@ -1065,6 +1081,7 @@ def recorded_fingerprint(entry: dict) -> str:
                 policy_identity,
                 resolved,
                 evidence if isinstance(evidence, list) else None,
+                unpreviewed if isinstance(unpreviewed, list) else None,
             )
     return ""
 
@@ -1089,6 +1106,7 @@ def review_hook_call(
     member: str = "",
     placement: str = "ambient",
     provider: str = "",
+    unpreviewed: str = "null",
 ) -> dict[Literal["state", "id", "reason"], str]:
     """Park a call or spend its explicit, single-use reviewer answer.
 
@@ -1096,6 +1114,10 @@ def review_hook_call(
     never from the relay: the relay is the session's to write. A parked
     record is matched only where its own fields hash to the call's
     fingerprint, so a record rewritten to show another call spends nothing.
+
+    *file_reviews* and *unpreviewed* are the verdict's record of what the
+    call changes -- each file with the document it would hold, and each step
+    no document states -- kept on the question for the reviewer to read.
 
     A declared successor stage may spend one further claim for that same
     identified invocation. The immutable primary claim proves which stage
@@ -1114,6 +1136,7 @@ def review_hook_call(
     )
     before = json.loads(preconditions)
     evidence = json.loads(file_reviews)
+    unseen = json.loads(unpreviewed)
     resolved = {path: str(Path(path).resolve()) for path in before}
     fingerprint = review_fingerprint(
         session,
@@ -1129,6 +1152,7 @@ def review_hook_call(
         policy_identity,
         resolved,
         evidence,
+        unseen,
     )
     log = root / ".lup/questions.jsonl"
 
@@ -1242,6 +1266,7 @@ def review_hook_call(
         "resolved": resolved,
         "policy_identity": policy_identity,
         "file_reviews": evidence,
+        "unpreviewed": unseen,
         "resumption": "native_retry",
         "member": member,
         "operation": {
@@ -2739,27 +2764,34 @@ def text_at(root: Path, target: str) -> str | None:
 
 
 def sed_output(
-    scripts: list[str],
-    options: list[str],
-    *,
-    before: str | None = None,
-    target: Path | None = None,
-    root: Path | None = None,
-    timeout: float = 2.0,
+    scripts: list[str], options: list[str], text: str, timeout: float = 2.0
 ) -> dict[Literal["text", "cause"], str | None]:
-    """Run only sed's sandboxed text transformation, preserving output bytes.
+    """What an in-place sed leaves of one document, without touching any file.
+
+    sed is run over the text and its output captured, which is the same
+    computation ``-i`` performs and none of the writing: ``-i`` is exactly
+    "run the script, then replace the file with the result". Over the text
+    rather than the file, because the text is what a command line has left
+    there so far, which a second rewrite of the same file reads. And under
+    ``--sandbox``, so a script this was never meant to run -- one reading or
+    writing another file, or running a command -- is refused by sed itself.
+
+    Both keys always stand and exactly one is filled: ``text`` is the
+    after-document, ``cause`` is what stopped one being produced -- ``refused``
+    where sed would not run the script, ``unreadable`` where what came back
+    is not text. The cause crosses as the word this half read rather than as
+    the classifier's own literal, which this half may not name.
 
     Bounded by ``timeout`` or the hook's deadline, whichever is nearer: an
     answer that does not come in time is a refused rewrite, which the
-    classifier asks about.
+    classifier asks about. The scripts are passed as ``-e`` expressions, so a
+    script is never re-read as an option.
     """
     expressions = [word for script in scripts for word in ("-e", script)]
-    operands = [str(target)] if target is not None else []
     try:
         finished = subprocess.run(
-            ["sed", "--sandbox", *options, *expressions, "--", *operands],
-            cwd=str(root) if root is not None else None,
-            input=before.encode("utf-8") if before is not None else None,
+            ["sed", "--sandbox", *options, *expressions],
+            input=text.encode("utf-8"),
             capture_output=True,
             timeout=hook_seconds_left(timeout),
             check=False,
@@ -2773,41 +2805,111 @@ def sed_output(
         return {"text": None, "cause": "refused"}
 
 
-def rewritten_text(
-    scripts: list[str], target: str, root: Path, options: list[str] | None = None
-) -> dict[Literal["text", "cause"], str | None]:
-    """What one file would hold after these scripts, without touching the file.
+def document_at(root: Path, target: str) -> dict[Literal["text", "cause"], str | None]:
+    """What stands at one path before a command line writes it, or why no text does.
 
-    sed is run over the file and its output captured, which is the same
-    computation ``-i`` performs and none of the writing: ``-i`` is exactly
-    "run the script, then replace the file with the result", so dropping it
-    leaves the result on standard output and the file as it was. A command
-    still about to be refused has therefore changed nothing by being judged.
-
-    Both keys always stand and exactly one is filled: ``text`` is the
-    after-document, ``cause`` is what stopped one being produced.
-
-    A cause rather than a bare absence, because each of the four sends the
-    writer somewhere different: nothing stands at the path, something stands
-    there that a rewrite cannot replace, sed would not run the script, or what
-    came back is not text this can read. One sentence covering all four told a
-    writer who typed a wrong path the same thing it told one who aimed ``-i``
-    at a directory, and offered a recovery that fitted neither.
-
-    The cause crosses as the word this half read rather than as the
-    classifier's own literal, which this half may not name -- the arrangement
-    a checker's verdicts already cross by, and the kernel narrows it.
-
-    The scripts are passed as ``-e`` expressions and the file as an operand
-    after ``--``, so a filename beginning with a dash stays a filename and a
-    script is never re-read as one.
+    The reading a line's fold starts every file from: its text, or
+    ``missing`` where nothing stands, ``directory`` or ``irregular`` where
+    something that is not a file does, and ``unreadable`` where a file's
+    bytes are not text.
     """
     landed = root / target
     if not landed.exists():
         return {"text": None, "cause": "missing"}
+    if landed.is_dir():
+        return {"text": None, "cause": "directory"}
     if not landed.is_file():
         return {"text": None, "cause": "irregular"}
-    return sed_output(scripts, options or [], target=landed, root=root)
+    text = text_at(root, target)
+    return {"text": text, "cause": None if text is not None else "unreadable"}
+
+
+def resolved_path(root: Path, target: str) -> str:
+    """The one name every spelling of a file shares: where it resolves from *root*."""
+    return str((root / target).resolve())
+
+
+def patched_documents(
+    root: Path,
+    patch: str,
+    options: list[str],
+    program: str,
+    directory: str,
+    current: Callable[[str], dict[Literal["text", "cause"], str | None]],
+) -> list[dict[Literal["path", "after"], str | None]] | None:
+    """What one patch leaves in each file it touches, applied to a copy of them.
+
+    Git reads the patch -- which files it touches, and what applying it
+    leaves -- in a scratch directory holding a copy of each of those files as
+    ``current`` says the line has left it, so the checkout is never written.
+    ``program`` is the command that applies it; `patch` is applied the way
+    `git apply` does with the strip count it spelled, which is the only way
+    it was stepped.
+
+    ``None`` wherever the copy cannot say what the command would leave: a
+    patch Git does not read or apply, a binary or a renaming one, a path
+    outside the directory it applies in, a file that does not read as text.
+    Each is a result only running shows.
+    """
+    environ = os.environ  # lup: ignore[os-environ]
+    encoded = patch.encode("utf-8")
+    with tempfile.TemporaryDirectory(prefix="lup-patch-") as scratch:
+        copy = Path(scratch) / "tree"
+        copy.mkdir()
+        # Nothing above the scratch directory is a repository to it, and no
+        # repository a hook inherited is the one it applies to.
+        environment = {
+            **{
+                name: value
+                for name, value in environ.items()
+                if name not in ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE")
+            },
+            "GIT_CEILING_DIRECTORIES": scratch,
+        }
+
+        def applied(arguments: list[str]) -> str | None:
+            try:
+                finished = subprocess.run(
+                    ["git", "-c", "core.quotePath=false", "apply", *arguments, "-"],
+                    cwd=str(copy),
+                    input=encoded,
+                    capture_output=True,
+                    env=environment,
+                    timeout=hook_seconds_left(5.0),
+                    check=False,
+                )
+            except (OSError, subprocess.TimeoutExpired):
+                return None
+            if finished.returncode:
+                return None
+            return finished.stdout.decode("utf-8", errors="replace")
+
+        listing = applied(["--numstat", *options])
+        if listing is None or program not in ("git", "patch"):
+            return None
+        rows = list(csv.reader(listing.splitlines(), delimiter="\t"))
+        paths = [row[2] for row in rows if len(row) == 3 and row[0] != "-"]
+        if len(paths) != len(rows) or any(
+            "=>" in path or Path(path).is_absolute() or ".." in Path(path).parts
+            for path in paths
+        ):
+            return None
+        for path in paths:
+            standing = current(str(Path(directory, path)) if directory else path)
+            if standing["text"] is not None:
+                (copy / path).parent.mkdir(parents=True, exist_ok=True)
+                (copy / path).write_text(standing["text"], encoding="utf-8", newline="")
+            elif standing["cause"] != "missing":
+                return None
+        if applied(options) is None:
+            return None
+        return [
+            {
+                "path": resolved_path(root, str(Path(directory, path))),
+                "after": text_at(copy, path) if (copy / path).is_file() else None,
+            }
+            for path in paths
+        ]
 
 
 def recoverable_write_targets(
@@ -3476,10 +3578,17 @@ def bash_decision(
     # exist yet, and a refused command is snapshotted too -- one ref for a
     # state the tree was already in, which dedup collapses.
     reference = undo_snapshot(cwd, command)
-    # Both halves of one reading: the documents a rewrite would leave, and why
-    # the rest left none. Computed together so a target reaches exactly one.
-    reading = rewritten_documents(
-        command, cwd or Path.cwd(), autonomous, agent_identity
+    # What the line leaves in every file it writes, step by step, and the
+    # edit gates' verdict on each file its own bytes or a rewrite reach. Both
+    # halves of the rewrite reading come off it -- the documents a rewrite
+    # leaves, and why the rest left none -- so a target reaches exactly one.
+    followed = followed_reading(command, cwd or Path.cwd())
+    judged = judged_verdicts(followed, cwd or Path.cwd(), autonomous, agent_identity)
+    reading = rewrite_reading(
+        followed,
+        lambda target, document: rewritten_row(
+            target, document, judged[document["path"]], cwd or Path.cwd()
+        ),
     )
     # Another checkout of this repository keeps this one's scratch, reached by
     # the absolute path a session spells it with -- so Git is asked for the
@@ -3667,19 +3776,23 @@ def bash_decision(
     # or an anti-pattern introduced is seen against what is actually there --
     # and the kernel reads nothing. Strongest wins, the rule every other join
     # in this policy uses.
-    authored = authored_review(command, cwd or Path.cwd(), autonomous, agent_identity)
+    authored = authored_review(followed, judged)
     if authored is not None and STRENGTH.index(authored.effect) > STRENGTH.index(
         verdict.effect
     ):
         verdict = authored
+    # What the command changes, file by file, as the verdict judged it: the
+    # record a question keeps for the operator to read.
     verdict = verdict.revised(
-        file_reviews=tuple(
-            evidence
-            for document in reading["documents"]
-            if (original := document.get("decision")) is not None
-            for evidence in original.file_reviews
-        )
-        + (authored.file_reviews if authored is not None else ())
+        file_reviews=reviewed_rows(
+            followed,
+            judged,
+            verdict.effect == "ask",
+            cwd or Path.cwd(),
+            autonomous,
+            agent_identity,
+        ),
+        unpreviewed=tuple(followed["unpreviewed"]),
     )
     if verdict.effect == "ask":
         note_asked(cwd, approval_fingerprint("shell", command, cwd), "shell", command)
@@ -3721,14 +3834,14 @@ def shell_preimages(command: str, cwd: Path) -> dict[Path, str | None]:
     """What each file one command would write holds now, keyed where it resolves.
 
     Every spelling of a write the policy reads -- a redirection, a path verb's
-    operand, a write flag, an authored document, a sed rewrite, a copy -- so
-    the review binds to the files as they stood, and a change to any of them
+    operand, a write flag, an authored document, a sed rewrite, a copy -- and
+    every file a step lands the text of -- a copy's source, a patch -- so the
+    review binds to the files as they stood, and a change to any of them
     since makes the same command a fresh question. A directory operand has no
-    document to bind, so it is bound by the command that names it alone.
+    document to bind, so it is bound by the command that names it alone, and
+    a file that does not read as text is bound the same way: the question
+    names it as a file no document shows.
     """
-    copied = copied_paths(command)
-    if copied is not None and not (cwd / copied["source"]).is_file():
-        raise ValueError("copy review requires a readable source file")
     paths = [
         *shell_write_targets(command),
         *shell_path_verb_targets(command, SHELL_RULES),
@@ -3739,19 +3852,18 @@ def shell_preimages(command: str, cwd: Path) -> dict[Path, str | None]:
             for rewrite in shell_sed_rewrites(command, SHELL_RULES)
             for path in rewrite["targets"]
         ),
-        *(copied.values() if copied is not None else []),
+        *(
+            path
+            for taken in file_steps(command, SHELL_RULES)
+            for path in (taken["path"], taken["source"])
+            if path
+        ),
     ]
 
-    def standing(target: Path) -> str | None:
-        """One target's text as it stands, absent where nothing does."""
-        if not target.is_file():
-            return None
-        return target.read_text(encoding="utf-8", newline="")
-
     return {
-        (cwd / path).resolve(): standing(cwd / path)
+        (cwd / path).resolve(): text_at(cwd, path)
         for path in dict.fromkeys(paths)
-        if (cwd / path).is_file() or not (cwd / path).exists()
+        if not (cwd / path).exists() or text_at(cwd, path) is not None
     }
 
 
@@ -3792,14 +3904,25 @@ def reviewed_decision(
     it is queued rather than refused, the call is not to be reshaped, and
     ``waiting`` spells, in the runtime's own words, how to start `review wait`
     on it, which carries the approved call out and reports the result.
+
+    Every file the verdict records a document for is bound as it stands, the
+    preimage its row's ``before_sha256`` names: the operator reads each diff
+    against it, and a change to it since makes the same call a fresh question.
     """
+    bound = {
+        **{
+            Path(row["path"]): text_at(cwd, row["path"])
+            for row in decision.file_reviews
+        },
+        **preconditions,
+    }
     result = review_hook_call(
         cwd,
         session,
         tool,
         json.dumps(arguments, sort_keys=True),
         json.dumps(
-            {str(path): before for path, before in preconditions.items()},
+            {str(path): before for path, before in bound.items()},
             sort_keys=True,
         ),
         decision.reason,
@@ -3822,6 +3945,7 @@ def reviewed_decision(
         member=answering_member(peer_directory(cwd)),
         placement=decision.sandbox,
         provider=provider,
+        unpreviewed=json.dumps(decision.unpreviewed, sort_keys=True),
     )
     identifier = result["id"]
     if result["state"] == "approved":
@@ -4088,78 +4212,102 @@ def resolution_of(
     return ResolutionRow(refuted=reply["refuted"], unresolved=reply["unresolved"])
 
 
-def rewritten_documents(
-    command: str, cwd: Path, autonomous: bool = False, agent_identity: str = ""
-) -> RewriteReading:
-    """What every in-place rewrite in this command would leave behind.
+def followed_reading(command: str, cwd: Path) -> FollowedReading:
+    """What this command line leaves in each file it writes, worked out step by step.
 
-    The kernel names which files a screened rewrite would replace and this
-    produces each one, so the classifier judges a rewrite by the document it
-    makes rather than by whether the file could be restored afterwards. The
-    two questions are different, and only this one is the question the edit
-    gates ask.
-
-    A file that could not be produced yields a reason instead of a document,
-    and the classifier says which reason. A rewrite is never granted on a
-    reading that failed — which is what makes it safe for a composition to
-    reach this late, or not at all.
-
-    Each row is deduplicated by target, because one file named twice is one
-    file, and the second reading would run the script over the same bytes to
-    reach the same answer.
+    Each write applied to what the writes before it left -- a rewrite run
+    over the text, a patch applied to a copy, a copy or a move landing its
+    source's text -- and nothing run that only running could show. Read once
+    per verdict: the edit gates judge its documents, and a question records
+    them as what the operator is shown.
     """
-    # lup: ignore[empty-collection] — one reading feeding two collections: each
-    # target reaches exactly one of them and which it is costs a sed run, so a
-    # comprehension per list would run every script twice
-    rows: list[RewrittenDocumentRow] = []
-    unproduced: list[UnproducedDocumentRow] = []  # lup: ignore[empty-collection]
-    for rewrite in shell_sed_rewrites(command, SHELL_RULES):
-        for target in rewrite["targets"]:
-            if any(row["target"] == target for row in rows) or any(
-                row["target"] == target for row in unproduced
-            ):
-                continue
-            attempt = rewritten_text(
-                rewrite["scripts"], target, cwd, rewrite["options"]
-            )
-            after = attempt["text"]
-            if after is None:
-                unproduced.append(
-                    UnproducedDocumentRow(
-                        target=target, cause=unproduced_cause(attempt["cause"])
-                    )
-                )
-                continue
-            before = text_at(cwd, target)
-            if before is None:
-                unproduced.append(
-                    UnproducedDocumentRow(target=target, cause="unreadable")
-                )
-                continue
-            path_text = worktree_path(str((cwd / target).resolve()))
-            foreign = foreign_repository(target, cwd)
-            rows.append(
-                RewrittenDocumentRow(
-                    target=target,
-                    path=path_text,
-                    before=before,
-                    after=after,
-                    foreign=foreign,
-                    decision=edit_decision(
-                        target,
-                        before,
-                        after,
-                        True,
-                        autonomous,
-                        cwd=cwd,
-                        agent_identity=agent_identity,
-                    ),
-                    outside_project=outside_this_project(target, cwd),
-                    checkout_path=this_checkout_path(target, cwd),
-                    resolution=None,
-                )
-            )
-    return RewriteReading(documents=rows, unproduced=unproduced)
+    return followed_documents(
+        file_steps(command, SHELL_RULES),
+        lambda target: document_at(cwd, target),
+        lambda target: resolved_path(cwd, target),
+        sed_output,
+        lambda patch, options, program, directory, current: patched_documents(
+            cwd, patch, options, program, directory, current
+        ),
+    )
+
+
+def judged_verdicts(
+    reading: FollowedReading, cwd: Path, autonomous: bool, agent_identity: str
+) -> dict[str, KernelDecision]:
+    """What the edit gates say about each file a command's own bytes or a rewrite reach.
+
+    Judged as the edit the whole line makes of the file, so a second rewrite
+    or an append is read against what came before it in the same line, and
+    many small writes to one file meet the size gate as the one change they
+    add up to.
+    """
+    return {
+        document["path"]: document_verdict(document, cwd, autonomous, agent_identity)
+        for document in judged_documents(reading)
+    }
+
+
+def document_verdict(
+    document: FollowedDocument, cwd: Path, autonomous: bool, agent_identity: str
+) -> KernelDecision:
+    """One file's edit verdict, over what stood there and what the line leaves."""
+    return edit_decision(
+        document["path"],
+        document["before"],
+        document["after"],
+        document["existed"],
+        autonomous,
+        document_operation(document),
+        cwd,
+        agent_identity=agent_identity,
+    )
+
+
+def rewritten_row(
+    target: str, document: FollowedDocument, decision: KernelDecision, cwd: Path
+) -> RewrittenDocumentRow:
+    """One rewritten file as the classifier reads it, with the verdict it was given."""
+    return RewrittenDocumentRow(
+        target=target,
+        path=worktree_path(document["path"]),
+        before=document["before"],
+        after=document["after"],
+        operation=document_operation(document),
+        foreign=foreign_repository(target, cwd),
+        decision=decision,
+        outside_project=outside_this_project(target, cwd),
+        checkout_path=this_checkout_path(target, cwd),
+        resolution=None,
+    )
+
+
+def reviewed_rows(
+    reading: FollowedReading,
+    judged: dict[str, KernelDecision],
+    asked: bool,
+    cwd: Path,
+    autonomous: bool,
+    agent_identity: str,
+) -> tuple[FileReviewRow, ...]:
+    """Each file a command changes, with its verdict and the document it would hold.
+
+    In the order the line writes them. A file no gate read on its way to the
+    verdict -- a copy's destination, a move, a removal, a patch -- is put to
+    the edit gates only where somebody is asked, since only a reviewer reads
+    it: that is what marks a scratch or test file as one the policy allows
+    on its own, so the reviewer's default view can leave it out.
+    """
+    return tuple(
+        row
+        for document in shown_documents(reading)
+        if document["path"] in judged or asked
+        for row in (
+            judged[document["path"]]
+            if document["path"] in judged
+            else document_verdict(document, cwd, autonomous, agent_identity)
+        ).file_reviews
+    )
 
 
 def edit_decision(
@@ -4196,6 +4344,7 @@ def edit_decision(
                 path,
                 before_sha256=document_digest(before),
                 after_sha256=document_digest(after),
+                after=after,
             )
     except (OSError, ValueError, KeyError, TypeError) as error:
         return routing_failure(str(error))
@@ -4206,6 +4355,7 @@ def edit_decision(
         path,
         before_sha256=document_digest(before),
         after_sha256=document_digest(after),
+        after=after,
     )
 
 
@@ -4313,7 +4463,7 @@ def local_edit_decision(
 
 
 def authored_review(
-    command: str, cwd: Path, autonomous: bool, agent_identity: str = ""
+    reading: FollowedReading, judged: dict[str, KernelDecision]
 ) -> KernelDecision | None:
     """What the edit gates say about a write whose content the command carries.
 
@@ -4332,35 +4482,21 @@ def authored_review(
     library module with one line, allowed and unprompted, past the
     anti-pattern audit, the review-note gate and the size budget alike.
 
-    The strongest verdict of the writes it could read, or ``None`` where it
-    read none. An unreadable file leaves the write judged as it was rather
-    than refused for being unreadable: the reading is a relaxation's
-    precondition, not a gate of its own.
+    The strongest verdict of the files it could read, or ``None`` where it
+    read none. Each is judged as what the whole line leaves there, out of
+    ``judged``, so `printf x > f && echo y >> f` is one edit of `f` rather
+    than two edits of the file as it stood. An unreadable file leaves the
+    write judged as it was rather than refused for being unreadable: the
+    reading is a relaxation's precondition, not a gate of its own.
     """
     verdicts = [
-        edit_decision(
-            write["path"],
-            before,
-            (before or "") + write["content"] if write["append"] else write["content"],
-            path_exists=existing,
-            autonomous=autonomous,
-            operation=(
-                "modify" if write["append"] else "overwrite" if existing else "create"
-            ),
-            cwd=cwd,
-            agent_identity=agent_identity,
-        )
-        for write in authored_writes(command)
-        for existing in [(cwd / write["path"]).is_file()]
-        for before in [text_at(cwd, write["path"]) if existing else None]
+        judged[document["path"]]
+        for document in reading["documents"]
+        if document["authored"] and document["path"] in judged
     ]
     if not verdicts:
         return None
-    return max(verdicts, key=lambda verdict: STRENGTH.index(verdict.effect)).revised(
-        file_reviews=tuple(
-            evidence for verdict in verdicts for evidence in verdict.file_reviews
-        )
-    )
+    return max(verdicts, key=lambda verdict: STRENGTH.index(verdict.effect))
 
 
 def written_review(command: str, cwd: Path) -> list[str]:

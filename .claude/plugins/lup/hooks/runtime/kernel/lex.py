@@ -713,20 +713,13 @@ def carried_text(
         return None
     if any(opaque_argument(word) or expands(word) for word in words):
         return None
-
-    def stdin_text() -> str | None:
-        """What this segment reads, taking a heredoc over a pipe as the shell does."""
-        if not bodies:
-            return incoming
-        return bodies[0] if len(bodies) == 1 and bodies[0] else None
-
     match posixpath.basename(words[0]):
         case "cat":
-            return stdin_text() if len(words) == 1 else None
+            return stdin_text(bodies, incoming) if len(words) == 1 else None
         case "printf":
             return None if bodies else printf_text(words[1:])
         case "tee":
-            return None if tee_operands(words) is None else stdin_text()
+            return None if tee_operands(words) is None else stdin_text(bodies, incoming)
         case "echo":
             if bodies:
                 return None
@@ -787,71 +780,157 @@ def carried_writes(tree: Script) -> list[AuthoredWrite]:
     for pipeline in all_pipelines(tree):
         incoming: str | None = None
         for index, node in enumerate(pipeline["commands"]):
-            piping = pipeline["operators"][index : index + 1] == ["|"]
             if node["kind"] != "simple":
                 incoming = None
                 continue
-            words = [word_text(word) for word in node["words"]]
-            legible = not substitutions(carried_words(node))
-            bodies: list[str] = []
-            targets: list[str] = []
-            appends: list[bool] = []
-            for redirect in node["redirects"]:
-                operator = redirect["operator"]
-                if redirect["heredoc"]:
-                    bodies.extend(
-                        heredoc["body"] if heredoc["quoted"] else ""
-                        for heredoc in redirect["heredoc"]
-                    )
-                    continue
-                if "&" in operator and (operator[-1].isdigit() or operator[-1] == "-"):
-                    continue
-                if not redirect["target"]:
-                    legible = False
-                    continue
-                spelled = word_text(redirect["target"][0])
-                # A stream sink is not a target here for the reason it is not
-                # one in `shell_write_targets`: nothing is destroyed and no
-                # gate has anything to read. Dropped as it is met rather than
-                # at the end, or a `2>/dev/null` beside the write would count
-                # as a second target and take the whole command out of reach.
-                if redirection_writes(operator) and not writes_to_a_stream(spelled):
-                    # A target the binding pass could not resolve names no
-                    # file, and naming none reads here exactly as naming one
-                    # that does not exist: `cat > $P` judged a create takes an
-                    # overwrite of tracked source past the size budget, the
-                    # note gate and the audit alike, and shows a reviewer a
-                    # `$P` they cannot resolve. Illegible, so the redirection
-                    # row answers it in the words it already has for a path
-                    # known only when the command runs.
-                    legible = legible and spells_its_path(spelled)
-                    targets.append(spelled)
-                    appends.append(">>" in operator)
-            content = carried_text(words, bodies, incoming) if legible else None
-            piped = tee_operands(words)
-            # An operand that names no path is illegible for the reason a
-            # redirection target is, and the tee is judged by that path alone.
-            landings = [
-                *(
-                    []
-                    if piped is None
-                    else [
-                        (path, piped["append"])
-                        for path in piped["paths"]
-                        if spells_its_path(path)
-                    ]
-                ),
-                *([(targets[0], appends[0])] if len(targets) == 1 else []),
-            ]
-            if content is not None:
-                authored.extend(
-                    AuthoredWrite(path=placed, content=content, append=append)
-                    for path, append in landings
-                    for placed in [placed_path(path, node["directory"])]
-                    if placed is not None
-                )
-            incoming = content if piping and not targets else None
+            piping = pipeline["operators"][index : index + 1] == ["|"]
+            writes = node_writes(node, incoming, piping)
+            authored.extend(writes["authored"])
+            incoming = writes["outgoing"]
     return authored
+
+
+def stdin_text(bodies: list[str], incoming: str | None) -> str | None:
+    """What a command reads on its input, taking a heredoc over a pipe as the shell does.
+
+    ``bodies`` are its heredocs' texts, an unquoted one as ``""`` because the
+    shell substitutes into it; ``incoming`` is what the command before it
+    piped in, where that command's bytes were its own.
+    """
+    if not bodies:
+        return incoming
+    return bodies[0] if len(bodies) == 1 and bodies[0] else None
+
+
+class NodeWrites(TypedDict):
+    """What one command writes through its redirections and a `tee`, and what it reads.
+
+    ``authored`` are the writes whose bytes the command carries, placed;
+    ``unread`` the files it opens for writing with bytes only running makes,
+    placed too; ``unplaced`` whether it writes somewhere no placed word names.
+    ``outgoing`` is what it hands the next command down a pipe, where those
+    bytes are its own. ``read_from`` is the file a `<` hands it, placed, and
+    ``stdin`` the bytes a quoted heredoc or the pipe hands it instead.
+    """
+
+    authored: list[AuthoredWrite]
+    unread: list[str]
+    unplaced: bool
+    outgoing: str | None
+    read_from: str | None
+    stdin: str | None
+
+
+def node_writes(node: Command, incoming: str | None, piping: bool) -> NodeWrites:
+    """One command's writes, handed what the command before it piped in.
+
+    The reading :func:`carried_writes` takes of every command, and the one a
+    reader following a line file by file takes too, so the two cannot differ
+    about what a command lands. A compound command's own redirections are read
+    the same way, with no words of its own: what lands through them is
+    whatever its body prints.
+    """
+    words = (
+        [word_text(word) for word in node["words"]] if node["kind"] == "simple" else []
+    )
+    legible = not substitutions(carried_words(node))
+    bodies: list[str] = []
+    targets: list[str] = []
+    appends: list[bool] = []
+    sources: list[str | None] = []
+    # A glob or a brace expansion names whatever it matches when the command
+    # runs, so a word spelled with one names no file this could place.
+    unliteral = [
+        word_text(word)
+        for word in node["words"]
+        if node["kind"] == "simple" and not literal_loop_word(word)
+    ]
+    for redirect in node["redirects"]:
+        operator = redirect["operator"]
+        if redirect["heredoc"]:
+            bodies.extend(
+                heredoc["body"] if heredoc["quoted"] else ""
+                for heredoc in redirect["heredoc"]
+            )
+            continue
+        if "&" in operator and (operator[-1].isdigit() or operator[-1] == "-"):
+            continue
+        if not redirect["target"]:
+            legible = False
+            continue
+        spelled = word_text(redirect["target"][0])
+        literal = spells_its_path(spelled) and literal_loop_word(redirect["target"][0])
+        if not literal:
+            unliteral.append(spelled)
+        # `<` and `0<` hand the command a file to read, which is where a patch
+        # it applies comes from; `<<<` and `<>` are neither.
+        if operator.endswith("<") and not operator.endswith("<<"):
+            sources.append(placed_path(spelled, node["directory"]) if literal else None)
+            continue
+        # A stream sink is not a target here for the reason it is not
+        # one in `shell_write_targets`: nothing is destroyed and no
+        # gate has anything to read. Dropped as it is met rather than
+        # at the end, or a `2>/dev/null` beside the write would count
+        # as a second target and take the whole command out of reach.
+        if redirection_writes(operator) and not writes_to_a_stream(spelled):
+            # A target the binding pass could not resolve names no
+            # file, and naming none reads here exactly as naming one
+            # that does not exist: `cat > $P` judged a create takes an
+            # overwrite of tracked source past the size budget, the
+            # note gate and the audit alike, and shows a reviewer a
+            # `$P` they cannot resolve. Illegible, so the redirection
+            # row answers it in the words it already has for a path
+            # known only when the command runs -- as is `> *.py`, which
+            # writes whichever file the glob matches.
+            legible = legible and literal
+            targets.append(spelled)
+            appends.append(">>" in operator)
+    content = carried_text(words, bodies, incoming) if legible else None
+    piped = tee_operands(words)
+    # An operand that names no path is illegible for the reason a
+    # redirection target is, and the tee is judged by that path alone.
+    landings = [
+        *(
+            []
+            if piped is None
+            else [
+                (path, piped["append"])
+                for path in piped["paths"]
+                if spells_its_path(path) and path not in unliteral
+            ]
+        ),
+        *([(targets[0], appends[0])] if len(targets) == 1 else []),
+    ]
+    authored = [
+        AuthoredWrite(path=placed, content=content, append=append)
+        for path, append in landings
+        if content is not None
+        for placed in [placed_path(path, node["directory"])]
+        if placed is not None
+    ]
+    carried = [write["path"] for write in authored]
+    opened = [
+        placed_path(path, node["directory"])
+        if spells_its_path(path) and path not in unliteral
+        else None
+        for path in [*targets, *([] if piped is None else piped["paths"])]
+    ]
+    # A `tee` whose flags nothing models writes to files nobody named.
+    unmodelled = (
+        piped is None and posixpath.basename(words[0] if words else "") == "tee"
+    )
+    return NodeWrites(
+        authored=authored,
+        unread=list(
+            dict.fromkeys(
+                path for path in opened if path is not None and path not in carried
+            )
+        ),
+        unplaced=None in opened or unmodelled,
+        outgoing=content if piping and not targets else None,
+        read_from=sources[-1] if sources else None,
+        stdin=None if sources else stdin_text(bodies, incoming),
+    )
 
 
 def shell_write_targets(command: str) -> list[str]:
@@ -1475,30 +1554,42 @@ def read_segments(command: str, rows: list[ShellRuleRow]) -> list[ReadSegment]:
     reader that stopped at `uv` named nothing the host could place.
     """
     return [
-        ReadSegment(words=read, directory=here)
+        segment
         for spelled in shell_placements(command)
-        for effective in [effective_command(spelled["words"])["words"]]
-        for handed in [uv_run_placement(effective, spelled["directory"])]
-        for placement in [
-            Placement(words=effective, directory=spelled["directory"])
-            if handed is None
-            else Placement(
-                words=effective_command(handed["words"])["words"],
-                directory=handed["directory"],
-            )
-        ]
-        for words in [placement["words"]]
-        if words
-        for carried in [command_directory(words, rows)]
-        for read in [command_words_read(words, rows)]
-        for here in [
-            None
-            if carried is None
-            else placement["directory"]
-            if not carried
-            else joined_directory(placement["directory"], carried)
-        ]
+        for segment in [read_segment(spelled, rows)]
+        if segment is not None
     ]
+
+
+def read_segment(spelled: Placement, rows: list[ShellRuleRow]) -> ReadSegment | None:
+    """One segment as the readers of it see it, or ``None`` where it runs nothing.
+
+    For a reader walking a line's structure itself, which holds each simple
+    command as it goes rather than the flattened list :func:`read_segments`
+    reads.
+    """
+    effective = effective_command(spelled["words"])["words"]
+    handed = uv_run_placement(effective, spelled["directory"])
+    placement = (
+        Placement(words=effective, directory=spelled["directory"])
+        if handed is None
+        else Placement(
+            words=effective_command(handed["words"])["words"],
+            directory=handed["directory"],
+        )
+    )
+    words = placement["words"]
+    if not words:
+        return None
+    carried = command_directory(words, rows)
+    return ReadSegment(
+        words=command_words_read(words, rows),
+        directory=None
+        if carried is None
+        else placement["directory"]
+        if not carried
+        else joined_directory(placement["directory"], carried),
+    )
 
 
 def placed_words(
