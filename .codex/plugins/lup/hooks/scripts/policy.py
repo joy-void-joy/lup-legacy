@@ -2148,13 +2148,14 @@ def file_diagnostics(
     }
 
 
-def repaired_directives(
-    path_text: str,
+def swept_files(
+    paths: list[str],
     command: list[str],
     suffixes: tuple[str, ...] = (".py", ".pyi"),
     timeout_seconds: float = 30.0,
-) -> list[str]:
-    """Take the dead `# lup: ignore` directives out of one written file.
+    refusing: tuple[str, ...] = ("missing", "spurious"),
+) -> dict[str, dict]:
+    """Sweep the written files: repair dead directives, keep what still refuses.
 
     A directive guarding nothing is the one audit finding whose fix is not a
     judgement — there is a single correct edit and this is it — so the gate
@@ -2165,49 +2166,99 @@ def repaired_directives(
 
     Reported back rather than done in silence. The agent wrote the directive
     believing it did something, and a line that disappears without a word is
-    one it writes again on the next file.
+    one it writes again on the next file. What the file held before the sweep
+    comes back too, so a caller holding a policy the sweep does not can put
+    back a directive only that policy still needs.
 
-    Anything that goes wrong is nothing repaired, exactly as an unreadable
-    checker is no diagnostics: this runs after the tool, so the alternative
-    to saying nothing is failing a write that has already happened.
+    What the sweep still refuses in each file comes back beside it, in the
+    kinds *refusing* names. The sweep is the whole-tree check scoped to these
+    files — every rule, over every span it reads — so a verdict the gate ahead
+    of the write cannot reach, a project rule or a string spanning lines, is
+    reported per write rather than first met at the end.
+
+    One run per checkout for all its files, since starting the sweep is most
+    of what it costs. Anything that goes wrong is nothing swept, exactly as an
+    unreadable checker is no diagnostics: this runs after the tool, so the
+    alternative to saying nothing is failing a write that has already happened.
     """
-    if not command or Path(path_text).suffix.lower() not in suffixes:
-        return []
-    if conflicted(path_text):
-        return []
-    root = worktree_root(path_text)
-    if not root:
-        return []
-    located = declared_program(root, command[0])
-    if not located:
-        return []
-    # Named the way the sweep names its own files, which is how the request
-    # and the report come back in one spelling. It is also the only spelling
-    # every sweep must understand: a project declares its own program here,
-    # and one that selects by repository-relative prefix is the shape this
-    # can count on rather than one it would have to assume.
-    try:
-        named = str(Path(path_text).resolve().relative_to(Path(root).resolve()))
-    except ValueError:
-        return []
-    try:
-        finished = subprocess.run(
-            [located, *command[1:], "--path", named],
-            capture_output=True,
-            text=True,
-            cwd=root,
-            timeout=hook_seconds_left(timeout_seconds),
-            check=False,
-        )
-        reported = json.loads(finished.stdout)["repaired"]
-    except (OSError, subprocess.SubprocessError, ValueError, KeyError):
-        return []
-    return [
-        f"line {item['line']}: removed `# lup: ignore"
-        + (f"[{item['rule_id']}]" if item["rule_id"] else "")
-        + "` — it guarded no rule, so it silenced nothing"
-        for item in reported
+    readable = [
+        path
+        for path in paths
+        if command and Path(path).suffix.lower() in suffixes and not conflicted(path)
     ]
+    roots = {path: worktree_root(path) for path in readable}
+    by_root = {
+        root: [path for path in readable if roots[path] == root]
+        for root in dict.fromkeys(roots.values())
+        if root
+    }
+
+    def swept_in(root: str, held: list[str]) -> dict[str, dict]:
+        located = declared_program(root, command[0])
+        if not located:
+            return {}
+        # Named the way the sweep names its own files, which is how the
+        # request and the report come back in one spelling. It is also the
+        # only spelling every sweep must understand: a project declares its
+        # own program here, and one that selects by repository-relative prefix
+        # is the shape this can count on rather than one it would have to
+        # assume.
+        base = Path(root).resolve()
+        named = {
+            str(Path(path).resolve().relative_to(base)): path
+            for path in held
+            if Path(path).resolve().is_relative_to(base)
+        }
+        if not named:
+            return {}
+        written = {name: text_at(base, name) for name in named}
+        try:
+            finished = subprocess.run(
+                [
+                    located,
+                    *command[1:],
+                    *(word for name in named for word in ("--path", name)),
+                ],
+                capture_output=True,
+                text=True,
+                cwd=root,
+                timeout=hook_seconds_left(timeout_seconds),
+                check=False,
+            )
+            reported = json.loads(finished.stdout)
+            repaired = reported["repaired"]
+            findings = reported["findings"] if "findings" in reported else []
+        except (OSError, subprocess.SubprocessError, ValueError, KeyError):
+            return {}
+        return {
+            path: {
+                "written": written[name],
+                "repaired": [
+                    f"line {item['line']}: removed `# lup: ignore"
+                    + (f"[{item['rule_id']}]" if item["rule_id"] else "")
+                    + "` — it guarded no rule, so it silenced nothing"
+                    for item in repaired
+                    if item["file"] == name
+                ],
+                "refused": [
+                    {
+                        "line": item["line"],
+                        "rule_id": item["rule_id"],
+                        "kind": item["kind"],
+                        "message": item["message"],
+                    }
+                    for item in findings
+                    if item["file"] == name and item["kind"] in refusing
+                ],
+            }
+            for name, path in named.items()
+        }
+
+    return {
+        path: swept
+        for root, held in by_root.items()
+        for path, swept in swept_in(root, held).items()
+    }
 
 
 def resolved_refutations(
@@ -4211,25 +4262,49 @@ def merged(reports: list[PostToolReport]) -> PostToolReport:
 
 
 def reviewed_writes(
-    paths: list[str], cwd: Path | None, diagnosed: bool = True
+    paths: list[str],
+    cwd: Path | None,
+    answered: list[str] | None = None,
+    diagnosed: bool = True,
 ) -> PostToolReport:
     """What the checks after a write say about the files it wrote.
 
-    The repair goes first because it rewrites the file, and a type check run
-    before it describes lines that have since moved. Every removal is said: a
-    line that vanishes unsaid is one the agent writes again on the next file.
+    The sweep goes first because it rewrites what it repairs, and a type
+    check run before it describes lines that have since moved. What it still
+    refuses is blocking: it is the whole-tree check scoped to these files,
+    every rule over every span, so nothing the gate ahead of the write could
+    not see is first met at the end. *answered* names rules another gate
+    already reported for this write, and those are left to it.
     """
+    swept = swept_files(paths, REPAIR_COMMAND)
+    skipped = answered or []
+
+    def refused(path: str, file: dict) -> list[str]:
+        shown = worktree_path(path)
+        return [
+            f"{shown}:{finding['line']}: {finding['message']} "
+            f"({finding['kind']}, rule {finding['rule_id']})"
+            for finding in file["refused"]
+            if finding["rule_id"] not in skipped
+        ]
+
     return merged(
         [
-            *(
-                PostToolReport(
-                    blocking=[],
-                    context=[
-                        f"{worktree_path(path)}: {line}"
-                        for line in repaired_directives(path, REPAIR_COMMAND)
-                    ],
-                )
-                for path in paths
+            # Every removal is said: a line that vanishes unsaid is one the
+            # agent writes again on the next file.
+            PostToolReport(
+                blocking=[],
+                context=[
+                    f"{worktree_path(path)}: {line}"
+                    for path, file in swept.items()
+                    for line in file["repaired"]
+                ],
+            ),
+            PostToolReport(
+                blocking=[
+                    line for path, file in swept.items() for line in refused(path, file)
+                ],
+                context=[],
             ),
             *(
                 PostToolReport(blocking=found["blocking"], context=found["context"])

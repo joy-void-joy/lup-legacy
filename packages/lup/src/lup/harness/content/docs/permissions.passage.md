@@ -1340,8 +1340,11 @@ settled by adding it to a list that asserts allow.
 
 ## Hook execution evidence
 
-After a write, the hooks take the dead directives out of the written file
-(`repair_command`) and say so, then type-check it (`diagnostics_command`).
+After a write, the hooks sweep the written file with the whole-tree rule check
+scoped to it (`repair_command`), then type-check it (`diagnostics_command`).
+The sweep runs every rule over every span, project rules included, so what
+the gate ahead of the write cannot see is reported per write rather than
+first met at the end. It removes dead directives and says so.
 
 What reaches the agent comes in two parts. What a gate still refuses is
 *blocking*. Claude gets it as
@@ -1356,7 +1359,7 @@ something also blocks, Codex adds it after the refusal. Nothing here undoes
 an edit or reports a crashed hook.
 
 Codex's patch parser reads every touched path without replaying the old file
-contents, so both runtimes run the same repair and type check after an edit,
+contents, so both runtimes run the same sweep and type check after an edit,
 including moves.
 
 Both plugins register a short command invoking the generated

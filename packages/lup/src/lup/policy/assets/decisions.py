@@ -69,7 +69,7 @@ from host import (
     undo_snapshot,
     worktree_path,
     file_diagnostics,
-    repaired_directives,
+    swept_files,
 )
 from kernel.decision import KernelDecision
 from kernel.rows import PostToolReport
@@ -1090,25 +1090,49 @@ def merged(reports: list[PostToolReport]) -> PostToolReport:
 
 
 def reviewed_writes(
-    paths: list[str], cwd: Path | None, diagnosed: bool = True
+    paths: list[str],
+    cwd: Path | None,
+    answered: list[str] | None = None,
+    diagnosed: bool = True,
 ) -> PostToolReport:
     """What the checks after a write say about the files it wrote.
 
-    The repair goes first because it rewrites the file, and a type check run
-    before it describes lines that have since moved. Every removal is said: a
-    line that vanishes unsaid is one the agent writes again on the next file.
+    The sweep goes first because it rewrites what it repairs, and a type
+    check run before it describes lines that have since moved. What it still
+    refuses is blocking: it is the whole-tree check scoped to these files,
+    every rule over every span, so nothing the gate ahead of the write could
+    not see is first met at the end. *answered* names rules another gate
+    already reported for this write, and those are left to it.
     """
+    swept = swept_files(paths, REPAIR_COMMAND)
+    skipped = answered or []
+
+    def refused(path: str, file: dict) -> list[str]:
+        shown = worktree_path(path)
+        return [
+            f"{shown}:{finding['line']}: {finding['message']} "
+            f"({finding['kind']}, rule {finding['rule_id']})"
+            for finding in file["refused"]
+            if finding["rule_id"] not in skipped
+        ]
+
     return merged(
         [
-            *(
-                PostToolReport(
-                    blocking=[],
-                    context=[
-                        f"{worktree_path(path)}: {line}"
-                        for line in repaired_directives(path, REPAIR_COMMAND)
-                    ],
-                )
-                for path in paths
+            # Every removal is said: a line that vanishes unsaid is one the
+            # agent writes again on the next file.
+            PostToolReport(
+                blocking=[],
+                context=[
+                    f"{worktree_path(path)}: {line}"
+                    for path, file in swept.items()
+                    for line in file["repaired"]
+                ],
+            ),
+            PostToolReport(
+                blocking=[
+                    line for path, file in swept.items() for line in refused(path, file)
+                ],
+                context=[],
             ),
             *(
                 PostToolReport(blocking=found["blocking"], context=found["context"])

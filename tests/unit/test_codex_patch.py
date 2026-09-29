@@ -263,16 +263,16 @@ class TestDispatchedPatches:
         dispatcher = bundled_dispatcher()
         calls: list[tuple[str, str]] = []
 
-        def repair(path: str, _command: list[str]) -> list[str]:
-            calls.append(("repair", path))
-            return []
+        def repair(paths: list[str], _command: list[str]) -> dict[str, object]:
+            calls.extend(("repair", path) for path in paths)
+            return {}
 
         def diagnostics(path: str, _command: list[str]) -> dict[str, list[str]]:
             calls.append(("diagnostics", path))
             found = [f"{path}: type mismatch"] if Path(path).is_file() else []
             return {"blocking": found, "context": []}
 
-        monkeypatch.setattr(dispatcher, "repaired_directives", repair)
+        monkeypatch.setattr(dispatcher, "swept_files", repair)
         monkeypatch.setattr(dispatcher, "file_diagnostics", diagnostics)
         monkeypatch.setenv("PLUGIN_DATA", str(tmp_path / "data"))
         command = f"apply_patch <<'PATCH'\n{envelope}\nPATCH" if shell else envelope
@@ -292,7 +292,7 @@ class TestDispatchedPatches:
             "blocking": [f"{target}: type mismatch"],
             "context": [],
         }
-        # Every changed path repaired, then each one type-checked.
+        # One sweep for every changed path, then a type check of each.
         changed = [str(root / path) for path in ("old.py", "new.py", "gone.py")]
         assert calls == [
             *(("repair", path) for path in changed),
@@ -319,9 +319,9 @@ class TestDispatchedPatches:
         dispatcher = bundled_dispatcher()
         calls: list[str] = []
 
-        def swept(path: str, _command: list[str]) -> list[str]:
-            calls.append(path)
-            return []
+        def swept(paths: list[str], _command: list[str]) -> dict[str, object]:
+            calls.extend(paths)
+            return {}
 
         def record(path: str, _command: list[str]) -> dict[str, list[str]]:
             calls.append(path)
@@ -330,7 +330,7 @@ class TestDispatchedPatches:
         def claimed(path: str, _cwd: Path, _caller: Caller) -> None:
             calls.append(path)
 
-        monkeypatch.setattr(dispatcher, "repaired_directives", swept)
+        monkeypatch.setattr(dispatcher, "swept_files", swept)
         monkeypatch.setattr(dispatcher, "file_diagnostics", record)
         monkeypatch.setattr(dispatcher, "named_claim_recorded", claimed)
         monkeypatch.setenv("PLUGIN_DATA", str(tmp_path / "data"))

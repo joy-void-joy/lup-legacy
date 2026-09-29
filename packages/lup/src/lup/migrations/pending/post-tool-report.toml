@@ -1,8 +1,15 @@
-subjects = ["file_diagnostics"]
+subjects = ["repaired_directives", "file_diagnostics"]
 reason = """
 the checks after a write report what still refuses apart from what is only \
-worth knowing, so the type check says which of its findings a later edit may \
-still supply"""
+worth knowing, so the sweep answers for every file a call wrote at once and \
+the type check says which of its findings a later edit may still supply"""
+
+[[steps]]
+instruction = """
+Call swept_files(paths, command) in place of repaired_directives(path, \
+command): it takes every path to sweep and returns, per path, a mapping with \
+"written" (the text before the sweep), "repaired" (the lines \
+repaired_directives returned) and "refused" (what the sweep still refuses)."""
 
 [[steps]]
 instruction = """

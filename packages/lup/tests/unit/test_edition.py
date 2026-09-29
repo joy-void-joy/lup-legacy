@@ -20,7 +20,7 @@ from lup.policy.assets.host import (
     declared_program,
     file_diagnostics,
     publish_edition,
-    repaired_directives,
+    swept_files,
     shared_git_directory,
     worktree_root,
 )
@@ -352,7 +352,7 @@ def test_a_removed_directive_is_reported_back(tmp_path: Path) -> None:
     file = edited(work)
     command = sweep(work, removals("module.py"))
 
-    assert repaired_directives(str(file), command) == [
+    assert swept_files([str(file)], command)[str(file)]["repaired"] == [
         "line 3: removed `# lup: ignore` — it guarded no rule, so it silenced nothing"
     ]
 
@@ -363,7 +363,7 @@ def test_a_removed_directive_names_the_rule_it_claimed(tmp_path: Path) -> None:
     file = edited(work)
     command = sweep(work, removals("module.py", rule_id="any-type"))
 
-    assert repaired_directives(str(file), command) == [
+    assert swept_files([str(file)], command)[str(file)]["repaired"] == [
         "line 3: removed `# lup: ignore[any-type]` — it guarded no rule, so it"
         " silenced nothing"
     ]
@@ -382,7 +382,7 @@ def test_the_sweep_is_given_the_file_the_way_it_names_its_own(
     (work / "package").mkdir()
     file = edited(work, "package/module.py")
     command = sweep(work, removals("package/module.py"))
-    repaired_directives(str(file), command)
+    swept_files([str(file)], command)
 
     recorded = (work / "sweep-arguments").read_text(encoding="utf-8")
 
@@ -396,7 +396,7 @@ def test_a_file_outside_the_checkout_is_not_swept(tmp_path: Path) -> None:
     outside = tmp_path / "elsewhere.py"
     outside.write_text("x = 1\n", encoding="utf-8")
 
-    assert repaired_directives(str(outside), ["fake-sweep"]) == []
+    assert swept_files([str(outside)], ["fake-sweep"]) == {}
 
 
 def test_the_checker_leads_the_path_with_its_own_environment(tmp_path: Path) -> None:
@@ -629,3 +629,64 @@ def test_an_unknown_attribute_elsewhere_still_blocks(tmp_path: Path) -> None:
     assert file_diagnostics(str(file), command)["blocking"] == [
         "module.py:3: error: not there yet"
     ]
+
+
+def findings(file: str, line: int = 2, kind: str = "missing") -> str:
+    return json.dumps(
+        {
+            "repaired": [],
+            "findings": [
+                {
+                    "file": file,
+                    "line": line,
+                    "kind": kind,
+                    "rule_id": "native-spelling",
+                    "message": "neutral module contains a wire word",
+                    "text": "x",
+                }
+            ],
+        }
+    )
+
+
+def test_what_the_sweep_still_refuses_comes_back_with_the_file(tmp_path: Path) -> None:
+    """The sweep is the whole-tree check scoped to the file, every rule over
+    every span, so a verdict the gate ahead of the write cannot reach is
+    reported per write rather than first met at the end."""
+    work = checkout(tmp_path / "repo")
+    file = edited(work)
+    command = sweep(work, findings("module.py"))
+
+    swept = swept_files([str(file)], command)[str(file)]
+
+    assert swept["refused"] == [
+        {
+            "line": 2,
+            "rule_id": "native-spelling",
+            "kind": "missing",
+            "message": "neutral module contains a wire word",
+        }
+    ]
+    assert swept["written"] == "x = 1\n"
+
+
+def test_an_advisory_finding_is_not_a_refusal(tmp_path: Path) -> None:
+    work = checkout(tmp_path / "repo")
+    file = edited(work)
+    command = sweep(work, findings("module.py", kind="untyped"))
+
+    assert swept_files([str(file)], command)[str(file)]["refused"] == []
+
+
+def test_every_file_of_a_checkout_is_swept_in_one_run(tmp_path: Path) -> None:
+    """Starting the sweep is most of what it costs, so a command that wrote
+    several files pays for it once."""
+    work = checkout(tmp_path / "repo")
+    first, second = edited(work, "first.py"), edited(work, "second.py")
+    command = sweep(work, json.dumps({"repaired": []}))
+
+    swept = swept_files([str(first), str(second)], command)
+
+    assert set(swept) == {str(first), str(second)}
+    recorded = (work / "sweep-arguments").read_text(encoding="utf-8")
+    assert "--path first.py --path second.py" in recorded
