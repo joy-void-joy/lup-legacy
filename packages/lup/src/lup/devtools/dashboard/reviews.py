@@ -27,6 +27,7 @@ import secrets
 import time
 import webbrowser
 from collections.abc import AsyncIterator, Awaitable, Callable, Iterator
+from functools import partial
 from pathlib import Path
 from tempfile import mkdtemp
 from typing import TYPE_CHECKING
@@ -250,16 +251,28 @@ class ReviewStore(BaseModel, frozen=True):
             self._rows[key] = summary
         return summary
 
-    def read_root(self, root: Path, repository: Path | None = None) -> ReviewSnapshot:
+    def read_root(
+        self,
+        root: Path,
+        repository: Path | None = None,
+        presence: Callable[[], RequesterPresence] | None = None,
+    ) -> ReviewSnapshot:
+        """One checkout's queue, each review named by the session that asked.
+
+        ``presence`` reads the repository's roster, where one reading is shared
+        by every worktree of it; read only where the queue holds a review.
+        """
         queue = self.queue(root)
-        presence = RequesterPresence.of(root)
         located = ReviewRoot.of(root)
+        seen = (
+            (presence() if presence is not None else RequesterPresence.of(root))
+            if queue.questions
+            else RequesterPresence()
+        )
         return ReviewSnapshot(
             roots=[located.within(repository) if repository else located],
             reviews=[
-                self.row(root, entry).model_copy(
-                    update={"session": presence.called(entry)}
-                )
+                self.row(root, entry).model_copy(update={"session": seen.called(entry)})
                 for entry in queue.questions
             ],
             errors=queue.errors,
@@ -267,9 +280,20 @@ class ReviewStore(BaseModel, frozen=True):
 
     def snapshot(self) -> ReviewSnapshot:
         scan = self.scan_roots()
+        presences: dict[Path, RequesterPresence] = {}
+
+        def presence(root: Path) -> RequesterPresence:
+            """The roster of the repository ``root`` belongs to, read once a snapshot."""
+            repository = scan.repositories[root] if root in scan.repositories else root
+            if repository not in presences:
+                presences[repository] = RequesterPresence.of(root)
+            return presences[repository]
+
         queues = [
             self.read_root(
-                root, scan.repositories[root] if root in scan.repositories else None
+                root,
+                scan.repositories[root] if root in scan.repositories else None,
+                partial(presence, root),
             )
             for root in scan.roots
         ]
