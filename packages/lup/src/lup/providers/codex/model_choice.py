@@ -43,19 +43,6 @@ def codex_model_choice(model: str | CustomModel) -> CodexModelChoice:
         ) from error
 
 
-def listed_codex_model(model: str) -> CodexModel | None:
-    """The catalog slug ``model`` spells, or ``None`` where the catalog lacks it.
-
-    For a name arriving as text — a command-line flag the launcher passes
-    through — where an unlisted slug is the CLI's to judge rather than this
-    library's to refuse.
-    """
-    try:
-        return TypeAdapter(CodexModel).validate_python(model)
-    except ValidationError:
-        return None
-
-
 def codex_effort_named(value: str) -> CodexEffort:
     """One effort arriving as text — a launcher flag — read against the ladder."""
     try:

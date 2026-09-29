@@ -22,7 +22,6 @@ from lup.providers.claude.model_choice import (
     claude_effort_named,
     claude_model_id,
     claude_model_name,
-    listed_claude_model,
 )
 from lup.launch.declaration import InnerSandbox, OuterContainer
 from lup.providers.claude import Claude
@@ -250,8 +249,6 @@ def test_a_portable_tier_reaches_both_runtimes() -> None:
 
 
 def test_text_from_a_launcher_flag_is_read_against_the_catalog() -> None:
-    assert listed_claude_model("opus[1m]") == "opus[1m]"
-    assert listed_claude_model("claude-next") is None
     assert claude_effort_named("ultra") == "ultra"
     assert codex_effort_named("max") == "max"
     with pytest.raises(ValueError, match="not an effort Claude Code takes"):

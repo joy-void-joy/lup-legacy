@@ -45,19 +45,6 @@ type ClaudeEffortLevel = Literal["low", "medium", "high", "xhigh", "max"]
 """The rungs Claude Code's own ``--effort`` flag and the SDK's option take."""
 
 
-def listed_claude_model(model: str) -> ClaudeModel | None:
-    """The catalog name ``model`` spells, or ``None`` where the catalog lacks it.
-
-    For a name arriving as text — a command-line flag the launcher passes
-    through — where an unlisted name is the CLI's to judge rather than this
-    library's to refuse.
-    """
-    try:
-        return TypeAdapter(ClaudeModel).validate_python(model)
-    except ValidationError:
-        return None
-
-
 def claude_model_name(model: ClaudeModelChoice | None) -> ClaudeModel | None:
     """The catalog name a choice resolves to, where the catalog knows it.
 
