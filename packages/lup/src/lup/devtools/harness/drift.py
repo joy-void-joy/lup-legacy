@@ -24,6 +24,7 @@ from lup.providers.profile_tree import profile_directory
 from lup.harness.generate import (
     DeclarationObstruction,
     DriftReport,
+    GeneratedTreesHeld,
     HarnessGenerationConflict,
     NativeHarnessComposition,
     generate as generate_target,
@@ -147,6 +148,9 @@ def generate_with_report(
         report_drift(report, paths=True)
     try:
         materialized = generate_target(recipe)
+    except GeneratedTreesHeld as error:
+        typer.echo(str(error), err=True)
+        raise typer.Exit(1) from error
     except HarnessGenerationConflict as error:
         typer.echo(str(error), err=True)
         typer.echo(
@@ -251,7 +255,16 @@ class DriftVerdict(BaseModel, frozen=True):
         return [
             f"harness drift: FAIL ({len(self.stale_trees)} tree(s),"
             f" {len(self.stale_repository)} repository artifact(s))",
-            *(f"  stale tree: {report.target}" for report in self.stale_trees),
+            *(
+                f"  stale tree: {report.target}"
+                + (
+                    " — read-only in this session; run "
+                    f"`{REGENERATE_COMMAND}` on the host"
+                    if report.held
+                    else ""
+                )
+                for report in self.stale_trees
+            ),
             *(f"  {message}" for message in self.stale_repository),
         ]
 
@@ -318,9 +331,15 @@ def report_stale(verdict: DriftVerdict) -> None:
             typer.echo(f"  orphaned: {delete.path}", err=True)
     for message in verdict.stale_repository:
         typer.echo(f"  {message}", err=True)
+    held = [report.target for report in verdict.stale_trees if report.held]
     typer.echo(
         f"generated artifacts are behind their source; run `{REGENERATE_COMMAND}` "
-        "and include what it writes in this commit",
+        + (
+            f"on the host, since {', '.join(held)} is read-only in this session, "
+            if held
+            else ""
+        )
+        + "and include what it writes in this commit",
         err=True,
     )
 
