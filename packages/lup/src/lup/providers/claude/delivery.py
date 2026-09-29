@@ -23,22 +23,26 @@ CLAUDE_DELIVERY: list[DeliveryFact] = [
         guarantee="ask_survives_auto_mode",
         provider="claude",
         mechanism=(
-            "a human_only ask is never rendered as a prompt a mode could answer:"
-            " the generated PreToolUse hook parks it in the review queue and"
-            " refuses the call while it waits, and only an answer the operator"
-            " recorded in the host's state releases it, once, to `review wait`"
-            " or an exact retry; with a dashboard held, every ask parks"
+            "where no dashboard is held, the generated PreToolUse hook returns"
+            " an ask, which this runtime renders as its own permission prompt"
+            " in every mode: measured on 2.1.283 in an interactive auto-mode"
+            " session, a hook's ask raised the prompt and the call had not run"
+            " a minute later with nobody answering; where a dashboard is held,"
+            " the hook parks every ask and refuses the call while it waits, and"
+            " only an answer the operator recorded in the host's state releases"
+            " it, once, to `review wait` or an exact retry"
         ),
         standing="measured",
         fallback=(
-            "generated-dispatcher fixtures verify the parking and the receipt"
-            " gate, and a hook's refusal held in a `-p` run under both the"
-            " default and the auto mode on 2.1.283; a prompt is not a human"
-            " receipt -- an auto-mode classifier answered a hook's ask with no"
-            " prompt shown on 2.1.263, and on 2.1.283 the same shape raised a"
-            " prompt that held, unanswered, for 60 s, so what a mode does with"
-            " a prompt moves between releases -- and only an ask a supervisor"
-            " may answer is left to the prompt, where no dashboard is held"
+            "generated-dispatcher fixtures verify both renderings and the"
+            " receipt gate; a prompt is the vendor's, and what a mode does with"
+            " one has moved between releases -- on 2.1.263 an auto-mode"
+            " classifier let a hook's ask for a ref deletion run with no prompt"
+            " shown (#436) -- so where no dashboard is held, a release whose"
+            " mode answered prompts again would settle a person's question"
+            " unseen, and only a parked one waits for a recorded answer; a"
+            " hook's refusal"
+            " held under both the default and the auto mode on 2.1.283"
         ),
     ),
     DeliveryFact(

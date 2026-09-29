@@ -19,7 +19,6 @@ import sh
 from lup.providers.claude.hooks import claude_placed_input
 from lup.policy.grants import allowance_grants_environment, write_allowance_grants
 from lup.policy.identity import AGENT_IDENTITY_ENV, ConcernAllowance
-from lup.policy.relay import QuestionRelay
 from lup.policy.kernel.decision import (
     CONTAINED_ESCAPE_NOTICE,
     SANDBOX_ESCAPE_NOTICE,
@@ -1270,9 +1269,8 @@ def escalated_reason_under(
     put it and named by the nonce this session is entitled to believe; none
     given is a launch that measured nothing, which the reader answers as
     uncontained. The native sandbox is off in both, as it is in every
-    contained launch. Returns the effect, the reason the approver reads in
-    the queue it is parked in, and the rewrite the call goes out with once
-    the operator approves it.
+    contained launch. Returns the effect, the reason the approver reads, and
+    the rewrite the call goes out with.
     """
     written = root / ".lup" / "preflight" / "launch.json"
     if ledger is None:
@@ -1289,15 +1287,14 @@ def escalated_reason_under(
     }
     contained = ledger is not None and "yes" in ledger["contained"]
     answer = decide_from(payload, root, written.parent if contained else None)
-    relay = QuestionRelay(root / ".lup/questions.jsonl")
-    (parked,) = relay.pending()
-    relay.answer(parked.id, "operator", True)
-    retried = decide_from(payload, root, written.parent if contained else None)
-    specific = retried["hookSpecificOutput"]
+    specific = answer["hookSpecificOutput"]
     assert isinstance(specific, dict)
-    assert specific["permissionDecision"] == "allow"
     rewritten = specific["updatedInput"] if "updatedInput" in specific else None
-    return claude_effect(answer), parked.reason, rewritten
+    return (
+        claude_effect(answer),
+        str(specific["permissionDecisionReason"]),
+        rewritten,
+    )
 
 
 def test_an_approved_crossing_on_a_host_is_described_as_leaving_for_it(
@@ -1374,18 +1371,11 @@ def test_a_reason_naming_only_its_category_announces_nothing() -> None:
     assert "systemMessage" not in decision
 
 
-def test_a_parked_shell_question_is_not_told_twice() -> None:
-    """The agent reads the reason and the person the line saying where it waits.
-
-    Neither repeats the other: the person's line names the review and its
-    route to an answer, and the reason stays with the call it refused.
-    """
+def test_a_shell_prompt_is_not_told_twice() -> None:
+    """A command's prompt renders the reason itself, so announcing it repeats it."""
     decision = decide({"tool_name": "Bash", "tool_input": {"command": "rm -rf src"}})
-    specific = decision["hookSpecificOutput"]
-    assert isinstance(specific, dict)
-    reason = str(specific["permissionDecisionReason"]).splitlines()[0]
 
-    assert reason not in str(decision["systemMessage"])
+    assert "systemMessage" not in decision
 
 
 @pytest.mark.parametrize(

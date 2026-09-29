@@ -11,6 +11,7 @@ import os
 from pathlib import Path
 from typing import get_args
 
+import pytest
 import sh
 
 from lup.policy.delivery import (
@@ -114,20 +115,23 @@ def test_a_reader_sees_the_standing_before_the_claim() -> None:
     assert fact.line().index("[documented]") < fact.line().index("emits no decision")
 
 
-def test_claude_s_auto_mode_claim_is_what_its_dispatcher_does(tmp_path: Path) -> None:
-    """The row says a person's question never reaches a prompt; the hook is asked.
+@pytest.mark.parametrize("held", [False, True], ids=["no-dashboard", "dashboard"])
+def test_claude_s_auto_mode_claim_is_what_its_dispatcher_does(
+    tmp_path: Path, held: bool
+) -> None:
+    """The row says where a person's question goes; the generated hook is asked.
 
-    What auto mode does with a hook's ask moves between releases: on Claude
-    Code 2.1.263 the mode answered one with no prompt shown, and on 2.1.283
-    one held a prompt. So the row names a mechanism that does not depend on
-    the mode, and this runs the generated dispatcher under an auto-mode
-    payload to hold the row to it: the question is parked, the call refused.
+    Measured on Claude Code 2.1.283: an interactive auto-mode session held a
+    hook's ask as a prompt, and nothing ran unanswered. So with no dashboard
+    the hook asks; with one it parks, and only a recorded answer releases the
+    call. This runs the dispatcher under an auto-mode payload both ways.
     """
     fact = next(
         fact for fact in CLAUDE_DELIVERY if fact.guarantee == "ask_survives_auto_mode"
     )
     assert fact.standing == "measured"
-    assert "parks it in the review queue" in fact.mechanism
+    assert "2.1.283" in fact.mechanism
+    assert "parks every ask" in fact.mechanism
     assert "2.1.263" in fact.fallback
     root = tmp_path / "checkout"
     (root / ".git").mkdir(parents=True)
@@ -152,11 +156,18 @@ def test_claude_s_auto_mode_claim_is_what_its_dispatcher_does(tmp_path: Path) ->
                         if name != DASHBOARD_URL_ENV
                     },
                     "CLAUDE_PLUGIN_DATA": str(tmp_path / "plugin-data"),
+                    **({DASHBOARD_URL_ENV: "http://127.0.0.1:8766"} if held else {}),
                 },
             )
         )
     )
 
-    (question,) = QuestionRelay(root / ".lup/questions.jsonl").pending()
-    assert answered["hookSpecificOutput"]["permissionDecision"] == "deny"
+    parked = QuestionRelay(root / ".lup/questions.jsonl").pending()
+    decided = answered["hookSpecificOutput"]["permissionDecision"]
+    if not held:
+        assert decided == "ask"
+        assert parked == []
+        return
+    (question,) = parked
+    assert decided == "deny"
     assert question.requirement == "human_only"

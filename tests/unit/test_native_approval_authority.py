@@ -25,6 +25,7 @@ def native_response(
     tool: str = "Bash",
     arguments: JsonObject | None = None,
     execution_id: str = "",
+    held: bool = True,
 ) -> sh.RunningCommand:
     payload: JsonObject = {
         "session_id": "requester",
@@ -39,6 +40,8 @@ def native_response(
         },
     }
     script = Path(f".{runtime}/plugins/lup/hooks/scripts/policy.py").resolve()
+    # A launch holding a dashboard unless *held* says otherwise: there Claude
+    # parks every question as Codex does, so one receipt gate is asked of both.
     result = sh.Command(str(script))(
         _in=json.dumps(payload),
         _ok_code=[0, 2],
@@ -47,6 +50,7 @@ def native_response(
             **os.environ,
             "PLUGIN_DATA": str(root / "plugin-data"),
             "CLAUDE_PLUGIN_DATA": str(root / "plugin-data"),
+            **({DASHBOARD_URL_ENV: "http://127.0.0.1:8766"} if held else {}),
         },
     )
     assert isinstance(result, sh.RunningCommand)
@@ -97,8 +101,8 @@ def test_unproven_legacy_record_never_authorizes(
 ) -> None:
     """The approvals log is an audit, so the call is asked as if it were empty.
 
-    Both runtimes park the question and refuse the call while it waits for a
-    recorded answer.
+    Both runtimes, under a held dashboard, park the question and refuse the
+    call while it waits for a recorded answer.
     """
     command = (
         "git push origin --delete probe-compound probe-excluded-prefix 2>&1 | tail -5"
@@ -270,14 +274,16 @@ def test_external_workspace_preserves_application_human_owned_paths(
     assert path.read_text() == before
 
 
-@pytest.mark.parametrize("runtime", ["claude", "codex"])
+@pytest.mark.parametrize(
+    ("runtime", "held"), [("claude", True), ("codex", True), ("codex", False)]
+)
 def test_external_review_recovery_commands_select_the_application_environment(
-    root: Path, runtime: str, monkeypatch: pytest.MonkeyPatch
+    root: Path, runtime: str, held: bool, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     project = root / "application with spaces"
     project.symlink_to(Path.cwd(), target_is_directory=True)
     monkeypatch.setenv(POLICY_ROOT_ENV, str(project))
-    result = native_response(root, runtime)
+    result = native_response(root, runtime, held=held)
     detail = (
         codex_denial(result)
         if runtime == "codex"
@@ -297,7 +303,9 @@ def test_external_review_recovery_commands_select_the_application_environment(
     show = [*prefix, "show", question.id, "--json"]
     approve = [*prefix, "approve", question.id, "--as", "operator"]
     assert shlex.join([*prefix, "wait", question.id]) in detail
-    assert shlex.join(approve) in detail
+    # The dashboard answers what it holds; only the terminal route names a verb.
+    assert (shlex.join(approve) in detail) is not held
+    assert ("http://127.0.0.1:8766" in detail) is held
     assert (
         native_call(root, runtime, arguments={"command": shlex.join(approve)}) == "deny"
     )
@@ -358,7 +366,7 @@ def test_unterminated_approval_never_becomes_authority_on_later_append(
 
 
 def test_a_protected_path_edit_is_parked_for_its_author(root: Path) -> None:
-    """A protected path's edit waits for a recorded answer, never a prompt.
+    """Where a dashboard is held, a protected path's edit waits for a recorded answer.
 
     Its question is a person's to answer, so it is parked with the document
     as it stands, and the file is untouched until somebody does.
@@ -377,17 +385,19 @@ def test_a_protected_path_edit_is_parked_for_its_author(root: Path) -> None:
 
 
 @pytest.mark.parametrize("mode", ["default", "auto", "bypassPermissions"])
-def test_a_person_s_question_is_parked_whatever_the_mode(
-    root: Path, mode: str, monkeypatch: pytest.MonkeyPatch
+@pytest.mark.parametrize("held", [False, True], ids=["no-dashboard", "dashboard"])
+def test_a_person_s_question_takes_the_prompt_unless_a_dashboard_reads_it(
+    root: Path, mode: str, held: bool, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A `human_only` ask never reaches a prompt a mode could answer.
+    """Where no dashboard is held, a person's question is Claude's own prompt.
 
-    Removing a remote ref is what the reviewer axis reserves for a person, and
-    an auto-mode classifier answered exactly this prompt on Claude Code 2.1.263
-    with nobody shown it. So it is parked and refused while it waits, whatever
-    mode the session is in and whether or not a dashboard serves, and the
-    refusal tells the operator where it waits: a mode can answer a prompt, and
-    nothing answers a refusal but the recorded answer.
+    Removing a remote ref is what the reviewer axis reserves for a person.
+    With no dashboard serving, nobody reads a parked question until they run
+    the terminal command, so the question goes where the person already is:
+    the runtime's permission prompt, whatever mode the session is in -- on
+    Claude Code 2.1.283 an auto-mode session held a hook's ask as a prompt and
+    ran nothing unanswered. Where a dashboard is held, it is parked there and
+    refused while it waits, and the refusal tells the operator where.
     """
     monkeypatch.delenv(DASHBOARD_URL_ENV, raising=False)
     arguments: JsonObject = {"command": "git push --delete origin topic"}
@@ -404,14 +414,23 @@ def test_a_person_s_question_is_parked_whatever_the_mode(
         str(
             sh.Command(str(script))(
                 _in=json.dumps(payload),
-                _env={**os.environ, "CLAUDE_PLUGIN_DATA": str(root / "plugin-data")},
+                _env={
+                    **os.environ,
+                    "CLAUDE_PLUGIN_DATA": str(root / "plugin-data"),
+                    **({DASHBOARD_URL_ENV: "http://127.0.0.1:8766"} if held else {}),
+                },
             )
         )
     )
     spoken = answer["hookSpecificOutput"]
-    (question,) = QuestionRelay(root / ".lup/questions.jsonl").pending()
-    assert spoken["permissionDecision"] == "deny"
+    parked = QuestionRelay(root / ".lup/questions.jsonl").pending()
     assert "remote branch" in spoken["permissionDecisionReason"]
+    if not held:
+        assert spoken["permissionDecision"] == "ask"
+        assert parked == []
+        return
+    (question,) = parked
+    assert spoken["permissionDecision"] == "deny"
     assert f"review {question.id}" in spoken["permissionDecisionReason"]
     assert "not refused" in spoken["permissionDecisionReason"]
     assert question.id in answer["systemMessage"]
