@@ -386,7 +386,12 @@ included: `python3 --version`, `uv run python -V`, `node -v`, `deno
 --version`. Each grammar lists its own spellings, since a letter one tool
 spends on help another spends on something else (`bash -h` hashes commands),
 and a program beside the question is read as though it were absent:
-`python3 -V tmp/x.py` and `bash --version -c ls` keep their refusals. The refusal is decided by the words up to the code, so an argument
+`python3 -V tmp/x.py` and `bash --version -c ls` keep their refusals. The
+`--help` that lets any other command show its usage is answered by whichever
+program reads it, so one handed to the program an interpreter runs is that
+program's argument: `bash -c ls --help` runs `ls`, `echo ls | bash -h` runs
+its input, and each keeps its refusal however it is carried (`env`, `uv run`,
+`xargs`, `find -exec`). The refusal is decided by the words up to the code, so an argument
 after it that nobody can read — a variable a substitution bound, a `$(...)`
 result — does not hand it to a boundary: `perl -pi -e … $files`, `python -c
 … $x` and `node -e … $(ls)` are refused on every posture as their spelled

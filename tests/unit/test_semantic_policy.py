@@ -631,6 +631,26 @@ SHELL_POLICY_CASES = [
     DecisionCase(input="bash --version -c ls", effect="deny"),
     DecisionCase(input="node -v -e 'x'", effect="deny"),
     DecisionCase(input="python3 -V tmp/x.py", effect="deny"),
+    # A `--help` the program is handed is the program's argument, not a
+    # question the interpreter answers: `bash -c ls --help` runs `ls`, and
+    # `bash -h` hashes commands while it runs what its input carries. Whatever
+    # carries the interpreter, its refusal stands.
+    DecisionCase(input="bash -c ls --help", effect="deny"),
+    DecisionCase(input="sh -c reboot --help", effect="deny"),
+    DecisionCase(input="python3 -c exit --help", effect="deny"),
+    DecisionCase(input="python3 x.py --help", effect="deny"),
+    DecisionCase(input="perl -e 1 --help", effect="deny"),
+    DecisionCase(input="echo ls | bash -h", effect="deny"),
+    DecisionCase(input="env bash -c ls --help", effect="deny"),
+    DecisionCase(input="timeout 5 bash -c ls --help", effect="deny"),
+    DecisionCase(input="uv run bash -c ls --help", effect="deny"),
+    DecisionCase(input="uv run python -c exit --help", effect="deny"),
+    DecisionCase(input="xargs bash -c ls --help", effect="deny"),
+    DecisionCase(input="find . -exec sh -c ls --help +", effect="deny"),
+    DecisionCase(input="bash -c ls --help", effect="deny", sandboxed=True),
+    DecisionCase(input="bash tmp/x.sh --help", effect="allow"),
+    DecisionCase(input="python3 --help", effect="allow"),
+    DecisionCase(input="frobnicate --help", effect="allow"),
     DecisionCase(input="uv run node -e 'x'", effect="deny"),
     DecisionCase(input="uv run python -W ignore", effect="deny"),
     DecisionCase(input="uv run bun install", effect="deny"),

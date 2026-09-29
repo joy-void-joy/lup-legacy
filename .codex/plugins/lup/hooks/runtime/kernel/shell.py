@@ -74,7 +74,12 @@ from .bindings import (
     references,
 )
 from .escalation import read_escalation
-from .programs import SCRIPT_INTERPRETERS, program_verdict, read_program
+from .programs import (
+    PROGRAM_RULE,
+    SCRIPT_INTERPRETERS,
+    program_verdict,
+    read_program,
+)
 from .withheld import (
     printed_secret,
     secret_name,
@@ -632,6 +637,8 @@ def decide_interpreter_words(
         recovery="Write the code to a named script file and run it through"
         " `uv run python <script>`; a bare interpreter is refused even"
         " over a file.",
+        # A subcommand is the tool's own, and reads its own `--help`.
+        rule="" if reading["kind"] == "subcommand" else PROGRAM_RULE,
     )
 
 
@@ -1055,7 +1062,7 @@ def decide_placed_words(
             unread_readings(words, context["rows"], write_facts(context)),
         )
     decision = decide_segment_words(words, context, directory, operands_judged)
-    if is_help_probe(words[1:]):
+    if is_help_probe(words[1:]) and not refuses_a_program(decision):
         return decision.revised(
             effect="allow",
             reason="a help probe only prints usage",
@@ -1064,6 +1071,21 @@ def decide_placed_words(
             abstention=None,
         )
     return decision
+
+
+def refuses_a_program(decision: KernelDecision) -> bool:
+    """Whether an interpreter's refusal of the program it runs is in this verdict.
+
+    A help probe answers for the command that reads the `--help`, and one an
+    interpreter's program is handed is that program's argument: `bash -c ls
+    --help` runs `ls`, and `bash -h` is a flag while stdin carries the
+    program. Read through every part, since a carrier -- `uv run`, `xargs`,
+    `find -exec` -- hands the payload's refusal on as its own or beside
+    another, and the carrier's words hold the same `--help`.
+    """
+    return decision.rule == PROGRAM_RULE or any(
+        refuses_a_program(part) for part in decision.findings
+    )
 
 
 def uv_post_target_words_safe(

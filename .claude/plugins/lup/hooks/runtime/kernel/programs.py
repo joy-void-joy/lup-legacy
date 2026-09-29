@@ -394,6 +394,13 @@ SCRIPT_INTERPRETERS = ("bash", "sh", "zsh", "node", "bun", "deno")
 Python is absent on purpose: it runs through `uv run python <script>`, in
 this project's environment, and the bare spelling keeps pointing there."""
 
+PROGRAM_RULE = "shell:interpreter-program"
+"""The rule an interpreter's refusal of the program it was handed carries.
+
+Named so a reader of the verdict can tell a refusal about the program from
+one about the tool: a `--help` beside that program is the program's argument
+(`bash -c ls --help` runs `ls`), so no usage question lifts it."""
+
 
 def read_options(
     word: str, following: list[str], rules: OptionGrammar
@@ -579,6 +586,7 @@ def program_verdict(spelled: str, reading: ProgramReading) -> KernelDecision | N
                 f"{spelled} {subject}: inline code leaves nothing behind to review",
                 recovery="Write the code to a named script file, which can be"
                 " reviewed and run again.",
+                rule=PROGRAM_RULE,
             )
         case "bare":
             return KernelDecision(
@@ -586,6 +594,7 @@ def program_verdict(spelled: str, reading: ProgramReading) -> KernelDecision | N
                 f"{spelled} with no script file runs whatever it is fed, and"
                 " leaves nothing behind to review",
                 recovery="Name a script file.",
+                rule=PROGRAM_RULE,
             )
         case "unread":
             return KernelDecision(
@@ -594,6 +603,7 @@ def program_verdict(spelled: str, reading: ProgramReading) -> KernelDecision | N
                 " the script it would run is unread",
                 recovery="Spell the option's value with `=`, or run the script"
                 " without it.",
+                rule=PROGRAM_RULE,
             )
         case "remote":
             return KernelDecision(
@@ -602,5 +612,6 @@ def program_verdict(spelled: str, reading: ProgramReading) -> KernelDecision | N
                 " nothing here to review",
                 recovery="Save the script to a file in this checkout, read it,"
                 " and run that.",
+                rule=PROGRAM_RULE,
             )
     return None
