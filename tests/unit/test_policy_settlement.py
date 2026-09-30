@@ -185,6 +185,28 @@ def test_decision_escalation_turns_an_abstention_into_a_question() -> None:
     assert settled.effect == "ask"
 
 
+def test_decision_escalation_leaves_a_handoff_to_the_runtime_standing() -> None:
+    """A change the runtime's own mode answers is the runtime's, marker or not.
+
+    Made a question, it parked for the operator a change nobody had asked lup
+    to hold -- the one thing a handoff exists not to do.
+    """
+    settled = settle(
+        facts(
+            KernelDecision(
+                "defer",
+                "edit exceeds the small-change gate",
+                abstention="provider_native",
+            ),
+            escalation=decision_escalation(),
+        )
+    )
+
+    assert (settled.effect, settled.abstention) == ("defer", "provider_native")
+    assert "a stated reason changes nothing" in settled.reason
+    assert settled.visibility == "notice"
+
+
 def test_decision_escalation_over_a_permission_says_it_was_unnecessary() -> None:
     """A marker over something already allowed buys a prompt for nothing.
 

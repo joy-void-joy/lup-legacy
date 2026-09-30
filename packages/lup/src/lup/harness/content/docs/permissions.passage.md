@@ -1068,6 +1068,16 @@ surfaces every change to it, edit or shell write, as an approval its author
 answers. An edit over the size gate alone is deferred — the hook
 emits no decision, so auto-accept applies while hard gates stay explicit.
 
+A deferral is never a question lup puts, and nothing parks one, whichever
+spelling carried the change — an `Edit`, a `cp` over a file, a heredoc, a
+`sed -i`, or a line whose strongest part is the handoff. On Claude Code the
+hook returns no permission decision, and the runtime's own mode answers: auto
+mode's classifier, or the prompt in the terminal. On Codex the pre-tool hook
+lets the call through to Codex's own approval policy, and its
+permission-request hook returns nothing, which leaves Codex's own prompt. A
+`# lup: escalate[decision]:` line over a deferred command changes nothing
+either: the handoff stands, and the agent is told the reason was not needed.
+
 Size is counted in *real* changed lines per change block, and an edit of
 three or fewer auto-allows. Imports, comments, whitespace, blank lines,
 docstrings, string literals, type annotations, and TypedDict/BaseModel bodies
