@@ -76,7 +76,6 @@ from lup.policy.kernel.edit import (
 from lup.policy.assets.host import (
     append_review_record,
     checkout_home,
-    review_home,
     worktree_root,
 )
 from lup.policy.relay import (
@@ -948,11 +947,18 @@ class RequesterPresence(BaseModel, frozen=True):
         return cls(sessions={**sighted(False), **sighted(True)})
 
     def sightings(self, question: QuestionRecord) -> list[Sighting]:
-        """What the roster knows of the session that asked, by either identity."""
+        """What the roster knows of the session that asked, by each identity it asked under.
+
+        Its runtime's ids, and the roster member its launch named, which
+        outlives them: a session resumed under a new runtime id keeps its
+        member and hands its commands the id it started with, so a review a
+        command parked names an id whose row has ended while the session that
+        asked still runs, and `review wait` still takes it as that session's.
+        """
         operation = question.operation
         return [
             self.sessions[identity]
-            for identity in (operation.requester, operation.session)
+            for identity in (operation.requester, operation.session, question.member)
             if identity and identity in self.sessions
         ]
 
