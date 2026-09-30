@@ -38,6 +38,7 @@ import signal
 import socket
 import tempfile
 import threading
+import time
 import traceback
 import uuid
 from abc import ABC, abstractmethod
@@ -595,6 +596,10 @@ class Running(BaseModel, frozen=True):
     output: int = 0
     """Where its output begins in the companion's log, which every run appends to."""
 
+    spawner: LiveProcess | None = None
+    """The launcher that started it: its parent, whose ``sh`` collects it when it
+    ends and records how (:meth:`CompanionSlot.reaped`)."""
+
 
 class CompanionStop(BaseModel, frozen=True):
     """Lup stopping what ran, recorded in the slot and its log before the signal is sent."""
@@ -747,19 +752,45 @@ class CompanionSlot(BaseModel, frozen=True):
         ``sh`` calls it in the launcher that started the process, whose own
         thread collects its child within a second of its end — often before
         any holder looks — so what it learned is written where every holder
-        reads it. Outside the slot's lock, so under a name of its own first.
+        reads it.
         """
         del success
-        record = Reaped(pid=command.pid, status=status, at=datetime.now(UTC))
+        self.keep(Reaped(pid=command.pid, status=status, at=datetime.now(UTC)))
+
+    def keep(self, record: Reaped) -> None:
+        """Write how a process ended where every holder reads it; outside the slot's lock, so staged first."""
         staged = self.directory / f"reaped.json.{uuid.uuid4().hex}"
         staged.write_text(record.model_dump_json(), encoding="utf-8")
         staged.replace(self.directory / "reaped.json")
 
-    def ended(self, running: Running) -> int | None:
-        """How what ran ended: collected now where it waits to be, else as its launcher collected it."""
+    def ended(
+        self, running: Running, within: float = 2.0, every: float = 0.05
+    ) -> int | None:
+        """How what ran ended: collected now where it waits to be, else as its starter collected it.
+
+        The starter's ``sh`` collects its child within a second of its end and
+        writes how only after, so a holder looking in between finds neither
+        the process nor the record. While the starter still runs, that record
+        is on its way and is waited for — ``within`` seconds at most, twice
+        what ``sh`` takes to collect, looked for every ``every``. Nothing is
+        known once the starter is gone, which leaves its child to init, or
+        once the wait is over.
+        """
         status = running.process.collected()
         if status is not None:
             return status
+        for _ in range(max(1, round(within / every))):
+            recorded = self.recorded(running)
+            if recorded is not None:
+                return recorded
+            spawner = running.spawner
+            if spawner is None or not spawner.running():
+                return None
+            time.sleep(every)
+        return self.recorded(running)
+
+    def recorded(self, running: Running) -> int | None:
+        """How what ran ended, where its starter recorded it for this process and this run."""
         try:
             reaped = Reaped.model_validate_json(
                 (self.directory / "reaped.json").read_bytes()
@@ -1199,6 +1230,7 @@ class SharedProcess(HostCompanion, ABC, frozen=True):
             declared=self.model_dump(mode="json"),
             since=datetime.now(UTC),
             output=begins,
+            spawner=LiveProcess.of(os.getpid()),
         )
 
     def released(self, slot: CompanionSlot, lease: Lease) -> None:
