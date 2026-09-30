@@ -251,8 +251,10 @@ command runs in. A dashboard that predates restarting itself is replaced
 instead: stopped, and started from that checkout for the sessions holding it.
 
 `uv run lup-devtools dashboard status` says whether it serves, where, for how
-many sessions, over which repositories, how many reviews wait, how many tabs
-follow it, which code it runs, and how many times the sessions holding it
+many sessions, over which repositories, how many reviews wait, how many
+messages agents sent the operator wait unread, how many agents are quiet and
+how many paths are held twice (as the status line counts them, below), how
+many tabs follow it, which code it runs, and how many times the sessions holding it
 started it again; from the operator's terminal it also gives the last exit
 (`exited`: when, how, and its last lines of output), the last stop lup made
 (`stopped`: why, by which process, and the live leases it counted), and, while
@@ -304,25 +306,86 @@ turns it off with `[dashboard] reopen = false` in their lup config
 --off`, which writes that line; `--on` writes it back, and neither says which
 it is. The notice is sent either way.
 
-**Every session's status line**, where its runtime draws one: `N reviews
-pending · <address>`, the address alone when nothing waits, nothing when no
-dashboard answers. The dashboard publishes what it counts — reviews waiting,
-sessions, repositories, open tabs and its address, never its capability — as
-its pulse, a small file in a directory of its own that every launch lends its
-session read-only at the path the host has it, named by
-`LUP_DASHBOARD_PULSE`. It rewrites the pulse whenever it changes and at least
-every ten seconds, and takes it down when it stops, so a pulse older than
-thirty seconds reads as a dashboard that stopped. The operator's `dashboard
-stop` leaves a pulse in its place saying so, which holds until a start
-replaces it. The status line runs
-`uv run lup-devtools dashboard line <pulse>`, which the CLI answers before
-loading the project's application, in about a fifth of a second. Claude Code
-shows it through `statusLine`, re-run every fifteen seconds so a review
+**Every session's status line**, where its runtime draws one. It reads, left
+to right:
+
+- **which session this is**, dimmed: the roster's name for it and the
+  worktree it was launched in, relative to its repository's directory —
+  `dev · tree/fix-x`;
+- **what waits on the operator**, in the warning colour and only while
+  something does: the reviews waiting, and how many of them this session or
+  its subagents parked, naming the one by the first eight characters of its
+  id and counting several — `?2 reviews (1 here: 41cb73e1)` — and the
+  messages agents sent the operator that still wait in its mailbox, `✉1`.
+  Nothing takes a message out of that mailbox yet: the page shows each, and
+  nothing marks one read, so `✉` counts every message an agent sent the
+  operator in a repository the dashboard serves;
+- **what other agents need**, only while one does: `⚠ 1 quiet`, an agent
+  with a call outstanding and nothing new in its transcript for ten minutes,
+  none of whose subagents runs (a session waiting on its subagent is waiting
+  on that subagent, which answers for itself), and `⚠ held twice`, a path two
+  sessions hold, a subagent holding with its session's hand;
+- **the dashboard, as one glyph**: `● :8767` while it serves current code,
+  its whole address in place of the port while something waits, as a
+  terminal hyperlink; `◐ dashboard restarting` while it moves onto newer
+  code; `○ dashboard down · dashboard restart` where nothing serves; and
+  "○ dashboard stopped by the operator; `dashboard restart` starts it" after
+  the operator's stop. For five minutes after the sessions started it again
+  it adds "restarted after it stopped:" and why.
+
+```
+dev · tree/dev │ ● :8767
+dev · tree/fix-x │ ?2 reviews (1 here: 41cb73e1) · ✉1 │ ● http://127.0.0.1:8767
+dev · tree/dev │ ⚠ 1 quiet │ ◐ dashboard restarting
+dev · tree/dev │ ○ dashboard down · dashboard restart
+```
+
+Where the terminal is narrower than the line, whole pieces drop and no word
+is cut, in this order: what other agents need, then the worktree, then the
+review's id. What waits on the operator, the session's name and the
+dashboard stay; a line still too wide is the runtime's to cut.
+
+The session is the one the runtime names on the command's stdin. Claude
+Code's `statusLine` input carries the conversation's id (`session_id`) and
+the transcript it writes (`transcript_path`), and the running roster row whose
+launch named that conversation, or whose last prompt came from that
+transcript, is this session's — so a conversation the runtime opened after
+the launch is found once it has taken a prompt. A session the dashboard does
+not list is placed by the directory it was launched in
+(`workspace.project_dir`), without a name.
+
+The dashboard publishes what the line reads as its pulse: the reviews
+waiting, each running session with the reviews it or its subagents parked,
+the messages to the operator, how many agents are quiet and how many paths
+are held twice, the sessions holding it, its repositories, open tabs and its
+address — never its capability. It reads each roster, and the transcripts
+the roster names, on a watch of its own at every look, so what it counts
+holds whether or not a tab follows the page. The pulse is a small file in a
+directory of its own that every launch lends its session read-only at the
+path the host has it, named by `LUP_DASHBOARD_PULSE`. It is rewritten
+whenever it changes and at least every ten seconds, and taken down when the
+dashboard stops, so a pulse older than thirty seconds reads as a dashboard
+that stopped. The operator's `dashboard stop` leaves a pulse in its place
+saying so, which keeps the sessions the last one listed, so each line still
+names its session, and holds until a start replaces it. A pulse written by a
+dashboard from before it listed sessions reads as one listing none: the line
+shows the counts it has, and places the session by its directory.
+
+The status line runs `uv run lup-devtools dashboard line <pulse>`, which the
+CLI answers before loading the project's application, reading only the pulse
+and stdin, in about a fifth of a second. Claude Code shows it through
+`statusLine` (https://code.claude.com/docs/en/statusline), which paints its
+ANSI colours and passes its OSC 8 hyperlink through where it detects the
+terminal takes one (`FORCE_HYPERLINK=1` overrides that detection; a terminal
+without them shows the address alone), and sets `COLUMNS` to the terminal's
+width for the command. It re-runs it every fifteen seconds so a review
 another session parks shows while this one is idle, and only where nobody
 else named one: a status line in the account's settings, the person's
 `[claude.settings]` or the project's settings stays theirs. Codex has no
 status line a command can fill (`docs/platform-differentiation.md`), so a
-Codex session has the notice, the reopened page and `dashboard status`.
+Codex session has the notice, the reopened page, and `dashboard status`,
+which carries the same counts — `pending`, `unread`, `quiet` and
+`contested`.
 
 ## One stream
 

@@ -2,6 +2,29 @@
 
 ## Unreleased
 
+### The status line names its session, what waits on you, and the dashboard as one glyph
+
+A Claude session's status line no longer prints the dashboard's bare address
+when nothing waits. It reads `dev · tree/fix-x │ ?2 reviews (1 here:
+41cb73e1) · ✉1 │ ⚠ 1 quiet │ ● http://127.0.0.1:8767`: the session's roster
+name and worktree, dimmed; the reviews waiting on you, with how many this
+session or its subagents parked, and the messages agents sent you, in the
+warning colour and only while something waits; an agent gone quiet (a call
+outstanding ten minutes with nothing new in its transcript) or a path two
+sessions hold, only while one does; and the dashboard as `● :8767`,
+`◐ dashboard restarting`, `○ dashboard down · dashboard restart`, or the
+operator's stop — its whole address, a terminal hyperlink, only while
+something waits. The session is found from the JSON Claude Code hands the
+command on stdin; a narrow terminal drops the other agents' needs, then the
+worktree, then the review's id, and never cuts a word. The dashboard's pulse
+now lists each running session with the reviews it parked and counts the
+unread messages, quiet agents and paths held twice, which `dashboard status`
+carries too (`unread`, `quiet`, `contested`); a session launched before this
+keeps working, its line showing what an older pulse has. The line still
+answers on the CLI's fast path, reading only the pulse and stdin.
+`status_line` answers a `ShownLine` (`plain()`, `painted()`), and
+`DashboardPulse.line` and `shown` are gone (see the migration).
+
 ### A session's reviews live in its own checkout, and only subagents hold waiters
 
 A parked call's refusal no longer tells a session's own conversation to start

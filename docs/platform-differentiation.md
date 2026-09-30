@@ -147,14 +147,23 @@ so it is the same under both runtimes: one desktop notice per review, the
 page reopened where no tab follows it, and `dashboard status` in a session
 reading the pulse both are lent. The status line is the one difference, and
 it is the runtime's. Claude Code runs a command for its `statusLine`, with a
-`refreshInterval` re-running it on a timer (documented), so a Claude launch
-holding the dashboard hands it `dashboard line` in `--settings` where nobody
-named one. Codex has no status line a command fills: measured in the 0.159.0
-binary, `tui.status_line` takes names from a fixed vocabulary of built-in
-items — the model, context used and remaining, the git branch, rate limits,
-token counts, the thread's title and the like — with no item that runs a
-program or reads a file, and `tui.terminal_title` the same. A Codex session
-learns what waits from the notice, the page, and `dashboard status`.
+`refreshInterval` re-running it on a timer, hands the command its session's
+id, transcript and directories as JSON on stdin, sets `COLUMNS` to the
+terminal's width, and paints ANSI colours and OSC 8 links (documented at
+https://code.claude.com/docs/en/statusline), so a Claude launch holding the
+dashboard hands it `dashboard line` in `--settings` where nobody named one,
+and the line names its session, what waits on the operator and its share of
+it, what other agents need, and the dashboard's state. Codex has no command
+status line: measured in the 0.159.0 binary, `tui.status_line` takes names
+from a fixed vocabulary of built-in items — the model, context used and
+remaining, the git branch, rate limits, token counts, the thread's title and
+the like — with no item that runs a program or reads a file, and
+`tui.terminal_title` the same. A Codex session's equivalents stay the page,
+the notices, and `dashboard status`, which carries the same counts — reviews
+waiting, unread messages to the operator, quiet agents and paths held twice.
+Only a session's own share of the reviews is the status line's alone, since
+only a command its runtime hands the session's identity can say which
+session asks; the page lists each session's reviews beneath it.
 
 ## The launch declaration's intended differences
 
