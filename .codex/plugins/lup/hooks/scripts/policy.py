@@ -22,6 +22,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parents[1] / "runtime"))
 from codex_patch import patched_files, patched_paths
 from kernel.rows import PostToolReport
+from kernel.review import Said
 from kernel.decision import KernelDecision
 from kernel.review import literal_input
 from kernel.shell import auto_escape_matches
@@ -1428,7 +1429,7 @@ def records_backwards(path: Path, block: int = 1 << 16) -> Iterator[dict]:
         for end in range(size, 0, -block):
             start = max(0, end - block)
             stream.seek(start)
-            lines = (stream.read(end - start) + carried).split(b"\n")
+            lines = (stream.read(end - start) + carried).splitlines()
             carried = lines[0] if start else b""
             for line in reversed(lines[1:] if start else lines):
                 try:
@@ -4194,7 +4195,7 @@ def reviewed_decision(
     policy_identity: str = "",
     provider: str = "",
     agent: str = "",
-    account: list[dict[str, str]] | None = None,
+    account: list[Said] | None = None,
 ) -> Reviewed:
     """Park one ask for the operator, or spend the single-use answer they recorded.
 
@@ -4326,9 +4327,7 @@ def reviewed_decision(
     }
 
 
-def roster_doing(
-    directory: Path | None, member: str, agent: str
-) -> list[dict[str, str]]:
+def roster_doing(directory: Path | None, member: str, agent: str) -> list[Said]:
     """What the asking conversation last told the roster it is on, where it said anything.
 
     Its own row: the subagent's where one asked, else the session's. Nothing
@@ -4345,7 +4344,7 @@ def roster_doing(
         if row is not None and "description" in row
         else ""
     )
-    return [{"source": "doing", "text": doing}] if doing.strip() else []
+    return [Said(source="doing", text=doing)] if doing.strip() else []
 
 
 def session_contained(cwd: Path | None) -> bool:
@@ -5419,7 +5418,7 @@ def waiting(command):
     )
 
 
-def account(payload):
+def account(payload) -> list[Said]:
     """What the agent said this call is for, each with where it was found.
 
     The ``justification`` Codex's shell tool carries beside a request to run
@@ -5436,11 +5435,11 @@ def account(payload):
     preceding = words_before(transcript, spoken) if transcript is not None else ""
     return [
         *(
-            [{"source": "justification", "text": justified}]
+            [Said(source="justification", text=justified)]
             if isinstance(justified, str) and justified.strip()
             else []
         ),
-        *([{"source": "preceding", "text": preceding}] if preceding.strip() else []),
+        *([Said(source="preceding", text=preceding)] if preceding.strip() else []),
     ]
 
 

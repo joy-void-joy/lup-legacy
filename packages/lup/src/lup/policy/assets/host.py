@@ -1329,7 +1329,7 @@ def records_backwards(path: Path, block: int = 1 << 16) -> Iterator[dict]:
         for end in range(size, 0, -block):
             start = max(0, end - block)
             stream.seek(start)
-            lines = (stream.read(end - start) + carried).split(b"\n")
+            lines = (stream.read(end - start) + carried).splitlines()
             carried = lines[0] if start else b""
             for line in reversed(lines[1:] if start else lines):
                 try:

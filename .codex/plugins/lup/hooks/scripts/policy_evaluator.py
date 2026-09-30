@@ -74,6 +74,7 @@ from kernel.rows import (
     landing_rows,
 )
 from kernel.review import Reviewed
+from kernel.review import Said
 from kernel.spawns import decide_spawn, spawn_name
 from kernel.words import INTERPRETERS
 from kernel.roles import displaced_targets, sibling_scratch_rows, unscratched
@@ -1411,7 +1412,7 @@ def records_backwards(path: Path, block: int = 1 << 16) -> Iterator[dict]:
         for end in range(size, 0, -block):
             start = max(0, end - block)
             stream.seek(start)
-            lines = (stream.read(end - start) + carried).split(b"\n")
+            lines = (stream.read(end - start) + carried).splitlines()
             carried = lines[0] if start else b""
             for line in reversed(lines[1:] if start else lines):
                 try:
@@ -4177,7 +4178,7 @@ def reviewed_decision(
     policy_identity: str = "",
     provider: str = "",
     agent: str = "",
-    account: list[dict[str, str]] | None = None,
+    account: list[Said] | None = None,
 ) -> Reviewed:
     """Park one ask for the operator, or spend the single-use answer they recorded.
 
@@ -4309,9 +4310,7 @@ def reviewed_decision(
     }
 
 
-def roster_doing(
-    directory: Path | None, member: str, agent: str
-) -> list[dict[str, str]]:
+def roster_doing(directory: Path | None, member: str, agent: str) -> list[Said]:
     """What the asking conversation last told the roster it is on, where it said anything.
 
     Its own row: the subagent's where one asked, else the session's. Nothing
@@ -4328,7 +4327,7 @@ def roster_doing(
         if row is not None and "description" in row
         else ""
     )
-    return [{"source": "doing", "text": doing}] if doing.strip() else []
+    return [Said(source="doing", text=doing)] if doing.strip() else []
 
 
 def session_contained(cwd: Path | None) -> bool:

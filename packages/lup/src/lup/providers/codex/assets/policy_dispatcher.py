@@ -70,6 +70,7 @@ from host import (
     words_before,
 )
 from kernel.rows import PostToolReport
+from kernel.review import Said
 from kernel.decision import KernelDecision
 from kernel.review import literal_input
 from kernel.shell import auto_escape_matches
@@ -301,7 +302,7 @@ def waiting(command):
     )
 
 
-def account(payload):
+def account(payload) -> list[Said]:
     """What the agent said this call is for, each with where it was found.
 
     The ``justification`` Codex's shell tool carries beside a request to run
@@ -318,11 +319,11 @@ def account(payload):
     preceding = words_before(transcript, spoken) if transcript is not None else ""
     return [
         *(
-            [{"source": "justification", "text": justified}]
+            [Said(source="justification", text=justified)]
             if isinstance(justified, str) and justified.strip()
             else []
         ),
-        *([{"source": "preceding", "text": preceding}] if preceding.strip() else []),
+        *([Said(source="preceding", text=preceding)] if preceding.strip() else []),
     ]
 
 

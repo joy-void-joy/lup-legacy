@@ -72,6 +72,7 @@ from host import (
     words_before,
 )
 from kernel.rows import PostToolReport
+from kernel.review import Said
 from kernel.decision import KernelDecision, sandbox_escaped
 from caller_payload import caller_of, spoken, transcript_of
 from policy_data import (
@@ -298,7 +299,7 @@ def preimages(payload, cwd):
             return {}
 
 
-def account(payload):
+def account(payload) -> list[Said]:
     """What the agent said this call is for, each with where it was found.
 
     The ``description`` Claude Code's Bash tool carries beside a command,
@@ -313,11 +314,11 @@ def account(payload):
     preceding = words_before(transcript, spoken) if transcript is not None else ""
     return [
         *(
-            [{"source": "description", "text": described}]
+            [Said(source="description", text=described)]
             if isinstance(described, str) and described.strip()
             else []
         ),
-        *([{"source": "preceding", "text": preceding}] if preceding.strip() else []),
+        *([Said(source="preceding", text=preceding)] if preceding.strip() else []),
     ]
 
 
