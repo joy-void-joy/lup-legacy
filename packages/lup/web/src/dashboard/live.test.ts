@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { DashboardEvent, LiveMessage, LiveSession, ReviewSummary, StreamFrame } from "../generated/views";
-import { applied, called, conversation, repositoryMessages, sessionTree, type LiveState } from "./live";
+import { applied, called, codeNotice, conversation, repositoryMessages, sessionTree, UNSAID, type LiveState } from "./live";
 
 const repository = { key: "r1", name: "lup", repository: "/src/lup.git", checkout: "/src/lup.git/tree/dev" };
 
@@ -42,6 +42,7 @@ function snapshot(): LiveState {
     sessions: [row("lead"), row("lead-a1", { parent: "lead", kind: "subagent", name: "scout" }), row("other", { running: false })],
     messages: [message("m1", { sender: "other" })],
     reviews: { roots: [], errors: [], reviews: [review("q1", "2026-09-29T09:00:00Z")] },
+    code: UNSAID,
   }));
 }
 
@@ -98,5 +99,17 @@ describe("live state", () => {
     expect(called(state, "r1", "lead-a1")).toBe("scout");
     expect(called(state, "r1", "user")).toBe("you");
     expect(called(state, "r1", "unknown-id")).toBe("unknown-id");
+  });
+
+  test("the code the dashboard runs is moved by its own frame, and said only while older", () => {
+    const whole = snapshot();
+    const code = { source: "abc", root: "/src/lup", since: null, older: true, failing: "" };
+    const older = applied(whole, frame({ type: "service", code }));
+
+    expect(codeNotice(whole.code)).toBe("");
+    expect(older.code.older).toBe(true);
+    expect(older.sessions).toBe(whole.sessions);
+    expect(codeNotice(older.code)).toContain("is restarting onto it");
+    expect(codeNotice({ ...code, failing: "ImportError" })).toContain("does not start (ImportError)");
   });
 });

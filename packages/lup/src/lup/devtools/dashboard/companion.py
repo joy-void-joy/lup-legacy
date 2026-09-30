@@ -35,7 +35,12 @@ from pydantic_settings import BaseSettings
 
 from lup.coordination.identity import MEMBER_ENV, NAME_ENV
 from lup.devtools.dashboard.address import AdvertisedDashboard
-from lup.devtools.dashboard.pulse import DASHBOARD_PULSE_ENV, DashboardPulse, PulseFile
+from lup.devtools.dashboard.pulse import (
+    DASHBOARD_PULSE_ENV,
+    DashboardPulse,
+    PulseFile,
+    RunningCode,
+)
 from lup.harness.environment import inside_a_container
 from lup.harness.notice import Notice
 from lup.harness.requirements import SENTINEL_VARIABLE
@@ -500,6 +505,9 @@ class DashboardStatus(BaseModel, frozen=True):
     tabs: int = 0
     """Pages following it now."""
 
+    code: RunningCode = RunningCode()
+    """Which code it runs, and whether its checkout has moved past it."""
+
     detail: str
 
 
@@ -555,7 +563,8 @@ def counted(pulse: DashboardPulse, detail: str) -> DashboardStatus:
         repositories=pulse.repositories,
         pending=pulse.pending,
         tabs=pulse.tabs,
-        detail=detail,
+        code=pulse.code,
+        detail=pulse.code.said().capitalize() + "." if pulse.code.older else detail,
     )
 
 
@@ -602,3 +611,4 @@ def private_url(dashboard: Dashboard, root: Path) -> str:
         )
     token = DashboardToken(directory=standing.place.state).read()
     return f"{page_url(standing.place)}/#token={token}"
+

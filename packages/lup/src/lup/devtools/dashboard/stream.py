@@ -36,6 +36,7 @@ from lup.devtools.dashboard.live import (
     LiveSession,
     RepositoryWatch,
 )
+from lup.devtools.dashboard.pulse import RunningCode
 from lup.devtools.dashboard.reviews import ReviewError, ReviewSnapshot, ReviewStore
 from lup.devtools.review.app import ReviewRoot, ReviewSummary
 
@@ -76,10 +77,21 @@ class SnapshotEvent(StreamEvent, frozen=True):
     sessions: list[LiveSession]
     messages: list[LiveMessage]
     reviews: ReviewSnapshot
+    code: RunningCode = RunningCode()
 
     def moves(self, state: "LiveState") -> None:
         """Nothing: a snapshot is read off the state, never applied to it."""
         del state
+
+
+class ServiceEvent(StreamEvent, frozen=True):
+    """Which code the dashboard runs, changed: older than its checkout, or moved onto it."""
+
+    type: Literal["service"] = "service"
+    code: RunningCode
+
+    def moves(self, state: "LiveState") -> None:
+        state.code = self.code
 
 
 class RepositoryEvent(StreamEvent, frozen=True):
@@ -172,7 +184,8 @@ type DashboardEvent = Annotated[
     | MessageEvent
     | ReviewEvent
     | ReviewGoneEvent
-    | ReviewScopeEvent,
+    | ReviewScopeEvent
+    | ServiceEvent,
     Field(discriminator="type"),
 ]
 """Everything one frame of the stream can carry, told apart by its ``type``."""
@@ -223,6 +236,7 @@ class Observation(BaseModel, frozen=True):
     sessions: list[LiveSession]
     messages: list[LiveMessage]
     reviews: ReviewSnapshot | None = None
+    code: RunningCode = RunningCode()
 
 
 class LiveState:
@@ -238,6 +252,7 @@ class LiveState:
         self.reviews: dict[str, ReviewSummary] = {}
         self.roots: list[ReviewRoot] = []
         self.errors: list[ReviewError] = []
+        self.code = RunningCode()
 
     def observed(self, seen: Observation) -> list[DashboardEvent]:
         """Every difference between what the sources say and this state, applied to it."""
@@ -266,6 +281,7 @@ class LiveState:
             ],
             *[MessageEvent(message=each) for each in seen.messages],
             *(self.reviewed(seen.reviews) if seen.reviews is not None else []),
+            *([ServiceEvent(code=seen.code)] if seen.code != self.code else []),
         ]
         for event in events:
             event.moves(self)
@@ -302,6 +318,7 @@ class LiveState:
                 ),
                 errors=self.errors,
             ),
+            code=self.code,
         )
 
 
@@ -313,6 +330,7 @@ class LiveFeed:
     mail record — and every ``review_every`` looks at the review queues,
     expiring those no session waits on every ``sweep_every``. What differs is
     numbered and kept for replay; the last ``kept`` of them are replayable.
+    ``code`` says which code the dashboard runs, where it knows.
     """
 
     def __init__(
@@ -324,9 +342,11 @@ class LiveFeed:
         sweep_every: int = 20,
         kept: int = KEPT_FRAMES,
         heartbeat: float = HEARTBEAT_SECONDS,
+        code: Callable[[], RunningCode] = RunningCode,
     ) -> None:
         self.repositories = repositories
         self.reviews = reviews
+        self.code = code
         self.interval = interval
         self.review_every = review_every
         self.sweep_every = sweep_every
@@ -375,6 +395,7 @@ class LiveFeed:
                 for message in watch.fresh_messages()
             ],
             reviews=reviews,
+            code=self.code(),
         )
 
     def publish(self, observation: Observation) -> None:
