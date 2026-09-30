@@ -840,6 +840,32 @@ def companions_home() -> Path:
     return store_directory() / "companions"
 
 
+def lent_directory(state: Path) -> Path:
+    """The one part of a companion's directory a launch may lend its session, read-only.
+
+    What a companion publishes for sessions to read goes here, apart from the
+    rest of its directory, which holds what only the host reads -- the
+    dashboard's capability among it.
+    """
+    return state / "lent"
+
+
+def lent_by_a_companion(path: Path) -> bool:
+    """Whether a resolved path lies at or inside some companion's :func:`lent_directory`.
+
+    A companion's directory is two below :func:`companions_home` -- how it is
+    shared, then its name -- as :meth:`SharedProcess.slot` lays it out.
+    """
+    home = companions_home().resolve()
+    if not path.is_relative_to(home):
+        return False
+    match path.relative_to(home).parts:
+        case (shared, name, *_):
+            return path.is_relative_to(lent_directory(home / shared / name))
+        case _:
+            return False
+
+
 def port_free(port: int) -> bool:
     """Whether something could listen on this port of the host's loopback now."""
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:

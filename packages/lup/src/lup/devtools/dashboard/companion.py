@@ -59,6 +59,7 @@ from lup.launch.companions import (
     PortNumber,
     SharedProcess,
     StatusLine,
+    lent_directory,
 )
 from lup.launch.compilation import inherited_environment
 from lup.launch.declaration import Mount
@@ -411,7 +412,7 @@ class Dashboard(SharedProcess, frozen=True):
     def contribution(self, place: CompanionPlace, root: Path) -> Contribution:
         """Its address, and its pulse lent read-only at the host's path for the status line to read."""
         url = page_url(place)
-        pulse = PulseFile.of(place.state).path
+        pulse = PulseFile.of(lent_directory(place.state)).path
         return Contribution(
             environment={DASHBOARD_URL_ENV: url, DASHBOARD_PULSE_ENV: str(pulse)},
             mounts=[Mount(path=pulse.parent)],
@@ -490,7 +491,7 @@ class Dashboard(SharedProcess, frozen=True):
         capability = DashboardToken(directory=slot.directory).minted()
         registry = DashboardRegistry(directory=slot.directory)
         # Made before the session's mount table names it, which it must exist for.
-        PulseFile.of(slot.directory).path.parent.mkdir(mode=0o700, exist_ok=True)
+        lent_directory(slot.directory).mkdir(mode=0o700, exist_ok=True)
         with (
             registry.registered(launch.root),
             super().held(launch) as contribution,
@@ -523,7 +524,10 @@ class Dashboard(SharedProcess, frozen=True):
                 beat=stop.at,
                 halted="dashboard stopped by the operator; `dashboard restart` starts it",
             )
-            written(PulseFile.of(slot.directory).path, halted.model_dump_json(indent=2))
+            written(
+                PulseFile.of(lent_directory(slot.directory)).path,
+                halted.model_dump_json(indent=2),
+            )
         return True
 
 
@@ -665,7 +669,7 @@ def dashboard_status(dashboard: Dashboard, root: Path) -> DashboardStatus:
     standing = dashboard.standing(root)
     registry = DashboardRegistry(directory=standing.place.state)
     serving = standing.serving
-    pulse = PulseFile.of(standing.place.state).read()
+    pulse = PulseFile.of(lent_directory(standing.place.state)).read()
     held = "Held by the running sessions; it stops once the last one ends."
     fared = {
         "restarts": standing.restarts,

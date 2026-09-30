@@ -60,7 +60,7 @@ from lup.devtools.dashboard.pulse import DashboardPulse, PulseFile, RunningCode
 from lup.devtools.dashboard.refresh import ImportedSource, Refresh, WriteGate
 from lup.devtools.dashboard.reviews import ReviewScan, ReviewStore
 from lup.devtools.review.app import RequesterPresence, ReviewSummary
-from lup.launch.companions import CompanionSlot
+from lup.launch.companions import CompanionSlot, lent_directory
 from lup.policy.relay import RecordedQuestion
 from lup.providers.user_config import UserConfigFile
 
@@ -285,7 +285,7 @@ class Herald:
         store: ReviewStore | None = None,
     ) -> None:
         self.record_path = directory / "herald.json"
-        self.pulse = PulseFile.of(directory)
+        self.pulse = PulseFile.of(lent_directory(directory))
         self.registry = registry
         self.store = (
             store

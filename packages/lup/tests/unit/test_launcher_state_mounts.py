@@ -6,15 +6,19 @@ The store of trusted repositories and the superseded-volume record under
 revisions contained sessions run their hooks from: a container reaching any
 of them could rewrite what the next launch trusts. So a mount at one, above
 one, or inside one refuses the launch, naming the mount and what moves the
-directory.
+directory -- except what the launcher lends a session read-only, such as the
+dashboard's pulse its status line reads.
 """
 
 from pathlib import Path
 
 import pytest
 
+from lup.devtools.dashboard.companion import Dashboard
+from lup.launch.companions import CompanionPlace, companions_home
 from lup.launch.environments import revisions_home
 from lup.launch.pointer_trust import launcher_state_exposure
+from lup.sandbox.known import store_directory
 from lup.sandbox.rail import Lease, same_path
 
 
@@ -83,3 +87,28 @@ def test_mounts_beside_launcher_state_pass(homes: Path) -> None:
 
     assert launcher_state_exposure(Lease(writable=same_path(beside))) == ""
     assert revisions_home() == homes / "home" / ".cache" / "lup" / "codex-revisions"
+
+
+def test_what_the_dashboard_lends_its_session_passes_read_only(homes: Path) -> None:
+    dashboard = Dashboard()
+    place = CompanionPlace(state=dashboard.slot(homes).directory, ports={"page": 8766})
+    lent = [mount.path for mount in dashboard.contribution(place, homes).mounts]
+
+    assert lent
+    assert all(path.is_relative_to(store_directory()) for path in lent)
+    assert launcher_state_exposure(Lease(read_only=same_path(lent))) == ""
+    assert "XDG_STATE_HOME" in launcher_state_exposure(Lease(writable=same_path(lent)))
+
+
+@pytest.mark.parametrize(
+    "mounted",
+    ["", "user", "user/dashboard", "user/dashboard/other", "user/lent", "lent"],
+    ids=["home", "a-sharing", "a-companion", "beside-lent", "a-name", "too-shallow"],
+)
+def test_a_companion_directory_beyond_what_it_lends_is_refused(
+    homes: Path, mounted: str
+) -> None:
+    del homes
+    path = companions_home() / mounted
+
+    assert str(path) in launcher_state_exposure(Lease(read_only=same_path([path])))
