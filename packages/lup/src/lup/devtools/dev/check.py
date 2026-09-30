@@ -44,7 +44,7 @@ from lup.workspace.paths import is_template_scaffold, project_root
 
 from lup.devtools.dev.admission import Admission, admitted
 from lup.devtools.launcher import project_python
-from lup.devtools.dev.antipatterns import scan_antipatterns
+from lup.devtools.dev.antipatterns import scan_antipatterns, scanned_files
 from lup.devtools.project import DevProject
 from lup.devtools.dev.boundaries import scan_application_placement
 from lup.devtools.dev.branches import (
@@ -1197,6 +1197,36 @@ def changed_scope(since: str) -> ChangedScope:
     )
 
 
+def antipattern_report(
+    project: DevProject, scope: Sequence[str] | None = None
+) -> CheckReport:
+    """The anti-pattern sweep's row: every missing or spurious marker, or ok.
+
+    One row for the whole gate and for `--changed` alike, so a file landed by
+    `cp` or by a merge -- neither of which an edit gate reads -- meets in the
+    loop the same rules the gate refuses it by. ``scope`` narrows it to the
+    files named, and ``None`` is the whole repository.
+    """
+    scan = scan_antipatterns(project, scope)
+    blocking = [f for f in scan.findings if f.kind != "untyped"]
+    refined = f", {len(scan.refuted)} refuted" if scan.refuted else ""
+    advisory = len(scan.findings) - len(blocking)
+    tail = f" ({advisory} untyped, advisory{refined})" if advisory else refined
+    return CheckReport(
+        name="antipatterns",
+        passed=not blocking,
+        lines=[
+            f"antipatterns: FAIL ({len(blocking)} finding(s){refined})",
+            *(
+                f"  {f.file}:{f.line} [{f.kind} {f.rule_id or '(bare)'}] {f.message}"
+                for f in blocking
+            ),
+        ]
+        if blocking
+        else [f"antipatterns: ok{tail}"],
+    )
+
+
 def conflict_marker_report(
     paths: list[str], read: Callable[[str], str | None]
 ) -> CheckReport:
@@ -1337,25 +1367,7 @@ def scan_reports(
         # its gate answers "is this change good?" — a whole-repository read
         # made every lease's verdict depend on state no worker controls, and
         # cost the whole repository's resolve to reach it.
-        scan = scan_antipatterns(project, scope)
-        blocking = [f for f in scan.findings if f.kind != "untyped"]
-        refined = f", {len(scan.refuted)} refuted" if scan.refuted else ""
-        advisory = len(scan.findings) - len(blocking)
-        tail = f" ({advisory} untyped, advisory{refined})" if advisory else refined
-        yield CheckReport(
-            name="antipatterns",
-            passed=not blocking,
-            lines=[
-                f"antipatterns: FAIL ({len(blocking)} finding(s){refined})",
-                *(
-                    f"  {f.file}:{f.line} "
-                    f"[{f.kind} {f.rule_id or '(bare)'}] {f.message}"
-                    for f in blocking
-                ),
-            ]
-            if blocking
-            else [f"antipatterns: ok{tail}"],
-        )
+        yield antipattern_report(project, scope)
 
         # A document naming a node is held to what the node says now, so prose
         # cannot go on citing a corrected figure. Counted only where there is
@@ -1894,11 +1906,9 @@ def unrun_lines(scope: ChangedScope, test_roots: list[TestRoot]) -> list[str]:
             else []
         ),
         f"Not run: the test suites ({suites}) and the whole-tree sweeps — "
-        "notes, rules, harness drift, documented commands and the rest.",
-        "  `uv run lup-devtools dev test <path>` runs the tests named, "
-        "`uv run lup-devtools dev check --antipatterns --path <path>` the rules "
-        "over the files named, and `uv run lup-devtools dev check` all of it: "
-        "what a commit has to pass.",
+        "notes, harness drift, documented commands and the rest.",
+        "  `uv run lup-devtools dev test <path>` runs the tests named, and "
+        "`uv run lup-devtools dev check` all of it: what a commit has to pass.",
     ]
 
 
@@ -1930,6 +1940,12 @@ def run_changed(
     to see. It parses every declaration in ``record``, so a changed one it
     read is not listed as unread.
 
+    **The anti-pattern rules run too**, over the changed files the sweep reads
+    (:func:`antipattern_report`). They read files wherever they came from, so
+    a file landed by `cp` or taken whole in a merge -- neither of which the
+    edit gate reads on the way in -- is refused here, in the loop, rather than
+    first at the gate a commit passes.
+
     **Tests are not narrowed, and not run.** Which tests reach a change is a
     question about the import graph, and this repository reaches modules
     through `importlib` in places no static reading sees — so a narrowed suite
@@ -1950,24 +1966,33 @@ def run_changed(
     scope = changed_scope(base.commit)
     excluded_roots = non_code_roots(project)
     typer.echo(f"Changes since {base.reached} ({base.commit}).\n")
-    tools: list[Callable[[], CheckReport]] = (
-        [
-            partial(ruff_format_check, fix, excluded_roots, scope.checked),
-            partial(ruff_lint_check, fix, excluded_roots, scope.checked),
-            partial(
-                pyright_check, excluded_roots, scope.checked, environments=environments
-            ),
-        ]
-        if scope.checked
-        else []
-    )
+    tools: list[Callable[[], CheckReport]] = [
+        *(
+            [
+                partial(ruff_format_check, fix, excluded_roots, scope.checked),
+                partial(ruff_lint_check, fix, excluded_roots, scope.checked),
+                partial(
+                    pyright_check,
+                    excluded_roots,
+                    scope.checked,
+                    environments=environments,
+                ),
+            ]
+            if scope.checked
+            else []
+        ),
+        partial(antipattern_report, project, [*scope.checked, *scope.unread]),
+    ]
     with ThreadPoolExecutor(max_workers=len(tools) + 1) as pool:
         running = [pool.submit(tool) for tool in tools]
         migrated = migration_reports(project, spread, base.commit, record)
         marked = conflict_marker_report([*scope.checked, *scope.unread], worktree_text)
         reports = [*(job.result() for job in running), *migrated, marked]
+    ruled = [item.rel for item in scanned_files(project, scope.unread)]
     unread = [
-        path for path in scope.unread if not (migrated and record.holds(Path(path)))
+        path
+        for path in scope.unread
+        if path not in ruled and not (migrated and record.holds(Path(path)))
     ]
     scope = scope.model_copy(update={"unread": unread})
 

@@ -404,9 +404,10 @@ def create_dev_app(
                 "--changed",
                 help="Run ruff and pyright over the Python files changed since "
                 "the merge base with --since (default: this branch's recorded "
-                "base), and the declared-migrations row from that base, naming "
-                "what else changed and every gate left unrun — the loop while a "
-                "change is moving, not the bar a commit passes",
+                "base), the anti-pattern rules over the changed files, and the "
+                "declared-migrations row from that base, naming what else "
+                "changed and every gate left unrun — the loop while a change is "
+                "moving, not the bar a commit passes",
             ),
         ] = False,
         base: Annotated[

@@ -254,3 +254,29 @@ def test_a_migration_declaration_the_migrations_row_read_is_not_named_unread(
     assert "declared migrations: ok" in printed
     assert "Unread: 1 changed file(s) no scoped check reads:" in printed
     assert "  migrations/pending/gone.toml" not in printed
+
+
+def test_a_changed_file_the_rules_refuse_fails_the_narrowed_run(
+    repo: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The anti-pattern rules run over what changed, however it landed.
+
+    A file copied in with `cp` or taken whole in a merge passes no edit gate
+    on the way in, and the narrowed run used to read it with ruff and pyright
+    alone -- so it passed the loop and was first refused by the whole gate.
+    """
+    (repo / "kept.py").write_text(
+        "from typing import Any\n\n\ndef f(x: Any) -> None: ...\n", encoding="utf-8"
+    )
+    for tool in ("ruff_format_check", "ruff_lint_check", "pyright_check"):
+        monkeypatch.setattr(check, tool, quiet(tool))
+
+    with pytest.raises(typer.Exit):
+        check.run_changed(
+            DevProject(package="app"), ChangeBase(commit="HEAD", reached="HEAD"), []
+        )
+    printed = capsys.readouterr().out.splitlines()
+
+    assert any(line.startswith("antipatterns: FAIL") for line in printed)
+    assert any(line.startswith("  kept.py:4 [missing any-type]") for line in printed)
+    assert printed[-1] == "Failed: antipatterns"
