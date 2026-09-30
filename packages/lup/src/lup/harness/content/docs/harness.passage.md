@@ -852,6 +852,21 @@ file says otherwise) have passed — never while a container holds it.
 `harness clean` lists each with its size and that date, and
 `harness clean --yes` removes them sooner.
 
+Several containers start on one volume at once — a launch's probes, a run's
+workers, a second terminal — and each amends the documents its runtime reads
+there before the runtime starts. So every lup writer of them holds the home's
+lock across its read, merge and write, and renames a file of its own over the
+document rather than rewriting it in place or staging it under a name another
+writer shares: on Claude Code the entrypoint's trust program and settings seed,
+both under `.lup-trust.lock`; on Codex every write the home's preparation makes
+to `config.toml` — the settings, the plugin's registration, the checkout's and
+the hooks' trust — under `.lup-plugin-install.lock`. A start that would change
+nothing writes nothing, because a session already running in the volume saves
+the same document holding neither lock, and a rewrite at every start would
+drop whatever it saved in between. A Claude Code document that does not parse
+is left as it is for the runtime's own recovery, said on stderr, rather than
+rewritten from the seed's keys alone.
+
 What contained sessions leave on the machine is swept as it goes: a launch
 that builds an image removes the ones no checkout points at, every launch
 removes project environments whose worktree is gone and other projects'

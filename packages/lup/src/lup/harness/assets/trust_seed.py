@@ -12,7 +12,8 @@ guard below was measured absent:
 
 - An exclusive lock, because two merges that read the same document each
   rename a copy lacking the other's entry, and the checkout that loses opens
-  untrusted.
+  untrusted. home-seed.py takes the same one by the same name, since it
+  merges the person's preferences into this document right after.
 - A temporary file of the writer's own, because a shared name is truncated by
   the next writer while the first is still filling it, and the first's rename
   then publishes a document whose front is NUL bytes.
