@@ -2,6 +2,23 @@
 
 ## Unreleased
 
+### `dashboard serve` restarts onto new code, and a stopping dashboard ends its streams
+
+`dashboard serve` now runs through the dashboard service's own
+`serve_dashboard` (`ServiceArguments(shared=False)`), over a private
+directory holding its capability and the repositories it serves. It follows
+its checkout's code and page bundle like the shared dashboard: once they move
+and the new code imports, and no write is in flight, it restarts in place as
+`python -m lup.devtools.dashboard.service --terminal <state> <host> <port>
+<revision>`, keeping its port and capability. It removes that directory when
+it stops. It sends no desktop notices and publishes no pulse. As any
+dashboard stops serving, `LiveFeed.close()` ends every open stream at once,
+instead of uvicorn waiting its two-second grace and then cancelling them.
+The dashboard's request check (in `dashboard_app`) and `guard_loopback_host`
+(`LoopbackHost`) are plain ASGI middleware now, so a stream ending as the
+server stops is no longer logged as a cancelled task.
+`DashboardRegistry.recorded` keeps a repository known without a launch.
+
 ### The launches holding a shared companion keep it running
 
 `SharedProcess.held` watches what it holds on a thread of the launcher's,
