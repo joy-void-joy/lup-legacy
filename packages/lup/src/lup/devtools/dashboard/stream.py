@@ -380,6 +380,7 @@ class LiveFeed:
         self.primed = asyncio.Event()
         self.published = asyncio.Event()
         self.producer: asyncio.Task[None] | None = None
+        self.closing = False
 
     def served(self) -> list[KnownRepository]:
         """Every repository this dashboard serves now, once each."""
@@ -471,6 +472,17 @@ class LiveFeed:
         producer.add_done_callback(ended)
         self.producer = producer
 
+    def close(self) -> None:
+        """End every tab's stream now, as the dashboard stops serving; each tab reconnects on its own.
+
+        Called on the event loop, and every stream waiting — for its first
+        frame, or for the next change — is woken to find the feed closing.
+        """
+        self.closing = True
+        self.primed.set()
+        published, self.published = self.published, asyncio.Event()
+        published.set()
+
     async def published_within(self, seconds: float) -> None:
         """Wait for the next change published, or for ``seconds``, whichever comes first."""
         try:
@@ -510,7 +522,7 @@ class LiveFeed:
             position = self.resumed(resume)
             quiet = time.monotonic()
             current = False
-            while not await disconnected():
+            while not self.closing and not await disconnected():
                 if position is None or self.behind(position):
                     yield self.whole()
                     position = self.seq

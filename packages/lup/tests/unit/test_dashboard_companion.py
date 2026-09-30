@@ -423,6 +423,35 @@ def test_a_dashboard_killed_while_held_comes_back_at_its_address(
     assert "Uvicorn running on" in "\n".join(status.exited.tail)
 
 
+def test_the_dashboard_stops_at_once_with_a_tab_following_it(
+    dashboard: Dashboard, tmp_path: Path
+) -> None:
+    """An open stream ends as serving stops, well inside the server's grace, with no error logged."""
+    root = repository(tmp_path / "project")
+
+    with held_companions([dashboard], launch_at(root)) as joined:
+        url = joined.environment[DASHBOARD_URL_ENV]
+        token = DashboardToken(directory=dashboard.slot(root).directory).read()
+        with httpx.stream(
+            "GET",
+            f"{url}/api/stream",
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=30,
+            trust_env=False,
+        ) as following:
+            lines = following.iter_lines()
+            next(line for line in lines if line.startswith("data: "))
+            began = time.monotonic()
+            assert dashboard.stopped(root)
+            took = time.monotonic() - began
+            for _ in lines:
+                continue
+    logged = dashboard.slot(root).log().read_text()
+
+    assert took < 1.5, logged
+    assert "ERROR" not in logged and "Traceback" not in logged, logged
+
+
 def test_a_held_dashboard_the_operator_stops_stays_stopped_until_restart(
     dashboard: Dashboard, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

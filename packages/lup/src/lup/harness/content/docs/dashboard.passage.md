@@ -204,7 +204,9 @@ answer as though the review had been altered. Where the new code does not
 start, it stays on the code it runs, says "its newer code does not start" with
 the error, keeps taking answers, and tries again once the files move again.
 The pulse names the code it runs (`code.source`, a digest of those files, and
-`code.since`).
+`code.since`). Whenever it stops serving — to restart or for good — every open
+stream ends at once, rather than being left for the server's two-second grace
+and then cut off, and each tab reconnects on its own.
 
 `uv run lup-devtools dashboard restart` does the same now, onto its checkout's
 code as it stands. Where none runs while sessions hold it — their launchers
@@ -229,7 +231,14 @@ session.
 `dashboard serve` serves one in this terminal instead, with a capability of its
 own, over the current repository or each `--root <checkout>` named, until
 Ctrl+C. `--host` picks a loopback address, `--port` its port, and `--no-open`
-keeps the browser closed.
+keeps the browser closed. It is the same service run by hand, and follows its
+checkout the same way: when the lup files it imported or the page's bundle
+move and the new code starts, it replaces itself in the same process, on the
+same port and with the same capability, kept in a private directory of its
+own that it removes when it stops; the page shows the same notices. What only
+the shared dashboard does — the desktop notice, the reopened page, the pulse
+every status line reads, and retiring the panes no session holds — it does
+not.
 
 ## When no page is open
 

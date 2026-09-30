@@ -10,6 +10,11 @@ its checkout's code when that moves (:mod:`lup.devtools.dashboard.refresh`),
 and stops what it started when it is stopped. ``--probe`` imports what
 serving imports and exits, which is how a restart learns the new code starts.
 
+`dashboard serve` serves a terminal's own dashboard through the same
+:func:`serve_dashboard`, over a private state of its own; restarting in
+place, it runs as ``python -m lup.devtools.dashboard.service --terminal
+<state> <host> <port> <revision>``, keeping its port and its capability.
+
 Its page and every asset the page names are read whole as it starts and
 served from memory, so a rebuild of the bundle on disk never leaves an open
 tab a page naming scripts that are gone, and a dashboard started from a
@@ -26,6 +31,7 @@ import importlib
 import logging
 import os
 import shutil
+import socket
 import sys
 import threading
 import webbrowser
@@ -62,16 +68,50 @@ logger = logging.getLogger(__name__)
 
 
 class ServiceArguments(BaseModel, frozen=True):
-    """What the companion hands the process: its state, its port, what it was built from."""
+    """What the process is handed: its state, where it listens, what it was built from, whose it is."""
 
     state: Path
     port: int
     revision: str
+    host: str = "127.0.0.1"
+    shared: bool = True
+    """The dashboard every launch holds, which also tells the operator of
+    parked reviews, publishes its pulse and retires the panes no session
+    holds. A terminal's own (`dashboard serve`) serves the page alone, and
+    removes its state when it stops."""
 
     @classmethod
     def parsed(cls, words: list[str]) -> "ServiceArguments":
-        state, port, revision = words
-        return cls(state=Path(state), port=int(port), revision=revision)
+        """Read back what :meth:`words` spelled."""
+        match words:
+            case ["--terminal", state, host, port, revision]:
+                return cls(
+                    state=Path(state),
+                    port=int(port),
+                    revision=revision,
+                    host=host,
+                    shared=False,
+                )
+            case [state, port, revision]:
+                return cls(state=Path(state), port=int(port), revision=revision)
+            case _:
+                raise ValueError(
+                    "expected <state> <port> <revision>, or --terminal <state> "
+                    f"<host> <port> <revision>; got {words}"
+                )
+
+    def words(self) -> list[str]:
+        """The arguments that serve this dashboard again, as a restart in place passes them."""
+        if self.shared:
+            return [str(self.state), str(self.port), self.revision]
+        return ["--terminal", str(self.state), self.host, str(self.port), self.revision]
+
+    def url(self) -> str:
+        """Where it serves, credential-free."""
+        authority = f"[{self.host}]" if ":" in self.host else self.host
+        if self.port == 80:
+            return f"http://{authority}"
+        return f"http://{authority}:{self.port}"
 
 
 def running_source() -> ImportedSource:
@@ -398,7 +438,11 @@ def serve_dashboard(arguments: ServiceArguments) -> None:
     stop, and replaces itself with the same command in the same process, so
     it keeps its port, its capability and its herald's record, and every tab
     reconnects. A signal that stops it is raised again once it has stopped
-    serving, so a stop is never taken for a restart.
+    serving, so a stop is never taken for a restart. Either way, every open
+    stream ends as serving stops rather than being cut off after the grace.
+
+    The dashboard every launch holds and a terminal's own (`dashboard serve`)
+    are served here alike; ``arguments.shared`` adds what only the first does.
     """
     import uvicorn
     from fastapi import FastAPI
@@ -406,19 +450,15 @@ def serve_dashboard(arguments: ServiceArguments) -> None:
     from lup.devtools.dashboard.reviews import dashboard_app
     from lup.devtools.dashboard.stream import LiveFeed
 
-    # Its output is its log: what it says of its own restarts belongs there
-    # beside what lup says of stopping it.
-    logging.basicConfig(format="%(levelname)s:     %(name)s: %(message)s")
-    logging.getLogger("lup").setLevel(logging.INFO)
     token = DashboardToken(directory=arguments.state).read()
     registry = DashboardRegistry(directory=arguments.state)
     panes = SetupPanes(
         registry.repositories,
         token,
         arguments.state / "logs",
-        live=registry.live,
+        live=registry.live if arguments.shared else None,
     )
-    url = f"http://127.0.0.1:{arguments.port}"
+    url = arguments.url()
     refresh = Refresh(running_source())
     recovery = Recovery(CompanionSlot(directory=arguments.state))
 
@@ -443,22 +483,38 @@ def serve_dashboard(arguments: ServiceArguments) -> None:
         feed=feed,
     )
     around = app.router.lifespan_context
-    herald = Herald(
-        arguments.state,
-        registry,
-        url,
-        token,
-        tabs=lambda: feed.followers,
-        code=code,
-        restarts=recovery.restarts,
-        store=store,
+    herald = (
+        Herald(
+            arguments.state,
+            registry,
+            url,
+            token,
+            tabs=lambda: feed.followers,
+            code=code,
+            restarts=recovery.restarts,
+            store=store,
+        )
+        if arguments.shared
+        else None
     )
     refresh.source.taken()
     gate = WriteGate(app, refresh.refusal)
-    server = uvicorn.Server(
+
+    class Serving(uvicorn.Server):
+        """uvicorn's server, ending every open stream as it begins to stop.
+
+        A stream only ends when its tab leaves or the feed closes, so without
+        this the server waits out its grace for each, then cancels them.
+        """
+
+        async def shutdown(self, sockets: list[socket.socket] | None = None) -> None:
+            feed.close()
+            await super().shutdown(sockets)
+
+    server = Serving(
         uvicorn.Config(
             gate,
-            host="127.0.0.1",
+            host=arguments.host,
             port=arguments.port,
             access_log=False,
             timeout_graceful_shutdown=2,
@@ -498,7 +554,7 @@ def serve_dashboard(arguments: ServiceArguments) -> None:
                     "the dashboard could not sweep or retire panes this time"
                 )
 
-    async def heralding() -> None:
+    async def heralding(herald: Herald) -> None:
         """Every two seconds, whether or not a page is open: tell what parked, publish the pulse."""
         for _ in count():
             try:
@@ -517,12 +573,12 @@ def serve_dashboard(arguments: ServiceArguments) -> None:
             try:
                 yield
             finally:
-                if not refresh.due:
+                if herald is not None and not refresh.due:
                     await asyncio.to_thread(herald.retired)
                 await asyncio.to_thread(panes.close)
 
     async def served() -> None:
-        """Serve beside the three watchers, every one owned by one task group.
+        """Serve beside the watchers, every one owned by one task group.
 
         The group holds each task until it ends, so none is collected while it
         runs, and each is cancelled once serving stops. A failure its own loop
@@ -532,8 +588,12 @@ def serve_dashboard(arguments: ServiceArguments) -> None:
         """
         async with asyncio.TaskGroup() as group:
             watchers = [
-                group.create_task(watch())
-                for watch in (retiring, heralding, refreshing)
+                group.create_task(watch)
+                for watch in (
+                    retiring(),
+                    refreshing(),
+                    *([heralding(herald)] if herald is not None else []),
+                )
             ]
             await server.serve()
             for watcher in watchers:
@@ -543,9 +603,11 @@ def serve_dashboard(arguments: ServiceArguments) -> None:
     try:
         asyncio.run(served(), loop_factory=server.config.get_loop_factory())
     finally:
-        if not refresh.due:
+        if herald is not None and not refresh.due:
             herald.retired()
         panes.close()
+        if not arguments.shared and not refresh.due:
+            shutil.rmtree(arguments.state)
     if refresh.due:
         sys.stdout.flush()
         sys.stderr.flush()
@@ -557,11 +619,21 @@ def serve_dashboard(arguments: ServiceArguments) -> None:
                 sys.executable,
                 "-m",
                 "lup.devtools.dashboard.service",
-                str(arguments.state),
-                str(arguments.port),
-                dashboard_revision(),
+                *arguments.model_copy(
+                    update={"revision": dashboard_revision()}
+                ).words(),
             ],
         )
+
+
+def said_in_output() -> None:
+    """Send lup's own lines to this process's output: the shared service's log, or a terminal.
+
+    What it says of its own restarts belongs there beside what lup says of
+    stopping it. Called by whatever starts serving, never by a library.
+    """
+    logging.basicConfig(format="%(levelname)s:     %(name)s: %(message)s")
+    logging.getLogger("lup").setLevel(logging.INFO)
 
 
 if __name__ == "__main__":
@@ -569,4 +641,10 @@ if __name__ == "__main__":
         case ["--probe"]:
             probe_imports()
         case words:
-            serve_dashboard(ServiceArguments.parsed(words))
+            said_in_output()
+            try:
+                serve_dashboard(ServiceArguments.parsed(words))
+            except KeyboardInterrupt:
+                # A terminal's Ctrl+C, once `dashboard serve` restarted in place
+                # and this module is what runs: stopped, as asked.
+                sys.exit(130)

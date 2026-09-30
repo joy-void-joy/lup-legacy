@@ -2,6 +2,7 @@
 
 import json
 import secrets
+import socket
 import subprocess
 import sys
 import webbrowser
@@ -15,7 +16,7 @@ import sh
 import typer
 import uvicorn
 from fastapi import FastAPI
-from httpx import ASGITransport, AsyncClient
+from httpx import ASGITransport, AsyncClient, Response
 from typer.testing import CliRunner
 
 from lup.channels.models import Door
@@ -26,6 +27,7 @@ from lup.coordination.repository import RepositoryPeers
 from lup.coordination.roster import RosterMember
 from lup.coordination.wake import WakePath, Woken
 from lup.devtools.dashboard import reviews as dashboard
+from lup.devtools.dashboard.refresh import WriteGate
 from lup.devtools.dashboard.reviews import ReviewDecision, ReviewSnapshot
 from lup.devtools.review import notifications
 from lup.devtools.review.app import (
@@ -733,7 +735,7 @@ def test_root_discovery_keeps_only_named_repositories_and_their_worktrees(
 @pytest.mark.parametrize(
     ("requested_port", "expected_url"), [(8765, BASE_URL), (80, "http://127.0.0.1")]
 )
-async def test_cli_serves_selected_roots_and_keeps_the_token_out_of_public_pages(
+def test_cli_serves_selected_roots_and_keeps_the_token_out_of_public_pages(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     open_page: bool,
@@ -741,6 +743,12 @@ async def test_cli_serves_selected_roots_and_keeps_the_token_out_of_public_pages
     requested_port: int,
     expected_url: str,
 ) -> None:
+    """`dashboard serve` runs the dashboard service over a private state of its own.
+
+    uvicorn's serving is replaced by one that asks the app it was handed, so
+    the page is read through everything a real one passes: the write gate,
+    the capability check and the loopback guard.
+    """
     current = tmp_path / "current"
     roots = [
         tmp_path / name
@@ -764,7 +772,10 @@ async def test_cli_serves_selected_roots_and_keeps_the_token_out_of_public_pages
         return [checkout, checkout.with_name(f"{checkout.name}-sibling")]
 
     monkeypatch.setattr(dashboard, "sibling_worktrees", discover)
-    served: list[FastAPI] = []
+    monkeypatch.setenv("TMPDIR", str(tmp_path / "temporary"))
+    (tmp_path / "temporary").mkdir()
+    served: list[uvicorn.Config] = []
+    answered: dict[str, Response] = {}
     opened: list[str] = []
     sizes: list[int] = []
 
@@ -772,22 +783,30 @@ async def test_cli_serves_selected_roots_and_keeps_the_token_out_of_public_pages
         sizes.append(size)
         return TOKEN
 
-    def serve(
-        app: FastAPI,
-        host: str,
-        port: int,
-        access_log: bool,
-        timeout_graceful_shutdown: int,
+    async def serve(
+        server: uvicorn.Server, sockets: list[socket.socket] | None = None
     ) -> None:
-        assert host == "127.0.0.1"
-        assert port == requested_port
-        assert not access_log
-        assert timeout_graceful_shutdown == 2
-        served.append(app)
+        del sockets
+        served.append(server.config)
+        app = server.config.app
+        assert isinstance(app, WriteGate)
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url=expected_url
+        ) as http:
+            answered["page"] = await http.get("/")
+            answered["unauthenticated"] = await http.get("/api/reviews")
+            answered["snapshot"] = await http.get("/api/reviews", headers=AUTHORIZATION)
+            queue = ReviewSnapshot.model_validate(answered["snapshot"].json())
+            selected = next(item for item in queue.reviews if item.id == entry.id)
+            answered["decision"] = await http.post(
+                f"/api/reviews/{selected.key}/answer",
+                headers={**AUTHORIZATION, "Origin": expected_url},
+                json={"approved": True, "note": "", "fingerprint": entry.fingerprint},
+            )
 
     monkeypatch.setattr(secrets, "token_urlsafe", token)
     monkeypatch.setattr(webbrowser, "open", opened.append)
-    monkeypatch.setattr(uvicorn, "run", serve)
+    monkeypatch.setattr(uvicorn.Server, "serve", serve)
     arguments = ["dashboard", "serve", "--port", str(requested_port)]
     arguments.extend(
         argument
@@ -804,20 +823,14 @@ async def test_cli_serves_selected_roots_and_keeps_the_token_out_of_public_pages
     browser_url = f"{expected_url}/#token={TOKEN}"
     assert browser_url in result.stdout
     assert opened == ([browser_url] if open_page else [])
-    assert len(served) == 1
-    async with AsyncClient(
-        transport=ASGITransport(app=served[0]), base_url=expected_url
-    ) as http:
-        page = await http.get("/")
-        unauthenticated = await http.get("/api/reviews")
-        snapshot = await http.get("/api/reviews", headers=AUTHORIZATION)
-        queue = ReviewSnapshot.model_validate(snapshot.json())
-        selected = next(item for item in queue.reviews if item.id == entry.id)
-        decision = await http.post(
-            f"/api/reviews/{selected.key}/answer",
-            headers={**AUTHORIZATION, "Origin": expected_url},
-            json={"approved": True, "note": "", "fingerprint": entry.fingerprint},
-        )
+    [config] = served
+    assert config.host == "127.0.0.1" and config.port == requested_port
+    assert not config.access_log and config.timeout_graceful_shutdown == 2
+    assert list((tmp_path / "temporary").iterdir()) == []
+    page = answered["page"]
+    unauthenticated = answered["unauthenticated"]
+    queue = ReviewSnapshot.model_validate(answered["snapshot"].json())
+    decision = answered["decision"]
 
     assert page.status_code == 200
     assert TOKEN not in page.text
@@ -836,24 +849,20 @@ def test_cli_refuses_non_loopback_before_serving_or_discovering_roots(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, host: str
 ) -> None:
     discovered: list[Path] = []
-    served: list[FastAPI] = []
+    served: list[uvicorn.Config] = []
 
     def discover(root: Path) -> list[Path]:
         discovered.append(root)
         return [root]
 
-    def serve(
-        app: FastAPI,
-        host: str,
-        port: int,
-        access_log: bool,
-        timeout_graceful_shutdown: int,
+    async def serve(
+        server: uvicorn.Server, sockets: list[socket.socket] | None = None
     ) -> None:
-        del host, port, access_log, timeout_graceful_shutdown
-        served.append(app)
+        del sockets
+        served.append(server.config)
 
     monkeypatch.setattr(dashboard, "sibling_worktrees", discover)
-    monkeypatch.setattr(uvicorn, "run", serve)
+    monkeypatch.setattr(uvicorn.Server, "serve", serve)
 
     result = CliRunner().invoke(
         mounted(tmp_path), ["dashboard", "serve", "--host", host, "--no-open"]

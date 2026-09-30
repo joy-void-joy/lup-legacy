@@ -27,9 +27,8 @@ the command that serves it.
 import asyncio
 import hmac
 import logging
-import secrets
 import webbrowser
-from collections.abc import Awaitable, Callable, Iterator
+from collections.abc import Callable, Iterator
 from datetime import datetime
 from functools import cache
 from pathlib import Path
@@ -48,7 +47,9 @@ from lup.devtools.dashboard.companion import (
     Dashboard,
     DashboardHealth,
     DashboardRegistry,
+    DashboardToken,
     KnownRepository,
+    dashboard_revision,
     dashboard_status,
     private_url,
     restarted,
@@ -822,6 +823,8 @@ def dashboard_app(
     """
     from fastapi import HTTPException, Query, Request
     from fastapi.responses import JSONResponse, Response, StreamingResponse
+    from starlette.datastructures import MutableHeaders
+    from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
     from lup.devtools.dashboard.live import ReplyOutcome, ReplyRequest, reply
     from lup.devtools.dashboard.stream import LiveFeed
@@ -856,12 +859,9 @@ def dashboard_app(
     )
     store = feed.reviews
 
-    @app.middleware("http")
-    async def authorize(
-        request: Request, call_next: Callable[[Request], Awaitable[Response]]
-    ) -> Response:
+    def refused(request: Request) -> JSONResponse | None:
+        """Why a request is turned away before it is served; nothing where it is not."""
         headers = ReviewHeaders.model_validate(request.headers)
-        pane = request.url.path.startswith("/setup/")
         if request.url.path.startswith("/api/"):
             provided = headers.authorization.encode("utf-8")
             expected = f"Bearer {token}".encode("utf-8")
@@ -874,15 +874,46 @@ def dashboard_app(
                 return JSONResponse({"detail": "Origin refused"}, status_code=403)
             if headers.content_type != "application/json":
                 return JSONResponse({"detail": "JSON required"}, status_code=415)
-        response = await call_next(request)
-        response.headers["Cache-Control"] = "no-store"
-        response.headers["Referrer-Policy"] = "no-referrer"
-        response.headers["X-Content-Type-Options"] = "nosniff"
-        response.headers["X-Frame-Options"] = "SAMEORIGIN" if pane else "DENY"
-        response.headers["Content-Security-Policy"] = (
-            "frame-ancestors 'self'" if pane else "frame-ancestors 'none'"
-        )
-        return response
+        return None
+
+    class Authorized:
+        """Every request's gate: the capability on the API, the origin and JSON
+        on a write, and the headers every answer carries.
+
+        Plain ASGI rather than an ``http`` middleware function, which runs each
+        response body in a task group of its own: a stream the server ends as it
+        stops then ends, rather than being cancelled there and logged as an error.
+        """
+
+        def __init__(self, inner: ASGIApp) -> None:
+            self.inner = inner
+
+        async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+            if scope["type"] != "http":
+                await self.inner(scope, receive, send)
+                return
+            request = Request(scope)
+            refusal = refused(request)
+            if refusal is not None:
+                await refusal(scope, receive, send)
+                return
+            pane = request.url.path.startswith("/setup/")
+
+            async def headed(message: Message) -> None:
+                if message["type"] == "http.response.start":
+                    answered = MutableHeaders(scope=message)
+                    answered["Cache-Control"] = "no-store"
+                    answered["Referrer-Policy"] = "no-referrer"
+                    answered["X-Content-Type-Options"] = "nosniff"
+                    answered["X-Frame-Options"] = "SAMEORIGIN" if pane else "DENY"
+                    answered["Content-Security-Policy"] = (
+                        "frame-ancestors 'self'" if pane else "frame-ancestors 'none'"
+                    )
+                await send(message)
+
+            await self.inner(scope, receive, headed)
+
+    app.add_middleware(Authorized)
 
     @app.get("/api/reviews")
     def reviews() -> ReviewSnapshot:
@@ -1041,8 +1072,11 @@ def create_operator_dashboard_app(root: Path) -> typer.Typer:
         """Serve the dashboard in this terminal, over the selected repositories, until Ctrl+C."""
 
         def serve() -> None:
-            import uvicorn
-
+            from lup.devtools.dashboard.service import (
+                ServiceArguments,
+                said_in_output,
+                serve_dashboard,
+            )
             from lup.web.loopback import refuse_non_loopback
 
             refuse_non_loopback(host, "Dashboard")
@@ -1051,30 +1085,27 @@ def create_operator_dashboard_app(root: Path) -> typer.Typer:
                     path.resolve(strict=True) for path in (selected_roots or [root])
                 )
             )
-            authority = f"[{host}]" if ":" in host else host
-            url = f"http://{authority}" if port == 80 else f"http://{authority}:{port}"
-            token = secrets.token_urlsafe(32)
-            panes = SetupPanes(
-                lambda: named_repositories(roots),
-                token,
-                Path(mkdtemp(prefix="lup-setup-panes-")),
+            # This terminal's own state, private to it: the capability a
+            # restart in place keeps, and the repositories it serves.
+            state = Path(mkdtemp(prefix="lup-dashboard-serve-"))
+            token = DashboardToken(directory=state).minted().value
+            registry = DashboardRegistry(directory=state)
+            for known in named_repositories(roots):
+                registry.recorded(known)
+            served = ServiceArguments(
+                state=state,
+                port=port,
+                revision=dashboard_revision(),
+                host=host,
+                shared=False,
             )
-            page = dashboard_app(url, token, roots, discover=True, panes=panes)
-            browser_url = f"{url}/#token={token}"
-            typer.echo(f"Dashboard: {url} — Ctrl+C stops this server.")
+            browser_url = f"{served.url()}/#token={token}"
+            typer.echo(f"Dashboard: {served.url()} — Ctrl+C stops this server.")
             typer.echo(f"Operator launch URL: {browser_url}")
             if open_page:
                 webbrowser.open(browser_url)
-            try:
-                uvicorn.run(
-                    page,
-                    host=host,
-                    port=port,
-                    access_log=False,
-                    timeout_graceful_shutdown=2,
-                )
-            finally:
-                panes.close()
+            said_in_output()
+            serve_dashboard(served)
 
         refused("serve", serve)
 
