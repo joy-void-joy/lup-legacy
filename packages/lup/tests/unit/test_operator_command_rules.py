@@ -134,7 +134,7 @@ def test_a_child_session_without_a_boundary_is_asked(runtime: str) -> None:
         "review show abc",
         "review cancel abc --reason withdrawn",
         "dashboard status",
-        "dashboard line /state/pulse/dashboard.json",
+        "dashboard line /state/lent/dashboard.json",
     ],
 )
 def test_generation_and_review_inspection_do_not_open_operator_authority(

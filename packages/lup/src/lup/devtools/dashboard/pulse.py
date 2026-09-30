@@ -131,9 +131,13 @@ class PulseFile(BaseModel, frozen=True):
     path: Path
 
     @classmethod
-    def of(cls, state: Path) -> "PulseFile":
-        """The pulse of the dashboard whose private state is ``state``."""
-        return cls(path=state / "pulse" / "dashboard.json")
+    def of(cls, lent: Path) -> "PulseFile":
+        """The pulse of the dashboard whose lent directory is ``lent``.
+
+        Handed in as :func:`lup.launch.companions.lent_directory` lays it out,
+        rather than derived here, since this leaf imports nothing of the launcher.
+        """
+        return cls(path=lent / "dashboard.json")
 
     def read(self) -> DashboardPulse | None:
         """The pulse as last written, or nothing where none is, or it does not parse."""
