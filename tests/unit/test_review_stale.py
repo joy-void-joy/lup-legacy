@@ -352,3 +352,30 @@ def test_the_waiter_runs_no_copy_of_a_source_that_moved(root: Path) -> None:
     stored = relay(root).find(question.id)
     assert stored is not None and stored.state == "stale"
     assert stored.moved == [root / "packages/notes.md"]
+
+
+async def test_a_source_the_dashboard_cannot_read_never_shows_stale(
+    root: Path, tmp_path: Path
+) -> None:
+    """A copy's source inside the session's container is nowhere on the host."""
+    inside = tmp_path / "container/tmp/claude-1000/scratchpad/notes.md"
+    question = copied_by_a_command(root)
+    question = relay(root).record(
+        bound(
+            question.model_copy(
+                update={
+                    "preconditions": {
+                        inside: "# notes\n",
+                        root / "packages/copy.md": None,
+                    }
+                }
+            )
+        )
+    )
+
+    assert moved(question) == []
+    assert moved(question, sources=True) == []
+    async with client(root) as http:
+        (waiting,) = (await snapshot(http)).reviews
+    assert waiting.state == "pending" and waiting.answerable
+    assert waiting.stale == []
