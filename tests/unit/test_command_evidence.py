@@ -289,7 +289,7 @@ def test_every_segment_that_writes_a_file_is_shown_in_order(
     command = (
         "cat > tmp/draft.md <<'EOF'\ndraft — ü\nEOF\n"
         f"cd {PROTECTED} && cp ../../../../../tmp/draft.md extra.md"
-        " && sed -i 's/draft/final/' extra.md; sort -o sorted.txt notes.md"
+        " && sed -i 's/draft/final/' extra.md && sort -o sorted.txt notes.md"
     )
     question = parked(runtime, checkout, command)
     assert [
