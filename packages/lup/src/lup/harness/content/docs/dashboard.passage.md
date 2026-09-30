@@ -161,13 +161,18 @@ lock, so exactly one does. It comes back on the same port and with the same
 capability, and every open tab reconnects on its own. An exit soon after the
 start before it is one more in a row: the launches wait a second before the
 first start again, then five, then thirty, then a minute between tries. That
-covers every way it ends while held — a crash, a signal from outside lup, the
-operator's `dashboard stop`, a replacing launch whose own start then failed —
-and a lease a release judged gone while its launcher still runs, which that
-launcher takes back, starting what the release stopped. For five minutes
-after, the page's banner and every status line say "restarted after it
-stopped:" and why. Every stop lup makes — the last lease let go, a launch
-replacing it, the operator — is written first into its log
+covers every way it ends while held that nobody asked for — a crash, a signal
+from outside lup, a replacing launch whose own start then failed — and a
+lease a release judged gone while its launcher still runs, which that launcher
+takes back, starting what the release stopped. For five minutes after, the
+page's banner and every status line say "restarted after it stopped:" and
+why. The operator's `dashboard stop` is the one stop they leave alone: it is
+recorded in the dashboard's state as the operator's (`stopped.stays`), the
+launches holding it stand down, and every session's status line and
+`dashboard status` say "stopped by the operator; `dashboard restart` starts
+it", until `dashboard restart` or the next launch starts it. Every stop lup
+makes — the last lease let go, a launch replacing it, the operator — is
+written first into its log
 (`$XDG_STATE_HOME/lup/companions/user/dashboard/output.log`) and its state:
 which path, on whose behalf, and how many live leases held it, so a log that
 ends in a clean shutdown with no such line was stopped from outside lup.
@@ -206,8 +211,8 @@ started it again; from the operator's terminal it also gives the last exit
 (`stopped`: why, by which process, and the live leases it counted), and, while
 none runs, when the sessions start it again. Inside a session it reads what
 the dashboard publishes, its pulse (below), never the operator's private
-state. `dashboard stop` stops it now; while sessions hold it they start it
-again, so it stops for good only with the last of them.
+state. `dashboard stop` stops it now, and it stays stopped, the sessions
+holding it included, until `dashboard restart` or the next launch starts it.
 `dashboard open`, `dashboard stop`, `dashboard restart`, `dashboard serve` and
 `dashboard reopen` are the operator's, run from a terminal outside every agent
 session.
@@ -251,7 +256,9 @@ its pulse, a small file in a directory of its own that every launch lends its
 session read-only at the path the host has it, named by
 `LUP_DASHBOARD_PULSE`. It rewrites the pulse whenever it changes and at least
 every ten seconds, and takes it down when it stops, so a pulse older than
-thirty seconds reads as a dashboard that stopped. The status line runs
+thirty seconds reads as a dashboard that stopped. The operator's `dashboard
+stop` leaves a pulse in its place saying so, which holds until a start
+replaces it. The status line runs
 `uv run lup-devtools dashboard line <pulse>`, which the CLI answers before
 loading the project's application, in about a fifth of a second. Claude Code
 shows it through `statusLine`, re-run every fifteen seconds so a review

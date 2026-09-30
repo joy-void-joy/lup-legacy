@@ -14,7 +14,13 @@ ports it had, under the slot's lock, waiting along `backoff` (1, 5, 30, then
 runs is taken back. Every stop lup makes writes a `CompanionStop` — why, by
 which process, how many live leases — into the slot and a line into the
 companion's log before the signal, and each lease let go says why its
-launcher was judged gone. `CompanionStanding` and the dashboard's
+launcher was judged gone. The operator's stop (`SharedProcess.stopped`,
+`dashboard stop`) is recorded as one that stays (`CompanionStop.stays`,
+`CompanionState.stays_stopped`): the holders leave it stopped until a launch
+or `dashboard restart` starts it, and every status line and `dashboard
+status` say "stopped by the operator; `dashboard restart` starts it"
+(`DashboardPulse.halted`). `stopped(..., stays=False)` is lup's own stop,
+which the holders undo. `CompanionStanding` and the dashboard's
 `dashboard status` carry `exited`, `stopped`, `restarts` and `retry`; the
 page's banner and every status line say "restarted after it stopped" and
 why for five minutes (`RunningCode.restarted`, `DashboardPulse.restarts`).
