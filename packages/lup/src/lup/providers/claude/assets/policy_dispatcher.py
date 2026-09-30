@@ -69,10 +69,11 @@ from host import (
     record_hook_evidence,
     sandbox_active,
     unjudged_reason,
+    words_before,
 )
 from kernel.rows import PostToolReport
 from kernel.decision import KernelDecision, sandbox_escaped
-from caller_payload import caller_of
+from caller_payload import caller_of, spoken, transcript_of
 from policy_data import (
     AGENT_IDENTITY_ENV,
     AUTONOMOUS_AGENT_IDENTITIES,
@@ -297,6 +298,29 @@ def preimages(payload, cwd):
             return {}
 
 
+def account(payload):
+    """What the agent said this call is for, each with where it was found.
+
+    The ``description`` Claude Code's Bash tool carries beside a command,
+    which the model writes to say what the command does, and the words the
+    agent wrote since it last heard anything, read back off the transcript
+    of the conversation making the call. Either is left out where it says
+    nothing.
+    """
+    tool_input = payload["tool_input"]
+    described = tool_input["description"] if "description" in tool_input else ""
+    transcript = transcript_of(payload)
+    preceding = words_before(transcript, spoken) if transcript is not None else ""
+    return [
+        *(
+            [{"source": "description", "text": described}]
+            if isinstance(described, str) and described.strip()
+            else []
+        ),
+        *([{"source": "preceding", "text": preceding}] if preceding.strip() else []),
+    ]
+
+
 def queued_review(payload, decision, placed):
     """Park one ask in the review queue, or spend the operator's recorded answer.
 
@@ -317,6 +341,8 @@ def queued_review(payload, decision, placed):
         execution_payload=placed,
         policy_identity=review_policy_identity(cwd, Path(__file__)),
         provider="claude",
+        agent=payload["agent_id"] if "agent_id" in payload else "",
+        account=account(payload),
     )
 
 

@@ -2,6 +2,25 @@
 
 ## Unreleased
 
+### A parked call keeps the asker's account, and each command of its line
+
+`PersistentQuestion.account` holds what the asker said the call is for, each
+`Account` with its source: Claude Code's `Bash` `description`, Codex's shell
+`justification`, the text the agent wrote since it last heard anything --
+read back off the transcript of the conversation making the call, a
+subagent's own -- or, where it said nothing, its roster row's `doing`; a
+proposal's is its `--why`. Recorded once, when the call first parks, and
+bound into nothing. `KernelDecision.segments` keeps each command a line was
+joined from with the verdict it reached alone (`SegmentRow`), carried to the
+question as `PersistentQuestion.segments` (`CommandSegment`) and bound into
+its fingerprint; the page lists every command that asks with its own reason
+and folds the ones allowed alone, and `review show` prints both. A
+conversation with two or more edits waiting is told in the refusal how to
+`review propose` the next ones. A command's review is stale only where a
+file it writes moved; the waiter also reads the files it copies from, and
+retires the review rather than run a copy of something the operator did not
+see.
+
 ### A review a recorded file moved under leaves the queue as stale
 
 A parked call binds its approval to the files it recorded, and the waiter

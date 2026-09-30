@@ -354,6 +354,13 @@ def carried_out(
             review=question.id, verdict=verdict, detail=detail, carried=carried
         )
 
+    if question.unverifiable():
+        return settled(
+            "conflict",
+            "this review wait runs older code than the hook that parked the "
+            "review, so it cannot check the approval covers it; nothing ran",
+            False,
+        )
     if not question.bound():
         return settled(
             "conflict",
@@ -378,13 +385,14 @@ def carried_out(
             "approval releases once, placed outside",
             True,
         )
-    if changed := moved(question):
-        detail = "; ".join(each.sentence() for each in changed)
-        store.advance(question.id, "failed", f"conflict: {detail}")
+    if changed := moved(question, sources=True):
+        store.retire_stale(
+            question.id, [each.path for each in changed], "its requester's review wait"
+        )
         return settled(
-            "conflict",
-            f"{detail}; nothing ran — re-read it and make the change again "
-            "against what stands now",
+            "stale",
+            "; ".join(each.sentence() for each in changed)
+            + "; nothing ran — re-read it and ask again",
             False,
         )
     if not claimed(root, question):
@@ -527,7 +535,7 @@ def settling(
     """
     thread = ReviewThread.of(store)
     waiters = ReviewWaiters(root=root)
-    watch = PreimageWatch()
+    watch = PreimageWatch(sources=True)
     remaining = [question.id for question in waiting]
     latest = {question.id: question for question in waiting}
     seen: RelaySignature | None = None

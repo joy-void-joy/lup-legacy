@@ -26,6 +26,7 @@ from lup.policy.kernel.decision import (
     FileReviewRow,
     KernelDecision,
     SandboxPlacement,
+    SegmentRow,
     UnpreviewedRow,
 )
 from lup.policy.kernel.semantics import (
@@ -370,6 +371,12 @@ class Decision(BaseModel, frozen=True):
     unpreviewed: tuple[UnpreviewedRow, ...] = ()
     """The steps of a command whose effect no document states, in the order they run."""
 
+    segments: tuple[SegmentRow, ...] = ()
+    """Each command this verdict was joined from, with the verdict it reached alone.
+
+    See :attr:`~lup.policy.kernel.decision.KernelDecision.segments`.
+    """
+
     @field_validator("sandbox")
     @classmethod
     def reached(
@@ -430,6 +437,7 @@ class Decision(BaseModel, frozen=True):
             findings=tuple(cls.of(finding) for finding in decision.findings),
             file_reviews=decision.file_reviews,
             unpreviewed=decision.unpreviewed,
+            segments=decision.segments,
         )
 
     def as_kernel(self) -> KernelDecision:
@@ -459,4 +467,5 @@ class Decision(BaseModel, frozen=True):
             recovery=self.recovery,
             file_reviews=self.file_reviews,
             unpreviewed=self.unpreviewed,
+            segments=self.segments,
         )

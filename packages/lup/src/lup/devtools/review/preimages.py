@@ -36,18 +36,25 @@ class MovedPreimage(BaseModel, frozen=True):
 
     path: Path
     cause: MoveCause
+    read: bool = False
+    """Whether the call only reads it -- a copy's source, a patch -- rather than writing it."""
 
     def sentence(self) -> str:
         """What moved, as the operator and the requester read it."""
+        since = (
+            "since the operator saw this copy"
+            if self.read
+            else "since this was recorded"
+        )
         match self.cause:
             case "changed":
-                return f"{self.path} changed since this was recorded"
+                return f"{self.path} changed {since}"
             case "created":
-                return f"{self.path} was created since this was recorded"
+                return f"{self.path} was created {since}"
             case "deleted":
-                return f"{self.path} was deleted since this was recorded"
+                return f"{self.path} was deleted {since}"
             case "directory":
-                return f"a directory now stands at {self.path}"
+                return f"a directory now stands at {self.path}, {since}"
 
 
 def seen_here(path: Path, roots: Sequence[Path]) -> bool:
@@ -88,12 +95,40 @@ def moved_preimage(
     return MovedPreimage(path=path, cause="changed")
 
 
-def moved(question: PersistentQuestion) -> list[MovedPreimage]:
-    """Every file the review recorded that no longer stands as it recorded it, as far as this process sees."""
-    roots = [question.operation.worktree, question.operation.cwd]
-    return [
-        found
+def written(question: PersistentQuestion) -> dict[Path, str | None]:
+    """The recorded preimages of the files the call writes.
+
+    A command's record says which they are: each file its verdict worked out
+    a document for, and each file a step no document shows leaves. Every
+    other file it recorded is one a step reads from -- a copy's source, a
+    patch -- whose text the record already holds. Any other call writes every
+    file it recorded.
+    """
+    if question.unpreviewed is None:
+        return dict(question.preconditions)
+    writes = {row.path for row in question.file_reviews or []} | {
+        path for step in question.unpreviewed for path in step.paths
+    }
+    return {
+        path: recorded
         for path, recorded in question.preconditions.items()
+        if path in writes
+    }
+
+
+def moved(question: PersistentQuestion, sources: bool = False) -> list[MovedPreimage]:
+    """Every file the call writes that no longer stands as recorded, as far as this process sees.
+
+    With *sources*, the files it reads from too: what runs the call has to
+    know a copy would land something other than what the operator saw, where
+    whoever only decides whether a review can still be answered does not.
+    """
+    roots = [question.operation.worktree, question.operation.cwd]
+    writes = written(question)
+    judged = question.preconditions if sources else writes
+    return [
+        found.model_copy(update={"read": path not in writes})
+        for path, recorded in judged.items()
         if (found := moved_preimage(path, recorded, roots)) is not None
     ]
 
@@ -112,9 +147,11 @@ class PreimageWatch:
     and a review can record a large file; so a file is read only once its size,
     modification time or inode says it may have changed, and a review whose
     files all stand as they were last read is answered from that reading.
+    *sources* is :func:`moved`'s: whether the files a call reads from count.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, sources: bool = False) -> None:
+        self.sources = sources
         self.seen: dict[str, WatchedReading] = {}
 
     def moved(self, question: PersistentQuestion) -> list[MovedPreimage]:
@@ -131,7 +168,7 @@ class PreimageWatch:
             and self.seen[question.fingerprint].signatures == signatures
         ):
             return self.seen[question.fingerprint].moved
-        found = moved(question)
+        found = moved(question, self.sources)
         self.seen[question.fingerprint] = WatchedReading(
             signatures=signatures, moved=found
         )

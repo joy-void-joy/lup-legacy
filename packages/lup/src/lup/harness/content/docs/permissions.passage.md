@@ -1294,6 +1294,37 @@ named rather than shown. Every file a step lands the text of, and every
 file a row shows, contributes its preimage, so a change to any of them
 before the call is carried out makes it a fresh question.
 
+The question keeps each command of the line too, with the verdict it reached
+on its own -- effect, reason and rule -- in the order they run. The line's
+verdict is joined from them and its reason speaks for all of them; these
+rows say which command asked what, so a line that asks twice is put to the
+reviewer as two questions, and the commands allowed on their own are listed
+apart. They are bound into the fingerprint with the rest of what a reviewer
+reads, and cross no owner's wire: they are the caller's reading of the line.
+
+Beside them the question keeps who asked and what it said the call is for,
+bound into nothing: they name the asker and its claim, never what an approval
+releases. `agent` is the runtime's own id for the subagent that asked, blank
+for the session's own conversation, which is how the operator's words reach
+the conversation handling the call and a copy the session it runs in.
+`account` is the asker's own words, each with where they were found: the
+note the tool call carries -- Claude Code's `Bash` `description`, Codex's
+shell `justification` for running outside its sandbox; Codex's tools carry
+no note saying what a command does -- and what the agent wrote since it last
+heard anything, read back from the end of the transcript of the conversation
+making the call: a Claude subagent's own `subagents/agent-<agent_id>.jsonl`
+beside its session's, a Codex subagent's own rollout. Claude Code writes a
+call's own record before its `PreToolUse` hook runs, measured on 2.1.283;
+Codex's rollout is read so that it makes no difference whether the call's own
+line is written yet. Where the agent said nothing, what its roster row says
+it is on stands in, as `doing`. Recorded once, when the call first parks, and
+kept whole.
+
+A conversation with two or more edits waiting on the operator is told, in the
+refusal, how to put the next ones as one: each file as it should end up,
+under one directory in `tmp/` mirroring the checkout, and `review propose`
+over it, which parks every file as one review.
+
 
 ## Two markers change a decision
 

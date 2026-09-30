@@ -14,6 +14,7 @@ from .decision import (
     SUBSTITUTION_SENTINEL,
     carrying_readings,
     joined_decision,
+    judged_command,
     recovery_dischargeable,
     unjudged,
 )
@@ -116,6 +117,7 @@ from .lex import (
     verb_path_words,
 )
 from .syntax import Command, Script, Word, expands, readable_prefix, word_text
+from .documents import spelled_command
 from .effects import STRENGTH, declared_verdict, member_for
 from .commands import (
     SedContext,
@@ -1453,7 +1455,15 @@ def decide_command(
     this shell, so what it binds stands after it; a subshell does not.
     """
     if command["kind"] == "simple":
-        own = decide_simple(command, context, bindings)
+        judged = decide_simple(command, context, bindings)
+        spelled = spelled_command(command)
+        own = Walked(
+            decisions=[
+                judged_command(decision, spelled) for decision in judged["decisions"]
+            ],
+            bindings=judged["bindings"],
+            stopped=judged["stopped"],
+        )
         if own["stopped"]:
             return own
         inner = decide_substitutions(carried_words(command), context, depth, bindings)

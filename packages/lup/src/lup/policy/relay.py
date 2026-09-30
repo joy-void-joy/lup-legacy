@@ -41,6 +41,7 @@ from lup.policy.assets.host import (
     recorded_answers,
     review_answers,
     review_answers_home,
+    bound_parts,
     review_fingerprint,
     review_records,
 )
@@ -48,7 +49,7 @@ from lup.policy.identity import REVIEW_ANSWERS_ENV
 from lup.policy.kernel.decision import DecisionEffect
 from lup.policy.kernel.semantics import ReviewPurpose, ReviewerRequirement
 from lup.policy.operations import Operation
-from lup.types import JsonObject
+from lup.types import JsonObject, JsonValue
 
 type QuestionState = Literal[
     "pending",
@@ -198,13 +199,17 @@ class LineComment(BaseModel, frozen=True):
         return f"{shown}:{span}{side}: {body}"
 
 
-type AccountSource = Literal["description", "preceding", "doing", "proposal"]
+type AccountSource = Literal[
+    "description", "justification", "preceding", "doing", "proposal"
+]
 """Where the requester's own account of a call was found.
 
-``description`` is the note the runtime's tool call carries beside the
-command; ``preceding`` what the agent said just before the call, read off its
-transcript when the call parked; ``doing`` what its session said it is on,
-on the roster; ``proposal`` the reason a `review propose` was given.
+``description`` is the note Claude Code's tool call carries beside the
+command, saying what it does; ``justification`` the reason a Codex shell call
+gives for running outside its sandbox; ``preceding`` what the agent said just
+before the call, read off its transcript when the call parked; ``doing`` what
+its session said it is on, on the roster; ``proposal`` the reason a
+`review propose` was given.
 """
 
 
@@ -278,6 +283,22 @@ class CapturedFileReview(BaseModel, frozen=True):
     after: str | None = None
 
 
+class CommandSegment(BaseModel, frozen=True):
+    """One command of a parked line, and the verdict it reached on its own.
+
+    The line's record as a reviewer reads it: every command that asks, each
+    with its own reason and rule, beside the ones allowed on their own: the
+    rows the verdict kept when it parked
+    (:attr:`~lup.policy.kernel.decision.KernelDecision.segments`). ``command``
+    is blank for a verdict about the line rather than one of its commands.
+    """
+
+    command: str
+    effect: DecisionEffect
+    reason: str
+    rule: str
+
+
 class UnpreviewedStep(BaseModel, frozen=True):
     """One step of a parked command whose effect no document states.
 
@@ -310,6 +331,8 @@ class PersistentQuestion(BaseModel, frozen=True):
     """Original per-file attribution; absent on records that did not capture it."""
     unpreviewed: list[UnpreviewedStep] | None = None
     """The steps of a command no document shows, beside the files ``file_reviews`` does."""
+    segments: list[CommandSegment] | None = None
+    """Each command of the line with its own verdict; absent on records that kept none."""
     resumption: Literal["coordinator", "native_retry"] = "coordinator"
     """Whether the coordinator dispatches or a native hook checks an exact retry."""
     reason: str
@@ -370,6 +393,47 @@ class PersistentQuestion(BaseModel, frozen=True):
     may find the agent saying something else first, and the words are the
     agent's claim about the call, never what an approval binds to.
     """
+    scheme: list[str] | None = None
+    """The parts the fingerprint binds beyond the call itself, by name, in the order it hashed them.
+
+    Kept so a reader on other code tells a record it cannot check from one
+    that changed; absent on a record parked before it was kept, which bound
+    the parts it carries.
+    """
+
+    def bound_parts(self) -> dict[str, JsonValue] | None:
+        """What else this record's fingerprint binds, by name, or ``None`` where its scheme is not this code's."""
+        carried: dict[str, JsonValue] = {
+            "file_reviews": [row.model_dump(mode="json") for row in self.file_reviews]
+            if self.file_reviews is not None
+            else None,
+            "unpreviewed": [step.model_dump(mode="json") for step in self.unpreviewed]
+            if self.unpreviewed is not None
+            else None,
+            "segments": [row.model_dump(mode="json") for row in self.segments]
+            if self.segments is not None
+            else None,
+        }
+        return bound_parts(
+            {
+                **carried,
+                **({"scheme": self.scheme} if self.scheme is not None else {}),
+            }
+        )
+
+    def unverifiable(self) -> str:
+        """Why this reader cannot check the record against its fingerprint, or nothing where it can.
+
+        A record whose scheme names a part this code does not know was
+        parked by a newer hook: it has not changed, and this reader cannot
+        tell either way, so it says which rather than refusing it as altered.
+        """
+        if self.resumption != "native_retry" or self.bound_parts() is not None:
+            return ""
+        return (
+            "this dashboard runs older code than the hook that parked this "
+            "review, so it cannot check the review against its fingerprint"
+        )
 
     def native_fingerprint(self) -> str:
         """The digest a native hook binds this record to, recomputed from what it shows.
@@ -377,9 +441,13 @@ class PersistentQuestion(BaseModel, frozen=True):
         The same material the hook hashed when it parked the call
         (:func:`~lup.policy.assets.host.review_fingerprint`), read back off the
         record: the call, the documents it would change, the verdict and the
-        policy that reached it.
+        policy that reached it. Blank where the record's scheme is not this
+        code's (:meth:`unverifiable`).
         """
         operation = self.operation
+        bound = self.bound_parts()
+        if bound is None:
+            return ""
         return review_fingerprint(
             operation.session,
             str(operation.cwd),
@@ -395,12 +463,7 @@ class PersistentQuestion(BaseModel, frozen=True):
             else operation.payload,
             self.policy_identity,
             {str(path): str(landed) for path, landed in self.resolved.items()},
-            [row.model_dump(mode="json") for row in self.file_reviews]
-            if self.file_reviews is not None
-            else None,
-            [step.model_dump(mode="json") for step in self.unpreviewed]
-            if self.unpreviewed is not None
-            else None,
+            bound,
         )
 
     def bound(self) -> bool:
@@ -439,14 +502,20 @@ class PersistentQuestion(BaseModel, frozen=True):
         operation: Operation,
         file_reviews: list[CapturedFileReview] | None,
         unpreviewed: list[UnpreviewedStep] | None,
+        segments: list[CommandSegment] | None,
     ) -> str:
         """Bind captured attribution to an in-process operation's approval."""
-        if file_reviews is None and unpreviewed is None:
+        if file_reviews is None and unpreviewed is None and segments is None:
             return operation.fingerprint()
         material = [
             operation.fingerprint(),
             [row.model_dump(mode="json") for row in file_reviews or []],
             [step.model_dump(mode="json") for step in unpreviewed or []],
+            *(
+                [[row.model_dump(mode="json") for row in segments]]
+                if segments is not None
+                else []
+            ),
         ]
         return sha256(json.dumps(material, sort_keys=True).encode()).hexdigest()
 
@@ -665,6 +734,8 @@ class QuestionRelay:
                     f"{principal!r} may not answer {question!r}"
                     f" — eligible: {', '.join(entry.eligible) or 'nobody'}"
                 )
+            if unverifiable := entry.unverifiable():
+                raise ValueError(f"review {question!r}: {unverifiable}")
             if not entry.bound():
                 raise ValueError(
                     f"review {question!r} changed after it was parked: what it "
@@ -738,14 +809,15 @@ class QuestionRelay:
         they stand now, which is a fresh question. So it leaves the queue as
         ``stale`` rather than waiting on an answer that could carry out
         nothing, naming what moved and *by* whom it was noticed -- the
-        requester's waiter, or the dashboard. One already settled is left as
-        it is: an answer recorded a moment before stands.
+        requester's waiter, or the dashboard. One approved and not yet carried
+        out is retired too, since its approval binds the files as recorded;
+        one declined, carried out or retired already is left as it is.
         """
         with self.transaction():
             entry = self.find(question)
             if entry is None:
                 raise ValueError(f"no question {question!r} is recorded")
-            if entry.state != "pending":
+            if entry.state not in ("pending", "approved"):
                 return entry
             named = ", ".join(str(path) for path in moved)
             return self.record(

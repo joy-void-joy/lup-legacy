@@ -14,6 +14,7 @@ the file and ask again.
 """
 
 import os
+from hashlib import sha256
 from pathlib import Path
 from typing import Final
 
@@ -27,7 +28,7 @@ from lup.devtools.dashboard.reviews import ReviewSnapshot
 from lup.devtools.review.app import ReviewDetail, create_review_app, relay
 from lup.devtools.review.preimages import moved
 from lup.policy.operations import Operation
-from lup.policy.relay import PersistentQuestion
+from lup.policy.relay import CapturedFileReview, PersistentQuestion
 from lup.providers.claude.identity import CLAUDE_SESSION_ENV
 from tests.unit.native import bound
 
@@ -277,3 +278,77 @@ async def test_a_file_the_dashboard_may_not_read_is_never_stale(root: Path) -> N
         sealed.chmod(0o644)
 
     assert waiting.state == "pending" and waiting.answerable
+
+
+def copied_by_a_command(root: Path) -> PersistentQuestion:
+    """A command's record as the hook keeps one: the copy it writes, and the source it reads."""
+    source = root / "packages/notes.md"
+    source.parent.mkdir(parents=True, exist_ok=True)
+    source.write_text("# notes\n")
+    target = root / "packages/copy.md"
+    operation = Operation(
+        id="operation-copy",
+        session=SESSION,
+        requester=SESSION,
+        tool="Bash",
+        payload={"command": "cp packages/notes.md packages/copy.md"},
+        cwd=root,
+        worktree=root,
+    )
+    return relay(root).record(
+        bound(
+            PersistentQuestion(
+                id="copy-review",
+                operation=operation,
+                fingerprint="",
+                reason="copying over a protected file",
+                eligible=[],
+                chain_resolved=False,
+                resumption="native_retry",
+                preconditions={source: "# notes\n", target: None},
+                file_reviews=[
+                    CapturedFileReview(
+                        path=target,
+                        effect="ask",
+                        reason="copying over a protected file",
+                        rule="shell:cp",
+                        rules=["shell:cp"],
+                        before_sha256=None,
+                        after_sha256=sha256(b"# notes\n").hexdigest(),
+                        after="# notes\n",
+                    )
+                ],
+                unpreviewed=[],
+            )
+        )
+    )
+
+
+async def test_a_source_a_command_reads_from_is_not_what_the_page_judges(
+    root: Path,
+) -> None:
+    """Only the files a call writes decide whether its review can still be answered."""
+    question = copied_by_a_command(root)
+    (root / "packages/notes.md").write_text("# notes, edited since\n")
+
+    assert moved(question) == []
+    async with client(root) as http:
+        (waiting,) = (await snapshot(http)).reviews
+    assert waiting.state == "pending" and waiting.answerable
+
+
+def test_the_waiter_runs_no_copy_of_a_source_that_moved(root: Path) -> None:
+    """Running it would land something other than what the operator approved."""
+    question = copied_by_a_command(root)
+    relay(root).answer(question.id, "operator", True)
+    (root / "packages/notes.md").write_text("# notes, edited since\n")
+
+    waited = RUNNER.invoke(create_review_app(root), ["wait", question.id])
+
+    assert f"review {question.id} — stale:" in waited.output
+    assert "packages/notes.md changed since the operator saw this copy" in waited.output
+    assert "nothing ran — re-read it and ask again" in waited.output
+    assert not (root / "packages/copy.md").exists()
+    stored = relay(root).find(question.id)
+    assert stored is not None and stored.state == "stale"
+    assert stored.moved == [root / "packages/notes.md"]

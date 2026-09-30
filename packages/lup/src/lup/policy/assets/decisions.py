@@ -71,6 +71,7 @@ from host import (
     record_deferral,
     record_question,
     review_hook_call,
+    waiting_edits,
     committed_text,
     resolved_refutations,
     tracked_write_targets,
@@ -559,6 +560,8 @@ def reviewed_decision(
     execution_payload: dict | None = None,
     policy_identity: str = "",
     provider: str = "",
+    agent: str = "",
+    account: list[dict[str, str]] | None = None,
 ) -> Reviewed:
     """Park one ask for the operator, or spend the single-use answer they recorded.
 
@@ -570,6 +573,13 @@ def reviewed_decision(
     Every file the verdict records a document for is bound as it stands, the
     preimage its row's ``before_sha256`` names: the operator reads each diff
     against it, and a change to it since makes the same call a fresh question.
+
+    *agent* is the runtime's id for the subagent that asked, blank for the
+    session's own conversation, and *account* what it said the call is for,
+    as its runtime's half read it off the call and its transcript. Where it
+    said nothing there, what its roster row says it is on stands in, named
+    as that. A conversation with two or more edits waiting is told how to
+    put them to the operator as one.
     """
     bound = {
         **{
@@ -578,6 +588,9 @@ def reviewed_decision(
         },
         **preconditions,
     }
+    directory = peer_directory(cwd)
+    member = answering_member(directory)
+    told = account or roster_doing(directory, member, agent)
     result = review_hook_call(
         cwd,
         session,
@@ -604,10 +617,13 @@ def reviewed_decision(
                 cwd / ".lup/questions.jsonl", review_answers_home(REVIEW_ANSWERS_ENV)
             )
         ),
-        member=answering_member(peer_directory(cwd)),
+        member=member,
         placement=decision.sandbox,
         provider=provider,
         unpreviewed=json.dumps(decision.unpreviewed, sort_keys=True),
+        segments=json.dumps(decision.segments, sort_keys=True),
+        agent=agent,
+        account=json.dumps(told, sort_keys=True),
     )
     identifier = result["id"]
     if result["state"] == "approved":
@@ -651,6 +667,17 @@ def reviewed_decision(
         if dashboard
         else f"from a terminal outside the session: `{approve}` or `{decline}`"
     )
+    waiting_here = waiting_edits(cwd, session, agent)
+    together = (
+        f" {waiting_here} of your edits now wait on the operator one review at "
+        "a time. Where changes belong together, write each file as it should "
+        "end up under one directory in tmp/, mirroring the checkout, and run "
+        f"`{shlex.join([*prefix, 'propose'])} <directory> --why '<what they "
+        "are for>'`: the operator reads them as one review and answers all "
+        "of them at once."
+        if waiting_here >= 2
+        else ""
+    )
     return {
         "decision": decision.revised(
             effect="deny",
@@ -659,10 +686,33 @@ def reviewed_decision(
                 "Don't change the command; carry on with other work. "
                 + waiting(shlex.join([*prefix, "wait", identifier]))
                 + f" The operator answers it {where}."
+                + together
             ),
         ),
         "notice": f"Lup review {identifier} is waiting for you {where}.",
     }
+
+
+def roster_doing(
+    directory: Path | None, member: str, agent: str
+) -> list[dict[str, str]]:
+    """What the asking conversation last told the roster it is on, where it said anything.
+
+    Its own row: the subagent's where one asked, else the session's. Nothing
+    where no roster is kept here or the row says nothing.
+    """
+    if directory is None or not member:
+        return []
+    row = store.member_of(
+        directory,
+        store.subagent_actor(member, agent) if agent else store.session_actor(member),
+    )
+    doing = (
+        store.text(row["description"])
+        if row is not None and "description" in row
+        else ""
+    )
+    return [{"source": "doing", "text": doing}] if doing.strip() else []
 
 
 def session_contained(cwd: Path | None) -> bool:

@@ -144,6 +144,8 @@ class ReviewThread(BaseModel, frozen=True):
         """
         if not note.strip() and not comments:
             raise ValueError("a remark says something: a note or a line comment")
+        if unverifiable := question.unverifiable():
+            raise ValueError(f"review {question.id!r}: {unverifiable}")
         if not question.bound():
             raise ValueError(
                 f"review {question.id!r} changed after it was parked: what it "

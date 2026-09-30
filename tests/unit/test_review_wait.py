@@ -132,11 +132,14 @@ def test_an_edit_whose_file_moved_since_is_reported_and_not_written(
     waited = RUNNER.invoke(create_review_app(root), ["wait", question.id])
 
     assert waited.exit_code == 1
-    assert "conflict" in waited.output
-    assert str(target) in waited.output
+    assert (
+        f"review {question.id} — stale: {target} changed since this was recorded"
+        in waited.output
+    )
     assert target.read_text() == "# Somebody else's\n"
-    failed = relay_of(root).find(question.id)
-    assert failed is not None and failed.state == "failed"
+    retired = relay_of(root).find(question.id)
+    assert retired is not None and retired.state == "stale"
+    assert retired.moved == [target]
 
 
 def test_a_declined_review_reports_the_operator_s_note(root: Path) -> None:

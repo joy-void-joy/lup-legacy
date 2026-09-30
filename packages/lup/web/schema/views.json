@@ -22,6 +22,7 @@
     "AccountSource": {
       "enum": [
         "description",
+        "justification",
         "preceding",
         "doing",
         "proposal"
@@ -399,6 +400,35 @@
         "inside"
       ],
       "title": "CarriedParent",
+      "type": "object"
+    },
+    "CommandSegment": {
+      "additionalProperties": false,
+      "description": "One command of a parked line, and the verdict it reached on its own.\n\nThe line's record as a reviewer reads it: every command that asks, each\nwith its own reason and rule, beside the ones allowed on their own: the\nrows the verdict kept when it parked\n(:attr:`~lup.policy.kernel.decision.KernelDecision.segments`). ``command``\nis blank for a verdict about the line rather than one of its commands.",
+      "properties": {
+        "command": {
+          "title": "Command",
+          "type": "string"
+        },
+        "effect": {
+          "$ref": "#/$defs/DecisionEffect"
+        },
+        "reason": {
+          "title": "Reason",
+          "type": "string"
+        },
+        "rule": {
+          "title": "Rule",
+          "type": "string"
+        }
+      },
+      "required": [
+        "command",
+        "effect",
+        "reason",
+        "rule"
+      ],
+      "title": "CommandSegment",
       "type": "object"
     },
     "ConcernAllowance": {
@@ -1878,11 +1908,17 @@
           "format": "path",
           "title": "Path",
           "type": "string"
+        },
+        "read": {
+          "default": false,
+          "title": "Read",
+          "type": "boolean"
         }
       },
       "required": [
         "path",
-        "cause"
+        "cause",
+        "read"
       ],
       "title": "MovedPreimage",
       "type": "object"
@@ -2517,6 +2553,36 @@
           "title": "Rule",
           "type": "string"
         },
+        "scheme": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Scheme"
+        },
+        "segments": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/CommandSegment"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Segments"
+        },
         "state": {
           "$ref": "#/$defs/QuestionState",
           "default": "pending"
@@ -2544,6 +2610,7 @@
         "preconditions",
         "file_reviews",
         "unpreviewed",
+        "segments",
         "resumption",
         "reason",
         "rule",
@@ -2566,7 +2633,8 @@
         "member",
         "agent",
         "moved",
-        "account"
+        "account",
+        "scheme"
       ],
       "title": "PersistentQuestion",
       "type": "object"

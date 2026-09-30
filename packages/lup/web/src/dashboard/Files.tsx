@@ -41,7 +41,8 @@ function commonDirectory(files: ReviewFile[]): string {
   }
 }
 
-function reviewLabel(effect: ReviewFile["review_effect"]): string {
+/** What a verdict's effect is called on the page. */
+export function reviewLabel(effect: ReviewFile["review_effect"]): string {
   switch (effect) {
     case "allow": return "Automatic";
     case "defer": return "Native decision";

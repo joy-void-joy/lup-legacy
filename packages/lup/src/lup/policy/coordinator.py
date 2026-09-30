@@ -34,6 +34,7 @@ from lup.policy.models import Decision
 from lup.policy.operations import Operation
 from lup.policy.relay import (
     CapturedFileReview,
+    CommandSegment,
     PersistentQuestion,
     QuestionRelay,
     SupervisorChain,
@@ -204,8 +205,11 @@ class OperationCoordinator:
         unpreviewed = [
             UnpreviewedStep.model_validate(row) for row in decision.unpreviewed
         ] or None
+        segments = [
+            CommandSegment.model_validate(row) for row in decision.segments
+        ] or None
         fingerprint = PersistentQuestion.review_fingerprint(
-            operation, file_reviews, unpreviewed
+            operation, file_reviews, unpreviewed, segments
         )
         return self.relay.record(
             PersistentQuestion(
@@ -214,6 +218,7 @@ class OperationCoordinator:
                 fingerprint=fingerprint,
                 file_reviews=file_reviews,
                 unpreviewed=unpreviewed,
+                segments=segments,
                 reason=decision.reason,
                 rule=decision.rule,
                 purpose=decision.purpose,
@@ -320,7 +325,7 @@ class OperationCoordinator:
             )
         if (
             PersistentQuestion.review_fingerprint(
-                operation, entry.file_reviews, entry.unpreviewed
+                operation, entry.file_reviews, entry.unpreviewed, entry.segments
             )
             != entry.fingerprint
         ):

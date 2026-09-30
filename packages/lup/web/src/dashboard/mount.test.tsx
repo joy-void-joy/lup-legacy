@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { act } from "react";
-import type { LineComment, ReviewFile, ReviewMarker, ReviewSuppression, ReviewNotification, ThreadEntry, UnpreviewedStep } from "../generated/views";
+import type { CommandSegment, LineComment, ReviewFile, ReviewMarker, ReviewSuppression, ReviewNotification, ThreadEntry, UnpreviewedStep } from "../generated/views";
 import { App } from "./App";
 import { click, labelled, mount, one, until, type Mounted } from "../testing";
 
@@ -43,6 +43,7 @@ function review(key = "tree-q1") {
       answer: null as null | { approved: boolean; principal: string; note: string; comments?: LineComment[]; at?: string },
       operation: { tool: "apply_patch", cwd: "/project", payload: { patch: "Complete requested patch" } as Record<string, string> },
       unpreviewed: null as UnpreviewedStep[] | null,
+      segments: null as CommandSegment[] | null,
     },
     files: [{ path: "/project/file.py", operation: "modify", before: "before\n", after: "after\n",
       review_effect: "ask" as ReviewFile["review_effect"], review_reason: "This file requires approval.",
@@ -603,7 +604,10 @@ describe("dashboard page", () => {
     rows = [{ ...summary, answerable: false, unanswerable: "Only operator-two may answer it." }];
     await act(async () => stream?.enqueue(new TextEncoder().encode(framed(queue()))));
     await until(() => page.root.textContent?.includes("Only operator-two may answer it.") ?? false, "why it cannot be answered here");
-    expect(labelled<HTMLButtonElement>(page.root, "button", "Approve").disabled).toBe(true);
+    expect(page.root.querySelectorAll(".actions button.approve, .actions button.decline")).toHaveLength(0);
+    expect(one(page.root, ".actions .unanswerable").textContent).toBe("Only operator-two may answer it.");
+    expect(one(page.root, ".queue-row .state").textContent).toBe("can't answer here");
+    expect(one(page.root, ".queue-row .row-unanswerable").textContent).toBe("Only operator-two may answer it.");
     expect(box(page.root).value).toBe("Keep the draft during live refreshes.");
   });
 
@@ -1305,6 +1309,51 @@ describe("dashboard page", () => {
     expect(one(page.root, ".preview-note summary").textContent).toBe("How these documents were worked out");
     await click(labelled(page.root, "button", "Full operation (2)"));
     expect(page.root.querySelectorAll(".file-list li")).toHaveLength(2);
+  });
+
+  test("a command line shows every command that asks with its own reason, and folds the ones allowed alone", async () => {
+    detail.files = [];
+    detail.command = "ls && git push --delete origin old && git push --force origin feature";
+    detail.question.operation = { tool: "Bash", cwd: "/project", payload: { command: detail.command } };
+    detail.question.segments = [
+      { command: "ls", effect: "allow", reason: "", rule: "shell:ls" },
+      { command: "git push --delete origin old", effect: "ask", reason: "deleting a remote branch loses work", rule: "shell:git-push" },
+      { command: "git push --force origin feature", effect: "ask", reason: "--force overwrites the remote branch", rule: "shell:git-push" },
+    ];
+    const page = await open();
+    expect(one(page.root, ".command > pre").textContent).toBe(detail.command);
+    const asking = [...page.root.querySelectorAll(".command > .segments > li")];
+    expect(asking.map((row) => one(row, "pre").textContent)).toEqual(["git push --delete origin old", "git push --force origin feature"]);
+    expect(asking.map((row) => one(row, "p").textContent)).toEqual(["deleting a remote branch loses work", "--force overwrites the remote branch"]);
+    expect(asking.map((row) => one(row, ".file-review-state").textContent)).toEqual(["Needs approval", "Needs approval"]);
+    expect(asking.map((row) => one(row, ".segment-rule").textContent)).toEqual(["shell:git-push", "shell:git-push"]);
+    const allowed = one<HTMLDetailsElement>(page.root, ".segments-allowed");
+    expect(allowed.open).toBe(false);
+    expect(one(allowed, "summary").textContent).toBe("1 command allowed on its own");
+    expect(one(allowed, "pre").textContent).toBe("ls");
+  });
+
+  test("a line of one command is its reason already, and lists nothing beneath it", async () => {
+    detail.files = [];
+    detail.command = "git push --delete origin old";
+    detail.question.segments = [{ command: detail.command, effect: "ask", reason: "deleting a remote branch loses work", rule: "shell:git-push" }];
+    const page = await open();
+    expect(one(page.root, ".command > pre").textContent).toBe(detail.command);
+    expect(page.root.querySelectorAll(".segments")).toHaveLength(0);
+  });
+
+  test("the agent's own account shows beside the reason, labelled by where it was found", async () => {
+    detail.question.account = [
+      { source: "justification", text: "The marker is outside the writable roots" },
+      { source: "preceding", text: "The marker has to exist before the next step reads it.\n".repeat(8) },
+    ];
+    const page = await open();
+    const said = [...page.root.querySelectorAll(".account .accounted")];
+    expect(said.map((row) => one(row, ".account-source").textContent)).toEqual(["agent's reason to leave the sandbox", "agent said before this call"]);
+    expect(one(said[1] as HTMLElement, "p").className).toBe("folded");
+    await click(labelled(said[1] as HTMLElement, "button", "Show all"));
+    expect(one(said[1] as HTMLElement, "p").className).toBe("");
+    expect(one(said[1] as HTMLElement, "p").textContent).toBe(detail.question.account[1]?.text ?? "");
   });
 
   test("a token-free link opens the exact request in another tab using origin storage", async () => {

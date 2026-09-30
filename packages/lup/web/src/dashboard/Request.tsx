@@ -2,9 +2,9 @@
 // around it in single lines, and the composer pinned beneath, open and
 // focused, so the operator writes and decides without leaving the keyboard.
 import { memo, useEffect, useRef, useState, type RefObject } from "react";
-import type { Account, LineComment, ReviewDetail, ReviewRoot, ReviewSummary, ThreadEntry, UnpreviewedStep } from "../generated/views";
+import type { Account, CommandSegment, LineComment, ReviewDetail, ReviewRoot, ReviewSummary, ThreadEntry, UnpreviewedStep } from "../generated/views";
 import { reviewLink } from "./api";
-import { Files, type DraftComment, type FileNavigation } from "./Files";
+import { Files, reviewLabel, type DraftComment, type FileNavigation } from "./Files";
 
 const FileEvidence = memo(Files);
 const JsonRecord = memo(function JsonRecord({ value }: { value: unknown }) {
@@ -18,9 +18,24 @@ export const EMPTY_DRAFT: Draft = { note: "", comments: [] };
 /** What the operator can do to a waiting review from the composer. */
 export type Action = "approve" | "decline" | "remark";
 
-/** A review's state as the page names it: the relay records a declined review as `rejected`. */
-export function stateLabel(state: string): string {
-  return state === "rejected" ? "declined" : state;
+/** Whether a waiting review is one this page cannot answer, which it then never calls pending. */
+function blocked(row: ReviewSummary): boolean {
+  return row.state === "pending" && !row.answerable && row.unanswerable !== "";
+}
+
+/**
+ * A review's state as the page names it: the relay records a declined review
+ * as `rejected`, and a waiting review this page cannot answer is not called
+ * pending -- the reason stands where Approve would be.
+ */
+export function stateLabel(row: ReviewSummary): string {
+  if (blocked(row)) return "can't answer here";
+  return row.state === "rejected" ? "declined" : row.state;
+}
+
+/** The class a review's state badge takes, a waiting review this page cannot answer its own. */
+export function stateClass(row: ReviewSummary): string {
+  return blocked(row) ? "blocked" : row.state;
 }
 
 /**
@@ -53,6 +68,7 @@ export function staleSentences(row: ReviewSummary): string[] {
 /** Where the agent's own words about a call were found, said as the claim it is. */
 const SOURCES: Record<Account["source"], string> = {
   description: "agent's note",
+  justification: "agent's reason to leave the sandbox",
   preceding: "agent said before this call",
   doing: "session is on",
   proposal: "the proposal says",
@@ -67,6 +83,31 @@ function Accounted({ said }: { said: Account }) {
     <p className={long && !open ? "folded" : undefined}>{said.text}</p>
     {long && <button type="button" aria-expanded={open} onClick={() => setOpen((value) => !value)}>{open ? "Show less" : "Show all"}</button>}
   </div>;
+}
+
+/**
+ * A command line as the policy read it: the line whole, then every command in
+ * it that asks or is refused, each with its own reason, and the commands
+ * allowed on their own folded beneath. A line of one command is its reason
+ * already, above.
+ */
+function CommandPreview({ command, segments }: { command: string; segments: CommandSegment[] }) {
+  const objecting = segments.filter((segment) => segment.effect !== "allow");
+  const allowed = segments.filter((segment) => segment.effect === "allow");
+  const row = (segment: CommandSegment, index: number) => <li key={index} className={`segment ${segment.effect}`}>
+    <span className="segment-head"><span className={`file-review-state ${segment.effect}`}>{reviewLabel(segment.effect)}</span>
+      {segment.rule !== "" && <code className="segment-rule">{segment.rule}</code>}</span>
+    <pre>{segment.command === "" ? "the line as a whole" : segment.command}</pre>
+    {segment.effect !== "allow" && <p>{segment.reason}</p>}
+  </li>;
+  return <section className="command" aria-label="Command">
+    <pre>{command}</pre>
+    {segments.length > 1 && <>
+      <ol className="segments" aria-label="Commands that ask">{objecting.map(row)}</ol>
+      {allowed.length > 0 && <details className="segments-allowed"><summary>{allowed.length === 1 ? "1 command" : `${allowed.length} commands`} allowed on {allowed.length === 1 ? "its" : "their"} own</summary>
+        <ol className="segments">{allowed.map(row)}</ol></details>}
+    </>}
+  </section>;
 }
 
 /** The steps of a command no document shows: what only running them reveals, or a file that is not text. */
@@ -158,7 +199,7 @@ export function RequestView({ detail, row, roots, draft, sending, error, fileNav
   return <>
     <article className="request">
       <header className="request-bar">
-        <span className={`state ${row.state}`}>{stateLabel(row.state)}</span>
+        <span className={`state ${stateClass(row)}`}>{stateLabel(row)}</span>
         <h2 ref={heading} tabIndex={-1} title={`${target}\n${summary.title}`}><span className="target">{checkoutLabel(target, root)}:</span> {summary.title}</h2>
         <button type="button" className="request-more" aria-expanded={details} onClick={() => setDetails((open) => !open)}>Details</button>
         <RequestLink summary={row} />
@@ -192,8 +233,7 @@ export function RequestView({ detail, row, roots, draft, sending, error, fileNav
       {row.state === "stale" && <p className="stale-reason" role="status">
         <strong>Retired as stale:</strong> {stale.join("; ")}. No approval could release it any more; its session was told to re-read the file and ask again.
       </p>}
-      {row.unanswerable !== "" && <p className="notice" role="status">{row.unanswerable}</p>}
-      {detail.command !== null && <section className="command" aria-label="Command"><pre>{detail.command}</pre></section>}
+      {detail.command !== null && <CommandPreview command={detail.command} segments={question.segments ?? []} />}
       {(question.unpreviewed ?? []).length > 0 && <UnpreviewedSteps steps={question.unpreviewed ?? []} />}
       {detail.preview_unavailable !== "" && <p className="notice" role="status">{detail.preview_unavailable}</p>}
       {(detail.preview_notice ?? "") !== "" && <details className="preview-note"><summary>How these documents were worked out</summary><p>{detail.preview_notice}</p></details>}
@@ -211,10 +251,12 @@ export function RequestView({ detail, row, roots, draft, sending, error, fileNav
         onChange={(event) => onDraft({ ...draft, note: event.target.value })}
         placeholder="Note for the requesting agent: sent with your decision, or alone with Alt+Enter. Click a line number to comment on a line." />
       <div className="actions">
-        <button className="approve" type="button" aria-keyshortcuts="Control+Enter Meta+Enter" disabled={!row.answerable}
-          title="Ctrl+Enter" onClick={(event) => { if (event.detail < 2) onAct("approve"); }}>Approve</button>
-        <button className="decline" type="button" aria-keyshortcuts="Alt+Delete" disabled={!row.answerable} title="Alt+Delete"
-          onClick={(event) => { if (event.detail < 2) onAct("decline"); }}>Decline</button>
+        {row.answerable || row.unanswerable === "" ? <>
+          <button className="approve" type="button" aria-keyshortcuts="Control+Enter Meta+Enter" disabled={!row.answerable}
+            title="Ctrl+Enter" onClick={(event) => { if (event.detail < 2) onAct("approve"); }}>Approve</button>
+          <button className="decline" type="button" aria-keyshortcuts="Alt+Delete" disabled={!row.answerable} title="Alt+Delete"
+            onClick={(event) => { if (event.detail < 2) onAct("decline"); }}>Decline</button>
+        </> : <p className="unanswerable" role="status">{row.unanswerable}</p>}
         <button className="send" type="button" aria-keyshortcuts="Alt+Enter" disabled={draft.note.trim() === "" && draft.comments.length === 0}
           title="Alt+Enter: send the note and line comments without deciding" onClick={() => onAct("remark")}>Send comments</button>
         {draft.comments.length > 0 && <span className="draft-count">{draft.comments.length} line {draft.comments.length === 1 ? "comment" : "comments"} drafted</span>}

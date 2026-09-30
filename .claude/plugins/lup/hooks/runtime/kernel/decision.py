@@ -269,6 +269,23 @@ class UnpreviewedRow(TypedDict):
     cause: UnpreviewedCause
 
 
+class SegmentRow(TypedDict):
+    """One command of a line, and the verdict it reached on its own.
+
+    What a reviewer reads a command line by: each command with its own
+    effect and why, so an approval of a line that asks twice is given
+    knowing both questions, and the commands allowed on their own are told
+    apart from the ones that ask. ``command`` is the command as it reads,
+    blank for a verdict about the line rather than one of its commands -- a
+    construct the vocabulary does not walk, a remainder nobody could read.
+    """
+
+    command: str
+    effect: DecisionEffect
+    reason: str
+    rule: str
+
+
 class Revision(TypedDict, total=False):
     """What one settlement row may rewrite, absent where it changes nothing.
 
@@ -298,6 +315,7 @@ class Revision(TypedDict, total=False):
     unread: bool
     file_reviews: tuple[FileReviewRow, ...]
     unpreviewed: tuple[UnpreviewedRow, ...]
+    segments: tuple[SegmentRow, ...]
 
 
 class KernelDecision:
@@ -463,6 +481,15 @@ class KernelDecision:
     without running them.
     """
 
+    segments: tuple[SegmentRow, ...]
+    """Each command this verdict was joined from, with the verdict it reached alone.
+
+    A line's commands are judged one at a time and joined into one verdict,
+    whose reason speaks for all of them; this keeps each command's own, in
+    the order they run, and survives the rendering that folds the joined
+    reasons into one sentence. A command's own verdict names itself here.
+    """
+
     def __init__(
         self,
         effect: DecisionEffect,
@@ -486,6 +513,7 @@ class KernelDecision:
         unread: bool = False,
         file_reviews: tuple[FileReviewRow, ...] = (),
         unpreviewed: tuple[UnpreviewedRow, ...] = (),
+        segments: tuple[SegmentRow, ...] = (),
     ) -> None:
         if effect not in ("allow", "ask", "deny", "defer"):
             raise ValueError(f"invalid kernel decision effect {effect!r}")
@@ -513,6 +541,7 @@ class KernelDecision:
         self.unread = unread
         self.file_reviews = file_reviews
         self.unpreviewed = unpreviewed
+        self.segments = segments
         # Only a verdict this policy actually reached is placed: a refusal is
         # not softened by where the operation would have run, and a deferral
         # hands the whole question over, placement included.
@@ -554,6 +583,7 @@ class KernelDecision:
             changes["unread"] if "unread" in changes else self.unread,
             changes["file_reviews"] if "file_reviews" in changes else self.file_reviews,
             changes["unpreviewed"] if "unpreviewed" in changes else self.unpreviewed,
+            changes["segments"] if "segments" in changes else self.segments,
         )
 
     def placed(self, escapable: bool, contained: bool = False) -> "KernelDecision":
@@ -801,14 +831,38 @@ def joined_placement(decisions: list[KernelDecision]) -> SandboxPlacement:
     return "ambient"
 
 
+def as_segment(decision: KernelDecision, command: str = "") -> SegmentRow:
+    """One verdict as the row a line's record keeps of it: *command*, and what it decided."""
+    return SegmentRow(
+        command=command,
+        effect=decision.effect,
+        reason=decision.stated_whole(),
+        rule=decision.rule,
+    )
+
+
+def judged_command(decision: KernelDecision, command: str) -> KernelDecision:
+    """A verdict one command of a line reached, naming the command as its only row."""
+    return decision.revised(segments=(as_segment(decision, command),))
+
+
 def joined_decision(decisions: list[KernelDecision]) -> KernelDecision:
-    """One verdict for a whole line, from what each of its commands decided."""
+    """One verdict for a whole line, from what each of its commands decided.
+
+    Each part's commands are kept as the line's rows, in order; a part
+    naming none is a row about the line.
+    """
     placement = joined_placement(decisions)
     restoration = joined_checkpoint(decisions)
     parts = tuple(decisions)
+    segments = tuple(
+        row for item in decisions for row in item.segments or (as_segment(item),)
+    )
     denied = next((item for item in decisions if item.effect == "deny"), None)
     if denied is not None:
-        return denied.revised(findings=parts, reach=objecting_reach(parts))
+        return denied.revised(
+            findings=parts, reach=objecting_reach(parts), segments=segments
+        )
     asked = next((item for item in decisions if item.effect == "ask"), None)
     if asked is not None:
         return asked.revised(
@@ -816,6 +870,7 @@ def joined_decision(decisions: list[KernelDecision]) -> KernelDecision:
             checkpoint=restoration,
             findings=parts,
             reach=objecting_reach(parts),
+            segments=segments,
         )
     deferred = [item for item in decisions if item.effect == "defer"]
     if deferred:
@@ -829,6 +884,7 @@ def joined_decision(decisions: list[KernelDecision]) -> KernelDecision:
             findings=parts,
             reach=objecting_reach(parts),
             unread=any(item.unread for item in deferred),
+            segments=segments,
         )
     reached = dict.fromkeys(item.rule for item in decisions if item.rule)
     return KernelDecision(
@@ -839,6 +895,7 @@ def joined_decision(decisions: list[KernelDecision]) -> KernelDecision:
         rule=next(iter(reached)) if len(reached) == 1 else "",
         evaluator="shell-vocabulary",
         findings=parts,
+        segments=segments,
     )
 
 

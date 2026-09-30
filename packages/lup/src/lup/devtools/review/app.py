@@ -185,6 +185,8 @@ class ReviewSummary(BaseModel, frozen=True):
             if not question.answerable_by(principal):
                 eligible = ", ".join(question.eligible) or "nobody"
                 return f"Only {eligible} may answer it."
+            if unverifiable := question.unverifiable():
+                return f"{unverifiable.capitalize()}."
             if not question.bound():
                 return (
                     "Its record changed after it was parked: what it shows is not "
@@ -961,6 +963,13 @@ def show(
         typer.echo(f"  escalated   {entry.escalation}")
     if entry.checkpoint_failure:
         typer.echo(f"  capture     failed: {entry.checkpoint_failure}")
+    for said in entry.account:
+        typer.echo(f"  {said.source:<11} {said.text}")
+    segments = entry.segments or []
+    for segment in segments if len(segments) > 1 else []:
+        typer.echo(f"  {segment.effect:<11} {segment.command or 'the line as a whole'}")
+        if segment.effect != "allow":
+            typer.echo(f"              {segment.reason}")
     if open_externally:
         opened(entry, difftool if difftool is not None else registered_difftool())
         return

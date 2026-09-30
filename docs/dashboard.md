@@ -278,9 +278,15 @@ as `stale`, and shows only in History, labelled stale, with each file that
 moved and how: changed, created, deleted, or a directory where none stood.
 The dashboard watches every waiting review's recorded files by their size,
 time and inode on each look, reading one again only where those moved. Only
-what the dashboard can see is judged: a path inside a session's container,
-whose directory is nowhere on the host, or a file the dashboard may not read,
-is never stale.
+the files a call writes are judged there, never a file a command reads from —
+a copy's source, a patch — whose text the review already holds; and only
+what the dashboard can see: a path inside a session's container, whose
+directory is nowhere on the host, or a file the dashboard may not read, is
+never stale. The requester's waiter, which runs inside the session, reads
+every recorded file before it carries a command out, sources included: where
+one moved, running the command would land something other than what the
+operator approved, so it runs nothing and retires the review as stale,
+naming the file.
 
 ## Setup
 
@@ -305,12 +311,27 @@ is pinned open and focused on every waiting review, with the decisions beside
 it. What a review said and what it came to are its thread: the operator's
 remarks, the requester's replies, and the answer, oldest first.
 
-A command shows beneath the reason, whole. Its file changes show the way an
-edit's do, one diff per file in the order it writes them: the documents the
-policy worked out when it judged the command, read off the review rather
-than re-derived where it is read (`docs/permissions.md`). The steps whose
-result exists only once they run are listed beside it, each with the files
-it leaves so.
+Beside the policy's reason stands the requester's own account of the call,
+labelled as the claim it is — what it is for is the agent's to say, why it
+asks is the policy's — and never cut; a long one folds behind **Show all**.
+It is recorded when the call parks, from what the runtime's half reads there:
+the note the tool call carries beside the command (Claude Code's
+`description`, Codex's `justification` for running outside its sandbox), and
+what the agent wrote since it last heard anything, read back off the
+transcript of the conversation that made the call — a subagent's own. Where
+it said nothing there, what its roster row says it is on stands in, labelled
+as the session's; a proposal's is its `--why`, with each file's note on that
+file. `review show` prints the same lines.
+
+A command shows beneath, whole. Where its line runs several commands, each one
+that asks or is refused is listed with the verdict it reached on its own, its
+reason and rule, and the ones allowed on their own fold beneath, so a line
+that asks twice is approved knowing both questions (`docs/permissions.md`).
+Its file changes show the way an edit's do, one diff per file in the order it
+writes them: the documents the policy worked out when it judged the command,
+read off the review rather than re-derived where it is read. The steps whose
+result exists only once they run are listed beside it, each with the files it
+leaves so.
 
 The dashboard titles requests from captured evidence: a file's action and path,
 the number of files, or the command to run. The default view includes files
