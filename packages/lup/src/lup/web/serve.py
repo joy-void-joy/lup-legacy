@@ -15,17 +15,21 @@ it ends up on.
 """
 
 import mimetypes
+import time
 import webbrowser
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
+from html.parser import HTMLParser
 from importlib import resources
 from importlib.resources.abc import Traversable
-from pathlib import Path
+from pathlib import Path, PurePosixPath
+from urllib.parse import urlsplit
 
 import typer
 import uvicorn
-from fastapi import FastAPI, HTTPException
-from fastapi.responses import HTMLResponse, Response
+from fastapi import FastAPI
+from fastapi.responses import HTMLResponse, PlainTextResponse, Response
 from jinja2 import Environment, StrictUndefined, Template
+from pydantic import BaseModel
 
 from lup.web.loopback import guard_loopback_host, refuse_non_loopback
 
@@ -75,6 +79,85 @@ def bundle_template(surface: str, bundles: Path | None = None) -> Template:
     return environment.from_string(found.read_text(encoding="utf-8"))
 
 
+class NamedAssets(HTMLParser):
+    """Every file a built page names under its ``assets/``: its scripts and its stylesheets."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.named: list[str] = []
+
+    def handle_starttag(self, tag: str, attrs: Sequence[Sequence[str | None]]) -> None:
+        del tag
+        for attribute, value in attrs:
+            path = PurePosixPath(urlsplit(value or "").path)
+            if attribute in ("src", "href") and path.parent.name == "assets":
+                self.named.append(path.name)
+
+
+class BundledAsset(BaseModel, frozen=True):
+    """One file of a built surface's ``assets/``, as read."""
+
+    name: str
+    content: bytes
+
+
+class PageBundle(BaseModel, frozen=True):
+    """One built surface as it stood when read whole: its page, and every asset beside it."""
+
+    index: str
+    assets: list[BundledAsset]
+
+    @classmethod
+    def read(cls, root: Traversable) -> "PageBundle":
+        """The bundle under ``root`` as it stands now."""
+        folder = root.joinpath("assets")
+        return cls(
+            index=root.joinpath("index.html").read_text(encoding="utf-8"),
+            assets=[
+                BundledAsset(name=entry.name, content=entry.read_bytes())
+                for entry in (folder.iterdir() if folder.is_dir() else [])
+                if entry.is_file()
+            ],
+        )
+
+    def asset(self, name: str) -> BundledAsset | None:
+        """The asset called ``name``, where the bundle holds one."""
+        return next((asset for asset in self.assets if asset.name == name), None)
+
+    def missing(self) -> list[str]:
+        """The assets the page names that the bundle does not hold."""
+        named = NamedAssets()
+        named.feed(self.index)
+        return [name for name in named.named if self.asset(name) is None]
+
+
+def whole_bundle(
+    root: Traversable, attempts: int = 50, pause: float = 0.1
+) -> PageBundle:
+    """The bundle under ``root`` read whole, again until its page names nothing it lacks.
+
+    A rebuild writes the page and its assets one file at a time, so a read
+    landing between two of them can hold a page naming an asset not written
+    yet, or one already removed. It is read again, ``attempts`` times
+    ``pause`` apart; one still lacking an asset after that is refused,
+    naming what it lacks and the command that rebuilds it.
+    """
+    bundle = PageBundle.read(root)
+    for _ in range(attempts):
+        if not bundle.missing():
+            return bundle
+        time.sleep(pause)
+        bundle = PageBundle.read(root)
+    lacking = bundle.missing()
+    if lacking:
+        raise ValueError(
+            f"the bundle at {root} names assets it does not hold "
+            f"({', '.join(lacking)}); run `uv run lup-devtools harness generate "
+            "all` with bun installed"
+        )
+    return bundle
+
+
 def bundle_app(
     title: str, url: str, surface: str, bundles: Path | None = None
 ) -> FastAPI:
@@ -82,27 +165,30 @@ def bundle_app(
 
     The third shape beside a generated page and an edited asset: a bundle
     Vite built from TypeScript into ``lup.web``'s package data, under
-    ``bundles/<surface>/``. Served by name rather than mounted as a directory,
-    so a request reaches exactly one file the bundle declares and nothing
-    else the package holds — and a missing bundle is a clear refusal naming
-    the command that builds it, not a directory listing.
+    ``bundles/<surface>/``. Read whole once, as the app is built, and served
+    from what was read: the page and every asset it names come from one
+    build for as long as the app serves, whatever is rebuilt or removed on
+    disk beneath it. Served by name rather than mounted as a directory, so a
+    request reaches exactly one file the bundle holds and nothing else the
+    package does — and a missing bundle is a clear refusal naming the command
+    that builds it, not a directory listing. An asset the bundle does not
+    hold answers a 404 in words, which a page that asked for it from another
+    build cannot mistake for the script it wanted.
     """
-    root = bundle_root(surface, bundles)
-    index = root.joinpath("index.html")
-    application = page_app(title, url, index.read_text(encoding="utf-8"))
+    bundle = whole_bundle(bundle_root(surface, bundles))
+    application = page_app(title, url, bundle.index)
 
     @application.get("/assets/{name}")
     async def asset(name: str) -> Response:
-        # One plain filename under the bundle's own assets, nothing deeper:
-        # a name carrying a separator is refused before it reaches the tree.
-        if Path(name).name != name:
-            raise HTTPException(status_code=404)
-        found = root.joinpath("assets", name)
-        if not found.is_file():
-            raise HTTPException(status_code=404)
+        found = bundle.asset(name)
+        if found is None:
+            return PlainTextResponse(
+                f"{name} is not part of the page this server serves; reload the page.",
+                status_code=404,
+            )
         media_type, _encoding = mimetypes.guess_type(name)
         return Response(
-            content=found.read_bytes(),
+            content=found.content,
             media_type=media_type or "application/octet-stream",
         )
 

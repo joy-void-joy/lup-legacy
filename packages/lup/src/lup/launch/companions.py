@@ -38,8 +38,10 @@ import signal
 import socket
 import tempfile
 import threading
+import traceback
 import uuid
 from abc import ABC, abstractmethod
+from collections import deque
 from collections.abc import AsyncIterator, Callable, Iterator, Sequence
 from contextlib import (
     AbstractContextManager,
@@ -47,6 +49,7 @@ from contextlib import (
     asynccontextmanager,
     contextmanager,
 )
+from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from pathlib import Path
 from typing import Annotated
@@ -450,15 +453,37 @@ class CompanionProcess(BaseModel, frozen=True):
         return {name: value for name, value in merged.items() if name not in self.unset}
 
 
-def zombie(pid: int) -> bool:
-    """Whether ``pid`` has exited and waits on a parent that has not collected it."""
+def stat_fields(pid: int) -> list[str]:
+    """The fields of ``pid``'s /proc stat from its state on; none where unreadable."""
     try:
         stat = Path(f"/proc/{pid}/stat").read_text(encoding="utf-8")
     except OSError:
-        return False
+        return []
     # lup: ignore[string-split] — /proc stat's fields after the command's name
     fields = stat.rpartition(")")[2].split()
+    return fields
+
+
+def zombie(pid: int) -> bool:
+    """Whether ``pid`` has exited and waits on a parent that has not collected it."""
+    fields = stat_fields(pid)
     return bool(fields) and fields[0] == "Z"
+
+
+def exit_status(pid: int, started: str | None) -> int | None:
+    """How the process that started at ``started`` ended, while it waits to be collected.
+
+    Its exit code, or the negated signal that ended it, as
+    ``os.waitstatus_to_exitcode`` spells it: a zombie's own stat carries its
+    wait status (field 52) until its parent collects it. Nothing where it
+    runs, was collected already, or the pid names another process now.
+    """
+    fields = stat_fields(pid)
+    if len(fields) < 50 or fields[0] != "Z":
+        return None
+    if started is not None and fields[19] != started:
+        return None
+    return os.waitstatus_to_exitcode(int(fields[49]))
 
 
 class LiveProcess(BaseModel, frozen=True):
@@ -475,6 +500,34 @@ class LiveProcess(BaseModel, frozen=True):
     def running(self) -> bool:
         """Whether this same process still runs, rather than waiting to be collected."""
         return process_is_alive(self.pid, self.started) and not zombie(self.pid)
+
+    def missing(self) -> str:
+        """Why this process is judged gone, as a log line says it; nothing while it runs."""
+        if self.running():
+            return ""
+        current = process_start_token(self.pid)
+        if current is None:
+            return f"no process has pid {self.pid}"
+        if self.started is not None and current != self.started:
+            return (
+                f"pid {self.pid} names another process now, started at tick "
+                f"{current} rather than {self.started}"
+            )
+        return f"pid {self.pid} exited and waits to be collected"
+
+    def collected(self) -> int | None:
+        """How it ended, where anything can still say: collected where it is ours, else read off its zombie.
+
+        Its exit code, or the negated signal that ended it. A process whose
+        parent already collected it — a launcher gone, which left it to init —
+        leaves nothing to say it.
+        """
+        waiting = exit_status(self.pid, self.started)
+        try:
+            collected, status = os.waitpid(self.pid, os.WNOHANG)
+        except ChildProcessError:
+            return waiting
+        return os.waitstatus_to_exitcode(status) if collected == self.pid else waiting
 
     def stop(self, grace: float) -> None:
         """Stop it and everything it started: a terminate to its group, then a kill.
@@ -536,6 +589,84 @@ class Running(BaseModel, frozen=True):
 
     process: LiveProcess
     declared: JsonObject
+    since: datetime | None = None
+    """When it was started."""
+
+    output: int = 0
+    """Where its output begins in the companion's log, which every run appends to."""
+
+
+class CompanionStop(BaseModel, frozen=True):
+    """Lup stopping what ran, recorded in the slot and its log before the signal is sent."""
+
+    at: datetime
+    process: LiveProcess
+    """What it stopped."""
+
+    why: str
+    """The path that stopped it, naming the lease or launch it acted for."""
+
+    by: int
+    """The process that stopped it: a launcher, or the operator's command."""
+
+    leases: int = 0
+    """The live leases it counted as it stopped it."""
+
+
+def ended(status: int | None) -> str:
+    """How a process ended, in words, from its exit code or negated signal."""
+    if status is None:
+        return "it exited, and how is not known: it was no holder's to collect"
+    if status >= 0:
+        return "it exited cleanly" if status == 0 else f"it exited with status {status}"
+    try:
+        name = signal.Signals(-status).name
+    except ValueError:
+        name = f"signal {-status}"
+    return f"it was ended by {name}"
+
+
+class CompanionExit(BaseModel, frozen=True):
+    """What ran, found gone while launches still held it, recorded before it is started again."""
+
+    process: LiveProcess
+    at: datetime
+    """When a holder, or a launch joining, found it gone."""
+
+    ran: float | None = None
+    """How many seconds it had run, where its start is known."""
+
+    status: int | None = None
+    """Its exit code, or the negated signal that ended it; ``None`` where
+    nothing could collect it any more."""
+
+    stopped: CompanionStop | None = None
+    """Lup's own stop of it, where lup stopped it."""
+
+    log: Path
+    """The companion's log, which holds this run's output whole."""
+
+    offset: int = 0
+    """Where this run's output begins in ``log``."""
+
+    tail: list[str] = []
+    """The last lines of that output."""
+
+    restarted: datetime | None = None
+    """When it was started again after this, once it answered."""
+
+    def reason(self) -> str:
+        """Why it stopped, in one line: lup's stop where lup made one, else how it ended.
+
+        With what it said last, where it ended by itself or nobody knows how:
+        a process a signal ended said nothing of why.
+        """
+        if self.stopped is not None:
+            return f"lup stopped it: {self.stopped.why}"
+        if self.status is not None and self.status < 0:
+            return ended(self.status)
+        said = next((line for line in reversed(self.tail) if line.strip()), "")
+        return ended(self.status) + (f"; it last said: {said}" if said else "")
 
 
 class CompanionState(BaseModel, frozen=True):
@@ -547,10 +678,46 @@ class CompanionState(BaseModel, frozen=True):
     ports: list[GivenPort] = []
     running: Running | None = None
     leases: list[Lease] = []
+    stopped: CompanionStop | None = None
+    """The last time lup stopped what ran, and why."""
+
+    exited: CompanionExit | None = None
+    """The last time what ran was found gone while launches held it."""
+
+    restarts: int = 0
+    """How many times it was started again after that, since launches began holding it."""
+
+    failing: int = 0
+    """Exits in a row, each soon after the start before it: how far along its
+    backoff the next start waits."""
+
+    retry: datetime | None = None
+    """When the launches holding it start it again, where it is gone and not started yet."""
 
     def given(self) -> dict[PortName, PortNumber]:
         """The ports it was given, by its names for them."""
         return {port.name: port.port for port in self.ports}
+
+    def holds(self, lease: Lease) -> bool:
+        """Whether ``lease`` is among those kept."""
+        return any(held.id == lease.id for held in self.leases)
+
+
+class Started(BaseModel, frozen=True):
+    """One start of a shared companion: the state it leaves, and whether what it started answered."""
+
+    state: CompanionState
+    answered: bool
+
+
+class Reaped(BaseModel, frozen=True):
+    """How a companion's process ended, as the launcher that started it collected it."""
+
+    pid: int
+    status: int
+    """Its exit code, or the negated signal that ended it."""
+
+    at: datetime
 
 
 class CompanionSlot(BaseModel, frozen=True):
@@ -558,9 +725,69 @@ class CompanionSlot(BaseModel, frozen=True):
 
     directory: Path
 
+    def reaped(self, command: sh.RunningCommand, success: bool, status: int) -> None:
+        """Keep how the process a launch started ended, as that launch's ``sh`` collected it.
+
+        ``sh`` calls it in the launcher that started the process, whose own
+        thread collects its child within a second of its end — often before
+        any holder looks — so what it learned is written where every holder
+        reads it. Outside the slot's lock, so under a name of its own first.
+        """
+        del success
+        record = Reaped(pid=command.pid, status=status, at=datetime.now(UTC))
+        staged = self.directory / f"reaped.json.{uuid.uuid4().hex}"
+        staged.write_text(record.model_dump_json(), encoding="utf-8")
+        staged.replace(self.directory / "reaped.json")
+
+    def ended(self, running: Running) -> int | None:
+        """How what ran ended: collected now where it waits to be, else as its launcher collected it."""
+        status = running.process.collected()
+        if status is not None:
+            return status
+        try:
+            reaped = Reaped.model_validate_json(
+                (self.directory / "reaped.json").read_bytes()
+            )
+        except (OSError, ValidationError):
+            return None
+        if reaped.pid != running.process.pid:
+            return None
+        if running.since is not None and reaped.at < running.since:
+            return None
+        return reaped.status
+
     def log(self) -> Path:
         """Where the companion's output goes, outside the terminal the session takes over."""
         return self.directory / "output.log"
+
+    def logged(self) -> int:
+        """How much the log holds: where the next run's output begins."""
+        try:
+            return self.log().stat().st_size
+        except FileNotFoundError:
+            return 0
+
+    def noted(self, said: str) -> None:
+        """Write one line of lup's own into the log, among what the companion writes there.
+
+        So whoever reads the log for why the companion stopped reads, beside
+        its own last words, what lup did to it and on whose account.
+        """
+        self.directory.mkdir(parents=True, exist_ok=True)
+        with self.log().open("a", encoding="utf-8") as log:
+            log.write(
+                f"lup {datetime.now(UTC):%Y-%m-%dT%H:%M:%SZ} pid {os.getpid()}: {said}\n"
+            )
+
+    def tail(self, offset: int, lines: int) -> list[str]:
+        """The last ``lines`` lines of the output written from ``offset`` on."""
+        try:
+            with self.log().open("rb") as log:
+                log.seek(offset)
+                written = log.read().decode(errors="replace")
+        except FileNotFoundError:
+            return []
+        return list(deque(written.splitlines(), maxlen=lines))
 
     @contextmanager
     def locked(self) -> Iterator[None]:
@@ -690,6 +917,14 @@ class SharedProcess(HostCompanion, ABC, frozen=True):
     declaration it was started from is not this one — the sessions already
     holding it keep their leases on the replacement. It stops once no lease
     is left.
+
+    While any lease is held, the holders keep it running. Each looks every
+    ``watched_every`` seconds, and whichever finds it gone first records how
+    it ended, then starts it again from the declaration it launched with, on
+    the ports it had where they are still free — waiting longer after each
+    exit in a row, and never less than the first step of ``backoff``. Every
+    stop lup makes is written, with why and how many live leases held it,
+    into the companion's log and its state before the signal is sent.
     """
 
     scope: CompanionScope = CompanionScope.CHECKOUT
@@ -710,6 +945,17 @@ class SharedProcess(HostCompanion, ABC, frozen=True):
     Only those: the store's values leave it for the companions naming them,
     and a launched session holds none. A key the store lacks refuses the
     launch, naming where it is set."""
+
+    backoff: tuple[float, ...] = Field(default=(1.0, 5.0, 30.0, 60.0), min_length=1)
+    """Seconds the holders wait before starting it again after each exit in a
+    row, the last repeating. An exit after a run longer than the last starts
+    the row over."""
+
+    watched_every: float = Field(default=1.0, gt=0)
+    """Seconds between each holder's looks at whether it still runs."""
+
+    exit_lines: int = Field(default=40, ge=0)
+    """How many of its last lines of output an exit's record keeps; its log keeps every one."""
 
     @abstractmethod
     def process(self, place: CompanionPlace, root: Path) -> CompanionProcess:
@@ -735,45 +981,64 @@ class SharedProcess(HostCompanion, ABC, frozen=True):
 
     @contextmanager
     def held(self, launch: CompanionLaunch) -> Iterator[Contribution]:
+        """Hold it for one session, and keep it running while held: the watch ends before the lease."""
         slot = self.slot(launch.root)
         lease = Lease(id=uuid.uuid4().hex, holder=LiveProcess.of(os.getpid()))
         with slot.locked():
             place = self.joined(slot, launch, lease)
+        letting_go = threading.Event()
+        watching = threading.Thread(
+            target=self.supervised,
+            args=(slot, launch, lease, letting_go),
+            name=f"supervising {self.name}",
+            daemon=True,
+        )
+        watching.start()
         try:
             yield self.contribution(place, launch.root)
         finally:
+            letting_go.set()
+            watching.join()
             with slot.locked():
                 self.released(slot, lease)
 
     def joined(
         self, slot: CompanionSlot, launch: CompanionLaunch, lease: Lease
     ) -> CompanionPlace:
-        """Join what runs where it still serves this declaration, else start it; lease it."""
+        """Join what runs where it still serves this declaration, else start it; lease it.
+
+        What runs and does not serve is stopped first, saying why; one found
+        gone while launches held it is recorded as exited. A start that fails
+        refuses this launch, with the state written first, so the launches
+        already holding it start it again.
+        """
+        now = datetime.now(UTC)
         state = slot.read()
-        declared = self.model_dump(mode="json")
-        place = CompanionPlace(state=slot.directory, ports=state.given())
-        running = state.running
-        serving = (
-            running is not None
-            and running.declared == declared
-            and running.process.running()
-            and self.answers(place)
+        leases = self.live(slot, state.leases)
+        state = state.model_copy(
+            update={"leases": leases}
+            if leases
+            else {"leases": leases, "restarts": 0, "failing": 0, "retry": None}
         )
-        if not serving:
-            if running is not None and running.process.running():
-                running.process.stop(self.grace)
-            home = companions_home()
-            with choosing_ports(home):
-                given = given_ports(
-                    dict(self.ports), state.ports, kept_elsewhere(home, slot)
+        place = CompanionPlace(state=slot.directory, ports=state.given())
+        unserved = self.unserved(state.running, place)
+        if unserved:
+            state = self.vacated(
+                slot, state, f"a launch in {launch.root} replaces it: {unserved}", now
+            )
+            try:
+                start = self.started(slot, launch, state)
+            except LaunchRefused:
+                slot.write(state)
+                raise
+            if not start.answered:
+                slot.write(start.state)
+                raise LaunchRefused(
+                    f"host companion {self.name!r} did not answer within "
+                    f"{self.ready_within:g}s; its output is in {slot.log()}"
                 )
-                place = CompanionPlace(
-                    state=slot.directory, ports={port.name: port.port for port in given}
-                )
-                running = Running(
-                    process=self.started(place, launch, slot), declared=declared
-                )
-                state = state.model_copy(update={"ports": given})
+            state = self.resumed(start.state, now)
+            place = CompanionPlace(state=slot.directory, ports=state.given())
         slot.write(
             state.model_copy(
                 update={
@@ -782,20 +1047,67 @@ class SharedProcess(HostCompanion, ABC, frozen=True):
                         if self.scope is CompanionScope.CHECKOUT
                         else None
                     ),
-                    "running": running,
-                    "leases": [
-                        *(held for held in state.leases if held.holder.running()),
-                        lease,
-                    ],
+                    "leases": [*leases, lease],
                 }
             )
         )
         return place
 
+    def unserved(
+        self, running: Running | None, place: CompanionPlace, patience: float = 5.0
+    ) -> str:
+        """Why what runs cannot serve a launch of this declaration; nothing where it serves.
+
+        One of this declaration that does not answer at once is given
+        ``patience`` seconds before it is judged not to: stopping one that is
+        only busy would cost every session holding it its service.
+        """
+        if running is None:
+            return "nothing runs"
+        missing = running.process.missing()
+        if missing:
+            return f"it is gone: {missing}"
+        if running.declared != self.model_dump(mode="json"):
+            return "it was started from another declaration"
+        if answering(lambda: self.answers(place), patience):
+            return ""
+        return f"it did not answer within {patience:g}s"
+
     def started(
+        self, slot: CompanionSlot, launch: CompanionLaunch, state: CompanionState
+    ) -> Started:
+        """Start it from this launch's declaration, and wait until it serves.
+
+        On the ports it had where they are still free, chosen and started
+        under the lock every companion chooses under. One that does not
+        answer within ``ready_within`` is stopped, saying so, and stays named
+        as what ran, so the launches holding it record its exit and try again.
+        """
+        home = companions_home()
+        with choosing_ports(home):
+            given = given_ports(
+                dict(self.ports), state.ports, kept_elsewhere(home, slot)
+            )
+            place = CompanionPlace(
+                state=slot.directory, ports={port.name: port.port for port in given}
+            )
+            running = self.spawned(place, launch, slot)
+            state = state.model_copy(update={"ports": given, "running": running})
+            if answering(lambda: self.answers(place), self.ready_within):
+                return Started(state=state, answered=True)
+            stopped = self.halted(
+                slot,
+                state,
+                running.process,
+                f"it did not answer within {self.ready_within:g}s of starting, "
+                f"from the launch in {launch.root}",
+            )
+            return Started(state=stopped, answered=False)
+
+    def spawned(
         self, place: CompanionPlace, launch: CompanionLaunch, slot: CompanionSlot
-    ) -> LiveProcess:
-        """Start it in a session of its own, and wait until it serves.
+    ) -> Running:
+        """Start it in a session of its own, without waiting for it: what runs, and where its output begins.
 
         A session of its own, so the signal that stops it reaches whatever it
         started too, with nothing on its input, since the launch starting it
@@ -812,6 +1124,7 @@ class SharedProcess(HostCompanion, ABC, frozen=True):
                 f"which {stored.path()} does not hold; set it there from a "
                 "terminal on the host"
             )
+        begins = slot.logged()
         try:
             with (
                 slot.log().open("ab") as output,
@@ -826,6 +1139,7 @@ class SharedProcess(HostCompanion, ABC, frozen=True):
                     },
                     _bg=True,
                     _bg_exc=False,
+                    _done=slot.reaped,
                     _new_session=True,
                     _in=nothing,
                     _out=output,
@@ -836,38 +1150,236 @@ class SharedProcess(HostCompanion, ABC, frozen=True):
                 f"host companion {self.name!r} runs {program!r}, which is not "
                 "installed here; install it, or drop the companion"
             ) from error
-        process = LiveProcess.of(running.pid)
-        serving = asyncio.run(
-            wait_until(
-                lambda: True if self.answers(place) else None,
-                wait_seconds=self.ready_within,
-                poll_interval_seconds=0.05,
-            )
+        return Running(
+            process=LiveProcess.of(running.pid),
+            declared=self.model_dump(mode="json"),
+            since=datetime.now(UTC),
+            output=begins,
         )
-        if serving is None:
-            process.stop(self.grace)
-            raise LaunchRefused(
-                f"host companion {self.name!r} did not answer within "
-                f"{self.ready_within:g}s; its output is in {slot.log()}"
-            )
-        return process
 
     def released(self, slot: CompanionSlot, lease: Lease) -> None:
-        """Let go of one lease, stopping what runs once no live one is left."""
+        """Let go of one lease, stopping what runs once no live one is left, saying so first."""
         state = slot.read()
-        leases = [
-            held
-            for held in state.leases
-            if held.id != lease.id and held.holder.running()
-        ]
+        leases = self.live(slot, [held for held in state.leases if held.id != lease.id])
+        state = state.model_copy(update={"leases": leases})
+        if leases:
+            slot.write(state)
+            return
         running = state.running
-        if not leases and running is not None:
-            running.process.stop(self.grace)
-            running = None
-        slot.write(state.model_copy(update={"leases": leases, "running": running}))
+        if running is not None and running.process.running():
+            state = self.halted(
+                slot,
+                state,
+                running.process,
+                f"the last lease was let go: {lease.id}, the launch pid "
+                f"{lease.holder.pid}'s",
+            )
+        slot.write(
+            state.model_copy(
+                update={"running": None, "restarts": 0, "failing": 0, "retry": None}
+            )
+        )
+
+    def live(self, slot: CompanionSlot, leases: list[Lease]) -> list[Lease]:
+        """The leases whose launchers still run, writing into the log each one let go and why."""
+
+        def kept(lease: Lease) -> bool:
+            missing = lease.holder.missing()
+            if missing:
+                slot.noted(
+                    f"lease {lease.id} is let go: its launcher is gone, {missing}"
+                )
+            return not missing
+
+        return [lease for lease in leases if kept(lease)]
+
+    def halted(
+        self, slot: CompanionSlot, state: CompanionState, process: LiveProcess, why: str
+    ) -> CompanionState:
+        """Stop ``process`` for ``why``, having written why into its log and its state first.
+
+        ``state`` carries the live leases, whose count the record keeps: a
+        stop with launches still holding it is one they start it again after.
+        """
+        stop = CompanionStop(
+            at=datetime.now(UTC),
+            process=process,
+            why=why,
+            by=os.getpid(),
+            leases=len(state.leases),
+        )
+        slot.noted(
+            f"stopping pid {process.pid}: {why} (live leases: {len(state.leases)})"
+        )
+        stopping = state.model_copy(update={"stopped": stop})
+        slot.write(stopping)
+        process.stop(self.grace)
+        return stopping
+
+    def vacated(
+        self, slot: CompanionSlot, state: CompanionState, why: str, now: datetime
+    ) -> CompanionState:
+        """The state once what ran no longer stands in a start's way.
+
+        Stopped for ``why`` where it still runs; else, where launches hold
+        it, recorded as exited.
+        """
+        running = state.running
+        if running is not None and running.process.running():
+            return self.halted(slot, state, running.process, why)
+        if not state.leases:
+            return state
+        return self.exit_recorded(slot, state, now)
+
+    def exit_recorded(
+        self, slot: CompanionSlot, state: CompanionState, now: datetime
+    ) -> CompanionState:
+        """What ran recorded as gone, once, and when the launches holding it start it again.
+
+        Recorded by whichever holder, or launch joining, finds it first: when,
+        how it ended where that can still be collected, lup's stop of it
+        where lup made one, and the last lines it wrote. An exit sooner after
+        its start than the last step of ``backoff`` is one more in a row and
+        waits the next step; any other starts the row over.
+        """
+        running = state.running
+        exited = state.exited
+        if running is None or (
+            exited is not None and exited.process == running.process
+        ):
+            return state
+        ran = (now - running.since).total_seconds() if running.since else None
+        row = state.failing + 1 if ran is not None and ran < self.backoff[-1] else 1
+        wait = self.backoff[min(row, len(self.backoff)) - 1]
+        stop = state.stopped
+        gone = CompanionExit(
+            process=running.process,
+            at=now,
+            ran=ran,
+            status=slot.ended(running),
+            stopped=stop
+            if stop is not None and stop.process == running.process
+            else None,
+            log=slot.log(),
+            offset=running.output,
+            tail=slot.tail(running.output, self.exit_lines),
+        )
+        slot.noted(
+            f"pid {running.process.pid} is gone while held (live leases: "
+            f"{len(state.leases)}): {gone.reason()}; starting it again in {wait:g}s"
+        )
+        return state.model_copy(
+            update={
+                "exited": gone,
+                "failing": row,
+                "retry": now + timedelta(seconds=wait),
+            }
+        )
+
+    def resumed(self, state: CompanionState, now: datetime) -> CompanionState:
+        """The state once a start answered: the exit it follows marked restarted, and counted."""
+        exited = state.exited
+        if exited is None or exited.restarted is not None:
+            return state.model_copy(update={"retry": None})
+        return state.model_copy(
+            update={
+                "exited": exited.model_copy(update={"restarted": now}),
+                "restarts": state.restarts + 1,
+                "retry": None,
+            }
+        )
+
+    def supervised(
+        self,
+        slot: CompanionSlot,
+        launch: CompanionLaunch,
+        lease: Lease,
+        letting_go: threading.Event,
+    ) -> None:
+        """Keep it running for as long as this launch holds it, on a thread of the launcher's.
+
+        Each look reads the state and whether its process runs, and locks the
+        slot only where something is to be done, so whichever holder locks
+        first records the exit and, once its wait is over, starts it; every
+        other then finds it recorded, or running again. A look that fails is
+        written into the companion's log — the launcher's terminal is the
+        session's, drawn over whole by its runtime — and the next waits along
+        the backoff while they keep failing.
+        """
+        failed = 0
+
+        def waited() -> bool:
+            steps = self.backoff
+            pause = steps[min(failed, len(steps)) - 1] if failed else self.watched_every
+            return letting_go.wait(pause)
+
+        for _ in iter(waited, True):
+            try:
+                if self.untended(slot.read(), lease):
+                    with slot.locked():
+                        if not letting_go.is_set():
+                            self.tended(slot, launch, lease)
+            except Exception:
+                failed += 1
+                slot.noted(
+                    f"this launch could not look after it:\n{traceback.format_exc()}"
+                )
+                continue
+            failed = 0
+
+    def untended(self, state: CompanionState, lease: Lease) -> bool:
+        """Whether a holder has anything to do: its own lease dropped, or nothing running."""
+        running = state.running
+        return (
+            not state.holds(lease) or running is None or not running.process.running()
+        )
+
+    def tended(
+        self, slot: CompanionSlot, launch: CompanionLaunch, lease: Lease
+    ) -> None:
+        """Under the slot's lock: take back a dropped lease, record an exit, start it again once due.
+
+        A lease dropped while its launcher runs was judged gone by mistake,
+        so it is taken back, saying so, and what that mistake stopped is
+        started again like any exit. A start that fails waits the next step
+        of the backoff, as an exit would.
+        """
+        now = datetime.now(UTC)
+        state = slot.read()
+        if not state.holds(lease):
+            slot.noted(
+                f"lease {lease.id} of the launch pid {lease.holder.pid} was let go "
+                "while that launch still holds it; taken back"
+            )
+            state = state.model_copy(
+                update={"leases": [*self.live(slot, state.leases), lease]}
+            )
+        running = state.running
+        if running is not None and running.process.running():
+            slot.write(state)
+            return
+        state = self.exit_recorded(slot, state, now)
+        if state.retry is not None and now < state.retry:
+            slot.write(state)
+            return
+        try:
+            start = self.started(slot, launch, state)
+        except LaunchRefused as refused:
+            row = state.failing + 1
+            wait = self.backoff[min(row, len(self.backoff)) - 1]
+            slot.noted(
+                f"starting it again failed: {refused}; trying again in {wait:g}s"
+            )
+            slot.write(
+                state.model_copy(
+                    update={"failing": row, "retry": now + timedelta(seconds=wait)}
+                )
+            )
+            return
+        slot.write(self.resumed(start.state, now) if start.answered else start.state)
 
     def standing(self, root: Path) -> "CompanionStanding":
-        """What serves for a session in ``root`` now, and how many launches hold it.
+        """What serves for a session in ``root`` now, how many launches hold it, and how it has fared.
 
         Read from outside any launch — an operator asking after it — so it
         joins nothing and starts nothing.
@@ -884,31 +1396,66 @@ class SharedProcess(HostCompanion, ABC, frozen=True):
             place=place,
             serving=running.process if serving and running is not None else None,
             leases=sum(1 for lease in state.leases if lease.holder.running()),
+            stopped=state.stopped,
+            exited=state.exited,
+            restarts=state.restarts,
+            retry=state.retry,
         )
 
-    def stopped(self, root: Path) -> bool:
-        """Stop what runs for ``root`` now, whether or not it is held.
+    def stopped(self, root: Path, why: str = "the operator stopped it") -> bool:
+        """Stop what runs for ``root`` now, whether or not it is held, saying ``why`` first.
 
-        The leases stay: the sessions holding it still hold it, and the next
-        launch finds nothing running and starts it again.
+        The leases stay, and so does the record of what ran: the launches
+        holding it find it gone and start it again, and with none holding it
+        the next launch does.
         """
         slot = self.slot(root)
         with slot.locked():
             state = slot.read()
             running = state.running
-            if running is None:
+            if running is None or not running.process.running():
                 return False
-            running.process.stop(self.grace)
-            slot.write(state.model_copy(update={"running": None}))
+            self.halted(
+                slot,
+                state.model_copy(update={"leases": self.live(slot, state.leases)}),
+                running.process,
+                why,
+            )
         return True
 
 
+def answering(answers: Callable[[], bool], within: float, every: float = 0.05) -> bool:
+    """Whether ``answers`` says yes within ``within`` seconds, asked every ``every``."""
+    return (
+        asyncio.run(
+            wait_until(
+                lambda: True if answers() else None,
+                wait_seconds=within,
+                poll_interval_seconds=every,
+            )
+        )
+        is not None
+    )
+
+
 class CompanionStanding(BaseModel, frozen=True):
-    """One shared companion as an operator reads it: where it is, whether it serves."""
+    """One shared companion as an operator reads it: where it is, whether it serves, how it fared."""
 
     place: CompanionPlace
     serving: LiveProcess | None = None
     """The process serving, where one runs and every port it was given answers."""
+
+    stopped: CompanionStop | None = None
+    """The last time lup stopped it, and why."""
+
+    exited: CompanionExit | None = None
+    """The last time it was found gone while launches held it."""
+
+    restarts: int = 0
+    """How many times the launches holding it started it again."""
+
+    retry: datetime | None = None
+    """When they start it again, where it is gone and not started yet."""
 
     leases: int = 0
     """How many launches still running hold it."""

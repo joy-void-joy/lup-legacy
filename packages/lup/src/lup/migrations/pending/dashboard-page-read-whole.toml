@@ -1,0 +1,14 @@
+subjects = ["kept_page"]
+reason = """
+The dashboard's page and its assets are read whole into memory as its server \
+is built (`lup.web.serve.whole_bundle`), so a rebuilt bundle never splits them; \
+the copy kept beside the dashboard's state, which only index.html's presence \
+guarded, is gone"""
+
+[[steps]]
+instruction = """
+Build the page's app with `dashboard_app(...)` or `bundle_app(...)` and no \
+`bundles` directory where `kept_page(state, revision)` supplied one: the \
+server reads the bundle from `lup.web`'s package data once, whole. A copy left \
+under `$XDG_STATE_HOME/lup/companions/user/dashboard/bundles/` is read by \
+nothing and can be removed."""

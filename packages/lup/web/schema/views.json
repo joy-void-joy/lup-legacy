@@ -4192,6 +4192,11 @@
           "title": "Older",
           "type": "boolean"
         },
+        "restarted": {
+          "default": "",
+          "title": "Restarted",
+          "type": "string"
+        },
         "root": {
           "default": "",
           "title": "Root",
@@ -4221,7 +4226,8 @@
         "root",
         "since",
         "older",
-        "failing"
+        "failing",
+        "restarted"
       ],
       "title": "RunningCode",
       "type": "object"
@@ -4447,6 +4453,7 @@
           "default": {
             "failing": "",
             "older": false,
+            "restarted": "",
             "root": "",
             "since": null,
             "source": ""

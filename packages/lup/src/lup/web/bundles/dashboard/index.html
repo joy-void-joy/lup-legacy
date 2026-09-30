@@ -5,7 +5,26 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="referrer" content="no-referrer" />
     <title>Lup dashboard</title>
-    <script type="module" crossorigin src="./assets/index-DK43W3gl.js"></script>
+    <script>
+      // Before the page's own script, which a dashboard serving another build
+      // no longer holds: where it fails to load, say so rather than stay blank.
+      addEventListener(
+        "error",
+        (event) => {
+          if (!(event.target instanceof HTMLScriptElement)) return;
+          const say = () => {
+            const root = document.getElementById("root");
+            if (root !== null && root.childElementCount === 0) {
+              root.textContent = "This page is out of date — reload it.";
+            }
+          };
+          if (document.readyState === "loading") addEventListener("DOMContentLoaded", say);
+          else say();
+        },
+        true,
+      );
+    </script>
+    <script type="module" crossorigin src="./assets/index-5b5op1Ha.js"></script>
     <link rel="stylesheet" crossorigin href="./assets/index-CkgwLCiv.css">
   </head>
   <body>

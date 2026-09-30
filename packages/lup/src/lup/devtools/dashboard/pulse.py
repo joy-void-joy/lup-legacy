@@ -44,13 +44,23 @@ class RunningCode(BaseModel, frozen=True):
     failing: str = ""
     """Why that newer code would not start, where it would not."""
 
+    restarted: str = ""
+    """Why the dashboard before this one stopped, where the sessions holding
+    it started this one after it stopped unexpectedly; said for a few minutes."""
+
     def said(self) -> str:
-        """What the page and the status line say of it; nothing while it is current."""
+        """What the page and the status line say of it; nothing while it is current and ran on."""
+        restarted = (
+            f"restarted after it stopped: {self.restarted}" if self.restarted else ""
+        )
         if not self.older:
-            return ""
-        if self.failing:
-            return "dashboard runs older code; its newer code does not start"
-        return "dashboard runs older code; restarting"
+            return restarted
+        older = (
+            "dashboard runs older code; its newer code does not start"
+            if self.failing
+            else "dashboard runs older code; restarting"
+        )
+        return "; ".join(part for part in (older, restarted) if part)
 
 
 class DashboardPulse(BaseModel, frozen=True):
@@ -76,6 +86,9 @@ class DashboardPulse(BaseModel, frozen=True):
     code: RunningCode = RunningCode()
     """Which code it runs."""
 
+    restarts: int = 0
+    """How many times the sessions holding it started it again after it stopped."""
+
     def current(self, now: datetime, within: timedelta = timedelta(seconds=30)) -> bool:
         """Whether the service wrote it recently enough to still be running."""
         return now - self.beat <= within
@@ -84,7 +97,8 @@ class DashboardPulse(BaseModel, frozen=True):
         """What waits and where, in one line; the address alone where nothing waits.
 
         A dashboard running older code than its checkout says so between the
-        two, since what it answers until it restarts may be refused.
+        two, since what it answers until it restarts may be refused; so does
+        one started again moments ago after it stopped, saying why it stopped.
         """
         noun = "review" if self.pending == 1 else "reviews"
         said = self.code.said()
