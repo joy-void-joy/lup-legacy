@@ -25,10 +25,18 @@ decision silently dropped reads exactly like one never made.
 """
 
 from pathlib import Path
-from typing import Literal
+from typing import Annotated, Literal
+from urllib.parse import urlsplit
 
 import tomlkit
-from pydantic import BaseModel, Field, ValidationError, field_validator
+from pydantic import (
+    AfterValidator,
+    BaseModel,
+    Field,
+    HttpUrl,
+    ValidationError,
+    field_validator,
+)
 from pydantic_settings import BaseSettings
 from tomlkit.exceptions import TOMLKitError
 from tomlkit.items import Table
@@ -81,13 +89,39 @@ class UserCleanup(BaseModel, frozen=True, extra="forbid"):
     removes it sooner."""
 
 
+def origin_only(url: HttpUrl) -> HttpUrl:
+    """Refuse a URL that says more than where a page is served: an origin is its scheme, host and port alone."""
+    beyond = (url.username, url.password, url.query, url.fragment)
+    if url.path != "/" or any(part is not None for part in beyond):
+        raise ValueError(
+            "an origin is scheme://host[:port] alone, with no user, path, query or fragment"
+        )
+    return url
+
+
+type BrowserOrigin = Annotated[HttpUrl, AfterValidator(origin_only)]
+"""Where a browser reaches a page, as ``https://their.proxy.name`` or ``http://host:8080``."""
+
+
 class UserDashboard(BaseModel, frozen=True, extra="forbid"):
-    """How the dashboard reaches for the person when a review parks."""
+    """How the dashboard reaches for the person when a review parks, and where they reach it."""
 
     reopen: bool = True
     """Whether a review parking while no tab follows the page opens it in
     the browser, at most once per quiet period; `dashboard reopen --off`
     turns it off. The desktop notice is sent either way."""
+
+    origins: list[BrowserOrigin] = []
+    """Where the page is also reached beside its loopback address: each a
+    whole origin a reverse proxy in front of the dashboard serves it at,
+    ``https://their.proxy.name``. The dashboard answers a request whose
+    ``Host`` is one of theirs and takes a write whose ``Origin`` is one, and
+    `dashboard status`, `dashboard open` and an operator's launch print the
+    page's launch address at each."""
+
+    def served_at(self) -> list[str]:
+        """Each declared origin as a browser writes it in ``Origin``: its default port left out."""
+        return [f"{url.scheme}://{urlsplit(str(url)).netloc}" for url in self.origins]
 
 
 class UserConfig(BaseModel, frozen=True, extra="forbid"):
