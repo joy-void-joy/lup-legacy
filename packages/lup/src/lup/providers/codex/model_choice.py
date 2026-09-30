@@ -87,6 +87,22 @@ def codex_model_id(
             return resolved
 
 
+def codex_model_arguments(
+    model: CodexModelChoice, effort: CodexEffort, tiers: CodexModelTiers
+) -> list[str] | None:
+    """A one-shot ``codex exec``'s words for *model* at *effort*, or nothing for no model.
+
+    An inherited model is nothing: a process started outside any session has
+    no session's model to take. An effort the model's catalog row lacks is
+    refused, as a session declaring it would be.
+    """
+    slug = codex_model_id(model, tiers)
+    if slug is None:
+        return None
+    refuse_unsupported_effort(model, effort, tiers)
+    return ["--model", slug, *codex_effort_arguments(effort)]
+
+
 def refuse_unsupported_effort(
     model: CodexModelChoice | None,
     effort: CodexEffort | None,

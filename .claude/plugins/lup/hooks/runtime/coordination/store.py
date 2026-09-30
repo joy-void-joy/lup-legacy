@@ -116,12 +116,13 @@ byte a page at a time from there back, never the whole record at once.
 
 LOOKS_DIR = "looks"
 WINDOWS_DIR = "windows"
-"""The two places one process keeps working state of its own under the store.
+TITLES_DIR = "titles"
+"""The places one process keeps working state of its own under the store.
 
-Declared beside the rest of the layout although nothing here reads either: the
-dispatcher is the windows' only writer and reader, and the prompt fold is the
-looks'. A name the layout carries in one place is a name a rename cannot leave
-behind.
+Declared beside the rest of the layout although nothing here reads any: the
+dispatcher is the windows' only writer and reader, the prompt fold is the
+looks', and the naming hook is the titles'. A name the layout carries in one
+place is a name a rename cannot leave behind.
 """
 
 ROSTER_LOCK = "roster.lock"

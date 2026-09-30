@@ -13,6 +13,7 @@ knows the model, an effort the model does not accept is refused here, at the
 declaration, rather than dropped by the CLI or narrowed to one it has.
 """
 
+import json
 from typing import Literal, get_args
 
 from pydantic import BaseModel, TypeAdapter, ValidationError
@@ -110,6 +111,29 @@ def claude_effort(effort: ClaudeEffort) -> ClaudeEffortSetting:
             return ClaudeEffortSetting(level="xhigh", settings={"ultracode": True})
         case "low" | "medium" | "high" | "xhigh" | "max":
             return ClaudeEffortSetting(level=effort)
+
+
+def claude_model_arguments(
+    model: ClaudeModelChoice, effort: ClaudeEffort
+) -> list[str] | None:
+    """A one-shot ``claude -p``'s words for *model* at *effort*, or nothing for no model.
+
+    An inherited model is nothing: a process started outside any session has
+    no session's model to take. An effort the model's catalog row lacks is
+    refused, as a session declaring it would be, and ``ultra``'s settings
+    travel in the call's own ``--settings`` document.
+    """
+    name = claude_model_id(model)
+    if name is None:
+        return None
+    refuse_unsupported_effort(model, effort)
+    setting = claude_effort(effort)
+    return [
+        "--model",
+        name,
+        *setting.arguments(),
+        *(["--settings", json.dumps(setting.settings)] if setting.settings else []),
+    ]
 
 
 def refuse_unsupported_effort(

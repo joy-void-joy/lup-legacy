@@ -8,10 +8,12 @@ from pathlib import Path
 
 import tomlkit
 from lup.providers.codex.login import CODEX_LOGIN
-from lup.providers.codex.model_choice import codex_model_id
+from lup.providers.codex.builtins import CodexBuiltins
+from lup.providers.codex.model_choice import codex_model_arguments, codex_model_id
 from lup.providers.codex.subagents import CodexModelTiers
 from lup.providers.drift_prompt import drift_hook
 from lup.providers.peer_delivery import delivery_artifacts, delivery_command
+from lup.providers.session_naming import NamingSpelling, ResumeEvent, naming_hook
 from lup.providers.roster_prompt import (
     PromptHook,
     departure_hook,
@@ -657,6 +659,13 @@ CODEX_CALLER_PAYLOAD = (
 )
 """The host half of the caller hook, shipped verbatim for its entry and the dispatcher."""
 
+CODEX_SESSION_NAMING = (
+    resources.files("lup.providers.codex")
+    .joinpath("assets/session_naming.py")
+    .read_text("utf-8")
+)
+"""The naming hook's host half, shipped verbatim beside the package it imports."""
+
 CODEX_PATCH_RUNTIME = (
     resources.files("lup.providers.codex").joinpath("patch.py").read_text("utf-8")
 )
@@ -834,10 +843,13 @@ class CodexHookRenderer(ArtifactRenderer[HookSet]):
                 ],
             }
         ]
-        # Two folds under the one event, kept side by side rather than merged:
-        # who else is here, and whether what this project is built on still
-        # stands at one commit. Both are context and neither can refuse, so
-        # the runtime runs whichever of them the project declared.
+        # The hooks under the one event, kept side by side rather than merged:
+        # which thread this session is, who else is here, whether what this
+        # project is built on still stands at one commit, and what this
+        # session is called. None can refuse, so the runtime runs whichever
+        # the project declared. The name holds no prompt here: this runtime
+        # names a thread through its app-server, which a process of the
+        # hook's own reaches after the hook has returned.
         roster = folded(
             [
                 wake_hook(
@@ -859,6 +871,27 @@ class CodexHookRenderer(ArtifactRenderer[HookSet]):
                     "PLUGIN_ROOT",
                     source,
                     CODEX_PROMPT_EVENT,
+                ),
+                naming_hook(
+                    Path(f".codex/plugins/{self.plugin_name}"),
+                    "PLUGIN_ROOT",
+                    source,
+                    CODEX_PROMPT_EVENT,
+                    CODEX_SESSION_NAMING,
+                    "lup.providers.codex.assets.session_naming",
+                    NamingSpelling(
+                        chosen=lambda tier, effort: codex_model_arguments(
+                            tier, effort, CodexModelTiers()
+                        ),
+                        # Every facility that could hand the ask a tool, off:
+                        # measured with its shell on, the naming model went
+                        # exploring until its deadline instead of answering.
+                        arguments=CodexBuiltins().arguments(),
+                        # Codex hands no hook a session's title, so a resume
+                        # is heard where the session starts, and the name the
+                        # reopened thread already has is read after it.
+                        resume=ResumeEvent(event="SessionStart", matcher="resume"),
+                    ),
                 ),
             ]
         )
