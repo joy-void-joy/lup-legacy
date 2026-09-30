@@ -49,6 +49,10 @@ from .semantics import CheckpointEvidence, Reach, UnjudgedAmbient
 # lup: ignore[constant-declaration] — a row's own wording
 REDUNDANT_DECISION = " — a reviewer was already going to see this"
 # lup: ignore[constant-declaration] — a row's own wording
+HANDED_OVER_DECISION = (
+    " — this is the runtime's own to decide, so a stated reason changes nothing"
+)
+# lup: ignore[constant-declaration] — a row's own wording
 REDUNDANT_SANDBOX = " — this was already placed on the host"
 # lup: ignore[constant-declaration] — a row's own wording
 ESCALATED_PREFIX = "escalated ({reason}): "
@@ -337,6 +341,12 @@ class DecisionEscalation(SettlementRule):
     stated reason over something permitted would buy a prompt for nothing,
     and an agent that wrote one deserves to learn it was unnecessary rather
     than to have it silently work.
+
+    Nor to a verdict handed to the runtime's own mode, and for the same
+    reason. A change too large for the small-change gate is the runtime's to
+    answer as the operator set it up to, and a question lup put in its place
+    would be a review nobody asked this policy to hold -- so the handoff
+    stands, and the agent learns the reason was not needed.
     """
 
     settles = False
@@ -351,6 +361,11 @@ class DecisionEscalation(SettlementRule):
         if decision.effect == "allow":
             return decision.revised(
                 reason=decision.reason + REDUNDANT_DECISION,
+                visibility="notice",
+            ).advising(notice)
+        if decision.effect == "defer" and decision.abstention == "provider_native":
+            return decision.revised(
+                reason=decision.reason + HANDED_OVER_DECISION,
                 visibility="notice",
             ).advising(notice)
         prefix = ESCALATED_PREFIX.format(reason=facts.escalation.reason)

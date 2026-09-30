@@ -3674,9 +3674,14 @@ def yields_to_scratch(
     naming the scratch root itself (`tmp`) is about scratch, so it holds.
     Every gate reads a protected path through this, so a shell write and an
     edit of the same file get one answer.
+
+    A new devtools module is named the same way -- by the `src/<package>/
+    devtools` parts wherever they sit -- so a scratch copy mirroring one
+    under `tmp/` is a scratch file like any other, and the rule is left to
+    the path it mirrors.
     """
     return (
-        row["kind"] == "contains_part"
+        row["kind"] in ("contains_part", "new_devtools")
         and path_role(path, path_roles) == "scratch"
         and path_role(row["value"], path_roles) != "scratch"
     )

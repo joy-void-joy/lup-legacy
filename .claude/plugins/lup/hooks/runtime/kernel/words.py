@@ -3,7 +3,7 @@
 """Word-level shell helpers: expansion safety, flags, and payloads."""
 
 import posixpath
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
 from fnmatch import fnmatchcase
 from pathlib import PurePosixPath
 from typing import Literal, TypedDict
@@ -887,7 +887,14 @@ def path_verb_operands(words: list[str]) -> VerbOperands:
     why the two directions diverge on it: a caller granting something must
     decline outright, and a caller refusing something must widen to every
     operand rather than trust their positions.
+
+    `install` is read by its own grammar (:func:`install_verb_operands`),
+    because its everyday spelling carries a mode, an owner or a group with a
+    value after it, and a value read as an operand made the file it only reads
+    the file it writes.
     """
+    if posixpath.basename(words[0]) == "install":
+        return install_verb_operands(words)
     allowed = PATH_VERBS[posixpath.basename(words[0])]["inert"]
     named: list[PathWord] = []
     inert = True
@@ -903,6 +910,164 @@ def path_verb_operands(words: list[str]) -> VerbOperands:
         named.append(PathWord(at=index, prefix="", path=word))
     return VerbOperands(
         operands=[operand["path"] for operand in named], named=named, inert=inert
+    )
+
+
+class OptionWord(TypedDict):
+    """One word of a command's own option grammar, read with what it consumed.
+
+    ``kind`` is what the word is to the reader asking: an ``operand``, an
+    ``option`` carried on, a ``value`` some option names -- ``name`` says
+    which -- a ``reading`` form that lands nothing, or ``unmodelled``.
+    """
+
+    kind: Literal["operand", "option", "value", "reading", "unmodelled"]
+    name: str
+    word: str
+
+
+def operand_word(word: str) -> OptionWord:
+    """A word no option of the grammar claimed: a flag nothing models, or an operand."""
+    if word.startswith("-") and word != "-":
+        return OptionWord(kind="unmodelled", name=word, word=word)
+    return OptionWord(kind="operand", name="", word=word)
+
+
+class PlacedWord(OptionWord):
+    """An option-grammar word with where it stands, for a reader that puts paths back.
+
+    ``at`` is the word's position in the command and ``prefix`` whatever it
+    carries before the text read out of it -- ``--target-directory=`` -- so a
+    path read from one is rewritten where it was spelled, as a
+    :class:`~lup.policy.kernel.rows.PathWord` is.
+    """
+
+    at: int
+    prefix: str
+
+
+def placed_word(word: OptionWord, at: int, prefix: str = "") -> PlacedWord:
+    """One read word, with the position and prefix it was read at."""
+    return PlacedWord(
+        kind=word["kind"], name=word["name"], word=word["word"], at=at, prefix=prefix
+    )
+
+
+# lup: ignore[library-default] — install's options that leave the source's own bytes at the destination
+INSTALL_INERT_OPTIONS = (
+    "--compare",
+    "--preserve-timestamps",
+    "--verbose",
+    "--no-target-directory",
+)
+
+
+def inert_install_cluster(word: str) -> bool:
+    """Whether a short-option cluster leaves the bytes `install` lands alone.
+
+    Its flags compare, preserve, report, make parents or name a file; the last
+    of them may be a mode, an owner or a group with its value attached, which
+    changes who may read the file and not what it holds.
+    """
+    if not word.startswith("-") or word.startswith("--") or len(word) < 2:
+        return False
+    for position, letter in enumerate(word[1:], start=1):
+        if letter in "mog":
+            return position + 1 < len(word)
+        if letter not in "cCpvDT":
+            return False
+    return True
+
+
+def install_word(word: str, at: int) -> list[PlacedWord]:
+    """One `install` word that takes no value after it, read by its spelling."""
+    if word.startswith("--target-directory="):
+        named = word.removeprefix("--target-directory=")
+        return [
+            placed_word(
+                OptionWord(kind="value", name="-t", word=named),
+                at,
+                "--target-directory=",
+            )
+        ]
+    if (
+        word in INSTALL_INERT_OPTIONS
+        or word.startswith(("--mode=", "--owner=", "--group="))
+        or inert_install_cluster(word)
+    ):
+        return []
+    return [placed_word(operand_word(word), at)]
+
+
+def install_words(words: list[str]) -> Iterator[PlacedWord]:
+    """An `install`'s words by its own grammar, each option read with its value.
+
+    Each is placed where the command spells it, so the operand reading and the
+    document fold read one grammar rather than two that could come to differ.
+    """
+    remaining = iter(enumerate(words[1:], start=1))
+    for at, word in remaining:
+        match word:
+            case "--":
+                yield from (
+                    placed_word(OptionWord(kind="operand", name="", word=rest), place)
+                    for place, rest in remaining
+                )
+                return
+            case "-m" | "-o" | "-g" | "--mode" | "--owner" | "--group":
+                next(remaining, None)
+            case "-t" | "--target-directory":
+                place, named = next(remaining, (at, ""))
+                yield placed_word(
+                    OptionWord(kind="value", name="-t", word=named), place
+                )
+            case "-d" | "--directory":
+                yield placed_word(OptionWord(kind="reading", name=word, word=word), at)
+            case _:
+                yield from install_word(word, at)
+
+
+def install_operands(words: list[str]) -> list[str] | None:
+    """The sources of an `install`, then where they land, or ``None`` where unmodelled.
+
+    A mode, an owner or a group changes who may read the file and not what it
+    holds, so each is read past with its value. `-d` makes directories and
+    lands no document, so it names nothing; `-s` strips a binary and a backup
+    adds a file, so each is a place this does not work out.
+    """
+    read = list(install_words(words))
+    if any(word["kind"] == "unmodelled" for word in read):
+        return None
+    if any(word["kind"] == "reading" for word in read):
+        return []
+    operands = [word["word"] for word in read if word["kind"] == "operand"]
+    directory = [word["word"] for word in read if word["kind"] == "value"][-1:]
+    if directory:
+        return [*operands, *directory] if operands else None
+    return operands if len(operands) >= 2 else None
+
+
+def install_verb_operands(words: list[str]) -> VerbOperands:
+    """An `install`'s operands by its own grammar, the directory `-t` names last.
+
+    Last because that is where every other path verb's destination stands,
+    so each reader of :func:`path_verb_operands` finds it there. `-d` makes
+    every operand a directory and an option the grammar does not model could
+    move any of them, so either leaves the operands unread by position, and
+    a reader refusing something widens to every one of them.
+    """
+    read = list(install_words(words))
+    named = [
+        PathWord(at=word["at"], prefix=word["prefix"], path=word["word"])
+        for word in [
+            *(word for word in read if word["kind"] == "operand"),
+            *[word for word in read if word["kind"] == "value"][-1:],
+        ]
+    ]
+    return VerbOperands(
+        operands=[operand["path"] for operand in named],
+        named=named,
+        inert=not any(word["kind"] in ("unmodelled", "reading") for word in read),
     )
 
 

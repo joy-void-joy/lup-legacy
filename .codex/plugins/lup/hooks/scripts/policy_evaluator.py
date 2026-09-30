@@ -3631,7 +3631,11 @@ def text_at(root: Path, target: str) -> str | None:
 
 
 def sed_output(
-    scripts: list[str], options: list[str], text: str, timeout: float = 2.0
+    scripts: list[str],
+    options: list[str],
+    text: str,
+    timeout: float = 2.0,
+    locale: str = "C.UTF-8",
 ) -> dict[Literal["text", "cause"], str | None]:
     """What an in-place sed leaves of one document, without touching any file.
 
@@ -3653,6 +3657,18 @@ def sed_output(
     answer that does not come in time is a refused rewrite, which the
     classifier asks about. The scripts are passed as ``-e`` expressions, so a
     script is never re-read as an option.
+
+    Run under ``locale`` rather than whichever one started the runtime. What
+    `.`, `[[:alpha:]]`, `\\U` and a bracket range match is the locale's to
+    say, and the session's shell is where the real `-i` runs -- but no
+    runtime hands a hook that shell's environment: Claude Code's payload and
+    Codex's carry the call, its directory and its session, and the hook
+    process inherits the runtime's own environment, which a profile the shell
+    sources can have changed since. So the preview is pinned to the UTF-8
+    locale glibc carries without generating one, the same answer on every
+    machine and under every runtime, which matches any UTF-8 session for a
+    script that leans on neither collation order nor a locale's own
+    character classes.
     """
     expressions = [word for script in scripts for word in ("-e", script)]
     try:
@@ -3662,6 +3678,9 @@ def sed_output(
             capture_output=True,
             timeout=hook_seconds_left(timeout),
             check=False,
+            # lup: ignore[os-environ] — inherited, not read: sed keeps the PATH
+            # and everything else it runs with, and only the locale is set
+            env={**os.environ, "LC_ALL": locale},
         )
         if finished.returncode:
             return {"text": None, "cause": "refused"}

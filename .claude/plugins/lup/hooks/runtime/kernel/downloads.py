@@ -48,6 +48,14 @@ class DownloaderGrammar(OptionGrammar):
     unsaved: list[str]
     """Options under which no response is saved at all."""
 
+    formats: list[str]
+    """Options whose value is a format the tool prints once the transfer ends.
+
+    Printed to the standard output, which is what makes one ordinary: curl's
+    `-w '%{http_code}'` is how a probe asks whether a service answered. The
+    same format can send what it prints to a file (`%output{…}`) or be read
+    from one (`@file`), and either leaves the invocation unread."""
+
 
 class DownloadReading(TypedDict):
     """What one invocation reads, sends, and writes, as far as it could be read."""
@@ -75,6 +83,7 @@ def downloader(
     directory: tuple[str, ...] = (),
     saves: bool = False,
     unsaved: tuple[str, ...] = (),
+    formats: tuple[str, ...] = (),
 ) -> DownloaderGrammar:
     """One downloader grammar, whose every role-bearing option is also read.
 
@@ -83,7 +92,7 @@ def downloader(
     would then refuse as unlisted.
     """
     return DownloaderGrammar(
-        valued=[*valued, *sends, *method, *document, *logs, *directory],
+        valued=[*valued, *sends, *method, *document, *logs, *directory, *formats],
         flags=[*flags, *remote_name, *unsaved],
         families=[],
         open_attached=False,
@@ -96,6 +105,7 @@ def downloader(
         directory=list(directory),
         saves=saves,
         unsaved=list(unsaved),
+        formats=list(formats),
     )
 
 
@@ -161,6 +171,7 @@ DOWNLOADER_GRAMMARS: dict[str, DownloaderGrammar] = {
         document=("-o", "--output"),
         logs=("-D", "--dump-header"),
         remote_name=("-O", "--remote-name", "--remote-name-all"),
+        formats=("-w", "--write-out"),
     ),
     "wget": downloader(
         valued=(
@@ -285,12 +296,26 @@ def read_download(
     methods = [
         option["value"] or "" for option in options if option["name"] in rules["method"]
     ]
+    # A format that names a file -- one it writes, or one it is read from -- is
+    # a write or a format nobody here read, so the invocation is unread there.
+    written_format = next(
+        (
+            option["name"]
+            for option in options
+            if option["name"] in rules["formats"]
+            and (
+                "%output{" in (option["value"] or "")
+                or (option["value"] or "").startswith("@")
+            )
+        ),
+        "",
+    )
     return DownloadReading(
         urls=urls,
         method=methods[-1] if methods else "",
         sends=next((name for name in names if name in rules["sends"]), ""),
         targets=[*documents, *values(rules["logs"]), *(derived if saved else [])],
-        unread=unread,
+        unread=unread or written_format,
     )
 
 

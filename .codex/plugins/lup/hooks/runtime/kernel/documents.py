@@ -59,9 +59,12 @@ from .rows import (
 )
 from .syntax import Command, Script, Word, word_text
 from .words import (
+    OptionWord,
     flag_matches,
     flag_write_targets,
     global_span,
+    install_operands,
+    operand_word,
     path_verb_operands,
     sed_invocation,
 )
@@ -559,109 +562,6 @@ def rewrite_steps(
     ]
 
 
-class OptionWord(TypedDict):
-    """One word of a command's own option grammar, read with what it consumed.
-
-    ``kind`` is what the word is to the reader asking: an ``operand``, an
-    ``option`` carried on, a ``value`` some option names -- ``name`` says
-    which -- a ``reading`` form that lands nothing, or ``unmodelled``.
-    """
-
-    kind: Literal["operand", "option", "value", "reading", "unmodelled"]
-    name: str
-    word: str
-
-
-def operand_word(word: str) -> OptionWord:
-    """A word no option of the grammar claimed: a flag nothing models, or an operand."""
-    if word.startswith("-") and word != "-":
-        return OptionWord(kind="unmodelled", name=word, word=word)
-    return OptionWord(kind="operand", name="", word=word)
-
-
-# lup: ignore[library-default] — install's options that leave the source's own bytes at the destination
-INSTALL_INERT_OPTIONS = (
-    "--compare",
-    "--preserve-timestamps",
-    "--verbose",
-    "--no-target-directory",
-)
-
-
-def inert_install_cluster(word: str) -> bool:
-    """Whether a short-option cluster leaves the bytes `install` lands alone.
-
-    Its flags compare, preserve, report, make parents or name a file; the last
-    of them may be a mode, an owner or a group with its value attached, which
-    changes who may read the file and not what it holds.
-    """
-    if not word.startswith("-") or word.startswith("--") or len(word) < 2:
-        return False
-    for position, letter in enumerate(word[1:], start=1):
-        if letter in "mog":
-            return position + 1 < len(word)
-        if letter not in "cCpvDT":
-            return False
-    return True
-
-
-def install_word(word: str) -> list[OptionWord]:
-    """One `install` word that takes no value after it, read by its spelling."""
-    if word.startswith("--target-directory="):
-        return [
-            OptionWord(
-                kind="value", name="-t", word=word.removeprefix("--target-directory=")
-            )
-        ]
-    if (
-        word in INSTALL_INERT_OPTIONS
-        or word.startswith(("--mode=", "--owner=", "--group="))
-        or inert_install_cluster(word)
-    ):
-        return []
-    return [operand_word(word)]
-
-
-def install_words(words: list[str]) -> Iterator[OptionWord]:
-    """An `install`'s words by its own grammar, each option read with its value."""
-    remaining = iter(words[1:])
-    for word in remaining:
-        match word:
-            case "--":
-                yield from (
-                    OptionWord(kind="operand", name="", word=rest) for rest in remaining
-                )
-                return
-            case "-m" | "-o" | "-g" | "--mode" | "--owner" | "--group":
-                next(remaining, None)
-            case "-t" | "--target-directory":
-                yield OptionWord(kind="value", name="-t", word=next(remaining, ""))
-            case "-d" | "--directory":
-                yield OptionWord(kind="reading", name=word, word=word)
-            case _:
-                yield from install_word(word)
-
-
-def install_operands(words: list[str]) -> list[str] | None:
-    """The sources of an `install`, then where they land, or ``None`` where unmodelled.
-
-    A mode, an owner or a group changes who may read the file and not what it
-    holds, so each is read past with its value. `-d` makes directories and
-    lands no document, so it names nothing; `-s` strips a binary and a backup
-    adds a file, so each is a place this does not work out.
-    """
-    read = list(install_words(words))
-    if any(word["kind"] == "unmodelled" for word in read):
-        return None
-    if any(word["kind"] == "reading" for word in read):
-        return []
-    operands = [word["word"] for word in read if word["kind"] == "operand"]
-    directory = [word["word"] for word in read if word["kind"] == "value"][-1:]
-    if directory:
-        return [*operands, *directory] if operands else None
-    return operands if len(operands) >= 2 else None
-
-
 def truncate_word(word: str) -> OptionWord:
     """One `truncate` word that takes no value after it, read by its spelling."""
     if word.startswith("--size="):
@@ -938,7 +838,10 @@ class FollowedDocument(TypedDict):
     judge; ``cause`` is why it is not known. ``whole`` is whether some step
     replaced the document rather than changing it, and ``authored`` whether
     bytes the command carries reached it: the route the authored review
-    judges, as an in-place rewrite is the route the rewrite rows judge.
+    judges, as an in-place rewrite is the route the rewrite rows judge. A
+    copy over a file changes it rather than replacing it, since what it
+    lands is read against what stood there as an edit of that file would be,
+    so it leaves ``whole`` as it found it.
     """
 
     target: str
@@ -954,11 +857,13 @@ class FollowedDocument(TypedDict):
 
 
 class RewriteOutcome(TypedDict):
-    """What became of one file an in-place sed names, by the spelling it names it with.
+    """What became of one file an in-place sed or a copy names, by the spelling it names it with.
 
     ``cause`` is ``None`` where the rewrite was worked out and the reading's
     word where it was not, ``run`` among them: a file an earlier segment
-    writes by running holds nothing a rewrite of it can be read against.
+    writes by running holds nothing a rewrite of it can be read against. A
+    copy's spelling is where it lands, its source's name joined on where
+    the destination is a directory.
     """
 
     target: str
@@ -970,12 +875,14 @@ class FollowedReading(TypedDict):
     """A whole line's documents in the order it first writes them, and the rest.
 
     ``rewrites`` are the in-place seds among them, for the classifier that
-    judges a rewrite by what it leaves; ``unpreviewed`` every segment whose
-    effect no document states.
+    judges a rewrite by what it leaves; ``copies`` the copies landing over a
+    file that stood there, which it judges the same way; ``unpreviewed``
+    every segment whose effect no document states.
     """
 
     documents: list[FollowedDocument]
     rewrites: list[RewriteOutcome]
+    copies: list[RewriteOutcome]
     unpreviewed: list[UnpreviewedRow]
 
 
@@ -1009,6 +916,7 @@ def followed_documents(
     """
     states: dict[str, FollowedDocument] = {}
     rewrites: dict[str, RewriteOutcome] = {}
+    copies: list[RewriteOutcome] = []
     unseen: list[Unseen] = []
     # lup: ignore[empty-collection] — the directories the line has made so far,
     # where a later copy lands under its name: state the fold carries in step
@@ -1108,7 +1016,18 @@ def followed_documents(
         if source["text"] is None:
             unknown(taken, document, source["cause"] or "unreadable")
         else:
-            landed(document, source["text"], whole=True, authored=False)
+            landed(
+                document,
+                source["text"],
+                whole=taken["action"] == "move",
+                authored=False,
+            )
+        if taken["action"] == "copy" and document["existed"]:
+            copies.append(
+                RewriteOutcome(
+                    target=target, path=document["path"], cause=document["cause"]
+                )
+            )
         if taken["action"] != "move":
             return
         moved = written(taken["source"], taken)
@@ -1213,6 +1132,7 @@ def followed_documents(
             )
         ],
         rewrites=list(rewrites.values()),
+        copies=copies,
         unpreviewed=unpreviewed_rows(unseen, states),
     )
 
@@ -1295,13 +1215,17 @@ def shown_documents(reading: FollowedReading) -> list[FollowedDocument]:
 
 
 def judged_documents(reading: FollowedReading) -> list[FollowedDocument]:
-    """The files the edit gates judge: those the command's bytes or a rewrite reached.
+    """The files the edit gates judge: those the command's bytes, a rewrite or a copy reached.
 
     The document each is judged by is what the whole line leaves, or the last
     one anybody could state where a later step's result only running shows.
+    A copy counts where it lands over a file that stood there, which is an
+    edit of that file whose text the copy's source holds.
     """
     rewritten_paths = {
-        outcome["path"] for outcome in reading["rewrites"] if outcome["cause"] is None
+        outcome["path"]
+        for outcome in [*reading["rewrites"], *reading["copies"]]
+        if outcome["cause"] is None
     }
     return [
         document
@@ -1330,12 +1254,17 @@ def rewrite_reading(
     every other write to its file; ``row`` is the host's, which resolves
     where the file sits and puts it to the edit gates. A rewrite nothing
     could work out carries the reading's word for why.
+
+    A copy over a file is handed on the same way, under the spelling it
+    lands at, for the classifier that judges `cp` as the edit it makes. One
+    nothing worked out is left out rather than named: a copy the classifier
+    finds no document for is judged as it always was.
     """
     documents = {document["path"]: document for document in reading["documents"]}
     return RewriteReading(
         documents=[
             row(outcome["target"], documents[outcome["path"]])
-            for outcome in reading["rewrites"]
+            for outcome in [*reading["rewrites"], *reading["copies"]]
             if outcome["cause"] is None and outcome["path"] in documents
         ],
         unproduced=[
