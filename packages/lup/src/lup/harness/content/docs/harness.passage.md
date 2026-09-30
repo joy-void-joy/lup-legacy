@@ -776,6 +776,8 @@ superseded_volumes_after_days = 14   # an old config volume's history, kept this
 [dashboard]
 reopen = true               # a review parking with no tab open reopens the page;
                             # `dashboard reopen --off` writes false
+origins = ["https://their.proxy.name"]   # also answered, where a reverse proxy
+                            # serves the page: whole origins, no path
 
 [container]                 # what every contained session is granted: over the
 network = "bridge"          # project's, under a mode and the command line

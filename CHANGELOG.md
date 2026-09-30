@@ -2,6 +2,28 @@
 
 ## Unreleased
 
+### The dashboard answers behind a reverse proxy the person declares
+
+`[dashboard] origins = ["https://their.proxy.name"]` in the person's lup
+config (`~/.config/lup/config.toml`) declares each origin a reverse proxy
+serves the dashboard at. Each must be a whole origin, `scheme://host[:port]`
+over http or https with no path, and is read lowercase and without its
+default port. The Host check that guards against DNS rebinding answers each
+declared origin's host, with and without that port, beside loopback's, and a
+write is taken from a declared `Origin` as from the dashboard's own address;
+every other name is still answered 421, now saying where origins are
+declared, and every other origin 403. The running dashboard, shared or
+`dashboard serve`, reads the list again on the next request after the file
+moves, so no restart is needed; a file it cannot read leaves loopback alone.
+`dashboard status` gains `origins`, `launch` (the launch address, capability
+included, at loopback and each origin; from the operator's terminal only)
+and `warnings` (a declared origin that is neither https nor loopback);
+`dashboard open` and `dashboard serve` print every launch address, and so
+does a launch the operator makes on a terminal, never a session's or a
+captured one. `lup.web` pages take `origins` and `refusal` for their Host
+guard. docs/dashboard.md, "Behind a reverse proxy", has a Caddy example that
+is `reverse_proxy 127.0.0.1:8766` and nothing more.
+
 ### Agents are told to write review notes in plain words
 
 `review propose --help` now explains how to write `--why` and the per-file
