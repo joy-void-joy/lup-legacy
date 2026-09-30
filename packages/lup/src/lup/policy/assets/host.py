@@ -2973,13 +2973,23 @@ def patched_documents(
             for path in paths
         ):
             return None
-        for path in paths:
-            standing = current(str(Path(directory, path)) if directory else path)
-            if standing["text"] is not None:
+        standing = {
+            path: current(str(Path(directory, path)) if directory else path)
+            for path in paths
+        }
+        # A file the patch touches that stands there and does not read as
+        # text is one the copy cannot hold; one that is not there, the patch
+        # may create.
+        if any(
+            reading["text"] is None and reading["cause"] != "missing"
+            for reading in standing.values()
+        ):
+            return None
+        for path, reading in standing.items():
+            text = reading["text"]
+            if text is not None:
                 (copy / path).parent.mkdir(parents=True, exist_ok=True)
-                (copy / path).write_text(standing["text"], encoding="utf-8", newline="")
-            elif standing["cause"] != "missing":
-                return None
+                (copy / path).write_text(text, encoding="utf-8", newline="")
         if applied(options) is None:
             return None
         return [

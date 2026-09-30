@@ -1002,7 +1002,9 @@ def followed_documents(
     states: dict[str, FollowedDocument] = {}
     rewrites: dict[str, RewriteOutcome] = {}
     unseen: list[Unseen] = []
-    # The directories the line makes, where a later copy lands under its name.
+    # lup: ignore[empty-collection] — the directories the line has made so far,
+    # where a later copy lands under its name: state the fold carries in step
+    # order, since a copy before the `mkdir` that makes its target finds none
     made: list[str] = []
 
     def current(target: str) -> Reading:
