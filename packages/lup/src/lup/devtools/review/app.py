@@ -33,6 +33,7 @@ from lup.coordination.repository import RepositoryPeers
 from lup.devtools.dashboard.companion import refuse_inside_a_session
 from lup.devtools.review.preimages import MovedPreimage, moved
 from lup.devtools.review.propose import (
+    MANIFEST,
     ProposalRefused,
     gathered,
     parked,
@@ -872,15 +873,28 @@ def changes(entry: PersistentQuestion) -> list[ReviewedFile]:
 def render_diffs(entry: PersistentQuestion, console: Console) -> bool:
     """Print what each file would become, and say whether anything was shown.
 
+    A proposal's note on a file is printed whole under its name, as the page
+    shows it on the file's header.
+
     A diff rather than the payload, because a payload carrying the new
     contents with the preimage printed underneath is two documents a reviewer
     compares by eye — which is the whole of what was wrong with this surface,
     and most of why an operator would rather answer somewhere else.
     """
     rendered = False
+    proposal = proposal_of(entry)
+    notes = (
+        {proposed.path: proposed.about for proposed in proposal.files}
+        if proposal is not None
+        else {}
+    )
     for change in changes(entry):
         rendered = True
         console.print(f"  {change.operation():<9} {change.path}", style="bold")
+        if change.path in notes and notes[change.path]:
+            console.print(
+                f"    agent's note: {notes[change.path]}", markup=False, highlight=False
+            )
         if change.unchanged():
             console.print("    this would leave the file exactly as it stands")
             continue
@@ -1099,6 +1113,15 @@ def propose(root: Path, hooks: HookSet, directory: Path, why: str) -> None:
         "operator's note and line comments. Declined, revise the files under "
         f"{directory} and propose again."
     )
+    unnoted = proposal.unnoted() if proposal is not None else []
+    if unnoted:
+        typer.echo(
+            "Warning: the operator sees no note from you on "
+            + ", ".join(str(path.relative_to(root)) for path in unnoted)
+            + f'. Say what changes in each with `review reply {question.id} "…"`, '
+            f'or next time give each one under "about" in {MANIFEST}.',
+            err=True,
+        )
 
 
 def create_review_app(

@@ -83,6 +83,17 @@ class Proposal(BaseModel, frozen=True):
     why: str
     files: list[ProposedFile]
 
+    def unnoted(self) -> list[Path]:
+        """The files the operator would read with no note, where there are several to tell apart.
+
+        One file needs none: ``--why`` already speaks for it.
+        """
+        return (
+            [proposed.path for proposed in self.files if not proposed.about.strip()]
+            if len(self.files) > 1
+            else []
+        )
+
     def reviewed(self, preconditions: dict[Path, str | None]) -> list[ReviewedFile]:
         """Each file's documents on either side, the before side as the review recorded it."""
         return [
@@ -136,7 +147,8 @@ def gathered(root: Path, directory: Path, why: str) -> Proposal:
     """
     if not why.strip():
         raise ProposalRefused(
-            "a proposal says why: --why is its reason, in a paragraph"
+            "--why is empty: say in a short paragraph what the change does and "
+            "why. `review propose --help` shows how."
         )
     if not directory.is_dir():
         raise ProposalRefused(f"{directory} is not a directory of proposed files")
