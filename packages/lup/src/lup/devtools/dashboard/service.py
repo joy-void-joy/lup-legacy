@@ -5,14 +5,17 @@ by the companion a launch holds (:class:`~lup.devtools.dashboard.companion.Dashb
 never by hand. It serves every repository a launch registered, answers its
 launcher's health check behind its own capability, expires the reviews no
 session waits on, serves each repository's setup page as a pane, tells the
-operator when a review parks (:class:`Herald`), and stops what it started
-when it is stopped.
+operator when a review parks (:class:`Herald`), restarts itself in place onto
+its checkout's code when that moves (:mod:`lup.devtools.dashboard.refresh`),
+and stops what it started when it is stopped. ``--probe`` imports what
+serving imports and exits, which is how a restart learns the new code starts.
 
 Its page is copied beside its state before it serves, so a dashboard started
 from a worktree keeps serving after that worktree is removed.
 """
 
 import asyncio
+import importlib
 import logging
 import os
 import shutil
@@ -35,11 +38,13 @@ from lup.devtools.dashboard.companion import (
     DashboardRegistry,
     DashboardToken,
     KnownRepository,
+    dashboard_revision,
     read_model,
     written,
 )
 from lup.devtools.dashboard.panes import SetupPanes
-from lup.devtools.dashboard.pulse import DashboardPulse, PulseFile
+from lup.devtools.dashboard.pulse import DashboardPulse, PulseFile, RunningCode
+from lup.devtools.dashboard.refresh import ImportedSource, Refresh, WriteGate
 from lup.devtools.dashboard.reviews import ReviewScan, ReviewStore
 from lup.devtools.review.app import RequesterPresence, ReviewSummary
 from lup.policy.relay import PersistentQuestion
@@ -75,6 +80,26 @@ def kept_page(state: Path, revision: str) -> Path:
         with resources.as_file(source) as built:
             shutil.copytree(built, target, dirs_exist_ok=True)
     return bundles
+
+
+def running_source() -> ImportedSource:
+    """The lup package this process imports, and the page it serves from it."""
+    page = resources.files("lup.web").joinpath("bundles", "dashboard", "index.html")
+    with resources.as_file(page) as index:
+        return ImportedSource(Path(__file__).parents[2], (index,))
+
+
+def probe_imports(
+    modules: tuple[str, ...] = (
+        "uvicorn",
+        "fastapi",
+        "lup.devtools.dashboard.reviews",
+        "lup.devtools.dashboard.stream",
+    ),
+) -> None:
+    """Import what serving imports beyond this module, and nothing more."""
+    for module in modules:
+        importlib.import_module(module)
 
 
 class DesktopNotice(BaseModel, frozen=True):
@@ -174,7 +199,7 @@ class Herald:
 
     It writes the dashboard's pulse on every look where anything changed,
     and at least every ``heartbeat``, so a session reading it knows it is
-    current.
+    current; ``code`` is which code the dashboard runs, which the pulse says.
     """
 
     def __init__(
@@ -190,6 +215,7 @@ class Herald:
         quiet: timedelta = timedelta(minutes=10),
         crowd: int = 3,
         heartbeat: timedelta = timedelta(seconds=10),
+        code: Callable[[], RunningCode] = RunningCode,
     ) -> None:
         self.record_path = directory / "herald.json"
         self.pulse = PulseFile.of(directory)
@@ -198,6 +224,7 @@ class Herald:
         self.url = url
         self.capability = capability
         self.tabs = tabs
+        self.code = code
         self.config = config if config is not None else UserConfigFile()
         self.notify = notify
         self.reopen = reopen
@@ -206,6 +233,8 @@ class Herald:
         self.heartbeat = heartbeat
         self.published: DashboardPulse | None = None
         self.unheard = False
+        self.writing = threading.Lock()
+        self.stopped = False
 
     def look(self, now: datetime | None = None) -> None:
         """Read every queue once: tell of what parked since, reopen where due, publish."""
@@ -302,6 +331,7 @@ class Herald:
             ],
             tabs=self.tabs(),
             beat=moment,
+            code=self.code(),
         )
         last = self.published
         if (
@@ -310,16 +340,33 @@ class Herald:
             and moment - last.beat < self.heartbeat
         ):
             return
-        written(self.pulse.path, pulse.model_dump_json(indent=2))
+        with self.writing:
+            if self.stopped:
+                return
+            written(self.pulse.path, pulse.model_dump_json(indent=2))
         self.published = pulse
 
     def retired(self) -> None:
-        """Take the pulse down, so no session reads a stopped dashboard as serving."""
-        self.pulse.path.unlink(missing_ok=True)
+        """Take the pulse down for good, so no session reads a stopped dashboard as serving.
+
+        Under the lock a look publishes under, so a look still running on its
+        thread as the dashboard stops cannot put the pulse back.
+        """
+        with self.writing:
+            self.stopped = True
+            self.pulse.path.unlink(missing_ok=True)
 
 
 def serve_dashboard(arguments: ServiceArguments) -> None:
-    """Serve the dashboard until it is stopped, and stop what it started with it."""
+    """Serve the dashboard until it is stopped, and stop what it started with it.
+
+    Or until its checkout's code has moved past what it runs, or the operator
+    asked, and no write is in flight: then it stops serving as it would for a
+    stop, and replaces itself with the same command in the same process, so
+    it keeps its port, its capability and its herald's record, and every tab
+    reconnects. A signal that stops it is raised again once it has stopped
+    serving, so a stop is never taken for a restart.
+    """
     import uvicorn
     from fastapi import FastAPI
 
@@ -335,9 +382,11 @@ def serve_dashboard(arguments: ServiceArguments) -> None:
         live=registry.live,
     )
     url = f"http://127.0.0.1:{arguments.port}"
+    refresh = Refresh(running_source())
     feed = LiveFeed(
         registry.repositories,
         ReviewStore(roots=(), discover=True, registry=registry),
+        code=refresh.code,
     )
     app = dashboard_app(
         url,
@@ -352,14 +401,57 @@ def serve_dashboard(arguments: ServiceArguments) -> None:
     )
     around = app.router.lifespan_context
     sweeping = ReviewStore(roots=(), discover=True, registry=registry)
-    herald = Herald(arguments.state, registry, url, token, tabs=lambda: feed.followers)
+    herald = Herald(
+        arguments.state,
+        registry,
+        url,
+        token,
+        tabs=lambda: feed.followers,
+        code=refresh.code,
+    )
+    refresh.source.taken()
+    gate = WriteGate(app, refresh.refusal)
+    server = uvicorn.Server(
+        uvicorn.Config(
+            gate,
+            host="127.0.0.1",
+            port=arguments.port,
+            access_log=False,
+            timeout_graceful_shutdown=2,
+        )
+    )
+
+    @app.post("/api/service/restart", status_code=202)
+    def restart() -> RunningCode:
+        """Restart onto the checkout's code once no write is in flight: the operator's ask."""
+        refresh.asked = True
+        return refresh.code()
+
+    async def refreshing() -> None:
+        """Every two seconds: compare the code with its checkout; stop serving once due and quiet."""
+        for _ in count():
+            await asyncio.sleep(2)
+            try:
+                await asyncio.to_thread(refresh.look)
+            except Exception:
+                logger.exception("the dashboard could not compare its code this time")
+                continue
+            if refresh.due and not gate.writing:
+                logger.info("restarting onto the code in %s", refresh.source.package)
+                server.should_exit = True
+                return
 
     async def retiring() -> None:
-        """Every few seconds, whether or not a page is open: expire, then retire panes."""
+        """Every ten seconds, whether or not a page is open: expire, then retire panes."""
         for _ in count():
             await asyncio.sleep(10)
-            await asyncio.to_thread(sweeping.sweep)
-            await asyncio.to_thread(panes.retire)
+            try:
+                await asyncio.to_thread(sweeping.sweep)
+                await asyncio.to_thread(panes.retire)
+            except Exception:
+                logger.exception(
+                    "the dashboard could not sweep or retire panes this time"
+                )
 
     async def heralding() -> None:
         """Every two seconds, whether or not a page is open: tell what parked, publish the pulse."""
@@ -372,29 +464,64 @@ def serve_dashboard(arguments: ServiceArguments) -> None:
 
     @asynccontextmanager
     async def lifespan(application: FastAPI) -> AsyncIterator[None]:
+        """The app's own, then what the service leaves behind: its pulse, unless it restarts, and its panes.
+
+        Run as serving stops, before a signal that stopped it is raised again.
+        """
         async with around(application):
-            watchers = [
-                asyncio.create_task(retiring()),
-                asyncio.create_task(heralding()),
-            ]
             try:
                 yield
             finally:
-                for watcher in watchers:
-                    watcher.cancel()
-                await asyncio.gather(*watchers, return_exceptions=True)
-                await asyncio.to_thread(herald.retired)
+                if not refresh.due:
+                    await asyncio.to_thread(herald.retired)
                 await asyncio.to_thread(panes.close)
 
+    async def served() -> None:
+        """Serve beside the three watchers, every one owned by one task group.
+
+        The group holds each task until it ends, so none is collected while it
+        runs, and each is cancelled once serving stops. A failure its own loop
+        does not catch cancels serving and ends the service with its
+        traceback in the log, where the next launch finds it gone and starts
+        it again.
+        """
+        async with asyncio.TaskGroup() as group:
+            watchers = [
+                group.create_task(watch())
+                for watch in (retiring, heralding, refreshing)
+            ]
+            await server.serve()
+            for watcher in watchers:
+                watcher.cancel()
+
     app.router.lifespan_context = lifespan
-    uvicorn.run(
-        app,
-        host="127.0.0.1",
-        port=arguments.port,
-        access_log=False,
-        timeout_graceful_shutdown=2,
-    )
+    try:
+        asyncio.run(served(), loop_factory=server.config.get_loop_factory())
+    finally:
+        if not refresh.due:
+            herald.retired()
+        panes.close()
+    if refresh.due:
+        sys.stdout.flush()
+        sys.stderr.flush()
+        # lup: ignore[os-shell] — replacing this process in place is the point:
+        # the same pid is what the launches' record names, which a child would not
+        os.execv(
+            sys.executable,
+            [
+                sys.executable,
+                "-m",
+                "lup.devtools.dashboard.service",
+                str(arguments.state),
+                str(arguments.port),
+                dashboard_revision(),
+            ],
+        )
 
 
 if __name__ == "__main__":
-    serve_dashboard(ServiceArguments.parsed(sys.argv[1:]))
+    match sys.argv[1:]:
+        case ["--probe"]:
+            probe_imports()
+        case words:
+            serve_dashboard(ServiceArguments.parsed(words))

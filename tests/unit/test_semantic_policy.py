@@ -4356,6 +4356,7 @@ def test_a_tee_and_a_redirect_answer_alike_in_a_confined_session(
         "dashboard open",
         "dashboard stop",
         "dashboard reopen --off",
+        "dashboard restart",
         "harness policy-refresh",
     ],
 )

@@ -317,6 +317,20 @@ message posted also lands on the coordination store's `mail.jsonl`, which
 recipient rather than a mailbox's name, and a cohort no longer signs with its
 run id.
 
+### The dashboard restarts itself onto its checkout's code
+
+A dashboard kept the code it was started with while its checkout moved on,
+so once a review's fingerprint changed shape it refused every answer as
+though the review had been altered. It now compares the lup files it
+imported with the disk every two seconds; once they have moved and settled,
+and the new code starts in a fresh interpreter, it re-executes itself in
+place when no write is in flight — same pid, port, capability and herald
+record, tabs reconnecting. Until then the page, `dashboard status` and the
+status line say "dashboard runs older code; restarting", and a new write is
+refused with that reason. `dashboard restart` asks for it by hand, and
+replaces a dashboard too old to restart itself. The pulse, the status and the
+stream carry `RunningCode`; `LiveFeed` and `Herald` take `code`.
+
 ### A parked review reaches the operator with no page open
 
 The dashboard's service looks at every queue every two seconds whether or not

@@ -1041,6 +1041,17 @@ def devtools_rules() -> list[ShellSubcommandRule]:
                         "the agent session, or in their lup config's [dashboard]."
                     ),
                 ),
+                # Restarting takes the page away from every session's operator
+                # while it comes back, as stopping does.
+                ShellOperationRule(
+                    name="restart",
+                    operator_only=True,
+                    reason="a requesting agent cannot restart the operator's dashboard",
+                    recovery=(
+                        "The operator restarts it from a terminal outside the agent "
+                        "session; it restarts by itself once its checkout's code moves."
+                    ),
+                ),
             ],
         ),
         ShellSubcommandRule(

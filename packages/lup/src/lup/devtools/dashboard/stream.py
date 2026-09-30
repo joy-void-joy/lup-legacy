@@ -36,6 +36,7 @@ from lup.devtools.dashboard.live import (
     LiveSession,
     RepositoryWatch,
 )
+from lup.devtools.dashboard.pulse import RunningCode
 from lup.devtools.dashboard.reviews import ReviewError, ReviewSnapshot, ReviewStore
 from lup.devtools.review.app import ReviewRoot, ReviewSummary
 
@@ -76,10 +77,21 @@ class SnapshotEvent(StreamEvent, frozen=True):
     sessions: list[LiveSession]
     messages: list[LiveMessage]
     reviews: ReviewSnapshot
+    code: RunningCode = RunningCode()
 
     def moves(self, state: "LiveState") -> None:
         """Nothing: a snapshot is read off the state, never applied to it."""
         del state
+
+
+class ServiceEvent(StreamEvent, frozen=True):
+    """Which code the dashboard runs, changed: older than its checkout, or moved onto it."""
+
+    type: Literal["service"] = "service"
+    code: RunningCode
+
+    def moves(self, state: "LiveState") -> None:
+        state.code = self.code
 
 
 class RepositoryEvent(StreamEvent, frozen=True):
@@ -172,7 +184,8 @@ type DashboardEvent = Annotated[
     | MessageEvent
     | ReviewEvent
     | ReviewGoneEvent
-    | ReviewScopeEvent,
+    | ReviewScopeEvent
+    | ServiceEvent,
     Field(discriminator="type"),
 ]
 """Everything one frame of the stream can carry, told apart by its ``type``."""
@@ -223,6 +236,7 @@ class Observation(BaseModel, frozen=True):
     sessions: list[LiveSession]
     messages: list[LiveMessage]
     reviews: ReviewSnapshot | None = None
+    code: RunningCode = RunningCode()
 
 
 class LiveState:
@@ -238,6 +252,7 @@ class LiveState:
         self.reviews: dict[str, ReviewSummary] = {}
         self.roots: list[ReviewRoot] = []
         self.errors: list[ReviewError] = []
+        self.code = RunningCode()
 
     def observed(self, seen: Observation) -> list[DashboardEvent]:
         """Every difference between what the sources say and this state, applied to it."""
@@ -266,6 +281,7 @@ class LiveState:
             ],
             *[MessageEvent(message=each) for each in seen.messages],
             *(self.reviewed(seen.reviews) if seen.reviews is not None else []),
+            *([ServiceEvent(code=seen.code)] if seen.code != self.code else []),
         ]
         for event in events:
             event.moves(self)
@@ -302,6 +318,7 @@ class LiveState:
                 ),
                 errors=self.errors,
             ),
+            code=self.code,
         )
 
 
@@ -313,6 +330,7 @@ class LiveFeed:
     mail record — and every ``review_every`` looks at the review queues,
     expiring those no session waits on every ``sweep_every``. What differs is
     numbered and kept for replay; the last ``kept`` of them are replayable.
+    ``code`` says which code the dashboard runs, where it knows.
     """
 
     def __init__(
@@ -324,9 +342,11 @@ class LiveFeed:
         sweep_every: int = 20,
         kept: int = KEPT_FRAMES,
         heartbeat: float = HEARTBEAT_SECONDS,
+        code: Callable[[], RunningCode] = RunningCode,
     ) -> None:
         self.repositories = repositories
         self.reviews = reviews
+        self.code = code
         self.interval = interval
         self.review_every = review_every
         self.sweep_every = sweep_every
@@ -375,6 +395,7 @@ class LiveFeed:
                 for message in watch.fresh_messages()
             ],
             reviews=reviews,
+            code=self.code(),
         )
 
     def publish(self, observation: Observation) -> None:
@@ -400,21 +421,44 @@ class LiveFeed:
         """Look and publish while anybody follows, then stop."""
         while self.followers:
             try:
-                observation = await asyncio.to_thread(self.observe)
+                self.publish(await asyncio.to_thread(self.observe))
             except Exception:
                 logger.exception("the dashboard could not read its sources this time")
                 self.primed.set()
-            else:
-                self.publish(observation)
             await asyncio.sleep(self.interval)
         self.producer = None
 
+    def producing(self) -> None:
+        """Start the producer where none runs.
+
+        The feed owns it rather than a request or a task group: it serves
+        whichever tabs follow, across their requests, and stops once the last
+        leaves. So the feed holds it, which keeps it from being collected
+        while it runs; a look's failure is logged by the loop itself; and one
+        that escapes the loop is logged here as it ends, with the producer
+        let go, so the next tab starts another rather than following a dead
+        one.
+        """
+        if self.producer is not None and not self.producer.done():
+            return
+        producer = asyncio.create_task(self.produce(), name="dashboard-feed")
+
+        def ended(task: asyncio.Task[None]) -> None:
+            if not task.cancelled() and (failure := task.exception()) is not None:
+                logger.error("the dashboard's feed stopped", exc_info=failure)
+            if self.producer is task:
+                self.producer = None
+
+        producer.add_done_callback(ended)
+        self.producer = producer
+
     async def published_within(self, seconds: float) -> None:
         """Wait for the next change published, or for ``seconds``, whichever comes first."""
-        waiter = asyncio.ensure_future(self.published.wait())
-        finished, _ = await asyncio.wait({waiter}, timeout=seconds)
-        if not finished:
-            waiter.cancel()
+        try:
+            async with asyncio.timeout(seconds):
+                await self.published.wait()
+        except TimeoutError:
+            return
 
     def resumed(self, spelled: str) -> int | None:
         """Where a tab's cursor resumes in this dashboard's numbering, if it does."""
@@ -440,8 +484,7 @@ class LiveFeed:
         that missed nothing knows as much without a frame to show for it.
         """
         self.followers += 1
-        if self.producer is None:
-            self.producer = asyncio.create_task(self.produce())
+        self.producing()
         try:
             yield f"retry: {RETRY_MILLISECONDS}\n\n"
             await self.primed.wait()

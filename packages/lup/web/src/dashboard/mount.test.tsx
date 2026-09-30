@@ -22,7 +22,8 @@ function sent(event: object): string {
 
 /** The whole state as one frame, over the fixture's reviews and whatever sessions and messages it holds. */
 function framed(reviews: unknown): string {
-  return sent({ type: "snapshot", repositories: liveRepositories, sessions: liveSessions, messages: liveMessages, reviews });
+  const code = { source: "fixture", root: "/project/packages/lup/src/lup", since: null, older: false, failing: "" };
+  return sent({ type: "snapshot", repositories: liveRepositories, sessions: liveSessions, messages: liveMessages, reviews, code });
 }
 /** How the fake server says the requester heard of an answer. */
 const DELIVERED = { queued: true, woken: false, waited: false, copied: false, detail: "No `review wait` holds it: in lead's mailbox, not woken: asleep." };
@@ -174,6 +175,23 @@ describe("dashboard page", () => {
     rows.push(item.summary);
     return item;
   }
+
+  test("a dashboard running older code than its checkout says so until it has restarted", async () => {
+    const page = await open();
+    expect(page.root.querySelector(".running-code")).toBeNull();
+
+    const older = { source: "abc", root: "/project/packages/lup/src/lup", since: "2026-09-30T00:00:00Z", older: true, failing: "" };
+    await act(async () => stream?.enqueue(new TextEncoder().encode(sent({ type: "service", code: older }))));
+    await until(() => page.root.querySelector(".running-code") !== null, "the older-code notice");
+    expect(one(page.root, ".running-code").textContent).toContain("runs older code than its checkout and is restarting onto it");
+
+    await act(async () => stream?.enqueue(new TextEncoder().encode(sent({ type: "service", code: { ...older, failing: "SyntaxError: invalid syntax" } }))));
+    await until(() => (page.root.querySelector(".running-code")?.textContent ?? "").includes("does not start"), "the failing notice");
+    expect(one(page.root, ".running-code").textContent).toContain("SyntaxError: invalid syntax");
+
+    await act(async () => stream?.enqueue(new TextEncoder().encode(sent({ type: "service", code: { ...older, older: false } }))));
+    await until(() => page.root.querySelector(".running-code") === null, "the notice taken down");
+  });
 
   test("watched queue, operation directory and foreign target paths are labelled separately", async () => {
     const file = detail.files[0];

@@ -1,9 +1,10 @@
-import type { LiveMessage, LiveRepository, LiveSession, ReviewSnapshot, ReviewSummary, StreamFrame } from "../generated/views";
+import type { LiveMessage, LiveRepository, LiveSession, ReviewSnapshot, ReviewSummary, RunningCode, StreamFrame } from "../generated/views";
 
 /**
  * Everything live the page shows, as the stream has moved it so far.
  * Each collection is replaced only when a frame changes it, so a view reading
  * one — the review queue reading `reviews` — redraws only for its own frames.
+ * `code` is which code the dashboard runs, and whether its checkout moved past it.
  */
 export type LiveState = {
   cursor: string;
@@ -11,7 +12,19 @@ export type LiveState = {
   sessions: ReadonlyMap<string, LiveSession>;
   messages: ReadonlyMap<string, LiveMessage>;
   reviews: ReviewSnapshot;
+  code: RunningCode;
 };
+
+/** What a dashboard that has not said which code it runs is taken to run. */
+export const UNSAID: RunningCode = { source: "", root: "", since: null, older: false, failing: "" };
+
+/** What the page says of the code the dashboard runs; nothing while it is current. */
+export function codeNotice(code: RunningCode): string {
+  if (!code.older) return "";
+  return code.failing
+    ? `This dashboard runs older code than its checkout, whose newer code does not start (${code.failing}). It keeps answering with the code it runs.`
+    : "This dashboard runs older code than its checkout and is restarting onto it; answers wait until the page reconnects.";
+}
 
 function newestFirst(rows: ReviewSummary[]): ReviewSummary[] {
   return [...rows].sort((left, right) => Date.parse(right.created) - Date.parse(left.created));
@@ -41,9 +54,10 @@ export function applied(state: LiveState | null, frame: StreamFrame): LiveState 
       sessions: keyed(event.sessions),
       messages: keyed(event.messages),
       reviews: { ...event.reviews, reviews: newestFirst(event.reviews.reviews) },
+      code: event.code,
     };
   }
-  const base: LiveState = { ...(state ?? { repositories: new Map(), sessions: new Map(), messages: new Map(), reviews: { roots: [], reviews: [], errors: [] } }), cursor: frame.cursor };
+  const base: LiveState = { ...(state ?? { repositories: new Map(), sessions: new Map(), messages: new Map(), reviews: { roots: [], reviews: [], errors: [] }, code: UNSAID }), cursor: frame.cursor };
   switch (event.type) {
     case "repository": return { ...base, repositories: set(base.repositories, event.repository.key, event.repository) };
     case "repository_gone": return { ...base, repositories: without(base.repositories, event.key) };
@@ -56,6 +70,7 @@ export function applied(state: LiveState | null, frame: StreamFrame): LiveState 
     }
     case "review_gone": return { ...base, reviews: { ...base.reviews, reviews: base.reviews.reviews.filter((row) => row.key !== event.key) } };
     case "review_scope": return { ...base, reviews: { ...base.reviews, roots: event.roots, errors: event.errors } };
+    case "service": return { ...base, code: event.code };
   }
 }
 

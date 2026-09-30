@@ -661,6 +661,7 @@
           "review": "#/$defs/ReviewEvent",
           "review_gone": "#/$defs/ReviewGoneEvent",
           "review_scope": "#/$defs/ReviewScopeEvent",
+          "service": "#/$defs/ServiceEvent",
           "session": "#/$defs/SessionEvent",
           "session_gone": "#/$defs/SessionGoneEvent",
           "snapshot": "#/$defs/SnapshotEvent"
@@ -694,6 +695,9 @@
         },
         {
           "$ref": "#/$defs/ReviewScopeEvent"
+        },
+        {
+          "$ref": "#/$defs/ServiceEvent"
         }
       ]
     },
@@ -4174,6 +4178,54 @@
       "title": "RunSummary",
       "type": "object"
     },
+    "RunningCode": {
+      "additionalProperties": false,
+      "description": "Which lup source the dashboard runs, and whether its checkout has moved past it.",
+      "properties": {
+        "failing": {
+          "default": "",
+          "title": "Failing",
+          "type": "string"
+        },
+        "older": {
+          "default": false,
+          "title": "Older",
+          "type": "boolean"
+        },
+        "root": {
+          "default": "",
+          "title": "Root",
+          "type": "string"
+        },
+        "since": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Since"
+        },
+        "source": {
+          "default": "",
+          "title": "Source",
+          "type": "string"
+        }
+      },
+      "required": [
+        "source",
+        "root",
+        "since",
+        "older",
+        "failing"
+      ],
+      "title": "RunningCode",
+      "type": "object"
+    },
     "SandboxPlacement": {
       "enum": [
         "inside",
@@ -4228,6 +4280,27 @@
         "name"
       ],
       "title": "ScopeRequest",
+      "type": "object"
+    },
+    "ServiceEvent": {
+      "additionalProperties": false,
+      "description": "Which code the dashboard runs, changed: older than its checkout, or moved onto it.",
+      "properties": {
+        "code": {
+          "$ref": "#/$defs/RunningCode"
+        },
+        "type": {
+          "const": "service",
+          "default": "service",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "type",
+        "code"
+      ],
+      "title": "ServiceEvent",
       "type": "object"
     },
     "SessionActivity": {
@@ -4369,6 +4442,16 @@
       "additionalProperties": false,
       "description": "Everything the dashboard knows now, handed to a tab with nothing to resume from.",
       "properties": {
+        "code": {
+          "$ref": "#/$defs/RunningCode",
+          "default": {
+            "failing": "",
+            "older": false,
+            "root": "",
+            "since": null,
+            "source": ""
+          }
+        },
         "messages": {
           "items": {
             "$ref": "#/$defs/LiveMessage"
@@ -4405,7 +4488,8 @@
         "repositories",
         "sessions",
         "messages",
-        "reviews"
+        "reviews",
+        "code"
       ],
       "title": "SnapshotEvent",
       "type": "object"

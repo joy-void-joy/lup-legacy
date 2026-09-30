@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { ReviewDecision, ReviewDetail, ReviewRoot, ReviewSnapshot, ReviewSummary, SetupPane, ThreadEntry } from "../generated/views";
 import { answerReview, followDashboard, readReview, readReviewLink, readSetupPanes, remarkReview, reviewLink, ReviewError, takeToken, TOKEN_KEY } from "./api";
 import type { FileNavigation } from "./Files";
-import { applied, type LiveState } from "./live";
+import { applied, codeNotice, type LiveState } from "./live";
 import { EMPTY_DRAFT, RequestView, staleSentences, stateClass, stateLabel, type Action, type Draft } from "./Request";
 import { Sessions } from "./Sessions";
 
@@ -447,6 +447,7 @@ export function App() {
         <button type="button" aria-expanded={help} aria-controls="shortcut-help" onClick={() => setHelp((value) => !value)}>Keyboard shortcuts</button>
         <button type="button" onClick={reconnect}>Reconnect</button></div>
     </header>
+    {live !== null && codeNotice(live.code) !== "" && <p className="notice running-code" role="alert">{codeNotice(live.code)}</p>}
     {notice !== "" && <p className="notice" role="alert">{notice}</p>}
     {view === "sessions" ? <Sessions live={live} current={connection === "Live"} token={token} />
       : view === "setup" ? <>{error !== "" && <p className="error" role="alert">{error}</p>}<SetupView panes={panes} chosen={pane} onChoose={setPane} /></> : <>
