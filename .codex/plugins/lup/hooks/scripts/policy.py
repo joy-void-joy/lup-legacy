@@ -2065,7 +2065,9 @@ def observe_hook_call(
     def same_call(entry: dict | None) -> bool:
         if entry is None:
             return False
-        expected = entry.get("execution_payload")
+        expected = (
+            entry["execution_payload"] if "execution_payload" in entry else None
+        )
         return entry["operation"]["tool"] == tool and arguments == (
             entry["operation"]["payload"] if expected is None else expected
         )
