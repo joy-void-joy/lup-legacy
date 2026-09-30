@@ -14,9 +14,11 @@ import os
 import signal
 import socket
 import sys
+import threading
 import time
 from collections.abc import Iterator
 from contextlib import AbstractContextManager, contextmanager
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from unittest.mock import Mock
 
@@ -39,6 +41,7 @@ from lup.launch.companions import (
     Joined,
     Lease,
     LiveProcess,
+    Reaped,
     ReachedPort,
     Running,
     SharedProcess,
@@ -445,6 +448,84 @@ def test_every_stop_says_why_first_in_the_log_and_the_state(
     assert f"stopping pid {running.process.pid}: the last lease" in (
         slot.log().read_text()
     )
+
+
+GONE = LiveProcess(pid=2**22 + 7, started="0")
+"""A process that ended and is nobody's here to collect: its status is read, if at all, off its starter's record."""
+
+
+def gone(spawner: LiveProcess | None) -> Running:
+    """What ran, now ended, as a holder that is not its parent finds it."""
+    return Running(
+        process=GONE,
+        declared={},
+        since=datetime.now(UTC) - timedelta(seconds=5),
+        spawner=spawner,
+    )
+
+
+def ended_as(status: int) -> Reaped:
+    """How the starter records its child ended, as its ``sh`` collected it."""
+    return Reaped(pid=GONE.pid, status=status, at=datetime.now(UTC))
+
+
+def test_a_starters_record_written_before_the_look_is_read_at_once(
+    tmp_path: Path,
+) -> None:
+    slot = CompanionSlot(directory=tmp_path)
+    slot.keep(ended_as(-signal.SIGKILL))
+
+    began = time.monotonic()
+    status = slot.ended(gone(LiveProcess.of(os.getpid())), within=5.0, every=0.01)
+    took = time.monotonic() - began
+
+    assert status == -signal.SIGKILL and took < 0.5
+
+
+def test_a_starters_record_written_after_the_look_is_waited_for(
+    tmp_path: Path,
+) -> None:
+    """The race a holder lost: the starter had collected its child and not yet written how."""
+    slot = CompanionSlot(directory=tmp_path)
+    landing = threading.Timer(0.3, slot.keep, args=(ended_as(-signal.SIGKILL),))
+    landing.start()
+
+    began = time.monotonic()
+    status = slot.ended(gone(LiveProcess.of(os.getpid())), within=5.0, every=0.01)
+    took = time.monotonic() - began
+    landing.join()
+
+    assert status == -signal.SIGKILL
+    assert 0.3 <= took < 5.0
+
+
+def test_with_its_starter_gone_nothing_is_known_at_once(tmp_path: Path) -> None:
+    """A starter that is gone left its child to init, and nobody will record how it ended."""
+    slot = CompanionSlot(directory=tmp_path)
+
+    began = time.monotonic()
+    without = slot.ended(gone(LiveProcess(pid=2**22 + 8, started="0")), within=5.0)
+    unrecorded = slot.ended(gone(None), within=5.0)
+    took = time.monotonic() - began
+
+    assert without is None and unrecorded is None and took < 0.5
+
+
+def test_a_starter_that_never_records_is_waited_for_no_longer_than_the_bound(
+    tmp_path: Path,
+) -> None:
+    slot = CompanionSlot(directory=tmp_path)
+    earlier = ended_as(3).model_copy(
+        update={"at": datetime.now(UTC) - timedelta(minutes=1)}
+    )
+    slot.keep(earlier)
+
+    began = time.monotonic()
+    status = slot.ended(gone(LiveProcess.of(os.getpid())), within=0.3, every=0.05)
+    took = time.monotonic() - began
+
+    assert status is None
+    assert 0.3 <= took < 1.5
 
 
 class Breaking(Served, frozen=True):
