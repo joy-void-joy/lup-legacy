@@ -59,9 +59,12 @@ from .rows import (
 )
 from .syntax import Command, Script, Word, word_text
 from .words import (
+    OptionWord,
     flag_matches,
     flag_write_targets,
     global_span,
+    install_operands,
+    operand_word,
     path_verb_operands,
     sed_invocation,
 )
@@ -557,109 +560,6 @@ def rewrite_steps(
             ),
         ]
     ]
-
-
-class OptionWord(TypedDict):
-    """One word of a command's own option grammar, read with what it consumed.
-
-    ``kind`` is what the word is to the reader asking: an ``operand``, an
-    ``option`` carried on, a ``value`` some option names -- ``name`` says
-    which -- a ``reading`` form that lands nothing, or ``unmodelled``.
-    """
-
-    kind: Literal["operand", "option", "value", "reading", "unmodelled"]
-    name: str
-    word: str
-
-
-def operand_word(word: str) -> OptionWord:
-    """A word no option of the grammar claimed: a flag nothing models, or an operand."""
-    if word.startswith("-") and word != "-":
-        return OptionWord(kind="unmodelled", name=word, word=word)
-    return OptionWord(kind="operand", name="", word=word)
-
-
-# lup: ignore[library-default] — install's options that leave the source's own bytes at the destination
-INSTALL_INERT_OPTIONS = (
-    "--compare",
-    "--preserve-timestamps",
-    "--verbose",
-    "--no-target-directory",
-)
-
-
-def inert_install_cluster(word: str) -> bool:
-    """Whether a short-option cluster leaves the bytes `install` lands alone.
-
-    Its flags compare, preserve, report, make parents or name a file; the last
-    of them may be a mode, an owner or a group with its value attached, which
-    changes who may read the file and not what it holds.
-    """
-    if not word.startswith("-") or word.startswith("--") or len(word) < 2:
-        return False
-    for position, letter in enumerate(word[1:], start=1):
-        if letter in "mog":
-            return position + 1 < len(word)
-        if letter not in "cCpvDT":
-            return False
-    return True
-
-
-def install_word(word: str) -> list[OptionWord]:
-    """One `install` word that takes no value after it, read by its spelling."""
-    if word.startswith("--target-directory="):
-        return [
-            OptionWord(
-                kind="value", name="-t", word=word.removeprefix("--target-directory=")
-            )
-        ]
-    if (
-        word in INSTALL_INERT_OPTIONS
-        or word.startswith(("--mode=", "--owner=", "--group="))
-        or inert_install_cluster(word)
-    ):
-        return []
-    return [operand_word(word)]
-
-
-def install_words(words: list[str]) -> Iterator[OptionWord]:
-    """An `install`'s words by its own grammar, each option read with its value."""
-    remaining = iter(words[1:])
-    for word in remaining:
-        match word:
-            case "--":
-                yield from (
-                    OptionWord(kind="operand", name="", word=rest) for rest in remaining
-                )
-                return
-            case "-m" | "-o" | "-g" | "--mode" | "--owner" | "--group":
-                next(remaining, None)
-            case "-t" | "--target-directory":
-                yield OptionWord(kind="value", name="-t", word=next(remaining, ""))
-            case "-d" | "--directory":
-                yield OptionWord(kind="reading", name=word, word=word)
-            case _:
-                yield from install_word(word)
-
-
-def install_operands(words: list[str]) -> list[str] | None:
-    """The sources of an `install`, then where they land, or ``None`` where unmodelled.
-
-    A mode, an owner or a group changes who may read the file and not what it
-    holds, so each is read past with its value. `-d` makes directories and
-    lands no document, so it names nothing; `-s` strips a binary and a backup
-    adds a file, so each is a place this does not work out.
-    """
-    read = list(install_words(words))
-    if any(word["kind"] == "unmodelled" for word in read):
-        return None
-    if any(word["kind"] == "reading" for word in read):
-        return []
-    operands = [word["word"] for word in read if word["kind"] == "operand"]
-    directory = [word["word"] for word in read if word["kind"] == "value"][-1:]
-    if directory:
-        return [*operands, *directory] if operands else None
-    return operands if len(operands) >= 2 else None
 
 
 def truncate_word(word: str) -> OptionWord:
