@@ -21,8 +21,16 @@ note per file in the directory's own manifest, ``.proposal.json``, which
 also names the files the proposal deletes -- a deletion has no document to
 write under scratch, so it is declared::
 
-    {"about": {"packages/lup/src/lup/policy/relay.py": "the stale state"},
+    {"about": {"src/app/host.py": "`patched_documents` now reads all the
+                files first and only then writes them, replacing a 3-way
+                if/elif. Same behaviour."},
      "delete": ["docs/retired.md"]}
+
+(one line per note in the real file). The operator decides from these
+words, so they are plain: what changes, then why, naming the file, function
+or command, and whether behaviour changes. `review propose --help` gives the
+rule with an example of each kind; a proposal of several files where one has
+no note parks all the same, with a warning naming it.
 """
 
 from pathlib import Path
@@ -61,7 +69,8 @@ class ProposalManifest(BaseModel, frozen=True, extra="forbid"):
     """What a proposal's directory says beside the documents it holds."""
 
     about: dict[Path, str] = {}
-    """A note on each file, by its path in the checkout."""
+    """A note on each file, by its path in the checkout: one or two plain
+    sentences saying what changes in it and whether behaviour does."""
 
     delete: list[Path] = []
     """The files in the checkout the proposal deletes."""
