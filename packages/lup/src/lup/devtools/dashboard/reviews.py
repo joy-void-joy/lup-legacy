@@ -27,6 +27,7 @@ the command that serves it.
 import asyncio
 import hmac
 import logging
+import sys
 import webbrowser
 from collections.abc import Callable, Iterator
 from datetime import datetime
@@ -58,7 +59,7 @@ from lup.devtools.dashboard.companion import (
     refuse_inside_a_session,
 )
 from lup.devtools.dashboard.panes import SetupPane, SetupPanes
-from lup.devtools.dashboard.pulse import PulseFile, status_line
+from lup.devtools.dashboard.pulse import PulseFile, answered
 from lup.devtools.review.app import (
     ArchivedReview,
     RequesterPresence,
@@ -1191,19 +1192,18 @@ def create_operator_dashboard_app(root: Path) -> typer.Typer:
             "named, else the running dashboard's",
         ),
     ) -> None:
-        """Print what a session's status line shows: the reviews waiting, and where.
+        """Print what a session's status line shows: which session, what waits on you, and the dashboard.
 
-        Nothing where no dashboard answers; the address alone where nothing
-        waits. Named with its pulse, as a status line runs it, it is answered
-        before the project's application loads.
+        The session is the one the runtime names on stdin, as it runs its
+        status line; what waits and what other agents need show only while
+        something does. Named with its pulse, as a status line runs it, it is
+        answered before the project's application loads.
         """
         named = pulse or Path(
             AdvertisedDashboard().pulse
             or PulseFile.of(lent_directory(companion.slot(root).directory)).path
         )
-        shown = status_line(named)
-        if shown:
-            typer.echo(shown)
+        typer.echo(answered(named, sys.stdin), color=True)
 
     @app.command("reopen")
     def reopen_cmd(

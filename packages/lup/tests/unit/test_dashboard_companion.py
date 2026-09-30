@@ -17,13 +17,16 @@ import time
 from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from urllib.parse import urlsplit
 
 import httpx
 import pytest
 import sh
 from typer.testing import CliRunner
 
+from lup.coordination.bare.changes import changes
 from lup.coordination.identity import MEMBER_ENV
+from lup.coordination.repository import RepositoryPeers
 from lup.devtools.dashboard.companion import (
     Dashboard,
     DashboardRegistry,
@@ -38,6 +41,7 @@ from lup.devtools.dashboard.pulse import (
     DASHBOARD_PULSE_ENV,
     DashboardPulse,
     PulseFile,
+    StatusInput,
     status_line,
 )
 from lup.devtools.dashboard.reviews import create_operator_dashboard_app
@@ -338,6 +342,9 @@ def test_inside_a_session_the_dashboard_answers_from_what_it_publishes(
         repositories=["/work/project/.git"],
         tabs=1,
         beat=beat,
+        unread=1,
+        quiet=1,
+        contested=2,
     )
     written(pulse.path, published.model_dump_json())
     monkeypatch.setenv(MEMBER_ENV, "a-session")
@@ -348,6 +355,7 @@ def test_inside_a_session_the_dashboard_answers_from_what_it_publishes(
     runner = CliRunner()
     refused = runner.invoke(create_operator_dashboard_app(tmp_path), ["open"])
     line = runner.invoke(create_operator_dashboard_app(tmp_path), ["line"])
+    shown = status_line(pulse.path)
     stale = published.model_copy(update={"beat": beat - timedelta(minutes=5)})
     written(pulse.path, stale.model_dump_json())
     stopped = dashboard_status(dashboard, tmp_path)
@@ -358,10 +366,14 @@ def test_inside_a_session_the_dashboard_answers_from_what_it_publishes(
 
     assert status.serving and status.url == url and status.pid == 4242
     assert status.sessions == 3 and status.pending == 2 and status.tabs == 1
+    assert (status.unread, status.quiet, status.contested) == (1, 1, 2)
     assert status.repositories == ["/work/project/.git"]
     assert refused.exit_code == 2
     assert "outside the agent session" in refused.output
-    assert line.exit_code == 0 and line.output == f"2 reviews pending · {url}\n"
+    assert shown.plain() == (
+        f"?2 reviews · ✉1 │ ⚠ 1 quiet · ⚠ 2 paths held twice │ ● {url}"
+    )
+    assert line.exit_code == 0 and line.output == shown.painted() + "\n"
     assert not stopped.serving and "stopped" in stopped.detail
     assert not taken_down.serving and "took its pulse down" in taken_down.detail
     assert unlent.serving and unlent.url == url and "lent no pulse" in unlent.detail
@@ -482,12 +494,15 @@ def test_a_dashboard_killed_while_held_comes_back_at_its_address(
         serving_again(watched, root, killed)
         reopened = private_urls(watched, root)
         said = restart_said(pulse)
-        line = status_line(pulse.path)
+        line = status_line(pulse.path).plain()
         status = dashboard_status(watched, root)
 
     assert reopened == opened
     assert said == "it was ended by SIGKILL"
-    assert line == f"restarted after it stopped: it was ended by SIGKILL · {status.url}"
+    assert line == (
+        f"● :{urlsplit(status.url).port} · "
+        "restarted after it stopped: it was ended by SIGKILL"
+    )
     assert status.serving and status.restarts == 1
     assert status.exited is not None and status.exited.process == killed
     assert status.exited.status == -signal.SIGKILL
@@ -533,23 +548,36 @@ def test_a_held_dashboard_the_operator_stops_stays_stopped_until_restart(
     dashboard: Dashboard, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """The sessions holding it leave it stopped; the status line and `dashboard
-    status` say what starts it, and `dashboard restart` does, at the same address."""
+    status` say what starts it, and `dashboard restart` does, at the same address.
+    Each status line still names its session."""
     root = repository(tmp_path / "project")
     watched = dashboard.model_copy(update={"backoff": (0.2,), "watched_every": 0.1})
     monkeypatch.setattr("lup.devtools.dashboard.reviews.Dashboard", lambda: watched)
     cli = create_operator_dashboard_app(root)
     runner = CliRunner()
+    peers = RepositoryPeers(root)
+    peers.join("lead", root, cli_name="lead")
+    transcript = tmp_path / "home" / "conversation-1.jsonl"
+    transcript.parent.mkdir(parents=True)
+    transcript.touch()
+    changes(peers.root, "lead", root, str(transcript))
 
     with held_companions([watched], launch_at(root)) as joined:
         pulse = Path(joined.environment[DASHBOARD_PULSE_ENV])
         opened = private_urls(watched, root)
         before = watched.standing(root).serving
         assert before is not None
+        for _ in range(200):
+            listed = PulseFile(path=pulse).read()
+            if listed is not None and listed.members:
+                break
+            time.sleep(0.05)
         stopped = runner.invoke(cli, ["stop"])
         time.sleep(2.0)
         left = watched.standing(root)
         idle = dashboard_status(watched, root)
-        line = status_line(pulse)
+        line = status_line(pulse).plain()
+        named = status_line(pulse, StatusInput(session_id="conversation-1")).plain()
         restarted = runner.invoke(cli, ["restart"])
         again = watched.standing(root)
         reopened = private_urls(watched, root)
@@ -567,7 +595,8 @@ def test_a_held_dashboard_the_operator_stops_stays_stopped_until_restart(
     assert idle.detail == (
         "Stopped by the operator; `uv run lup-devtools dashboard restart` starts it."
     )
-    assert line == "dashboard stopped by the operator; `dashboard restart` starts it"
+    assert line == "○ dashboard stopped by the operator; `dashboard restart` starts it"
+    assert named == f"lead · project │ {line}"
     assert restarted.exit_code == 0, restarted.output
     assert again.serving is not None and again.serving != before
     assert not again.stays_stopped and again.exited is None and again.restarts == 0

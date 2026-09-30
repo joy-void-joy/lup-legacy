@@ -117,20 +117,19 @@ def migration_application() -> typer.Typer:
 
 
 def dashboard_line(pulse: Path) -> None:
-    """Print a session's status line from the dashboard's pulse, loading nothing else.
+    """Print a session's status line from the dashboard's pulse and its runtime's input, loading nothing else.
 
     The route `dashboard line <pulse>` takes where a status line runs it,
-    answered as the project's own `dashboard line` answers it.
+    answered as the project's own `dashboard line` answers it: in colour,
+    which the runtime paints though it captures what the command prints.
     """
     # lup: defer: most of what this route still costs (~0.3 s measured) is
     # `import lup`, whose front door binds the session vocabulary on load
     # (~0.22 s, `lup.sessions.events` the bulk); a status line re-run every
     # few seconds pays it each time, in every session
-    from lup.devtools.dashboard.pulse import status_line
+    from lup.devtools.dashboard.pulse import answered
 
-    shown = status_line(pulse)
-    if shown:
-        typer.echo(shown)
+    typer.echo(answered(pulse, sys.stdin), color=True)
 
 
 def in_process(arguments: tuple[str, ...]) -> int:

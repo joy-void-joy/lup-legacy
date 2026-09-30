@@ -8,6 +8,7 @@ person turned that off. It publishes what it counts for every session to
 read without its capability, which is what a session's status line shows.
 """
 
+import json
 from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -15,8 +16,19 @@ from pathlib import Path
 import pytest
 import sh
 
+from lup.coordination.bare import store
+from lup.coordination.bare.changes import changes
+from lup.coordination.identity import mint_member_id
+from lup.coordination.mail import ActorMail
+from lup.coordination.peers import USER_ADDRESS, user_peer
+from lup.coordination.repository import RepositoryPeers
 from lup.devtools.dashboard.companion import DashboardRegistry
-from lup.devtools.dashboard.pulse import DashboardPulse, PulseFile, status_line
+from lup.devtools.dashboard.pulse import (
+    DashboardPulse,
+    PulseFile,
+    StatusInput,
+    status_line,
+)
 from lup.devtools.dashboard.service import DesktopNotice, Herald
 from lup.devtools.review.app import relay
 from lup.launch.companions import lent_directory
@@ -50,10 +62,12 @@ def repository(root: Path) -> Path:
     return root.resolve()
 
 
-def parked(root: Path, question_id: str) -> PersistentQuestion:
+def parked(
+    root: Path, question_id: str, member: str = "", session: str = "native-session"
+) -> PersistentQuestion:
     operation = Operation(
         id=f"operation-{question_id}",
-        session="native-session",
+        session=session,
         requester="asking-session",
         tool="Bash",
         payload={"command": f"touch {question_id}"},
@@ -69,6 +83,7 @@ def parked(root: Path, question_id: str) -> PersistentQuestion:
                 reason="The operator reviews this command.",
                 eligible=["operator"],
                 resumption="native_retry",
+                member=member,
             )
         )
     )
@@ -219,18 +234,162 @@ def test_the_pulse_counts_what_waits_and_says_where(
     assert counted.url == URL and counted.pending == 1
     assert counted.sessions == 1 and counted.tabs == 2
     assert counted.repositories == [str(root / ".git")]
-    assert status_line(pulse.path) == URL
+    assert status_line(pulse.path).plain() == "● :8766"
     watching.retired()
-    assert pulse.read() is None and status_line(pulse.path) == ""
+    assert pulse.read() is None
+    assert status_line(pulse.path).plain() == "○ dashboard down · dashboard restart"
 
 
-def test_the_status_line_says_what_waits_and_where(tmp_path: Path) -> None:
-    now = datetime.now(UTC)
-    pulse = DashboardPulse(url=URL, pid=1, pending=3, beat=now)
-    kept = PulseFile.of(lent_directory(tmp_path))
-    kept.path.parent.mkdir(parents=True)
-    kept.path.write_text(pulse.model_dump_json())
+def joined(root: Path, name: str, conversation: str = "") -> str:
+    """One session on the repository's roster, launched in ``root``, writing ``conversation``'s transcript."""
+    peers = RepositoryPeers(root)
+    member = mint_member_id()
+    peers.join(member, root, cli_name=name)
+    if conversation:
+        transcript = root.parent / "home" / f"{conversation}.jsonl"
+        transcript.parent.mkdir(parents=True, exist_ok=True)
+        transcript.touch()
+        changes(peers.root, member, root, str(transcript))
+    return member
 
-    assert status_line(kept.path, now) == f"3 reviews pending · {URL}"
-    assert pulse.model_copy(update={"pending": 1}).line() == f"1 review pending · {URL}"
-    assert status_line(kept.path, now + timedelta(minutes=5)) == ""
+
+def called(transcript: Path, call: str, at: datetime) -> None:
+    """The transcript records a call that nothing has answered yet, made at ``at``."""
+    transcript.parent.mkdir(parents=True, exist_ok=True)
+    record = {
+        "type": "assistant",
+        "uuid": call,
+        "timestamp": at.isoformat(),
+        "message": {
+            "role": "assistant",
+            "content": [{"type": "tool_use", "id": call, "name": "Bash", "input": {}}],
+        },
+    }
+    with transcript.open("a", encoding="utf-8") as written:
+        written.write(json.dumps(record) + "\n")
+
+
+def published(pulse: PulseFile) -> DashboardPulse:
+    counted = pulse.read()
+    assert counted is not None
+    return counted
+
+
+def test_the_pulse_lists_each_session_with_the_reviews_it_parked(
+    registry: DashboardRegistry, desk: Desk, config: UserConfigFile, root: Path
+) -> None:
+    lead = joined(root, "lead", "conversation-1")
+    other = joined(root, "other")
+    parked(root, "41cb73e1a2b3c4d5", member=lead)
+    parked(root, "q-2", member=other)
+    parked(root, "q-3")
+    pulse = PulseFile.of(lent_directory(registry.directory))
+
+    herald(registry, desk, config).look()
+
+    members = {member.name: member for member in published(pulse).members}
+    assert members["lead"].reviews == ["41cb73e1a2b3c4d5"]
+    assert members["lead"].runtime == ["conversation-1"]
+    assert members["lead"].worktree == str(root)
+    assert members["other"].reviews == ["q-2"]
+    asking = StatusInput(session_id="conversation-1")
+    assert status_line(pulse.path, asking).plain() == (
+        f"lead · project │ ?3 reviews (1 here: 41cb73e1) │ ● {URL}"
+    )
+
+
+def test_a_review_a_subagent_parked_is_its_sessions(
+    registry: DashboardRegistry, desk: Desk, config: UserConfigFile, root: Path
+) -> None:
+    lead = joined(root, "lead", "conversation-1")
+    peers = RepositoryPeers(root)
+    store.joined_subagent(
+        peers.root, lead, store.Caller(agent_id="a1", agent_type="general-purpose")
+    )
+    parked(root, "q-1", session="a1")
+    parked(root, "q-2", session="conversation-1")
+    pulse = PulseFile.of(lent_directory(registry.directory))
+
+    herald(registry, desk, config).look()
+
+    [member] = published(pulse).members
+    assert member.name == "lead" and member.reviews == ["q-1", "q-2"]
+    asking = StatusInput(session_id="conversation-1")
+    assert status_line(pulse.path, asking).plain() == (
+        f"lead · project │ ?2 reviews (2 here) │ ● {URL}"
+    )
+
+
+def test_a_call_silent_ten_minutes_is_quiet_unless_a_subagent_of_its_runs(
+    registry: DashboardRegistry, desk: Desk, config: UserConfigFile, root: Path
+) -> None:
+    lead = joined(root, "lead", "conversation-1")
+    transcript = root.parent / "home" / "conversation-1.jsonl"
+    began = datetime(2026, 9, 29, 10, 0, tzinfo=UTC)
+    called(transcript, "t1", began)
+    pulse = PulseFile.of(lent_directory(registry.directory))
+    watching = herald(registry, desk, config)
+
+    watching.look(began + timedelta(minutes=9))
+    early = published(pulse).quiet
+    watching.look(began + timedelta(minutes=11))
+    quiet = published(pulse).quiet
+    line = status_line(pulse.path, now=began + timedelta(minutes=11)).plain()
+    peers = RepositoryPeers(root)
+    store.joined_subagent(
+        peers.root, lead, store.Caller(agent_id="a1", agent_type="general-purpose")
+    )
+    watching.look(began + timedelta(minutes=12))
+    waiting = published(pulse).quiet
+    called(transcript.with_suffix("") / "subagents" / "agent-a1.jsonl", "s1", began)
+    watching.look(began + timedelta(minutes=13))
+    stuck = published(pulse).quiet
+
+    assert (early, quiet) == (0, 1)
+    assert line == "⚠ 1 quiet │ ● :8766"
+    assert waiting == 0, "a session whose subagent runs waits on it"
+    assert stuck == 1, "the subagent is the one gone quiet, not its session"
+
+
+def test_a_path_two_sessions_hold_is_held_twice(
+    registry: DashboardRegistry, desk: Desk, config: UserConfigFile, root: Path
+) -> None:
+    peers = RepositoryPeers(root)
+    lead = joined(root, "lead")
+    other = joined(root, "other")
+    child = store.joined_subagent(
+        peers.root, lead, store.Caller(agent_id="a1", agent_type="general-purpose")
+    )
+    assert child is not None
+    shared = root / "shared.py"
+    kept = root / "kept.py"
+    for claimed in (shared, kept):
+        claimed.write_text("value = 1\n", encoding="utf-8")
+    peers.touched(lead, shared, kept)
+    peers.touched(other, shared)
+    peers.touched(store.actor_id(child), kept)
+    pulse = PulseFile.of(lent_directory(registry.directory))
+
+    herald(registry, desk, config).look()
+
+    assert published(pulse).contested == 1, "a session and its subagent hold as one"
+
+
+def test_messages_agents_sent_the_operator_are_counted_while_they_wait(
+    registry: DashboardRegistry, desk: Desk, config: UserConfigFile, root: Path
+) -> None:
+    peers = RepositoryPeers(root)
+    lead = joined(root, "lead")
+    peers.send(USER_ADDRESS, "the build is green", sender=lead)
+    peers.send(USER_ADDRESS, "and the docs are regenerated", sender=lead)
+    pulse = PulseFile.of(lent_directory(registry.directory))
+    watching = herald(registry, desk, config)
+
+    watching.look()
+    waiting = published(pulse).unread
+    mail = ActorMail(peers.root)
+    mail.delivered(user_peer(), mail.waiting(user_peer()))
+    watching.look()
+
+    assert waiting == 2
+    assert published(pulse).unread == 0

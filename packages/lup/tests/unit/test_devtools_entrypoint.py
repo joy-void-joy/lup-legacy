@@ -1,9 +1,12 @@
 """What `lup-devtools` says when its environment registers no project application, or several.
 
 And what it answers without loading one: a session's status line runs at
-every render, so its route reads the dashboard's pulse and nothing else.
+every render, so its route reads the dashboard's pulse and what the runtime
+hands it on stdin, and nothing else.
 """
 
+import io
+import json
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
@@ -12,7 +15,13 @@ import pytest
 import typer
 
 import lup.devtools.entrypoint as entrypoint
-from lup.devtools.dashboard.pulse import DashboardPulse, PulseFile
+from lup.devtools.dashboard.pulse import (
+    DashboardPulse,
+    PulseFile,
+    PulseSession,
+    StatusInput,
+    status_line,
+)
 from lup.launch.companions import lent_directory
 
 
@@ -65,11 +74,24 @@ def test_the_status_line_is_read_without_the_project_application(
 ) -> None:
     pulse = PulseFile.of(lent_directory(tmp_path))
     pulse.path.parent.mkdir(parents=True)
+    lead = PulseSession(
+        repository=str(tmp_path),
+        id="lead",
+        name="lead",
+        worktree=str(tmp_path / "tree" / "fix-x"),
+        runtime=["conversation-1"],
+        reviews=["41cb73e1a2b3"],
+    )
     pulse.path.write_text(
         DashboardPulse(
-            url="http://127.0.0.1:8766", pid=1, pending=2, beat=datetime.now(UTC)
+            url="http://127.0.0.1:8766",
+            pid=1,
+            pending=2,
+            beat=datetime.now(UTC),
+            members=[lead],
         ).model_dump_json()
     )
+    handed = json.dumps({"session_id": "conversation-1"})
 
     def refused() -> typer.Typer:
         raise AssertionError("the status line loaded the project application")
@@ -78,7 +100,14 @@ def test_the_status_line_is_read_without_the_project_application(
     monkeypatch.setattr(
         sys, "argv", ["lup-devtools", "dashboard", "line", str(pulse.path)]
     )
+    monkeypatch.setattr(sys, "stdin", io.StringIO(handed))
+    monkeypatch.setenv("COLUMNS", "200")
 
     entrypoint.main()
 
-    assert capsys.readouterr().out == "2 reviews pending · http://127.0.0.1:8766\n"
+    printed = capsys.readouterr().out
+    expected = status_line(pulse.path, StatusInput.read(io.StringIO(handed)))
+    assert expected.plain() == (
+        "lead · tree/fix-x │ ?2 reviews (1 here: 41cb73e1) │ ● http://127.0.0.1:8766"
+    )
+    assert printed == expected.painted() + "\n"
