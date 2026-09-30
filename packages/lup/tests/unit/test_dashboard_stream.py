@@ -26,6 +26,7 @@ from lup.devtools.dashboard.reviews import ReviewStore, dashboard_app
 from lup.devtools.dashboard.stream import (
     LiveFeed,
     MessageEvent,
+    Observation,
     ReviewEvent,
     SessionEvent,
     SnapshotEvent,
@@ -409,3 +410,43 @@ async def test_a_tab_is_told_once_it_has_caught_up(tmp_path: Path) -> None:
     assert [framed(chunk) is not None for chunk in fresh] == [False, True, False]
     assert resumed[0].startswith("retry: ")
     assert resumed[1:] == [": live\n\n"]
+
+
+async def test_a_look_that_fails_is_logged_and_the_feed_keeps_producing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    session(tmp_path, "lead")
+    source = feed(tmp_path)
+    publish = source.publish
+    failed: list[bool] = []
+
+    def once_broken(observation: Observation) -> None:
+        if not failed:
+            failed.append(True)
+            raise ValueError("a look went wrong")
+        publish(observation)
+
+    monkeypatch.setattr(source, "publish", once_broken)
+
+    received = await frames(source, "", lambda received: len(received) >= 1)
+
+    assert isinstance(received[0].event, SnapshotEvent)
+    assert "could not read its sources" in caplog.text
+
+
+async def test_a_producer_that_ended_is_let_go_and_the_next_tab_starts_another(
+    tmp_path: Path,
+) -> None:
+    session(tmp_path, "lead")
+    source = feed(tmp_path)
+
+    async def broken() -> None:
+        raise RuntimeError("the producer broke")
+
+    source.producer = asyncio.create_task(broken())
+    with pytest.raises(RuntimeError):
+        await source.producer
+
+    received = await frames(source, "", lambda received: len(received) >= 1)
+
+    assert isinstance(received[0].event, SnapshotEvent)

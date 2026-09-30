@@ -421,21 +421,44 @@ class LiveFeed:
         """Look and publish while anybody follows, then stop."""
         while self.followers:
             try:
-                observation = await asyncio.to_thread(self.observe)
+                self.publish(await asyncio.to_thread(self.observe))
             except Exception:
                 logger.exception("the dashboard could not read its sources this time")
                 self.primed.set()
-            else:
-                self.publish(observation)
             await asyncio.sleep(self.interval)
         self.producer = None
 
+    def producing(self) -> None:
+        """Start the producer where none runs.
+
+        The feed owns it rather than a request or a task group: it serves
+        whichever tabs follow, across their requests, and stops once the last
+        leaves. So the feed holds it, which keeps it from being collected
+        while it runs; a look's failure is logged by the loop itself; and one
+        that escapes the loop is logged here as it ends, with the producer
+        let go, so the next tab starts another rather than following a dead
+        one.
+        """
+        if self.producer is not None and not self.producer.done():
+            return
+        producer = asyncio.create_task(self.produce(), name="dashboard-feed")
+
+        def ended(task: asyncio.Task[None]) -> None:
+            if not task.cancelled() and (failure := task.exception()) is not None:
+                logger.error("the dashboard's feed stopped", exc_info=failure)
+            if self.producer is task:
+                self.producer = None
+
+        producer.add_done_callback(ended)
+        self.producer = producer
+
     async def published_within(self, seconds: float) -> None:
         """Wait for the next change published, or for ``seconds``, whichever comes first."""
-        waiter = asyncio.ensure_future(self.published.wait())
-        finished, _ = await asyncio.wait({waiter}, timeout=seconds)
-        if not finished:
-            waiter.cancel()
+        try:
+            async with asyncio.timeout(seconds):
+                await self.published.wait()
+        except TimeoutError:
+            return
 
     def resumed(self, spelled: str) -> int | None:
         """Where a tab's cursor resumes in this dashboard's numbering, if it does."""
@@ -461,8 +484,7 @@ class LiveFeed:
         that missed nothing knows as much without a frame to show for it.
         """
         self.followers += 1
-        if self.producer is None:
-            self.producer = asyncio.create_task(self.produce())
+        self.producing()
         try:
             yield f"retry: {RETRY_MILLISECONDS}\n\n"
             await self.primed.wait()
