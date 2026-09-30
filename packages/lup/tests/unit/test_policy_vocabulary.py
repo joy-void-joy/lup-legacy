@@ -606,3 +606,56 @@ def test_a_probe_still_asks_where_it_would_reach_an_inline_destination() -> None
         "git push --dry-run https://example.test/repo.git main", [git_rule()]
     )
     assert probed.effect == "ask"
+
+
+def test_a_guarded_config_key_named_alone_is_looked_up_rather_than_set() -> None:
+    """`git config <key>` reads; only the value after it sets the key.
+
+    The row asks about a guarded key because writing one hands over what git
+    runs next, and reading one hands over nothing. Asking both ways spent the
+    question on `git config core.hooksPath`, which only prints the setting.
+    """
+    rules = [git_rule()]
+
+    assert verdict("git config core.hooksPath", rules).effect == "allow"
+    assert verdict("git config --global core.hooksPath", rules).effect == "allow"
+    assert verdict("git config --type=bool core.hooksPath", rules).effect == "allow"
+    assert verdict("git config --type bool core.hooksPath", rules).effect == "allow"
+    assert verdict("git config -z --show-origin alias.co", rules).effect == "allow"
+    # A value, an option that writes, or one nobody listed keeps the question.
+    assert verdict("git config core.hooksPath /tmp/x", rules).effect == "ask"
+    assert verdict("git config --unset core.hooksPath", rules).effect == "ask"
+    assert verdict("git config --add alias.co checkout", rules).effect == "ask"
+    assert verdict("git config -ez core.hooksPath", rules).effect == "ask"
+    assert verdict("git config --file /tmp/c core.hooksPath", rules).effect == "ask"
+    assert verdict('git config "$KEY"', rules).effect == "ask"
+
+
+def test_the_config_verbs_git_added_read_and_write_as_their_flags_do() -> None:
+    """`git config get` is `--get`, and `git config edit` is `--edit`.
+
+    Before these verbs were read, `edit` named no guarded key and was allowed
+    though it opens every key at once, and `get` of a guarded key asked.
+    """
+    rules = [git_rule()]
+
+    assert verdict("git config get core.hooksPath", rules).effect == "allow"
+    assert verdict("git config list", rules).effect == "allow"
+    assert verdict("git config get --file /tmp/c core.hooksPath", rules).effect == "ask"
+    assert verdict("git config edit", rules).effect == "ask"
+    assert verdict("git config set core.hooksPath /tmp/x", rules).effect == "ask"
+    assert verdict("git config set user.email a@b.invalid", rules).effect == "allow"
+
+
+def test_a_section_renamed_or_removed_asks_whatever_it_is_called() -> None:
+    """Renaming a section moves every key in it without naming one.
+
+    `x.hooksPath` renamed into `core` is `core.hooksPath`, which no word of the
+    command spells, so the absence test over its words cannot answer it.
+    """
+    rules = [git_rule()]
+
+    assert verdict("git config --rename-section x core", rules).effect == "ask"
+    assert verdict("git config --remove-section core", rules).effect == "ask"
+    assert verdict("git config rename-section x core", rules).effect == "ask"
+    assert verdict("git config remove-section core", rules).effect == "ask"

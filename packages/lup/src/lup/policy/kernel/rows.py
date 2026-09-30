@@ -470,6 +470,14 @@ class ShellRuleRow(TypedDict):
     judges, which makes its stated reason false for most of them -- and a
     question whose reason does not hold is one nobody can answer well.
 
+    ``read_operands`` and ``read_options`` state the reading form a guarded
+    subject still has: `git config core.hooksPath` names the guarded key and
+    only looks it up, because the value that would set it is absent. So a
+    non-allow row de-escalates where its legible words name no more operands
+    than the count, and every option among them is one the list allows --
+    an allowlist, since the options that write (`--unset`, `--add`) are the
+    ones a later release adds to.
+
     ``setting_flags`` and ``guarded_settings`` state the same absence test
     about the *globals* a subcommand-gated command reads before its verb.
     ``git -c <key>=<value>`` and ``git config <key> <value>`` set the same
@@ -636,6 +644,8 @@ class ShellRuleRow(TypedDict):
     frozen_flags: list[str]
     write_markers: list[str]
     guarded_keys: list[str]
+    read_operands: int
+    read_options: list[str]
     setting_flags: list[str]
     guarded_settings: list[str]
     outward_settings: list[str]
@@ -677,6 +687,8 @@ type ShellRowField = Literal[
     "frozen_flags",
     "write_markers",
     "guarded_keys",
+    "read_operands",
+    "read_options",
     "setting_flags",
     "guarded_settings",
     "outward_settings",
@@ -740,6 +752,8 @@ def shell_row_values(
         "frozen_flags": row["frozen_flags"],
         "write_markers": row["write_markers"],
         "guarded_keys": row["guarded_keys"],
+        "read_operands": row["read_operands"],
+        "read_options": row["read_options"],
         "setting_flags": row["setting_flags"],
         "guarded_settings": row["guarded_settings"],
         "outward_settings": row["outward_settings"],

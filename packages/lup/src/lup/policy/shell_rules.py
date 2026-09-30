@@ -413,6 +413,20 @@ class ShellSubcommandRule(BaseModel, frozen=True):
     probe_flags: list[str] = []
     frozen_flags: list[str] = []
     guarded_keys: list[str] = []
+    read_operands: int = 0
+    """The most operands this subcommand's reading form names.
+
+    `git config core.hooksPath` looks the setting up and `git config
+    core.hooksPath /x` sets it: the value is the whole difference, so no flag
+    or marker tells the two apart and the count is what the row declares.
+    Zero declares no such form."""
+    read_options: list[str] = []
+    """The options that reading form may carry beside its operands.
+
+    Named as the ones allowed rather than the ones that write, because the
+    flags turning a lookup into a write -- `--unset`, `--add`,
+    `--replace-all` -- are the open-ended half: a flag nobody listed keeps
+    the row's question. `--type=bool` is read as `--type`."""
     landing_operands: int = 0
     """The operand, counted from one, from which every operand is a place written.
 
@@ -762,6 +776,8 @@ def erase_shell_rules(rules: list[ShellCommandRule]) -> list[ShellRuleRow]:
                 frozen_flags=[],
                 write_markers=[],
                 guarded_keys=[],
+                read_operands=0,
+                read_options=[],
                 setting_flags=list(operation.setting_flags),
                 guarded_settings=list(operation.guarded_settings),
                 outward_settings=[],
@@ -797,6 +813,8 @@ def erase_shell_rules(rules: list[ShellCommandRule]) -> list[ShellRuleRow]:
             frozen_flags=list(subcommand.frozen_flags),
             write_markers=[],
             guarded_keys=list(subcommand.guarded_keys),
+            read_operands=subcommand.read_operands,
+            read_options=list(subcommand.read_options),
             setting_flags=[],
             guarded_settings=[],
             outward_settings=[],
@@ -834,6 +852,8 @@ def erase_shell_rules(rules: list[ShellCommandRule]) -> list[ShellRuleRow]:
             frozen_flags=list(command.frozen_flags),
             write_markers=list(command.write_markers),
             guarded_keys=list(command.guarded_keys),
+            read_operands=0,
+            read_options=[],
             setting_flags=list(command.setting_flags),
             guarded_settings=list(command.guarded_settings),
             outward_settings=list(command.outward_settings),

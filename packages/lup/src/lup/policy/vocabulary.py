@@ -1862,8 +1862,18 @@ def git_rule(
             # caller names, so a key that reads as ordinary is not. `--edit`
             # defeats the same test from the other side: it opens every key
             # in the file while naming none, so absence of a guarded word is
-            # not absence of a guarded write.
-            ask_flags=["--file", "-f", "--blob", "--edit", "-e"],
+            # not absence of a guarded write. A section renamed or removed
+            # moves every key in it without naming one: `--rename-section x
+            # core` turns `x.hooksPath` into `core.hooksPath`.
+            ask_flags=[
+                "--file",
+                "-f",
+                "--blob",
+                "--edit",
+                "-e",
+                "--rename-section",
+                "--remove-section",
+            ],
             read_verbs=[
                 "--get",
                 "--get-all",
@@ -1875,6 +1885,56 @@ def git_rule(
                 "-l",
             ],
             guarded_keys=guarded_config,
+            # `git config <key>` looks the key up, and only a second operand
+            # -- the value -- sets it, so a guarded key named alone is a read.
+            # The options it may carry pick the file read and the shape of the
+            # answer; any other, `--unset` or `--add` among them, keeps the
+            # question.
+            read_operands=1,
+            read_options=[
+                "--global",
+                "--system",
+                "--local",
+                "--worktree",
+                "--type",
+                "--bool",
+                "--int",
+                "--bool-or-int",
+                "--path",
+                "--expiry-date",
+                "--null",
+                "-z",
+                "--show-origin",
+                "--show-scope",
+                "--includes",
+                "--no-includes",
+                "--default",
+            ],
+            value_flags=["--type", "--default"],
+            # The verbs git 2.46 added, which stand where a key would. `get`
+            # and `list` read; `edit`, `rename-section` and `remove-section`
+            # write keys no word names, as their flag spellings do, so they
+            # keep the subcommand's question. `set` and `unset` name the key
+            # they write and fall to the row, whose guarded keys judge it.
+            operations=[
+                *(
+                    ShellOperationRule(
+                        name=name,
+                        effects=[declare("reads_path", scope="project")],
+                        ask_flags=["--file", "-f", "--blob"],
+                        reason="reading a configuration file somebody named"
+                        " requires approval",
+                    )
+                    for name in ("get", "list")
+                ),
+                *(
+                    ShellOperationRule(
+                        name=name,
+                        reason="this git config write changes keys it does not name",
+                    )
+                    for name in ("edit", "rename-section", "remove-section")
+                ),
+            ],
             reason=(
                 "this git config write can change what program git runs, which"
                 " repository it talks to, or what a later push forces or deletes"

@@ -648,6 +648,38 @@ def unread_argument_readings(
     return flagged
 
 
+def reading_form(arguments: list[str], row: ShellRuleRow) -> bool:
+    """Whether these words are the row's reading form, by count and by option.
+
+    No more operands than ``read_operands``, each value option's value
+    stepped over, and every option one ``read_options`` names -- as spelled
+    or, for a long one, with its value after ``=``. Every word has to be
+    legible, since an expansion could become the value that turns the lookup
+    into a write, or an option that is not on the list. An operand carrying
+    a value of its own -- `core.pager=x`, the shape `git -c` takes -- is read
+    as the write it spells, as :func:`key_matches` reads it.
+    """
+    if any(opaque_argument(word) or expands(word) for word in arguments):
+        return False
+    ended = arguments.index("--") if "--" in arguments else len(arguments)
+    allowed = row["read_options"]
+    listed = all(
+        any(
+            word == option
+            or (option.startswith("--") and word.startswith(option + "="))
+            for option in allowed
+        )
+        for word in arguments[:ended]
+        if word.startswith("-")
+    )
+    operands = operand_words(arguments, row["value_flags"])
+    return (
+        listed
+        and len(operands) <= row["read_operands"]
+        and not any("=" in operand for operand in operands)
+    )
+
+
 def apply_command_row(
     row: ShellRuleRow, arguments: list[str], facts: WriteFacts | None = None
 ) -> KernelDecision:
@@ -673,7 +705,10 @@ def apply_command_row(
     list and nothing else. One with ``guarded_keys`` states absence about the
     write's subject instead of its form: it allows when no legible word names
     a setting that decides how later commands execute, so the row keeps its
-    effect for ``core.hooksPath`` and lets ``user.email`` past.
+    effect for ``core.hooksPath`` and lets ``user.email`` past. One with
+    ``read_operands`` allows the form naming no more operands than that and
+    no option beyond ``read_options``, so ``git config core.hooksPath`` reads
+    the setting the same row asks about writing (:func:`reading_form`).
 
     What the row earns before any of that is derived from what it says it
     does, rather than read off a verdict written beside the declaration. The
@@ -692,6 +727,10 @@ def apply_command_row(
             return row_verdict(
                 row, "allow", "every argument is a declared read-only flag"
             )
+    if stated != "allow" and row["read_operands"] and reading_form(arguments, row):
+        return row_verdict(
+            row, "allow", "no value follows what this names, so it only looks it up"
+        )
     if stated != "allow" and row["guarded_keys"] and arguments:
         # Absence is the test, so every word has to be legible on the same
         # strict bar `write_markers` sets: a word this cannot read might be
