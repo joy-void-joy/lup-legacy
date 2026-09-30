@@ -28,8 +28,9 @@ from lup.devtools.review.app import (
     retire_settled,
     review_retention_days,
 )
-from lup.policy.assets.host import relay_blobs, review_records
+from lup.policy.assets.host import relay_blobs, resolved_entry, review_records
 from lup.policy.relay import PersistentQuestion, QuestionRelay
+from lup.types import JsonObject
 from tests.unit.native import bound
 from tests.unit.test_dashboard_reviews import AUTHORIZATION, client, parked
 
@@ -145,6 +146,31 @@ def test_the_snapshot_carries_rows_and_counts_all_of_history(tmp_path: Path) -> 
     assert len(snapshot.reviews) == store.recent + 1
     assert waiting.id in {row.id for row in snapshot.reviews}
     assert "document" not in snapshot.model_dump_json()
+
+
+def test_a_fold_reads_no_document_and_a_snapshot_only_its_rows_documents(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    store = ReviewStore(roots=(tmp_path,), recent=5)
+    written(tmp_path, "waiting", "waiting\n")
+    for index in range(store.recent * 4):
+        settled = written(tmp_path, f"done-{index}", f"document {index}\n")
+        settled_ago(tmp_path, settled.id, 0)
+    read: list[str] = []
+
+    def counted(entry: JsonObject, blobs: Path) -> JsonObject:
+        read.append(str(entry["id"]))
+        return resolved_entry(entry, blobs)
+
+    monkeypatch.setattr("lup.policy.relay.resolved_entry", counted)
+    folded = relay(tmp_path).questions()
+    unread = list(read)
+    snapshot = store.snapshot()
+
+    assert len(folded) == store.recent * 4 + 1
+    assert unread == []
+    assert read
+    assert set(read) <= {row.id for row in snapshot.reviews}
 
 
 async def test_history_is_read_a_page_at_a_time_archived_reviews_included(
