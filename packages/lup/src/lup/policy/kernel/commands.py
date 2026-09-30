@@ -78,6 +78,7 @@ from .words import (
 from .downloads import read_download
 from .fetch import decide_fetch, loopback_port
 from .lex import placed_path
+from .roles import path_role
 from .syntax import expands, verbatim_piece
 from .programs import program_verdict, read_program
 from .semantics import UnjudgedAmbient
@@ -1528,7 +1529,9 @@ def unread_readings(
     ]
 
 
-def decide_sed_words(words: list[str], context: "SedContext") -> KernelDecision:
+def decide_sed_words(
+    words: list[str], context: "SedContext", directory: str | None = ""
+) -> KernelDecision:
     """Allow read-only sed; judge an in-place rewrite as the edit it performs.
 
     ``--sandbox`` makes sed itself reject the write and execute commands, so
@@ -1555,8 +1558,22 @@ def decide_sed_words(words: list[str], context: "SedContext") -> KernelDecision:
     a rewrite about to happen that nothing has read, and an unjudgeable
     rewrite is exactly the one that must not go through unasked. Composition
     paths that forget to resolve the documents therefore ask rather than
-    allow, which is the only arrangement in which forgetting is safe.
+    allow, which is the only arrangement in which forgetting is safe. Except
+    in scratch, placed from where the line's `cd` left it: no gate reads a
+    scratch file's content, so a document nobody could produce there was
+    never going to be read, and only a rule protecting the path is asked.
     """
+
+    def scratch_rewrite(target: str) -> KernelDecision | None:
+        placed = placed_path(target, directory)
+        if placed is None or path_role(placed, context["path_roles"]) != "scratch":
+            return None
+        return protected_write_target(
+            [placed], context["path_rules"], True, context["path_roles"]
+        ) or KernelDecision(
+            "allow", f"sed rewrites {target} in scratch, whose content no gate reads"
+        )
+
     invocation = sed_invocation(words)
     if isinstance(invocation, KernelDecision):
         return invocation
@@ -1575,7 +1592,7 @@ def decide_sed_words(words: list[str], context: "SedContext") -> KernelDecision:
     verdicts = [
         rewrite_verdict(target, documents[target], context)
         if target in documents
-        else unproduced_verdict(target, unread.get(target))
+        else scratch_rewrite(target) or unproduced_verdict(target, unread.get(target))
         for target in invocation["targets"]
     ]
     stopped = [verdict for verdict in verdicts if verdict.effect != "allow"]

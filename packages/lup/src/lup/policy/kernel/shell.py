@@ -917,7 +917,7 @@ def decide_segment_words(
     if executable == "find":
         return decide_find_words(words, context, directory)
     if executable == "sed":
-        return decide_sed_words(words, sed_facts(context))
+        return decide_sed_words(words, sed_facts(context), directory)
     if executable in ("awk", "gawk", "mawk"):
         return decide_awk_words(words)
     if executable == "uvx":

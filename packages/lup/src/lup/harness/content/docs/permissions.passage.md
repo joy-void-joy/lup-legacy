@@ -1337,7 +1337,9 @@ carries, `>>` after what stands; `patch -pN` and `git apply` are applied by
 Git to a copy of the files they touch. The edit gates judge each file as the
 edit the whole line makes of it, so a second rewrite of a file is read
 against what the first left, and several appends meet the size gate as the one
-change they add up to.
+change they add up to. A rewrite whose document nobody could produce -- over a
+file an earlier step writes by running, say -- asks, except in scratch, where
+no gate reads the content and only a rule protecting the path is put.
 
 Where somebody is asked, the question keeps that reading as its per-file
 record: each file the line changes, in the order it writes them, with the

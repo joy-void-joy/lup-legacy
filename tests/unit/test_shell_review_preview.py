@@ -11,10 +11,14 @@ from pathlib import Path
 
 import pytest
 
+from lup.harness.enforcement import semantic_policy_for
 from lup.policy.assets.host import sed_output
 from lup.policy.kernel.decision import KernelDecision
 from lup.policy.kernel.words import sed_invocation
+from lup.policy.models import ShellCommand
 from lup.policy.relay import QuestionRelay
+from lup_template.harness.catalog import declared_hook_set
+from tests.unit.repos import initialized_repo
 from tests.unit.test_codex_review_queue import hook
 
 
@@ -113,3 +117,24 @@ def test_native_shell_capture_preserves_crlf_for_the_preview(tmp_path: Path) -> 
     (entry,) = store.pending()
     assert store.resolve(entry).preconditions[target] == "old\r\n"
     assert target.read_bytes() == b"old\r\n"
+
+
+def test_a_rewrite_nobody_could_read_asks_only_outside_scratch(tmp_path: Path) -> None:
+    """A file an earlier step writes by running holds nothing to read a rewrite of.
+
+    That is a question where the content gates would have read the result,
+    and none in scratch, where they read nothing: a scratch file built by one
+    command and adjusted by `sed -i` in the same line was parked for the
+    operator, who had nothing to read either.
+    """
+    initialized_repo(tmp_path, tmp_path / "hooks")
+    (tmp_path / "tmp").mkdir()
+    (tmp_path / "data.txt").write_text("b\na\n", encoding="utf-8")
+    policy = semantic_policy_for(declared_hook_set())
+
+    def effect(target: str) -> str:
+        command = f"sort data.txt > {target} && sed -i 's/a/c/' {target}"
+        return policy.decide(ShellCommand(command=command, cwd=tmp_path)).effect
+
+    assert effect("tmp/sorted.txt") == "allow"
+    assert effect("sorted.txt") == "ask"
