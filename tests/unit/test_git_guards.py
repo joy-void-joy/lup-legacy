@@ -468,6 +468,28 @@ def test_a_refusing_guard_stops_the_commit_and_says_why(tmp_path: Path) -> None:
     assert "Settle it the declared way." in said
 
 
+def test_a_devtools_guard_runs_inside_the_runner_the_hook_started(
+    tmp_path: Path,
+) -> None:
+    """One devtools process per moment: the guard is a call into it, not another.
+
+    Every devtools command a guard names used to be a process of its own,
+    each loading the whole application again; the commit that cost is the
+    one the hook now runs through the one start its trampoline paid for.
+    """
+    guards = [GitGuard(command="uv run lup-devtools refuse 4", refusal="Settle it.")]
+    work, git = armed_repository(tmp_path, guards, guards)
+
+    with pytest.raises(sh.ErrorReturnCode) as refusal:
+        commit_file(git, work, "file.txt", "one\n", "chore: base")
+
+    said = refusal.value.stderr.decode()
+    assert "refused in process with 4" in said
+    assert "pre-commit refused by `uv run lup-devtools refuse 4` (exit 4)" in said
+    started = (tmp_path / "devtools" / "started").read_text(encoding="utf-8")
+    assert started.splitlines() == ["git hooks run pre-commit --"]
+
+
 def test_a_checkout_older_than_the_runner_commits_and_says_so(tmp_path: Path) -> None:
     """The one skew the hook tolerates: devtools that run, but predate the verb.
 
@@ -538,6 +560,22 @@ def test_a_moment_nothing_reads_takes_no_stdin() -> None:
     assert shared.fired((), Path(), Unread()).stdin is None
 
 
+def shell_only(arguments: tuple[str, ...]) -> int:
+    """The devtools runner of a moment whose every guard is a shell line."""
+    raise AssertionError(f"a shell line reached the devtools runner: {arguments}")
+
+
+def fired(
+    guards: list[GitGuard],
+    hook: str,
+    root: Path,
+    stdin: str = "",
+    arguments: tuple[str, ...] = (),
+) -> int:
+    """One moment fired as the checkout's runner fires it, every guard a shell line."""
+    return fire(guards, hook, arguments, root, io.StringIO(stdin), shell_only)
+
+
 def test_both_guards_at_one_moment_run_in_the_order_declared(tmp_path: Path) -> None:
     """Declaration order is running order.
 
@@ -550,7 +588,7 @@ def test_both_guards_at_one_moment_run_in_the_order_declared(tmp_path: Path) -> 
         GitGuard(command=f"echo second >>{ran}"),
     ]
 
-    assert fire(guards, "pre-commit", (), tmp_path, io.StringIO()) == 0
+    assert fired(guards, "pre-commit", tmp_path) == 0
     assert ran.read_text(encoding="utf-8").split() == ["first", "second"]
 
 
@@ -559,7 +597,7 @@ def test_the_first_guard_to_refuse_ends_the_moment(tmp_path: Path) -> None:
     ran = tmp_path / "ran"
     guards = [GitGuard(command="exit 3"), GitGuard(command=f"echo reached >>{ran}")]
 
-    assert fire(guards, "pre-commit", (), tmp_path, io.StringIO()) == 3
+    assert fired(guards, "pre-commit", tmp_path) == 3
     assert not ran.exists()
 
 
@@ -568,7 +606,7 @@ def test_a_guard_sees_what_git_passed_the_hook(tmp_path: Path) -> None:
     seen = tmp_path / "seen"
     guards = [GitGuard(hook="post-merge", command=f'echo "$0 $1" >{seen}')]
 
-    fire(guards, "post-merge", ("0",), tmp_path, io.StringIO())
+    fired(guards, "post-merge", tmp_path, arguments=("0",))
 
     assert seen.read_text(encoding="utf-8") == "post-merge 0\n"
 
@@ -592,26 +630,8 @@ def test_a_standdown_stands_its_own_guard_down_and_not_the_moment(
     """
     stood_down = GitGuard(command="false", standdown=Always())
 
-    assert (
-        fire(
-            [stood_down, GitGuard(command="false")],
-            "pre-commit",
-            (),
-            tmp_path,
-            io.StringIO(),
-        )
-        == 1
-    )
-    assert (
-        fire(
-            [stood_down, GitGuard(command="true")],
-            "pre-commit",
-            (),
-            tmp_path,
-            io.StringIO(),
-        )
-        == 0
-    )
+    assert fired([stood_down, GitGuard(command="false")], "pre-commit", tmp_path) == 1
+    assert fired([stood_down, GitGuard(command="true")], "pre-commit", tmp_path) == 0
 
 
 def test_both_guards_at_a_shared_push_moment_read_the_same_ref_list(
@@ -633,7 +653,7 @@ def test_both_guards_at_a_shared_push_moment_read_the_same_ref_list(
     ]
     pushed = f"refs/heads/main {'a' * 40} refs/heads/main {'0' * 40}\n"
 
-    fire(guards, "pre-push", ("origin", "url"), tmp_path, io.StringIO(pushed))
+    fired(guards, "pre-push", tmp_path, pushed, ("origin", "url"))
 
     assert first.read_text(encoding="utf-8") == pushed
     assert second.read_text(encoding="utf-8") == pushed
@@ -644,7 +664,7 @@ def test_a_guard_that_declares_no_read_is_handed_no_stdin(tmp_path: Path) -> Non
     seen = tmp_path / "seen"
     guards = [GitGuard(command=f"cat >{seen}", hook="pre-push")]
 
-    fire(guards, "pre-push", (), tmp_path, io.StringIO("refs/heads/main\n"))
+    fired(guards, "pre-push", tmp_path, "refs/heads/main\n")
 
     assert seen.read_text(encoding="utf-8") == ""
 

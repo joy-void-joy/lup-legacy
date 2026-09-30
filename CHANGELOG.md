@@ -30,6 +30,24 @@ moments and the exact command to run from a host terminal, `cd <checkout> &&
 uv run lup-devtools git hooks install`, which `git worktree create` names too;
 `host_install(root)` in `lup.devtools.dev.git_guards` spells it.
 
+### A git hook moment loads the project's devtools at most once
+
+`harness generate all` compiles the declared git guards into `[tool.lup]
+git-guards` in `pyproject.toml` (`write_git_guards`, held to the declaration
+by the drift check, and by a `compiled git guards` row against the dev tree's
+own), and `lup-devtools git hooks run` reads it before the project's
+application loads (`compiled_guards`), so a moment where every guard stands
+down — a plain commit's settle, a push that only deletes — ends in about a
+third of a second instead of loading the application. A guard that is
+nothing but a `lup-devtools` invocation runs in that same process through
+`lup.devtools.entrypoint.in_process` rather than in one of its own; any other
+line still runs by `sh -c`. Measured here, a commit's `pre-commit` takes 7.0 s
+where one process per guard took 12.1 s, and its `post-commit` 0.29 s where it
+took 2.8 s. `fire`, `HookScript.run` and `GitGuard.run` take the runner for
+devtools commands; `GIT_ENVIRONMENT` lives in `lup.devtools.dev.git_guards`,
+the default of `HookScript.environment`; a standdown compiles by its import
+path, so a project's own compiles as lup's do.
+
 ### A runtime started from a session's shell is a member of its own
 
 `LUP_COORDINATION_MEMBER` reaches every process a launched session starts,

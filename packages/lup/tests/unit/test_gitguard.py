@@ -1,24 +1,33 @@
 """The guard that catches a suite writing into the checkout it runs inside."""
 
 import io
+import sys
 from pathlib import Path
 
 import pytest
 import sh
+import typer
 
+import lup.devtools.entrypoint as entrypoint
 import lup.devtools.gitguard as gitguard
 from lup.devtools.dev.git_guards import (
     DECLARED_GUARDS,
+    GIT_ENVIRONMENT,
+    DeletionOnly,
     GitGuard,
+    HookMoment,
     MergeInProgress,
+    NoMergeCommit,
+    Standdown,
+    compiled_guards,
     fire,
     hook_scripts,
     hooks_directory,
     install_guards,
     read_hooks,
+    write_git_guards,
 )
 from lup.devtools.gitguard import (
-    GIT_ENVIRONMENT,
     GuardVerdict,
     RepositoryWatch,
     Window,
@@ -93,11 +102,14 @@ def test_the_commit_guard_stands_down_for_a_merge_and_not_for_what_follows(
     wrote(root, "a.txt", "both\n")
     git("-C", str(root), "add", "a.txt")
 
-    concluding = fire(guards, "pre-commit", (), root, io.StringIO())
+    def shell_only(arguments: tuple[str, ...]) -> int:
+        raise AssertionError(f"a shell line reached the devtools: {arguments}")
+
+    concluding = fire(guards, "pre-commit", (), root, io.StringIO(), shell_only)
     git("-C", str(root), "commit", "--no-edit", "-q")
     wrote(root, "b.txt", "after the merge\n")
     git("-C", str(root), "add", "b.txt")
-    after = fire(guards, "pre-commit", (), root, io.StringIO())
+    after = fire(guards, "pre-commit", (), root, io.StringIO(), shell_only)
 
     assert concluding == 0
     assert after == 1
@@ -149,6 +161,266 @@ def test_a_hook_this_did_not_write_is_left_where_it_is(tmp_path: Path) -> None:
 
     assert read_hooks([GitGuard()], tmp_path).orphaned == []
     assert theirs.read_text(encoding="utf-8") == "#!/bin/sh\nexec ./their-own-check\n"
+
+
+class Quiet(Standdown, frozen=True):
+    """A project's own standdown, holding a field of its own."""
+
+    below: int = 3
+
+    def applies(self, moment: HookMoment) -> bool:
+        return len(moment.arguments) < self.below
+
+
+def manifested(root: Path, guards: list[GitGuard]) -> Path:
+    """A checkout whose manifest compiles ``guards``, as generation leaves it."""
+    root.mkdir(parents=True, exist_ok=True)
+    (root / "pyproject.toml").write_text(
+        '[project]\nname = "probe"\n\n[tool.lup]\nagent_version = "0.1.0"\n\n'
+        "[tool.uv]\npackage = false\n",
+        encoding="utf-8",
+    )
+    write_git_guards(guards, root)
+    return root
+
+
+def test_the_declaration_compiles_into_the_manifest_and_reads_back_whole(
+    tmp_path: Path,
+) -> None:
+    """What the hooks read before the application loads is the declaration itself.
+
+    Standdowns included, a project's own among them, since the class is what
+    decides and a table that lost it would stand a guard down on nothing.
+    """
+    declared = [
+        *DECLARED_GUARDS,
+        GitGuard(command="false", hook="pre-push", standdown=DeletionOnly()),
+        GitGuard(command="true", hook="post-merge", standdown=Quiet(below=2)),
+    ]
+    root = manifested(tmp_path, declared)
+
+    assert compiled_guards(root) == declared
+    written = (root / "pyproject.toml").read_text(encoding="utf-8")
+    write_git_guards(declared, root, check=True)
+    assert (root / "pyproject.toml").read_text(encoding="utf-8") == written
+    assert "\n\n[tool.uv]" in written
+
+
+def test_a_declaration_ahead_of_its_manifest_is_drift(tmp_path: Path) -> None:
+    """The drift check reads the table stale until generation rewrites it."""
+    root = manifested(tmp_path, [GitGuard()])
+
+    with pytest.raises(RuntimeError, match="behind the declared git guards"):
+        write_git_guards([GitGuard(), GitGuard(command="true")], root, check=True)
+
+
+def test_an_empty_declaration_compiles_as_one(tmp_path: Path) -> None:
+    """A project declaring no guard is answered from its manifest too, not the app."""
+    root = manifested(tmp_path, [])
+
+    assert compiled_guards(root) == []
+    write_git_guards([], root, check=True)
+
+
+@pytest.mark.parametrize(
+    "manifest",
+    [
+        pytest.param(None, id="no-manifest"),
+        pytest.param('[project]\nname = "probe"\n', id="no-table"),
+        pytest.param("[project\nname = 1\n", id="unparseable"),
+        pytest.param(
+            '[[tool.lup.git-guards]]\ncommand = "true"\n'
+            'standdown = {kind = "lup.devtools.dev.git_guards:Gone"}\n',
+            id="unresolved-standdown",
+        ),
+    ],
+)
+def test_a_manifest_that_compiles_nothing_readable_sends_the_hook_to_the_app(
+    tmp_path: Path, manifest: str | None
+) -> None:
+    """Slower, and never a guard skipped: the application reads the declaration."""
+    if manifest is not None:
+        (tmp_path / "pyproject.toml").write_text(manifest, encoding="utf-8")
+
+    assert compiled_guards(tmp_path) is None
+
+
+@pytest.mark.parametrize(
+    ("command", "arguments"),
+    [
+        pytest.param(
+            "uv run lup-devtools harness check all",
+            ("harness", "check", "all"),
+            id="drift",
+        ),
+        pytest.param(
+            "uv run lup-devtools dev check --conflict-markers --staged",
+            ("dev", "check", "--conflict-markers", "--staged"),
+            id="conflict-markers",
+        ),
+        pytest.param("uv run lup-devtools git settle", ("git", "settle"), id="settle"),
+        pytest.param("uv run lup-devtools dev check && echo done", None, id="and"),
+        pytest.param("uv run lup-devtools dev check | tee log", None, id="pipe"),
+        pytest.param("uv run lup-devtools dev check >log", None, id="redirect"),
+        pytest.param('uv run lup-devtools git settle "$1"', None, id="parameter"),
+        pytest.param("uv run lup-devtools dev check '*'", None, id="glob"),
+        pytest.param(
+            "uv run --directory x lup-devtools dev check", None, id="uv-option"
+        ),
+        pytest.param("FOO=1 uv run lup-devtools dev check", None, id="assignment"),
+        pytest.param("uv run lup-devtools dev check 'unbalanced", None, id="quote"),
+        pytest.param("python -m pytest", None, id="another-program"),
+    ],
+)
+def test_only_a_devtools_invocation_alone_runs_in_process(
+    command: str, arguments: tuple[str, ...] | None
+) -> None:
+    """Whatever the shell would do besides run that one command stays the shell's.
+
+    Refusing a line costs only the process it would have saved, so anything
+    the shell would expand, redirect or chain is left to it.
+    """
+    assert GitGuard(command=command).devtools_arguments() == arguments
+
+
+def test_a_guard_that_reads_stdin_stays_a_process_of_its_own() -> None:
+    """The devtools already loaded has spent stdin; the shell is handed the copy."""
+    reading = GitGuard(command="uv run lup-devtools dev check", reads_stdin=True)
+
+    assert reading.devtools_arguments() is None
+
+
+def loaded(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> list[tuple[str, ...]]:
+    """A project application the route loads, recording each call into it."""
+    calls: list[tuple[str, ...]] = []
+    application = typer.Typer()
+
+    @application.callback()
+    def root() -> None:
+        """The project's CLI."""
+
+    @application.command("refuse")
+    def refuse(code: int) -> None:
+        """A devtools command a guard names."""
+        calls.append(("refuse", str(code)))
+        typer.echo(f"refused in process with {code}", err=True)
+        raise typer.Exit(code)
+
+    monkeypatch.setattr(entrypoint, "project_application", lambda: application)
+    monkeypatch.chdir(tmp_path)
+    return calls
+
+
+def routed(monkeypatch: pytest.MonkeyPatch, *words: str) -> int:
+    """Run `lup-devtools <words>` through the console script's own dispatch."""
+    monkeypatch.setattr(sys, "argv", ["lup-devtools", *words])
+    monkeypatch.setattr(sys, "stdin", io.StringIO())
+    with pytest.raises(SystemExit) as ended:
+        entrypoint.main()
+    code = ended.value.code
+    assert isinstance(code, int)
+    return code
+
+
+def test_a_moment_whose_every_guard_stands_down_loads_no_application(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A plain commit's settle ends before anything of the project loads."""
+    root = manifested(
+        repository(tmp_path / "checkout"),
+        [
+            GitGuard(
+                command="uv run lup-devtools refuse 4",
+                hook="post-commit",
+                standdown=NoMergeCommit(),
+            )
+        ],
+    )
+    committed(root, "base")
+    monkeypatch.chdir(root)
+
+    def unloaded() -> typer.Typer:
+        raise AssertionError("the project's application loaded")
+
+    monkeypatch.setattr(entrypoint, "project_application", unloaded)
+
+    assert routed(monkeypatch, "git", "hooks", "run", "post-commit", "--") == 0
+    assert routed(monkeypatch, "git", "hooks", "run", "--help") == 0
+
+
+def test_a_devtools_guard_runs_in_the_application_the_route_loads(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """One load, the guard a call into it, and its refusal ends the moment as ever."""
+    manifested(
+        tmp_path,
+        [
+            GitGuard(command="uv run lup-devtools refuse 4", refusal="Settle it."),
+            GitGuard(command="echo never >reached"),
+        ],
+    )
+    calls = loaded(tmp_path, monkeypatch)
+
+    assert routed(monkeypatch, "git", "hooks", "run", "pre-commit", "--") == 4
+    said = capsys.readouterr().err
+    assert calls == [("refuse", "4")]
+    assert "refused in process with 4" in said
+    assert "pre-commit refused by `uv run lup-devtools refuse 4` (exit 4)" in said
+    assert "Settle it." in said
+    assert not (tmp_path / "reached").exists()
+
+
+def test_a_checkout_compiling_no_guards_goes_to_its_application(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The application's own `git hooks run` reads the declaration there."""
+    calls = loaded(tmp_path, monkeypatch)
+
+    assert routed(monkeypatch, "refuse", "6") == 6
+    assert routed(monkeypatch, "git", "hooks", "run", "pre-commit", "--") == 2
+    assert calls == [("refuse", "6")]
+
+
+@pytest.mark.parametrize(
+    ("words", "status", "said"),
+    [
+        pytest.param(("refuse", "3"), 3, "refused in process with 3", id="exit"),
+        pytest.param(("refuse", "x"), 2, "Invalid value", id="usage"),
+        pytest.param(("crash",), 1, "RuntimeError: a guard that crashed", id="crash"),
+        pytest.param(("leave",), 1, "left with words", id="sys-exit-words"),
+        pytest.param(("pass",), 0, "", id="pass"),
+    ],
+)
+def test_an_invocation_in_process_ends_as_its_process_would(
+    words: tuple[str, ...],
+    status: int,
+    said: str,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Its status, its usage error, and a crash printed whole as a refusal."""
+    application = typer.Typer()
+
+    @application.command("refuse")
+    def refuse(code: int) -> None:
+        typer.echo(f"refused in process with {code}", err=True)
+        raise typer.Exit(code)
+
+    @application.command("crash")
+    def crash() -> None:
+        raise RuntimeError("a guard that crashed")
+
+    @application.command("leave")
+    def leave() -> None:
+        sys.exit("left with words")
+
+    @application.command("pass")
+    def passing() -> None:
+        """Nothing to refuse."""
+
+    assert entrypoint.invoked(application, words) == status
+    assert said in capsys.readouterr().err
 
 
 def test_a_session_that_touched_nothing_reports_nothing() -> None:

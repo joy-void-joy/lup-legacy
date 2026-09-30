@@ -45,8 +45,19 @@ grew an option failed every commit in a worktree cut before it, and a hook
 written from an older checkout ran none of the checks a newer one declares.
 Written from any revision the hook is the same file, so a guard added,
 dropped or changed reaches every checkout at the revision it holds, and
-arming stays a once-per-clone act. Handing the moment over costs one start of
-the checkout's devtools at each moment, the settle moments included.
+arming stays a once-per-clone act.
+
+A moment loads the project's devtools at most once. `harness generate all`
+compiles the declared guards into `[tool.lup] git-guards` in `pyproject.toml`,
+held to the declaration by the drift check, and `git hooks run` reads that
+table before the application loads, judging each guard's standdown there: a
+moment where every guard stands down — a plain commit's settle, a push that
+only deletes — ends in about the time it takes to import lup. A guard that
+is nothing but a `lup-devtools` invocation runs inside that one process, the
+application loaded on the first such guard; any other shell line runs by
+`sh -c` as it always did. A checkout compiling no table, or one a merge left
+unreadable, runs the application's own `git hooks run`, which reads the
+declaration directly.
 
 One skew is left, and the hook tolerates it alone: a checkout older than `git
 hooks run` itself, whose devtools runs but has no such verb, so declares no

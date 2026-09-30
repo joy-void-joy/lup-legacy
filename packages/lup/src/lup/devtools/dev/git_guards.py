@@ -42,18 +42,30 @@ it is the unit installed and read, because a guard is not what git has a
 name for.
 """
 
+import pkgutil
 import shlex
 import sys
+import tomllib
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from pathlib import Path
 from typing import Literal, TextIO
 
 import sh
+import tomlkit
+import tomlkit.items
 import typer
-from pydantic import BaseModel
+from pydantic import (
+    BaseModel,
+    TypeAdapter,
+    ValidationError,
+    field_serializer,
+    field_validator,
+)
 
-from lup.devtools.gitguard import GIT_ENVIRONMENT
 from lup.formats.banner import REGENERATE_COMMAND
+from lup.types import JsonObject
+from lup.workspace.paths import project_root
 from lup.execution.shell import git
 from lup.execution.writability import on_read_only_mount, refuses_a_new_file
 
@@ -90,6 +102,31 @@ Recognized on read and never written. Dropping it would make every hook a
 previous version installed report as one nobody here wrote, which is the
 state that needs ``--force`` to leave — so the compatibility is worth one
 line rather than a migration note nobody reads.
+"""
+
+GIT_ENVIRONMENT = (
+    "GIT_DIR",
+    "GIT_WORK_TREE",
+    "GIT_INDEX_FILE",
+    "GIT_OBJECT_DIRECTORY",
+    "GIT_COMMON_DIR",
+)
+"""What names a repository to git ahead of any directory a command is given.
+
+`-C <throwaway>` chooses where git works, while these choose which repository
+it resolves, and the environment wins. Git exports them to every hook, so a
+guard whose suite builds throwaway repositories would commit into the very
+checkout the hook fired in, however carefully each helper bound its own git.
+Scrubbed where the hook is written, because unlike a misbound command this
+arrives through one door.
+"""
+
+type DevtoolsRunner = Callable[[tuple[str, ...]], int]
+"""Runs one ``lup-devtools`` invocation in the devtools already loaded.
+
+Handed the words after ``lup-devtools`` and answering the exit status, so a
+moment whose guards are devtools commands pays for one loaded application
+rather than one process, and one load, per guard.
 """
 
 
@@ -243,7 +280,10 @@ class GitGuard(BaseModel, frozen=True):
 
     A shell line, run by ``sh -c`` in the checkout with the hook's name as
     ``$0`` and what git passed the hook as ``$1`` onwards — what the same line
-    saw when it stood in the hook script itself.
+    saw when it stood in the hook script itself. One that is nothing but a
+    ``lup-devtools`` invocation runs in the devtools already loaded instead
+    (:meth:`devtools_arguments`), which is the same command without a second
+    interpreter paying to load the application again.
     """
 
     hook: str = "pre-commit"
@@ -278,18 +318,87 @@ class GitGuard(BaseModel, frozen=True):
     stdin at all.
     """
 
+    @field_serializer("standdown")
+    def named_standdown(self, standdown: Standdown | None) -> JsonObject | None:
+        """A standdown as the class it is and the fields it holds, so it compiles.
+
+        Named by import path because the class is the answer — the fields are
+        only what it was given — and a project's own standdown compiles the
+        same way lup's do.
+        """
+        if standdown is None:
+            return None
+        kind = type(standdown)
+        return {
+            "kind": f"{kind.__module__}:{kind.__qualname__}",
+            **standdown.model_dump(mode="json"),
+        }
+
+    @field_validator("standdown", mode="before")
+    @classmethod
+    def resolved_standdown(
+        cls, value: JsonObject | Standdown | None
+    ) -> JsonObject | Standdown | None:
+        """A compiled standdown back as the class it names, holding its fields."""
+        match value:
+            case {"kind": str(kind), **fields}:
+                try:
+                    named = pkgutil.resolve_name(kind)
+                except (ImportError, AttributeError) as error:
+                    raise ValueError(f"no standdown resolves as {kind}") from error
+                match named:
+                    case type() if issubclass(named, Standdown):
+                        return named.model_validate(fields)
+                    case _:
+                        raise ValueError(f"{kind} names no Standdown")
+            case _:
+                return value
+
     def reads(self) -> bool:
         """Whether this check or its standdown needs the moment's stdin."""
         return self.reads_stdin or (
             self.standdown is not None and self.standdown.reads_stdin()
         )
 
-    def run(self, moment: HookMoment) -> int:
+    def devtools_arguments(self) -> tuple[str, ...] | None:
+        """The words after ``lup-devtools``, where the line is that invocation alone.
+
+        Read with the shell's own lexer, so quoting parses as the shell would
+        parse it. Anything the shell would do besides run that one command — a
+        second command, a pipe or redirect, an expansion, a glob, a variable —
+        leaves the line to the shell, and so does a check that reads stdin,
+        which the devtools already loaded has spent. Refusing a line is never
+        wrong, only slower: it runs exactly as it always did.
+        """
+        if self.reads_stdin:
+            return None
+        lexer = shlex.shlex(self.command, posix=True, punctuation_chars=True)
+        lexer.whitespace_split = True
+        try:
+            words = list(lexer)
+        except ValueError:
+            return None
+
+        def literal(word: str) -> bool:
+            return not any(character in "$`*?[]{}~()<>|&;\\'\"\n" for character in word)
+
+        match words:
+            case ["uv", "run", "lup-devtools", *arguments] if all(
+                literal(word) for word in arguments
+            ):
+                return tuple(arguments)
+            case _:
+                return None
+
+    def run(self, moment: HookMoment, devtools: DevtoolsRunner) -> int:
         """Run the check at this firing, and answer its exit status.
 
         Its output is the moment's own, so it reaches whoever git is running
         the hook for as it is written rather than once the check ends.
         """
+        arguments = self.devtools_arguments()
+        if arguments is not None:
+            return devtools(arguments)
         try:
             sh.Command("sh")(
                 "-c",
@@ -382,6 +491,13 @@ class HookScript(BaseModel, frozen=True):
     hook: str
     guards: list[GitGuard]
 
+    environment: tuple[str, ...] = GIT_ENVIRONMENT
+    """What the hook drops before handing its moment over.
+
+    Dropped in the hook rather than by any guard, because the checkout's
+    devtools is the first thing to ask git which repository it is in.
+    """
+
     def captures_stdin(self) -> bool:
         """Whether this moment reads git's stdin, once, for every guard at it.
 
@@ -405,12 +521,17 @@ class HookScript(BaseModel, frozen=True):
             stdin=stdin.read() if self.captures_stdin() else None,
         )
 
-    def run(self, moment: HookMoment) -> MomentOutcome:
-        """Run each guard in declaration order, until one refuses."""
+    def run(self, moment: HookMoment, devtools: DevtoolsRunner) -> MomentOutcome:
+        """Run each guard in declaration order, until one refuses.
+
+        A guard is judged against its standdown just before it would run, and
+        ``devtools`` is reached only by a guard that runs — so a moment where
+        each guard stands down ends having loaded nothing a guard needs.
+        """
         for guard in self.guards:
             if guard.standdown is not None and guard.standdown.applies(moment):
                 continue
-            status = guard.run(moment)
+            status = guard.run(moment, devtools)
             if status != 0:
                 return MomentOutcome(refused_by=guard, status=status)
         return MomentOutcome()
@@ -462,7 +583,7 @@ class HookScript(BaseModel, frozen=True):
             "# Dropped so what runs below resolves this repository from the\n"
             "# directory it runs in. Git names it here too, and that name would\n"
             "# outrank the `-C` a test's throwaway repository binds git with.\n"
-            f"unset {' '.join(GIT_ENVIRONMENT)}\n"
+            f"unset {' '.join(self.environment)}\n"
             f'{run} {shlex.quote(self.hook)} -- "$@"\n'
             "status=$?\n"
             '[ "$status" -eq 2 ] || exit "$status"\n'
@@ -483,6 +604,7 @@ def fire(
     arguments: tuple[str, ...],
     root: Path,
     stdin: TextIO,
+    devtools: DevtoolsRunner,
 ) -> int:
     """Run the guards declared at ``hook`` as git fired it, answering its status.
 
@@ -490,10 +612,11 @@ def fire(
     the guards are this checkout's own declaration at the revision it is at,
     whichever revision wrote the hook. A moment nothing here declares runs
     nothing and passes, which is how a hook armed by a newer declaration
-    reads to an older one.
+    reads to an older one. ``devtools`` runs the guards that are devtools
+    commands, and is not called at all where none is left standing.
     """
     script = HookScript(hook=hook, guards=[g for g in guards if g.hook == hook])
-    outcome = script.run(script.fired(arguments, root, stdin))
+    outcome = script.run(script.fired(arguments, root, stdin), devtools)
     if outcome.refused_by is not None:
         typer.echo(outcome.report(), err=True)
     return outcome.status
@@ -510,6 +633,85 @@ def hook_scripts(guards: list[GitGuard]) -> list[HookScript]:
         HookScript(hook=hook, guards=[g for g in guards if g.hook == hook])
         for hook in moments
     ]
+
+
+def compiled_guards(root: Path) -> list[GitGuard] | None:
+    """The guards ``root``'s manifest compiles, or None where it compiles none.
+
+    What ``git hooks run`` reads before the project's application loads,
+    which is what lets a moment whose every guard stands down end in the
+    time it takes to import this module rather than to build the whole CLI.
+    It is the declaration itself, compiled into ``[tool.lup]`` by ``harness
+    generate all`` and held to it by the drift check, so a checkout reads the
+    declaration at the revision it is at.
+
+    None sends the moment to the application, which reads the declaration
+    directly: a manifest that is missing, one a merge left unparseable, one
+    that compiles no table, or one naming a standdown that no longer
+    resolves. Every one of those is slower and none of them skips a guard.
+    """
+    try:
+        manifest = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))
+    except (OSError, tomllib.TOMLDecodeError):
+        return None
+    match manifest:
+        case {"tool": {"lup": {"git-guards": list(compiled)}}}:
+            try:
+                return TypeAdapter(list[GitGuard]).validate_python(compiled)
+            except ValidationError:
+                return None
+        case _:
+            return None
+
+
+def write_git_guards(
+    guards: list[GitGuard], root: Path | None = None, *, check: bool = False
+) -> Path:
+    """Write or verify the guards compiled into ``pyproject.toml`` for the hooks.
+
+    A repository writer: ``harness generate all`` writes it, and the drift
+    check reads it with *check*, which reports the manifest stale rather than
+    writing it. Compiled rather than read from the declaration at hook time
+    because reading the declaration means loading the application, which is
+    most of what a moment costs.
+    """
+    manifest = (root or project_root()) / "pyproject.toml"
+    document = tomlkit.parse(manifest.read_text(encoding="utf-8"))
+    compiled = [guard.model_dump(mode="json", exclude_none=True) for guard in guards]
+    match document.unwrap():
+        case {"tool": {"lup": {"git-guards": list(current)}}}:
+            stale = current != compiled
+        case _:
+            stale = True
+    if stale and check:
+        raise RuntimeError(f"{manifest} is behind the declared git guards")
+    if not stale:
+        return manifest
+
+    tables = tomlkit.aot()
+    last = len(compiled) - 1
+    for index, fields in enumerate(compiled):
+        table = tomlkit.table()
+        if index == 0:
+            table.add(tomlkit.comment(f"Compiled by `{REGENERATE_COMMAND}` from the"))
+            table.add(tomlkit.comment("git guards the dev tree declares: edit those."))
+        for key, value in fields.items():
+            match value:
+                case dict():
+                    inline = tomlkit.inline_table()
+                    inline.update(value)
+                    table[key] = inline
+                case _:
+                    table[key] = value
+        if index == last:
+            table.add(tomlkit.nl())
+        tables.append(table)
+    tool = document.setdefault("tool", tomlkit.table())
+    lup = tool.setdefault("lup", tomlkit.table())
+    # An empty declaration is spelled as one, so it reads as compiled.
+    lup["git-guards"] = tables if compiled else tomlkit.array()
+    manifest.write_text(tomlkit.dumps(document), encoding="utf-8")
+    return manifest
 
 
 type GuardStatus = Literal[

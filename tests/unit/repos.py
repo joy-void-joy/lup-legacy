@@ -89,6 +89,7 @@ from lup.devtools.dev.git_guards import (
     NoMergeCommit,
     fire,
 )
+from lup.devtools.entrypoint import invoked
 
 app = typer.Typer()
 git = typer.Typer()
@@ -115,11 +116,22 @@ def verbs() -> None:
 @hooks.command("install")
 def install() -> None:
     """A verb every revision has."""
+
+
+@app.command("refuse")
+def refuse(code: int) -> None:
+    """A devtools command a guard can name, which refuses with ``code``."""
+    typer.echo(f"refused in process with {{code}}", err=True)
+    raise typer.Exit(code)
 {run}
 
 app()
 '''
-"""The program a double runs, with the `run` verb spliced in or left out."""
+"""The program a double runs, with the `run` verb spliced in or left out.
+
+Each start of it is logged beside it, so a test can count the processes a
+moment cost and tell a guard that ran in process from one that did not.
+"""
 
 RUN_VERB = '''
 
@@ -130,7 +142,13 @@ def run(
 ) -> None:
     """The verb every installed hook calls."""
     guards = {guards}
-    raise typer.Exit(fire(guards, hook, tuple(arguments or ()), Path.cwd(), sys.stdin))
+
+    def devtools(words: tuple[str, ...]) -> int:
+        return invoked(app, words)
+
+    raise typer.Exit(
+        fire(guards, hook, tuple(arguments or ()), Path.cwd(), sys.stdin, devtools)
+    )
 '''
 """The one verb a revision older than the trampolines lacks."""
 
@@ -153,6 +171,7 @@ def devtools_double(directory: Path, guards: list[GitGuard] | None) -> dict[str,
         "#!/bin/sh\n"
         '[ "$1 $2" = "run lup-devtools" ] || exit 127\n'
         "shift 2\n"
+        f'echo "$*" >>{directory / "started"}\n'
         f'exec {sys.executable} {program} "$@"\n',
         encoding="utf-8",
     )

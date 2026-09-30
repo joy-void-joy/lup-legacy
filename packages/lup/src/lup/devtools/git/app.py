@@ -34,6 +34,7 @@ from lup.policy.vocabulary import protected_branches
 from lup.workspace.paths import project_root
 from lup.devtools.git.prepare import prepare
 from lup.devtools.git.settle import settle
+from lup.devtools.entrypoint import in_process
 from lup.devtools.launcher import console_script
 from lup.devtools.utils import decode_stderr
 
@@ -449,7 +450,10 @@ def create_git_app(declared: Callable[[], DevDeclarations]) -> typer.Typer:
         Every hook `install` writes calls this and names no guard, so what
         runs is this checkout's own declaration at the revision it is at,
         whichever revision wrote the hook. The first guard to refuse ends
-        the moment, and says why.
+        the moment, and says why. A checkout that compiles its guards into
+        its manifest answers this before the application loads; this is the
+        answer for one that does not, and a guard that is a devtools command
+        runs in this same process either way.
         """
         status = git_guards_mod.fire(
             declared().git_guards,
@@ -457,6 +461,7 @@ def create_git_app(declared: Callable[[], DevDeclarations]) -> typer.Typer:
             tuple(arguments or ()),
             project_root(),
             sys.stdin,
+            in_process,
         )
         raise typer.Exit(status)
 

@@ -52,7 +52,7 @@ from lup.devtools.dev.branches import (
     get_integration_branch,
     unlanded_siblings,
 )
-from lup.devtools.dev.git_guards import GitGuard, read_hooks
+from lup.devtools.dev.git_guards import GitGuard, compiled_guards, read_hooks
 from lup.devtools.dev.worktree import OWNERSHIP_MERGE_DRIVER, MergeDriver
 from lup.devtools.dev.cites import sweep_cites
 from lup.devtools.dev.collection import PytestCollection
@@ -1438,6 +1438,32 @@ def scan_reports(
                 ),
                 *(f"  {state.describe()}" for state in hooks.orphaned),
             ],
+        )
+
+        # The hooks run what the manifest compiles, which is read without
+        # loading this declaration: were the two to differ, a hook would run a
+        # guard nobody declares here, or stand down past one somebody does.
+        held = compiled_guards(project_root())
+        match held:
+            case None:
+                compiled = [
+                    "compiled git guards: none (advisory) — each hook loads the "
+                    "application to read the declaration"
+                ]
+            case list() if held == git_guards:
+                compiled = ["compiled git guards: ok"]
+            case _:
+                compiled = [
+                    "compiled git guards: FAIL (the manifest's [tool.lup] git-guards "
+                    "is not the declaration the dev tree reads)",
+                    "  compile the dev tree's own declaration with `write_git_guards`, "
+                    "then run `uv run lup-devtools harness generate all`",
+                ]
+        yield CheckReport(
+            name="compiled git guards",
+            counted=held is not None,
+            passed=held is None or held == git_guards,
+            lines=compiled,
         )
 
         # Asked here for the reason the guards above are: git resolves a driver
