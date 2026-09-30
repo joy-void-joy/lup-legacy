@@ -8,9 +8,13 @@ stopped once the last lease goes — a lease whose launcher died counting as
 gone.
 """
 
+import itertools
 import json
+import os
+import signal
 import socket
 import sys
+import time
 from collections.abc import Iterator
 from contextlib import AbstractContextManager, contextmanager
 from pathlib import Path
@@ -28,6 +32,7 @@ from lup.launch.companions import (
     CompanionPlace,
     CompanionProcess,
     CompanionScope,
+    CompanionSlot,
     Contribution,
     GivenPort,
     HostCompanion,
@@ -35,6 +40,7 @@ from lup.launch.companions import (
     Lease,
     LiveProcess,
     ReachedPort,
+    Running,
     SharedProcess,
     given_ports,
     held_companions,
@@ -261,6 +267,158 @@ def test_a_lease_whose_launcher_died_is_swept(state: Path, tmp_path: Path) -> No
 
     assert not running.process.running()
     assert slot.read().leases == []
+
+
+def started_after(
+    slot: CompanionSlot, before: Running, within: float = 30.0
+) -> Running:
+    """What runs once a process other than ``before``'s is recorded running."""
+    for _ in range(int(within / 0.05)):
+        running = slot.read().running
+        if (
+            running is not None
+            and running.process != before.process
+            and running.process.running()
+        ):
+            return running
+        time.sleep(0.05)
+    raise AssertionError(f"nothing replaced pid {before.process.pid} in {within}s")
+
+
+def test_a_shared_process_killed_while_held_is_started_again_where_it_was(
+    state: Path, tmp_path: Path
+) -> None:
+    """Its holder finds it gone, records how it ended, and starts it again on its port."""
+    served = Served(
+        name="served", ports={"web": free_port()}, backoff=(0.2,), watched_every=0.1
+    )
+    slot = served.slot(tmp_path)
+
+    with served.held(launch_at(tmp_path)) as given:
+        killed = slot.read().running
+        assert killed is not None
+        os.kill(killed.process.pid, signal.SIGKILL)
+        again = started_after(slot, killed)
+        kept = slot.read()
+
+    exited = kept.exited
+    assert kept.given() == given.ports
+    assert exited is not None and exited.process == killed.process
+    assert exited.status == -signal.SIGKILL and exited.restarted is not None
+    assert exited.reason() == "it was ended by SIGKILL"
+    assert kept.restarts == 1 and kept.retry is None and kept.failing == 1
+    assert not again.process.running()
+    assert "is gone while held (live leases: 1)" in slot.log().read_text()
+
+
+CRASHING = """
+import http.server, os, sys, threading, time
+from pathlib import Path
+
+with Path(sys.argv[2]).open("a", encoding="utf-8") as starts:
+    starts.write(f"{time.time()}\\n")
+threading.Timer(float(sys.argv[3]), os._exit, [3]).start()
+http.server.ThreadingHTTPServer(
+    ("127.0.0.1", int(sys.argv[1])), http.server.SimpleHTTPRequestHandler
+).serve_forever()
+"""
+"""A server that writes down when it started, serves, and exits with status 3 a moment later."""
+
+
+class Crashing(Served, frozen=True):
+    """A companion that serves for ``lasts`` seconds each time it is started, then exits."""
+
+    script: Path
+    starts: Path
+    lasts: float = 0.5
+
+    def process(self, place: CompanionPlace, root: Path) -> CompanionProcess:
+        return CompanionProcess(
+            argv=[
+                sys.executable,
+                str(self.script),
+                str(place.ports["web"]),
+                str(self.starts),
+                str(self.lasts),
+            ],
+            cwd=root,
+        )
+
+
+def test_a_companion_that_keeps_exiting_is_started_again_ever_more_slowly(
+    state: Path, tmp_path: Path
+) -> None:
+    script = tmp_path / "crashing.py"
+    script.write_text(CRASHING, encoding="utf-8")
+    starts = tmp_path / "starts"
+    crashing = Crashing(
+        name="crashing",
+        ports={"web": free_port()},
+        script=script,
+        starts=starts,
+        backoff=(0.2, 0.8, 1.6),
+        watched_every=0.05,
+    )
+    slot = crashing.slot(tmp_path)
+
+    with crashing.held(launch_at(tmp_path)):
+        for _ in range(300):
+            if starts.exists() and len(starts.read_text().splitlines()) >= 4:
+                break
+            time.sleep(0.05)
+        kept = slot.read()
+
+    begun = [float(line) for line in starts.read_text().splitlines()]
+    waited = [later - earlier for earlier, later in itertools.pairwise(begun)]
+    assert len(begun) >= 4, begun
+    assert waited[0] >= 0.5 + 0.2 and waited[1] >= 0.5 + 0.8, waited
+    assert waited[2] >= 0.5 + 1.6, waited
+    # The fourth start writes its line before it answers, and a start is
+    # counted once it answers.
+    assert kept.failing >= 3 and kept.restarts >= 2
+    assert kept.exited is not None and kept.exited.status == 3
+
+
+def test_a_lease_dropped_while_its_launcher_runs_is_taken_back_and_started_again(
+    state: Path, tmp_path: Path
+) -> None:
+    """A release that judged a live holder gone stopped what ran; that holder brings it back."""
+    served = Served(
+        name="served", ports={"web": free_port()}, backoff=(0.2,), watched_every=0.1
+    )
+    slot = served.slot(tmp_path)
+
+    with served.held(launch_at(tmp_path)):
+        with slot.locked():
+            dropped = slot.read()
+            assert dropped.running is not None
+            dropped.running.process.stop(served.grace)
+            slot.write(dropped.model_copy(update={"leases": [], "running": None}))
+        again = started_after(slot, dropped.running)
+        leases = slot.read().leases
+
+    assert [lease.id for lease in leases] == [lease.id for lease in dropped.leases]
+    assert not again.process.running()
+    assert "while that launch still holds it; taken back" in slot.log().read_text()
+
+
+def test_every_stop_says_why_first_in_the_log_and_the_state(
+    state: Path, tmp_path: Path
+) -> None:
+    served = Served(name="served", ports={"web": free_port()})
+    slot = served.slot(tmp_path)
+
+    with served.held(launch_at(tmp_path)):
+        running = slot.read().running
+        assert running is not None
+    stopped = slot.read().stopped
+
+    assert stopped is not None and stopped.process == running.process
+    assert stopped.why.startswith("the last lease was let go")
+    assert stopped.leases == 0 and stopped.by == os.getpid()
+    assert f"stopping pid {running.process.pid}: the last lease" in (
+        slot.log().read_text()
+    )
 
 
 def test_checkouts_hold_companions_of_their_own_and_a_person_one(
