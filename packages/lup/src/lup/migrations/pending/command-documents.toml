@@ -1,0 +1,43 @@
+subjects = [
+    "rewritten_documents",
+    "rewritten_text",
+    "captured_sed_output",
+    "shell_preview",
+    "ShellPolicy.authored_verdict",
+]
+reason = """
+A shell command is followed file by file (`lup.policy.kernel.documents`), each \
+write applied to what the line left, and a question records every changed \
+file's judged document; the readers that re-ran one sed per file against the \
+disk, and the dashboard's own sed preview, are gone. `sed_output` runs over a \
+text passed third, and `captured_edit_decision` takes the judged `after`"""
+
+[[steps]]
+instruction = """
+Where `rewritten_text(scripts, target, root, options)` was called, call \
+`sed_output(scripts, options, text)` over the file's text (`document_at(root, \
+target)` reads it, with the reason where none stands); where \
+`sed_output(..., before=text)` was called, pass the text third."""
+command = ["uv", "run", "lup-devtools", "dev", "py", "text", "rewritten_text(", "."]
+
+[[steps]]
+instruction = """
+Where a dispatcher half called `rewritten_documents(command, cwd, ...)`, fold \
+the line with `followed_reading(command, cwd)`, judge it with \
+`judged_verdicts(...)`, and hand `rewrite_reading(reading, row)` to the \
+classifier; `ShellPolicy.authored_verdict(event)` is \
+`ShellPolicy.judged(ShellPolicy.followed(event), root)`, strongest of the \
+authored documents."""
+command = ["uv", "run", "lup-devtools", "dev", "py", "text", "authored_verdict(", "."]
+
+[[steps]]
+instruction = """
+Where a shell question's preview came from `shell_preview(question)` or \
+`captured_sed_output`, call `reviewed_preview(question)`: it reads the \
+question's recorded documents and runs nothing."""
+
+[[steps]]
+instruction = """
+Pass `after=` -- the document the verdict judged -- to every \
+`captured_edit_decision(...)` and `file_review_row(...)` call."""
+command = ["uv", "run", "lup-devtools", "dev", "py", "text", "captured_edit_decision(", "."]

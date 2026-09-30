@@ -26,6 +26,7 @@ from lup.policy.kernel.decision import (
     FileReviewRow,
     KernelDecision,
     SandboxPlacement,
+    UnpreviewedRow,
 )
 from lup.policy.kernel.semantics import (
     AbstentionPurpose,
@@ -335,6 +336,9 @@ class Decision(BaseModel, frozen=True):
     file_reviews: tuple[FileReviewRow, ...] = ()
     """Original routed file verdicts, bound to the documents they judged."""
 
+    unpreviewed: tuple[UnpreviewedRow, ...] = ()
+    """The steps of a command whose effect no document states, in the order they run."""
+
     @field_validator("sandbox")
     @classmethod
     def reached(
@@ -394,6 +398,7 @@ class Decision(BaseModel, frozen=True):
             hard=decision.hard,
             findings=tuple(cls.of(finding) for finding in decision.findings),
             file_reviews=decision.file_reviews,
+            unpreviewed=decision.unpreviewed,
         )
 
     def as_kernel(self) -> KernelDecision:
@@ -422,6 +427,7 @@ class Decision(BaseModel, frozen=True):
             findings=tuple(finding.as_kernel() for finding in self.findings),
             recovery=self.recovery,
             file_reviews=self.file_reviews,
+            unpreviewed=self.unpreviewed,
         )
 
 

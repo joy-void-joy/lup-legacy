@@ -160,7 +160,11 @@ def settled_with_claim(
     return settled.revised(
         file_reviews=tuple(
             file_review_row(
-                settled, row["path"], row["before_sha256"], row["after_sha256"]
+                settled,
+                row["path"],
+                row["before_sha256"],
+                row["after_sha256"],
+                row["after"],
             )
             for row in verdict.file_reviews
         )

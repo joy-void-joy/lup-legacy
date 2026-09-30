@@ -32,6 +32,7 @@ def test_pydantic_roundtrip_retains_exact_captured_file_verdict(tmp_path: Path) 
         str(tmp_path / "source.txt"),
         before_sha256=document_digest("before\n"),
         after_sha256=document_digest("after\n"),
+        after="after\n",
     )
     validated = Decision.model_validate_json(Decision.of(original).model_dump_json())
     assert validated.as_kernel().file_reviews == original.file_reviews
@@ -179,6 +180,7 @@ def test_parked_attribution_is_durable_and_cannot_reuse_a_different_receipt(
         str(tmp_path / "source.txt"),
         before_sha256=document_digest("before\n"),
         after_sha256=document_digest("after\n"),
+        after="after\n",
     )
     preliminary = running.preliminary(operation, verdict)
     assert preliminary.stage == "parked" and preliminary.question is not None
@@ -192,6 +194,7 @@ def test_parked_attribution_is_durable_and_cannot_reuse_a_different_receipt(
         str(tmp_path / "source.txt"),
         before_sha256=document_digest("before\n"),
         after_sha256=document_digest("after\n"),
+        after="after\n",
     )
     assert running.park(operation, changed, None).id != question.id
     running.relay.answer(question.id, "person", approved=True)

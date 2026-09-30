@@ -298,10 +298,17 @@ it, the title — the change's paths relative to the checkout it changes, which
 leads the line — with the full path on hover; one line naming the queue, the
 directory the call runs in, the session that asked and when, with **Details**
 opening the complete record; then the policy's reason, "Why approval is
-needed · <rule>", in full. A command shows beneath it. Below, the comment box
+needed · <rule>", in full. Below, the comment box
 is pinned open and focused on every waiting review, with the decisions beside
 it. What a review said and what it came to are its thread: the operator's
 remarks, the requester's replies, and the answer, oldest first.
+
+A command shows beneath the reason, whole. Its file changes show the way an
+edit's do, one diff per file in the order it writes them: the documents the
+policy worked out when it judged the command, read off the review rather
+than re-derived where it is read (`docs/permissions.md`). The steps whose
+result exists only once they run are listed beside it, each with the files
+it leaves so.
 
 The dashboard titles requests from captured evidence: a file's action and path,
 the number of files, or the command to run. The default view includes files

@@ -2368,9 +2368,7 @@ SED_SAFE_LONG_OPTIONS = (
 SED_SUBSTITUTE_FLAG_CHARS = "0123456789gpiImM"
 
 
-def scan_sed_delimited(
-    script: str, position: int, parts: int, *, captured: bool = False
-) -> int | None:
+def scan_sed_delimited(script: str, position: int, parts: int) -> int | None:
     """Scan ``parts`` sections after the delimiter at ``position``.
 
     The delimiter is whatever character sits at ``position``; backslash
@@ -2385,8 +2383,6 @@ def scan_sed_delimited(
     seen = 0
     while cursor < len(script) and seen < parts:
         character = script[cursor]
-        if captured and seen == 0 and character == "[":
-            return None
         if character == "\\":
             cursor += 2
             continue
@@ -2396,9 +2392,7 @@ def scan_sed_delimited(
     return cursor if seen == parts else None
 
 
-def scan_sed_address(
-    script: str, position: int, *, captured: bool = False
-) -> int | None:
+def scan_sed_address(script: str, position: int) -> int | None:
     """Scan one address: a line-number form, ``$``, or a regex form."""
     character = script[position]
     if character == "$":
@@ -2418,24 +2412,20 @@ def scan_sed_address(
             cursor += 1
         return cursor if cursor > position + 1 else None
     end = (
-        scan_sed_delimited(script, position, 1, captured=captured)
+        scan_sed_delimited(script, position, 1)
         if character == "/"
-        else scan_sed_delimited(script, position + 1, 1, captured=captured)
+        else scan_sed_delimited(script, position + 1, 1)
         if character == "\\" and position + 1 < len(script)
         else None
     )
     if end is None:
         return None
     while end < len(script) and script[end] in "IM":
-        if captured and script[end] == "I":
-            return None
         end += 1
     return end
 
 
-def scan_sed_command(
-    script: str, position: int, *, captured: bool = False
-) -> int | None:
+def scan_sed_command(script: str, position: int) -> int | None:
     """Scan one address-guarded command, returning the position after it.
 
     Accepted commands read the input and write standard output only: print,
@@ -2445,7 +2435,7 @@ def scan_sed_command(
     fall out as unrecognized trailing characters.
     """
     length = len(script)
-    address = scan_sed_address(script, position, captured=captured)
+    address = scan_sed_address(script, position)
     if address is not None:
         position = address
         while position < length and script[position] in " \t":
@@ -2456,7 +2446,7 @@ def scan_sed_command(
                 position += 1
             if position >= length:
                 return None
-            second = scan_sed_address(script, position, captured=captured)
+            second = scan_sed_address(script, position)
             if second is None:
                 return None
             position = second
@@ -2465,8 +2455,6 @@ def scan_sed_command(
     if position >= length:
         return None
     command = script[position]
-    if captured and command in "FqQrR":
-        return None
     if command in "pPdDnNgGhHxz=F{}":
         return position + 1
     if command in "qQl":
@@ -2485,51 +2473,26 @@ def scan_sed_command(
         newline = script.find("\n", position)
         return length if newline == -1 else newline
     if command == "s":
-        end = scan_sed_delimited(script, position + 1, 2, captured=captured)
+        end = scan_sed_delimited(script, position + 1, 2)
         if end is None:
             return None
         while end < length and script[end] in SED_SUBSTITUTE_FLAG_CHARS:
-            if captured and script[end] in "iI":
-                return None
             end += 1
         return end
     if command == "y":
-        return scan_sed_delimited(script, position + 1, 2, captured=captured)
+        return scan_sed_delimited(script, position + 1, 2)
     return None
 
 
-def captured_sed_characters(script: str) -> bool:
-    """ASCII source whose escapes cannot synthesize Unicode or map its case.
-
-    This includes append/insert/change text as well as delimited expressions:
-    later commands can inspect bytes that an earlier command introduced.
-    Escaped backslashes stay literal; numeric backreferences remain available.
-    """
-    if not script.isascii():
-        return False
-    escaped = False
-    for character in script:
-        match escaped, character:
-            case True, value if value in "LUluxod":
-                return False
-            case True, _:
-                escaped = False
-            case False, "\\":
-                escaped = True
-    return True
-
-
-def safe_sed_script(script: str, *, captured: bool = False) -> bool:
-    """Screen side effects, and unknown-locale constructs for captured previews."""
-    if captured and not captured_sed_characters(script):
-        return False
+def safe_sed_script(script: str) -> bool:
+    """Screen a sed script for side effects: whether it only reads and prints."""
     length = len(script)
     position = 0
     while position < length:
         if script[position] in " \t\n;":
             position += 1
             continue
-        end = scan_sed_command(script, position, captured=captured)
+        end = scan_sed_command(script, position)
         if end is None:
             return False
         position = end

@@ -100,6 +100,7 @@ DISPATCHER_STDLIB = (
     "subprocess",
     "datetime",
     "hashlib",
+    "tempfile",
     "time",
     "signal",
     "collections.abc",
@@ -142,6 +143,12 @@ second, so two snapshots taken in the same second tie — and a tie means the
 listing hands back the older of the two at exactly the moment somebody is
 reaching for the newer one. Nothing already pinned here can produce a
 sub-second stamp.
+
+``tempfile`` earns its place the same way. A patch a command applies is shown
+as what it leaves by applying it to a copy of the files it touches, and a
+copy needs a directory nobody else names, gone again once the patch is read
+-- which nothing already pinned makes: ``os`` makes a directory but not one
+whose name no other process can take first, nor removes a tree.
 
 ``time`` earns its place the same way. A runtime lets a call through once
 its policy hook runs past its timeout, so everything a verdict waits on

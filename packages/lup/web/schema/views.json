@@ -308,8 +308,20 @@
     },
     "CapturedFileReview": {
       "additionalProperties": false,
-      "description": "The original routed file verdict, bound to its captured input and result.",
+      "description": "The original routed file verdict, bound to its captured input and result.\n\n``after`` is the document the verdict judged, which is what a reviewer\nis shown the file becoming; ``None`` with a digest beside it is a record\nthat kept only the digest.",
       "properties": {
+        "after": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "After"
+        },
         "after_sha256": {
           "anyOf": [
             {
@@ -363,7 +375,8 @@
         "rule",
         "rules",
         "before_sha256",
-        "after_sha256"
+        "after_sha256",
+        "after"
       ],
       "title": "CapturedFileReview",
       "type": "object"
@@ -2507,6 +2520,21 @@
         "state": {
           "$ref": "#/$defs/QuestionState",
           "default": "pending"
+        },
+        "unpreviewed": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/UnpreviewedStep"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Unpreviewed"
         }
       },
       "required": [
@@ -2515,6 +2543,7 @@
         "fingerprint",
         "preconditions",
         "file_reviews",
+        "unpreviewed",
         "resumption",
         "reason",
         "rule",
@@ -5035,6 +5064,39 @@
         "is_error"
       ],
       "title": "TurnToolResultBlock",
+      "type": "object"
+    },
+    "UnpreviewedStep": {
+      "additionalProperties": false,
+      "description": "One step of a parked command whose effect no document states.\n\n``cause`` is ``run`` where only running the step makes its result, and\n``unread`` where a file it leaves does not read as text; ``paths`` are\nthe files it leaves so, and none where it is a program that may write\nwherever it likes.",
+      "properties": {
+        "cause": {
+          "enum": [
+            "run",
+            "unread"
+          ],
+          "title": "Cause",
+          "type": "string"
+        },
+        "command": {
+          "title": "Command",
+          "type": "string"
+        },
+        "paths": {
+          "items": {
+            "format": "path",
+            "type": "string"
+          },
+          "title": "Paths",
+          "type": "array"
+        }
+      },
+      "required": [
+        "command",
+        "paths",
+        "cause"
+      ],
+      "title": "UnpreviewedStep",
       "type": "object"
     },
     "VerificationFailedEvent": {

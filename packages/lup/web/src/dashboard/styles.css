@@ -242,6 +242,12 @@ textarea { display: block; width: 100%; resize: vertical; min-height: 3rem; max-
 .approve:hover { color: #fff; background: #10573f; border-color: #10573f; }
 .decline { color: #963e30; border-color: #d7b8b0; }
 .command-only { flex: 1; min-height: 0; overflow: auto; }
+.unpreviewed { flex: none; max-height: 25vh; overflow: auto; padding: .5rem .7rem; border: 1px solid #e3d1a4; background: #fff9eb; border-radius: 5px; font-size: .8rem; }
+.unpreviewed h3 { margin: 0 0 .35rem; font-size: .85rem; }
+.unpreviewed > ul { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: .45rem; }
+.unpreviewed pre { margin: .2rem 0 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.unpreviewed-cause { font-weight: 600; color: #805707; }
+.unpreviewed-paths { margin: .2rem 0 0; padding-left: 1.1rem; overflow-wrap: anywhere; }
 .empty, .welcome { color: var(--muted); padding: 1rem; }
 .access { max-width: 42rem; height: 100dvh; overflow: auto; margin: auto; padding: 10vh 2rem 2rem; }
 .access h1 { margin-bottom: 1rem; }

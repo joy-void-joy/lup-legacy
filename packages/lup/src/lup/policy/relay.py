@@ -261,7 +261,12 @@ class RecordedAnswer(BaseModel, frozen=True):
 
 
 class CapturedFileReview(BaseModel, frozen=True):
-    """The original routed file verdict, bound to its captured input and result."""
+    """The original routed file verdict, bound to its captured input and result.
+
+    ``after`` is the document the verdict judged, which is what a reviewer
+    is shown the file becoming; ``None`` with a digest beside it is a record
+    that kept only the digest.
+    """
 
     path: Path
     effect: DecisionEffect
@@ -270,6 +275,21 @@ class CapturedFileReview(BaseModel, frozen=True):
     rules: list[str]
     before_sha256: str | None
     after_sha256: str | None
+    after: str | None = None
+
+
+class UnpreviewedStep(BaseModel, frozen=True):
+    """One step of a parked command whose effect no document states.
+
+    ``cause`` is ``run`` where only running the step makes its result, and
+    ``unread`` where a file it leaves does not read as text; ``paths`` are
+    the files it leaves so, and none where it is a program that may write
+    wherever it likes.
+    """
+
+    command: str
+    paths: list[Path]
+    cause: Literal["run", "unread"]
 
 
 class PersistentQuestion(BaseModel, frozen=True):
@@ -288,6 +308,8 @@ class PersistentQuestion(BaseModel, frozen=True):
     """File preimages bound to a native hook review, rechecked before dispatch."""
     file_reviews: list[CapturedFileReview] | None = None
     """Original per-file attribution; absent on records that did not capture it."""
+    unpreviewed: list[UnpreviewedStep] | None = None
+    """The steps of a command no document shows, beside the files ``file_reviews`` does."""
     resumption: Literal["coordinator", "native_retry"] = "coordinator"
     """Whether the coordinator dispatches or a native hook checks an exact retry."""
     reason: str
@@ -376,6 +398,9 @@ class PersistentQuestion(BaseModel, frozen=True):
             [row.model_dump(mode="json") for row in self.file_reviews]
             if self.file_reviews is not None
             else None,
+            [step.model_dump(mode="json") for step in self.unpreviewed]
+            if self.unpreviewed is not None
+            else None,
         )
 
     def bound(self) -> bool:
@@ -410,14 +435,18 @@ class PersistentQuestion(BaseModel, frozen=True):
 
     @classmethod
     def review_fingerprint(
-        cls, operation: Operation, file_reviews: list[CapturedFileReview] | None
+        cls,
+        operation: Operation,
+        file_reviews: list[CapturedFileReview] | None,
+        unpreviewed: list[UnpreviewedStep] | None,
     ) -> str:
         """Bind captured attribution to an in-process operation's approval."""
-        if file_reviews is None:
+        if file_reviews is None and unpreviewed is None:
             return operation.fingerprint()
         material = [
             operation.fingerprint(),
-            [row.model_dump(mode="json") for row in file_reviews],
+            [row.model_dump(mode="json") for row in file_reviews or []],
+            [step.model_dump(mode="json") for step in unpreviewed or []],
         ]
         return sha256(json.dumps(material, sort_keys=True).encode()).hexdigest()
 

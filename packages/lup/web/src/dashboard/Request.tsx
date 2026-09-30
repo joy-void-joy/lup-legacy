@@ -2,7 +2,7 @@
 // around it in single lines, and the composer pinned beneath, open and
 // focused, so the operator writes and decides without leaving the keyboard.
 import { memo, useEffect, useRef, useState, type RefObject } from "react";
-import type { Account, LineComment, ReviewDetail, ReviewRoot, ReviewSummary, ThreadEntry } from "../generated/views";
+import type { Account, LineComment, ReviewDetail, ReviewRoot, ReviewSummary, ThreadEntry, UnpreviewedStep } from "../generated/views";
 import { reviewLink } from "./api";
 import { Files, type DraftComment, type FileNavigation } from "./Files";
 
@@ -67,6 +67,18 @@ function Accounted({ said }: { said: Account }) {
     <p className={long && !open ? "folded" : undefined}>{said.text}</p>
     {long && <button type="button" aria-expanded={open} onClick={() => setOpen((value) => !value)}>{open ? "Show less" : "Show all"}</button>}
   </div>;
+}
+
+/** The steps of a command no document shows: what only running them reveals, or a file that is not text. */
+function UnpreviewedSteps({ steps }: { steps: UnpreviewedStep[] }) {
+  return <section className="unpreviewed" aria-label="Steps no document shows">
+    <h3>{steps.length === 1 ? "1 step" : `${steps.length} steps`} no document shows</h3>
+    <ul>{steps.map((step, index) => <li key={index}>
+      <span className={`unpreviewed-cause ${step.cause}`}>{step.cause === "run" ? "Result known only after running" : "Leaves a file that is not text"}</span>
+      <pre>{step.command}</pre>
+      {step.paths.length > 0 && <ul className="unpreviewed-paths" aria-label="Files it leaves so">{step.paths.map((path) => <li key={path}><code>{path}</code></li>)}</ul>}
+    </li>)}</ul>
+  </section>;
 }
 
 /** The whole record, mounted only once opened: a payload can run to megabytes. */
@@ -182,8 +194,9 @@ export function RequestView({ detail, row, roots, draft, sending, error, fileNav
       </p>}
       {row.unanswerable !== "" && <p className="notice" role="status">{row.unanswerable}</p>}
       {detail.command !== null && <section className="command" aria-label="Command"><pre>{detail.command}</pre></section>}
+      {(question.unpreviewed ?? []).length > 0 && <UnpreviewedSteps steps={question.unpreviewed ?? []} />}
       {detail.preview_unavailable !== "" && <p className="notice" role="status">{detail.preview_unavailable}</p>}
-      {(detail.preview_notice ?? "") !== "" && <details className="preview-note"><summary>Preview computed where the dashboard runs</summary><p>{detail.preview_notice}</p></details>}
+      {(detail.preview_notice ?? "") !== "" && <details className="preview-note"><summary>How these documents were worked out</summary><p>{detail.preview_notice}</p></details>}
       <Thread entries={detail.thread} sending={sending} target={target} />
       {detail.notification !== null && <p className="delivery" role="status">How the requester heard: {detail.notification.detail}</p>}
       {detail.files.length > 0 ? <FileEvidence files={detail.files} navigation={fileNavigation} command={detail.command}

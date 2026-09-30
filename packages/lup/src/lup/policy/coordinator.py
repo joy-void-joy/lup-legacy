@@ -37,6 +37,7 @@ from lup.policy.relay import (
     PersistentQuestion,
     QuestionRelay,
     SupervisorChain,
+    UnpreviewedStep,
 )
 
 
@@ -200,13 +201,19 @@ class OperationCoordinator:
         file_reviews = [
             CapturedFileReview.model_validate(row) for row in decision.file_reviews
         ] or None
-        fingerprint = PersistentQuestion.review_fingerprint(operation, file_reviews)
+        unpreviewed = [
+            UnpreviewedStep.model_validate(row) for row in decision.unpreviewed
+        ] or None
+        fingerprint = PersistentQuestion.review_fingerprint(
+            operation, file_reviews, unpreviewed
+        )
         return self.relay.record(
             PersistentQuestion(
                 id=f"{operation.id}:{fingerprint[:12]}",
                 operation=operation,
                 fingerprint=fingerprint,
                 file_reviews=file_reviews,
+                unpreviewed=unpreviewed,
                 reason=decision.reason,
                 rule=decision.rule,
                 purpose=decision.purpose,
@@ -312,7 +319,9 @@ class OperationCoordinator:
                 question=entry,
             )
         if (
-            PersistentQuestion.review_fingerprint(operation, entry.file_reviews)
+            PersistentQuestion.review_fingerprint(
+                operation, entry.file_reviews, entry.unpreviewed
+            )
             != entry.fingerprint
         ):
             return CoordinatorResult(
