@@ -321,8 +321,10 @@ def test_a_terminals_dashboard_restarts_in_place_and_ends_its_streams_as_it_stop
 ) -> None:
     """`dashboard serve` once it restarts itself: the same process, port and capability.
 
-    Its open streams end as it stops, to restart or at Ctrl+C, well inside
-    the grace a server gives them, and nothing is logged as an error.
+    Its open streams end as it stops, to restart or at Ctrl+C, before the
+    grace a server gives them runs out: uvicorn logs a cancellation when it
+    does, which the log is read for rather than a wall clock that a loaded
+    machine stretches. Nothing is logged as an error.
     """
     repository = tmp_path / "project"
     sh.Command("git")("init", "-q", "-b", "main", str(repository))
@@ -384,7 +386,8 @@ def test_a_terminals_dashboard_restarts_in_place_and_ends_its_streams_as_it_stop
     assert asked.status_code == 202
     assert after.pid == before.pid == serving.pid
     assert first is not None and second is not None and second > first
-    assert took < 1.5, output
+    assert "timeout graceful shutdown exceeded" not in output, output
+    assert took < 30, output
     assert stopped.value.exit_code == 130
     assert "ERROR" not in output and "Traceback" not in output, output
     assert not state.exists()
