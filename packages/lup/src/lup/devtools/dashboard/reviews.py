@@ -76,6 +76,7 @@ from lup.devtools.review.notifications import (
 )
 from lup.devtools.review.preimages import PreimageWatch
 from lup.devtools.review.thread import ReviewThread, spoken_on
+from lup.launch.companions import lent_directory
 from lup.policy.relay import (
     LineComment,
     PersistentQuestion,
@@ -1157,7 +1158,7 @@ def create_operator_dashboard_app(root: Path) -> typer.Typer:
         """
         named = pulse or Path(
             AdvertisedDashboard().pulse
-            or PulseFile.of(companion.slot(root).directory).path
+            or PulseFile.of(lent_directory(companion.slot(root).directory)).path
         )
         shown = status_line(named)
         if shown:

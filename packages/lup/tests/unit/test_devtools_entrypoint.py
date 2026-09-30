@@ -13,6 +13,7 @@ import typer
 
 import lup.devtools.entrypoint as entrypoint
 from lup.devtools.dashboard.pulse import DashboardPulse, PulseFile
+from lup.launch.companions import lent_directory
 
 
 def registering(site: Path, name: str, target: str) -> None:
@@ -62,7 +63,7 @@ def test_the_status_line_is_read_without_the_project_application(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    pulse = PulseFile.of(tmp_path)
+    pulse = PulseFile.of(lent_directory(tmp_path))
     pulse.path.parent.mkdir(parents=True)
     pulse.path.write_text(
         DashboardPulse(

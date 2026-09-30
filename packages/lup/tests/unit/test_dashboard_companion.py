@@ -46,7 +46,12 @@ from lup.devtools.harness.launch import held_services
 from lup.devtools.review.answers import ReviewAnswers
 from lup.devtools.review.app import relay
 from lup.harness.models import Harness, PromptDocument
-from lup.launch.companions import CompanionLaunch, LiveProcess, held_companions
+from lup.launch.companions import (
+    CompanionLaunch,
+    LiveProcess,
+    held_companions,
+    lent_directory,
+)
 from lup.launch.preflight import NONCE_VARIABLE
 from lup.policy.identity import DASHBOARD_URL_ENV
 from lup.policy.operations import Operation
@@ -256,7 +261,7 @@ def test_inside_a_session_the_dashboard_answers_from_what_it_publishes(
 ) -> None:
     """Truthfully, and without the private state or the capability a session never holds."""
     url = "http://127.0.0.1:8766"
-    pulse = PulseFile.of(tmp_path / "dashboard")
+    pulse = PulseFile.of(lent_directory(tmp_path / "dashboard"))
     beat = datetime.now(UTC)
     published = DashboardPulse(
         url=url,

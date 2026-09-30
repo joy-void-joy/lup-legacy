@@ -18,6 +18,7 @@ from pathlib import Path
 from pydantic import BaseModel
 
 from lup.coordination.repository import RepositoryPeers
+from lup.launch.companions import lent_by_a_companion
 from lup.launch.environments import revisions_home
 from lup.providers.user_config import UserConfigHome
 from lup.sandbox.known import (
@@ -94,10 +95,13 @@ def launcher_state_exposure(lease: Lease) -> str:
     and a mount it may not write today is one a later lease may widen.
     Compared resolved, since a mount is bound where its path leads.
 
-    One part is lent: the operator's answers to parked reviews, at or inside
-    :func:`~lup.sandbox.known.answers_directory`, read-only. A session must
+    Two parts are lent, read-only. The operator's answers to parked reviews,
+    at or inside :func:`~lup.sandbox.known.answers_directory`: a session must
     read the answer to its own review, and writing one is what the read-only
-    mount refuses it; a writable mount of them is refused like any other.
+    mount refuses it. And what a companion publishes for sessions to read, at
+    or inside its :func:`~lup.launch.companions.lent_directory` -- the
+    dashboard's pulse, which a session's status line reads. A writable mount
+    of either is refused like any other.
     """
     lent = answers_directory().resolve()
 
@@ -120,7 +124,9 @@ def launcher_state_exposure(lease: Lease) -> str:
             *(
                 read
                 for read in lease.read_only
-                if not read.resolve().is_relative_to(lent)
+                for resolved in [read.resolve()]
+                if not resolved.is_relative_to(lent)
+                and not lent_by_a_companion(resolved)
             ),
         ]
         for held in host_only_directories()

@@ -19,6 +19,7 @@ from lup.devtools.dashboard.companion import DashboardRegistry
 from lup.devtools.dashboard.pulse import DashboardPulse, PulseFile, status_line
 from lup.devtools.dashboard.service import DesktopNotice, Herald
 from lup.devtools.review.app import relay
+from lup.launch.companions import lent_directory
 from lup.policy.operations import Operation
 from lup.policy.relay import PersistentQuestion
 from lup.providers.user_config import UserConfigFile
@@ -207,7 +208,7 @@ def test_the_pulse_counts_what_waits_and_says_where(
 ) -> None:
     question = parked(root, "q-1")
     watching = herald(registry, desk, config, tabs=2)
-    pulse = PulseFile.of(registry.directory)
+    pulse = PulseFile.of(lent_directory(registry.directory))
 
     watching.look()
     counted = pulse.read()
@@ -226,7 +227,7 @@ def test_the_pulse_counts_what_waits_and_says_where(
 def test_the_status_line_says_what_waits_and_where(tmp_path: Path) -> None:
     now = datetime.now(UTC)
     pulse = DashboardPulse(url=URL, pid=1, pending=3, beat=now)
-    kept = PulseFile.of(tmp_path)
+    kept = PulseFile.of(lent_directory(tmp_path))
     kept.path.parent.mkdir(parents=True)
     kept.path.write_text(pulse.model_dump_json())
 
