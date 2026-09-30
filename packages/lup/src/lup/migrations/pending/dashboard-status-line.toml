@@ -1,0 +1,20 @@
+subjects = ["DashboardPulse.line", "DashboardPulse.shown", "status_line"]
+reason = """
+a session's status line names the session, what waits on the operator and \
+this session's share of it, what other agents need, and the dashboard as one \
+glyph, sized to the terminal: it is rendered from the pulse and the session \
+the runtime names on stdin rather than by the pulse itself, and it always \
+says something, a dashboard that does not answer included"""
+
+[[steps]]
+instruction = """
+Call status_line(path, StatusInput.read(stream), now, columns) from \
+lup.devtools.dashboard.pulse where you called status_line(path, now) or \
+DashboardPulse.line(): it answers a ShownLine, whose plain() is the text and \
+painted() the text with its colours and links. Where you asked \
+DashboardPulse.shown(now), ask LineFacts.of(pulse, StatusInput(), now).live, \
+which is false for a stop the operator made as well as for an old beat, or \
+read pulse.halted beside pulse.current(now). A command printing it for a \
+runtime calls answered(pulse_path, sys.stdin) and prints that with its \
+colours."""
+command = ["uv", "run", "lup-devtools", "dev", "py", "text", "status_line(", "."]

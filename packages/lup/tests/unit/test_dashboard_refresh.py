@@ -35,7 +35,12 @@ from lup.devtools.dashboard.companion import (
     KnownRepository,
     dashboard_revision,
 )
-from lup.devtools.dashboard.pulse import DashboardPulse, RunningCode
+from lup.devtools.dashboard.pulse import (
+    DashboardPulse,
+    LineFacts,
+    RunningCode,
+    StatusInput,
+)
 from lup.devtools.dashboard.refresh import ImportedSource, Refresh, WriteGate
 from lup.devtools.dashboard.reviews import ReviewStore
 from lup.devtools.dashboard.service import ServiceArguments
@@ -177,19 +182,25 @@ async def test_a_write_is_held_in_view_and_refused_while_the_dashboard_restarts(
 
 
 def test_the_status_line_says_the_dashboard_is_restarting() -> None:
+    now = datetime.now(UTC)
     pulse = DashboardPulse(
         url=URL,
         pid=1,
         pending=2,
-        beat=datetime.now(UTC),
+        beat=now,
         code=RunningCode(source="abc", older=True),
     )
-
-    assert pulse.line() == (
-        f"2 reviews pending · dashboard runs older code; restarting · {URL}"
+    failing = pulse.model_copy(
+        update={"code": RunningCode(source="abc", older=True, failing="SyntaxError")}
     )
-    assert pulse.model_copy(update={"pending": 0}).line() == (
-        f"dashboard runs older code; restarting · {URL}"
+
+    def shown(each: DashboardPulse) -> str:
+        return LineFacts.of(each, StatusInput(), now).fitted(0).plain()
+
+    assert shown(pulse) == f"?2 reviews │ ◐ {URL} restarting"
+    assert shown(pulse.model_copy(update={"pending": 0})) == "◐ dashboard restarting"
+    assert shown(failing.model_copy(update={"pending": 0})) == (
+        "◐ dashboard runs older code; its newer code does not start"
     )
 
 

@@ -621,11 +621,15 @@ class Dashboard(SharedProcess, frozen=True):
 
         The pulse the stopped dashboard took down is replaced by one saying
         the operator stopped it and what starts it, which holds until a start
-        replaces it.
+        replaces it. It keeps the sessions and repositories the last pulse
+        listed, so each status line still says which session it is, and none
+        of the reviews: nothing counts them while it is stopped.
         """
+        slot = self.slot(root)
+        pulse = PulseFile.of(lent_directory(slot.directory))
+        last = pulse.read()
         if not super().stopped(root, why, stays):
             return False
-        slot = self.slot(root)
         state = slot.read()
         stop = state.stopped
         if stays and stop is not None and "page" in state.given():
@@ -634,11 +638,13 @@ class Dashboard(SharedProcess, frozen=True):
                 pid=stop.process.pid,
                 beat=stop.at,
                 halted="dashboard stopped by the operator; `dashboard restart` starts it",
+                repositories=last.repositories if last is not None else [],
+                members=[
+                    member.model_copy(update={"reviews": []})
+                    for member in (last.members if last is not None else [])
+                ],
             )
-            written(
-                PulseFile.of(lent_directory(slot.directory)).path,
-                halted.model_dump_json(indent=2),
-            )
+            written(pulse.path, halted.model_dump_json(indent=2))
         return True
 
 
@@ -666,6 +672,16 @@ class DashboardStatus(BaseModel, frozen=True):
     repositories: list[str] = []
     pending: int = 0
     """Reviews waiting on the operator, across every repository it serves."""
+
+    unread: int = 0
+    """Messages agents sent the operator that still wait in its mailbox."""
+
+    quiet: int = 0
+    """Agents with a call outstanding and nothing new in their transcript for
+    ten minutes or more."""
+
+    contested: int = 0
+    """Paths two sessions hold at once."""
 
     tabs: int = 0
     """Pages following it now."""
@@ -748,6 +764,9 @@ def counted(pulse: DashboardPulse, detail: str) -> DashboardStatus:
         sessions=pulse.sessions,
         repositories=pulse.repositories,
         pending=pulse.pending,
+        unread=pulse.unread,
+        quiet=pulse.quiet,
+        contested=pulse.contested,
         tabs=pulse.tabs,
         code=pulse.code,
         restarts=pulse.restarts,

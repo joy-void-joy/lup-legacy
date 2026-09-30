@@ -17,8 +17,8 @@ goes — into the recipient's mailbox, then a wake through its wake socket or
 """
 
 from collections import deque
-from datetime import datetime
-from pathlib import Path
+from datetime import datetime, timedelta
+from pathlib import Path, PurePath
 
 from pydantic import BaseModel, Field, TypeAdapter, ValidationError
 
@@ -26,11 +26,13 @@ from lup.channels.models import Door
 from lup.coordination.bare import mail as bare_mail
 from lup.coordination.bare import store
 from lup.coordination.mail import MAIL_PAGE, ActorMail, MailCursor, PostedMessage
-from lup.coordination.peers import USER_ADDRESS
+from lup.coordination.peers import USER_ADDRESS, user_peer
 from lup.coordination.repository import PeerDepartedError, PeerView, RepositoryPeers
 from lup.coordination.roster import Delivery
 from lup.coordination.watch import roused
 from lup.devtools.dashboard.companion import KnownRepository
+from lup.devtools.dashboard.pulse import PulseSession
+from lup.policy.relay import QuestionRecord
 from lup.providers.transcripts import native_turn, subagent_transcript
 from lup.types import JsonObject
 
@@ -345,6 +347,51 @@ class TranscriptFollower:
         )
 
 
+class Answering(BaseModel, frozen=True):
+    """One running session, and every id it or a subagent of its answers to."""
+
+    session: PulseSession
+    answers: list[str] = []
+    """Its roster id, its runtime's ids for it, and each running subagent's own."""
+
+
+class RepositoryNeeds(BaseModel, frozen=True):
+    """What one repository's running sessions need of the operator, as every status line says it."""
+
+    sessions: list[Answering] = []
+    """Its running sessions, before the reviews each parked are counted in."""
+
+    quiet: int = 0
+    """Its agents with a call outstanding and nothing new in their transcript
+    for the window asked, none of whose subagents runs."""
+
+    contested: list[str] = []
+    """The paths two of its sessions hold at once, a session and its
+    subagents counted as one."""
+
+    unread: int = 0
+    """Messages its agents sent the operator that still wait in its mailbox."""
+
+    def asker(self, question: QuestionRecord) -> str:
+        """The running session here that parked *question*, by its roster id; empty where none did.
+
+        The session its launch named first, then the runtime's ids it asked
+        under, as :class:`~lup.devtools.review.app.RequesterPresence` reads them.
+        """
+        operation = question.operation
+        asked = [question.member, operation.session, operation.requester]
+        return next(
+            (
+                row.session.id
+                for each in asked
+                if each
+                for row in self.sessions
+                if each in row.answers
+            ),
+            "",
+        )
+
+
 class RepositoryWatch:
     """One repository's sessions and mail, read again only where something moved.
 
@@ -417,9 +464,8 @@ class RepositoryWatch:
             for path in paths
         }
 
-    def sessions(self, now: float) -> list[LiveSession]:
-        """Every session and subagent here, with what each is doing now."""
-        views = self.roster(now)
+    def activities(self, views: list[PeerView]) -> dict[str, SessionActivity]:
+        """What each running row's transcript says it is doing now, following those alone."""
         rows = {view.member.actor.id: view for view in views}
         followed = {
             member_id: path
@@ -427,10 +473,15 @@ class RepositoryWatch:
             if view.member.running and (path := self.transcript(view, rows)) is not None
         }
         self.followers = self.following(list(followed.values()))
-        activity = {
+        return {
             member_id: self.followers[path].advance()
             for member_id, path in followed.items()
         }
+
+    def sessions(self, now: float) -> list[LiveSession]:
+        """Every session and subagent here, with what each is doing now."""
+        views = self.roster(now)
+        activity = self.activities(views)
         return [
             LiveSession(
                 key=f"{self.key}/{view.member.actor.id}",
@@ -460,6 +511,78 @@ class RepositoryWatch:
             )
             for view in views
         ]
+
+    def needs(self, now: float, moment: datetime, silent: timedelta) -> RepositoryNeeds:
+        """What the running sessions here need of the operator at *moment*.
+
+        An agent is quiet where a call of its has had no answer and nothing
+        new has reached its transcript for *silent*, and no subagent of its
+        runs: a session waiting on a subagent is waiting on that subagent,
+        which answers for itself. A path is held twice where two sessions
+        hold it, a subagent holding with its session's hand.
+        """
+        views = [view for view in self.roster(now) if view.member.running]
+        activity = self.activities(views)
+        parents = {view.member.parent for view in views if view.member.parent}
+
+        def session_of(view: PeerView) -> str:
+            return view.member.parent or view.member.actor.id
+
+        def runtime(view: PeerView) -> list[str]:
+            member = view.member
+            transcript = PurePath(member.transcript).stem if member.transcript else ""
+            return list(
+                dict.fromkeys(
+                    each for each in (member.wake.session, transcript) if each
+                )
+            )
+
+        def answers(session: PeerView) -> list[str]:
+            family = [
+                view for view in views if session_of(view) == session.member.actor.id
+            ]
+            return [
+                *[view.member.actor.id for view in family],
+                *[each for view in family for each in runtime(view)],
+                *[
+                    store.agent_of(view.member.actor.id, view.member.parent)
+                    for view in family
+                    if view.member.parent
+                ],
+            ]
+
+        held = {path for view in views for path in view.contested}
+        return RepositoryNeeds(
+            sessions=[
+                Answering(
+                    session=PulseSession(
+                        repository=str(self.known.repository),
+                        id=view.member.actor.id,
+                        name=view.cli_name,
+                        worktree=view.member.worktree,
+                        runtime=runtime(view),
+                    ),
+                    answers=answers(view),
+                )
+                for view in views
+                if not view.member.parent
+            ],
+            quiet=sum(
+                1
+                for member_id, doing in activity.items()
+                if doing.calling
+                and member_id not in parents
+                and doing.at is not None
+                and moment - doing.at >= silent
+            ),
+            contested=sorted(
+                path
+                for path in held
+                if len({session_of(view) for view in views if path in view.contested})
+                > 1
+            ),
+            unread=len(bare_mail.waiting(self.peers.root, user_peer().conversation())),
+        )
 
     def waits(self, mailbox: str, message_id: str) -> bool:
         """Whether one message still sits in the mailbox it was put in."""

@@ -34,6 +34,7 @@ import shutil
 import socket
 import sys
 import threading
+import time
 import webbrowser
 from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
@@ -55,8 +56,14 @@ from lup.devtools.dashboard.companion import (
     read_model,
     written,
 )
+from lup.devtools.dashboard.live import RepositoryNeeds, RepositoryWatch
 from lup.devtools.dashboard.panes import SetupPanes
-from lup.devtools.dashboard.pulse import DashboardPulse, PulseFile, RunningCode
+from lup.devtools.dashboard.pulse import (
+    DashboardPulse,
+    PulseFile,
+    PulseSession,
+    RunningCode,
+)
 from lup.devtools.dashboard.refresh import ImportedSource, Refresh, WriteGate
 from lup.devtools.dashboard.reviews import ReviewScan, ReviewStore
 from lup.devtools.review.app import RequesterPresence, ReviewSummary
@@ -265,6 +272,11 @@ class Herald:
     and at least every ``heartbeat``, so a session reading it knows it is
     current; ``code`` is which code the dashboard runs, which the pulse says,
     and ``restarts`` how many times the sessions holding it started it again.
+    The pulse also lists each running session with the reviews it parked,
+    and counts the messages agents sent the operator, the agents gone quiet
+    — a call outstanding with nothing new in the transcript for ``silent`` —
+    and the paths two sessions hold, read from each roster and the
+    transcripts it names on a watch of the herald's own.
     """
 
     def __init__(
@@ -283,6 +295,7 @@ class Herald:
         code: Callable[[], RunningCode] = RunningCode,
         restarts: Callable[[], int] = lambda: 0,
         store: ReviewStore | None = None,
+        silent: timedelta = timedelta(minutes=10),
     ) -> None:
         self.record_path = directory / "herald.json"
         self.pulse = PulseFile.of(lent_directory(directory))
@@ -303,6 +316,8 @@ class Herald:
         self.quiet = quiet
         self.crowd = crowd
         self.heartbeat = heartbeat
+        self.silent = silent
+        self.watches: dict[str, RepositoryWatch] = {}
         self.published: DashboardPulse | None = None
         self.unheard = False
         self.writing = threading.Lock()
@@ -337,7 +352,58 @@ class Herald:
         )
         if updated != record:
             written(self.record_path, updated.model_dump_json(indent=2))
-        self.publish(len(pending), moment)
+        needs = self.needs(moment)
+
+        def repository_of(root: Path) -> str:
+            anchor = scan.repositories[root] if root in scan.repositories else root
+            return KnownRepository(repository=anchor, checkout=root).key()
+
+        members = [
+            row.session.model_copy(
+                update={
+                    "reviews": [
+                        question.id
+                        for root, question in pending.values()
+                        if repository_of(root) == key
+                        and each.asker(question) == row.session.id
+                    ]
+                }
+            )
+            for key, each in needs.items()
+            for row in each.sessions
+        ]
+        self.publish(len(pending), moment, members, list(needs.values()))
+
+    def needs(self, moment: datetime) -> dict[str, RepositoryNeeds]:
+        """What each repository's running sessions need of the operator, by the repository's key.
+
+        Each read on a watch of the herald's own, so a transcript is read from
+        where this herald last stopped. A repository whose roster could not
+        be read this time is left out of this look, rather than keeping the
+        pulse from being written.
+        """
+        known = {each.key(): each for each in self.registry.repositories()}
+        self.watches = {
+            key: self.watches[key] if key in self.watches else RepositoryWatch(each)
+            for key, each in known.items()
+        }
+        now = time.monotonic()
+
+        def read(watch: RepositoryWatch) -> RepositoryNeeds | None:
+            try:
+                return watch.needs(now, moment, self.silent)
+            except Exception:
+                logger.exception(
+                    "the dashboard could not read what %s needs this time",
+                    watch.known.name(),
+                )
+                return None
+
+        return {
+            key: each
+            for key, watch in self.watches.items()
+            if (each := read(watch)) is not None
+        }
 
     def waiting(
         self, root: Path, question: RecordedQuestion, scan: ReviewScan
@@ -398,7 +464,13 @@ class Herald:
             return False
         return wanted and self.reopen(f"{self.url}/#token={self.capability}")
 
-    def publish(self, pending: int, moment: datetime) -> None:
+    def publish(
+        self,
+        pending: int,
+        moment: datetime,
+        members: list[PulseSession],
+        needs: list[RepositoryNeeds],
+    ) -> None:
         """Write the pulse where anything in it changed, or its last beat is old."""
         pulse = DashboardPulse(
             url=self.url,
@@ -412,6 +484,10 @@ class Herald:
             beat=moment,
             code=self.code(),
             restarts=self.restarts(),
+            members=members,
+            unread=sum(each.unread for each in needs),
+            quiet=sum(each.quiet for each in needs),
+            contested=sum(len(each.contested) for each in needs),
         )
         last = self.published
         if (
