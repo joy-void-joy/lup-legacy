@@ -45,9 +45,9 @@ def replace_codex_config(home: Path, text: str) -> None:
     starting beside the write never reads half of it, and staged under a
     name no other writer shares, since the next writer would truncate a
     shared one while the first is still filling it. Staged beside the file a
-    link resolves to, so a person's linked configuration
-    stays linked. The mode is kept, 0600 where the file is new, since it can
-    carry a tool server's secrets. The last step of a change made under
+    link resolves to, so a person's linked configuration stays linked. The
+    mode is kept, 0600 where the file is new, since it can carry a tool
+    server's secrets. The last step of a change made under
     :func:`codex_home_lock`.
     """
     settings = (home / "config.toml").resolve()
