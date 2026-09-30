@@ -46,7 +46,7 @@ reason = """
 nothing opened a session through a portable request: an application \
 declares the runtime's own agent, which already takes every field the \
 request rendered into, so `lup.providers.selection` and both adapters' \
-`selection` modules went; `SessionEffort` stays, in `lup.providers.catalog`"""
+`selection` modules went; `SessionEffort` stays, in `lup.types`"""
 
 [[steps]]
 instruction = """

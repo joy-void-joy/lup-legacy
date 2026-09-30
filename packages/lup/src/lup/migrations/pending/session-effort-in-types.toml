@@ -1,0 +1,13 @@
+subjects = ["SessionEffort"]
+reason = """
+a harness declaration asking a model for work names an effort beside its \
+tier, and `lup.harness.models` reads only `lup.types`, so the effort ladder \
+sits in lup.types beside `ModelTier` rather than beside a runtime's \
+catalog, whose reader would have to take both runtimes' catalogs to spell \
+one rung"""
+
+[[steps]]
+instruction = """
+Import `SessionEffort` from lup.types where you imported it from \
+lup.providers.selection or lup.providers.catalog."""
+command = ["uv", "run", "lup-devtools", "dev", "py", "text", "import SessionEffort", "."]

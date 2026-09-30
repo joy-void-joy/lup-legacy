@@ -370,6 +370,20 @@ copy would silently ignore whichever tier the other copy grew.
 ``frontier`` sits above ``strongest``: the newest model a runtime ships, where
 ``strongest`` is the established one work defaults to."""
 
+type SessionEffort = Literal["low", "medium", "high", "xhigh", "max", "ultra"]
+"""How hard a session is asked to think before it answers.
+
+Every rung is one both runtimes' catalogs list, so none is narrowed on the
+way to either: ``ultra`` is Codex's own top rung, and Claude's ``xhigh`` with
+ultracode on. Nothing sits below ``low``, because neither catalog lists a
+rung there — ``minimal`` and ``none`` left Codex's, and admitting either here
+would turn "barely reason" into "reason a little" without saying so. Which
+rungs one *model* takes is narrower still, and refused where it is declared.
+
+Beside :data:`ModelTier` because a declaration naming work for a model names
+both, and neither needs a runtime's catalog to be spelled.
+"""
+
 
 class CustomModel(BaseModel, frozen=True, extra="forbid"):
     """A model id outside a runtime's catalog, named as one on purpose.

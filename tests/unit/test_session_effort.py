@@ -1,7 +1,7 @@
 """Reasoning effort, named on one ladder and taken by each runtime as named.
 
 The application's settings name an effort as a
-:data:`~lup.providers.catalog.SessionEffort` and hand it to whichever runtime
+:data:`~lup.types.SessionEffort` and hand it to whichever runtime
 the session opens on. The failure this guards against is silent: a rung one
 runtime took under another name, or narrowed to one it had, would run the
 session at a value only discoverable by reading the provider call. Each rung
@@ -14,11 +14,11 @@ from typing import get_args
 
 import pytest
 
-from lup.providers.catalog import SessionEffort
 from lup.providers.claude import Claude
 from lup.providers.claude.models import ClaudeEffort
 from lup.providers.codex import Codex
 from lup.providers.codex.models import CodexEffort
+from lup.types import SessionEffort
 
 EVERY_DEGREE: list[SessionEffort] = list(get_args(SessionEffort.__value__))
 

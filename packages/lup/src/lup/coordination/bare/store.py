@@ -116,12 +116,13 @@ byte a page at a time from there back, never the whole record at once.
 
 LOOKS_DIR = "looks"
 WINDOWS_DIR = "windows"
-"""The two places one process keeps working state of its own under the store.
+TITLES_DIR = "titles"
+"""The places one process keeps working state of its own under the store.
 
-Declared beside the rest of the layout although nothing here reads either: the
-dispatcher is the windows' only writer and reader, and the prompt fold is the
-looks'. A name the layout carries in one place is a name a rename cannot leave
-behind.
+Declared beside the rest of the layout although nothing here reads any: the
+dispatcher is the windows' only writer and reader, the prompt fold is the
+looks', and the naming hook is the titles'. A name the layout carries in one
+place is a name a rename cannot leave behind.
 """
 
 ROSTER_LOCK = "roster.lock"
@@ -130,7 +131,8 @@ ROSTER_LOCK = "roster.lock"
 Both decide a name against every other member's, which is the one question a
 per-member lock cannot answer. Everything else a member writes is about itself
 and is taken under its own lock, so the store-wide lock is held for as long as
-it takes to read a directory and rename one file.
+it takes to read a directory and rename one file. :func:`naming_settled` is the
+one place it is taken, whichever process is deciding.
 """
 
 MEMBER_KIND = "session"
@@ -1163,6 +1165,28 @@ def naming(root: Path, now: datetime | None = None) -> list[Claiming]:
         ),
         key=lambda claiming: claiming["at"],
     )
+
+
+def names_taken(
+    root: Path, mine: str = "", window: float = STALE_AFTER_SECONDS, without: str = ""
+) -> dict[str, str]:  # lup: ignore[dict-str-payload] — a name to the id holding it
+    """Every name a live member other than *mine* currently answers to, to its id.
+
+    Keyed by the name a session answers to, whose value is the member id
+    holding it: two spellings of an identity rather than an open payload.
+
+    Current names rather than every name ever claimed: a name its holder has
+    renamed away from is free for somebody else to take, and goes on reaching
+    the old holder only until they do. A departed member's name is free for
+    the same reason — it is not there to be confused with. *without* leaves
+    one kind out of who is live, the way :func:`live_ids` does.
+    """
+    live = live_ids(root, window=window, without=without)
+    return {
+        name: member_id
+        for member_id, name in called(root).items()
+        if member_id != mine and member_id in live
+    }
 
 
 def subject_of(path: str, prefix: bool) -> str:

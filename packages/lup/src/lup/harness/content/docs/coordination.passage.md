@@ -135,6 +135,34 @@ got there first — possible only in a store nobody had joined — takes its row
 back. A lup CLI verb run from a shell has no input to read a runtime from
 and acts as the session the environment names.
 
+**A session is named for its work at its first prompt.** The worktree's name
+is a default nobody chose, and every session opened in one checkout shares
+it. Where the hook set declares `session_naming` — on by default beside a
+roster — a hook under the runtime's prompt event starts one ask, at the
+strongest tier and low effort, for a short name for the work the prompt
+describes, in a process of its own: no prompt waits on it. The answer
+renames the session, settled under the roster lock and numbered past a live
+session's name, as the default is, because nobody chose this one either. A
+prompt that does not say what the work is gets no name, and the next one is
+asked, up to the declared attempts; a session somebody renamed is never
+named over. The runtime's own name for the session follows the roster — the
+hook's answer at the next prompt on Claude Code, which takes a title from
+nothing else, and `thread/name/set` from the ask's own process on Codex —
+and a later rename of the roster reaches it the same way, once.
+
+**A title set in the runtime wins.** A `/rename`, or the title a reopened
+conversation kept, is taken up by the roster in a session name's shape —
+lowercased, runs of anything else one hyphen, `Naming Review` answering as
+`naming-review` — while the runtime goes on showing it exactly as it was set,
+so nothing is handed back to overwrite it. A resumed session keeps its name
+the same way: a launch reopening a Claude conversation leaves off `--name`, so
+the conversation keeps its title and the roster takes it up at the first
+prompt, and a reopened Codex thread's own name is read through its
+app-server after the resume and taken up likewise. Only a title that is
+still the worktree's own, or nothing, leaves the session to be asked for a
+name. What each runtime then shows, and what was measured, is on the
+platform page.
+
 **Every verb but describing is refused until the session has described
 itself.** The roster is read by sessions deciding whether they can touch the
 same code, and a row saying only where a session is answers them wrongly; a

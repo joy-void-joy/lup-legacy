@@ -79,6 +79,16 @@
             "type": "command"
           }
         ]
+      },
+      {
+        "hooks": [
+          {
+            "command": "sh \"$PLUGIN_ROOT/hooks/scripts/session_naming.sh\" || exit 0",
+            "timeout": 10,
+            "type": "command"
+          }
+        ],
+        "matcher": "resume"
       }
     ],
     "SubagentStart": [
@@ -126,6 +136,15 @@
         "hooks": [
           {
             "command": "sh \"$PLUGIN_ROOT/hooks/scripts/carrier_drift.sh\" || exit 0",
+            "timeout": 10,
+            "type": "command"
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "command": "sh \"$PLUGIN_ROOT/hooks/scripts/session_naming.sh\" || exit 0",
             "timeout": 10,
             "type": "command"
           }

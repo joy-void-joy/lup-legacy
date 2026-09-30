@@ -1,5 +1,5 @@
 {
-  "description": "Lup semantic permission policy, peer delivery, the calling subagent on each coordination call, the roster's changes at each prompt, a session's or subagent's departure as it ends, and a subagent's report waiting on its background work",
+  "description": "Lup semantic permission policy, peer delivery, the calling subagent on each coordination call, the roster's changes at each prompt, this session's name for its work, a session's or subagent's departure as it ends, and a subagent's report waiting on its background work",
   "hooks": {
     "PostToolUse": [
       {
@@ -101,6 +101,15 @@
         "hooks": [
           {
             "command": "sh \"$CLAUDE_PLUGIN_ROOT/hooks/scripts/carrier_drift.sh\" || exit 0",
+            "timeout": 10,
+            "type": "command"
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "command": "sh \"$CLAUDE_PLUGIN_ROOT/hooks/scripts/session_naming.sh\" || exit 0",
             "timeout": 10,
             "type": "command"
           }

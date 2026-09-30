@@ -6,9 +6,11 @@ import shlex
 from collections.abc import Sequence
 from pathlib import Path
 from lup.providers.claude.login import CLAUDE_LOGIN
+from lup.providers.claude.model_choice import claude_model_arguments
 from lup.harness.codescan.antipatterns import DOCUMENT_IN_HAND, rule_set_for
 from lup.providers.peer_delivery import delivery_artifacts, delivery_command
 from lup.providers.drift_prompt import drift_hook
+from lup.providers.session_naming import NamingSpelling, naming_hook
 from lup.providers.subagent_cleanup import cleanup_hooks
 from lup.providers.coordination_caller import caller_hooks
 from lup.providers.roster_prompt import (
@@ -619,6 +621,13 @@ CLAUDE_SUBAGENT_CLEANUP = (
 )
 """The host half of the subagent cleanup fold, shipped verbatim beside the kernel."""
 
+CLAUDE_SESSION_NAMING = (
+    resources.files("lup.providers.claude")
+    .joinpath("assets/session_naming.py")
+    .read_text("utf-8")
+)
+"""The naming hook's host half, shipped verbatim beside the package it imports."""
+
 # lup: ignore[constant-declaration] — the runtime's wire spelling of its own
 # event, which no project could choose differently and still be heard
 CLAUDE_CALLER_EVENT = "PreToolUse"
@@ -707,10 +716,13 @@ class ClaudeHookRenderer(ArtifactRenderer[HookSet]):
         # Under its own event rather than beside the policy's: a prompt is not
         # a tool call, and what the roster has to say at that moment is
         # context rather than a verdict, so nothing here can refuse.
-        # Two folds under the one event, kept side by side rather than merged:
-        # who else is here, and whether what this project is built on still
-        # stands at one commit. Both are context and neither can refuse, so
-        # the runtime runs whichever of them the project declared.
+        # Three hooks under the one event, kept side by side rather than
+        # merged: who else is here, whether what this project is built on
+        # still stands at one commit, and what this session is called. None
+        # can refuse, so the runtime runs whichever the project declared. The
+        # name holds no prompt: its ask runs in a process of its own, and the
+        # title this runtime takes only from the hook's answer is given at
+        # the next prompt.
         roster = folded(
             [
                 prompt_hook(
@@ -724,6 +736,20 @@ class ClaudeHookRenderer(ArtifactRenderer[HookSet]):
                     "CLAUDE_PLUGIN_ROOT",
                     source,
                     CLAUDE_PROMPT_EVENT,
+                ),
+                naming_hook(
+                    Path(f".claude/plugins/{self.plugin_name}"),
+                    "CLAUDE_PLUGIN_ROOT",
+                    source,
+                    CLAUDE_PROMPT_EVENT,
+                    CLAUDE_SESSION_NAMING,
+                    "lup.providers.claude.assets.session_naming",
+                    NamingSpelling(
+                        chosen=claude_model_arguments,
+                        # The CLI's own spelling of a session with no built-in
+                        # tool: "Use \"\" to disable all tools" in its --help.
+                        arguments=["--tools", ""],
+                    ),
                 ),
             ]
         )
@@ -790,8 +816,9 @@ class ClaudeHookRenderer(ArtifactRenderer[HookSet]):
             "description": (
                 "Lup semantic permission policy, peer delivery, the calling "
                 "subagent on each coordination call, the roster's changes at "
-                "each prompt, a session's or subagent's departure as it ends, "
-                "and a subagent's report waiting on its background work"
+                "each prompt, this session's name for its work, a session's or "
+                "subagent's departure as it ends, and a subagent's report "
+                "waiting on its background work"
             ),
             "hooks": registered.registered,
         }

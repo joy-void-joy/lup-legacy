@@ -399,17 +399,12 @@ class RepositoryPeers:
     def names_taken(self, except_id: str = "") -> dict[str, str]:
         """Every name a live session other than this one currently answers to.
 
-        Current names rather than every name ever claimed: a name its holder
-        has renamed away from is free for somebody else to take, and goes on
-        reaching the old holder only until they do. A departed session's name
-        is free for the same reason — it is not there to be confused with.
+        The store's own reading, over the kinds this layer counts as live, so
+        a name this layer refuses is one a session's naming hook numbers past.
         """
-        live = self.live_ids()
-        return {
-            name: member_id
-            for member_id, name in store.called(self.root).items()
-            if member_id != except_id and member_id in live
-        }
+        return store.names_taken(
+            self.root, except_id, self.pulse.stale_after_seconds, USER_KIND
+        )
 
     def record_name(self, member_id: str, cli_name: str) -> None:
         """Append one name to this member's own file, under that member's lock."""
