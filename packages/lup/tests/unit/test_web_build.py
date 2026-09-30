@@ -9,6 +9,7 @@ the rest is exercised over a bundle written by hand.
 import json
 import os
 import shutil
+import threading
 import tomllib
 from pathlib import Path
 
@@ -26,7 +27,7 @@ from lup.web.build import (
     write_web_bundles,
 )
 from lup.web.schema import view_schema, write_view_schema
-from lup.web.serve import bundle_app
+from lup.web.serve import bundle_app, whole_bundle
 
 PACKAGE = Path(__file__).resolve().parents[2]
 """The library's own package, whose bun workspace sits beside its source."""
@@ -108,6 +109,74 @@ def test_bundle_app_serves_the_page_and_its_assets_by_name(tmp_path: Path) -> No
     assert "explorer" in script.text
     assert client.get("/assets/missing.js").status_code == 404
     assert client.get("/assets/..%2Findex.html").status_code == 404
+
+
+def rebuilt(bundles: Path, surface: str = "explorer") -> None:
+    """The bundle rebuilt as a new build lands: a page naming new assets, the old ones gone."""
+    home = bundles / surface
+    (home / "assets" / "app.js").unlink()
+    (home / "assets" / "next.js").write_text("console.log('next');\n", encoding="utf-8")
+    (home / "index.html").write_text(
+        '<!doctype html><script type="module" src="./assets/next.js"></script>\n',
+        encoding="utf-8",
+    )
+
+
+def test_a_page_keeps_its_assets_while_its_bundle_is_rebuilt_beneath_it(
+    tmp_path: Path,
+) -> None:
+    """The page and every asset it names come from one build for as long as it serves."""
+    bundles = handmade(tmp_path)
+    serving = TestClient(
+        bundle_app("Explorer", "http://127.0.0.1:1", "explorer", bundles),
+        base_url="http://127.0.0.1:1",
+    )
+
+    rebuilt(bundles)
+    page = serving.get("/")
+    named = serving.get("/assets/app.js")
+    other = serving.get("/assets/next.js")
+    fresh = TestClient(
+        bundle_app("Explorer", "http://127.0.0.1:1", "explorer", bundles),
+        base_url="http://127.0.0.1:1",
+    )
+
+    assert "assets/app.js" in page.text
+    assert named.status_code == 200 and "explorer" in named.text
+    assert other.status_code == 404
+    assert other.headers["content-type"].startswith("text/plain")
+    assert "reload the page" in other.text
+    assert "assets/next.js" in fresh.get("/").text
+    assert fresh.get("/assets/next.js").status_code == 200
+
+
+def test_a_bundle_caught_mid_rebuild_is_read_again_until_whole(
+    tmp_path: Path,
+) -> None:
+    bundles = handmade(tmp_path)
+    home = bundles / "explorer"
+    (home / "index.html").write_text(
+        '<!doctype html><script type="module" src="./assets/late.js"></script>\n'
+        '<link rel="stylesheet" href="./assets/app.css">\n',
+        encoding="utf-8",
+    )
+    (home / "assets" / "app.css").write_text("body {}\n", encoding="utf-8")
+    landing = threading.Timer(
+        0.3,
+        (home / "assets" / "late.js").write_text,
+        args=("console.log('late');\n",),
+    )
+    landing.start()
+
+    bundle = whole_bundle(home, attempts=50, pause=0.05)
+    landing.join()
+
+    assert {asset.name for asset in bundle.assets} == {"app.js", "app.css", "late.js"}
+    (home / "index.html").write_text(
+        '<!doctype html><script src="./assets/never.js"></script>\n', encoding="utf-8"
+    )
+    with pytest.raises(ValueError, match="never.js"):
+        whole_bundle(home, attempts=2, pause=0.01)
 
 
 def test_a_missing_bundle_is_refused_naming_the_command(tmp_path: Path) -> None:

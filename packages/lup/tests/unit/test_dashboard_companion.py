@@ -4,11 +4,14 @@ The first launch starts it and every later one, in any repository, joins it
 and registers its repository; it stops with the last. Its address — the port
 it was given and the capability that opens it — survives a restart, it runs
 as the operator's rather than as the session that happened to start it, and
-a launch from code that differs replaces it.
+a launch from code that differs replaces it. While any launch holds it, one
+that stops is started again by them, and says why it stopped.
 """
 
 import os
+import signal
 import socket
+import sys
 import time
 from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
@@ -30,7 +33,12 @@ from lup.devtools.dashboard.companion import (
     private_url,
     written,
 )
-from lup.devtools.dashboard.pulse import DASHBOARD_PULSE_ENV, DashboardPulse, PulseFile
+from lup.devtools.dashboard.pulse import (
+    DASHBOARD_PULSE_ENV,
+    DashboardPulse,
+    PulseFile,
+    status_line,
+)
 from lup.devtools.dashboard.reviews import create_operator_dashboard_app
 from lup.launch.declaration import Mount
 from lup.providers.user_config import UserConfigFile
@@ -363,6 +371,203 @@ def test_the_operator_restarts_the_dashboard_in_place(
     assert again > first
     assert published is not None and published.code.source and not published.code.older
     assert refused.exit_code == 2 and "outside the agent session" in refused.output
+
+
+def serving_again(dashboard: Dashboard, root: Path, before: LiveProcess) -> LiveProcess:
+    """The dashboard serving once a process other than ``before`` does."""
+    for _ in range(300):
+        serving = dashboard.standing(root).serving
+        if serving is not None and serving != before:
+            return serving
+        time.sleep(0.2)
+    raise AssertionError(f"nothing served in place of pid {before.pid}")
+
+
+def restart_said(pulse: PulseFile) -> str:
+    """Why the dashboard stopped, once its pulse says it was started again."""
+    for _ in range(150):
+        published = pulse.read()
+        if published is not None and published.code.restarted:
+            return published.code.restarted
+        time.sleep(0.2)
+    raise AssertionError(f"{pulse.path} never said the dashboard was restarted")
+
+
+def test_a_dashboard_killed_while_held_comes_back_at_its_address(
+    dashboard: Dashboard, tmp_path: Path
+) -> None:
+    """Same port and capability, so an open tab reconnects; and it says why it stopped."""
+    root = repository(tmp_path / "project")
+    watched = dashboard.model_copy(update={"backoff": (0.5,), "watched_every": 0.2})
+
+    with held_companions([watched], launch_at(root)) as joined:
+        pulse = PulseFile(path=Path(joined.environment[DASHBOARD_PULSE_ENV]))
+        opened = private_url(watched, root)
+        killed = watched.standing(root).serving
+        assert killed is not None
+        os.kill(killed.pid, signal.SIGKILL)
+        serving_again(watched, root, killed)
+        reopened = private_url(watched, root)
+        said = restart_said(pulse)
+        line = status_line(pulse.path)
+        status = dashboard_status(watched, root)
+
+    assert reopened == opened
+    assert said == "it was ended by SIGKILL"
+    assert line == f"restarted after it stopped: it was ended by SIGKILL · {status.url}"
+    assert status.serving and status.restarts == 1
+    assert status.exited is not None and status.exited.process == killed
+    assert status.exited.status == -signal.SIGKILL
+    assert status.exited.restarted is not None
+    assert "Uvicorn running on" in "\n".join(status.exited.tail)
+
+
+def test_a_held_dashboard_the_operator_stops_stays_stopped_until_restart(
+    dashboard: Dashboard, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The sessions holding it leave it stopped; the status line and `dashboard
+    status` say what starts it, and `dashboard restart` does, at the same address."""
+    root = repository(tmp_path / "project")
+    watched = dashboard.model_copy(update={"backoff": (0.2,), "watched_every": 0.1})
+    monkeypatch.setattr("lup.devtools.dashboard.reviews.Dashboard", lambda: watched)
+    cli = create_operator_dashboard_app(root)
+    runner = CliRunner()
+
+    with held_companions([watched], launch_at(root)) as joined:
+        pulse = Path(joined.environment[DASHBOARD_PULSE_ENV])
+        opened = private_url(watched, root)
+        before = watched.standing(root).serving
+        assert before is not None
+        stopped = runner.invoke(cli, ["stop"])
+        time.sleep(2.0)
+        left = watched.standing(root)
+        idle = dashboard_status(watched, root)
+        line = status_line(pulse)
+        restarted = runner.invoke(cli, ["restart"])
+        again = watched.standing(root)
+        reopened = private_url(watched, root)
+
+    stop = left.stopped
+    assert stopped.exit_code == 0 and "Dashboard stopped." in stopped.output
+    assert left.serving is None and left.stays_stopped and left.leases == 1
+    assert stop is not None and stop.stays and stop.why == "the operator stopped it"
+    assert stop.leases == 1 and stop.by == os.getpid()
+    assert left.exited is None and left.restarts == 0
+    assert idle.detail == (
+        "Stopped by the operator; `uv run lup-devtools dashboard restart` starts it."
+    )
+    assert line == "dashboard stopped by the operator; `dashboard restart` starts it"
+    assert restarted.exit_code == 0, restarted.output
+    assert again.serving is not None and again.serving != before
+    assert not again.stays_stopped and again.exited is None and again.restarts == 0
+    assert reopened == opened
+
+
+def test_restart_starts_a_dashboard_for_sessions_holding_none(
+    dashboard: Dashboard, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Sessions whose launchers do not look after it hold it while nothing runs:
+    status says so, and the operator's restart starts one for them."""
+    root = repository(tmp_path / "project")
+    unwatched = dashboard.model_copy(update={"watched_every": 3600.0})
+    monkeypatch.setattr("lup.devtools.dashboard.reviews.Dashboard", lambda: unwatched)
+    cli = create_operator_dashboard_app(root)
+    runner = CliRunner()
+
+    with held_companions([unwatched], launch_at(root)):
+        opened = private_url(unwatched, root)
+        killed = unwatched.standing(root).serving
+        assert killed is not None
+        os.kill(killed.pid, signal.SIGKILL)
+        for _ in range(100):
+            if not killed.running():
+                break
+            time.sleep(0.05)
+        idle = dashboard_status(unwatched, root)
+        restarted = runner.invoke(cli, ["restart"])
+        standing = unwatched.standing(root)
+        reopened = private_url(unwatched, root)
+
+    assert not idle.serving and idle.sessions == 1
+    assert "`uv run lup-devtools dashboard restart` starts it for them" in idle.detail
+    assert restarted.exit_code == 0, restarted.output
+    assert "No dashboard was running while 1 session held it" in restarted.output
+    assert standing.serving is not None and standing.serving != killed
+    assert standing.leases == 1 and standing.restarts == 1
+    assert standing.exited is not None
+    assert standing.exited.status == -signal.SIGKILL
+    assert reopened == opened
+
+
+HOLDER = """
+import os, sys, time
+from pathlib import Path
+
+from lup.devtools.dashboard.companion import Dashboard
+from lup.launch.companions import CompanionLaunch, held_companions
+
+port, root, done = int(sys.argv[1]), Path(sys.argv[2]), Path(sys.argv[3])
+launch = CompanionLaunch(root=root, runtime="claude", environment=dict(os.environ))
+with held_companions([Dashboard(ports={"page": port}, ready_within=60.0)], launch):
+    print("held", flush=True)
+    for _ in range(12000):
+        if done.exists():
+            break
+        time.sleep(0.05)
+"""
+"""A launch holding the dashboard in a process of its own, until a file says to let go."""
+
+
+class Holder:
+    """One launch's process holding the dashboard, as a terminal's launcher would."""
+
+    def __init__(self, script: Path, port: int, root: Path, place: Path) -> None:
+        place.mkdir()
+        self.done = place / "done"
+        self.said = place / "said"
+        self.process = sh.Command(sys.executable)(
+            str(script),
+            str(port),
+            str(root),
+            str(self.done),
+            _bg=True,
+            _bg_exc=False,
+            _out=str(self.said),
+            _err_to_out=True,
+        )
+        for _ in range(600):
+            if self.said.exists() and "held" in self.said.read_text():
+                return
+            time.sleep(0.1)
+        raise AssertionError(self.said.read_text())
+
+    def let_go(self) -> None:
+        self.done.touch()
+        self.process.wait()
+
+
+def test_two_launches_hold_it_and_the_first_to_end_leaves_it_serving(
+    dashboard: Dashboard, tmp_path: Path
+) -> None:
+    """Each launch's lease is its own process's: the one that started it ending takes nothing down."""
+    root = repository(tmp_path / "project")
+    script = tmp_path / "holder.py"
+    script.write_text(HOLDER, encoding="utf-8")
+    DashboardToken(directory=dashboard.slot(root).directory).minted()
+    port = dashboard.ports["page"]
+
+    first = Holder(script, port, root, tmp_path / "first")
+    second = Holder(script, port, root, tmp_path / "second")
+    both = dashboard.standing(root)
+    first.let_go()
+    one = dashboard.standing(root)
+    second.let_go()
+    none = dashboard.standing(root)
+
+    assert both.serving is not None and both.leases == 2
+    assert one.serving == both.serving and one.leases == 1
+    assert none.serving is None and none.leases == 0
+    assert none.stopped is not None and none.stopped.why.startswith("the last lease")
 
 
 def test_a_dashboard_too_old_to_restart_itself_is_replaced(

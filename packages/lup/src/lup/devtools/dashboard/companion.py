@@ -45,11 +45,14 @@ from lup.harness.environment import inside_a_container
 from lup.harness.notice import Notice
 from lup.harness.requirements import SENTINEL_VARIABLE
 from lup.launch.companions import (
+    CompanionExit,
     CompanionLaunch,
     CompanionName,
     CompanionPlace,
     CompanionProcess,
     CompanionScope,
+    CompanionStanding,
+    CompanionStop,
     Contribution,
     LiveProcess,
     PortName,
@@ -60,6 +63,7 @@ from lup.launch.companions import (
 from lup.launch.compilation import inherited_environment
 from lup.launch.declaration import Mount
 from lup.launch.preflight import NONCE_VARIABLE
+from lup.launch.refusal import LaunchRefused
 from lup.policy.identity import AGENT_IDENTITY_ENV, DASHBOARD_URL_ENV
 from lup.sandbox.rail import repository_layout, sibling_worktrees
 from lup.types import EnvVars
@@ -377,6 +381,11 @@ class Dashboard(SharedProcess, frozen=True):
     name: CompanionName = "dashboard"
     scope: CompanionScope = CompanionScope.USER
     ports: dict[PortName, PortNumber] = {"page": 8766}
+    ready_within: float = Field(default=60.0, gt=0)
+    """How long a start has to answer: long enough for a checkout whose
+    environment compiles every module it imports the first time it starts,
+    since one that does not answer is stopped and refuses the launch."""
+
     revision: str = Field(default_factory=dashboard_revision)
     """What it was built from; a launch from code that differs replaces what runs."""
 
@@ -489,6 +498,30 @@ class Dashboard(SharedProcess, frozen=True):
                 )
             yield contribution
 
+    def stopped(
+        self, root: Path, why: str = "the operator stopped it", stays: bool = True
+    ) -> bool:
+        """Stop it for ``why``; where it stays stopped, every session's status line says so.
+
+        The pulse the stopped dashboard took down is replaced by one saying
+        the operator stopped it and what starts it, which holds until a start
+        replaces it.
+        """
+        if not super().stopped(root, why, stays):
+            return False
+        slot = self.slot(root)
+        state = slot.read()
+        stop = state.stopped
+        if stays and stop is not None and "page" in state.given():
+            halted = DashboardPulse(
+                url=f"http://127.0.0.1:{state.given()['page']}",
+                pid=stop.process.pid,
+                beat=stop.at,
+                halted="dashboard stopped by the operator; `dashboard restart` starts it",
+            )
+            written(PulseFile.of(slot.directory).path, halted.model_dump_json(indent=2))
+        return True
+
 
 class DashboardStatus(BaseModel, frozen=True):
     """Whether the dashboard serves, where, and for whom; never its capability."""
@@ -508,6 +541,20 @@ class DashboardStatus(BaseModel, frozen=True):
 
     code: RunningCode = RunningCode()
     """Which code it runs, and whether its checkout has moved past it."""
+
+    restarts: int = 0
+    """How many times the sessions holding it started it again after it stopped."""
+
+    exited: CompanionExit | None = None
+    """The last time it was found gone while sessions held it: when, how it
+    ended and the last lines it wrote. Read from outside a session only."""
+
+    stopped: CompanionStop | None = None
+    """The last time lup stopped it, why, and how many sessions held it then.
+    Read from outside a session only."""
+
+    retry: datetime | None = None
+    """When the sessions holding it start it again, where it is gone."""
 
     detail: str
 
@@ -537,14 +584,20 @@ def published_status(advertised: AdvertisedDashboard, now: datetime) -> Dashboar
             url=advertised.url,
             detail="The dashboard stopped: it took its pulse down.",
         )
+    if pulse.halted:
+        return DashboardStatus(
+            serving=False,
+            url=pulse.url,
+            detail=pulse.halted[:1].upper() + pulse.halted[1:] + ".",
+        )
     if not pulse.current(now):
         return DashboardStatus(
             serving=False,
             url=pulse.url,
             detail=(
                 f"The dashboard stopped: it last published at {pulse.beat:%H:%M:%S} "
-                "UTC without taking its pulse down. The next `harness "
-                "claude|codex` session starts it again."
+                "UTC without taking its pulse down. The sessions holding it "
+                "start it again, and the operator's `dashboard restart` does now."
             ),
         )
     return counted(
@@ -556,6 +609,7 @@ def published_status(advertised: AdvertisedDashboard, now: datetime) -> Dashboar
 
 def counted(pulse: DashboardPulse, detail: str) -> DashboardStatus:
     """A serving dashboard's status, in the counts its pulse carries."""
+    said = pulse.code.said()
     return DashboardStatus(
         serving=True,
         url=pulse.url,
@@ -565,7 +619,37 @@ def counted(pulse: DashboardPulse, detail: str) -> DashboardStatus:
         pending=pulse.pending,
         tabs=pulse.tabs,
         code=pulse.code,
-        detail=pulse.code.said().capitalize() + "." if pulse.code.older else detail,
+        restarts=pulse.restarts,
+        detail=said[:1].upper() + said[1:] + "." if said else detail,
+    )
+
+
+def unserved_detail(standing: CompanionStanding) -> str:
+    """What an operator reads of a dashboard that does not serve: who holds it, and what starts it."""
+    if not standing.leases:
+        return (
+            "Not running: the next `harness claude|codex` session starts it, "
+            "or `uv run lup-devtools dashboard serve` serves one in this terminal."
+        )
+    if standing.stays_stopped:
+        return (
+            "Stopped by the operator; `uv run lup-devtools dashboard restart` "
+            "starts it."
+        )
+    held = (
+        "1 session holds"
+        if standing.leases == 1
+        else f"{standing.leases} sessions hold"
+    )
+    if standing.retry is None or standing.exited is None:
+        return (
+            f"Not running while {held} it: "
+            "`uv run lup-devtools dashboard restart` starts it for them."
+        )
+    return (
+        f"Not running: it stopped ({standing.exited.reason()}) while {held} "
+        f"it, and they start it again at {standing.retry:%H:%M:%S} UTC; "
+        "`uv run lup-devtools dashboard restart` starts it now."
     )
 
 
@@ -579,20 +663,22 @@ def dashboard_status(dashboard: Dashboard, root: Path) -> DashboardStatus:
     serving = standing.serving
     pulse = PulseFile.of(standing.place.state).read()
     held = "Held by the running sessions; it stops once the last one ends."
+    fared = {
+        "restarts": standing.restarts,
+        "exited": standing.exited,
+        "stopped": standing.stopped,
+        "retry": standing.retry,
+    }
     if serving is not None and pulse is not None and pulse.current(now):
-        return counted(pulse, held)
+        return counted(pulse, held).model_copy(update=fared)
     return DashboardStatus(
         serving=serving is not None,
         url=page_url(standing.place) if "page" in standing.place.ports else "",
         pid=serving.pid if serving is not None else None,
         sessions=standing.leases,
         repositories=[str(known.repository) for known in registry.repositories()],
-        detail=(
-            held
-            if serving is not None
-            else "Not running: the next `harness claude|codex` session starts it, "
-            "or `uv run lup-devtools dashboard serve` serves one in this terminal."
-        ),
+        detail=held if serving is not None else unserved_detail(standing),
+        **fared,
     )
 
 
@@ -605,30 +691,49 @@ def private_url(dashboard: Dashboard, root: Path) -> str:
     refuse_inside_a_session("dashboard open")
     standing = dashboard.standing(root)
     if standing.serving is None:
-        raise LookupError(
-            "No dashboard is running: the next `harness claude|codex` session "
-            "starts it, or `uv run lup-devtools dashboard serve` serves one in "
-            "this terminal."
-        )
+        raise LookupError(f"No dashboard is running. {unserved_detail(standing)}")
     token = DashboardToken(directory=standing.place.state).read()
     return f"{page_url(standing.place)}/#token={token}"
 
 
+def started_for_holders(dashboard: Dashboard, root: Path) -> str:
+    """Start the dashboard from ``root``'s code for the sessions holding it; its address.
+
+    Under a lease of the operator's command, let go at once: the sessions'
+    own leases keep it running, and it stops with the last of them. A start
+    that fails is the operator's to read, as the refusal it is.
+    """
+    launch = CompanionLaunch(
+        root=root, runtime="operator", environment=inherited_environment()
+    )
+    try:
+        with dashboard.held(launch) as contribution:
+            return contribution.environment[DASHBOARD_URL_ENV]
+    except LaunchRefused as refused:
+        raise LookupError(str(refused)) from refused
+
+
 def restarted(dashboard: Dashboard, root: Path) -> str:
-    """Restart the running dashboard onto its checkout's code, keeping its address.
+    """Restart the dashboard onto its checkout's code, keeping its address.
 
     Asked of the dashboard itself, behind its capability and from its own
     origin, as the page asks: it restarts in place once no write is in
-    flight. One that predates restarting itself answers the ask with nothing
-    to take it, and is replaced instead — stopped, and started from this
-    checkout's code under a lease let go at once, so the sessions holding it
-    keep it; with none holding it, stopping is all there is to do.
+    flight. Where none serves while sessions hold it, one is started for
+    them from this checkout's code. One that predates restarting itself
+    answers the ask with nothing to take it, and is replaced instead —
+    stopped, and started from this checkout's code for the sessions holding
+    it; with none holding it, stopping is all there is to do.
     """
     refuse_inside_a_session("dashboard restart")
     standing = dashboard.standing(root)
     if standing.serving is None:
-        raise LookupError(
-            "No dashboard is running: the next `harness claude|codex` session starts it."
+        if not standing.leases:
+            raise LookupError(f"No dashboard is running. {unserved_detail(standing)}")
+        held = f"{standing.leases} session{'' if standing.leases == 1 else 's'}"
+        url = started_for_holders(dashboard, root)
+        return (
+            f"No dashboard was running while {held} held it: started one from "
+            f"{root}'s code at {url}; open tabs reconnect on their own."
         )
     url = page_url(standing.place)
     token = DashboardToken(directory=standing.place.state).read()
@@ -655,19 +760,21 @@ def restarted(dashboard: Dashboard, root: Path) -> str:
                 "The dashboard is already restarting; open tabs reconnect on their own."
             )
         case 404 | 405:
-            dashboard.stopped(root)
+            dashboard.stopped(
+                root,
+                why="the operator's restart replaces a dashboard that predates "
+                "restarting itself",
+                stays=False,
+            )
             if not standing.leases:
                 return (
                     "The dashboard predated restarting itself and no session held it, "
                     "so it was stopped; the next launch starts it."
                 )
-            launch = CompanionLaunch(
-                root=root, runtime="operator", environment=inherited_environment()
+            started_for_holders(dashboard, root)
+            return (
+                "The dashboard predated restarting itself, so it was replaced: "
+                f"stopped, and started from {root}'s code for the sessions holding it."
             )
-            with dashboard.held(launch):
-                return (
-                    "The dashboard predated restarting itself, so it was replaced: "
-                    f"stopped, and started from {root}'s code for the sessions holding it."
-                )
         case status:
             raise LookupError(f"The dashboard refused the restart: HTTP {status}")

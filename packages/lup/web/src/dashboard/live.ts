@@ -16,14 +16,20 @@ export type LiveState = {
 };
 
 /** What a dashboard that has not said which code it runs is taken to run. */
-export const UNSAID: RunningCode = { source: "", root: "", since: null, older: false, failing: "" };
+export const UNSAID: RunningCode = { source: "", root: "", since: null, older: false, failing: "", restarted: "" };
 
-/** What the page says of the code the dashboard runs; nothing while it is current. */
+/**
+ * What the page says of the dashboard it follows: the code it runs, where
+ * its checkout moved past it, and why it stopped, for a few minutes after
+ * the sessions holding it started it again; nothing while it runs on.
+ */
 export function codeNotice(code: RunningCode): string {
-  if (!code.older) return "";
-  return code.failing
+  const restarted = code.restarted ? `This dashboard was restarted after it stopped: ${code.restarted}.` : "";
+  if (!code.older) return restarted;
+  const older = code.failing
     ? `This dashboard runs older code than its checkout, whose newer code does not start (${code.failing}). It keeps answering with the code it runs.`
     : "This dashboard runs older code than its checkout and is restarting onto it; answers wait until the page reconnects.";
+  return restarted ? `${older} ${restarted}` : older;
 }
 
 function newestFirst(rows: ReviewSummary[]): ReviewSummary[] {

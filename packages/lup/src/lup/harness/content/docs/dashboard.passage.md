@@ -135,16 +135,54 @@ and hands it to its session as `LUP_DASHBOARD_URL`, credential-free.
 
 A launch from a checkout whose dashboard differs from the one running replaces
 it for everyone, the sessions already holding it keeping their hold, so the
-page is the newest one launched. The page is copied beside the dashboard's
-state before it serves, so it keeps serving after the worktree that started it
-is removed.
+page is the newest one launched. One running that does not answer its
+launcher's health check within five seconds is replaced the same way. A start
+has a minute to answer, since a checkout whose environment has never run it
+compiles every module it imports first; one that does not is stopped and
+refuses the launch, which the sessions already holding it survive (below).
+
+The page and every script and stylesheet it names are read whole as the
+dashboard starts, and served from memory: read again while a rebuild has
+written the page but not yet its scripts, until the page names nothing the
+bundle lacks. So an open tab is never handed a page naming scripts a rebuild
+has since removed, and the dashboard keeps serving after the worktree that
+started it is removed. A request for an asset the page it serves does not
+name — a tab still holding a page from before a restart — is answered 404 in
+words, and the page itself says "This page is out of date — reload it"
+wherever its script fails to load, rather than staying blank.
+
+While any launch holds it, the launches keep it running. Each launcher looks
+every second, on a thread of its own, whether the process it holds still
+runs; whichever finds it gone first records how it ended — when, its exit
+status or the signal that ended it, where anything can still collect it, and
+the last forty lines of its output, which its log beside its state keeps
+whole — and starts it again from its own checkout's code, under the slot's
+lock, so exactly one does. It comes back on the same port and with the same
+capability, and every open tab reconnects on its own. An exit soon after the
+start before it is one more in a row: the launches wait a second before the
+first start again, then five, then thirty, then a minute between tries. That
+covers every way it ends while held that nobody asked for — a crash, a signal
+from outside lup, a replacing launch whose own start then failed — and a
+lease a release judged gone while its launcher still runs, which that launcher
+takes back, starting what the release stopped. For five minutes after, the
+page's banner and every status line say "restarted after it stopped:" and
+why. The operator's `dashboard stop` is the one stop they leave alone: it is
+recorded in the dashboard's state as the operator's (`stopped.stays`), the
+launches holding it stand down, and every session's status line and
+`dashboard status` say "stopped by the operator; `dashboard restart` starts
+it", until `dashboard restart` or the next launch starts it. Every stop lup
+makes — the last lease let go, a launch replacing it, the operator — is
+written first into its log
+(`$XDG_STATE_HOME/lup/companions/user/dashboard/output.log`) and its state:
+which path, on whose behalf, and how many live leases held it, so a log that
+ends in a clean shutdown with no such line was stopped from outside lup.
 
 It also follows the checkout it was started from. A process keeps the code it
 imported, and that checkout moves every time something lands on it: once a
 review's fingerprint is spelled differently there, sessions park reviews the
 old code cannot answer. So every two seconds the dashboard compares the lup
-files it imported — and the page it serves — with the disk, reading a file
-again only where its size or time moved. When they have moved, it waits for
+files it imported — and every file of the page it serves — with the disk,
+reading a file again only where its size or time moved. When they have moved, it waits for
 them to settle (a look finding them as the last one did), starts the new
 code once in a fresh interpreter (`python -m lup.devtools.dashboard.service
 --probe`), and, once no write is in flight, stops serving as it would for a
@@ -160,15 +198,21 @@ The pulse names the code it runs (`code.source`, a digest of those files, and
 `code.since`).
 
 `uv run lup-devtools dashboard restart` does the same now, onto its checkout's
-code as it stands. A dashboard that predates restarting itself is replaced
-instead: stopped, and started from the checkout the command runs in for the
-sessions holding it.
+code as it stands. Where none runs while sessions hold it — their launchers
+predate keeping it running — it starts one for them from the checkout the
+command runs in. A dashboard that predates restarting itself is replaced
+instead: stopped, and started from that checkout for the sessions holding it.
 
 `uv run lup-devtools dashboard status` says whether it serves, where, for how
 many sessions, over which repositories, how many reviews wait, how many tabs
-follow it and which code it runs; inside a session it reads all of that from
-the dashboard's pulse (below), never from the operator's private state.
-`dashboard stop` stops it now, and the next launch starts it again.
+follow it, which code it runs, and how many times the sessions holding it
+started it again; from the operator's terminal it also gives the last exit
+(`exited`: when, how, and its last lines of output), the last stop lup made
+(`stopped`: why, by which process, and the live leases it counted), and, while
+none runs, when the sessions start it again. Inside a session it reads what
+the dashboard publishes, its pulse (below), never the operator's private
+state. `dashboard stop` stops it now, and it stays stopped, the sessions
+holding it included, until `dashboard restart` or the next launch starts it.
 `dashboard open`, `dashboard stop`, `dashboard restart`, `dashboard serve` and
 `dashboard reopen` are the operator's, run from a terminal outside every agent
 session.
@@ -212,7 +256,9 @@ its pulse, a small file in a directory of its own that every launch lends its
 session read-only at the path the host has it, named by
 `LUP_DASHBOARD_PULSE`. It rewrites the pulse whenever it changes and at least
 every ten seconds, and takes it down when it stops, so a pulse older than
-thirty seconds reads as a dashboard that stopped. The status line runs
+thirty seconds reads as a dashboard that stopped. The operator's `dashboard
+stop` leaves a pulse in its place saying so, which holds until a start
+replaces it. The status line runs
 `uv run lup-devtools dashboard line <pulse>`, which the CLI answers before
 loading the project's application, in about a fifth of a second. Claude Code
 shows it through `statusLine`, re-run every fifteen seconds so a review

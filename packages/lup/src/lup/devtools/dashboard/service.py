@@ -10,8 +10,15 @@ its checkout's code when that moves (:mod:`lup.devtools.dashboard.refresh`),
 and stops what it started when it is stopped. ``--probe`` imports what
 serving imports and exits, which is how a restart learns the new code starts.
 
-Its page is copied beside its state before it serves, so a dashboard started
-from a worktree keeps serving after that worktree is removed.
+Its page and every asset the page names are read whole as it starts and
+served from memory, so a rebuild of the bundle on disk never leaves an open
+tab a page naming scripts that are gone, and a dashboard started from a
+worktree keeps serving after that worktree is removed. A rebuilt bundle is
+code like any other: it moves the dashboard onto it in place.
+
+Where the sessions holding it started it again after it stopped
+(:class:`~lup.launch.companions.SharedProcess`), it says why it stopped —
+on the page, in every status line — for a few minutes (:class:`Recovery`).
 """
 
 import asyncio
@@ -47,6 +54,7 @@ from lup.devtools.dashboard.pulse import DashboardPulse, PulseFile, RunningCode
 from lup.devtools.dashboard.refresh import ImportedSource, Refresh, WriteGate
 from lup.devtools.dashboard.reviews import ReviewScan, ReviewStore
 from lup.devtools.review.app import RequesterPresence, ReviewSummary
+from lup.launch.companions import CompanionSlot
 from lup.policy.relay import RecordedQuestion
 from lup.providers.user_config import UserConfigFile
 
@@ -66,27 +74,43 @@ class ServiceArguments(BaseModel, frozen=True):
         return cls(state=Path(state), port=int(port), revision=revision)
 
 
-def kept_page(state: Path, revision: str) -> Path:
-    """The dashboard's page, copied beside its state under the revision it belongs to.
-
-    The directory handed to the page's server as its bundles, so the page and
-    its assets are read from here rather than from the checkout that started
-    it, which may be removed while the dashboard serves.
-    """
-    bundles = state / "bundles" / revision
-    target = bundles / "dashboard"
-    if not (target / "index.html").is_file():
-        source = resources.files("lup.web").joinpath("bundles", "dashboard")
-        with resources.as_file(source) as built:
-            shutil.copytree(built, target, dirs_exist_ok=True)
-    return bundles
-
-
 def running_source() -> ImportedSource:
-    """The lup package this process imports, and the page it serves from it."""
-    page = resources.files("lup.web").joinpath("bundles", "dashboard", "index.html")
-    with resources.as_file(page) as index:
-        return ImportedSource(Path(__file__).parents[2], (index,))
+    """The lup package this process imports, and every file of the page it serves from it."""
+    bundle = resources.files("lup.web").joinpath("bundles", "dashboard")
+    with resources.as_file(bundle) as built:
+        return ImportedSource(
+            Path(__file__).parents[2],
+            tuple(path for path in built.rglob("*") if path.is_file()),
+        )
+
+
+class Recovery:
+    """Whether the sessions holding this dashboard started it again after it stopped.
+
+    The launches holding it record each exit in the state beside this
+    dashboard's own, and when they started it again; for ``window`` after
+    that start, why it stopped is said on the page and in every status line,
+    and how many times it was started again is published throughout.
+    """
+
+    def __init__(
+        self, slot: CompanionSlot, window: timedelta = timedelta(minutes=5)
+    ) -> None:
+        self.slot = slot
+        self.window = window
+
+    def said(self, now: datetime | None = None) -> str:
+        """Why the dashboard before this one stopped, within ``window`` of this one's start."""
+        exited = self.slot.read().exited
+        if exited is None or exited.restarted is None:
+            return ""
+        if (now or datetime.now(UTC)) - exited.restarted > self.window:
+            return ""
+        return exited.reason()
+
+    def restarts(self) -> int:
+        """How many times the sessions holding it started it again."""
+        return self.slot.read().restarts
 
 
 def probe_imports(
@@ -199,7 +223,8 @@ class Herald:
 
     It writes the dashboard's pulse on every look where anything changed,
     and at least every ``heartbeat``, so a session reading it knows it is
-    current; ``code`` is which code the dashboard runs, which the pulse says.
+    current; ``code`` is which code the dashboard runs, which the pulse says,
+    and ``restarts`` how many times the sessions holding it started it again.
     """
 
     def __init__(
@@ -216,6 +241,7 @@ class Herald:
         crowd: int = 3,
         heartbeat: timedelta = timedelta(seconds=10),
         code: Callable[[], RunningCode] = RunningCode,
+        restarts: Callable[[], int] = lambda: 0,
         store: ReviewStore | None = None,
     ) -> None:
         self.record_path = directory / "herald.json"
@@ -230,6 +256,7 @@ class Herald:
         self.capability = capability
         self.tabs = tabs
         self.code = code
+        self.restarts = restarts
         self.config = config if config is not None else UserConfigFile()
         self.notify = notify
         self.reopen = reopen
@@ -337,6 +364,7 @@ class Herald:
             tabs=self.tabs(),
             beat=moment,
             code=self.code(),
+            restarts=self.restarts(),
         )
         last = self.published
         if (
@@ -378,6 +406,10 @@ def serve_dashboard(arguments: ServiceArguments) -> None:
     from lup.devtools.dashboard.reviews import dashboard_app
     from lup.devtools.dashboard.stream import LiveFeed
 
+    # Its output is its log: what it says of its own restarts belongs there
+    # beside what lup says of stopping it.
+    logging.basicConfig(format="%(levelname)s:     %(name)s: %(message)s")
+    logging.getLogger("lup").setLevel(logging.INFO)
     token = DashboardToken(directory=arguments.state).read()
     registry = DashboardRegistry(directory=arguments.state)
     panes = SetupPanes(
@@ -388,17 +420,24 @@ def serve_dashboard(arguments: ServiceArguments) -> None:
     )
     url = f"http://127.0.0.1:{arguments.port}"
     refresh = Refresh(running_source())
+    recovery = Recovery(CompanionSlot(directory=arguments.state))
+
+    def code() -> RunningCode:
+        return refresh.code().model_copy(update={"restarted": recovery.said()})
+
     # One store for the stream, every route, the herald and the sweep, so the
     # relays it keeps open are read once however many of them ask.
     store = ReviewStore(roots=(), discover=True, registry=registry)
-    feed = LiveFeed(registry.repositories, store, code=refresh.code)
+    feed = LiveFeed(registry.repositories, store, code=code)
+    # Taken before the page is read, so a bundle rebuilt while it is read
+    # moves the dashboard onto the new one rather than past it unseen.
+    refresh.source.taken()
     app = dashboard_app(
         url,
         token,
         (),
         discover=True,
         registry=registry,
-        bundles=kept_page(arguments.state, arguments.revision),
         health=DashboardHealth(revision=arguments.revision, pid=os.getpid()),
         panes=panes,
         feed=feed,
@@ -410,7 +449,8 @@ def serve_dashboard(arguments: ServiceArguments) -> None:
         url,
         token,
         tabs=lambda: feed.followers,
-        code=refresh.code,
+        code=code,
+        restarts=recovery.restarts,
         store=store,
     )
     refresh.source.taken()
@@ -428,6 +468,7 @@ def serve_dashboard(arguments: ServiceArguments) -> None:
     @app.post("/api/service/restart", status_code=202)
     def restart() -> RunningCode:
         """Restart onto the checkout's code once no write is in flight: the operator's ask."""
+        logger.info("the operator asked for a restart onto its checkout's code")
         refresh.asked = True
         return refresh.code()
 

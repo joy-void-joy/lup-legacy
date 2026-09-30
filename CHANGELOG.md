@@ -28,6 +28,44 @@ archived; a fold goes from 0.25 s to 0.1 s, then 0.02 s; the first snapshot
 from 1.4 s and 957 KB to 0.3-0.4 s and 54 KB; an answer from 0.8-0.9 s to
 5 ms once the review is open; a hook's park from 0.2 s to 0.01 s.
 
+### The launches holding a shared companion keep it running
+
+`SharedProcess.held` watches what it holds on a thread of the launcher's,
+every `watched_every` seconds: whichever holder finds the process gone first
+records a `CompanionExit` in the slot — when, its exit status or signal where
+it can still be collected (`LiveProcess.collected`), and its last
+`exit_lines` of output — and starts it again from its own declaration, on the
+ports it had, under the slot's lock, waiting along `backoff` (1, 5, 30, then
+60 seconds) for exits in a row. A lease dropped while its launcher still
+runs is taken back. Every stop lup makes writes a `CompanionStop` — why, by
+which process, how many live leases — into the slot and a line into the
+companion's log before the signal, and each lease let go says why its
+launcher was judged gone. The operator's stop (`SharedProcess.stopped`,
+`dashboard stop`) is recorded as one that stays (`CompanionStop.stays`,
+`CompanionState.stays_stopped`): the holders leave it stopped until a launch
+or `dashboard restart` starts it, and every status line and `dashboard
+status` say "stopped by the operator; `dashboard restart` starts it"
+(`DashboardPulse.halted`). `stopped(..., stays=False)` is lup's own stop,
+which the holders undo. `CompanionStanding` and the dashboard's
+`dashboard status` carry `exited`, `stopped`, `restarts` and `retry`; the
+page's banner and every status line say "restarted after it stopped" and
+why for five minutes (`RunningCode.restarted`, `DashboardPulse.restarts`).
+`dashboard restart` with sessions holding a dashboard that does not run
+starts one for them. A running companion of the same declaration gets five
+seconds to answer before a launch replaces it, and the dashboard a minute to
+answer its first start.
+
+### A page and its assets come from one build
+
+`bundle_app` reads a surface's page and every asset it names into memory as
+it is built, reading again while a rebuild has written the page but not its
+assets (`whole_bundle`), so a page it serves never names an asset that is
+gone; an asset it does not hold answers a plain-text 404. The dashboard's
+page says "This page is out of date — reload it" where its script fails to
+load, and every file of the page counts as the dashboard's code, so a
+rebuilt bundle restarts it onto the new one. The dashboard no longer copies
+its page beside its state.
+
 ### A parked call keeps the asker's account, and each command of its line
 
 `PersistentQuestion.account` holds what the asker said the call is for, each

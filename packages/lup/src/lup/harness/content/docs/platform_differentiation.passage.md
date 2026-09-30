@@ -247,7 +247,13 @@ capability are operator-only under both generated policies. Claude's native
 permission requests remain native requests; the dashboard displays what was
 parked in the durable relay. Browser settlement records the answer before
 returning to the browser; notification continues in the server, and its
-failure does not undo the decision.
+failure does not undo the decision. Keeping it running is the launchers', not
+the runtime's: a lease and the thread that starts the dashboard again when it
+exits are taken in `SharedProcess.held`, which the Claude and the Codex
+launcher, and a session either opens in process, enter alike around the
+session, so both runtimes' sessions bring it back the same way. The restart's
+notice reaches Claude's status line; a Codex session reads it on the page and
+in `dashboard status`, as it reads everything else there.
 Queue acceptance alone does not prove that a particular recipient took a turn.
 The Codex idle-wake integration test measures the complete browser-to-relay
 path on CLI 0.158.0. The fixture forwards its declared launch identity into a

@@ -793,7 +793,7 @@
     {
       "path": "docs/dashboard.md",
       "category": "generated",
-      "sha256": "7008b1e9d50779869a2c437d0bb973fe05c86475a67cbb02a158774cca743e1c",
+      "sha256": "bb63e919ada8cced8f81216f1fdcd8dd516db0ac52672b884f5af646a8f3981f",
       "semantic_id": "docs.dashboard",
       "executable": false
     },
@@ -856,7 +856,7 @@
     {
       "path": "docs/platform-differentiation.md",
       "category": "generated",
-      "sha256": "aa46645d9d8a864992b388fc69bcff7d522bdc4462ee5378b444a5b071904b9b",
+      "sha256": "b188b6eab7d750bd0257e1088bf7a9e1868e4b2e55fae1b45aa2888734c4e755",
       "semantic_id": "docs.platform-differentiation",
       "executable": false
     },

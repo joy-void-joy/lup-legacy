@@ -22,7 +22,7 @@ function sent(event: object): string {
 
 /** The whole state as one frame, over the fixture's reviews and whatever sessions and messages it holds. */
 function framed(reviews: unknown): string {
-  const code = { source: "fixture", root: "/project/packages/lup/src/lup", since: null, older: false, failing: "" };
+  const code = { source: "fixture", root: "/project/packages/lup/src/lup", since: null, older: false, failing: "", restarted: "" };
   return sent({ type: "snapshot", repositories: liveRepositories, sessions: liveSessions, messages: liveMessages, reviews, code });
 }
 /** How the fake server says the requester heard of an answer. */
@@ -191,7 +191,7 @@ describe("dashboard page", () => {
     const page = await open();
     expect(page.root.querySelector(".running-code")).toBeNull();
 
-    const older = { source: "abc", root: "/project/packages/lup/src/lup", since: "2026-09-30T00:00:00Z", older: true, failing: "" };
+    const older = { source: "abc", root: "/project/packages/lup/src/lup", since: "2026-09-30T00:00:00Z", older: true, failing: "", restarted: "" };
     await act(async () => stream?.enqueue(new TextEncoder().encode(sent({ type: "service", code: older }))));
     await until(() => page.root.querySelector(".running-code") !== null, "the older-code notice");
     expect(one(page.root, ".running-code").textContent).toContain("runs older code than its checkout and is restarting onto it");
