@@ -793,7 +793,7 @@
     {
       "path": "docs/dashboard.md",
       "category": "generated",
-      "sha256": "b2638a1265ed351230decb5512d1b63b61a60cd657dbc3f2fe1e2959265c3f7e",
+      "sha256": "5d9d394539b5efdbe2ccd5d90490fdd8f4dc563fa1b6fb863f9dd46f9014c7ab",
       "semantic_id": "docs.dashboard",
       "executable": false
     },
@@ -807,7 +807,7 @@
     {
       "path": "docs/harness.md",
       "category": "generated",
-      "sha256": "44d08616f7aeeb75fe5a015fb49acb8a29d94671f21b37f2f2c0d6ea2baf98f1",
+      "sha256": "7d9a6078f00a61e438a46ed0fdc921b052da0ff3ea1a0c7a2ea05c9a1ec36062",
       "semantic_id": "docs.harness",
       "executable": false
     },

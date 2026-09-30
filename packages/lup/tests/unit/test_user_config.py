@@ -61,6 +61,48 @@ def test_reopening_the_dashboard_is_the_persons_to_turn_off(tmp_path: Path) -> N
     assert not config.load().dashboard.reopen
 
 
+def test_the_dashboards_origins_are_read_as_a_browser_writes_them(
+    tmp_path: Path,
+) -> None:
+    """Lowercase, and the scheme's default port left out, as ``Origin`` carries it."""
+    config = written(
+        tmp_path / "lup",
+        "[dashboard]\norigins = [\n"
+        '  "https://Their.Proxy.Name",\n'
+        '  "https://proxy.example:443/",\n'
+        '  "http://box.lan:8080",\n'
+        '  "http://[::1]:9000",\n'
+        "]\n",
+    )
+
+    assert config.load().dashboard.served_at() == [
+        "https://their.proxy.name",
+        "https://proxy.example",
+        "http://box.lan:8080",
+        "http://[::1]:9000",
+    ]
+
+
+@pytest.mark.parametrize(
+    "origin",
+    [
+        "https://their.proxy.name/dashboard",
+        "https://their.proxy.name/?view=reviews",
+        "https://their.proxy.name/#top",
+        "https://operator@their.proxy.name",
+        "ftp://their.proxy.name",
+        "their.proxy.name",
+    ],
+)
+def test_a_declared_origin_that_is_more_or_less_than_one_is_refused(
+    tmp_path: Path, origin: str
+) -> None:
+    config = written(tmp_path / "lup", f'[dashboard]\norigins = ["{origin}"]\n')
+
+    with pytest.raises(ValueError, match=r"dashboard\.origins"):
+        config.load()
+
+
 def test_one_line_changes_one_answer_and_leaves_the_rest_lups(tmp_path: Path) -> None:
     config = written(
         tmp_path / "lup",

@@ -159,7 +159,13 @@ def whole_bundle(
 
 
 def bundle_app(
-    title: str, url: str, surface: str, bundles: Path | None = None
+    title: str,
+    url: str,
+    surface: str,
+    bundles: Path | None = None,
+    *,
+    origins: Callable[[], Sequence[str]] = tuple,
+    refusal: str = "unexpected Host header",
 ) -> FastAPI:
     """A Host-guarded app serving one built surface: its page and its assets.
 
@@ -173,10 +179,11 @@ def bundle_app(
     package does — and a missing bundle is a clear refusal naming the command
     that builds it, not a directory listing. An asset the bundle does not
     hold answers a 404 in words, which a page that asked for it from another
-    build cannot mistake for the script it wanted.
+    build cannot mistake for the script it wanted. ``origins`` and
+    ``refusal`` are its Host guard's, as :func:`page_app` takes them.
     """
     bundle = whole_bundle(bundle_root(surface, bundles))
-    application = page_app(title, url, bundle.index)
+    application = page_app(title, url, bundle.index, origins=origins, refusal=refusal)
 
     @application.get("/assets/{name}")
     async def asset(name: str) -> Response:
@@ -195,7 +202,14 @@ def bundle_app(
     return application
 
 
-def page_app(title: str, url: str, html: str) -> FastAPI:
+def page_app(
+    title: str,
+    url: str,
+    html: str,
+    *,
+    origins: Callable[[], Sequence[str]] = tuple,
+    refusal: str = "unexpected Host header",
+) -> FastAPI:
     """A Host-guarded app serving one page of HTML at ``/``.
 
     Takes the markup rather than a package to read it from, so a surface that
@@ -206,9 +220,11 @@ def page_app(title: str, url: str, html: str) -> FastAPI:
 
     The docs routes are off because a local-only page has no audience for
     them and they widen what an attacker reaching this origin can enumerate.
+    The Host guard answers loopback and each of the ``origins`` declared for
+    the page, telling any other request ``refusal``.
     """
     application = FastAPI(title=title, docs_url=None, redoc_url=None)
-    guard_loopback_host(application, url)
+    guard_loopback_host(application, url, origins, refusal)
 
     @application.get("/", response_class=HTMLResponse)
     async def home() -> HTMLResponse:

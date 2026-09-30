@@ -23,11 +23,17 @@ it had no way of knowing it had.
 
 Not defended: other processes on this machine, which only a token would
 address.
+
+A page the person reaches through a reverse proxy of their own is reached at
+the proxy's name, which the guard answers only where that origin is declared
+for the surface: every other name is still one a rebinding site could send.
 """
 
+from collections.abc import Callable, Sequence
 from urllib.parse import urlsplit
 
-from fastapi import FastAPI, Response
+from fastapi import FastAPI
+from fastapi.responses import PlainTextResponse
 from starlette.datastructures import Headers
 from starlette.types import ASGIApp, Receive, Scope, Send
 
@@ -57,8 +63,22 @@ def refuse_non_loopback(host: str, surface: str) -> None:
         )
 
 
-def allowed_host_values(url: str) -> list[str]:
-    """Every ``Host`` header value a page served at ``url`` will answer to.
+def origin_host_values(origin: str) -> list[str]:
+    """Every ``Host`` header value a browser sends for a page at ``origin``.
+
+    ``origin`` is written as a browser writes it, its default port left out:
+    there the host is sent with and without that port, and a port of its own
+    only with it.
+    """
+    split = urlsplit(origin)
+    if split.port is not None:
+        return [split.netloc]
+    default = 443 if split.scheme == "https" else 80
+    return [split.netloc, f"{split.netloc}:{default}"]
+
+
+def allowed_host_values(url: str, origins: Sequence[str] = ()) -> list[str]:
+    """Every ``Host`` header value a page served at ``url``, and at ``origins``, will answer to.
 
     Both the bare host and the host-with-port forms are admitted, because a
     browser omits the port when it is the scheme's default and sends it
@@ -69,6 +89,7 @@ def allowed_host_values(url: str) -> list[str]:
     return [
         *authorities,
         *(f"{host}:{port}" for host in authorities if port is not None),
+        *(value for origin in origins for value in origin_host_values(origin)),
     ]
 
 
@@ -80,23 +101,40 @@ class LoopbackHost:
     it stops is cancelled there and logged as an error instead of ending.
     """
 
-    def __init__(self, app: ASGIApp, allowed: list[str]) -> None:
+    def __init__(
+        self, app: ASGIApp, allowed: Callable[[], list[str]], refusal: str
+    ) -> None:
         self.app = app
         self.allowed = allowed
+        self.refusal = refusal
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] == "http":
             headers = Headers(scope=scope)
             header = headers["host"] if "host" in headers else ""
-            if header not in self.allowed:
-                refused = Response(
-                    status_code=MISDIRECTED_REQUEST, content="unexpected Host header"
+            if header not in self.allowed():
+                refused = PlainTextResponse(
+                    status_code=MISDIRECTED_REQUEST, content=self.refusal
                 )
                 await refused(scope, receive, send)
                 return
         await self.app(scope, receive, send)
 
 
-def guard_loopback_host(app: FastAPI, url: str) -> None:
-    """Refuse any request whose ``Host`` is not one this surface answers for."""
-    app.add_middleware(LoopbackHost, allowed=allowed_host_values(url))
+def guard_loopback_host(
+    app: FastAPI,
+    url: str,
+    origins: Callable[[], Sequence[str]] = tuple,
+    refusal: str = "unexpected Host header",
+) -> None:
+    """Refuse any request whose ``Host`` is not one this surface answers for.
+
+    That is loopback's, and each of the ``origins`` declared for it, asked
+    on every request so a declaration changed while it serves holds from the
+    next. ``refusal`` is what a refused request is told.
+    """
+    app.add_middleware(
+        LoopbackHost,
+        allowed=lambda: allowed_host_values(url, origins()),
+        refusal=refusal,
+    )

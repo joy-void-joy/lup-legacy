@@ -176,7 +176,9 @@ alone and never handed to a session, so a tab left open while the dashboard
 restarts reconnects on its own. The page opens in a browser the first time
 that capability is minted, for a launch the operator made; afterwards
 `uv run lup-devtools dashboard open` opens it. Each launch prints the address
-and hands it to its session as `LUP_DASHBOARD_URL`, credential-free.
+and hands it to its session as `LUP_DASHBOARD_URL`, credential-free; one the
+operator made on a terminal also prints the launch address at each origin
+(below).
 
 A launch from a checkout whose dashboard differs from the one running replaces
 it for everyone, the sessions already holding it keeping their hold, so the
@@ -256,7 +258,9 @@ follow it, which code it runs, and how many times the sessions holding it
 started it again; from the operator's terminal it also gives the last exit
 (`exited`: when, how, and its last lines of output), the last stop lup made
 (`stopped`: why, by which process, and the live leases it counted), and, while
-none runs, when the sessions start it again. Inside a session it reads what
+none runs, when the sessions start it again, and the origins declared for it
+(`origins`), its launch address at each (`launch`) and what to heed of them
+(`warnings`), as "Behind a reverse proxy" says. Inside a session it reads what
 the dashboard publishes, its pulse (below), never the operator's private
 state. `dashboard stop` stops it now, and it stays stopped, the sessions
 holding it included, until `dashboard restart` or the next launch starts it.
@@ -601,7 +605,57 @@ assets contain no credential. The dashboard every launch holds keeps its
 capability across restarts; one `dashboard serve` mints is its own, and ends
 with it. Treat the full address as an operator credential and keep it out of
 agent messages. The server binds loopback, checks Host against DNS rebinding,
-and checks the origin of every submission. These controls protect the browser
+and checks the origin of every submission, answering loopback's names and the
+origins the person declared alone. These controls protect the browser
 surface; they are not isolation against arbitrary processes running as the
 operator's user. The session's filesystem and process boundary remains part
 of the authority boundary.
+
+## Behind a reverse proxy
+
+The dashboard binds loopback alone, so a browser elsewhere reaches it only
+through a reverse proxy on this machine, at the proxy's name. The person
+declares each origin they reach it at in their lup config, never in a
+project's:
+
+```toml
+# ~/.config/lup/config.toml
+[dashboard]
+origins = ["https://their.proxy.name"]
+```
+
+Each is a whole origin, `scheme://host[:port]` over http or https, with no
+path: the page names its routes from the root, so a proxy serving it under a
+path is not supported. Each is read as a browser writes it, lowercase and
+without its scheme's default port. The Host check then answers each origin's
+host beside loopback's, with and without that default port, and a write is
+taken where its `Origin` is exactly a declared origin or the dashboard's own
+address. Nothing else changes: any other name is refused as before, which is
+what a rebinding site sends; the API still wants the capability; and the
+dashboard still binds loopback alone. The dashboard every launch holds and
+`dashboard serve` read the list the same way, again on each request where
+the file moved, so a change holds from the next request with nothing to
+restart. A file lup cannot read declares nothing: the dashboard answers
+loopback alone and says why in its log and in `dashboard status`, and a
+launch refuses the file.
+
+The proxy needs no header rewriting. Caddy passes the browser's `Host`
+through and flushes the stream as it arrives, so this is the whole of it:
+
+```caddy
+their.proxy.name {
+    reverse_proxy 127.0.0.1:8766
+}
+```
+
+`8766` stands for the port `dashboard status` names, which the dashboard
+keeps while it stays free. The page opens through the proxy at its launch
+address there, `https://their.proxy.name/#token=…`: `dashboard status` gives
+it under `launch`, `dashboard open` and `dashboard serve` print it, and so
+does a launch the operator made on a terminal. A session's launch, and a
+launch whose output is captured, print none, since the address carries the
+capability. The page keeps the capability for the proxy's origin as it does
+for loopback's, and every link it builds or copies names the origin it was
+opened at. `dashboard status` warns of a declared origin that is neither
+https nor loopback, whose launch address carries the capability across the
+network in the clear.

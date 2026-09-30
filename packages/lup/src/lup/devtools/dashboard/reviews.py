@@ -48,10 +48,12 @@ from lup.devtools.dashboard.companion import (
     DashboardHealth,
     DashboardRegistry,
     DashboardToken,
+    DeclaredOrigins,
     KnownRepository,
     dashboard_revision,
     dashboard_status,
-    private_url,
+    launch_urls,
+    private_urls,
     restarted,
     refuse_inside_a_session,
 )
@@ -832,6 +834,7 @@ def dashboard_app(
     health: DashboardHealth | None = None,
     panes: SetupPanes | None = None,
     feed: "LiveFeed | None" = None,
+    config: UserConfigFile | None = None,
 ) -> "FastAPI":
     """Build the dashboard: an authenticated browser surface over reviews and sessions.
 
@@ -841,7 +844,9 @@ def dashboard_app(
     every one the ``registry`` knows. ``feed`` is the stream's producer where
     the caller follows it too — the service, asking whether any tab is open —
     and its store is the one every route reads, so the relays it keeps open
-    serve the stream, a review opened, and an answer alike.
+    serve the stream, a review opened, and an answer alike. Beside ``url``,
+    it answers at each origin the person's lup ``config`` declares, as that
+    file says at each request.
     """
     from fastapi import HTTPException, Query, Request
     from fastapi.responses import JSONResponse, Response, StreamingResponse
@@ -869,10 +874,17 @@ def dashboard_app(
 
     if discover:
         roots = tuple(dict.fromkeys(anchor(root) for root in roots))
+    declared = DeclaredOrigins(config)
+    refusal = (
+        "unexpected Host header: the dashboard answers at its loopback address, "
+        "and at each origin `[dashboard] origins` declares in the person's lup config"
+    )
     app = (
-        bundle_app("Dashboard", url, "dashboard")
+        bundle_app("Dashboard", url, "dashboard", origins=declared, refusal=refusal)
         if bundles is None
-        else bundle_app("Dashboard", url, "dashboard", bundles)
+        else bundle_app(
+            "Dashboard", url, "dashboard", bundles, origins=declared, refusal=refusal
+        )
     )
 
     def watched() -> list[KnownRepository]:
@@ -898,7 +910,7 @@ def dashboard_app(
                     {"detail": "Authentication required"}, status_code=401
                 )
         if request.method == "POST":
-            if headers.origin != url:
+            if headers.origin != url and headers.origin not in declared():
                 return JSONResponse({"detail": "Origin refused"}, status_code=403)
             if headers.content_type != "application/json":
                 return JSONResponse({"detail": "JSON required"}, status_code=415)
@@ -1092,6 +1104,13 @@ def create_operator_dashboard_app(root: Path) -> typer.Typer:
             typer.echo(str(refusal), err=True)
             raise typer.Exit(2) from refusal
 
+    def announced(addresses: list[str], declared: DeclaredOrigins) -> None:
+        """Print each launch address, then what to hear of the declared origins."""
+        for address in addresses:
+            typer.echo(f"Operator launch URL: {address}")
+        for warning in declared.warnings():
+            typer.echo(warning, err=True)
+
     @app.command("serve")
     def serve_cmd(
         selected_roots: list[Path] | None = typer.Option(
@@ -1135,11 +1154,12 @@ def create_operator_dashboard_app(root: Path) -> typer.Typer:
                 host=host,
                 shared=False,
             )
-            browser_url = f"{served.url()}/#token={token}"
+            declared = DeclaredOrigins()
+            addresses = launch_urls(served.url(), token, declared())
             typer.echo(f"Dashboard: {served.url()} — Ctrl+C stops this server.")
-            typer.echo(f"Operator launch URL: {browser_url}")
+            announced(addresses, declared)
             if open_page:
-                webbrowser.open(browser_url)
+                webbrowser.open(addresses[0])
             said_in_output()
             serve_dashboard(served)
 
@@ -1150,11 +1170,11 @@ def create_operator_dashboard_app(root: Path) -> typer.Typer:
         """Open the dashboard the running sessions hold, in this machine's browser."""
 
         def opened() -> None:
-            address = private_url(companion, root)
-            if webbrowser.open(address):
-                typer.echo(f"Dashboard: {dashboard_status(companion, root).url}")
-                return
-            typer.echo(f"The browser did not open. Operator launch URL: {address}")
+            declared = DeclaredOrigins()
+            addresses = private_urls(companion, root, declared())
+            if not webbrowser.open(addresses[0]):
+                typer.echo("The browser did not open.")
+            announced(addresses, declared)
 
         refused("open", opened)
 

@@ -15,18 +15,21 @@ capability.
 """
 
 import hashlib
+import logging
 import os
 import secrets
 import sys
 import uuid
 import webbrowser
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from importlib import resources
 from importlib.util import find_spec
+from ipaddress import ip_address
 from pathlib import Path
 from typing import Literal
+from urllib.parse import urlsplit
 
 import httpx
 import sh
@@ -66,9 +69,12 @@ from lup.launch.declaration import Mount
 from lup.launch.preflight import NONCE_VARIABLE
 from lup.launch.refusal import LaunchRefused
 from lup.policy.identity import AGENT_IDENTITY_ENV, DASHBOARD_URL_ENV
+from lup.providers.user_config import UserConfigFile
 from lup.sandbox.rail import repository_layout, sibling_worktrees
 from lup.types import EnvVars
 from lup.workspace.context import SESSION_DIR_ENV, SESSION_ID_ENV
+
+logger = logging.getLogger(__name__)
 
 
 def session_markers() -> list[str]:
@@ -351,6 +357,96 @@ def page_url(place: CompanionPlace) -> str:
     return f"http://127.0.0.1:{place.ports['page']}"
 
 
+def launch_urls(url: str, token: str, origins: Sequence[str] = ()) -> list[str]:
+    """The addresses that open the page with its capability: at ``url``, then at each declared origin."""
+    return [f"{address}/#token={token}" for address in (url, *origins)]
+
+
+def in_the_clear(origin: str) -> bool:
+    """Whether a page at ``origin`` is reached unencrypted across a network: over http, from elsewhere."""
+    split = urlsplit(origin)
+    host = split.hostname or ""
+    if split.scheme != "http" or host == "localhost" or host.endswith(".localhost"):
+        return False
+    try:
+        return not ip_address(host).is_loopback
+    except ValueError:
+        return True
+
+
+class DeclaredReading(BaseModel, frozen=True):
+    """The person's declared origins as last read, and their config file as it stood then."""
+
+    stamp: tuple[int, ...] = ()
+    """The file's inode, size and times; empty where there was none to stat."""
+
+    origins: tuple[str, ...] = ()
+    unread: str = ""
+    """Why the file could not be read, which declares nothing."""
+
+
+class DeclaredOrigins:
+    """Where the person declared the page is also reached, as ``[dashboard] origins`` says now.
+
+    Asked on every request — by the Host guard and by the origin check on a
+    write — so a list changed while the dashboard serves holds from the next
+    request, with nothing to restart. The person's lup config is read again
+    only where its inode, size or times moved, so a request costs one stat.
+    A file lup cannot read declares nothing: loopback alone is answered, as
+    where nothing is declared, and :meth:`warnings` says why, as the log does
+    once per change.
+    """
+
+    def __init__(self, config: UserConfigFile | None = None) -> None:
+        self.config = config if config is not None else UserConfigFile()
+        self.reading: DeclaredReading | None = None
+
+    def __call__(self) -> tuple[str, ...]:
+        return self.read().origins
+
+    def read(self) -> DeclaredReading:
+        """The declared origins, read again where the file moved since the last read."""
+        try:
+            status = self.config.path().stat()
+            stamp = (
+                status.st_ino,
+                status.st_size,
+                status.st_mtime_ns,
+                status.st_ctime_ns,
+            )
+        except OSError:
+            stamp = ()
+        if self.reading is not None and self.reading.stamp == stamp:
+            return self.reading
+        try:
+            declared = self.config.load().dashboard.served_at()
+            reading = DeclaredReading(stamp=stamp, origins=tuple(declared))
+        except (OSError, ValueError) as unreadable:
+            logger.warning("the dashboard answers loopback alone: %s", unreadable)
+            reading = DeclaredReading(stamp=stamp, unread=str(unreadable))
+        self.reading = reading
+        return reading
+
+    def warnings(self) -> list[str]:
+        """What the operator should hear of them: a config lup cannot read, or an origin crossed in the clear."""
+        reading = self.read()
+        unread = (
+            [f"No declared origin is answered, loopback alone: {reading.unread}"]
+            if reading.unread
+            else []
+        )
+        return [
+            *unread,
+            *(
+                f"{origin} is neither https nor loopback: its launch address "
+                "carries the capability across the network in the clear; have "
+                "the proxy serve it over https."
+                for origin in reading.origins
+                if in_the_clear(origin)
+            ),
+        ]
+
+
 def pulse_status_line(root: Path, pulse: Path) -> StatusLine:
     """What a session's status line runs: its checkout's CLI reading the pulse, and nothing more.
 
@@ -496,12 +592,27 @@ class Dashboard(SharedProcess, frozen=True):
             registry.registered(launch.root),
             super().held(launch) as contribution,
         ):
-            if capability.fresh and launched_by_an_operator(launch.environment):
-                webbrowser.open(
-                    f"http://127.0.0.1:{contribution.ports['page']}"
-                    f"/#token={capability.value}"
+            operator = launched_by_an_operator(launch.environment)
+            addresses = launch_urls(
+                contribution.environment[DASHBOARD_URL_ENV],
+                capability.value,
+                DeclaredOrigins()(),
+            )
+            if capability.fresh and operator:
+                webbrowser.open(addresses[0])
+            # The capability is the operator's: a session launching a session
+            # reads this banner, and so does whoever reads a captured launch's
+            # output, so only an operator's launch on a terminal prints it.
+            said = [
+                Notice(
+                    text=f"Operator launch URL: {address}", urgency="detail", indent=1
                 )
-            yield contribution
+                for address in addresses
+                if operator and sys.stdout.isatty()
+            ]
+            yield contribution.model_copy(
+                update={"notices": [*contribution.notices, *said]}
+            )
 
     def stopped(
         self, root: Path, why: str = "the operator stopped it", stays: bool = True
@@ -532,10 +643,22 @@ class Dashboard(SharedProcess, frozen=True):
 
 
 class DashboardStatus(BaseModel, frozen=True):
-    """Whether the dashboard serves, where, and for whom; never its capability."""
+    """Whether the dashboard serves, where, and for whom; its capability only in ``launch``."""
 
     serving: bool
     url: str = ""
+    origins: list[str] = []
+    """Where the person declared the page is also reached (``[dashboard]
+    origins``). Read from outside a session only."""
+
+    launch: list[str] = []
+    """The addresses that open the page, capability included: loopback's,
+    then each declared origin's. Given the operator's terminal alone, while
+    it serves."""
+
+    warnings: list[str] = []
+    """What the operator should hear of the declared origins."""
+
     pid: int | None = None
     sessions: int = 0
     """How many running launches hold it."""
@@ -671,7 +794,19 @@ def dashboard_status(dashboard: Dashboard, root: Path) -> DashboardStatus:
     serving = standing.serving
     pulse = PulseFile.of(lent_directory(standing.place.state)).read()
     held = "Held by the running sessions; it stops once the last one ends."
+    declared = DeclaredOrigins()
     fared = {
+        "origins": list(declared()),
+        "launch": (
+            launch_urls(
+                page_url(standing.place),
+                DashboardToken(directory=standing.place.state).read(),
+                declared(),
+            )
+            if serving is not None and "page" in standing.place.ports
+            else []
+        ),
+        "warnings": declared.warnings(),
         "restarts": standing.restarts,
         "exited": standing.exited,
         "stopped": standing.stopped,
@@ -690,18 +825,21 @@ def dashboard_status(dashboard: Dashboard, root: Path) -> DashboardStatus:
     )
 
 
-def private_url(dashboard: Dashboard, root: Path) -> str:
-    """The address that opens the running dashboard, capability included.
+def private_urls(
+    dashboard: Dashboard, root: Path, origins: Sequence[str] = ()
+) -> list[str]:
+    """The addresses that open the running dashboard, capability included.
 
-    Refused where nothing serves, rather than starting a dashboard no
-    session holds and so nothing would ever stop.
+    Its loopback one first, then one at each of the ``origins`` declared
+    for it. Refused where nothing serves, rather than starting a dashboard
+    no session holds and so nothing would ever stop.
     """
     refuse_inside_a_session("dashboard open")
     standing = dashboard.standing(root)
     if standing.serving is None:
         raise LookupError(f"No dashboard is running. {unserved_detail(standing)}")
     token = DashboardToken(directory=standing.place.state).read()
-    return f"{page_url(standing.place)}/#token={token}"
+    return launch_urls(page_url(standing.place), token, origins)
 
 
 def started_for_holders(dashboard: Dashboard, root: Path) -> str:
