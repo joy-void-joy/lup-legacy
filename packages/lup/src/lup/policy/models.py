@@ -423,17 +423,3 @@ class Decision(BaseModel, frozen=True):
             recovery=self.recovery,
             file_reviews=self.file_reviews,
         )
-
-
-class ObservationFailure(BaseModel, frozen=True):
-    """One observer failure that cannot change the policy verdict."""
-
-    observer: str
-    message: str
-
-
-class PolicyEvaluation(BaseModel, frozen=True):
-    """Computed decision plus separately surfaced observer failures."""
-
-    decision: Decision
-    observation_failures: list[ObservationFailure] = []

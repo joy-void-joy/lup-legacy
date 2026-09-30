@@ -1,0 +1,34 @@
+subjects = [
+    "OrderedPolicyChain",
+    "OrderedPolicyChain.__init__",
+    "OrderedPolicyChain.decide",
+    "PolicyDispatcher",
+    "PolicyDispatcher.__init__",
+    "PolicyDispatcher.evaluate",
+    "Observer",
+    "Observer.observe",
+    "ObservationFailure",
+    "ObservationFailure.observer",
+    "ObservationFailure.message",
+    "PolicyEvaluation",
+    "PolicyEvaluation.decision",
+    "PolicyEvaluation.observation_failures",
+]
+reason = """
+nothing composed policies through the deny-before-ask chain or dispatched \
+observers around a verdict: a session's policy routes each tool to its \
+family's policy (`SemanticToolPolicy`), and the kernel holds the \
+precedence, so the chain, the dispatcher and the observer seam went; \
+`UnknownToolPolicy` stays in lup.policy.chain"""
+
+[[steps]]
+instruction = """
+Fold several verdicts yourself where you built `OrderedPolicyChain([...])`: \
+decide with each `DecisionPolicy` and return the first deny, else the first \
+ask, else the first defer, else allow (ask when there were none)."""
+
+[[steps]]
+instruction = """
+Call your observers after `policy.decide(event)` in your own code where you \
+used `PolicyDispatcher(policy, observers).evaluate(event)`, catching and \
+recording each observer's failure so it cannot change the verdict."""

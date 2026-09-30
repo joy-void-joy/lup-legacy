@@ -499,8 +499,8 @@ library and inside a generated plugin that cannot import it.
 primitive rows in and a decision out. It is copied *verbatim* into every
 generated tree, which is why a traceback from a hook still points at real
 canonical line numbers. Above it, `rules.py` validates application inputs as
-Pydantic surfaces and erases them into kernel rows, `chain.py` composes
-policies deny-before-ask, and `bundle.py` assembles the kernel source plus
+Pydantic surfaces and erases them into kernel rows, `chain.py` holds a call
+no family classifies at ask, and `bundle.py` assembles the kernel source plus
 rendered data rows for generation. [permissions.md](permissions.md) is the
 full lattice.
 
