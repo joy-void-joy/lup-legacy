@@ -30,6 +30,8 @@ store's roster lock for exactly that: long enough to read the directory and
 rename one file, and held for nothing else a member writes.
 """
 
+import logging
+import shutil
 from collections.abc import Callable
 from datetime import datetime, timedelta
 from functools import cached_property
@@ -64,6 +66,40 @@ from lup.coordination.roster import (
 )
 from lup.coordination.touches import HeldPath, folded_held_path
 from lup.coordination.wake import WakePath
+
+logger = logging.getLogger(__name__)
+
+SUPERSEDED = (
+    "touches.jsonl",
+    "roster.jsonl",
+    "messages.jsonl",
+    "names.jsonl",
+    "delivery",
+    "heartbeats",
+    "resets",
+)
+"""What the 0.2.x store kept in a repository's coordination directory.
+
+Its records, folded whole by every reader — who joined, what each touched,
+what each was called, what was said — and the directories its deliveries,
+beats and resets sat in. The member-file store replaced all of it and nothing
+reads any of it, so the first sweep of a clone that ran 0.2.x deletes it.
+"""
+
+
+def cleared(path: Path) -> None:
+    """Delete one thing the 0.2.x store left, a directory with all it holds.
+
+    A leftover that will not go is logged and left for the next sweep, since
+    what a sweep is for — retiring the silent — must not wait on it.
+    """
+    try:
+        if path.is_dir() and not path.is_symlink():
+            shutil.rmtree(path)
+        else:
+            path.unlink(missing_ok=True)
+    except OSError:
+        logger.warning("the sweep could not delete %s", path, exc_info=True)
 
 
 class Retention(BaseModel, frozen=True):
@@ -202,6 +238,9 @@ class RepositoryPeers:
     the shared git directory, so a console, a hook and a tool server reading it
     at once see the same population and none of them has to be running for the
     others to work.
+
+    *superseded* names what an older store kept in the directory, which a
+    sweep deletes wherever it finds it.
     """
 
     def __init__(
@@ -209,10 +248,12 @@ class RepositoryPeers:
         root: Path,
         pulse: Pulse = Pulse(),
         retention: Retention = Retention(),
+        superseded: tuple[str, ...] = SUPERSEDED,
     ) -> None:
         self.root = coordination_root(root)
         self.pulse = pulse
         self.retention = retention
+        self.superseded = superseded
 
     @cached_property
     def roster(self) -> Roster:
@@ -554,13 +595,17 @@ class RepositoryPeers:
         call, which the roster's own idempotence allows once the file has
         moved.
 
+        What the 0.2.x store kept here, and the member-file store replaced, is
+        deleted by the first sweep that finds it; a sweep finding none of it
+        touches nothing.
+
         A claim needs no sweeping and *by* names nobody: a claim stands or it
         does not, and the filesystem is what says which. Whoever swept is a
         parameter the surfaces pass and this has no record to attribute to
         them.
         """
         moment = now or utc_now()
-        # lup: defer: nothing deletes what the member-file store replaced in
+        # lup: solved: nothing deletes what the member-file store replaced in
         # this directory -- `touches.jsonl`, `roster.jsonl`, `messages.jsonl`,
         # `names.jsonl`, `delivery/`, `heartbeats/` and `resets/` stay on every
         # clone that ran 0.2.x; the user settled that the first sweep of this
@@ -571,7 +616,17 @@ class RepositoryPeers:
         # (taking the dashboard's older history with it) or it stays whole
         retired = store.swept(self.root, moment, self.pulse.stale_after_seconds)
         bare_mail.trimmed(self.root, self.retention.since(moment))
+        for leftover in self.leftovers():
+            cleared(leftover)
         return [folded_member(member) for member in retired]
+
+    def leftovers(self) -> list[Path]:
+        """What an older store left in this directory, of what is still there."""
+        return [
+            path
+            for path in (self.root / name for name in self.superseded)
+            if path.is_symlink() or path.exists()
+        ]
 
     def send(
         self,

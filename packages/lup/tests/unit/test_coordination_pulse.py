@@ -42,12 +42,14 @@ from lup.coordination.bare.store import (
     session_actor,
     present,
 )
+from lup.coordination import repository
 from lup.coordination.pulse import Pulse, PulseHold
 from lup.coordination.refs import ActorRef
-from lup.coordination.repository import RepositoryPeers
+from lup.coordination.repository import SUPERSEDED, RepositoryPeers
 from lup.coordination.roster import RosterMember
 from lup.coordination.wake import WakePath
 from lup.coordination.meeting import coordination_root
+from lup.execution.shell import git
 
 FOREVER = Pulse(stale_after_seconds=3600.0)
 """A window nothing in a test outlives, for the rows that must read as present."""
@@ -272,7 +274,7 @@ def test_a_sweep_moves_the_file_and_the_next_join_revives_the_row(
 def test_a_sweep_deletes_a_departure_past_the_retention_window(
     tmp_path: Path,
 ) -> None:
-    """The store is the population rather than its history."""
+    """The roster is the population rather than its history."""
     peers, member = joined(tmp_path, "mine", FOREVER)
     peers.leave(member, summary="landed it")
 
@@ -282,6 +284,75 @@ def test_a_sweep_deletes_a_departure_past_the_retention_window(
 
     assert not departed_path(peers.root, session_actor(member)).exists()
     assert peers.present() == []
+
+
+def fixture_clone(root: Path) -> Path:
+    """A clone kept as lup's own is: a bare repository, and a worktree of it beside."""
+    bare = root / "repo.git"
+    git("init", "-q", "--bare", "-b", "main", str(bare))
+    work = root / "tree" / "dev"
+    git("-C", str(bare), "worktree", "add", "-q", "--orphan", "-b", "dev", str(work))
+    return work
+
+
+def left_by_0_2(root: Path) -> None:
+    """What a clone that ran 0.2.x has in its coordination directory still."""
+    for name in SUPERSEDED:
+        if name.endswith(".jsonl"):
+            (root / name).write_text('{"kind": "joined"}\n', encoding="utf-8")
+        else:
+            (root / name).mkdir()
+            (root / name / "session-0123456789ab.json").write_text(
+                "{}", encoding="utf-8"
+            )
+
+
+def clearing(monkeypatch: pytest.MonkeyPatch) -> list[str]:
+    """The name of everything a sweep deletes of the 0.2.x store, as it deletes it."""
+    names: list[str] = []
+    deleting = repository.cleared
+
+    def recorded(path: Path) -> None:
+        names.append(path.name)
+        deleting(path)
+
+    monkeypatch.setattr(repository, "cleared", recorded)
+    return names
+
+
+def test_the_first_sweep_deletes_what_the_0_2_store_left_and_no_sweep_again(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    peers, member = joined(fixture_clone(tmp_path), "mine", FOREVER)
+    left_by_0_2(peers.root)
+    peers.send(member, "said before the sweep")
+    kept = sorted(
+        path.name for path in peers.root.iterdir() if path.name not in SUPERSEDED
+    )
+    cleared = clearing(monkeypatch)
+
+    peers.sweep()
+    first = list(cleared)
+    peers.sweep()
+
+    assert peers.root == tmp_path / "repo.git" / "lup" / "coordination"
+    assert sorted(first) == sorted(SUPERSEDED)
+    assert cleared == first
+    assert sorted(path.name for path in peers.root.iterdir()) == kept
+    assert "mail.jsonl" in kept
+
+
+def test_a_sweep_of_a_clone_that_never_ran_0_2_deletes_nothing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    peers, _ = joined(fixture_clone(tmp_path), "mine", FOREVER)
+    before = sorted(path.name for path in peers.root.iterdir())
+    cleared = clearing(monkeypatch)
+
+    peers.sweep()
+
+    assert cleared == []
+    assert sorted(path.name for path in peers.root.iterdir()) == before
 
 
 async def test_the_server_companion_sweeps_and_beats_while_it_serves(

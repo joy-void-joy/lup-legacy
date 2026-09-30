@@ -396,6 +396,12 @@ by the population rather than by its history: a member that stops takes its
 file to `departed/`, and the sweep deletes that after the retention window.
 Nothing here needs compaction.
 
+A clone that ran 0.2.x still holds the records that store folded —
+`touches.jsonl`, `roster.jsonl`, `messages.jsonl`, `names.jsonl`, and the
+`delivery/`, `heartbeats/` and `resets/` directories. Nothing reads them, and
+the first sweep that finds them deletes them; a sweep of a clone without them
+touches nothing.
+
 **Presence is the runtime's process, not a beat.** A session is the Claude
 Code or Codex process somebody started, and its row names that process — its
 id, its start time, and the pid namespace both belong to, since an id alone is

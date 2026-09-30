@@ -298,6 +298,15 @@ The sweep cuts every message sent before the window off the head of
 its number; `MailCursor` gains `cut` and `inode`, and a reader following the
 record is carried across a cut, handed only what it had not read.
 
+### The first sweep deletes what the 0.2.x store left
+
+A clone that ran 0.2.x still held that store's records in its coordination
+directory — `touches.jsonl`, `roster.jsonl`, `messages.jsonl`, `names.jsonl`
+— and its `delivery/`, `heartbeats/` and `resets/` directories, which nothing
+reads. The first sweep that finds them deletes them; a sweep of a clone
+without them touches nothing. `RepositoryPeers` takes the names as
+`superseded`.
+
 ### A nested uv project is declared once and checked by every gate
 
 `SubProject(root, python, …)` in the catalog's `declared_sub_projects()`
