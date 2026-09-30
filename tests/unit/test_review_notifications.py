@@ -14,7 +14,7 @@ from lup.devtools.review.notifications import (
 )
 from lup.devtools.review.wait import ReviewWaiters
 from lup.policy.operations import Operation
-from lup.policy.relay import Answer, PersistentQuestion
+from lup.policy.relay import Answer, PersistentQuestion, QuestionRecord
 from lup.coordination.repository import RepositoryPeers
 from lup.coordination import watch
 from lup.coordination.wake import WakePath, Woken
@@ -73,7 +73,7 @@ def test_result_survives_another_reader_and_is_bound_to_the_exact_answer(
 def test_failure_is_durable_and_does_not_change_the_answer(
     tmp_path: Path, answered: PersistentQuestion
 ) -> None:
-    def fail(roots: tuple[Path, ...], entry: PersistentQuestion) -> ReviewNotification:
+    def fail(roots: tuple[Path, ...], entry: QuestionRecord) -> ReviewNotification:
         assert roots == (tmp_path,) and entry == answered
         raise OSError("Native receiver is unavailable")
 
@@ -94,7 +94,7 @@ def test_interrupted_attempt_remains_explicitly_unconfirmed(
     tmp_path: Path, answered: PersistentQuestion
 ) -> None:
     def interrupted(
-        roots: tuple[Path, ...], entry: PersistentQuestion
+        roots: tuple[Path, ...], entry: QuestionRecord
     ) -> ReviewNotification:
         raise KeyboardInterrupt
 
@@ -119,7 +119,7 @@ def test_persistence_failure_keeps_the_answer_and_attempts_delivery(
 
     def write(
         store: ReviewNotifications,
-        entry: PersistentQuestion,
+        entry: QuestionRecord,
         outcome: ReviewNotification,
     ) -> None:
         nonlocal writes
@@ -128,9 +128,7 @@ def test_persistence_failure_keeps_the_answer_and_attempts_delivery(
             raise OSError("Diagnostic store unavailable")
         original(store, entry, outcome)
 
-    def deliver(
-        roots: tuple[Path, ...], entry: PersistentQuestion
-    ) -> ReviewNotification:
+    def deliver(roots: tuple[Path, ...], entry: QuestionRecord) -> ReviewNotification:
         nonlocal attempts
         attempts += 1
         return ReviewNotification(queued=True, woken=False, detail="Mail queued.")

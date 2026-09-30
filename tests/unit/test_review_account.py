@@ -338,6 +338,8 @@ def test_two_edits_waiting_are_told_how_to_ask_once(
     assert "review propose" not in first
     assert "2 of your edits now wait on the operator" in second
     assert "lup-devtools review propose <directory> --why" in second
+    assert "in plain words" in second
+    assert "`review propose --help` shows how" in second
 
 
 def test_a_transcript_is_read_back_across_blocks_and_past_a_torn_line(

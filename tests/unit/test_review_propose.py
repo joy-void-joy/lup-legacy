@@ -146,3 +146,56 @@ def test_a_manifest_noting_a_file_it_does_not_hold_is_refused(root: Path) -> Non
     assert refused.exit_code == 2
     assert "b.md" in refused.output
     assert relay(root).pending() == []
+
+
+def test_a_file_of_several_with_no_note_parks_with_a_warning_naming_it(
+    root: Path,
+) -> None:
+    directory = staged(
+        root,
+        {"noted.md": "a\n", "bare.md": "b\n"},
+        {"about": {"noted.md": "Adds the setup step."}},
+    )
+
+    parked = RUNNER.invoke(app(root), ["propose", str(directory), "--why", WHY])
+
+    assert parked.exit_code == 0, parked.output
+    question = proposed(root)
+    assert "Warning: the operator sees no note from you on bare.md." in parked.output
+    assert f"review reply {question.id}" in parked.output
+    assert "noted.md" not in parked.output.split("Warning:")[1]
+
+
+def test_one_file_needs_no_note_beside_the_why(root: Path) -> None:
+    directory = staged(root, {"only.md": "a\n"})
+
+    parked = RUNNER.invoke(app(root), ["propose", str(directory), "--why", WHY])
+
+    assert parked.exit_code == 0, parked.output
+    assert "Warning" not in parked.output
+
+
+def test_an_empty_why_is_refused_pointing_at_the_help(root: Path) -> None:
+    directory = staged(root, {"only.md": "a\n"})
+
+    refused = RUNNER.invoke(app(root), ["propose", str(directory), "--why", "  "])
+
+    assert refused.exit_code == 2
+    assert "`review propose --help`" in refused.output
+    assert relay(root).pending() == []
+
+
+def test_show_prints_each_file_s_note_whole_under_its_name(root: Path) -> None:
+    note = "Adds the [missing] `uv sync` step, " + "so a fresh clone builds. " * 8
+    directory = staged(
+        root,
+        {"a.md": "a\n", "b.md": "b\n"},
+        {"about": {"a.md": note, "b.md": "Fixes a typo; no behaviour change."}},
+    )
+    RUNNER.invoke(app(root), ["propose", str(directory), "--why", WHY])
+
+    shown = RUNNER.invoke(app(root), ["show", proposed(root).id])
+
+    assert shown.exit_code == 0, shown.output
+    assert " ".join(note.split()) in " ".join(shown.output.split())
+    assert "agent's note: Fixes a typo; no behaviour change." in shown.output

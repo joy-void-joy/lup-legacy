@@ -464,7 +464,7 @@
     {
       "path": ".codex/plugins/lup/hooks/scripts/policy.py",
       "category": "generated",
-      "sha256": "6154e68b88fcbc4b45175b103aab42b83685455bd339b8f5486bf70d09c5f2fb",
+      "sha256": "cff1b1a5913cf8729d6f6699dd5ef83906488ca6821b60027769746e5aa84504",
       "semantic_id": "hooks.lup-policy",
       "executable": true
     },
@@ -478,7 +478,7 @@
     {
       "path": ".codex/plugins/lup/hooks/scripts/policy_evaluator.py",
       "category": "generated",
-      "sha256": "48f6f2c1d85a431a00afbba7d3ed3b368bfb544d080b8e183728325a5b46ddec",
+      "sha256": "a632d99630fdc59184ee48701318a3fe2c7d3ffca245128333f2645b7d6f8b84",
       "semantic_id": "hooks.lup-policy",
       "executable": false
     },
@@ -765,7 +765,7 @@
     {
       "path": "AGENTS.md",
       "category": "generated",
-      "sha256": "2ba50e0e1df3a60962602d5e8df224495b574b0af3fc775739c75770745c332e",
+      "sha256": "4edd602455d61813b449b382d12c9cd5b950a4fa98ff271a566a78f737c43b70",
       "semantic_id": "harness.guidance",
       "executable": false
     }

@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+### Agents are told to write review notes in plain words
+
+`review propose --help` now explains how to write `--why` and the per-file
+notes in `.proposal.json`: say what changes in ordinary words, then why, name
+the file, function or command, and say whether behaviour changes. It shows a
+plain note next to an obtuse one. The `review reply` text argument, the
+refusal that points agents at `review propose`, and the guidance (CLAUDE.md
+and AGENTS.md) say the same in a line. `review propose` warns, and still
+parks, when a proposal of several files leaves one without a note, naming
+it; an empty `--why` is still refused, now with a pointer to the help.
+`review show` prints each file's note under its name, whole, as the page
+already did.
+
 ### The review relay keeps each question once, and the page reads rows
 
 `.lup/questions.jsonl` opens with `{"relay": 2}` and keeps one record per

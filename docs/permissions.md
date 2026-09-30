@@ -1364,7 +1364,9 @@ kept whole.
 A conversation with two or more edits waiting on the operator is told, in the
 refusal, how to put the next ones as one: each file as it should end up,
 under one directory in `tmp/` mirroring the checkout, and `review propose`
-over it, which parks every file as one review.
+over it, which parks every file as one review. It is told too that `--why`
+and each file's note are written in plain words, and that
+`review propose --help` shows how.
 
 
 ## Two markers change a decision
