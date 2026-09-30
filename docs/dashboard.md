@@ -46,6 +46,14 @@ started keeps running after the turn and its end starts none — measured on
 0.158.0 — so the waiter queues its report into the session's thread with
 `codex queue` when it settles, which starts a turn in an idle session.
 
+A waiter waits as long as the operator takes: it has no limit of its own,
+and every ten minutes it says which reviews it still waits on. `--timeout
+<seconds>` ends it early, exit 3, carrying nothing out and saying to start
+the same `review wait` again. A runtime can still stop it: Claude Code's
+shell tool stops a command at its `timeout`, thirty minutes in the background
+unless the call names more, so the refusal asks for the longest the tool
+takes and to start the waiter again whenever it is stopped still waiting.
+
 ## One service for every session
 
 Every `harness claude` and `harness codex` launch holds the dashboard as a
@@ -75,15 +83,61 @@ state before it serves, so it keeps serving after the worktree that started it
 is removed.
 
 `uv run lup-devtools dashboard status` says whether it serves, where, for how
-many sessions and over which repositories; inside a session it reports only the
-address the launch handed it. `dashboard stop` stops it now, and the next launch
-starts it again. `dashboard open`, `dashboard stop` and `dashboard serve` are
-the operator's, run from a terminal outside every agent session.
+many sessions, over which repositories, how many reviews wait and how many tabs
+follow it; inside a session it reads all of that from the dashboard's pulse
+(below), never from the operator's private state. `dashboard stop` stops it
+now, and the next launch starts it again. `dashboard open`, `dashboard stop`,
+`dashboard serve` and `dashboard reopen` are the operator's, run from a
+terminal outside every agent session.
 
 `dashboard serve` serves one in this terminal instead, with a capability of its
 own, over the current repository or each `--root <checkout>` named, until
 Ctrl+C. `--host` picks a loopback address, `--port` its port, and `--no-open`
 keeps the browser closed.
+
+## When no page is open
+
+The dashboard every launch holds looks at every queue it serves every two
+seconds, whether or not a tab follows the page, and makes a review that parks
+visible three ways.
+
+**A desktop notice**, once per review, naming what waits and where: the
+review's title — the file it changes or the command it runs — the session
+that asked, and the checkout and repository, with the page's address. Where
+more than three park at once, one notice names them all. It goes through
+`notify-send`, the freedesktop notification service's own client, to
+whichever notification daemon the desktop runs. Where `notify-send` is not
+installed — a desktop without libnotify, a headless host, macOS — no notice
+is shown, the dashboard's log says so once, and the other two carry on. What
+it told is kept beside its state, so a restarted dashboard tells nothing
+twice.
+
+**The page itself**, reopened in the browser when a review parks and no tab
+follows the page — a tab already open, even one in the background, means the
+page is left alone. At most once per ten minutes, and only where a browser
+the operator sees can open: on Linux only under X or Wayland. The person
+turns it off with `[dashboard] reopen = false` in their lup config
+(`~/.config/lup/config.toml`), or `uv run lup-devtools dashboard reopen
+--off`, which writes that line; `--on` writes it back, and neither says which
+it is. The notice is sent either way.
+
+**Every session's status line**, where its runtime draws one: `N reviews
+pending · <address>`, the address alone when nothing waits, nothing when no
+dashboard answers. The dashboard publishes what it counts — reviews waiting,
+sessions, repositories, open tabs and its address, never its capability — as
+its pulse, a small file in a directory of its own that every launch lends its
+session read-only at the path the host has it, named by
+`LUP_DASHBOARD_PULSE`. It rewrites the pulse whenever it changes and at least
+every ten seconds, and takes it down when it stops, so a pulse older than
+thirty seconds reads as a dashboard that stopped. The status line runs
+`uv run lup-devtools dashboard line <pulse>`, which the CLI answers before
+loading the project's application, in about a fifth of a second. Claude Code
+shows it through `statusLine`, re-run every fifteen seconds so a review
+another session parks shows while this one is idle, and only where nobody
+else named one: a status line in the account's settings, the person's
+`[claude.settings]` or the project's settings stays theirs. Codex has no
+status line a command can fill (`docs/platform-differentiation.md`), so a
+Codex session has the notice, the reopened page and `dashboard status`.
 
 ## One stream
 

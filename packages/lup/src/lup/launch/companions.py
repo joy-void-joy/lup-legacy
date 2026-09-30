@@ -109,6 +109,19 @@ class CompanionLaunch(BaseModel, frozen=True, arbitrary_types_allowed=True):
     the host's is reached itself, relayed, or refused."""
 
 
+class StatusLine(BaseModel, frozen=True):
+    """A command whose output a session's own status line shows, where its runtime draws one.
+
+    Run by the runtime rather than the agent, at every render and again every
+    ``refresh`` seconds while nothing else moves, so it must answer in a
+    fraction of a second.
+    """
+
+    argv: list[str]
+    refresh: int = Field(default=15, ge=1)
+    """Seconds between runs while the session is otherwise idle."""
+
+
 class Contribution(BaseModel, frozen=True):
     """What one held companion hands the session beside it."""
 
@@ -123,6 +136,9 @@ class Contribution(BaseModel, frozen=True):
 
     notices: list[Notice] = []
     """What the launch says of the companion as the session opens."""
+
+    status_line: StatusLine | None = None
+    """What the session's status line shows, where its runtime draws one."""
 
 
 class ReachedPort(BaseModel, frozen=True):
@@ -140,6 +156,7 @@ class Joined(BaseModel, frozen=True):
     mounts: list[Mount] = []
     ports: list[ReachedPort] = []
     notices: list[Notice] = []
+    status_line: StatusLine | None = None
 
     @classmethod
     def of(cls, contributions: dict[str, Contribution]) -> "Joined":
@@ -147,8 +164,19 @@ class Joined(BaseModel, frozen=True):
 
         Two companions exporting one name would leave the session reaching
         whichever was held last, which no declaration said, so the pair is
-        refused naming both.
+        refused naming both; so are two contributing the one status line a
+        session shows.
         """
+        showing = [
+            companion
+            for companion, each in contributions.items()
+            if each.status_line is not None
+        ]
+        if len(showing) > 1:
+            raise LaunchRefused(
+                f"host companions {', '.join(showing)} all contribute a status "
+                "line, and a session shows one: drop it from all but one"
+            )
         for variable in sorted(
             {name for each in contributions.values() for name in each.environment}
         ):
@@ -178,6 +206,9 @@ class Joined(BaseModel, frozen=True):
             notices=[
                 notice for each in contributions.values() for notice in each.notices
             ],
+            status_line=next(
+                (contributions[companion].status_line for companion in showing), None
+            ),
         )
 
 

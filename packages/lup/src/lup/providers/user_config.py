@@ -81,6 +81,15 @@ class UserCleanup(BaseModel, frozen=True, extra="forbid"):
     removes it sooner."""
 
 
+class UserDashboard(BaseModel, frozen=True, extra="forbid"):
+    """How the dashboard reaches for the person when a review parks."""
+
+    reopen: bool = True
+    """Whether a review parking while no tab follows the page opens it in
+    the browser, at most once per quiet period; `dashboard reopen --off`
+    turns it off. The desktop notice is sent either way."""
+
+
 class UserConfig(BaseModel, frozen=True, extra="forbid"):
     """One person's standing answers, each defaulting to lup's own."""
 
@@ -115,6 +124,8 @@ class UserConfig(BaseModel, frozen=True, extra="forbid"):
     """``[codex.settings]``: Codex configuration handed to every session."""
 
     cleanup: UserCleanup = UserCleanup()
+
+    dashboard: UserDashboard = UserDashboard()
 
     container: OuterContainer = OuterContainer()
     """``[container]``: what every contained session this person launches is

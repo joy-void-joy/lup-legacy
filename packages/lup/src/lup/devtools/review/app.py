@@ -938,13 +938,22 @@ def create_review_app(root: Path) -> typer.Typer:
         first: bool = typer.Option(
             False, "--any", help="Return once the first of them settles"
         ),
+        timeout: float | None = typer.Option(
+            None,
+            "--timeout",
+            min=0,
+            help="Stop after this many seconds with a review still waiting "
+            "(exit 3); unset, wait until every one settles",
+        ),
     ) -> None:
         """Wait on this session's reviews, carrying out each one the operator approves.
 
         Reports each as it settles: an approved edit is written as the operator
         saw it, an approved command runs where it was asked, a declined one
-        brings the operator's note. Start it in the background and carry on.
+        brings the operator's note. Start it in the background and carry on;
+        it waits as long as the operator takes, saying now and then that it
+        still is.
         """
-        raise typer.Exit(wait_on(root, reviews or [], first))
+        raise typer.Exit(wait_on(root, reviews or [], first, timeout))
 
     return app

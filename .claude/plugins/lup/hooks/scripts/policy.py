@@ -1311,6 +1311,10 @@ def review_hook_call(
     if entry is not None and entry["state"] == "pending":
         return {"state": "pending", "id": entry["id"], "reason": entry["reason"]}
     identifier = os.urandom(16).hex()
+    # The checkout the call changes: the one holding every file it records,
+    # which a session editing a sibling worktree does not sit in, and the
+    # session's own where it records none or files in several.
+    changed = {worktree_root(path) for path in resolved.values()} - {""}
     entry = {
         "id": identifier,
         "fingerprint": fingerprint,
@@ -1338,7 +1342,7 @@ def review_hook_call(
             "tool": tool,
             "payload": payload,
             "cwd": str(root),
-            "worktree": str(root),
+            "worktree": changed.pop() if len(changed) == 1 else str(root),
             "placement": placement,
             "provider": provider,
         },
@@ -5196,17 +5200,27 @@ def waiting(command, payload):
     ends with it -- `CLAUDE_CODE_ENTRYPOINT` is `sdk-cli` there, measured on
     2.1.283, where a subagent's hook payload carries `agent_id` -- so there
     the wait moves to the foreground once nothing else is left.
+
+    The tool stops a command at its `timeout` whatever it waits on: thirty
+    minutes in the background unless the call names more, two hours at most,
+    and ten minutes at most in the foreground -- the Bash tool's own schema
+    on 2.1.285. The waiter has no limit of its own, so it is started with the
+    longest the tool takes, and started again when stopped still waiting.
     """
     started = (
-        f"Start `{command}` in the background (run_in_background) to be woken "
-        "with the result."
+        f"Start `{command}` in the background (run_in_background, with the "
+        "longest timeout the tool takes, 7200000 ms) to be woken with the "
+        "result. It waits until the operator answers; if it is stopped before "
+        "the operator answers, start it again."
     )
     interactive = declared_identity("CLAUDE_CODE_ENTRYPOINT") == "cli"
     if interactive and "agent_id" not in payload:
         return started
     return (
         started + " A background command ends with this run, so once nothing "
-        "else is left, run it in the foreground instead."
+        "else is left, run it in the foreground instead, with the longest "
+        "timeout the tool takes there, 600000 ms, again each time it stops "
+        "still waiting."
     )
 
 

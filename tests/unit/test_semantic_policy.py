@@ -4353,6 +4353,7 @@ def test_a_tee_and_a_redirect_answer_alike_in_a_confined_session(
         "dashboard serve --no-open --root /example",
         "dashboard open",
         "dashboard stop",
+        "dashboard reopen --off",
         "harness policy-refresh",
     ],
 )

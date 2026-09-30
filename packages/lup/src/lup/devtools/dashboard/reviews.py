@@ -38,6 +38,7 @@ import typer
 from pydantic import BaseModel, Field
 
 from lup.coordination.repository import PeerDepartedError
+from lup.devtools.dashboard.address import AdvertisedDashboard
 from lup.devtools.dashboard.companion import (
     Dashboard,
     DashboardHealth,
@@ -48,6 +49,7 @@ from lup.devtools.dashboard.companion import (
     refuse_inside_a_session,
 )
 from lup.devtools.dashboard.panes import SetupPane, SetupPanes
+from lup.devtools.dashboard.pulse import PulseFile, status_line
 from lup.devtools.review.app import (
     RequesterPresence,
     ReviewDetail,
@@ -63,11 +65,14 @@ from lup.devtools.review.notifications import (
     notify_requester,
 )
 from lup.policy.relay import PersistentQuestion, RelaySignature
+from lup.providers.user_config import UserConfigFile
 from lup.sandbox.rail import repository_layout, sibling_worktrees
 from lup.types import StringMap
 
 if TYPE_CHECKING:
     from fastapi import BackgroundTasks, FastAPI
+
+    from lup.devtools.dashboard.stream import LiveFeed
 
 logger = logging.getLogger(__name__)
 
@@ -381,13 +386,15 @@ def dashboard_app(
     bundles: Path | None = None,
     health: DashboardHealth | None = None,
     panes: SetupPanes | None = None,
+    feed: "LiveFeed | None" = None,
 ) -> "FastAPI":
     """Build the dashboard: an authenticated browser surface over reviews and sessions.
 
     ``health`` is what a running dashboard answers its launcher with, and
     ``panes`` each repository's setup page; neither is served where not given.
     The repositories whose sessions it shows are the ``roots`` named and
-    every one the ``registry`` knows.
+    every one the ``registry`` knows. ``feed`` is the stream's producer where
+    the caller follows it too — the service, asking whether any tab is open.
     """
     from fastapi import BackgroundTasks, HTTPException, Request
     from fastapi.responses import JSONResponse, Response, StreamingResponse
@@ -417,7 +424,7 @@ def dashboard_app(
     def watched() -> list[KnownRepository]:
         return [*named, *(registry.repositories() if registry is not None else [])]
 
-    feed = LiveFeed(watched, store)
+    feed = feed if feed is not None else LiveFeed(watched, store)
 
     @app.middleware("http")
     async def authorize(
@@ -642,8 +649,53 @@ def create_operator_dashboard_app(root: Path) -> typer.Typer:
 
     @app.command("status")
     def status_cmd() -> None:
-        """Say whether the dashboard runs, where, and for how many sessions."""
+        """Say whether the dashboard runs, where, for how many sessions, and what waits."""
         typer.echo(dashboard_status(companion, root).model_dump_json(indent=2))
+
+    @app.command("line")
+    def line_cmd(
+        pulse: Path | None = typer.Argument(
+            None,
+            help="The pulse file to read; unset, the one this session's launch "
+            "named, else the running dashboard's",
+        ),
+    ) -> None:
+        """Print what a session's status line shows: the reviews waiting, and where.
+
+        Nothing where no dashboard answers; the address alone where nothing
+        waits. Named with its pulse, as a status line runs it, it is answered
+        before the project's application loads.
+        """
+        named = pulse or Path(
+            AdvertisedDashboard().pulse
+            or PulseFile.of(companion.slot(root).directory).path
+        )
+        shown = status_line(named)
+        if shown:
+            typer.echo(shown)
+
+    @app.command("reopen")
+    def reopen_cmd(
+        turned: bool | None = typer.Option(
+            None,
+            "--on/--off",
+            help="Turn reopening on or off in your lup config; neither says which it is",
+        ),
+    ) -> None:
+        """Whether a review parking while no tab is open reopens the page in the browser."""
+
+        def settled() -> None:
+            config = UserConfigFile()
+            if turned is not None:
+                config.record({("dashboard", "reopen"): turned})
+            state = "on" if config.load().dashboard.reopen else "off"
+            typer.echo(
+                f"Reopening the page when a review parks with no tab open: {state} "
+                f"(`[dashboard] reopen` in {config.path()}); the desktop notice "
+                "is sent either way."
+            )
+
+        refused("reopen", settled)
 
     @app.command("stop")
     def stop_cmd() -> None:

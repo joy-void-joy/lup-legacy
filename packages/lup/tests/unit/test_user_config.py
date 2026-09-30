@@ -52,6 +52,13 @@ def test_a_person_who_wrote_nothing_gets_lups_defaults(tmp_path: Path) -> None:
     assert loaded.theme.codex is None
     assert loaded.effort is None
     assert loaded.tier == "strongest"
+    assert loaded.dashboard.reopen
+
+
+def test_reopening_the_dashboard_is_the_persons_to_turn_off(tmp_path: Path) -> None:
+    config = written(tmp_path / "lup", "[dashboard]\nreopen = false\n")
+
+    assert not config.load().dashboard.reopen
 
 
 def test_one_line_changes_one_answer_and_leaves_the_rest_lups(tmp_path: Path) -> None:

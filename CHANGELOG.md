@@ -195,6 +195,34 @@ message posted also lands on the coordination store's `mail.jsonl`, which
 recipient rather than a mailbox's name, and a cohort no longer signs with its
 run id.
 
+### A parked review reaches the operator with no page open
+
+The dashboard's service looks at every queue every two seconds whether or not
+a tab follows: each review parked since gets one desktop notice through
+`notify-send` naming what waits and where, and where no tab follows the page
+it opens the page, at most once per ten minutes, unless `[dashboard] reopen =
+false` in the person's lup config (`dashboard reopen --on/--off` writes it).
+It publishes its pulse — reviews waiting, sessions, repositories, open tabs,
+its address — to a file every launch lends its session read-only
+(`LUP_DASHBOARD_PULSE`), which a Claude session's status line shows as `N
+reviews pending · <address>` through `dashboard line`, answered before the
+project's application loads; Codex has no status line a command fills.
+`dashboard status` inside a session reads the pulse rather than reporting
+zeros. `Contribution` and `Joined` carry a neutral `StatusLine`.
+
+### `review wait` waits until the review settles
+
+It has no limit of its own and says every ten minutes what it still waits on;
+`--timeout` ends it early with exit 3. A Claude refusal asks for the shell
+tool's longest timeout and to start the waiter again when it is stopped, since
+the tool stops a background command at thirty minutes unless told more.
+
+### A parked review is labelled with the checkout it changes
+
+A session editing a sibling worktree parked reviews labelled with its own
+checkout; the parked operation's `worktree` is now the checkout holding every
+file the call records, and `Operation.summary` names it.
+
 ### Every launch holds one dashboard per person
 
 `harness claude|codex` holds the dashboard as a host companion: the first

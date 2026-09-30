@@ -22,6 +22,7 @@ import uuid
 import webbrowser
 from collections.abc import Iterator
 from contextlib import contextmanager
+from datetime import UTC, datetime
 from importlib import resources
 from importlib.util import find_spec
 from pathlib import Path
@@ -34,6 +35,7 @@ from pydantic_settings import BaseSettings
 
 from lup.coordination.identity import MEMBER_ENV, NAME_ENV
 from lup.devtools.dashboard.address import AdvertisedDashboard
+from lup.devtools.dashboard.pulse import DASHBOARD_PULSE_ENV, DashboardPulse, PulseFile
 from lup.harness.environment import inside_a_container
 from lup.harness.notice import Notice
 from lup.harness.requirements import SENTINEL_VARIABLE
@@ -48,7 +50,9 @@ from lup.launch.companions import (
     PortName,
     PortNumber,
     SharedProcess,
+    StatusLine,
 )
+from lup.launch.declaration import Mount
 from lup.launch.preflight import NONCE_VARIABLE
 from lup.policy.identity import AGENT_IDENTITY_ENV, DASHBOARD_URL_ENV
 from lup.sandbox.rail import repository_layout, sibling_worktrees
@@ -332,6 +336,27 @@ def page_url(place: CompanionPlace) -> str:
     return f"http://127.0.0.1:{place.ports['page']}"
 
 
+def pulse_status_line(root: Path, pulse: Path) -> StatusLine:
+    """What a session's status line runs: its checkout's CLI reading the pulse, and nothing more.
+
+    Unsynced, since a status line is no moment to install anything, and on a
+    route the CLI answers before loading the project's application.
+    """
+    return StatusLine(
+        argv=[
+            "uv",
+            "run",
+            "--no-sync",
+            "--directory",
+            str(root),
+            "lup-devtools",
+            "dashboard",
+            "line",
+            str(pulse),
+        ]
+    )
+
+
 class Dashboard(SharedProcess, frozen=True):
     """The operator's dashboard, one process per person, held by every session they launch.
 
@@ -365,10 +390,12 @@ class Dashboard(SharedProcess, frozen=True):
         )
 
     def contribution(self, place: CompanionPlace, root: Path) -> Contribution:
-        del root
+        """Its address, and its pulse lent read-only at the host's path for the status line to read."""
         url = page_url(place)
+        pulse = PulseFile.of(place.state).path
         return Contribution(
-            environment={DASHBOARD_URL_ENV: url},
+            environment={DASHBOARD_URL_ENV: url, DASHBOARD_PULSE_ENV: str(pulse)},
+            mounts=[Mount(path=pulse.parent)],
             ports=dict(place.ports),
             notices=[
                 Notice(
@@ -379,6 +406,7 @@ class Dashboard(SharedProcess, frozen=True):
                     urgency="detail",
                 )
             ],
+            status_line=pulse_status_line(root, pulse),
         )
 
     def answers(self, place: CompanionPlace) -> bool:
@@ -408,14 +436,21 @@ class Dashboard(SharedProcess, frozen=True):
         if inside_a_container(launch.environment):
             # A session launched from inside a container launches there too,
             # where a dashboard would serve nobody: the one the host holds
-            # already reads this checkout's reviews, at the address handed in.
+            # already reads this checkout's reviews, at the address handed in,
+            # and publishes its pulse where this container already reads it.
             handed = launch.environment
+            passed = {
+                name: handed[name]
+                for name in (DASHBOARD_URL_ENV, DASHBOARD_PULSE_ENV)
+                if name in handed
+            }
             yield Contribution(
-                environment=(
-                    {DASHBOARD_URL_ENV: handed[DASHBOARD_URL_ENV]}
-                    if DASHBOARD_URL_ENV in handed
-                    else {}
-                )
+                environment=passed,
+                status_line=(
+                    pulse_status_line(launch.root, Path(passed[DASHBOARD_PULSE_ENV]))
+                    if DASHBOARD_PULSE_ENV in passed
+                    else None
+                ),
             )
             return
         if find_spec("fastapi") is None or find_spec("uvicorn") is None:
@@ -435,6 +470,8 @@ class Dashboard(SharedProcess, frozen=True):
         slot = self.slot(launch.root)
         capability = DashboardToken(directory=slot.directory).minted()
         registry = DashboardRegistry(directory=slot.directory)
+        # Made before the session's mount table names it, which it must exist for.
+        PulseFile.of(slot.directory).path.parent.mkdir(mode=0o700, exist_ok=True)
         with (
             registry.registered(launch.root),
             super().held(launch) as contribution,
@@ -457,31 +494,83 @@ class DashboardStatus(BaseModel, frozen=True):
     """How many running launches hold it."""
 
     repositories: list[str] = []
+    pending: int = 0
+    """Reviews waiting on the operator, across every repository it serves."""
+
+    tabs: int = 0
+    """Pages following it now."""
+
     detail: str
 
 
-def dashboard_status(dashboard: Dashboard, root: Path) -> DashboardStatus:
-    """The dashboard as whoever asks may read it.
+def published_status(advertised: AdvertisedDashboard, now: datetime) -> DashboardStatus:
+    """The dashboard as its pulse says, which is all a session may read of it.
 
-    Inside a session, only the address its launch handed it: the private
-    state is the operator's, and a session reading it would be a session
-    holding the capability.
+    The private state is the operator's, and a session reading it would be a
+    session holding the capability; the pulse is what the service publishes
+    for sessions, lent to each read-only.
     """
-    if SessionMarkers().inside_a_session():
-        advertised = AdvertisedDashboard().url
+    if not advertised.pulse:
         return DashboardStatus(
-            serving=bool(advertised),
-            url=advertised,
+            serving=bool(advertised.url),
+            url=advertised.url,
             detail=(
-                "The address this session's launch handed it; the operator "
-                "opens the page with `uv run lup-devtools dashboard open`."
-                if advertised
+                "The address this session's launch handed it; the launch lent "
+                "no pulse, so what the dashboard counts is not readable here."
+                if advertised.url
                 else "This session's launch held no dashboard."
             ),
         )
+    pulse = PulseFile(path=Path(advertised.pulse)).read()
+    if pulse is None:
+        return DashboardStatus(
+            serving=False,
+            url=advertised.url,
+            detail="The dashboard stopped: it took its pulse down.",
+        )
+    if not pulse.current(now):
+        return DashboardStatus(
+            serving=False,
+            url=pulse.url,
+            detail=(
+                f"The dashboard stopped: it last published at {pulse.beat:%H:%M:%S} "
+                "UTC without taking its pulse down. The next `harness "
+                "claude|codex` session starts it again."
+            ),
+        )
+    return counted(
+        pulse,
+        "As the dashboard published it moments ago; the operator opens the "
+        "page with `uv run lup-devtools dashboard open`.",
+    )
+
+
+def counted(pulse: DashboardPulse, detail: str) -> DashboardStatus:
+    """A serving dashboard's status, in the counts its pulse carries."""
+    return DashboardStatus(
+        serving=True,
+        url=pulse.url,
+        pid=pulse.pid,
+        sessions=pulse.sessions,
+        repositories=pulse.repositories,
+        pending=pulse.pending,
+        tabs=pulse.tabs,
+        detail=detail,
+    )
+
+
+def dashboard_status(dashboard: Dashboard, root: Path) -> DashboardStatus:
+    """The dashboard as whoever asks may read it: a session, from its pulse alone."""
+    now = datetime.now(UTC)
+    if SessionMarkers().inside_a_session():
+        return published_status(AdvertisedDashboard(), now)
     standing = dashboard.standing(root)
     registry = DashboardRegistry(directory=standing.place.state)
     serving = standing.serving
+    pulse = PulseFile.of(standing.place.state).read()
+    held = "Held by the running sessions; it stops once the last one ends."
+    if serving is not None and pulse is not None and pulse.current(now):
+        return counted(pulse, held)
     return DashboardStatus(
         serving=serving is not None,
         url=page_url(standing.place) if "page" in standing.place.ports else "",
@@ -489,7 +578,7 @@ def dashboard_status(dashboard: Dashboard, root: Path) -> DashboardStatus:
         sessions=standing.leases,
         repositories=[str(known.repository) for known in registry.repositories()],
         detail=(
-            "Held by the running sessions; it stops once the last one ends."
+            held
             if serving is not None
             else "Not running: the next `harness claude|codex` session starts it, "
             "or `uv run lup-devtools dashboard serve` serves one in this terminal."

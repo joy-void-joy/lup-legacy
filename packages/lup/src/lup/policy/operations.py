@@ -241,6 +241,12 @@ class Operation(BaseModel, frozen=True):
         return self.fingerprint() == other.fingerprint()
 
     def summary(self) -> str:
-        """One line a reviewer reads, which is the operation and not its id."""
+        """One line a reviewer reads, which is the operation and not its id.
+
+        Where it acts: the directory it runs from, unless it changes another
+        checkout than the one holding that directory -- a session editing a
+        sibling worktree -- which is then the one named.
+        """
         placed = "" if self.placement == "ambient" else f" [{self.placement}]"
-        return f"{self.tool}{placed} in {self.cwd.as_posix()}"
+        where = self.cwd if self.cwd.is_relative_to(self.worktree) else self.worktree
+        return f"{self.tool}{placed} in {where.as_posix()}"

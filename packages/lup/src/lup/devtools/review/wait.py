@@ -375,16 +375,29 @@ def settling(
     store: QuestionRelay,
     waiting: list[PersistentQuestion],
     poll: float = 1.0,
+    timeout: float | None = None,
+    announce: float = 600.0,
 ) -> Iterator[WaitedReview]:
     """Each review as it settles, reported the moment it does, until all have.
 
     The queue is read again only when the relay or the host's answers to it
     change on disk, so a waiter left running for hours costs two file checks
-    a poll.
+    a poll. It has no limit of its own: only a ``timeout`` it was handed ends
+    it with reviews still waiting. Every ``announce`` seconds it says which
+    it still waits on, so its output shows it alive to whoever reads it.
     """
     remaining = [question.id for question in waiting]
     seen: RelaySignature | None = None
+    started = time.monotonic()
+    announced = started
     while remaining:
+        now = time.monotonic()
+        if timeout is not None and now - started >= timeout:
+            return
+        if now - announced >= announce:
+            minutes = round((now - started) / 60)
+            typer.echo(f"still waiting on {', '.join(remaining)} ({minutes} min)")
+            announced = now
         signature = store.signature()
         if signature == seen:
             time.sleep(poll)
@@ -418,12 +431,20 @@ def woken(asker: Asker, reports: list[WaitedReview]) -> None:
     )
 
 
-def wait_on(root: Path, reviews: list[str], first: bool) -> int:
+def wait_on(
+    root: Path,
+    reviews: list[str],
+    first: bool,
+    timeout: float | None = None,
+    announce: float = 600.0,
+    poll: float = 1.0,
+) -> int:
     """Wait on reviews this session asked, carry out what was approved, report it all.
 
     Exits 0 where everything waited on was carried out, 1 where anything was
-    declined, expired, cancelled or in conflict, and 2 where nothing could be
-    waited on at all.
+    declined, expired, cancelled or in conflict, 2 where nothing could be
+    waited on at all, and 3 where the ``timeout`` it was handed passed with
+    a review still waiting, which is left as it was.
     """
     store = QuestionRelay(root / ".lup/questions.jsonl")
     asker = Asker.here(root)
@@ -437,10 +458,16 @@ def wait_on(root: Path, reviews: list[str], first: bool) -> int:
         return 0
     typer.echo("waiting on " + ", ".join(question.id for question in waiting))
     with ReviewWaiters(root=root).holding([question.id for question in waiting]):
-        reports = list(
-            islice(settling(root, store, waiting), 1)
-            if first
-            else settling(root, store, waiting)
-        )
+        settled = settling(root, store, waiting, poll, timeout, announce)
+        reports = list(islice(settled, 1) if first else settled)
     woken(asker, reports)
+    reported = {report.review for report in reports}
+    left = [question.id for question in waiting if question.id not in reported]
+    if left and not (first and reports):
+        typer.echo(
+            f"still waiting on {', '.join(left)}: its timeout passed and nothing "
+            "was carried out for it — start the same `review wait` again to "
+            "keep waiting"
+        )
+        return 3
     return 0 if all(report.carried for report in reports) else 1
