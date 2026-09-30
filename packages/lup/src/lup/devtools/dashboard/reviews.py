@@ -35,7 +35,7 @@ from typing import TYPE_CHECKING
 import httpx
 import sh
 import typer
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, PrivateAttr
 
 from lup.coordination.repository import PeerDepartedError
 from lup.devtools.dashboard.address import AdvertisedDashboard
@@ -57,20 +57,26 @@ from lup.devtools.review.app import (
     ReviewSummary,
     expire_orphaned,
     relay,
-    stale_preimages,
 )
 from lup.devtools.review.notifications import (
     ReviewNotification,
     ReviewNotifications,
     notify_requester,
 )
-from lup.policy.relay import PersistentQuestion, RelaySignature
+from lup.devtools.review.preimages import PreimageWatch
+from lup.devtools.review.thread import (
+    RecordedRemark,
+    Reply,
+    ReviewThread,
+    spoken_on,
+)
+from lup.policy.relay import LineComment, PersistentQuestion, RelaySignature
 from lup.providers.user_config import UserConfigFile
 from lup.sandbox.rail import repository_layout, sibling_worktrees
 from lup.types import StringMap
 
 if TYPE_CHECKING:
-    from fastapi import BackgroundTasks, FastAPI
+    from fastapi import FastAPI
 
     from lup.devtools.dashboard.stream import LiveFeed
 
@@ -93,15 +99,24 @@ class ReviewSnapshot(BaseModel, frozen=True):
 
 
 class ReviewAnswer(BaseModel, frozen=True, extra="forbid"):
-    """A decision bound to the fingerprint the browser displayed."""
+    """A decision bound to the fingerprint the browser displayed, with what the operator wrote."""
 
     approved: bool
     note: str = ""
+    comments: list[LineComment] = []
+    fingerprint: str
+
+
+class ReviewRemarkRequest(BaseModel, frozen=True, extra="forbid"):
+    """The operator's note and line comments on a review, sent without deciding it."""
+
+    note: str = ""
+    comments: list[LineComment] = []
     fingerprint: str
 
 
 class ReviewDecision(BaseModel, frozen=True):
-    """The recorded answer and the result of notifying its requester."""
+    """What the operator's action recorded, and how the requester hears of it."""
 
     review: ReviewDetail
     notification: ReviewNotification
@@ -151,14 +166,27 @@ class ReviewQueue(BaseModel, frozen=True):
     root: Path
     signature: RelaySignature = RelaySignature()
     questions: list[PersistentQuestion] = []
+    remarks: dict[str, list[RecordedRemark]] = {}
+    """The operator's remarks on each review, by review id."""
+
+    replies: dict[str, list[Reply]] = {}
+    """The requester's replies on each review, by review id."""
+
     errors: list[ReviewError] = []
 
     @classmethod
     def read(cls, root: Path) -> "ReviewQueue":
         store = relay(root)
         signature = store.signature()
+        thread = ReviewThread.of(store)
         try:
-            return cls(root=root, signature=signature, questions=store.questions())
+            return cls(
+                root=root,
+                signature=signature,
+                questions=store.questions(),
+                remarks=thread.remarks(),
+                replies=thread.replies(),
+            )
         except (OSError, ValueError) as error:
             return cls(
                 root=root,
@@ -166,17 +194,26 @@ class ReviewQueue(BaseModel, frozen=True):
                 errors=[ReviewError(root=str(root), message=str(error))],
             )
 
+    def said(self, question: PersistentQuestion) -> int:
+        """How many remarks and replies one review's thread holds."""
+        return sum(
+            entry.kind != "answer"
+            for entry in spoken_on(question, self.remarks, self.replies)
+        )
 
-def settled_key(root: Path, question: PersistentQuestion) -> str | None:
+
+def settled_key(root: Path, question: PersistentQuestion, said: int) -> str | None:
     """What a review's row is kept under, or nothing where time alone can change it.
 
     A pending review with an expiry turns into an expired one without a
-    record being written, so its row is projected afresh each time.
+    record being written, so its row is projected afresh each time. Whether
+    a waiting review's files moved is read afresh on every look, beside the
+    row rather than into its key.
     """
     if question.state == "pending" and question.expires is not None:
         return None
     answered = question.answer.model_dump_json() if question.answer else ""
-    return f"{root}#{question.id}#{question.state}#{question.fingerprint}#{answered}"
+    return f"{root}#{question.id}#{question.state}#{question.fingerprint}#{answered}#{said}"
 
 
 class ReviewStore(BaseModel, frozen=True):
@@ -195,6 +232,7 @@ class ReviewStore(BaseModel, frozen=True):
 
     _queues: dict[Path, ReviewQueue] = {}
     _rows: dict[str, ReviewSummary] = {}
+    _preimages: PreimageWatch = PrivateAttr(default_factory=PreimageWatch)
 
     def anchors(self) -> tuple[Path, ...]:
         """The named roots, then every repository the registry knows."""
@@ -231,12 +269,38 @@ class ReviewStore(BaseModel, frozen=True):
         self._queues[root] = queue
         return queue
 
-    def row(self, root: Path, question: PersistentQuestion) -> ReviewSummary:
+    def retired(self, root: Path, question: PersistentQuestion) -> PersistentQuestion:
+        """The question as it stands once staleness is settled: retired where a recorded file moved.
+
+        Asked of every waiting review on every look, and again when one is
+        opened or answered, since a file moves without the queue changing --
+        which is how a review turned unapprovable in front of the operator.
+        A stale review leaves the queue at once and its requester is told to
+        ask again; what moved is read through a stat-keyed watch, so a waiting
+        review whose files did not move costs a few stats.
+        """
+        if question.state != "pending":
+            return question
+        drifted = self._preimages.moved(question)
+        if not drifted:
+            return question
+        retired = relay(root).retire_stale(
+            question.id, [each.path for each in drifted], "the dashboard"
+        )
+        try:
+            notify_requester(self.checkout_roots(), root, retired)
+        except Exception:
+            logger.exception("%s went stale and its requester was not told", retired.id)
+        return retired
+
+    def row(self, queue: ReviewQueue, question: PersistentQuestion) -> ReviewSummary:
         """One review's row, projected once where nothing but a new record changes it."""
-        key = settled_key(root, question)
+        entry = self.retired(queue.root, question)
+        said = queue.said(entry)
+        key = settled_key(queue.root, entry, said)
         if key is not None and key in self._rows:
             return self._rows[key]
-        summary = ReviewSummary.of(root, question, self.principal)
+        summary = ReviewSummary.of(queue.root, entry, self.principal, said)
         if key is not None:
             self._rows[key] = summary
         return summary
@@ -262,7 +326,9 @@ class ReviewStore(BaseModel, frozen=True):
         return ReviewSnapshot(
             roots=[located.within(repository) if repository else located],
             reviews=[
-                self.row(root, entry).model_copy(update={"session": seen.called(entry)})
+                self.row(queue, entry).model_copy(
+                    update={"session": seen.called(entry)}
+                )
                 for entry in queue.questions
             ],
             errors=queue.errors,
@@ -323,47 +389,103 @@ class ReviewStore(BaseModel, frozen=True):
 
     def detail(self, key: str) -> ReviewDetail:
         located = self.locate(key)
-        return ReviewDetail.of(located.root, located.question, self.principal)
+        return ReviewDetail.of(
+            located.root, self.retired(located.root, located.question), self.principal
+        )
 
-    def answer(
-        self,
-        key: str,
-        decision: ReviewAnswer,
-        background: "BackgroundTasks | None" = None,
-    ) -> ReviewDecision:
+    def bound(self, key: str, fingerprint: str) -> LocatedReview:
+        """The review under *key*, where it still carries the fingerprint the page displayed."""
         from fastapi import HTTPException
 
         located = self.locate(key)
-        entry = located.question
-        if entry.stale():
-            raise HTTPException(status_code=409, detail="Review has expired")
         if not hmac.compare_digest(
-            decision.fingerprint.encode("utf-8"), entry.fingerprint.encode("utf-8")
+            fingerprint.encode("utf-8"), located.question.fingerprint.encode("utf-8")
         ):
-            raise HTTPException(status_code=409, detail="Review fingerprint changed")
-        if decision.approved and (reason := stale_preimages(entry)):
-            raise HTTPException(status_code=409, detail=reason)
+            raise HTTPException(
+                status_code=409,
+                detail="The review changed since the page showed it; read it again.",
+            )
+        return located
+
+    def answer(self, key: str, decision: ReviewAnswer) -> ReviewDecision:
+        """Record the operator's decision, and tell the requester by its one channel.
+
+        A review a recorded file moved under is retired as stale rather than
+        answered, since what its waiter would carry out is no longer what the
+        operator read; the refusal names what moved, and the page rolls the
+        answer back where the operator is looking.
+        """
+        from fastapi import HTTPException
+
+        located = self.bound(key, decision.fingerprint)
+        entry = self.retired(located.root, located.question)
+        if entry.state == "stale":
+            raise HTTPException(
+                status_code=409,
+                detail="It went stale before it was answered: "
+                + "; ".join(str(path) for path in entry.moved)
+                + " changed since it was recorded. It left the queue, and its "
+                "session is told to ask again.",
+            )
+        if entry.overdue():
+            raise HTTPException(
+                status_code=409, detail="The review expired unanswered."
+            )
         try:
             settled = relay(located.root).answer(
-                entry.id, self.principal, decision.approved, decision.note
+                entry.id,
+                self.principal,
+                decision.approved,
+                decision.note,
+                comments=decision.comments,
             )
         except ValueError as error:
             raise HTTPException(status_code=409, detail=str(error)) from error
         if settled.answer is None:
-            raise HTTPException(status_code=409, detail=f"Review is {settled.state}")
+            raise HTTPException(
+                status_code=409, detail=f"The review is {settled.state}."
+            )
         notifications = ReviewNotifications(root=located.root)
-        attempt = notifications.prepare(settled)
-
-        def deliver() -> ReviewNotification:
-            return notify_requester(self.checkout_roots(), settled)
-
-        if background is None:
-            notification = notifications.complete(settled, attempt, deliver)
-        else:
-            background.add_task(notifications.complete, settled, attempt, deliver)
-            notification = attempt.notification
+        notification = notifications.complete(
+            settled,
+            notifications.prepare(settled),
+            lambda: notify_requester(self.checkout_roots(), located.root, settled),
+        )
         return ReviewDecision(
             review=ReviewDetail.of(located.root, settled, self.principal),
+            notification=notification,
+        )
+
+    def remark(self, key: str, said: ReviewRemarkRequest) -> ReviewDecision:
+        """Send the operator's note and line comments on a review without deciding it.
+
+        The review stays as it was; the requester hears of the remark by the
+        same one channel an answer takes, and its waiter says the review is
+        still pending and how to wait on it again.
+        """
+        from fastapi import HTTPException
+
+        located = self.bound(key, said.fingerprint)
+        entry = located.question
+        try:
+            recorded = ReviewThread.of(relay(located.root)).remark(
+                entry, self.principal, said.note, said.comments
+            )
+        except ValueError as error:
+            raise HTTPException(status_code=409, detail=str(error)) from error
+        try:
+            notification = notify_requester(
+                self.checkout_roots(), located.root, entry, recorded.remark
+            )
+        except Exception as error:
+            logger.exception("a remark on %s was recorded and not delivered", entry.id)
+            notification = ReviewNotification(
+                queued=False,
+                woken=False,
+                detail=f"Recorded; telling the session failed: {error}",
+            )
+        return ReviewDecision(
+            review=ReviewDetail.of(located.root, entry, self.principal),
             notification=notification,
         )
 
@@ -396,7 +518,7 @@ def dashboard_app(
     every one the ``registry`` knows. ``feed`` is the stream's producer where
     the caller follows it too — the service, asking whether any tab is open.
     """
-    from fastapi import BackgroundTasks, HTTPException, Request
+    from fastapi import HTTPException, Request
     from fastapi.responses import JSONResponse, Response, StreamingResponse
 
     from lup.devtools.dashboard.live import ReplyOutcome, ReplyRequest, reply
@@ -463,10 +585,12 @@ def dashboard_app(
         return store.detail(key)
 
     @app.post("/api/reviews/{key}/answer")
-    def decide(
-        key: str, decision: ReviewAnswer, background_tasks: BackgroundTasks
-    ) -> ReviewDecision:
-        return store.answer(key, decision, background_tasks)
+    def decide(key: str, decision: ReviewAnswer) -> ReviewDecision:
+        return store.answer(key, decision)
+
+    @app.post("/api/reviews/{key}/remark")
+    def remark(key: str, said: ReviewRemarkRequest) -> ReviewDecision:
+        return store.remark(key, said)
 
     @app.get("/api/stream")
     async def stream(request: Request) -> StreamingResponse:

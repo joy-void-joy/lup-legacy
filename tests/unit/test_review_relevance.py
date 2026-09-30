@@ -433,15 +433,13 @@ def test_preview_cache_binds_complete_inputs_but_not_answer_state_or_live_stalen
         reason="shell gate",
         preconditions={path: "old\n"},
     )
-    first = ReviewDetail.of(tmp_path, entry, "operator")
+    ReviewDetail.of(tmp_path, entry, "operator")
     assert calls == ["old\n"]
-    assert first.stale_reason == ""
     path.write_text("changed\n")
     answered = entry.model_copy(update={"state": "approved"})
     second = ReviewDetail.of(tmp_path, answered, "operator")
     assert calls == ["old\n"]
     assert second.summary.state == "approved"
-    assert second.stale_reason
     changed_input = entry.model_copy(update={"preconditions": {path: "old old\n"}})
     third = ReviewDetail.of(tmp_path, changed_input, "operator")
     assert calls == ["old\n", "old old\n"]

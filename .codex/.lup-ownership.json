@@ -758,7 +758,7 @@
     {
       "path": "AGENTS.md",
       "category": "generated",
-      "sha256": "8954f94fd75f395bfd429d85b8cc6483c4023c1a4c980aca1f748700b4faa6ee",
+      "sha256": "2ba50e0e1df3a60962602d5e8df224495b574b0af3fc775739c75770745c332e",
       "semantic_id": "harness.guidance",
       "executable": false
     }

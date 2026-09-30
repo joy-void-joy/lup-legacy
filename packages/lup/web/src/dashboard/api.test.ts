@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import type { StreamFrame } from "../generated/views";
-import { answerReview, followDashboard, readReviews, readReviewLink, reviewLink, sendReply, takeToken, type Followed } from "./api";
+import { answerReview, remarkReview, followDashboard, readReviews, readReviewLink, reviewLink, sendReply, takeToken, type Followed } from "./api";
 
 const originalFetch = globalThis.fetch;
 const originalStorage = Object.getOwnPropertyDescriptor(globalThis, "localStorage");
@@ -31,10 +31,13 @@ describe("review capability", () => {
       return Response.json(snapshot);
     }, { preconnect() {} });
     await readReviews("operator-secret");
-    await answerReview("tree/request", { approved: false, note: "Use a scoped change", fingerprint: "exact" }, "operator-secret");
-    expect(calls.map((call) => call.url)).toEqual(["api/reviews", "api/reviews/tree%2Frequest/answer"]);
+    const comments = [{ path: "/project/app.py", start: 3, end: 4, side: "after" as const, note: "Name it." }];
+    await answerReview("tree/request", { approved: false, note: "Use a scoped change", comments, fingerprint: "exact" }, "operator-secret");
+    await remarkReview("tree/request", { note: "Why?", comments, fingerprint: "exact" }, "operator-secret");
+    expect(calls.map((call) => call.url)).toEqual(["api/reviews", "api/reviews/tree%2Frequest/answer", "api/reviews/tree%2Frequest/remark"]);
     for (const call of calls) expect(new Headers(call.options?.headers).get("Authorization")).toBe("Bearer operator-secret");
-    expect(JSON.parse(String(calls[1]?.options?.body))).toEqual({ approved: false, note: "Use a scoped change", fingerprint: "exact" });
+    expect(JSON.parse(String(calls[1]?.options?.body))).toEqual({ approved: false, note: "Use a scoped change", comments, fingerprint: "exact" });
+    expect(JSON.parse(String(calls[2]?.options?.body))).toEqual({ note: "Why?", comments, fingerprint: "exact" });
   });
 
   test("scrubbing a launch token preserves the selected request", () => {

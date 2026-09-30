@@ -360,7 +360,9 @@ LIBRARY_ROSTER = [
             name="review",
             help="The parked reviews an operator answers, and what each waits on",
         ),
-        build=lambda _: create_review_app(Path.cwd()),
+        build=lambda declared: create_review_app(
+            Path.cwd(), lambda: declared.dev().hooks
+        ),
     ),
     RosterEntry(
         spec=SubAppSpec(name="run", help="Follow work that outlives its tool call"),

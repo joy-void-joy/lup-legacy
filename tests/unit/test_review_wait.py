@@ -148,7 +148,8 @@ def test_a_declined_review_reports_the_operator_s_note(root: Path) -> None:
     waited = RUNNER.invoke(create_review_app(root), ["wait", question.id])
 
     assert waited.exit_code == 1
-    assert f"review {question.id} — declined: use the other branch" in waited.output
+    assert f"review {question.id} — declined:" in waited.output
+    assert "operator note: use the other branch" in waited.output
     assert not (root / "marker.txt").exists()
 
 
@@ -250,7 +251,7 @@ def test_a_waiter_waits_until_its_review_settles_unless_given_a_timeout(
 
     assert waited.exit_code == 3, waited.output
     assert f"still waiting on {question.id}" in waited.output
-    assert "start the same `review wait` again" in waited.output
+    assert f"lup-devtools review wait {question.id}` again" in waited.output
     assert not (root / "marker.txt").exists()
     assert only(root).state == "pending"
 

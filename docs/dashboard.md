@@ -7,8 +7,8 @@ repository they work in: what each session and its subagents are doing, what
 they said to each other, a box to write to any of them, the reviews they
 parked, and each repository's setup. Declining it removes the `dashboard`
 commands and the service every launch holds; `review list`, `show`, `approve`,
-`decline`, `cancel` and `wait` remain, and a parked call is answered from the
-terminal.
+`decline`, `cancel`, `wait`, `reply` and `propose` remain, and a parked call is
+answered from the terminal.
 
 ## A parked call, and the session waiting on it
 
@@ -29,13 +29,29 @@ carries out itself, inside the session's own shell and sandbox: an edit is
 written as the after-document the operator saw, only where the file still
 stands as the review recorded it — otherwise it reports the conflict and
 writes nothing — and a command runs in the directory recorded with it, its
-output the waiter's own. So the session is woken with "ran", "applied" or
-"declined" and the operator's note, and never retries the call. The command
-runs in a fresh shell: what the session's shell did since, a `cd` or an
-exported variable, does not reach it, since the policy judged it standing
-alone. A call a shell cannot carry out — one placed outside the session's
-sandbox, or a tool that is not a write or a command — is reported as
-approved, for one exact retry the hook allows once.
+output the waiter's own. So the session is woken with "ran", "applied",
+"declined" or "stale", and never retries the call; beneath the verdict,
+whatever it is, come the operator's note and line comments, each as
+`path:line[-end]: note`. The command runs in a fresh shell: what the
+session's shell did since, a `cd` or an exported variable, does not reach it,
+since the policy judged it standing alone. A call a shell cannot carry out —
+one placed outside the session's sandbox, or a tool that is not a write or a
+command — is reported as approved, for one exact retry the hook allows once.
+
+The operator can also write without deciding: a note and line comments sent
+alone. That ends the waiter too, as "commented", with the words beneath it,
+the review still pending, and the command that waits on it again. The agent
+answers on the review with `uv run lup-devtools review reply <id> <text>`,
+which the page shows in the review's thread — only the session that asked
+may — or cancels it and asks again.
+
+A review whose recorded files moved before anybody approved it can never be
+carried out, since the waiter writes and runs only where every recorded file
+stands as recorded. It is retired into `stale` the moment that is noticed —
+by the waiter, which reads the files as the session does; by the dashboard,
+on its next look, when the review is opened and when it is approved; and by
+`review list` — and the session is told which file moved, to re-read it and
+ask again.
 
 The waiter carries out only a review this session asked, by the id its
 runtime gave the session or the roster member its launch named, reads the
@@ -48,11 +64,54 @@ started keeps running after the turn and its end starts none — measured on
 
 A waiter waits as long as the operator takes: it has no limit of its own,
 and every ten minutes it says which reviews it still waits on. `--timeout
-<seconds>` ends it early, exit 3, carrying nothing out and saying to start
-the same `review wait` again. A runtime can still stop it: Claude Code's
+<seconds>` ends it early, exit 3, carrying nothing out and naming the
+`review wait` that waits again. A runtime can still stop it: Claude Code's
 shell tool stops a command at its `timeout`, thirty minutes in the background
-unless the call names more, so the refusal asks for the longest the tool
-takes and to start the waiter again whenever it is stopped still waiting.
+unless the call names more, two hours at most. So the refusal asks for the
+longest the tool takes and names the waiter with `--timeout 7140`, which ends
+it a minute sooner with that line; and a waiter sent SIGTERM or SIGHUP with a
+review still pending says the same before it exits. On Codex the waiter
+queues that line into the thread as it would a verdict. A review whose waiter
+is gone is not lost either way: the operator's answer then goes to the
+session's mailbox, naming the `review wait` that carries it out.
+
+The waiter is the requester's one channel. Where a `review wait` holds the
+review — or already put the news to its session — the dashboard mails nothing
+beside it; only where none does is the answer, the remark or the staleness
+mailed to the requester and its wake tried. Where a subagent asked, the
+review records it (`agent`), its own row is the requester, and whenever the
+operator said something — a note, line comments, a remark — the session it
+runs in gets a copy, marked `[copy]`: the subagent handles the call, its
+session anything past it. A bare approval pings nobody but the waiter.
+
+## Proposing a batch of edits
+
+Several edits the operator has to see, parked one call at a time, are
+answered one at a time — each against a file the next edit then moves. A
+session writes them under scratch instead, each at its path in the checkout
+(`tmp/cdx/<path>`), tests them there, and runs
+`uv run lup-devtools review propose tmp/cdx --why "<what it is for>"`, which
+parks one review holding every file. Each file meets the edit gates a direct
+write of it would meet — protected paths, anti-patterns, markers, size — and
+the review carries each verdict; a file the gates refuse outright refuses the
+proposal, naming it, and nothing is parked. A file they would let through is
+carried all the same, folded on the page where it needs no reading. The
+directory's `.proposal.json` notes files and names deletions, which have no
+document to write:
+
+```json
+{"about": {"packages/app/module.py": "the new entry point"},
+ "delete": ["docs/retired.md"]}
+```
+
+The page shows the proposal as one multi-file diff with the `--why` beside
+the policy's reason and each note on its file's header. An approval releases
+every file or none: the waiter writes them only where each still stands as
+recorded, into place together, creating new files and removing deleted ones;
+a file moved since stales the whole proposal. Declined, the line comments
+send the agent back to its scratch copy, and it proposes again. Codex's own
+multi-file `apply_patch` parks as one operation the same way and reads
+through the same view.
 
 ## One service for every session
 
@@ -214,6 +273,15 @@ has not joined yet. The dashboard sweeps every ten seconds, and
 `review list` sweeps its checkout before it lists. A retry of an expired
 review's call parks a fresh review.
 
+A waiting review a recorded file moved under leaves the pending queue at once
+as `stale`, and shows only in History, labelled stale, with each file that
+moved and how: changed, created, deleted, or a directory where none stood.
+The dashboard watches every waiting review's recorded files by their size,
+time and inode on each look, reading one again only where those moved. Only
+what the dashboard can see is judged: a path inside a session's container,
+whose directory is nowhere on the host, or a file the dashboard may not read,
+is never stale.
+
 ## Setup
 
 Each repository's setup — the integrations and steps its own CLI declares — is
@@ -226,33 +294,66 @@ declined the setup module serves no pane, and the pane says so.
 
 ## Reviewing requests
 
-The dashboard titles requests from captured evidence: a file's action and path,
-the number of files, or the command to run. The exact operation, requester,
-rule, reason, command or captured file diff, and recorded answer remain visible.
-The default view includes files that require review and highlights newly
-introduced rule exceptions. Files the policy allows automatically or explicitly
-leaves to the native provider, and existing exceptions, remain available in the
-full-operation view. A captured deferral means Lup requests no approval for that
-file; the native provider still applies its own permissions. Approval still applies
-to the exact complete submission. Where recorded evidence cannot establish a
-file's status, it remains visible rather than being treated as automatically allowed.
-The file navigator shows change counts and supports searching paths. Select
-one file to inspect its colored, numbered diff or complete Before, After and
-Raw views; `[` and `]` move between files. A shared directory appears once,
-with complete paths available for inspection. The queue, navigator and evidence
-panels scroll independently; smaller screens offer panel switches.
-Typed `lup: ignore[...]` comments are highlighted in the code and grouped by
-rule; existing exceptions appear only in the full-operation view. Expand a
-group for written reasons and occurrence links, or use `n` and `p` to jump
-between exceptions.
+The editor is the centre of a review, at any width: it takes the height left
+and scrolls inside itself, and the context around it is single lines. Above
+it, the title — the change's paths relative to the checkout it changes, which
+leads the line — with the full path on hover; one line naming the queue, the
+directory the call runs in, the session that asked and when, with **Details**
+opening the complete record; then the policy's reason, "Why approval is
+needed · <rule>", in full. A command shows beneath it. Below, the comment box
+is pinned open and focused on every waiting review, with the decisions beside
+it. What a review said and what it came to are its thread: the operator's
+remarks, the requester's replies, and the answer, oldest first.
 
-Approve or decline one review with an optional note. Auto-advance opens the
-next pending request after a successful decision; turn it off to stay on the
+The dashboard titles requests from captured evidence: a file's action and path,
+the number of files, or the command to run. The default view includes files
+that require review and highlights newly introduced rule exceptions. Files the
+policy allows automatically or explicitly leaves to the native provider, and
+existing exceptions, remain available in the full-operation view. A captured
+deferral means Lup requests no approval for that file; the native provider
+still applies its own permissions. Approval still applies to the exact
+complete submission. Where recorded evidence cannot establish a file's status,
+it remains visible rather than being treated as automatically allowed. A
+review of several files has a navigator with change counts and path search,
+and `[` and `]` move between files; one of a single file gives the editor the
+whole width. Each file shows as a coloured, numbered diff, its syntax
+highlighted by the file's extension, with Before, After and Raw views beside
+it. The lines a diff leaves out fold into one expander per gap, and
+**Whole file** (`f`) shows the entire file with the changes marked in place.
+
+Every `# lup:` marker is marked where it stands, in its own colour and
+labelled with its kind: an open note, parked work (`defer:`, and
+`defer[<gate>]:` with its gate), a resolution claim (`solved:`), a
+customization point (`template:`), and a rule exception (`ignore[<rule>]`).
+`m` and `Shift+M` jump to the next and previous marker across the review's
+files, opening the whole file where a marker stands outside the diff's hunks.
+Rule exceptions are also grouped by rule in the navigator, with `n` and `p`
+to jump between them; existing exceptions appear only in the full-operation
+view.
+
+Click a line number to comment on that line, and Shift+click another to
+comment on the range between: an inline box opens beneath it. Comments are
+drafts until sent — with a decision, or alone — and stored in the answer, or
+the remark, as structured anchors: the path, the first and last line, the
+side the numbers belong to (`before` or `after`), and the note. They show on
+answered reviews where they were made, and in the thread.
+
+Ctrl+Enter (Cmd+Enter) approves; Alt+Delete declines — the forward Delete
+key, never Backspace, so Alt+Backspace still deletes a word; Alt+Enter sends
+the note and line comments without deciding. Alt+↑ and Alt+↓ move to the
+previous and next review, from inside the box too. Esc leaves the box, so the
+one-letter keys apply again: `j` / `k` for the next and previous request,
+`c` back into the box, `[` / `]`, `n` / `p`, `m` / `Shift+M`, `f`, and `?`
+for the help that lists them. Holding a key cannot answer another request.
+
+Answering is immediate: the page shows the review answered and opens the next
+one at once, and reconciles with the server's reply in a toast that says how
+the requester hears of it — its waiter holding the review, the mailbox and
+whether the session was woken, or nobody running to hear it — and whether a
+copy went to a subagent's session. A refusal puts the review back where it
+was, the note and line comments with it, and says why in the toast, on the
+queue row and above the box. Auto-advance can be turned off to stay on the
 answered request. New arrivals do not move a selection already under review.
-Use `j` / `k` for next / previous request, `Shift+A` to approve, `Shift+D` to
-decline, `c` to open and focus the collapsed comment, and `?` for shortcut help.
-Decision buttons stay visible beneath the selected evidence. Shortcuts pause
-in text fields, and holding a decision key cannot answer another request.
 
 Use **Copy link** to share a request without sharing a credential. Links use
 `#review=<question-id>`; copied links also name the checkout to distinguish
@@ -267,20 +368,16 @@ lends its session read-only and no session writes, under one lock with the
 terminal, so a browser and terminal answering concurrently cannot replace
 each other's answer. An answer is given against the fingerprint the page
 displayed, and a review whose record no longer hashes to its fingerprint is
-refused an answer. Session notification is best effort after the answer is
-saved. The browser can advance while the server completes delivery; a
-missing route or failed delivery does not erase the answer. Each browser
-answer retains a separate notification outcome in
-`.lup/review-notifications/`, bound to its question, fingerprint and answer
-timestamp. Answered requests show a compact status with expandable details:
-mail queued, native queue accepted, failed or unconfirmed. Interrupted attempts
-remain unconfirmed; diagnostics failures never undo the recorded approval.
-Native reviews notify only a unique registered requester whose bound native
-session matches the request, naming the `review wait` that carries the call
-out; where a `review wait` already holds the review, the session is mailed and
-not woken, since the waiter's end wakes it. Queue acceptance does not prove
-the agent read the message. The dashboard executes nothing: an approved call
-is carried out by the session's own `review wait`, or one exact retry.
+refused an answer, the page saying so before Approve is reached for.
+Notifying the requester follows the saved answer, and a missing route or
+failed delivery does not erase it. Each browser answer retains a separate
+notification outcome in `.lup/review-notifications/`, bound to its question,
+fingerprint and answer timestamp; diagnostics failures never undo the recorded
+approval. Native reviews notify only a unique registered requester whose
+bound native session matches the request, by the one channel described above.
+Queue acceptance does not prove the agent read the message. The dashboard
+executes nothing: an approved call is carried out by the session's own
+`review wait`, or one exact retry.
 
 The capability travels in the launch URL's fragment, which HTTP requests do
 not send to the server. The page removes the credential from the address and

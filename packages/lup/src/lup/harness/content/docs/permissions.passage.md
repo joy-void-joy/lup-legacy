@@ -1182,11 +1182,17 @@ The refusal is written for the agent, because a refusal normally means
 "change course" and an agent reading this one that way reshapes the call and
 spends the review. It reads: "Queued for the operator as review `<id>` — not
 refused. Don't change the command; carry on with other work. Start `uv run
-lup-devtools review wait <id>` in the background (run_in_background) to be
-woken with the result." A subagent and a `-p` run, whose background commands
-end with them, are told to run it in the foreground once nothing else is
-left; Codex is told to leave it running under its shell tool, which keeps it
-past the turn. Beside it, the operator is shown where the review waits — on
+lup-devtools review wait <id> --timeout 7140` in the background
+(run_in_background, with the longest timeout the tool takes, 7200000 ms) to
+be woken with the result. It waits until the operator answers; if it ends
+first, it says how to wait again, so start it again." The waiter's own
+timeout ends it a minute before the tool would, so its session reads that
+the review still waits rather than a bare timeout. A subagent and a `-p`
+run, whose background commands end with them, are told to run it in the
+foreground once nothing else is left, with `--timeout 540` under the tool's
+ten-minute foreground limit; Codex is told to leave it running under its
+shell tool, which keeps it past the turn. Beside it, the operator is shown
+where the review waits — on
 the dashboard, or the terminal commands that answer it — as `systemMessage`
 on both runtimes. Codex delivers the refusal as a structured `deny`
 carrying that line, so its app-server raises an operator-visible warning in

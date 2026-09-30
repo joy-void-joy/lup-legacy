@@ -175,20 +175,20 @@ def test_native_retry_never_notifies_a_rebound_or_unbound_member(
         tmp_path,
         wake=WakePath(runtime="codex", session=bound_thread, handle=bound_thread),
     )
-    outcome = notify_requester((tmp_path,), entry)
+    outcome = notify_requester((tmp_path,), tmp_path, entry)
     assert not outcome.queued and not outcome.woken
     assert peers.waiting("recipient").messages == []
 
 
-def test_an_answer_a_waiter_holds_is_mailed_and_wakes_nothing(
+def test_an_answer_a_waiter_holds_is_left_to_the_waiter(
     tmp_path: Path,
     answered: PersistentQuestion,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The waiter's own completion wakes the session; a second wake repeats it.
+    """The waiter is the one channel: it wakes the session with the answer itself.
 
-    The message still names the waiter for a session that reads its mail
-    first, and asks for no retry a running waiter already made needless.
+    A mail beside it, or a second wake, would put the same answer to the
+    session twice, once as if it were new.
     """
     entry = answered.model_copy(
         update={"id": "held-review", "state": "approved", "resumption": "native_retry"}
@@ -207,14 +207,12 @@ def test_an_answer_a_waiter_holds_is_mailed_and_wakes_nothing(
     )
 
     with ReviewWaiters(root=tmp_path).holding([entry.id]):
-        outcome = notify_requester((tmp_path,), entry)
+        outcome = notify_requester((tmp_path,), tmp_path, entry)
 
-    (message,) = peers.waiting("recipient").messages
-    assert outcome.queued and not outcome.woken
+    assert outcome.waited and not outcome.queued and not outcome.woken
     assert "review wait" in outcome.detail
     assert woken == []
-    assert f"lup-devtools review wait {entry.id}" in message.text
-    assert "Retry" not in message.text
+    assert peers.waiting("recipient").messages == []
 
 
 def test_a_woken_requester_is_handed_the_answer_once(
@@ -243,7 +241,7 @@ def test_a_woken_requester_is_handed_the_answer_once(
         ),
     )
 
-    outcome = notify_requester((tmp_path,), entry)
+    outcome = notify_requester((tmp_path,), tmp_path, entry)
 
     assert outcome.queued and outcome.woken
     (message,) = carried

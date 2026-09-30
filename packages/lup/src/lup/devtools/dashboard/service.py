@@ -216,7 +216,7 @@ class Herald:
             ReviewSummary.key_for(queue.root, question.id): (queue.root, question)
             for queue in queues
             for question in queue.questions
-            if question.state == "pending" and not question.stale()
+            if question.state == "pending" and not question.overdue()
         }
         complete = not scan.errors and not any(queue.errors for queue in queues)
         record = read_model(self.record_path, HeraldRecord) or HeraldRecord()

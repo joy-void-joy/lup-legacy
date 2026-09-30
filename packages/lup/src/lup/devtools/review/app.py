@@ -13,7 +13,7 @@ agent's tool list: a policy whose reviewer is "whoever could reach the
 command" is one that changes when somebody adds a tool.
 """
 
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from datetime import UTC, datetime, timedelta
 from difflib import SequenceMatcher
 from hashlib import sha256
@@ -31,14 +31,29 @@ from rich.syntax import Syntax
 from lup.coordination.bare import store as roster
 from lup.coordination.repository import RepositoryPeers
 from lup.devtools.dashboard.companion import refuse_inside_a_session
-from lup.devtools.review.wait import wait_on
+from lup.devtools.review.preimages import MovedPreimage, moved
+from lup.devtools.review.propose import (
+    ProposalRefused,
+    gathered,
+    parked,
+    proposal_of,
+    previewed,
+)
+from lup.devtools.review.thread import ReviewThread, ThreadEntry
+from lup.devtools.review.wait import Asker, resume_command, wait_on
 from lup.devtools.review.notifications import (
     ReviewNotification,
     ReviewNotifications,
 )
 from lup.devtools.sync import registered_difftool
 from lup.devtools.utils import output_json
-from lup.harness.codescan.markers import MarkerScan, scan_mode_for
+from lup.harness.models import HookSet
+from lup.harness.codescan.markers import (
+    MarkerScan,
+    NoteKind,
+    find_feedback,
+    scan_mode_for,
+)
 from lup.policy.kernel.edit import (
     IGNORE_RE,
     added_line_numbers,
@@ -48,12 +63,7 @@ from lup.policy.kernel.edit import (
     written_suppression,
 )
 from lup.policy.relay import CapturedFileReview, PersistentQuestion, QuestionRelay
-from lup.policy.review import (
-    ReviewedFile,
-    reviewed_files,
-    reviewed_preview,
-)
-from lup.providers.harness import patch_review
+from lup.policy.review import ReviewedFile
 
 
 class ReviewRoot(BaseModel, frozen=True):
@@ -99,6 +109,21 @@ class ReviewSummary(BaseModel, frozen=True):
     rule: str
     created: datetime
     answerable: bool
+    unanswerable: str = ""
+    """Why nobody on this page may answer it, where it is waiting and cannot be answered."""
+
+    stale: list[MovedPreimage] = []
+    """The recorded files that no longer stood as recorded, which is why it went stale.
+
+    Only a ``stale`` review carries any: a waiting one whose file moves is
+    retired the moment that is noticed, and keeps what moved.
+    """
+    said: int = 0
+    """How many remarks and replies its thread holds beside the answer."""
+
+    target: str = ""
+    """The checkout the call changes, which the paths in its title are relative to."""
+
     session: str = ""
     """What the roster calls the session that asked, where it knows it."""
 
@@ -109,10 +134,10 @@ class ReviewSummary(BaseModel, frozen=True):
 
     @classmethod
     def of(
-        cls, root: Path, question: PersistentQuestion, principal: str
+        cls, root: Path, question: PersistentQuestion, principal: str, said: int = 0
     ) -> "ReviewSummary":
         return cls.from_files(
-            root, question, principal, reviewed_files(question, patch_review)
+            root, question, principal, previewed(question).files, said
         )
 
     @classmethod
@@ -122,6 +147,7 @@ class ReviewSummary(BaseModel, frozen=True):
         question: PersistentQuestion,
         principal: str,
         complete: list[ReviewedFile],
+        said: int = 0,
     ) -> "ReviewSummary":
         """Project the same file preview already used by this response's detail."""
         operation = question.operation
@@ -131,9 +157,37 @@ class ReviewSummary(BaseModel, frozen=True):
             if ReviewAttribution.of(change, question.file_reviews).effect
             not in {"allow", "defer"}
         ]
+        target = (
+            operation.worktree
+            if operation.worktree.is_absolute()
+            and all(file.path.is_relative_to(operation.worktree) for file in files)
+            else root
+        )
 
         def relative(path: Path) -> str:
-            return str(path.relative_to(root) if path.is_relative_to(root) else path)
+            return str(
+                path.relative_to(target) if path.is_relative_to(target) else path
+            )
+
+        def unanswerable() -> str:
+            """Why a waiting review cannot be answered here, or nothing where it can."""
+            if question.state != "pending":
+                return ""
+            if question.overdue():
+                return "It expired before anybody answered it."
+            if principal == operation.requester:
+                return "The session that asked cannot answer its own review."
+            if not question.answerable_by(principal):
+                eligible = ", ".join(question.eligible) or "nobody"
+                return f"Only {eligible} may answer it."
+            if not question.bound():
+                return (
+                    "Its record changed after it was parked: what it shows is not "
+                    "what its fingerprint covers, so nothing may answer it."
+                )
+            return ""
+
+        refused = unanswerable()
 
         def described() -> str:
             if files and operation.tool != "Bash":
@@ -170,7 +224,7 @@ class ReviewSummary(BaseModel, frozen=True):
             key=cls.key_for(root, question.id),
             root_id=ReviewRoot.of(root).id,
             id=question.id,
-            state="expired" if question.stale() else question.state,
+            state="expired" if question.overdue() else question.state,
             requester=operation.requester,
             reason=question.reason,
             title=described(),
@@ -179,7 +233,13 @@ class ReviewSummary(BaseModel, frozen=True):
             operation=operation.summary(),
             rule=question.rule,
             created=question.created,
-            answerable=question.answerable_by(principal) and not question.stale(),
+            answerable=question.state == "pending" and not refused,
+            unanswerable=refused,
+            stale=[
+                MovedPreimage(path=path, cause="changed") for path in question.moved
+            ],
+            said=said,
+            target=str(target),
         )
 
 
@@ -234,10 +294,20 @@ class ReviewOpcode(BaseModel, frozen=True):
 
 
 class ReviewHunk(BaseModel, frozen=True):
-    """A contiguous group of changes with unchanged context around it."""
+    """A contiguous group of changes with unchanged context around it.
+
+    Where it sits in each document, as the first and last line it covers:
+    what lies between two hunks, and around them, is unchanged, so a reader
+    asking for the whole file in context reads those lines off the documents
+    by these numbers. A side the hunk takes no line of ends before it starts.
+    """
 
     header: str
     lines: list[ReviewLine]
+    old_start: int
+    old_end: int
+    new_start: int
+    new_end: int
 
     @classmethod
     def between(cls, change: ReviewedFile, context: int = 3) -> list["ReviewHunk"]:
@@ -273,6 +343,10 @@ class ReviewHunk(BaseModel, frozen=True):
                 lines=[
                     line for opcode in group for line in opcode.lines(before, after)
                 ],
+                old_start=group[0].old_start + 1,
+                old_end=group[-1].old_stop,
+                new_start=group[0].new_start + 1,
+                new_end=group[-1].new_stop,
             )
             for group in groups
         ]
@@ -435,6 +509,55 @@ class ReviewDirective(BaseModel, frozen=True):
     text: str
 
 
+class ReviewMarker(BaseModel, frozen=True):
+    """One `# lup:` marker in a document the review shows, located and classified.
+
+    Every kind the vocabulary has, found the way `dev comments` finds them
+    and the edit gate counts them: an open note, parked work (``condition``
+    carrying a `defer[<gate>]:` head's gate), a resolution claim, a
+    customization point, and a rule exception. ``side`` says which document
+    the lines number.
+    """
+
+    side: Literal["before", "after"]
+    line: int
+    end_line: int
+    kind: NoteKind | Literal["ignore"]
+    condition: str | None = None
+    text: str
+
+    @classmethod
+    def in_document(
+        cls, change: ReviewedFile, side: Literal["before", "after"]
+    ) -> list["ReviewMarker"]:
+        """Every marker in one side of a change, in the order it stands."""
+        source = change.before if side == "before" else change.after
+        if not source:
+            return []
+        notes = [
+            cls(
+                side=side,
+                line=note.start_line,
+                end_line=note.end_line,
+                kind=note.kind,
+                condition=note.condition,
+                text=note.text,
+            )
+            for note in find_feedback(source, scan_mode_for(change.path))
+        ]
+        exceptions = [
+            cls(
+                side=side,
+                line=directive.marker.line,
+                end_line=directive.marker.line,
+                kind="ignore",
+                text=directive.text,
+            )
+            for directive in ReviewSuppression.in_source(change, source)
+        ]
+        return sorted([*notes, *exceptions], key=lambda marker: marker.line)
+
+
 class ReviewFile(BaseModel, frozen=True):
     """Captured file contents and the corresponding proposed change."""
 
@@ -448,23 +571,32 @@ class ReviewFile(BaseModel, frozen=True):
     additions: int
     deletions: int
     suppressions: list[ReviewSuppression]
+    markers: list[ReviewMarker] = []
+    """Every `# lup:` marker on either side, the ones the change leaves alone included."""
+
     review_effect: Literal["allow", "ask", "deny", "defer", "unknown"] = "unknown"
     review_reason: str = "No per-file decision was captured."
+    about: str = ""
+    """What the requester said of this file, where a proposal of several said anything."""
 
     @classmethod
     def of(
-        cls, change: ReviewedFile, evidence: list[CapturedFileReview] | None = None
+        cls,
+        change: ReviewedFile,
+        evidence: list[CapturedFileReview] | None = None,
+        about: str = "",
     ) -> "ReviewFile":
         attribution = ReviewAttribution.of(change, evidence)
         suppressions = ReviewSuppression.of(change, attribution)
         marked = {suppression.line for suppression in suppressions}
         hunks = [
-            ReviewHunk(
-                header=hunk.header,
-                lines=[
-                    line.model_copy(update={"suppression": line.new_line in marked})
-                    for line in hunk.lines
-                ],
+            hunk.model_copy(
+                update={
+                    "lines": [
+                        line.model_copy(update={"suppression": line.new_line in marked})
+                        for line in hunk.lines
+                    ]
+                }
             )
             for hunk in ReviewHunk.between(change)
         ]
@@ -481,8 +613,13 @@ class ReviewFile(BaseModel, frozen=True):
                 line.kind == "remove" for hunk in hunks for line in hunk.lines
             ),
             suppressions=suppressions,
+            markers=[
+                *ReviewMarker.in_document(change, "before"),
+                *ReviewMarker.in_document(change, "after"),
+            ],
             review_effect=attribution.effect,
             review_reason=attribution.reason,
+            about=about,
         )
 
 
@@ -492,18 +629,32 @@ class ReviewDetail(BaseModel, frozen=True):
     summary: ReviewSummary
     question: PersistentQuestion
     files: list[ReviewFile]
-    stale_reason: str
     command: str | None
     preview_unavailable: str
     preview_notice: str = ""
     notification: ReviewNotification | None = None
+    thread: list[ThreadEntry] = []
+    """Everything said on it -- the operator's remarks, the requester's replies, the answer -- oldest first."""
 
     @classmethod
     def of(
         cls, root: Path, entry: PersistentQuestion, principal: str
     ) -> "ReviewDetail":
-        preview = reviewed_preview(entry, patch_review)
-        files = [ReviewFile.of(change, entry.file_reviews) for change in preview.files]
+        preview = previewed(entry)
+        proposal = proposal_of(entry)
+        about = (
+            {proposed.path: proposed.about for proposed in proposal.files}
+            if proposal is not None
+            else {}
+        )
+        files = [
+            ReviewFile.of(
+                change,
+                entry.file_reviews,
+                about[change.path] if change.path in about else "",
+            )
+            for change in preview.files
+        ]
         payload = entry.operation.payload
         requested = payload["command"] if "command" in payload else None
         command = (
@@ -511,15 +662,22 @@ class ReviewDetail(BaseModel, frozen=True):
             if entry.operation.tool == "Bash" and isinstance(requested, str)
             else None
         )
+        thread = ReviewThread.of(relay(root)).said(entry)
         return cls(
-            summary=ReviewSummary.from_files(root, entry, principal, preview.files),
+            summary=ReviewSummary.from_files(
+                root,
+                entry,
+                principal,
+                preview.files,
+                sum(said.kind != "answer" for said in thread),
+            ),
             question=entry,
             files=files,
-            stale_reason=stale_preimages(entry),
             command=command,
             preview_unavailable=preview.unavailable,
             preview_notice=preview.notice,
             notification=ReviewNotifications(root=root).read(entry),
+            thread=thread,
         )
 
 
@@ -656,16 +814,32 @@ def expire_orphaned(
     )
 
 
+def retire_moved(root: Path, by: str) -> list[PersistentQuestion]:
+    """Retire every waiting review in this checkout a recorded file moved under.
+
+    No approval could release one any more, so it leaves the queue as
+    ``stale`` and its requester asks again against what stands now.
+    """
+    store = relay(root)
+    return [
+        store.retire_stale(entry.id, [each.path for each in drifted], by)
+        for entry in store.pending()
+        if (drifted := moved(entry))
+    ]
+
+
 def listing(root: Path, principal: str, everything: bool, as_json: bool) -> None:
     """Print what is waiting, narrowed to what this principal may answer.
 
     Narrowed by eligibility rather than by ownership, because a supervisor
     shown a question it may not answer is a supervisor about to try — and the
     refusal it then gets teaches it nothing about which questions are its.
-    A review whose requester is gone is expired first, so what is listed as
+    A review whose requester is gone is expired first, and one a recorded
+    file moved under is retired as stale, so what is listed as
     waiting is something a session still waits on.
     """
     expire_orphaned(root)
+    retire_moved(root, "review list")
     store = relay(root)
     questions = store.questions() if everything else store.pending(principal)
     if as_json:
@@ -685,7 +859,7 @@ def changes(entry: PersistentQuestion) -> list[ReviewedFile]:
     :mod:`lup.policy.review`, which both runtimes read: the envelope's grammar
     is one provider's word, and this command is already where one is named.
     """
-    return reviewed_files(entry, patch_review)
+    return previewed(entry).files
 
 
 def render_diffs(entry: PersistentQuestion, console: Console) -> bool:
@@ -757,7 +931,11 @@ def show(
         return
     typer.echo(entry.summary())
     typer.echo(f"  requester   {entry.operation.requester}")
-    typer.echo(f"  eligible    {', '.join(entry.eligible) or 'nobody'}")
+    typer.echo(
+        f"  eligible    {', '.join(entry.eligible) or 'nobody'}"
+        if entry.chain_resolved
+        else "  eligible    anyone but the requester: no supervisor chain was resolved"
+    )
     typer.echo(f"  purpose     {entry.purpose or 'unclassified'}")
     typer.echo(f"  rule        {entry.rule or 'unattributed'}")
     typer.echo(f"  fingerprint {entry.fingerprint}")
@@ -782,8 +960,45 @@ def show(
             f"  answered    {'yes' if entry.answer.approved else 'no'}"
             f" by {entry.answer.principal} ({entry.answer.receipt})"
         )
-        if entry.answer.note:
-            typer.echo(f"  note        {entry.answer.note}")
+    for said in ReviewThread.of(relay(root)).said(entry):
+        match said.kind:
+            case "answer":
+                heading = "note"
+            case "remark":
+                heading = f"remark by {said.author}"
+            case "reply":
+                heading = f"reply by {said.author}"
+        if said.text:
+            typer.echo(f"  {heading}: {said.text}")
+        for comment in said.comments:
+            typer.echo(f"    {comment.spelled(entry.operation.worktree)}")
+
+
+def reply(root: Path, question: str, text: str) -> None:
+    """Answer the operator on this session's own review, which the page shows in its thread.
+
+    The requester's alone, checked the way `review wait` checks it: the
+    session that asked, by its runtime's id or the roster member its launch
+    named. It settles nothing; the review waits as it did.
+    """
+    store = relay(root)
+    entry = store.find(question)
+    if entry is None:
+        typer.echo(f"no review {question!r} is recorded", err=True)
+        raise typer.Exit(2)
+    asker = Asker.here(root)
+    if not asker.asked(entry):
+        typer.echo(
+            f"review {question} was asked by another session; only the session "
+            "that asked may reply on it",
+            err=True,
+        )
+        raise typer.Exit(2)
+    ReviewThread.of(store).reply(entry, asker.member or entry.operation.session, text)
+    typer.echo(
+        f"{entry.id}: reply recorded; the operator reads it on the review, "
+        f"which is still {entry.state}"
+    )
 
 
 def answer(
@@ -832,28 +1047,43 @@ def cancel(root: Path, question: str, reason: str) -> None:
     typer.echo(f"{settled.id}: cancelled")
 
 
-def stale_preimages(entry: PersistentQuestion) -> str:
-    """Explain any changed preimage without substituting it into the review."""
+def propose(root: Path, hooks: HookSet, directory: Path, why: str) -> None:
+    """Park one review for every file under *directory*, mapped onto this checkout.
 
-    def failures() -> Iterator[str]:
-        for path, before in entry.preconditions.items():
-            try:
-                current = (
-                    path.read_text(encoding="utf-8", newline="")
-                    if path.exists()
-                    else None
-                )
-            except (OSError, UnicodeError) as error:
-                yield f"Cannot read {path}: {error}"
-                continue
-            if current != before:
-                yield f"{path} changed since this request was recorded"
+    Each file meets the gates a direct write of it would; a file they refuse
+    refuses the proposal, naming it, and nothing is parked.
+    """
+    store = relay(root)
+    try:
+        question = parked(root, hooks, gathered(root, directory, why), store)
+    except ProposalRefused as refusal:
+        typer.echo(str(refusal), err=True)
+        raise typer.Exit(2) from refusal
+    proposal = proposal_of(question)
+    count = len(proposal.files) if proposal is not None else 0
+    wait = resume_command(root, [question.id])
+    typer.echo(
+        f"Queued for the operator as review {question.id}: {count} "
+        f"{'file' if count == 1 else 'files'}, approved or declined as one. "
+        f"Start `{wait}` the way a parked call's refusal says -- in the "
+        "background with your tool's longest timeout on Claude, left running "
+        "in your shell tool on Codex -- and carry on: it writes every file "
+        "once approved, where each still stands as recorded, and reports the "
+        "operator's note and line comments. Declined, revise the files under "
+        f"{directory} and propose again."
+    )
 
-    return "\n".join(failures())
 
+def create_review_app(
+    root: Path, hooks: Callable[[], HookSet] | None = None
+) -> typer.Typer:
+    """Wire the `review` group: the reviewer's verbs over one checkout's relay.
 
-def create_review_app(root: Path) -> typer.Typer:
-    """Wire the `review` group: the reviewer's verbs over one checkout's relay."""
+    ``hooks`` is the declared hook set, read only by `review propose`, which
+    judges each proposed file as a direct write of it is judged; a
+    composition declaring none has no gates to judge a proposal by, and
+    refuses one.
+    """
     app = typer.Typer(no_args_is_help=True)
 
     @app.command("list")
@@ -909,6 +1139,35 @@ def create_review_app(root: Path) -> typer.Typer:
     ) -> None:
         """Withdraw a review nobody needs answered any more."""
         cancel(root, review, reason)
+
+    @app.command("propose")
+    def propose_cmd(
+        directory: Path = typer.Argument(
+            help="A directory under scratch holding the new version of each file, "
+            "at its path in this checkout; its .proposal.json notes files and "
+            "names deletions"
+        ),
+        why: str = typer.Option(
+            ..., "--why", help="What the whole change is for, in a paragraph"
+        ),
+    ) -> None:
+        """Park one review for a batch of edits written under scratch, approved as one."""
+        if hooks is None:
+            typer.echo(
+                "this composition declares no hook set, so nothing can judge a "
+                "proposal's files",
+                err=True,
+            )
+            raise typer.Exit(2)
+        propose(root, hooks(), directory, why)
+
+    @app.command("reply")
+    def reply_cmd(
+        review: str = typer.Argument(help="The review id"),
+        text: str = typer.Argument(help="What to tell the operator"),
+    ) -> None:
+        """Answer the operator's note on a review this session asked, in its thread."""
+        reply(root, review, text)
 
     @app.command("wait")
     def wait_cmd(

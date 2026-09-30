@@ -7,8 +7,17 @@ as it settles. An approved one it carries out there, inside the session's own
 sandbox: an edit as the after-document the operator saw, only where the file
 still stands as the review recorded it; a command in the directory recorded
 with it, in a fresh shell, so nothing the session did to its own shell since
-reaches it -- the policy judged the command standing alone. A declined one
-reports the operator's note.
+reaches it -- the policy judged the command standing alone. Whatever the
+verdict, the operator's note and line comments are printed beneath it.
+
+It is the requester's one channel for everything the operator says on the
+review. A remark -- a note and line comments sent without deciding -- ends it
+too, saying the review is still pending and how to wait on it again, so the
+agent can answer with `review reply` before carrying on. A review whose
+recorded files moved is retired as stale here, as it is on the dashboard,
+and reported as the one thing left to do: re-read the file and ask again.
+And a waiter stopped with a review still pending -- its timeout, or the
+runtime ending it -- says so last, with the command that waits again.
 
 What it carries out is bounded three ways. The review must be one this
 session asked -- its runtime's id for the session, or the roster member its
@@ -26,35 +35,64 @@ of the call, which the hook allows once, and the waiter says so.
 
 import fcntl
 import json
+import shlex
+import signal
 import sys
 import time
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from contextlib import ExitStack, contextmanager
+from datetime import datetime
 from itertools import islice
 from pathlib import Path
+from types import FrameType
 from typing import Literal
 
 import sh
 import typer
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 from lup.coordination.identity import session_member_id
 from lup.coordination.repository import RepositoryPeers
 from lup.coordination.wake import WakePath, wake
+from lup.devtools.review.preimages import PreimageWatch, moved
+from lup.devtools.review.propose import previewed
+from lup.devtools.review.thread import RecordedRemark, Remark, ReviewThread
 from lup.policy.kernel.review import literal_input
-from lup.policy.relay import PersistentQuestion, QuestionRelay, RelaySignature
-from lup.policy.review import ReviewedFile, reviewed_files
-from lup.providers.harness import patch_review
+from lup.policy.relay import (
+    LineComment,
+    PersistentQuestion,
+    QuestionRelay,
+    RelaySignature,
+)
+from lup.policy.review import ReviewedFile
 from lup.providers.identity import native_session_ids
 
 type Verdict = Literal[
-    "ran", "applied", "declined", "expired", "cancelled", "conflict", "retry", "spent"
+    "ran",
+    "applied",
+    "declined",
+    "commented",
+    "stale",
+    "expired",
+    "cancelled",
+    "conflict",
+    "retry",
+    "spent",
 ]
-"""How one waited review settled, in the word its line starts with."""
+"""How one waited review settled, in the word its line starts with.
+
+``commented`` is the one that did not settle it: the operator sent a note or
+line comments without deciding, and the review still waits.
+"""
 
 
 class WaitedReview(BaseModel, frozen=True):
-    """How one review settled, as the waiter reports it to the session."""
+    """How one review settled, as the waiter reports it to the session.
+
+    ``note`` and ``comments`` are what the operator wrote with it, printed
+    beneath the verdict whatever the verdict is -- an approval's words are
+    as much the operator's as a decline's.
+    """
 
     review: str
     verdict: Verdict
@@ -62,8 +100,44 @@ class WaitedReview(BaseModel, frozen=True):
     carried: bool
     """Whether what the operator approved was done, here or by a retry."""
 
+    note: str = ""
+    comments: list[LineComment] = []
+    root: Path | None = None
+    """The checkout the comments' paths are shown relative to."""
+
+    at: datetime | None = None
+    """When the operator said what this reports, which the notifier matches it by."""
+
     def line(self) -> str:
-        return f"review {self.review} — {self.verdict}: {self.detail}"
+        return "".join(
+            [
+                f"review {self.review} — {self.verdict}: {self.detail}",
+                *([f"\n  operator note: {self.note}"] if self.note else []),
+                *(f"\n  {comment.spelled(self.root)}" for comment in self.comments),
+            ]
+        )
+
+
+def resume_command(root: Path, reviews: Sequence[str]) -> str:
+    """The `review wait` that waits on *reviews* again, runnable from anywhere."""
+    return shlex.join(
+        [
+            "uv",
+            "run",
+            "--directory",
+            str(root),
+            "lup-devtools",
+            "review",
+            "wait",
+            *reviews,
+        ]
+    )
+
+
+class ReviewReported(BaseModel, frozen=True):
+    """One thing the operator said that a waiter has put to its session, by when it was said."""
+
+    reported: datetime
 
 
 class ReviewWaiters(BaseModel, frozen=True):
@@ -71,13 +145,39 @@ class ReviewWaiters(BaseModel, frozen=True):
 
     Read by whoever tells the requester an answer landed: where a waiter
     holds the review, its own completion is what wakes the session, and a
-    second wake would put the same answer to it twice.
+    second wake would put the same answer to it twice. A waiter writes into
+    the same file what it reported, so a notifier that looks a moment after
+    the waiter finished still finds the news delivered.
     """
 
     root: Path
 
     def path(self, review: str) -> Path:
         return self.root / ".lup" / "review-waiters" / review
+
+    def report(self, review: str, at: datetime) -> None:
+        """Record that the operator's words given *at* reached the session through this waiter."""
+        path = self.path(review)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("a", encoding="utf-8") as handle:
+            handle.write(ReviewReported(reported=at).model_dump_json() + "\n")
+
+    def carries(self, review: str, at: datetime | None) -> bool:
+        """Whether a waiter holds this review, or already put the news given *at* to its session."""
+        if self.held(review):
+            return True
+        path = self.path(review)
+        if at is None or not path.is_file():
+            return False
+
+        def reported() -> Iterator[datetime]:
+            for line in path.read_text(encoding="utf-8").splitlines():
+                try:
+                    yield ReviewReported.model_validate_json(line).reported
+                except ValidationError:
+                    continue
+
+        return any(each == at for each in reported())
 
     @contextmanager
     def holding(self, reviews: list[str]) -> Iterator[None]:
@@ -148,47 +248,52 @@ class Asker(BaseModel, frozen=True):
         )
 
 
-def standing(path: Path) -> str | None:
-    """A file's text as it stands, absent where nothing does."""
-    return path.read_text(encoding="utf-8", newline="") if path.is_file() else None
-
-
-def moved(question: PersistentQuestion) -> list[Path]:
-    """Every file the review recorded that no longer stands as it did."""
-    return [
-        path
-        for path, before in question.preconditions.items()
-        if standing(path) != before
-    ]
-
-
 def edits(question: PersistentQuestion) -> list[ReviewedFile] | None:
     """The documents an approved edit writes, or ``None`` where it is not an edit.
 
-    A write, an edit, or a patch envelope -- Codex's own tool, or the same
-    envelope handed to its shell, which no shell here has a program for.
+    A write, an edit, a patch envelope -- Codex's own tool, or the same
+    envelope handed to its shell, which no shell here has a program for --
+    or a proposal of several files, written all at once or not at all.
     """
     payload = question.operation.payload
     command = payload["command"] if "command" in payload else None
     match question.operation.tool:
-        case "Write" | "Edit" | "apply_patch":
-            return reviewed_files(question, patch_review)
+        case "Write" | "Edit" | "apply_patch" | "Propose":
+            return previewed(question).files
         case "Bash" if isinstance(command, str) and literal_input(
             command, "apply_patch"
         ):
-            return reviewed_files(question, patch_review)
+            return previewed(question).files
         case _:
             return None
 
 
-def written(files: list[ReviewedFile]) -> str:
-    """Write each after-document, removing a file whose after is absence."""
+def written(files: list[ReviewedFile], review: str) -> str:
+    """Write every after-document, or none: removing a file whose after is absence.
+
+    Each document is written beside its file first, named for the *review*,
+    and only once every one is on disk are they moved into place, so a write
+    that fails part way -- a full disk, a directory that cannot be made --
+    leaves every file as it stood rather than half the change applied.
+    """
+    documents = [change for change in files if change.after is not None]
+    staged = [
+        change.path.parent / f".{change.path.name}.{review}.review-wait"
+        for change in documents
+    ]
+    try:
+        for change, temporary in zip(documents, staged, strict=True):
+            change.path.parent.mkdir(parents=True, exist_ok=True)
+            temporary.write_text(change.after or "", encoding="utf-8", newline="")
+    except OSError:
+        for temporary in staged:
+            temporary.unlink(missing_ok=True)
+        raise
+    for change, temporary in zip(documents, staged, strict=True):
+        temporary.replace(change.path)
     for change in files:
         if change.after is None:
             change.path.unlink(missing_ok=True)
-            continue
-        change.path.parent.mkdir(parents=True, exist_ok=True)
-        change.path.write_text(change.after, encoding="utf-8", newline="")
     return ", ".join(str(change.path) for change in files)
 
 
@@ -274,12 +379,12 @@ def carried_out(
             True,
         )
     if changed := moved(question):
-        detail = ", ".join(str(path) for path in changed)
-        store.advance(question.id, "failed", f"conflict: {detail} changed since")
+        detail = "; ".join(each.sentence() for each in changed)
+        store.advance(question.id, "failed", f"conflict: {detail}")
         return settled(
             "conflict",
-            f"{detail} changed since the review was recorded; nothing ran — "
-            "make the change again against what stands now",
+            f"{detail}; nothing ran — re-read it and make the change again "
+            "against what stands now",
             False,
         )
     if not claimed(root, question):
@@ -288,7 +393,7 @@ def carried_out(
         )
     store.advance(question.id, "dispatched", "carried out by review wait")
     if files is not None:
-        paths = written(files)
+        paths = written(files, question.id)
         store.advance(question.id, "completed", f"applied by review wait: {paths}")
         return settled("applied", paths, True)
     assert isinstance(command, str)
@@ -304,36 +409,58 @@ def carried_out(
 def settled_now(
     root: Path, store: QuestionRelay, question: PersistentQuestion
 ) -> WaitedReview | None:
-    """What one review came to, or ``None`` while it still waits."""
-    note = question.answer.note if question.answer is not None else ""
+    """What one review came to, or ``None`` while it still waits.
+
+    Whatever it came to, the operator's note and line comments ride beneath
+    it: an approval with instructions is as much the operator's word as a
+    decline, and was lost when only a decline printed it.
+    """
+    answer = question.answer
+    words = (
+        {
+            "note": answer.note,
+            "comments": answer.comments,
+            "root": question.operation.worktree,
+            "at": answer.at,
+        }
+        if answer is not None
+        else {}
+    )
+
+    def plain(verdict: Verdict, detail: str, carried: bool) -> WaitedReview:
+        return WaitedReview(
+            review=question.id, verdict=verdict, detail=detail, carried=carried
+        )
+
     match question.state:
         case "pending" | "preparing":
             return None
         case "approved":
-            return carried_out(root, store, question)
+            return carried_out(root, store, question).model_copy(update=words)
         case "rejected":
-            return WaitedReview(
-                review=question.id,
-                verdict="declined",
-                detail=note or "no note; change course, or ask the user",
-                carried=False,
+            detail = (
+                "change course, or ask the user"
+                if answer is not None and (answer.note or answer.comments)
+                else "no note; change course, or ask the user"
+            )
+            return plain("declined", detail, False).model_copy(update=words)
+        case "stale":
+            named = ", ".join(str(path) for path in question.moved)
+            return plain(
+                "stale",
+                f"{named} changed since this was recorded; re-read it and ask again",
+                False,
             )
         case "expired" | "cancelled":
-            return WaitedReview(
-                review=question.id,
-                verdict=question.state,
-                detail=question.outcome or "nobody answered it",
-                carried=False,
+            return plain(
+                question.state, question.outcome or "nobody answered it", False
             )
         case _:
-            return WaitedReview(
-                review=question.id,
-                verdict="spent",
-                detail=(
-                    "already carried out, by a retried call or another wait"
-                    + (f": {question.outcome}" if question.outcome else "")
-                ),
-                carried=True,
+            return plain(
+                "spent",
+                "already carried out, by a retried call or another wait"
+                + (f": {question.outcome}" if question.outcome else ""),
+                True,
             )
 
 
@@ -374,6 +501,8 @@ def settling(
     root: Path,
     store: QuestionRelay,
     waiting: list[PersistentQuestion],
+    heard: list[RecordedRemark],
+    stop: "StopRequest",
     poll: float = 1.0,
     timeout: float | None = None,
     announce: float = 600.0,
@@ -381,54 +510,147 @@ def settling(
     """Each review as it settles, reported the moment it does, until all have.
 
     The queue is read again only when the relay or the host's answers to it
-    change on disk, so a waiter left running for hours costs two file checks
-    a poll. It has no limit of its own: only a ``timeout`` it was handed ends
-    it with reviews still waiting. Every ``announce`` seconds it says which
-    it still waits on, so its output shows it alive to whoever reads it.
+    change on disk, so a waiter left running for hours costs a few file
+    checks a poll. It has no limit of its own: only a ``timeout`` it was
+    handed ends it with reviews still waiting. Every ``announce`` seconds it
+    says which it still waits on, so its output shows it alive to whoever
+    reads it.
+
+    Two more things end a wait. A remark the operator made since
+    ``heard`` -- a note and line comments sent without deciding -- is
+    reported as ``commented`` and ends the wait with the review still
+    pending, so the session reads it now rather than when the review
+    settles. A waiting review whose recorded files moved is retired as stale
+    here, where the files are read as the session reads them, and reported.
+    What each report carries is marked as reported, so the dashboard mails
+    nothing beside it.
     """
+    thread = ReviewThread.of(store)
+    waiters = ReviewWaiters(root=root)
+    watch = PreimageWatch()
     remaining = [question.id for question in waiting]
+    latest = {question.id: question for question in waiting}
     seen: RelaySignature | None = None
     started = time.monotonic()
     announced = started
+
+    def told(report: WaitedReview) -> WaitedReview:
+        typer.echo(report.line())
+        if report.at is not None:
+            waiters.report(report.review, report.at)
+        return report
+
+    def fresh(review: str, remarks: dict[str, list[RecordedRemark]]) -> list[Remark]:
+        """The remarks on one waiting review nobody has put to the session yet."""
+        question = latest[review]
+        return [
+            recorded.remark
+            for recorded in (remarks[review] if review in remarks else [])
+            if recorded.fingerprint == question.fingerprint
+            and not any(
+                before.question == review and before.remark.at == recorded.remark.at
+                for before in heard
+            )
+        ]
+
     while remaining:
         now = time.monotonic()
-        if timeout is not None and now - started >= timeout:
+        if stop.signal or (timeout is not None and now - started >= timeout):
             return
         if now - announced >= announce:
             minutes = round((now - started) / 60)
             typer.echo(f"still waiting on {', '.join(remaining)} ({minutes} min)")
             announced = now
+        for review in remaining:
+            question = latest[review]
+            if question.state == "pending" and (drifted := watch.moved(question)):
+                latest[review] = store.retire_stale(
+                    review,
+                    [each.path for each in drifted],
+                    "its requester's review wait",
+                )
         signature = store.signature()
         if signature == seen:
             time.sleep(poll)
             continue
         seen = signature
         current = {question.id: question for question in store.questions()}
+        latest.update(
+            {review: current[review] for review in remaining if review in current}
+        )
+        remarks = thread.remarks()
+        commented = [
+            WaitedReview(
+                review=review,
+                verdict="commented",
+                detail="the operator commented without deciding; it is still pending",
+                carried=False,
+                note=remark.note,
+                comments=remark.comments,
+                root=latest[review].operation.worktree,
+                at=remark.at,
+            )
+            for review in remaining
+            if latest[review].state == "pending"
+            for remark in fresh(review, remarks)
+        ]
+        for report in commented:
+            yield told(report)
+        if commented:
+            return
         for review in [review for review in remaining if review in current]:
-            report = settled_now(root, store, current[review])
+            report = settled_now(root, store, latest[review])
             if report is None:
                 continue
-            typer.echo(report.line())
             remaining.remove(review)
-            yield report
+            yield told(report)
 
 
-def woken(asker: Asker, reports: list[WaitedReview]) -> None:
-    """Hand the result to a Codex session through its queue, where it may be idle.
+def woken(asker: Asker, said: list[str]) -> None:
+    """Hand what the waiter said to a Codex session through its queue, where it may be idle.
 
     A Claude session is woken by its runtime when this background command
     ends; a Codex session's shell tool keeps the command running after the
     turn and starts no turn when it ends -- measured on 0.158.0, where
     `codex queue` did start one in the idle thread -- so the waiter queues
-    what it reported.
+    what it reported, the line saying how to wait again included.
     """
-    if asker.wake.runtime != "codex" or not reports:
+    if asker.wake.runtime != "codex" or not said:
         return
     wake(
         asker.wake,
-        "`review wait` finished:\n" + "\n".join(report.line() for report in reports),
+        "`review wait` finished:\n" + "\n".join(said),
         Path(asker.worktree) if asker.worktree else None,
     )
+
+
+class StopRequest:
+    """Whether the waiter was told to stop, and by which signal.
+
+    A runtime ends a background command it has run too long with SIGTERM, and
+    a closing terminal sends SIGHUP. Either sets this rather than killing the
+    waiter outright, and the wait returns at its next look, so it can say
+    what it leaves waiting and how to wait on it again -- where dying at the
+    signal left its session never learning the review still waited on it.
+    """
+
+    def __init__(self) -> None:
+        self.signal = ""
+
+    @contextmanager
+    def armed(self) -> Iterator["StopRequest"]:
+        """Note SIGTERM and SIGHUP here for as long as the wait runs."""
+
+        def stop(number: int, _frame: FrameType | None) -> None:
+            self.signal = signal.Signals(number).name
+
+        handled = [signal.SIGTERM, signal.SIGHUP]
+        before = [signal.signal(number, stop) for number in handled]
+        try:
+            yield self
+        finally:
+            for number, previous in zip(handled, before, strict=True):
+                signal.signal(number, previous)
 
 
 def wait_on(
@@ -442,9 +664,11 @@ def wait_on(
     """Wait on reviews this session asked, carry out what was approved, report it all.
 
     Exits 0 where everything waited on was carried out, 1 where anything was
-    declined, expired, cancelled or in conflict, 2 where nothing could be
-    waited on at all, and 3 where the ``timeout`` it was handed passed with
-    a review still waiting, which is left as it was.
+    declined, went stale, expired, was cancelled or in conflict, 2 where
+    nothing could be waited on at all, and 3 where it ended with a review
+    still waiting -- the operator commented without deciding, the
+    ``timeout`` it was handed passed, or its runtime stopped it -- saying
+    last which, and the command that waits on them again.
     """
     store = QuestionRelay(root / ".lup/questions.jsonl")
     asker = Asker.here(root)
@@ -457,17 +681,43 @@ def wait_on(
         typer.echo("nothing this session asked is waiting for review")
         return 0
     typer.echo("waiting on " + ", ".join(question.id for question in waiting))
-    with ReviewWaiters(root=root).holding([question.id for question in waiting]):
-        settled = settling(root, store, waiting, poll, timeout, announce)
+    heard = [
+        recorded
+        for remarks in ReviewThread.of(store).remarks().values()
+        for recorded in remarks
+    ]
+    with (
+        ReviewWaiters(root=root).holding([question.id for question in waiting]),
+        StopRequest().armed() as stop,
+    ):
+        settled = settling(root, store, waiting, heard, stop, poll, timeout, announce)
         reports = list(islice(settled, 1) if first else settled)
-    woken(asker, reports)
-    reported = {report.review for report in reports}
-    left = [question.id for question in waiting if question.id not in reported]
-    if left and not (first and reports):
-        typer.echo(
-            f"still waiting on {', '.join(left)}: its timeout passed and nothing "
-            "was carried out for it — start the same `review wait` again to "
-            "keep waiting"
-        )
-        return 3
-    return 0 if all(report.carried for report in reports) else 1
+    settles = {report.review for report in reports if report.verdict != "commented"}
+    left = [question.id for question in waiting if question.id not in settles]
+    said = [report.line() for report in reports]
+    commented = [report.review for report in reports if report.verdict == "commented"]
+    if not left or not (stop.signal or commented or not (first and reports)):
+        woken(asker, said)
+        return 0 if all(report.carried for report in reports) else 1
+    again = resume_command(root, left)
+    match commented, stop.signal:
+        case [review, *_], _:
+            ending = (
+                f"{', '.join(commented)} still pending, with the operator's words "
+                "above: answer on the review with `uv run lup-devtools review "
+                f"reply {review} <text>`, or cancel it and ask again; `{again}` "
+                "waits on it again"
+            )
+        case [], str(name) if name:
+            ending = (
+                f"stopped by {name} with {', '.join(left)} still pending and "
+                f"nothing carried out for it — start `{again}` again to keep waiting"
+            )
+        case _:
+            ending = (
+                f"still waiting on {', '.join(left)}: its timeout passed and nothing "
+                f"was carried out for it — start `{again}` again to keep waiting"
+            )
+    typer.echo(ending)
+    woken(asker, [*said, ending])
+    return 3

@@ -10,6 +10,7 @@ with a surface of its own lists it beside these in its composition.
 from lup.devtools.dashboard.reviews import (
     ReviewAnswer,
     ReviewDecision,
+    ReviewRemarkRequest,
     ReviewSnapshot,
 )
 from lup.devtools.dashboard.live import ReplyOutcome, ReplyRequest
@@ -64,6 +65,7 @@ DASHBOARD = Surface(
         ReviewDetail,
         ReviewAnswer,
         ReviewDecision,
+        ReviewRemarkRequest,
         ReplyRequest,
         ReplyOutcome,
         SetupPane,

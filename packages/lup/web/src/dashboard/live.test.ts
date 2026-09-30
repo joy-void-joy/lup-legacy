@@ -25,7 +25,7 @@ function message(id: string, fields: Partial<LiveMessage> = {}): LiveMessage {
 function review(key: string, created: string): ReviewSummary {
   return {
     key, root_id: "root", id: key, state: "pending", requester: "lead", reason: "", title: key, paths: [],
-    total_files: 0, operation: "Bash", rule: "", created, answerable: true, session: "lead",
+    total_files: 0, operation: "Bash", rule: "", created, answerable: true, unanswerable: "", stale: [], said: 0, target: "", session: "lead",
   };
 }
 

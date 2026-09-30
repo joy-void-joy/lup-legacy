@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 
 from lup.devtools.review.app import ReviewDetail
+from lup.devtools.review.preimages import moved
 from lup.policy.assets.host import rewritten_text, sed_output
 from lup.policy.kernel.decision import KernelDecision
 from lup.policy.kernel.words import sed_invocation
@@ -69,7 +70,7 @@ def test_sed_diff_uses_only_captured_input_and_preserves_modes_and_bytes(
     assert detail.preview_unavailable == ""
     assert "where the dashboard runs" in detail.preview_notice
     assert "captured input" in detail.preview_notice
-    assert detail.stale_reason
+    assert [each.path for each in moved(entry)] == [target]
 
 
 def test_each_named_target_is_transformed_from_its_own_captured_document(
@@ -247,7 +248,7 @@ def test_stale_check_preserves_captured_crlf(tmp_path: Path) -> None:
 
     detail = ReviewDetail.of(tmp_path, entry, "operator")
 
-    assert detail.stale_reason == ""
+    assert moved(entry) == []
     assert detail.files[0].before == "old\r\n"
     assert detail.files[0].after == "new\r\n"
 

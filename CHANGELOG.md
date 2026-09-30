@@ -2,6 +2,63 @@
 
 ## Unreleased
 
+### A review a recorded file moved under leaves the queue as stale
+
+A parked call binds its approval to the files it recorded, and the waiter
+carries it out only where each still stands as recorded; a review whose
+sources the session edited afterwards stayed in the queue with Approve
+enabled, and approving it failed out of sight. Whoever notices first -- the
+dashboard on each look (`PreimageWatch` reads a file again only where its
+size, time or inode moved), the page opening it, an answer, the requester's
+own waiter, `review list` -- retires it with `QuestionRelay.retire_stale`
+into the `stale` state, naming each file that moved and how
+(`lup.devtools.review.preimages.moved`: changed, created, deleted, or a
+directory where absence was recorded), and the requester is told to re-read
+the file and ask again. Only what the reader can see is judged: a path inside
+a session's container, or a file it may not read, is never stale. A stale
+review shows only in History; an answer to one is refused with the reason.
+`PersistentQuestion.stale()` is `overdue()`, and `moved` records what moved.
+
+### What the operator writes reaches the conversation that asked, once
+
+A waiter holding a review reports its verdict with the operator's note and
+line comments, an approval's included; the mailbox and the wake carry it only
+where no waiter holds the review, and a bare approval pings nobody but the
+waiter. A subagent's review records it (`PersistentQuestion.agent`), its own
+row hears the answer, and the session it runs in gets a copy of anything the
+operator said, marked `[copy]`. Claude Code's refusal names the waiter with
+`--timeout 7140` under the tool's two-hour background limit, and `--timeout
+540` in the foreground, so it ends on its own saying the review still waits
+and how to wait again rather than being stopped mute; SIGTERM or SIGHUP
+makes it say the same. The page's answer is delivered before the reply, so
+its toast says how the requester heard.
+
+### The review page is an editor
+
+The editor takes the height left at any width, the title names the change
+relative to its checkout, the policy's reason sits in a strip above it, and
+the comment box is pinned open and focused beneath. Ctrl+Enter (Cmd+Enter)
+approves, Alt+Delete declines, Alt+Enter sends the note and line comments
+without deciding, Alt+↑/↓ move between reviews, and Esc leaves the box for
+the one-letter keys; Shift+A and Shift+D are gone. A line number takes a
+comment on its line, Shift+click on a range, stored on the answer or remark
+as `LineComment` (path, lines, side, note) and printed to the requester as
+`path:line[-end]: note`. What was said is the review's thread, the operator's
+remarks and the requester's replies (`review reply <id> <text>`,
+`lup.devtools.review.thread`) beside the answer. Diffs are highlighted by
+extension, every `# lup:` marker kind is marked in its colour with `m` and
+`Shift+M` to jump between them, gaps fold behind expanders, and `f` shows the
+whole file. Answering is immediate and a refusal puts it back, with a toast.
+
+### Several edits go to the operator as one review
+
+`review propose <dir> --why <text>` parks every file under a scratch
+directory, each at its path in the checkout, as one review: each file meets
+the gates a direct write of it would, a refused one refuses the proposal,
+and one they let through is folded. `.proposal.json` notes files and names
+deletions. An approval releases every file or none, where each still stands
+as recorded; a file moved since stales the whole proposal.
+
 ### An issue filed on this repository's own tracker is not a question
 
 `gh issue create` joins the compensable verbs — closing restores what filing

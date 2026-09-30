@@ -143,9 +143,9 @@ async def test_browser_decision_relays_from_the_recipient_scope_once(
     assert settled is not None and settled.answer is not None
     assert settled.state == ("approved" if approved else "rejected")
     assert settled.answer.note == NOTE
-    assert not decision.notification.queued
+    assert decision.notification.queued
     assert not decision.notification.woken
-    assert "no confirmed outcome" in decision.notification.detail
+    assert "No `review wait` holds it" in decision.notification.detail
     native_queue.assert_not_called()
     [message] = RepositoryPeers(consumer).waiting(MEMBER).messages
     assert message.door == Door.PAGE

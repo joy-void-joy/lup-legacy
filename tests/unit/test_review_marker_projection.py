@@ -110,3 +110,59 @@ def test_multiline_template_string_does_not_create_feedback() -> None:
     assert len(notes) == 1
     assert notes[0].start_line == 4
     assert notes[0].text == "actual note"
+
+
+def test_every_marker_kind_is_located_and_classified_on_its_side() -> None:
+    before = "value = 1  # lup: defer: parked before the change\n"
+    after = (
+        "# lup: open feedback\n"
+        "# lup: defer: parked\n"
+        "# lup: defer[until the v2 API ships]: gated\n"
+        "# lup: solved: answered\n"
+        "# lup: template: choose\n"
+        "value = []  # lup: ignore[empty-collection] — a fold\n"
+    )
+
+    shown = ReviewFile.of(
+        ReviewedFile(path=Path("sample.py"), before=before, after=after)
+    )
+
+    assert [
+        (marker.side, marker.line, marker.kind, marker.condition)
+        for marker in shown.markers
+    ] == [
+        ("before", 1, "defer", None),
+        ("after", 1, "note", None),
+        ("after", 2, "defer", None),
+        ("after", 3, "defer", "until the v2 API ships"),
+        ("after", 4, "solved", None),
+        ("after", 5, "template", None),
+        ("after", 6, "ignore", None),
+    ]
+
+
+@pytest.mark.parametrize(
+    ("before", "after", "bounds"),
+    [
+        (
+            "".join(f"line {number}\n" for number in range(1, 21)),
+            "".join(
+                "line ten\n" if number == 10 else f"line {number}\n"
+                for number in range(1, 21)
+            ),
+            (7, 13, 7, 13),
+        ),
+        ("one\ntwo\n", "one\ntwo\nthree\n", (1, 2, 1, 3)),
+        (None, "one\n", (1, 0, 1, 1)),
+    ],
+    ids=["changed-line", "appended", "created"],
+)
+def test_hunks_say_where_they_stand_so_the_whole_file_can_be_shown_around_them(
+    before: str | None, after: str, bounds: tuple[int, int, int, int]
+) -> None:
+    shown = ReviewFile.of(
+        ReviewedFile(path=Path("notes.txt"), before=before, after=after)
+    )
+
+    (hunk,) = shown.hunks
+    assert (hunk.old_start, hunk.old_end, hunk.new_start, hunk.new_end) == bounds

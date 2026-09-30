@@ -1,121 +1,10 @@
-import { memo, useEffect, useRef, useState, type RefObject } from "react";
-import type { ReviewDecision, ReviewDetail, ReviewRoot, ReviewSnapshot, ReviewSummary, SetupPane } from "../generated/views";
-import { answerReview, followDashboard, readReview, readReviewLink, readSetupPanes, reviewLink, ReviewError, takeToken, TOKEN_KEY } from "./api";
-import { Files, type FileNavigation } from "./Files";
+import { useEffect, useMemo, useRef, useState } from "react";
+import type { ReviewDecision, ReviewDetail, ReviewRoot, ReviewSnapshot, ReviewSummary, SetupPane, ThreadEntry } from "../generated/views";
+import { answerReview, followDashboard, readReview, readReviewLink, readSetupPanes, remarkReview, reviewLink, ReviewError, takeToken, TOKEN_KEY } from "./api";
+import type { FileNavigation } from "./Files";
 import { applied, type LiveState } from "./live";
+import { EMPTY_DRAFT, RequestView, staleSentences, stateLabel, type Action, type Draft } from "./Request";
 import { Sessions } from "./Sessions";
-
-const FileEvidence = memo(Files);
-const JsonRecord = memo(function JsonRecord({ value }: { value: unknown }) {
-  return <pre>{JSON.stringify(value, null, 2)}</pre>;
-});
-
-/** A review's state as the page names it: the relay records a declined review as `rejected`. */
-function stateLabel(state: string): string {
-  return state === "rejected" ? "declined" : state;
-}
-
-function RequestRecord({ question }: { question: ReviewDetail["question"] }) {
-  const [open, setOpen] = useState(false);
-  return <details className="record" onToggle={(event) => setOpen(event.currentTarget.open)}>
-    <summary>Complete request record</summary>{open && <JsonRecord value={question} />}
-  </details>;
-}
-
-function ToolInput({ detail }: { detail: ReviewDetail }) {
-  const [open, setOpen] = useState(false);
-  return <details className="request-evidence" onToggle={(event) => setOpen(event.currentTarget.open)}>
-    <summary>{detail.command !== null ? "Command and tool input" : "Complete tool input"}</summary>
-    {open && <>
-      {detail.command !== null && <section className="command"><h3>Command</h3><pre>{detail.command}</pre></section>}
-      <div className="tool-input"><JsonRecord value={detail.question.operation.payload} /></div>
-    </>}
-  </details>;
-}
-
-function RequestLink({ summary }: { summary: ReviewSummary }) {
-  const [status, setStatus] = useState("");
-  const url = reviewLink(summary.id, summary.root_id);
-  async function copy() {
-    try {
-      await navigator.clipboard.writeText(url);
-      setStatus("Link copied.");
-    } catch {
-      setStatus("Copy is unavailable. Copy the request link directly.");
-    }
-  }
-  return <div className="request-link">
-    <a href={url}>Link to this request</a><button type="button" onClick={() => void copy()}>Copy link</button>
-    {status !== "" && <span role="status">{status}</span>}
-  </div>;
-}
-
-function RequestDetails({ detail, queuePath, note, sending, fileNavigation, onNote, onAnswer }: {
-  detail: ReviewDetail;
-  queuePath: string | null;
-  note: string;
-  sending: boolean;
-  fileNavigation: RefObject<FileNavigation | null>;
-  onNote(note: string): void;
-  onAnswer(approved: boolean): Promise<void>;
-}) {
-  const { summary, question } = detail;
-  const heading = useRef<HTMLHeadingElement>(null);
-  useEffect(() => {
-    heading.current?.scrollIntoView({ block: "start" });
-    heading.current?.focus({ preventScroll: true });
-  }, []);
-
-  return <article className="request">
-    <div className="request-inspection">
-    {detail.notification !== undefined && detail.notification !== null && <details className="request-context notification-status"><summary>Agent notification · {detail.notification.woken ? "accepted by runtime" : detail.notification.queued ? "queued" : "unconfirmed"}</summary><p>{detail.notification.detail}</p></details>}
-    <header className="request-heading">
-      <div className="request-title"><span className={`state ${summary.state}`}>{stateLabel(summary.state)}</span>
-      <h2 ref={heading} tabIndex={-1}>{summary.title}</h2><RequestLink summary={summary} /></div>
-      <dl className="request-location" aria-label="Request location">
-        <dt>Queue checkout</dt><dd><code tabIndex={0}>{queuePath ?? "Checkout not present in the current watch list"}</code></dd>
-        <dt>Operation directory</dt><dd><code tabIndex={0}>{question.operation.cwd}</code></dd>
-      </dl>
-      <details className="request-context"><summary>Why approval is needed · {summary.rule || "Request details"}</summary>
-      <p className="reason">{summary.reason}</p>
-      <dl className="metadata">
-        <dt>Requester</dt><dd>{summary.requester}</dd>
-        <dt>Operation</dt><dd>{summary.operation}</dd>
-        <dt>Created</dt><dd>{new Date(summary.created).toLocaleString()}</dd>
-        <dt>Rule</dt><dd>{summary.rule || "Unattributed"}</dd>
-        <dt>Request</dt><dd><code>{summary.id}</code></dd>
-      </dl>
-      <RequestRecord question={question} />
-      </details>
-    </header>
-    {detail.stale_reason !== "" && <p className="notice" role="status">{detail.stale_reason}</p>}
-    <ToolInput detail={detail} />
-    {detail.preview_unavailable !== "" && <p className="notice" role="status">{detail.preview_unavailable}</p>}
-    {(detail.preview_notice ?? "") !== "" && <details className="preview-note"><summary>Preview computed where the dashboard runs</summary><p>{detail.preview_notice}</p></details>}
-    {detail.files.length > 0 ? <FileEvidence files={detail.files} navigation={fileNavigation} command={detail.command} /> : <section className="command-only"><h3>Tool input</h3><JsonRecord value={question.operation.payload} /></section>}
-    {question.answer !== null && <section className="answer-record">
-      <h3>{question.answer.approved ? "Approved" : "Declined"} by {question.answer.principal}</h3>
-      {question.answer.note !== "" && <p>{question.answer.note}</p>}
-    </section>}
-    </div>
-    {summary.state === "pending" && <section className="decision">
-      <details className="comment-editor"><summary>Comment{note !== "" ? " · draft" : " (optional)"}</summary>
-      <label htmlFor="review-comment">Comment for the requesting agent</label>
-      <textarea id="review-comment" rows={2} value={note} disabled={sending}
-        onChange={(event) => onNote(event.target.value)} placeholder="Optional instructions or reason" />
-      </details>
-      {!summary.answerable && <p className="notice">This request cannot be answered from this dashboard.</p>}
-      <div className="actions">
-        <button className="approve" type="button" aria-keyshortcuts="Shift+A"
-          disabled={sending || !summary.answerable || detail.stale_reason !== ""}
-          onClick={(event) => { if (event.detail < 2) void onAnswer(true); }}>Approve</button>
-        <button className="decline" type="button" aria-keyshortcuts="Shift+D" disabled={sending || !summary.answerable}
-          onClick={(event) => { if (event.detail < 2) void onAnswer(false); }}>Decline</button>
-        <span className="decision-hint">{sending ? "Recording decision…" : "Shift+A approve · Shift+D decline"}</span>
-      </div>
-    </section>}
-  </article>;
-}
 
 type SessionGroup = { session: string; rows: ReviewSummary[] };
 type RepositoryGroup = { repository: string; name: string; sessions: SessionGroup[] };
@@ -161,6 +50,25 @@ function nextPending(rows: ReviewSummary[], key: string): string {
     ?? rows.find((row) => row.key !== key && row.state === "pending")?.key ?? "";
 }
 
+/** One transient word about an action the operator took: what it was, and what came of it. */
+type Toast = { id: number; key: string; status: "sending" | "done" | "failed"; heading: string; title: string; detail: string };
+
+/** What each action is called while it is on its way, once it landed, and when it failed. */
+const SPOKEN: Record<Action, { sending: string; done: string; failed: string }> = {
+  approve: { sending: "Approving…", done: "Approved", failed: "Approval not recorded" },
+  decline: { sending: "Declining…", done: "Declined", failed: "Decline not recorded" },
+  remark: { sending: "Sending comments…", done: "Comments sent", failed: "Comments not sent" },
+};
+
+/** The keys the review view answers to, as the `?` help lists them. */
+const SHORTCUTS: [string[], string][] = [
+  [["Ctrl", "Enter"], "Approve"], [["Alt", "Delete"], "Decline"], [["Alt", "Enter"], "Send the note and line comments without deciding"],
+  [["Alt", "↑"], "Previous request"], [["Alt", "↓"], "Next request"],
+  [["Esc"], "Leave the comment box"], [["C"], "Back into the comment box"], [["J"], "Next request"], [["K"], "Previous request"],
+  [["["], "Previous file"], [["]"], "Next file"], [["N"], "Next rule exception"], [["P"], "Previous rule exception"],
+  [["M"], "Next `# lup:` marker"], [["Shift", "M"], "Previous `# lup:` marker"], [["F"], "Whole file in context"], [["?"], "This help"],
+];
+
 export function App() {
   const [access, setAccess] = useState(() => takeToken());
   const { token, notice } = access;
@@ -168,16 +76,18 @@ export function App() {
   liveAccess.current = access;
   const [linked, setLinked] = useState(readReviewLink);
   const [accessDenied, setAccessDenied] = useState(false);
-  const [queue, setQueue] = useState<ReviewSnapshot | null>(null);
+  const [streamed, setStreamed] = useState<ReviewSnapshot | null>(null);
   const [selected, setSelected] = useState("");
   const [filter, setFilter] = useState<"pending" | "history">("pending");
-  const [detail, setDetail] = useState<ReviewDetail | null>(null);
+  const [fetched, setFetched] = useState<ReviewDetail | null>(null);
   const [connection, setConnection] = useState("Connecting…");
   const [error, setError] = useState("");
-  const [decision, setDecision] = useState<ReviewDecision | null>(null);
+  const [failures, setFailures] = useState<Record<string, string>>({});
   const [retry, setRetry] = useState(0);
-  const [notes, setNotes] = useState<Record<string, string>>({});
-  const [sending, setSending] = useState(false);
+  const [drafts, setDrafts] = useState<Record<string, Draft>>({});
+  const [answered, setAnswered] = useState<ReadonlyMap<string, ReviewDetail>>(new Map());
+  const [sending, setSending] = useState<ReadonlyMap<string, ThreadEntry>>(new Map());
+  const [toasts, setToasts] = useState<Toast[]>([]);
   const [help, setHelp] = useState(false);
   const [advance, setAdvance] = useState(true);
   const [mobilePanel, setMobilePanel] = useState<"queue" | "review">("review");
@@ -188,14 +98,20 @@ export function App() {
   const [panes, setPanes] = useState<SetupPane[] | null>(null);
   const [pane, setPane] = useState("");
   const fileNavigation = useRef<FileNavigation | null>(null);
+  const composer = useRef<HTMLTextAreaElement | null>(null);
   const heldKeys = useRef(new Set<string>());
   const routedAddress = useRef(window.location.href);
-  const answering = useRef(false);
+  const inflight = useRef(new Set<string>());
+  const toastSeq = useRef(0);
   const current = useRef(selected);
-  const liveQueue = useRef(queue);
-  const settledReviews = useRef(new Map<string, ReviewDetail>());
   const detailRequest = useRef<AbortController | null>(null);
   current.current = selected;
+  // What the page knows before the stream does: an answer given here stands
+  // over the stream's row until the stream says the review is no longer
+  // waiting, so an older snapshot can never undo it.
+  const queue = useMemo<ReviewSnapshot | null>(() => streamed === null ? null
+    : { ...streamed, reviews: streamed.reviews.map((row) => answered.get(row.key)?.summary ?? row) }, [streamed, answered]);
+  const liveQueue = useRef(queue);
   liveQueue.current = queue;
   const rows = queue?.reviews ?? [];
   const queuePartial = queue !== null && queue.errors.length > 0;
@@ -206,6 +122,8 @@ export function App() {
   const visible = groups.flatMap((group) => group.sessions.flatMap((asking) => asking.rows));
   const position = visible.findIndex((row) => row.key === selected);
   const linkedRows = linked === null ? [] : rows.filter((row) => row.id === linked.id && (linked.root === null || row.root_id === linked.root));
+  const row = rows.find((each) => each.key === selected) ?? null;
+  const detail = answered.get(selected) ?? (fetched?.summary.key === selected ? fetched : null);
 
   function refreshAccess() {
     const fresh = takeToken(liveAccess.current.token);
@@ -219,18 +137,18 @@ export function App() {
     setRetry((value) => value + 1);
   }
 
-  function navigate(row: ReviewSummary | null, replace = false) {
+  function navigate(target: ReviewSummary | null, replace = false) {
     const url = new URL(window.location.href);
     url.hash = "";
-    const address = row === null ? url.href : reviewLink(row.id, row.root_id);
+    const address = target === null ? url.href : reviewLink(target.id, target.root_id);
     routedAddress.current = address;
     if (address !== window.location.href) {
       if (replace) window.history.replaceState(null, "", address);
       else window.history.pushState(null, "", address);
     }
-    setLinked(row === null ? null : { id: row.id, root: row.root_id });
-    setSelected(row?.key ?? "");
-    current.current = row?.key ?? "";
+    setLinked(target === null ? null : { id: target.id, root: target.root_id });
+    setSelected(target?.key ?? "");
+    current.current = target?.key ?? "";
   }
 
   useEffect(() => {
@@ -254,7 +172,6 @@ export function App() {
       setSelected("");
       current.current = "";
       setError("");
-      setDecision(null);
       setConnection("Connecting…");
       setRetry((value) => value + 1);
     }
@@ -266,20 +183,30 @@ export function App() {
   useEffect(() => {
     if (queue === null) return;
     if (linked !== null) {
-      const row = linkedRows.length === 1 ? linkedRows[0] : undefined;
-      if (row === undefined) { setSelected(""); current.current = ""; }
-      else if (selected !== row.key) {
-        setSelected(row.key);
-        current.current = row.key;
-        setFilter(row.state === "pending" ? "pending" : "history");
+      const found = linkedRows.length === 1 ? linkedRows[0] : undefined;
+      if (found === undefined) { setSelected(""); current.current = ""; }
+      else if (selected !== found.key) {
+        setSelected(found.key);
+        current.current = found.key;
+        setFilter(found.state === "pending" ? "pending" : "history");
       }
       return;
     }
     if (selected === "" && filter === "pending") {
-      const row = queue.reviews.find((item) => item.state === "pending");
-      if (row !== undefined) navigate(row, true);
+      const first = queue.reviews.find((item) => item.state === "pending");
+      if (first !== undefined) navigate(first, true);
     }
   }, [queue, filter, linked, selected]);
+
+  // An answer given here is dropped once the stream shows the review settled,
+  // which is the stream catching up with it.
+  useEffect(() => {
+    if (streamed === null) return;
+    setAnswered((known) => {
+      const kept = new Map([...known].filter(([key]) => !streamed.reviews.some((each) => each.key === key && each.state !== "pending")));
+      return kept.size === known.size ? known : kept;
+    });
+  }, [streamed]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -299,15 +226,7 @@ export function App() {
           cursor.current = entry.frame.cursor;
           liveState.current = next;
           setLive(next);
-          if (previous === null || next.reviews !== previous.reviews) {
-            const snapshot = next.reviews;
-            for (const key of settledReviews.current.keys()) {
-              if (!snapshot.reviews.some((row) => row.key === key && row.state === "pending")) settledReviews.current.delete(key);
-            }
-            const fresh = { ...snapshot, reviews: snapshot.reviews.map((row) => settledReviews.current.get(row.key)?.summary ?? row) };
-            liveQueue.current = fresh;
-            setQueue(fresh);
-          }
+          if (previous === null || next.reviews !== previous.reviews) setStreamed(next.reviews);
           if (entry.frame.event.type === "snapshot") setConnection("Live");
         }
         if (!controller.signal.aborted) throw new Error("The connection closed.");
@@ -336,7 +255,7 @@ export function App() {
     const controller = new AbortController();
     detailRequest.current = controller;
     void readReview(selected, token, controller.signal).then((fresh) => {
-      if (!controller.signal.aborted && !answering.current) setDetail(settledReviews.current.get(selected) ?? fresh);
+      if (!controller.signal.aborted) setFetched(fresh);
     }).catch((failure: unknown) => {
       if (!controller.signal.aborted) setError(String(failure));
     }).finally(() => {
@@ -354,18 +273,15 @@ export function App() {
   }, [view, token]);
 
   function select(wanted: string) {
-    if (answering.current) return;
-    navigate(rows.find((row) => row.key === wanted) ?? null);
+    navigate(rows.find((each) => each.key === wanted) ?? null);
     setMobilePanel("review");
     setError("");
-    setDecision(null);
   }
 
   function show(wanted: "pending" | "history") {
-    if (answering.current) return;
     setFilter(wanted);
-    const matching = rows.filter((row) => wanted === "pending" ? row.state === "pending" : row.state !== "pending");
-    if (!matching.some((row) => row.key === selected)) select(matching[0]?.key ?? "");
+    const matching = rows.filter((each) => wanted === "pending" ? each.state === "pending" : each.state !== "pending");
+    if (!matching.some((each) => each.key === selected)) select(matching[0]?.key ?? "");
   }
 
   function move(offset: number) {
@@ -373,63 +289,128 @@ export function App() {
     if (target !== undefined) select(target.key);
   }
 
-  async function answer(approved: boolean): Promise<void> {
-    if (answering.current || detail === null || detail.summary.key !== selected
-      || detail.summary.state !== "pending" || !detail.summary.answerable || (approved && detail.stale_reason !== "")) return;
+  function toast(entry: Omit<Toast, "id">): number {
+    toastSeq.current += 1;
+    const id = toastSeq.current;
+    setToasts((shown) => [...shown.filter((each) => each.key !== entry.key || each.status === "failed"), { ...entry, id }]);
+    return id;
+  }
+
+  function settleToast(id: number, status: Toast["status"], heading: string, detail: string) {
+    setToasts((shown) => shown.map((each) => each.id === id ? { ...each, status, heading, detail } : each));
+    if (status === "done") setTimeout(() => setToasts((shown) => shown.filter((each) => each.id !== id)), 7000);
+  }
+
+  /**
+   * Answer or comment on the selected review, at once. The page shows the
+   * outcome before the server has it -- the review answered, the next one
+   * open, the drafts cleared -- and reconciles with the server's reply; a
+   * refusal puts everything back where it was, drafts included, and says
+   * why where the operator will see it.
+   */
+  function act(action: Action) {
     const key = selected;
-    const fingerprint = detail.question.fingerprint;
-    answering.current = true;
-    setSending(true);
-    setError("");
-    try {
-      const settled = await answerReview(key, { approved, note: notes[key] ?? "", fingerprint }, token);
-      settledReviews.current.set(key, settled.review);
-      setNotes((drafts) => ({ ...drafts, [key]: "" }));
-      if (current.current === key) {
-        setDetail(settled.review);
-        setDecision(settled);
-      }
-      let refreshed = liveQueue.current;
-      if (refreshed !== null) refreshed = { ...refreshed, reviews: refreshed.reviews.map((row) => row.key === key ? settled.review.summary : row) };
-      liveQueue.current = refreshed;
-      setQueue(refreshed);
+    const shown = detail;
+    const summary = row;
+    if (shown === null || summary === null || shown.summary.key !== key || inflight.current.has(key)) return;
+    if (summary.state !== "pending" || !summary.answerable) return;
+    if (action === "approve" && summary.stale.length > 0) return;
+    const draft = drafts[key] ?? EMPTY_DRAFT;
+    const comments = draft.comments.filter((comment) => comment.note.trim() !== "")
+      .map(({ path, start, end, side, note }) => ({ path, start, end, side, note }));
+    if (action === "remark" && draft.note.trim() === "" && comments.length === 0) return;
+    const fingerprint = shown.question.fingerprint;
+    const at = new Date().toISOString();
+    inflight.current.add(key);
+    setFailures((known) => Object.fromEntries(Object.entries(known).filter(([each]) => each !== key)));
+    setDrafts((known) => ({ ...known, [key]: EMPTY_DRAFT }));
+    const spoken = SPOKEN[action];
+    const id = toast({ key, status: "sending", heading: spoken.sending, title: summary.title, detail: "" });
+    if (action === "remark") {
+      setSending((known) => new Map(known).set(key, { kind: "remark", author: "operator", text: draft.note, comments, at, approved: null }));
+    } else {
+      const answer = { approved: action === "approve", principal: "operator", receipt: "recorded" as const, unresolved_chain: false, note: draft.note, comments, at };
+      const optimistic: ReviewDetail = {
+        ...shown,
+        summary: { ...summary, state: answer.approved ? "approved" : "rejected", answerable: false },
+        question: { ...shown.question, answer },
+        thread: [...shown.thread, { kind: "answer", author: "operator", text: draft.note, comments, at, approved: answer.approved }],
+      };
+      setAnswered((known) => new Map(known).set(key, optimistic));
       if (current.current === key && advance) {
         setFilter("pending");
-        const next = nextPending(refreshed?.reviews ?? [], key);
-        navigate(refreshed?.reviews.find((row) => row.key === next) ?? null);
+        const following = liveQueue.current?.reviews.map((each) => each.key === key ? optimistic.summary : each) ?? [];
+        const next = nextPending(following, key);
+        navigate(following.find((each) => each.key === next) ?? null);
       }
-    } catch (failure) {
-      setError(String(failure));
-    } finally {
-      answering.current = false;
-      setSending(false);
     }
+    const request: Promise<ReviewDecision> = action === "remark" ? remarkReview(key, { note: draft.note, comments, fingerprint }, token)
+      : answerReview(key, { approved: action === "approve", note: draft.note, comments, fingerprint }, token);
+    request.then((settled) => {
+      if (action === "remark") {
+        setSending((known) => { const next = new Map(known); next.delete(key); return next; });
+        if (current.current === key) setFetched(settled.review);
+      } else {
+        setAnswered((known) => new Map(known).set(key, settled.review));
+      }
+      settleToast(id, "done", spoken.done, settled.notification.detail);
+    }).catch((failure: unknown) => {
+      const reason = failure instanceof Error ? failure.message : String(failure);
+      setSending((known) => { const next = new Map(known); next.delete(key); return next; });
+      setAnswered((known) => { const next = new Map(known); next.delete(key); return next; });
+      setDrafts((known) => {
+        const now = known[key] ?? EMPTY_DRAFT;
+        return { ...known, [key]: { note: now.note === "" ? draft.note : `${draft.note}\n${now.note}`, comments: [...draft.comments, ...now.comments] } };
+      });
+      setFailures((known) => ({ ...known, [key]: reason }));
+      settleToast(id, "failed", spoken.failed, reason);
+    }).finally(() => {
+      inflight.current.delete(key);
+    });
   }
 
   useEffect(() => {
     function down(event: KeyboardEvent) {
-      if (view !== "reviews" || event.defaultPrevented || event.repeat || event.isComposing || event.ctrlKey || event.metaKey || event.altKey) return;
-      if (event.target instanceof Element && event.target.closest("input, textarea, select, [contenteditable]:not([contenteditable='false']), [role='textbox']") !== null) return;
+      if (view !== "reviews" || event.defaultPrevented || event.isComposing) return;
       const code = event.code || event.key;
+      const typing = event.target instanceof Element && event.target.closest("input, textarea, select, [contenteditable]:not([contenteditable='false']), [role='textbox']") !== null;
+      const deciding = (event.ctrlKey || event.metaKey) && event.key === "Enter" ? "approve" as const
+        : event.altKey && !event.shiftKey && event.key === "Delete" ? "decline" as const
+        : event.altKey && event.key === "Enter" ? "remark" as const : null;
+      if (deciding !== null) {
+        event.preventDefault();
+        if (event.repeat || heldKeys.current.has(code)) return;
+        heldKeys.current.add(code);
+        act(deciding);
+        return;
+      }
+      if (event.altKey && (event.key === "ArrowDown" || event.key === "ArrowUp")) {
+        event.preventDefault();
+        move(event.key === "ArrowDown" ? 1 : -1);
+        return;
+      }
+      if (event.key === "Escape" && typing && event.target instanceof HTMLElement) {
+        event.target.blur();
+        document.querySelector<HTMLElement>(".file-evidence, .request h2")?.focus({ preventScroll: true });
+        return;
+      }
+      if (typing || event.repeat || event.ctrlKey || event.metaKey || event.altKey) return;
       if (heldKeys.current.has(code)) return;
-      const key = event.key.toLowerCase();
-      if (!(key === "?" || key === "j" || key === "k" || key === "c" || key === "[" || key === "]" || key === "n" || key === "p" || (event.shiftKey && (key === "a" || key === "d")))) return;
+      const lower = event.key.toLowerCase();
+      if (!["?", "j", "k", "c", "[", "]", "n", "p", "m", "f"].includes(lower)) return;
       heldKeys.current.add(code);
       event.preventDefault();
-      if (key === "?") setHelp((value) => !value);
-      else if (event.shiftKey && key === "a") void answer(true);
-      else if (event.shiftKey && key === "d") void answer(false);
-      else if (key === "j") move(1);
-      else if (key === "k") move(-1);
-      else if (!answering.current && key === "[") fileNavigation.current?.moveFile(-1);
-      else if (!answering.current && key === "]") fileNavigation.current?.moveFile(1);
-      else if (!answering.current && key === "n") fileNavigation.current?.moveException(1);
-      else if (!answering.current && key === "p") fileNavigation.current?.moveException(-1);
-      else if (key === "c") {
-        const field = document.getElementById("review-comment");
-        const disclosure = field?.closest("details");
-        if (disclosure instanceof HTMLDetailsElement) disclosure.open = true;
-        field?.focus();
+      switch (lower) {
+        case "?": setHelp((value) => !value); break;
+        case "j": move(1); break;
+        case "k": move(-1); break;
+        case "[": fileNavigation.current?.moveFile(-1); break;
+        case "]": fileNavigation.current?.moveFile(1); break;
+        case "n": fileNavigation.current?.moveException(1); break;
+        case "p": fileNavigation.current?.moveException(-1); break;
+        case "m": fileNavigation.current?.moveMarker(event.shiftKey ? -1 : 1); break;
+        case "f": fileNavigation.current?.toggleWhole(); break;
+        case "c": composer.current?.focus(); break;
       }
     }
     function up(event: KeyboardEvent) { heldKeys.current.delete(event.code || event.key); }
@@ -453,7 +434,7 @@ export function App() {
 
   return <div className="dashboard">
     <header className="masthead">
-      <div className="masthead-identity"><p className="eyebrow">Lup · operator review</p><h1>Dashboard</h1>
+      <div className="masthead-identity"><h1>Dashboard <span className="eyebrow">Lup · operator review</span></h1>
         {queue === null ? <p className="watched-checkout">Loading watched checkout…</p> : queue.roots.length === 1 ? <p className="watched-checkout">Watching queue <code tabIndex={0}>{queue.roots[0]?.path}</code></p>
           : <details className="roots"><summary>Watching {queue.roots.length} checkout queues</summary>{queue.roots.map((root) => <p key={root.id}><code tabIndex={0}>{root.path}</code></p>)}</details>}
       </div>
@@ -470,23 +451,21 @@ export function App() {
     {view === "sessions" ? <Sessions live={live} current={connection === "Live"} token={token} />
       : view === "setup" ? <>{error !== "" && <p className="error" role="alert">{error}</p>}<SetupView panes={panes} chosen={pane} onChoose={setPane} /></> : <>
     {help && <section className="shortcut-help" id="shortcut-help" aria-label="Keyboard shortcuts">
-      <span><kbd>Shift</kbd> + <kbd>A</kbd> Approve</span><span><kbd>Shift</kbd> + <kbd>D</kbd> Decline</span>
-      <span><kbd>J</kbd> Next request</span><span><kbd>K</kbd> Previous request</span><span><kbd>C</kbd> Comment</span><span><kbd>?</kbd> Toggle help</span>
-      <span><kbd>[</kbd> / <kbd>]</kbd> Previous / next file</span><span><kbd>P</kbd> / <kbd>N</kbd> Previous / next rule exception</span>
-      <p>Shortcuts pause while typing. Release the keys before deciding another request.</p>
+      {SHORTCUTS.map(([keys, meaning]) => <span key={`${keys.join("+")} ${meaning}`}>{keys.map((key, index) => <span key={key}>{index > 0 && " + "}<kbd>{key}</kbd></span>)} {meaning}</span>)}
+      <p>The comment box is open on every waiting review: decisions and Alt+↑/↓ work from inside it, and Esc leaves it so the one-letter keys apply. Click a line number to comment on a line, Shift+click another to comment on the range. Holding a key cannot answer another request.</p>
     </section>}
     <nav className="mobile-switch" aria-label="Workspace panel"><button type="button" aria-pressed={mobilePanel === "queue"} onClick={() => setMobilePanel("queue")}>Queue ({queueCurrent ? pending.length : "?"})</button><button type="button" aria-pressed={mobilePanel === "review"} onClick={() => setMobilePanel("review")}>Review</button></nav>
     <div className="workspace" data-mobile-panel={mobilePanel}>
       <aside className="queue" aria-label="Review requests" aria-busy={!queueCurrent}>
         <div className="filters" aria-label="Request filter">
-          <button type="button" disabled={sending} aria-pressed={filter === "pending"} onClick={() => show("pending")}>Pending ({queueCurrent ? pending.length : "?"})</button>
-          <button type="button" disabled={sending} aria-pressed={filter === "history"} onClick={() => show("history")}>History ({queueCurrent ? rows.length - pending.length : "?"})</button>
+          <button type="button" aria-pressed={filter === "pending"} onClick={() => show("pending")}>Pending ({queueCurrent ? pending.length : "?"})</button>
+          <button type="button" aria-pressed={filter === "history"} onClick={() => show("history")}>History ({queueCurrent ? rows.length - pending.length : "?"})</button>
         </div>
-        <label className="queue-setting"><input type="checkbox" checked={advance} disabled={sending} onChange={(event) => setAdvance(event.target.checked)} /> Advance after decision</label>
+        <label className="queue-setting"><input type="checkbox" checked={advance} onChange={(event) => setAdvance(event.target.checked)} /> Advance after decision</label>
         <div className="queue-navigation">
-          <button type="button" disabled={sending || position <= 0} onClick={() => move(-1)} aria-label="Previous request">← Previous</button>
+          <button type="button" disabled={position <= 0} onClick={() => move(-1)} aria-label="Previous request">← Previous</button>
           <span>{!queueCurrent ? "Count unavailable" : position >= 0 ? `${position + 1} of ${visible.length}` : `${visible.length} requests`}</span>
-          <button type="button" disabled={sending || position + 1 >= visible.length} onClick={() => move(1)} aria-label="Next request">Next →</button>
+          <button type="button" disabled={position + 1 >= visible.length} onClick={() => move(1)} aria-label="Next request">Next →</button>
         </div>
         {!queueCurrent && <p className="empty" role="status">{queueStatus}{queue !== null && " · Previously loaded requests may be incomplete."}</p>}
         {queueCurrent && visible.length === 0 && <p className="empty">{filter === "pending" ? "No requests waiting. This page will update when one arrives." : "No answered requests yet."}</p>}
@@ -494,34 +473,44 @@ export function App() {
           <h2 className="repository-name" title={group.repository}>{group.name} <span className="count">({group.sessions.reduce((total, asking) => total + asking.rows.length, 0)})</span></h2>
           {group.sessions.map((asking) => <section className="session-group" key={asking.session} aria-label={`Session ${asking.session}`}>
             <h3 className="session-name">Asked by {asking.session} <span className="count">({asking.rows.length})</span></h3>
-            {asking.rows.map((row) => <div className="queue-entry" key={row.key}><button type="button" disabled={sending} className={`queue-row ${selected === row.key ? "selected" : ""}`}
-              aria-current={selected === row.key ? "true" : undefined} onClick={() => select(row.key)}>
-              <span className="row-top"><span className={`state ${row.state}`}>{stateLabel(row.state)}</span><time>{new Date(row.created).toLocaleTimeString()}</time></span>
-              <strong>{row.title}</strong><small>{row.requester}</small>
-              {row.total_files > 0 && <small className="review-file-count">{row.paths.length > 0 ? `${row.paths.length} ${row.paths.length === 1 ? "file" : "files"} to review` : "Operation review"} · {row.total_files} submitted</small>}
-              <small className="root-path">Queue: {queue?.roots.find((root) => root.id === row.root_id)?.path ?? "Checkout unavailable"}</small>
-            </button>{row.paths.length > 1 && <details className="queue-files"><summary>{row.paths.length} files to review</summary>{row.paths.map((path) => <code key={path}>{path}</code>)}</details>}</div>)}
+            {asking.rows.map((each) => <div className="queue-entry" key={each.key}><button type="button" className={`queue-row ${selected === each.key ? "selected" : ""}`}
+              aria-current={selected === each.key ? "true" : undefined} onClick={() => select(each.key)}>
+              <span className="row-top"><span className={`state ${each.state}`}>{stateLabel(each.state)}</span>{inflight.current.has(each.key) && <span className="muted">sending…</span>}<time>{new Date(each.created).toLocaleTimeString()}</time></span>
+              <strong>{each.title}</strong><small>{each.requester}</small>
+              {each.stale.length > 0 && <small className="row-stale">Stale: {staleSentences(each).join("; ")}</small>}
+              {each.unanswerable !== "" && <small className="row-unanswerable">{each.unanswerable}</small>}
+              {failures[each.key] !== undefined && <small className="row-failed">{failures[each.key]}</small>}
+              {each.said > 0 && <small className="row-said">{each.said} {each.said === 1 ? "comment" : "comments"} in its thread</small>}
+              {each.total_files > 0 && <small className="review-file-count">{each.paths.length > 0 ? `${each.paths.length} ${each.paths.length === 1 ? "file" : "files"} to review` : "Operation review"} · {each.total_files} submitted</small>}
+              <small className="root-path">Queue: {queue?.roots.find((root) => root.id === each.root_id)?.path ?? "Checkout unavailable"}</small>
+            </button>{each.paths.length > 1 && <details className="queue-files"><summary>{each.paths.length} files to review</summary>{each.paths.map((path) => <code key={path}>{path}</code>)}</details>}</div>)}
           </section>)}
         </section>)}
       </aside>
       <main className="stage">
         {queue?.errors.map((issue) => <p className="notice" role="alert" key={issue.root}>{issue.root}: {issue.message}</p>)}
         {error !== "" && <p className="error" role="alert">{error}</p>}
-        {decision !== null && <div className="decision-receipt" role="status">
-          <strong>{decision.review.question.answer?.approved ? "Approval recorded." : "Decline recorded."}</strong>
-          <span> {decision.review.summary.title}</span><p>{decision.notification.detail}</p>
-        </div>}
         {linked !== null && selected === "" ? <section className="missing-review" role="status">
           <h2>{!queueCurrent ? queuePartial ? "Requested review unavailable" : "Loading requested review…" : linkedRows.length > 1 ? "This request ID exists in multiple checkouts" : "Request not found"}</h2>
           <p>Requested review: <code>{linked.id}</code></p>
           <p>{linkedRows.length > 1 ? "Choose the intended checkout from the queue." : "This page will keep watching for that exact request in the selected repositories."}</p>
-          <button type="button" disabled={sending} onClick={() => { setFilter("pending"); select(""); }}>Show pending queue</button>
+          <button type="button" onClick={() => { setFilter("pending"); select(""); }}>Show pending queue</button>
         </section> : selected === "" ? <section className="welcome"><h2>{!queueCurrent ? queueStatus : pending.length === 0 ? "Queue complete" : "Ready for the next request"}</h2><p>Keep this tab open. New requests appear automatically, with their complete changes and tool inputs.</p></section>
-          : detail?.summary.key === selected ? <RequestDetails key={selected} detail={detail} queuePath={queue?.roots.find((root) => root.id === detail.summary.root_id)?.path ?? null} note={notes[selected] ?? ""} sending={sending} fileNavigation={fileNavigation}
-            onNote={(note) => setNotes((drafts) => ({ ...drafts, [selected]: note }))} onAnswer={answer} />
+          : detail !== null && row !== null ? <RequestView key={selected} detail={detail} row={row} roots={queue?.roots ?? []} draft={drafts[selected] ?? EMPTY_DRAFT}
+            sending={sending.get(selected) ?? null} error={failures[selected] ?? ""} fileNavigation={fileNavigation} composer={composer}
+            onDraft={(draft) => setDrafts((known) => ({ ...known, [selected]: draft }))} onAct={act} />
           : <p className="empty" role="status">Loading request…</p>}
       </main>
+    </div>
+    <div className="toasts" role="region" aria-label="What your actions came to" aria-live="polite">
+      {toasts.map((each) => <div className={`toast ${each.status}`} key={each.id} role={each.status === "failed" ? "alert" : "status"}>
+        <strong>{each.heading}</strong> <span className="toast-title">{each.title}</span>
+        {each.detail !== "" && <p>{each.detail}</p>}
+        <span className="toast-actions">{each.status === "failed" && <button type="button" onClick={() => { setFilter("pending"); select(each.key); }}>Open it</button>}
+          <button type="button" aria-label="Dismiss" onClick={() => setToasts((shown) => shown.filter((other) => other.id !== each.id))}>×</button></span>
+      </div>)}
     </div>
     </>}
   </div>;
 }
+
