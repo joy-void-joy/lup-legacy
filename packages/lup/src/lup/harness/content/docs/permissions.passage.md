@@ -1246,7 +1246,8 @@ transition, into this shape, and nothing reads the older one after; a writer
 that waited on a log rewritten meanwhile writes to the new one. A reader
 that stays open, as the dashboard and a waiter do, reads only what was
 appended since it last read. Settled reviews past the retention window
-(`docs/dashboard.md`) leave the log for `.lup/reviews/archive.jsonl`, and the
+(`[tool.lup] review-retention-days` in the checkout's `pyproject.toml`, seven
+days unless set) leave the log for `.lup/reviews/archive.jsonl`, and the
 documents no remaining question names leave the store with them.
 
 An approval is spent once. `review wait`, started in the session's own shell,
