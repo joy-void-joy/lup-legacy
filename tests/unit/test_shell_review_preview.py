@@ -67,6 +67,26 @@ def test_a_nonterminating_script_is_stopped_without_partial_evidence() -> None:
     }
 
 
+@pytest.mark.parametrize("started", ["C", "POSIX", "en_US.UTF-8"])
+def test_the_preview_reads_characters_whatever_locale_started_the_runtime(
+    started: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """What `.` matches is the locale's to say, and no runtime says the shell's.
+
+    A runtime started under the byte locale `C` read `é` as two characters,
+    so `s/./X/` left half of it behind -- a preview of a document the shell's
+    UTF-8 run never writes.
+    """
+    monkeypatch.setenv("LC_ALL", started)
+    monkeypatch.setenv("LANG", started)
+
+    assert sed_output(["s/./X/"], [], "é\n") == {"text": "X\n", "cause": None}
+    assert sed_output(["s/[[:upper:]]/u/g"], [], "ÉA\n") == {
+        "text": "uu\n",
+        "cause": None,
+    }
+
+
 def test_sed_parser_retains_modes_and_distinguishes_backup_suffix_from_flags() -> None:
     plain = sed_invocation(["sed", "-nEi", "-e", "s/old/new/p", "--", "-document.txt"])
     backup = sed_invocation(["sed", "-iE", "s/old/new/", "document.txt"])

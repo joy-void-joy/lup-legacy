@@ -1328,7 +1328,9 @@ A shell command is read the way the shell runs it: segment by segment, each
 write applied to what the writes before it left, through a `cd` and across
 `&&`, `;` and pipes (`lup.policy.kernel.documents`). An in-place `sed`, with
 every expression and every file it names, runs sandboxed over the text the
-line has left there -- any encoding sed reads, the file never touched; `cp`,
+line has left there -- any encoding sed reads, the file never touched -- under
+the `C.UTF-8` locale, since no runtime hands a hook its shell's environment
+and a locale decides what `.`, a class and a range match; `cp`,
 `mv` and `install` land their source's text, a move's source gone; `rm`
 removes; a heredoc, `echo`, `printf` or `tee` lands the bytes the command
 carries, `>>` after what stands; `patch -pN` and `git apply` are applied by
