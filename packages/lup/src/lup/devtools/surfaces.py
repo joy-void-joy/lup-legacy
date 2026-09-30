@@ -14,7 +14,7 @@ from lup.devtools.dashboard.reviews import (
     ReviewRemarkRequest,
     ReviewSnapshot,
 )
-from lup.devtools.dashboard.live import ReplyOutcome, ReplyRequest
+from lup.devtools.dashboard.live import MessagePage, ReplyOutcome, ReplyRequest
 from lup.devtools.dashboard.panes import SetupPane
 from lup.devtools.dashboard.serve import RowRequest, ScopeRequest, StepReply
 from lup.devtools.dashboard.stream import StreamFrame
@@ -70,11 +70,12 @@ DASHBOARD = Surface(
         ReviewRemarkRequest,
         ReplyRequest,
         ReplyOutcome,
+        MessagePage,
         SetupPane,
     ],
 )
 """The operator's dashboard: the live stream, parked reviews, captured changes, exact
-decisions, a reply to a session, setup panes."""
+decisions, a reply to a session, an older page of a repository's messages, setup panes."""
 
 
 # lup: ignore[library-default] — the surfaces this library authors, so the

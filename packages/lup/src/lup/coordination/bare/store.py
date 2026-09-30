@@ -35,9 +35,10 @@ processes, and every relation between members derived at the read:
   and naming that session as its parent, so it is present exactly while that
   session is and nothing has to beat for it.
 
-What is left is bounded by the population rather than by its history: a member
+The roster is bounded by the population rather than by its history: a member
 that stops takes its file to ``departed/``, and the sweep deletes that after
-the retention window.
+the retention window. The one history kept is the mail record — what was said
+between members — and it is kept whole and read a page at a time.
 
 Three processes read this and no two of them share an import — the typed
 library inside a session's tool server, the hooks a runtime spawns as bare
@@ -107,10 +108,10 @@ MAIL_RECORD = "mail.jsonl"
 
 Beside the mailboxes rather than instead of them: a mailbox is its reader's
 position and empties as it is read, so what was said to a member, and by
-whom, is answered here — by a reader following the file from where it last
-stopped. Kept to the retention window the departed are: the sweep cuts what
-was sent before it off the head, and the first line of what is left counts
-the lines cut, so a line keeps its number across a cut.
+whom, is answered here. Kept whole and only ever appended to, so every
+line starts at the byte it started at when it was written: a reader follows
+the file from the byte it last stopped at, and reads what came before a
+byte a page at a time from there back, never the whole record at once.
 """
 
 LOOKS_DIR = "looks"
@@ -184,7 +185,8 @@ DEPARTED_SECONDS = 18000.0
 """How long a member that stopped stays readable before the sweep deletes it.
 
 Long enough that somebody back at a terminal finds out who left while they
-were away, short enough that the store is the population and not its history.
+were away, short enough that the roster is the population and not its history.
+The mail record is the one history the store keeps, and it keeps all of it.
 """
 
 
@@ -1500,7 +1502,7 @@ def swept(
     A member whose pulse stopped is moved to the departed, so a reader that
     lists the directory agrees with one that stats the file; and a departed
     stub older than the retention window is deleted, which is what keeps the
-    store the size of the population rather than of its history.
+    roster the size of the population rather than of its history.
 
     The window is the caller's, and the caller is a session's own tool server:
     a sweep reading a silence for longer than the listings beside it do would

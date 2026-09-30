@@ -1,0 +1,56 @@
+subjects = [
+    "Cut",
+    "Cut.cut",
+    "held_record",
+    "cut_of",
+    "kept",
+    "stale_head",
+    "trimmed",
+    "POSTED",
+    "MailCursor.seq",
+    "MailCursor.cut",
+    "PostedMessage.seq",
+    "LiveMessage.seq",
+    "RepositoryWatch.arrived",
+]
+reason = """
+the coordination store's `mail.jsonl` is kept whole — the sweep no longer \
+cuts messages older than the departed window off its head — so nothing \
+numbers its lines across a cut, and a reader pages the record from its end \
+rather than reading it all"""
+
+[[steps]]
+instruction = """
+Drop every call to trimmed, stale_head, kept and cut_of \
+(lup.coordination.bare.mail): nothing cuts the record now. Append to it \
+through recorded(root, posted), which takes the record's lock itself, where \
+held_record(path) opened it. A record whose first line is an earlier sweep's \
+`{"cut": N}` header still reads, the header passed over as a line that \
+records no message; the N messages that sweep cut from it are gone, and no \
+step brings them back."""
+
+[[steps]]
+instruction = """
+Read the record a page at a time with ActorMail (lup.coordination.mail): \
+posted(cursor, limit) hands the latest `limit` messages posted since \
+`cursor`, read back from the record's end — the latest page where the \
+cursor is MailCursor() or into no file of that name — and earlier(before, \
+limit) the page whose lines end by byte `before`. A MailPage's `start` is \
+the byte to pass as `before` for the page older than it, and 0 once \
+nothing older is left. MailCursor carries `offset` and `inode` only."""
+
+[[steps]]
+instruction = """
+Read a message's place on the record as `at`, the byte its line starts at, \
+where PostedMessage.seq and LiveMessage.seq (lup.devtools.dashboard.live) \
+gave its line number; order by `at` where you ordered by `seq`."""
+command = ["uv", "run", "lup-devtools", "dev", "py", "text", ".seq", "."]
+
+[[steps]]
+instruction = """
+Parse one line of the record with RecordLine(start, content).posted() or \
+RecordedLine.model_validate_json (lup.coordination.mail) where \
+POSTED.validate_json parsed it, and build a dashboard message with \
+live_message(repository_key, coordination_root, posted) \
+(lup.devtools.dashboard.live) where RepositoryWatch.arrived(posted) built \
+it."""

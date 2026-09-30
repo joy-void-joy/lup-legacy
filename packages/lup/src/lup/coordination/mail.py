@@ -29,10 +29,12 @@ stopped being true.
 import os
 from collections.abc import Iterator
 from datetime import datetime
+from io import BytesIO
+from itertools import chain, islice
 from pathlib import Path
-from typing import Literal
+from typing import BinaryIO, Literal
 
-from pydantic import BaseModel, TypeAdapter, ValidationError
+from pydantic import BaseModel, ValidationError
 
 from lup.channels.models import Door, utc_now
 from lup.coordination.bare import mail
@@ -193,41 +195,150 @@ def folded_notice(notice: mail.Notice) -> StandingNotice:
     )
 
 
-POSTED = TypeAdapter(mail.Posted)
+MAIL_PAGE = 100
+"""How many messages one page of the mail record holds where a reader names no count.
+
+Enough for the latest exchange between a repository's sessions to read whole;
+a reader wanting what came before pages back for it.
+"""
+
+MAIL_BLOCK = 1 << 16
+"""How many bytes of the mail record one read takes, paging back from a byte.
+
+A page costs the blocks its messages sit in, however long the record behind
+them is: the record is kept whole, and nothing reads it all at once.
+"""
 
 
 class MailCursor(BaseModel, frozen=True):
-    """Where a reader of the mail record stopped: the byte it resumes at, and the line."""
+    """Where a reader following the mail record stopped: the byte it resumes at, in which file."""
 
     offset: int = 0
-    seq: int = 0
-    cut: int = 0
-    """How many lines had been cut off the head of the record the offset is into."""
-
     inode: int = 0
-    """Which file the offset is into, so one that replaced it is not read from there."""
+    """Which file the offset is into, so a record deleted and begun again is not read from there."""
 
 
 class PostedMessage(BaseModel, frozen=True):
-    """One message as the record keeps it: its line, and whose mailbox it was put in."""
+    """One message as the record keeps it: where its line starts, and whose mailbox it was put in."""
 
-    seq: int
+    at: int
+    """The byte its line starts at, which nothing later moves: a page older than it is read before here."""
+
     recipient: ActorRef
     message: ActorMessage
 
 
-class RecordLine(BaseModel, frozen=True):
-    """One whole line of the record, and the byte just past it."""
+class RecordedLine(BaseModel, frozen=True):
+    """One line of the mail record as it parses: the member it went to, and the message.
 
-    end: int
+    Both default to empty, so a line naming neither — the count an older
+    sweep wrote at the head of a record whose head it cut — parses and
+    records no message.
+    """
+
+    recipient: store.Actor = store.Actor()
+    message: mail.Message = mail.Message()
+
+
+class RecordLine(BaseModel, frozen=True):
+    """One whole line of the record, newline included, and the byte it starts at."""
+
+    start: int
     content: bytes
+
+    def end(self) -> int:
+        """The byte just past this line, where the next one starts."""
+        return self.start + len(self.content)
+
+    def posted(self) -> PostedMessage | None:
+        """The message this line records, or nothing where it records none.
+
+        Nothing for a line that will not parse or names no recipient, so
+        every other line reads as it always did.
+        """
+        try:
+            recorded = RecordedLine.model_validate_json(self.content)
+        except ValidationError:
+            return None
+        kind = store.actor_kind(recorded.recipient)
+        if not kind:
+            return None
+        return PostedMessage(
+            at=self.start,
+            recipient=ActorRef(
+                kind=kind,
+                id=store.actor_id(recorded.recipient),
+                round=store.actor_round(recorded.recipient) or 1,
+            ),
+            message=folded_message(recorded.message),
+        )
 
 
 class MailPage(BaseModel, frozen=True):
-    """What the record gained since a cursor, and the cursor to resume from."""
+    """One run of the mail record: its messages oldest first, where it starts, and where it ends."""
 
     messages: list[PostedMessage] = []
+    start: int = 0
+    """The byte the run starts at: what is older ends here, and 0 is a run nothing older precedes."""
+
     cursor: MailCursor = MailCursor()
+    """Just past the run's last whole line, which is where following the record resumes."""
+
+
+def backward(
+    record: BinaryIO, end: int, floor: int, block: int
+) -> Iterator[RecordLine]:
+    """Every whole line between byte *floor* and byte *end*, latest first.
+
+    Read a block at a time from *end* back, so a caller that stops early has
+    read only the blocks it stopped in. *floor* is where a line starts; what
+    follows the last newline before *end* is not a whole line — a sender part
+    way through one, or a byte named in the middle of one — and is passed over.
+    Lines are framed by :class:`io.BytesIO`, which ends one at each newline
+    and nowhere else.
+    """
+    held = b""
+    trailing = True
+    for stop in range(end, floor, -block):
+        begin = max(floor, stop - block)
+        record.seek(begin)
+        held = record.read(stop - begin) + held
+        if trailing:
+            last = held.rfind(b"\n")
+            held = held[: last + 1]
+            trailing = last == -1
+        pieces = list(BytesIO(held))
+        whole = pieces if begin == floor else pieces[1:]
+        position = begin + len(held)
+        for content in reversed(whole):
+            position -= len(content)
+            yield RecordLine(start=position, content=content)
+        held = pieces[0] if pieces and begin != floor else b""
+
+
+def paged(record: BinaryIO, end: int, floor: int, limit: int, block: int) -> MailPage:
+    """The latest *limit* messages between byte *floor* and byte *end*, and where that run starts.
+
+    The run starts at *floor* where every message past it is on the page,
+    and at its oldest message's line where an older one was left for the
+    next page — so a reader knows from the start alone whether anything
+    lies between the floor and what it was handed.
+    """
+    if limit < 1:
+        raise ValueError(f"a page holds at least one message, not {limit}")
+    inode = os.fstat(record.fileno()).st_ino
+    lines = backward(record, end, floor, block)
+    latest = next(lines, None)
+    if latest is None:
+        return MailPage(start=floor, cursor=MailCursor(offset=floor, inode=inode))
+    messages = (line.posted() for line in chain([latest], lines))
+    found = list(islice((each for each in messages if each is not None), limit + 1))
+    kept = found[:limit]
+    return MailPage(
+        messages=kept[::-1],
+        start=kept[-1].at if len(found) > limit else floor,
+        cursor=MailCursor(offset=latest.end(), inode=inode),
+    )
 
 
 class ActorMail:
@@ -290,80 +401,45 @@ class ActorMail:
             [mail.Message(id=message.id) for message in delivery.messages],
         )
 
-    def posted(self, cursor: MailCursor) -> MailPage:
-        """Every message the record gained since *cursor*, each at the line it sits on.
+    def posted(
+        self, cursor: MailCursor, limit: int = MAIL_PAGE, block: int = MAIL_BLOCK
+    ) -> MailPage:
+        """The latest *limit* messages the record gained since *cursor*, oldest first.
 
-        Whole lines only: one a sender is still writing waits for the next
-        read. A line keeps its number for as long as it is on the record: a
-        sweep that cuts the record's head replaces it with one whose first
-        line counts what was cut, so a reader the cut moved from under is
-        carried to where it was in the replacement and handed only what it
-        had not read. A record replaced by anything else, or shorter than the
-        cursor, is read again from its start. A line that will not parse keeps
-        its number and yields nothing, so every other line keeps the number it
-        always had.
+        Read from the record's end back to the cursor, so what it costs is
+        what was posted since, never the record. Whole lines only: one a
+        sender is still writing waits for the next read. A cursor into no
+        file of this name — a reader that has read nothing, or a record
+        deleted and begun again — reads back as far as the record's start,
+        which is its latest page. Where more than *limit* were posted since,
+        the page starts past the cursor, and what lies between is read with
+        :meth:`earlier`.
         """
         try:
             record = (self.root / store.MAIL_RECORD).open("rb")
         except OSError:
             return MailPage()
         with record:
-            head = record.readline()
-            cut = mail.cut_of(head)
             found = os.fstat(record.fileno())
-            here = MailCursor(
-                offset=len(head) if cut is not None else 0,
-                seq=cut or 0,
-                cut=cut or 0,
-                inode=found.st_ino,
-            )
-            following = (cursor.inode, cursor.cut) == (here.inode, here.cut) and (
-                found.st_size >= cursor.offset
-            )
-            start = cursor if following else here
-            floor = cursor.seq if not following and here.cut > cursor.cut else 0
-            record.seek(start.offset)
+            following = cursor.inode == found.st_ino and cursor.offset <= found.st_size
+            floor = cursor.offset if following else 0
+            return paged(record, found.st_size, floor, limit, block)
 
-            def lines() -> Iterator[RecordLine]:
-                offset = start.offset
-                for line in record:
-                    if not line.endswith(b"\n"):
-                        return
-                    offset += len(line)
-                    yield RecordLine(end=offset, content=line)
+    def earlier(
+        self, before: int, limit: int = MAIL_PAGE, block: int = MAIL_BLOCK
+    ) -> MailPage:
+        """The latest *limit* messages whose lines end by byte *before*, oldest first.
 
-            read = list(lines())
-
-        def messages() -> Iterator[PostedMessage]:
-            for seq, line in enumerate(read, start=start.seq):
-                if seq < floor:
-                    continue
-                try:
-                    posted = POSTED.validate_json(line.content)
-                except ValidationError:
-                    continue
-                recipient = posted.get("recipient") or store.Actor()
-                if not store.actor_kind(recipient):
-                    continue
-                yield PostedMessage(
-                    seq=seq,
-                    recipient=ActorRef(
-                        kind=store.actor_kind(recipient),
-                        id=store.actor_id(recipient),
-                        round=store.actor_round(recipient) or 1,
-                    ),
-                    message=folded_message(posted.get("message") or mail.Message()),
-                )
-
-        return MailPage(
-            messages=list(messages()),
-            cursor=MailCursor(
-                offset=read[-1].end if read else start.offset,
-                seq=start.seq + len(read),
-                cut=here.cut,
-                inode=here.inode,
-            ),
-        )
+        What a reader holding a page asks for next, naming where that page
+        starts; the page it is handed starts at 0 once nothing older is left.
+        """
+        try:
+            record = (self.root / store.MAIL_RECORD).open("rb")
+        except OSError:
+            return MailPage()
+        with record:
+            end = min(before, os.fstat(record.fileno()).st_size)
+            return paged(record, end, 0, limit, block)
 
     def standing(self) -> list[StandingNotice]:
         """Every fact standing over this population, oldest first."""

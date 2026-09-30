@@ -826,7 +826,13 @@ def dashboard_app(
     from starlette.datastructures import MutableHeaders
     from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
-    from lup.devtools.dashboard.live import ReplyOutcome, ReplyRequest, reply
+    from lup.devtools.dashboard.live import (
+        MessagePage,
+        ReplyOutcome,
+        ReplyRequest,
+        earlier_messages,
+        reply,
+    )
     from lup.devtools.dashboard.stream import LiveFeed
     from lup.web.serve import bundle_app
 
@@ -964,6 +970,14 @@ def dashboard_app(
             raise HTTPException(status_code=409, detail=str(departed)) from departed
         except LookupError as missing:
             raise HTTPException(status_code=404, detail=str(missing)) from missing
+
+    @app.get("/api/repositories/{repository}/messages")
+    def messages(repository: str, before: int = Query(ge=0)) -> MessagePage:
+        """One page of a repository's mail record, whose lines end by byte ``before``."""
+        known = next((each for each in feed.served() if each.key() == repository), None)
+        if known is None:
+            raise HTTPException(status_code=404, detail="No repository has that key")
+        return earlier_messages(known, before)
 
     @app.get("/api/setup")
     def setup_panes() -> list[SetupPane]:

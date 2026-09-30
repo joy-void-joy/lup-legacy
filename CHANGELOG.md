@@ -291,12 +291,33 @@ carried as delivered, so the hook hands over only what no wake carried.
 `WakeReceipts` and `MailboxRelay.receipt_path` are gone; the relay keeps
 `lock_path`.
 
-### The mail record holds the roster's retention window
+### The mail record is kept whole, and read a page at a time
 
-The sweep cuts every message sent before the window off the head of
-`mail.jsonl` and leaves a first line counting the lines cut, so a line keeps
-its number; `MailCursor` gains `cut` and `inode`, and a reader following the
-record is carried across a cut, handed only what it had not read.
+The sweep no longer cuts `mail.jsonl`: every message posted stays on it for
+the life of the clone, and departed sessions still leave the roster after the
+retention window. Nothing reads the record whole. `ActorMail.posted(cursor)`
+reads the latest page (a hundred messages) back from the record's end, down
+to the cursor where a reader follows one, and `ActorMail.earlier(before)`
+reads the page before a byte; a `MailPage` says where its run starts, and a
+`PostedMessage` carries `at`, the byte its line starts at, where it carried a
+line number. The dashboard's stream hands a fresh tab each repository's
+latest page and what was posted after it, and the Sessions view reads older
+messages a page at a time with **Load earlier messages** (`GET
+/api/repositories/<key>/messages?before=<byte>`). Measured on a generated
+record: a page reads in 0.9 ms at 10,000 messages (4.8 MB) and at 100,000
+(48 MB), where reading the record whole took 119 ms and 1.8 s. The `{"cut":
+N}` header, `MailCursor.cut` and `.seq`, and the trimming functions are gone.
+A record an earlier sweep cut still reads; the messages that sweep cut are
+gone.
+
+### The first sweep deletes what the 0.2.x store left
+
+A clone that ran 0.2.x still held that store's records in its coordination
+directory — `touches.jsonl`, `roster.jsonl`, `messages.jsonl`, `names.jsonl`
+— and its `delivery/`, `heartbeats/` and `resets/` directories, which nothing
+reads. The first sweep that finds them deletes them; a sweep of a clone
+without them touches nothing. `RepositoryPeers` takes the names as
+`superseded`.
 
 ### A nested uv project is declared once and checked by every gate
 

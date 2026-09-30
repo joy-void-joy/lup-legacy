@@ -7,13 +7,16 @@ record for what was said between them. Nothing here is written for the
 dashboard's sake, and nothing is re-read that has not changed — a roster is
 read again when a member's file moves (and every few seconds, since a
 runtime can stop without writing), a transcript from the byte it was last
-read to, the mail record from its cursor.
+read to, the mail record from its cursor. The mail record is kept whole, so
+it is read from its end: its latest page first, and an older page only when
+the page asks for one.
 
 A reply from the operator goes the way a session's own message to a peer
 goes — into the recipient's mailbox, then a wake through its wake socket or
 `codex queue` — signed `user`, which is the address the session answers.
 """
 
+from collections import deque
 from datetime import datetime
 from pathlib import Path
 
@@ -22,7 +25,7 @@ from pydantic import BaseModel, Field, TypeAdapter, ValidationError
 from lup.channels.models import Door
 from lup.coordination.bare import mail as bare_mail
 from lup.coordination.bare import store
-from lup.coordination.mail import ActorMail, MailCursor, PostedMessage
+from lup.coordination.mail import MAIL_PAGE, ActorMail, MailCursor, PostedMessage
 from lup.coordination.peers import USER_ADDRESS
 from lup.coordination.repository import PeerDepartedError, PeerView, RepositoryPeers
 from lup.coordination.roster import Delivery
@@ -112,8 +115,8 @@ class LiveMessage(BaseModel, frozen=True):
     key: str
     repository: str
     id: str
-    seq: int
-    """Its line on the repository's mail record."""
+    at: int
+    """The byte its line starts at on the repository's mail record, which nothing later moves."""
 
     sender: str
     """Who signed it: a member's id, `user`, or empty for a door with no address."""
@@ -135,6 +138,68 @@ class LiveMessage(BaseModel, frozen=True):
         return store.conversation_of(
             store.Actor(kind=self.recipient_kind, id=self.recipient)
         )
+
+
+class MailExtent(BaseModel, frozen=True):
+    """Where the stream's messages of one repository start on its mail record."""
+
+    repository: str
+    """The repository's key, as :class:`KnownRepository` names it."""
+
+    earlier: int
+    """The byte its messages on the stream start at: what came before is read a
+    page at a time from here back, and 0 is a repository whose every message is
+    on the stream."""
+
+
+class MessagePage(BaseModel, frozen=True):
+    """One page of a repository's mail record, older than what the page already held."""
+
+    messages: list[LiveMessage]
+    """Oldest first, each with whether it still waits in the mailbox it was put in."""
+
+    earlier: int
+    """Where this page starts on the record: the next page is read before here, and 0 is none."""
+
+
+def live_message(repository: str, root: Path, posted: PostedMessage) -> LiveMessage:
+    """One message of a repository's mail record, with whether it still waits for its reader.
+
+    *repository* is the repository's key, and *root* its coordination store.
+    """
+    return LiveMessage(
+        key=f"{repository}/{posted.message.id}",
+        repository=repository,
+        id=posted.message.id,
+        at=posted.at,
+        sender=posted.message.sender,
+        recipient=posted.recipient.id,
+        recipient_kind=posted.recipient.kind,
+        text=posted.message.text,
+        door=str(posted.message.door),
+        redirect=posted.message.redirect,
+        in_reply_to=posted.message.in_reply_to,
+        sent_at=posted.message.sent_at,
+        waiting=bare_mail.message_path(
+            root, posted.recipient.conversation(), posted.message.id
+        ).is_file(),
+    )
+
+
+def earlier_messages(
+    known: KnownRepository, before: int, limit: int = MAIL_PAGE
+) -> MessagePage:
+    """The page of one repository's mail record whose lines end by byte *before*.
+
+    What the page asks for once it holds a page starting at *before*: read
+    back from there a block at a time, never the record whole.
+    """
+    root = RepositoryPeers(known.checkout).root
+    page = ActorMail(root).earlier(before, limit)
+    return MessagePage(
+        messages=[live_message(known.key(), root, posted) for posted in page.messages],
+        earlier=page.start,
+    )
 
 
 class LiveRepository(BaseModel, frozen=True):
@@ -283,24 +348,35 @@ class TranscriptFollower:
 class RepositoryWatch:
     """One repository's sessions and mail, read again only where something moved.
 
+    Of the mail record it reads the latest *page* messages first, then what
+    is posted after them, and keeps where the latest *page* of what it read
+    start — which is where the stream's messages for this repository begin.
+
     Mutable and owned by the one producer that ticks it, from one thread at a
     time.
     """
 
     def __init__(
-        self, known: KnownRepository, refresh: float = ROSTER_REFRESH_SECONDS
+        self,
+        known: KnownRepository,
+        refresh: float = ROSTER_REFRESH_SECONDS,
+        page: int = MAIL_PAGE,
     ) -> None:
         self.known = known
         self.key = known.key()
         self.peers = RepositoryPeers(known.checkout)
         self.mail = ActorMail(self.peers.root)
         self.refresh = refresh
+        self.page = page
         self.cursor = MailCursor()
+        self.start = 0
+        self.read = 0
+        self.latest: deque[int] = deque(maxlen=page)
         self.signature: list[FileStamp] | None = None
         self.read_at = 0.0
         self.rows: list[PeerView] = []
         self.followers: dict[Path, TranscriptFollower] = {}
-        self.messages: dict[str, LiveMessage] = {}
+        self.pending: dict[str, LiveMessage] = {}
 
     def roster(self, now: float) -> list[PeerView]:
         """Every session here and those that stopped lately, read again only where it moved."""
@@ -389,36 +465,51 @@ class RepositoryWatch:
         """Whether one message still sits in the mailbox it was put in."""
         return bare_mail.message_path(self.peers.root, mailbox, message_id).is_file()
 
-    def arrived(self, posted: PostedMessage) -> LiveMessage:
-        """One message the record gained, with whether it waits for its reader yet."""
-        return LiveMessage(
-            key=f"{self.key}/{posted.message.id}",
+    def extent(self) -> MailExtent:
+        """Where on the mail record the stream's messages of this repository start.
+
+        Where the latest page of what this watch read starts, once it has
+        read more than a page; before that, where its first read started —
+        0 where that read reached the record's start.
+        """
+        return MailExtent(
             repository=self.key,
-            id=posted.message.id,
-            seq=posted.seq,
-            sender=posted.message.sender,
-            recipient=posted.recipient.id,
-            recipient_kind=posted.recipient.kind,
-            text=posted.message.text,
-            door=str(posted.message.door),
-            redirect=posted.message.redirect,
-            in_reply_to=posted.message.in_reply_to,
-            sent_at=posted.message.sent_at,
-            waiting=self.waits(posted.recipient.conversation(), posted.message.id),
+            earlier=self.latest[0] if self.read > self.page else self.start,
         )
 
     def fresh_messages(self) -> list[LiveMessage]:
-        """Every message the record gained since the last look, and every one taken since."""
-        page = self.mail.posted(self.cursor)
+        """Every message the record gained since the last look, and every one taken since.
+
+        The first look reads the latest page, and so does a look finding more
+        posted since the last than a page holds, or the record begun again:
+        what it reads then starts a run of its own, older than which the
+        stream holds nothing.
+        """
+        page = self.mail.posted(self.cursor, self.page)
+        if (page.start, page.cursor.inode) != (self.cursor.offset, self.cursor.inode):
+            self.start, self.read = page.start, 0
+            self.latest.clear()
         self.cursor = page.cursor
-        taken = [
-            message.model_copy(update={"waiting": False})
-            for message in self.messages.values()
-            if message.waiting and not self.waits(message.mailbox(), message.id)
+        arrived = [
+            live_message(self.key, self.peers.root, posted) for posted in page.messages
         ]
-        changed = [*taken, *[self.arrived(posted) for posted in page.messages]]
-        self.messages.update({message.id: message for message in changed})
-        return changed
+        self.read += len(arrived)
+        self.latest.extend(message.at for message in arrived)
+        taken = [
+            message
+            for message in self.pending.values()
+            if not self.waits(message.mailbox(), message.id)
+        ]
+        gone = {message.id for message in taken}
+        self.pending = {
+            message.id: message
+            for message in [*self.pending.values(), *arrived]
+            if message.waiting and message.id not in gone
+        }
+        return [
+            *[message.model_copy(update={"waiting": False}) for message in taken],
+            *arrived,
+        ]
 
 
 class ReplyRequest(BaseModel, frozen=True, extra="forbid"):
