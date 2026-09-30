@@ -2,6 +2,25 @@
 
 ## Unreleased
 
+### A session is named for its work, and keeps the name it had
+
+A session was called after its worktree — `dev`, `dev-2` — on the roster and
+in Claude Code's own chrome. Wherever a roster is declared, the first prompt
+that says what the work is now starts one model call, on the strongest tier
+at low effort, in a process of its own, so no prompt waits on it. The answer
+renames the roster, numbered past a live session's name, and the runtime
+follows: Claude Code shows it from the next prompt, and Codex names the thread
+through its app-server. `HookSet(session_naming=None)` declines.
+
+A title somebody sets in the runtime wins. A `/rename`, or a reopened
+conversation's own title, is taken up by the roster in a session name's shape
+(`Naming Review` answers as `naming-review`) and left in the runtime exactly
+as typed. `harness claude --continue`, `--resume` and `--session` no longer
+pass `--name`, so the conversation keeps its title; a reopened Codex thread's
+own name is read through `thread/read` and taken up the same way.
+
+`SessionEffort` moves to `lup.types`, beside `ModelTier`; import it from there.
+
 ### The policy reads what these commands do, and a deferral never parks
 
 A set of commands that stopped for the operator, or passed unread, are now
