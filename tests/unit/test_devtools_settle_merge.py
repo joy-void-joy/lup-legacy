@@ -19,13 +19,12 @@ import sh
 from lup.devtools.dev.git_guards import (
     DECLARED_GUARDS,
     SETTLE_COMMAND,
-    SETTLE_STANDDOWN,
     GitGuard,
-    hook_scripts,
+    NoMergeCommit,
     install_guards,
 )
 from lup.devtools.git.settle import settle
-from tests.unit.repos import commit_file, git_in, initialized_repo
+from tests.unit.repos import commit_file, devtools_double, git_in, initialized_repo
 
 
 def generated(root: Path) -> None:
@@ -154,17 +153,16 @@ def test_the_settling_guards_run_on_a_merge_commit_and_nothing_else(
     git = initialized_repo(work, hooks)
     git("config", "core.hooksPath", str(hooks))
     trace = tmp_path / "settled.log"
-    install_guards(
-        [
-            GitGuard(
-                command=f"sh -c 'echo {moment} >> {trace}'",
-                hook=moment,
-                standdown=SETTLE_STANDDOWN,
-            )
-            for moment in ("post-merge", "post-commit")
-        ],
-        work,
-    )
+    guards = [
+        GitGuard(
+            command=f"echo {moment} >> {trace}",
+            hook=moment,
+            standdown=NoMergeCommit(),
+        )
+        for moment in ("post-merge", "post-commit")
+    ]
+    install_guards(guards, work)
+    git = git.bake(_env=devtools_double(tmp_path / "devtools", guards))
     commit_file(git, work, "file.txt", "base\n", "chore: base")
     git("checkout", "-q", "-b", "side")
     commit_file(git, work, "side.txt", "side\n", "feat: side")
@@ -186,10 +184,9 @@ def test_the_settling_guards_run_on_a_merge_commit_and_nothing_else(
 def test_lup_arms_the_settle_at_both_moments_a_merge_commit_is_made() -> None:
     """A merge git completes runs post-merge; one concluded by hand runs post-commit."""
     moments = {
-        script.hook: script.body()
-        for script in hook_scripts(DECLARED_GUARDS)
-        if script.hook != "pre-commit"
+        guard.hook: guard for guard in DECLARED_GUARDS if guard.hook != "pre-commit"
     }
 
     assert sorted(moments) == ["post-commit", "post-merge"]
-    assert all(body.endswith(f"exec {SETTLE_COMMAND}\n") for body in moments.values())
+    assert all(guard.command == SETTLE_COMMAND for guard in moments.values())
+    assert all(guard.standdown == NoMergeCommit() for guard in moments.values())

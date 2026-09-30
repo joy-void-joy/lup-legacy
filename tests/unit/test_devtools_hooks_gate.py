@@ -20,7 +20,7 @@ from pathlib import Path
 import pytest
 
 from lup.devtools.dev import worktree
-from lup.devtools.dev.git_guards import DECLARED_GUARDS, install_guards
+from lup.devtools.dev.git_guards import DECLARED_GUARDS, blocked_arming, install_guards
 from lup.devtools.harness.launch import relocation_hint
 from tests.unit.repos import commit_file, initialized_repo
 
@@ -107,6 +107,36 @@ def test_an_unarmed_clone_is_told_which_moment_is_outstanding(
     reported = capsys.readouterr().err
     assert "guard not installed" in reported
     assert "git hooks install" in reported
+
+
+@needs_a_mode_that_refuses
+def test_an_install_refused_here_names_the_command_the_host_runs(
+    repo: Path, hooks: Path
+) -> None:
+    """Installing is a host step, so the refusal hands over the host's exact command.
+
+    The same answer `git hooks install` gives inside a contained session,
+    which holds the shared hooks directory read-only: the checkout to run it
+    in, and the command, rather than an errno about a busy device.
+    """
+    hold(hooks)
+
+    reported = blocked_arming(DECLARED_GUARDS, repo)
+
+    assert f"`cd {repo} && uv run lup-devtools git hooks install`" in reported
+
+
+@needs_a_mode_that_refuses
+def test_an_armed_clone_installs_again_without_writing(repo: Path, hooks: Path) -> None:
+    """Nothing outstanding writes nothing, so an install where all is current passes.
+
+    Which is what lets it be run inside a session holding the directory
+    read-only, where it answers that the hooks are armed.
+    """
+    arm_on_the_host(repo)
+    hold(hooks)
+
+    assert all(state.armed for state in install_guards(DECLARED_GUARDS, repo))
 
 
 @needs_a_mode_that_refuses

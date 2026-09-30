@@ -1,11 +1,12 @@
 """Import-safe dispatch for a project's composed ``lup-devtools`` CLI.
 
 Conflict repair and pending-migration reports must run while project source
-cannot import, and a session's status line runs at every render, where
-loading the whole application would cost seconds. The console script
-recognizes those routes and builds only their library-owned command trees.
-Every other command loads the project's full Typer application from
-installed package metadata.
+cannot import, while a session's status line runs at every render and the
+runner every installed git hook calls runs at every commit, where loading
+the whole application for a line of status or a moment with nothing to
+judge would cost seconds. The console script recognizes those routes and
+builds only their library-owned command trees. Every other command loads
+the project's full Typer application from installed package metadata.
 
 The metadata is materialized when the environment is synced, so reading it
 does not parse a currently conflicted ``pyproject.toml``.
@@ -14,8 +15,11 @@ does not parse a currently conflicted ``pyproject.toml``.
 from importlib.metadata import entry_points
 from pathlib import Path
 import sys
+import traceback
+from typing import Annotated
 
 import typer
+from typer.main import get_command
 
 
 def project_application() -> typer.Typer:
@@ -129,6 +133,87 @@ def dashboard_line(pulse: Path) -> None:
         typer.echo(shown)
 
 
+def in_process(arguments: tuple[str, ...]) -> int:
+    """Run one ``lup-devtools`` invocation in this process, answering its status.
+
+    How a hook's guards that are devtools commands run: the project's
+    application loads on the first of them and each is a call into it,
+    rather than a process paying for its own load.
+    """
+    return invoked(project_application(), arguments)
+
+
+def invoked(application: typer.Typer, arguments: tuple[str, ...]) -> int:
+    """Run one invocation of ``application`` in this process, answering its status.
+
+    It ends as its own process would have, because it is run the way its own
+    process runs it: standalone, so the CLI shows its own usage errors and
+    ends every invocation in the exit its process would take, which is caught
+    here rather than taken. Anything it leaves uncaught is printed whole and
+    answered as 1, which a hook reports as that guard's refusal rather than
+    dying before it can say which guard it was.
+    """
+    command = get_command(application)
+    try:
+        command.main(args=list(arguments), prog_name="lup-devtools")
+    except SystemExit as ended:
+        match ended.code:
+            case int(code):
+                return code
+            case None:
+                return 0
+            case said:
+                typer.echo(said, err=True)
+                return 1
+    except Exception:
+        typer.echo(traceback.format_exc(), err=True)
+        return 1
+    return 0
+
+
+def hook_route() -> typer.Typer | None:
+    """`git hooks run` over the guards this checkout compiled, None where it has none.
+
+    The route every installed hook takes. The guards compiled into the
+    checkout's manifest are judged against the moment here, before anything
+    of the project loads, so a moment where each stands down — a plain
+    commit's settle, a deletion-only push — ends in the time this module and
+    the guards' own take to import. A guard left standing that is a devtools
+    command loads the application then, once, through :func:`in_process`.
+    None sends the moment to the application's own `git hooks run`, which
+    reads the declaration itself.
+    """
+    from lup.devtools.dev.git_guards import compiled_guards, fire
+
+    guards = compiled_guards(Path.cwd())
+    if guards is None:
+        return None
+    root_app = typer.Typer(
+        help="lup-devtools: the runner every installed git hook calls",
+        pretty_exceptions_show_locals=False,
+        no_args_is_help=True,
+    )
+    git_app = typer.Typer(no_args_is_help=True)
+    hooks_app = typer.Typer(no_args_is_help=True)
+    root_app.add_typer(git_app, name="git", help="The git command tree")
+    git_app.add_typer(hooks_app, name="hooks", help="The installed git hooks")
+
+    @hooks_app.command("run")
+    def run(
+        hook: Annotated[str, typer.Argument(help="The git hook that fired")],
+        arguments: Annotated[
+            list[str] | None, typer.Argument(help="What git passed the hook")
+        ] = None,
+    ) -> None:
+        """Run the guards this checkout compiled at one git hook."""
+        status = fire(
+            guards, hook, tuple(arguments or ()), Path.cwd(), sys.stdin, in_process
+        )
+        raise typer.Exit(status)
+
+    return root_app
+
+
 def main() -> None:
     """Dispatch import-safe library routes before the project's application."""
     match sys.argv:
@@ -138,5 +223,7 @@ def main() -> None:
             migration_application()()
         case [_, "dashboard", "line", pulse] if not pulse.startswith("-"):
             dashboard_line(Path(pulse))
+        case [_, "git", "hooks", "run", *_] if (route := hook_route()) is not None:
+            route()
         case _:
             project_application()()

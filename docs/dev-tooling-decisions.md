@@ -201,7 +201,9 @@ changing anything either does — and a path pattern deciding when to check is
 one more belief that can be wrong about which commits matter.
 
 Decision: A git `pre-commit` hook, written by `git hooks install` and
-armed by `git worktree create`, whose body is `harness check all`. The
+armed by `git worktree create`, whose guard runs `harness check all` — the
+hook itself hands the moment to the checkout's `git hooks run`, so the
+command is the checkout's own declaration at its own revision. The
 pipeline runs that same command as its own step, spelled from the same
 constant, and `dev check` reads the same `DriftVerdict` that command reads.
 The `pre-commit` framework config is dropped: it named a framework nothing
