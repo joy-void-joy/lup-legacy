@@ -311,9 +311,11 @@ it is. The notice is sent either way.
 **Every session's status line**, where its runtime draws one. It reads, left
 to right:
 
-- **which session this is**, dimmed: the roster's name for it and the
-  worktree it was launched in, relative to its repository's directory —
-  `dev · tree/fix-x`;
+- **which session this is**, dimmed: its repository's name as the page's
+  tree names it, the roster's name for the session, and the worktree it was
+  launched in, relative to the repository's directory — `lup · dev ·
+  tree/fix-x`, the worktree left out where it is that directory, which the
+  repository's name already says;
 - **what waits on the operator**, in the warning colour and only while
   something does: the reviews waiting, and how many of them this session or
   its subagents parked, naming the one by the first eight characters of its
@@ -327,25 +329,41 @@ to right:
   none of whose subagents runs (a session waiting on its subagent is waiting
   on that subagent, which answers for itself), and `⚠ held twice`, a path two
   sessions hold, a subagent holding with its session's hand;
-- **the dashboard, as one glyph**: `● :8767` while it serves current code,
-  its whole address in place of the port while something waits, as a
-  terminal hyperlink; `◐ dashboard restarting` while it moves onto newer
-  code; `○ dashboard down · dashboard restart` where nothing serves; and
-  "○ dashboard stopped by the operator; `dashboard restart` starts it" after
-  the operator's stop. For five minutes after the sessions started it again
-  it adds "restarted after it stopped:" and why.
+- **the dashboard, as one glyph and its whole address**, always: the
+  address the operator opens the page at — the first origin declared in
+  `[dashboard] origins` ("Behind a reverse proxy"), else
+  `http://127.0.0.1:<port>` — as a terminal hyperlink whose text is the
+  address itself, so a terminal that links a bare address opens it too, and
+  never with the capability. `● http://127.0.0.1:8767` while it serves
+  current code; `◐ http://127.0.0.1:8767 restarting` while it moves onto
+  newer code; `○ http://127.0.0.1:8767 down · dashboard restart` where
+  nothing serves, and `○ dashboard down · dashboard restart` where it took
+  its pulse down and no address is left to name; and the address followed
+  by "dashboard stopped by the operator; `dashboard restart` starts it"
+  after the operator's stop. For five minutes after the sessions started it
+  again it adds "restarted after it stopped:" and why.
 
 ```
-dev · tree/dev │ ● :8767
-dev · tree/fix-x │ ?2 reviews (1 here: 41cb73e1) · ✉1 │ ● http://127.0.0.1:8767
-dev · tree/dev │ ⚠ 1 quiet │ ◐ dashboard restarting
-dev · tree/dev │ ○ dashboard down · dashboard restart
+lup · dev · tree/dev │ ● http://127.0.0.1:8767
+lup · dev · tree/fix-x │ ?2 reviews (1 here: 41cb73e1) · ✉1 │ ● http://127.0.0.1:8767
+lup · dev · tree/dev │ ⚠ 1 quiet │ ◐ http://127.0.0.1:8767 restarting
+lup · dev · tree/dev │ ○ http://127.0.0.1:8767 down · dashboard restart
 ```
+
+The page keeps its capability in the browser's storage for its origin, so a
+click on the line opens it signed in only where the operator has opened the
+launch address at that same origin — the first declared origin where one is
+declared, since that is the one they sign in at through their proxy. At an
+origin whose launch address this browser never opened, the page says it is
+not authorized and names `dashboard open`, which prints the launch address
+at each origin (`dashboard status` gives them under `launch`). The line
+itself never carries the capability.
 
 Where the terminal is narrower than the line, whole pieces drop and no word
-is cut, in this order: what other agents need, then the worktree, then the
-review's id. What waits on the operator, the session's name and the
-dashboard stay; a line still too wide is the runtime's to cut.
+is cut, in this order: what other agents need, the worktree, the review's
+id, the session's name, and last the repository's name. What waits on the
+operator and the dashboard's glyph and address always stay; a line still too
+wide is the runtime's to cut.
 
 The session is the one the runtime names on the command's stdin. Claude
 Code's `statusLine` input carries the conversation's id (`session_id`) and
@@ -354,13 +372,15 @@ launch named that conversation, or whose last prompt came from that
 transcript, is this session's — so a conversation the runtime opened after
 the launch is found once it has taken a prompt. A session the dashboard does
 not list is placed by the directory it was launched in
-(`workspace.project_dir`), without a name.
+(`workspace.project_dir`), without a name, and named by the repository whose
+directory holds that.
 
 The dashboard publishes what the line reads as its pulse: the reviews
-waiting, each running session with the reviews it or its subagents parked,
-the messages to the operator, how many agents are quiet and how many paths
-are held twice, the sessions holding it, its repositories, open tabs and its
-address — never its capability. It reads each roster, and the transcripts
+waiting, each running session with its repository's name and the reviews it
+or its subagents parked, the messages to the operator, how many agents are
+quiet and how many paths are held twice, the sessions holding it, its
+repositories, open tabs, where it serves and where the operator opens it —
+never its capability. It reads each roster, and the transcripts
 the roster names, on a watch of its own at every look, so what it counts
 holds whether or not a tab follows the page. The pulse is a small file in a
 directory of its own that every launch lends its session read-only at the
@@ -368,10 +388,11 @@ path the host has it, named by `LUP_DASHBOARD_PULSE`. It is rewritten
 whenever it changes and at least every ten seconds, and taken down when the
 dashboard stops, so a pulse older than thirty seconds reads as a dashboard
 that stopped. The operator's `dashboard stop` leaves a pulse in its place
-saying so, which keeps the sessions the last one listed, so each line still
-names its session, and holds until a start replaces it. A pulse written by a
-dashboard from before it listed sessions reads as one listing none: the line
-shows the counts it has, and places the session by its directory.
+saying so, which keeps the sessions and the operator's address the last one
+listed, so each line still names its session and the page, and holds until a
+start replaces it. A pulse written by a dashboard from before it listed
+sessions reads as one listing none: the line shows the counts it has,
+places the session by its directory, and links the address it serves at.
 
 The status line runs `uv run lup-devtools dashboard line <pulse>`, which the
 CLI answers before loading the project's application, reading only the pulse
@@ -379,7 +400,8 @@ and stdin, in about a fifth of a second. Claude Code shows it through
 `statusLine` (https://code.claude.com/docs/en/statusline), which paints its
 ANSI colours and passes its OSC 8 hyperlink through where it detects the
 terminal takes one (`FORCE_HYPERLINK=1` overrides that detection; a terminal
-without them shows the address alone), and sets `COLUMNS` to the terminal's
+without them shows the address, which one that links bare addresses opens
+as well), and sets `COLUMNS` to the terminal's
 width for the command. It re-runs it every fifteen seconds so a review
 another session parks shows while this one is idle, and only where nobody
 else named one: a status line in the account's settings, the person's
@@ -719,6 +741,8 @@ does a launch the operator made on a terminal. A session's launch, and a
 launch whose output is captured, print none, since the address carries the
 capability. The page keeps the capability for the proxy's origin as it does
 for loopback's, and every link it builds or copies names the origin it was
-opened at. `dashboard status` warns of a declared origin that is neither
+opened at. Every session's status line links the first declared origin, as
+the address the operator signs in at, capability-free ("When no page is
+open"). `dashboard status` warns of a declared origin that is neither
 https nor loopback, whose launch address carries the capability across the
 network in the clear.

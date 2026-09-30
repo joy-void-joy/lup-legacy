@@ -41,26 +41,31 @@ judged by what they do.
   commit -a` and `git commit <path>`. The installed hook hands it on, so
   re-arm with `uv run lup-devtools git hooks install` from a host terminal.
 
-### The status line names its session, what waits on you, and the dashboard as one glyph
+### The status line names its repository and session, what waits on you, and the dashboard as one glyph
 
-A Claude session's status line no longer prints the dashboard's bare address
-when nothing waits. It reads `dev · tree/fix-x │ ?2 reviews (1 here:
-41cb73e1) · ✉1 │ ⚠ 1 quiet │ ● http://127.0.0.1:8767`: the session's roster
-name and worktree, dimmed; the reviews waiting on you, with how many this
-session or its subagents parked, and the messages agents sent you, in the
-warning colour and only while something waits; an agent gone quiet (a call
+A Claude session's status line reads `lup · dev · tree/fix-x │ ?2 reviews
+(1 here: 41cb73e1) · ✉1 │ ⚠ 1 quiet │ ● http://127.0.0.1:8767`: the
+repository's name as the page's tree names it, the session's roster name and
+its worktree, dimmed; the reviews waiting on you, with how many this session
+or its subagents parked, and the messages agents sent you, in the warning
+colour and only while something waits; an agent gone quiet (a call
 outstanding ten minutes with nothing new in its transcript) or a path two
-sessions hold, only while one does; and the dashboard as `● :8767`,
-`◐ dashboard restarting`, `○ dashboard down · dashboard restart`, or the
-operator's stop — its whole address, a terminal hyperlink, only while
-something waits. The session is found from the JSON Claude Code hands the
-command on stdin; a narrow terminal drops the other agents' needs, then the
-worktree, then the review's id, and never cuts a word. The dashboard's pulse
-now lists each running session with the reviews it parked and counts the
-unread messages, quiet agents and paths held twice, which `dashboard status`
-carries too (`unread`, `quiet`, `contested`); a session launched before this
-keeps working, its line showing what an older pulse has. The line still
-answers on the CLI's fast path, reading only the pulse and stdin.
+sessions hold, only while one does; and the dashboard as one glyph — `●`
+serving, `◐` restarting, `○` down or stopped by the operator — beside its
+whole address, always: the first origin `[dashboard] origins` declares, else
+loopback's, as a terminal hyperlink whose text is the address and which
+never carries the capability. The page keeps its capability per origin, so
+the link opens it signed in where you signed in at that origin. The session
+is found from the JSON Claude Code hands the command on stdin; a narrow
+terminal drops the other agents' needs, the worktree, the review's id, the
+session's name, and last the repository's name, never the address, and
+never cuts a word. The dashboard's pulse now lists each running session with
+its repository's name and the reviews it parked, names the address you open
+the page at, and counts the unread messages, quiet agents and paths held
+twice, which `dashboard status` carries too (`unread`, `quiet`,
+`contested`); a session launched before this keeps working, its line showing
+what an older pulse has. The line still answers on the CLI's fast path,
+reading only the pulse and stdin.
 `status_line` answers a `ShownLine` (`plain()`, `painted()`), and
 `DashboardPulse.line` and `shown` are gone (see the migration).
 
