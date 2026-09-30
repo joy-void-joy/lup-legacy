@@ -1,0 +1,13 @@
+subjects = ["waiting_command"]
+reason = """
+every review command a session or the operator is handed is spelled one way, \
+`uv run --directory <checkout keeping the queue> lup-devtools review ...`, by \
+`review_command` in lup.devtools.review.wait, so the notifier's own spelling \
+of `review wait` went"""
+
+[[steps]]
+instruction = """
+Where `waiting_command(root, entry)` from lup.devtools.review.notifications \
+was called, call `resume_command(root, [entry.id])` from \
+lup.devtools.review.wait; for any other review verb, \
+`review_command(root, ["reply", entry.id])` and the like."""
