@@ -1151,11 +1151,12 @@ def create_operator_dashboard_app(root: Path) -> typer.Typer:
 
     @app.command("stop")
     def stop_cmd() -> None:
-        """Stop the running dashboard now; the next session's launch starts it again."""
+        """Stop the running dashboard; it stays stopped until a restart or a launch."""
 
         def stopped() -> None:
             typer.echo(
-                "Dashboard stopped."
+                "Dashboard stopped; it stays stopped until "
+                "`uv run lup-devtools dashboard restart` or the next launch."
                 if companion.stopped(root)
                 else "No dashboard was running."
             )

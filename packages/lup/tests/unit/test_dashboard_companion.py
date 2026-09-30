@@ -246,7 +246,8 @@ def test_status_open_and_stop_are_read_from_outside_every_launch(
         opened = runner.invoke(cli, ["open"])
         assert opened.exit_code == 0, opened.output
         stopped = runner.invoke(cli, ["stop"])
-        assert stopped.exit_code == 0 and "Dashboard stopped." in stopped.output
+        assert stopped.exit_code == 0
+        assert "Dashboard stopped; it stays stopped until" in stopped.output
         assert dashboard.standing(root).serving is None
 
 
@@ -448,7 +449,11 @@ def test_a_held_dashboard_the_operator_stops_stays_stopped_until_restart(
         reopened = private_url(watched, root)
 
     stop = left.stopped
-    assert stopped.exit_code == 0 and "Dashboard stopped." in stopped.output
+    assert stopped.exit_code == 0
+    assert (
+        "Dashboard stopped; it stays stopped until "
+        "`uv run lup-devtools dashboard restart` or the next launch."
+    ) in stopped.output
     assert left.serving is None and left.stays_stopped and left.leases == 1
     assert stop is not None and stop.stays and stop.why == "the operator stopped it"
     assert stop.leases == 1 and stop.by == os.getpid()
