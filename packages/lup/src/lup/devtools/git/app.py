@@ -13,6 +13,7 @@ resolves against a working directory a CLI is imported long before anyone
 points it at.
 """
 
+import sys
 from collections.abc import Callable
 from pathlib import Path
 from typing import Annotated
@@ -33,6 +34,7 @@ from lup.policy.vocabulary import protected_branches
 from lup.workspace.paths import project_root
 from lup.devtools.git.prepare import prepare
 from lup.devtools.git.settle import settle
+from lup.devtools.entrypoint import in_process
 from lup.devtools.launcher import console_script
 from lup.devtools.utils import decode_stderr
 
@@ -55,7 +57,7 @@ def create_git_app(declared: Callable[[], DevDeclarations]) -> typer.Typer:
     )
 
     @app.callback()
-    def guard_worktree_pointers() -> None:
+    def guard_worktree_pointers(ctx: typer.Context) -> None:
         """Refuse any git-workflow command run over a redirected worktree set.
 
         The one host-side chokepoint for this command tree: every `dev git`
@@ -63,9 +65,23 @@ def create_git_app(declared: Callable[[], DevDeclarations]) -> typer.Typer:
         through here before running git across the worktrees, so a pointer a
         contained session moved is caught once rather than at each command. A
         layout with no sibling worktrees no-ops, leaving a plain checkout's
-        commands untouched.
+        commands untouched. The hooks group judges for itself, one level down.
         """
-        worktree.refuse_redirected_pointers()
+        if ctx.invoked_subcommand != "hooks":
+            worktree.refuse_redirected_pointers()
+
+    @guard_app.callback()
+    def guard_hook_pointers(ctx: typer.Context) -> None:
+        """Judge the worktree set for every hooks command but the one git runs.
+
+        `run` is reached from inside a hook, after git has resolved the
+        repository it is working in, and reads that repository alone; each
+        guard it runs that is a git-workflow command passes through the
+        judgement above on its own. Judging every worktree of the clone there
+        would charge each commit seconds more for nothing.
+        """
+        if ctx.invoked_subcommand != "run":
+            worktree.refuse_redirected_pointers()
 
     def scaffold_branch() -> str:
         """The branch this project's copied half is compiled onto, if it has one."""
@@ -394,10 +410,16 @@ def create_git_app(declared: Callable[[], DevDeclarations]) -> typer.Typer:
         which of them the error was about.
         """
         root = project_root()
+        guards = declared().git_guards
+        # A host step: the shared hooks directory is held read-only inside a
+        # contained session, so where there is something to write and nothing
+        # here may write it, the host's command is what the reader needs.
+        blocked = git_guards_mod.blocked_arming(guards, root)
+        if blocked:
+            typer.echo(blocked, err=True)
+            raise typer.Exit(1)
         try:
-            installed = git_guards_mod.install_guards(
-                declared().git_guards, root, force=force
-            )
+            installed = git_guards_mod.install_guards(guards, root, force=force)
         except git_guards_mod.GuardConflict as error:
             typer.echo(str(error), err=True)
             raise typer.Exit(1) from error
@@ -406,10 +428,42 @@ def create_git_app(declared: Callable[[], DevDeclarations]) -> typer.Typer:
             # it and sits outside all of them, so a sandbox confining writes to
             # the checkout refuses this — as an errno naming a path, which says
             # nothing about hooks to whoever reads it out of a traceback.
-            typer.echo(f"the hooks could not be written: {error}", err=True)
+            typer.echo(
+                f"the hooks could not be written: {error}. Where this session "
+                "cannot write them, run "
+                f"`{git_guards_mod.host_install(root)}` from a terminal on the host.",
+                err=True,
+            )
             raise typer.Exit(1) from error
         for state in installed:
             typer.echo(state.describe())
+
+    @guard_app.command("run")
+    def guard_run_cmd(
+        hook: Annotated[str, typer.Argument(help="The git hook that fired")],
+        arguments: Annotated[
+            list[str] | None, typer.Argument(help="What git passed the hook")
+        ] = None,
+    ) -> None:
+        """Run the guards this checkout declares at one git hook.
+
+        Every hook `install` writes calls this and names no guard, so what
+        runs is this checkout's own declaration at the revision it is at,
+        whichever revision wrote the hook. The first guard to refuse ends
+        the moment, and says why. A checkout that compiles its guards into
+        its manifest answers this before the application loads; this is the
+        answer for one that does not, and a guard that is a devtools command
+        runs in this same process either way.
+        """
+        status = git_guards_mod.fire(
+            declared().git_guards,
+            hook,
+            tuple(arguments or ()),
+            project_root(),
+            sys.stdin,
+            in_process,
+        )
+        raise typer.Exit(status)
 
     @guard_app.command("status")
     def guard_status_cmd() -> None:
@@ -417,10 +471,17 @@ def create_git_app(declared: Callable[[], DevDeclarations]) -> typer.Typer:
 
         Both directions, because either alone reads as fully armed: a moment
         this declares with nothing installed at it, and a hook this installed
-        at a moment nothing declares any more.
+        at a moment nothing declares any more. Each moment lists the guards
+        this checkout runs there, which the installed hook does not name.
         """
-        hooks = git_guards_mod.read_hooks(declared().git_guards, project_root())
-        for state in [*hooks.guards, *hooks.orphaned]:
+        guards = declared().git_guards
+        hooks = git_guards_mod.read_hooks(guards, project_root())
+        scripts = git_guards_mod.hook_scripts(guards)
+        for script, state in zip(scripts, hooks.guards, strict=True):
+            typer.echo(state.describe())
+            for guard in script.guards:
+                typer.echo(f"  runs `{guard.command}`")
+        for state in hooks.orphaned:
             typer.echo(state.describe())
 
     @guard_app.command("uninstall")

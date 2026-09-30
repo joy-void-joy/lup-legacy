@@ -232,6 +232,36 @@ def test_the_git_command_tree_guards_every_subcommand(
     assert CliRunner().invoke(app, ["--help"]).exit_code == 0
 
 
+def test_the_hooks_group_guards_every_verb_but_the_one_git_runs(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`install` and `status` are judged; `run`, reached from inside a hook, is not.
+
+    Git has resolved the repository before it runs a hook, and the runner
+    reads that one repository alone, so judging every worktree of the clone
+    there would only charge each commit for it. A guard that is itself a
+    git-workflow command is judged on its own way in.
+    """
+    from typer.testing import CliRunner
+
+    from lup.devtools.dev import worktree
+    from lup.devtools.dev.declarations import DevDeclarations
+    from lup.devtools.git.app import create_git_app
+
+    def refuse() -> None:
+        raise typer.Exit(7)
+
+    def undeclared() -> DevDeclarations:
+        raise AssertionError("no command body runs here")
+
+    monkeypatch.setattr(worktree, "refuse_redirected_pointers", refuse)
+    app = create_git_app(declared=undeclared)
+
+    assert CliRunner().invoke(app, ["hooks", "status"]).exit_code == 7
+    assert CliRunner().invoke(app, ["hooks", "install"]).exit_code == 7
+    assert CliRunner().invoke(app, ["hooks", "run", "--help"]).exit_code == 0
+
+
 def test_the_launcher_guards_pointers_on_the_way_in(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

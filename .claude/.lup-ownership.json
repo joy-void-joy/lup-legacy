@@ -765,7 +765,7 @@
     {
       "path": "docs/contributing.md",
       "category": "generated",
-      "sha256": "8c4781cb7c607d10b7ff2789240036d5811d94f27060c2f897235a16f596711a",
+      "sha256": "028bccb45844cbf23b4c57567812b56ffb4a0e65896c270ccad94651681595e8",
       "semantic_id": "docs.contributing",
       "executable": false
     },
@@ -800,14 +800,14 @@
     {
       "path": "docs/dev-tooling-decisions.md",
       "category": "generated",
-      "sha256": "d9feb664e0a0b42a77ef8fe1496b74533c13dd930df19fd93f7f277873949a0d",
+      "sha256": "68f17c14fc9b1702f4d6a2ccf12c3a047e28742c7f19bb37a3328a4bce5d163c",
       "semantic_id": "docs.dev-tooling-decisions",
       "executable": false
     },
     {
       "path": "docs/harness.md",
       "category": "generated",
-      "sha256": "398bfe30c301d6d4e860f5132caadacde636302ee8e60acfbf4b7dc5d1f881ac",
+      "sha256": "44d08616f7aeeb75fe5a015fb49acb8a29d94671f21b37f2f2c0d6ea2baf98f1",
       "semantic_id": "docs.harness",
       "executable": false
     },
@@ -863,7 +863,7 @@
     {
       "path": "docs/quality-pipeline.md",
       "category": "generated",
-      "sha256": "02a62eae98484e4f087eda957767a56923dc21fe086cb3f72e61ed0c7c415499",
+      "sha256": "5e4e3efaf93ffb1d16dcdd66223aa1ae06400d8b8a47f358e8a2c3f432623eff",
       "semantic_id": "docs.quality-pipeline",
       "executable": false
     },

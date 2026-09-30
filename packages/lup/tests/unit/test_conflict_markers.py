@@ -105,4 +105,4 @@ def test_a_commit_holding_a_block_is_refused_at_pre_commit() -> None:
 
     assert len(guards) == 1
     assert "--staged" in guards[0].command
-    assert guards[0].standdown == ""
+    assert guards[0].standdown is None

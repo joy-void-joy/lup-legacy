@@ -8,8 +8,8 @@ because it is charged on every commit and the mistake is not.
 Drift, at ``pre-commit``: the sources compiled into the native trees are
 copied there verbatim, so rewording a comment in one of them makes both
 trees stale without changing anything either does, and a commit that skips
-the check writes that staleness into history. Reading it back costs about a
-second, which is the ratio this hook is here for.
+the check writes that staleness into history. Reading it back costs seconds
+rather than the gate's minutes, which is the ratio this hook is here for.
 
 The whole gate — ruff, pyright, and both suites — is the pipeline's, at the
 boundary where a runner spends the two minutes instead of the person who is
@@ -17,27 +17,55 @@ still working. A hook charging that to every push would buy only the
 interval between pushing and the pipeline answering, and would charge it
 against the loop that has to stay tight.
 
-Each hook body is one line naming a command the pipeline also runs, so the
-places that can refuse the same work run one computation rather than several
-that can disagree, and a hook nobody installed is still refused by the
-pipeline at the same line.
+Each guard runs a command the pipeline also runs, so the places that can
+refuse the same work run one computation rather than several that can
+disagree, and a hook nobody installed is still refused by the pipeline at the
+same line.
+
+What git runs names no guard. Every worktree of a clone resolves its hooks
+through the one shared directory, and each worktree sits at a revision of its
+own, so a hook body spelling its guards out was written by one revision and
+run by all of them: a check that grew an option failed every commit in a
+worktree cut before it, and a body written from an older checkout ran none of
+the guards a newer one declares. The installed hook is a trampoline instead
+(:meth:`HookScript.body`) handing the moment to ``git hooks run <hook>``, and
+the checkout git fired it in answers from its own declaration which guards
+run there (:func:`fire`). Written from any revision it is the same file, so
+arming stays a once-per-clone act rather than one owed after every change to
+a guard.
 
 Which hooks a project arms is its own declaration — :data:`DECLARED_GUARDS`
 is what lup ships, not a set an adopter has to fork this module to
 change. A project may declare several guards at one moment, which git runs
-as the one script it runs per hook: :class:`HookScript` is that file, and it
-is the unit installed and read, because a guard is not what git has a name
-for.
+as the one script it runs per hook: :class:`HookScript` is that moment, and
+it is the unit installed and read, because a guard is not what git has a
+name for.
 """
 
+import pkgutil
+import shlex
+import sys
+import tomllib
+from abc import ABC, abstractmethod
+from collections.abc import Callable
 from pathlib import Path
-from typing import Literal
+from typing import Literal, TextIO
 
 import sh
-from pydantic import BaseModel
+import tomlkit
+import tomlkit.items
+import typer
+from pydantic import (
+    BaseModel,
+    TypeAdapter,
+    ValidationError,
+    field_serializer,
+    field_validator,
+)
 
-from lup.devtools.gitguard import GIT_ENVIRONMENT
 from lup.formats.banner import REGENERATE_COMMAND
+from lup.types import JsonObject
+from lup.workspace.paths import project_root
 from lup.execution.shell import git
 from lup.execution.writability import on_read_only_mount, refuses_a_new_file
 
@@ -76,29 +104,94 @@ state that needs ``--force`` to leave — so the compatibility is worth one
 line rather than a migration note nobody reads.
 """
 
+GIT_ENVIRONMENT = (
+    "GIT_DIR",
+    "GIT_WORK_TREE",
+    "GIT_INDEX_FILE",
+    "GIT_OBJECT_DIRECTORY",
+    "GIT_COMMON_DIR",
+)
+"""What names a repository to git ahead of any directory a command is given.
 
-# lup: ignore[constant-declaration] — git's own mid-merge marker read in shell,
-# not a judgement a project could hold differently; and as a field default it
-# would arm the push moment too, where an unfinished merge decides nothing
-MERGE_STANDDOWN = """\
-# A commit concluding a merge is mid-transaction, and the generated trees are
-# compiled from declarations that merge has not finished writing: a resolution
-# is where a project decides what of upstream it takes, so it is where those
-# declarations change. Git draws the same line itself — the merge it completes
-# on its own runs `pre-merge-commit`, not this moment — so the check below
-# would refuse exactly the merges somebody had to resolve by hand and no
-# other. `dev update` regenerates once the merge lands, and every commit that
-# concludes no merge is read here as always.
-if [ -e "$(git rev-parse --git-path MERGE_HEAD)" ]; then
-  exit 0
-fi
+`-C <throwaway>` chooses where git works, while these choose which repository
+it resolves, and the environment wins. Git exports them to every hook, so a
+guard whose suite builds throwaway repositories would commit into the very
+checkout the hook fired in, however carefully each helper bound its own git.
+Scrubbed where the hook is written, because unlike a misbound command this
+arrives through one door.
 """
-"""What the commit guard reads before deciding a merge is its to judge.
 
-Beside :data:`DELETION_STANDDOWN` because both are a moment describing
-itself: one uploads no tree to judge, the other holds a tree that is half of
-two and matches neither declaration.
+type DevtoolsRunner = Callable[[tuple[str, ...]], int]
+"""Runs one ``lup-devtools`` invocation in the devtools already loaded.
+
+Handed the words after ``lup-devtools`` and answering the exit status, so a
+moment whose guards are devtools commands pays for one loaded application
+rather than one process, and one load, per guard.
 """
+
+
+class HookMoment(BaseModel, frozen=True):
+    """One firing of a git hook, as the guards declared at it are handed it."""
+
+    hook: str
+    root: Path
+    """The checkout git fired the hook in, where each guard runs."""
+
+    arguments: tuple[str, ...] = ()
+    """What git passed the hook: a remote and its URL at ``pre-push``, the
+    squash flag at ``post-merge``, nothing at ``pre-commit``."""
+
+    stdin: str | None = None
+    """What git handed the hook on stdin, read only where a guard declares it.
+
+    None is not the empty string: it says nothing here read stdin at all,
+    which is what keeps a moment fired by hand from a terminal from waiting
+    on a keyboard for input no guard wants.
+    """
+
+
+class Standdown(BaseModel, ABC, frozen=True):
+    """What a moment says about itself that leaves one guard nothing to judge.
+
+    Answered here rather than inside the check, which would otherwise have to
+    be taught a second job and read a stdin it never asked for. A standdown
+    stands its own guard down and no other: a moment guarded twice still runs
+    the second guard whatever the first one's standdown said.
+    """
+
+    @abstractmethod
+    def applies(self, moment: HookMoment) -> bool:
+        """Whether this firing stands the guard down."""
+
+    def reads_stdin(self) -> bool:
+        """Whether answering needs what git handed the moment on stdin.
+
+        Declared by the standdown rather than by the guard carrying it, so a
+        guard cannot carry one while forgetting to ask for its input, which
+        would read an empty stdin as a push of nothing and stand down always.
+        """
+        return False
+
+
+class MergeInProgress(Standdown, frozen=True):
+    """A commit concluding a merge, which the generated trees cannot be judged at.
+
+    A commit concluding a merge is mid-transaction, and the generated trees
+    are compiled from declarations that merge has not finished writing: a
+    resolution is where a project decides what of upstream it takes, so it is
+    where those declarations change. Git draws the same line itself — the
+    merge it completes on its own runs ``pre-merge-commit``, not this moment —
+    so the check would refuse exactly the merges somebody had to resolve by
+    hand and no other. ``dev update`` regenerates once the merge lands, and
+    every commit that concludes no merge is read as always.
+
+    Declared on the drift guard rather than made every guard's default: at
+    the push moment an unfinished merge decides nothing.
+    """
+
+    def applies(self, moment: HookMoment) -> bool:
+        named = git.out("-C", str(moment.root), "rev-parse", "--git-path", "MERGE_HEAD")
+        return (moment.root / named).exists()
 
 
 # lup: ignore[constant-declaration] — the command a reader types, whose words
@@ -112,44 +205,65 @@ conflict runs `post-commit` — no single hook sees both.
 """
 
 
-# lup: ignore[constant-declaration] — git's own history read in shell, not a
-# judgement a project could hold differently: a commit with a second parent
-SETTLE_STANDDOWN = """\
-# Only a merge commit holds a tree two branches' generated files were merged
-# into; every other commit carries a tree one side generated, and runs
-# nothing here.
-git rev-parse -q --verify HEAD^2 >/dev/null || exit 0
-"""
-"""What the settling moments read before paying for a regeneration."""
+class NoMergeCommit(Standdown, frozen=True):
+    """A commit with one parent, which the settling moments have nothing to fold into.
+
+    Only a merge commit holds a tree two branches' generated files were
+    merged into; every other commit carries a tree one side generated, so
+    paying for a regeneration there would buy nothing.
+    """
+
+    def applies(self, moment: HookMoment) -> bool:
+        second = git.out(
+            "-C",
+            str(moment.root),
+            "rev-parse",
+            "-q",
+            "--verify",
+            "HEAD^2",
+            _ok_code=[0, 1],
+        )
+        return not second
 
 
-# lup: ignore[constant-declaration] — git's own pre-push stdin protocol written
-# in shell, not a judgement a project could hold differently; and as a field
-# default it would arm the commit moment too, silently disarming that guard
-DELETION_STANDDOWN = """\
-# A push that only deletes refs uploads nothing for the check below to judge.
-# Git names each update on stdin as `<local ref> <local oid> <remote ref>
-# <remote oid>` and writes an all-zero local oid where a ref is being deleted;
-# anything else is content this push answers for, and a line that does not
-# parse counts as content rather than being trusted into a standdown.
-carries_content=''
-while read -r _ local_oid _; do
-  case "$local_oid" in
-    '' | *[!0]*) carries_content=yes ;;
-  esac
-done
-[ -n "$carries_content" ] || exit 0
-"""
-"""What a push guard reads before deciding it has anything to judge.
+class DeletionOnly(Standdown, frozen=True):
+    """A push that only deletes refs, which uploads nothing for a check to judge.
 
-Offered rather than declared: lup leaves its gate to the pipeline, and a
-project that does want one at ``pre-push`` wants this in front of it.
-Deleting a branch is the case that makes it worth having — it uploads no
-tree at all, so a gate there could only re-judge what the remote already
-holds, and it would charge the whole suite for the privilege, long enough
-that a delete can time out having removed the local branch and left the
-remote copy standing.
-"""
+    Offered rather than declared: lup leaves its gate to the pipeline, and a
+    project that does want one at ``pre-push`` wants this in front of it.
+    Deleting a branch is the case that makes it worth having — it uploads no
+    tree at all, so a gate there could only re-judge what the remote already
+    holds, and it would charge the whole suite for the privilege, long enough
+    that a delete can time out having removed the local branch and left the
+    remote copy standing.
+
+    Never every guard's default: at the commit moment git hands a hook no
+    stdin, which reads as a push of nothing and would stand that guard down
+    on every commit while it still reported as armed.
+    """
+
+    def reads_stdin(self) -> bool:
+        return True
+
+    def applies(self, moment: HookMoment) -> bool:
+        """Whether no line git handed the push names content it uploads.
+
+        Git names each update as ``<local ref> <local oid> <remote ref>
+        <remote oid>`` and writes an all-zero local oid where a ref is being
+        deleted. Anything else is content this push answers for, and a line
+        that does not parse counts as content rather than being trusted into
+        a standdown.
+        """
+
+        def carries_content(update: str) -> bool:
+            match update.split():
+                case [_, local_oid, *_] if local_oid == "0" * len(local_oid):
+                    return False
+                case _:
+                    return True
+
+        lines = (moment.stdin or "").splitlines()
+        return not any(carries_content(update) for update in lines)
 
 
 class GitGuard(BaseModel, frozen=True):
@@ -162,98 +276,170 @@ class GitGuard(BaseModel, frozen=True):
     """
 
     command: str = DRIFT_COMMAND
-    """What the hook runs, and refuses the operation on a nonzero exit from."""
+    """What the guard runs, and refuses the moment on a nonzero exit from.
 
-    hook: str = "pre-commit"
-    """Which git hook the check is installed as."""
-
-    environment: tuple[str, ...] = GIT_ENVIRONMENT
-    """What the hook drops before running its check.
-
-    A project whose check wants one of these kept names a shorter tuple, and
-    one that wants none of them dropped names an empty one, which writes no
-    line at all.
+    A shell line, run by ``sh -c`` in the checkout with the hook's name as
+    ``$0`` and what git passed the hook as ``$1`` onwards — what the same line
+    saw when it stood in the hook script itself. One that is nothing but a
+    ``lup-devtools`` invocation runs in the devtools already loaded instead
+    (:meth:`devtools_arguments`), which is the same command without a second
+    interpreter paying to load the application again.
     """
 
-    standdown: str = ""
-    """Shell run before the check, free to ``exit 0`` and stand the guard down.
+    hook: str = "pre-commit"
+    """Which git hook the check runs at."""
 
-    A moment that describes itself is answered here rather than inside the
-    check, which would otherwise have to be taught a second job and read a
-    stdin it never asked for. Empty by default: most moments say nothing a
-    hook could stand down on, and a guard that stands down silently is worse
-    than one that runs.
+    standdown: Standdown | None = None
+    """What the moment may say about itself to stand this guard down.
+
+    None by default: most moments say nothing a guard could stand down on,
+    and a guard that stands down silently is worse than one that runs.
     """
 
     refusal: str = (
-        "Refuses this commit while a generated artifact differs from what\n"
-        f"# its source renders. Settle it with `{REGENERATE_COMMAND}`."
+        "A generated artifact differs from what its source renders. "
+        f"Settle it with `{REGENERATE_COMMAND}`."
     )
-    """What the installed hook tells whoever it just stopped.
+    """What whoever this guard just stopped is told, beside the command.
 
     A hook that only exits nonzero leaves its reader guessing which check
-    fired and what settles it, and the script is the one place that reader
-    is certainly looking.
+    fired and what settles it, so the refusal is said as it happens, where
+    that reader is certainly looking.
     """
 
     reads_stdin: bool = False
-    """Whether this check, or its standdown, reads the moment's own stdin.
+    """Whether this check reads what git handed the moment on stdin.
 
-    Git delivers a moment's stdin once, so a moment guarded twice has to hand
-    both the same copy — declared rather than detected, because whether a
-    command reads is a fact about that command and nothing here can see
-    inside it. False by default: only the push moment describes itself on
-    stdin at all, and capturing where nothing reads buys a moment's guarding
-    nothing.
+    Git delivers a moment's stdin once, so it is read once and each guard at
+    the moment is handed the same copy — declared rather than detected,
+    because whether a command reads is a fact about that command and nothing
+    here can see inside it. A check that does not declare it is handed an
+    empty stdin. False by default: only the push moment describes itself on
+    stdin at all.
     """
 
-    def check(self) -> str:
-        """This guard's own lines: what it refuses, the scrub, then the command.
+    @field_serializer("standdown")
+    def named_standdown(self, standdown: Standdown | None) -> JsonObject | None:
+        """A standdown as the class it is and the fields it holds, so it compiles.
 
-        Git names this repository to a hook through the environment, which
-        outranks the `-C` any command the check runs binds itself with. A
-        check whose suite builds throwaway repositories would resolve this one
-        instead and commit into the branch being pushed, so the names go
-        before the check rather than travelling into it.
-
-        Ends in an ``exec`` whether or not this guard is the last at its
-        moment: :class:`HookScript` puts a guard with another after it in a
-        subshell, where the exec replaces that subshell and its status is
-        what the moment reads.
+        Named by import path because the class is the answer — the fields are
+        only what it was given — and a project's own standdown compiles the
+        same way lup's do.
         """
-        scrub = (
-            "# Dropped so the check below resolves this repository from the\n"
-            "# directory it runs in. Git names it here too, and that name would\n"
-            "# outrank the `-C` a test's throwaway repository binds git with.\n"
-            f"unset {' '.join(self.environment)}\n"
+        if standdown is None:
+            return None
+        kind = type(standdown)
+        return {
+            "kind": f"{kind.__module__}:{kind.__qualname__}",
+            **standdown.model_dump(mode="json"),
+        }
+
+    @field_validator("standdown", mode="before")
+    @classmethod
+    def resolved_standdown(
+        cls, value: JsonObject | Standdown | None
+    ) -> JsonObject | Standdown | None:
+        """A compiled standdown back as the class it names, holding its fields."""
+        match value:
+            case {"kind": str(kind), **fields}:
+                try:
+                    named = pkgutil.resolve_name(kind)
+                except (ImportError, AttributeError) as error:
+                    raise ValueError(f"no standdown resolves as {kind}") from error
+                match named:
+                    case type() if issubclass(named, Standdown):
+                        return named.model_validate(fields)
+                    case _:
+                        raise ValueError(f"{kind} names no Standdown")
+            case _:
+                return value
+
+    def reads(self) -> bool:
+        """Whether this check or its standdown needs the moment's stdin."""
+        return self.reads_stdin or (
+            self.standdown is not None and self.standdown.reads_stdin()
         )
-        return (
-            f"# {self.refusal}\n"
-            f"{scrub if self.environment else ''}"
-            f"{self.standdown}"
-            f"exec {self.command}\n"
-        )
+
+    def devtools_arguments(self) -> tuple[str, ...] | None:
+        """The words after ``lup-devtools``, where the line is that invocation alone.
+
+        Read with the shell's own lexer, so quoting parses as the shell would
+        parse it. Anything the shell would do besides run that one command — a
+        second command, a pipe or redirect, an expansion, a glob, a variable —
+        leaves the line to the shell, and so does a check that reads stdin,
+        which the devtools already loaded has spent. Refusing a line is never
+        wrong, only slower: it runs exactly as it always did.
+        """
+        if self.reads_stdin:
+            return None
+        lexer = shlex.shlex(self.command, posix=True, punctuation_chars=True)
+        lexer.whitespace_split = True
+        try:
+            words = list(lexer)
+        except ValueError:
+            return None
+
+        def literal(word: str) -> bool:
+            return not any(character in "$`*?[]{}~()<>|&;\\'\"\n" for character in word)
+
+        match words:
+            case ["uv", "run", "lup-devtools", *arguments] if all(
+                literal(word) for word in arguments
+            ):
+                return tuple(arguments)
+            case _:
+                return None
+
+    def run(self, moment: HookMoment, devtools: DevtoolsRunner) -> int:
+        """Run the check at this firing, and answer its exit status.
+
+        Its output is the moment's own, so it reaches whoever git is running
+        the hook for as it is written rather than once the check ends.
+        """
+        arguments = self.devtools_arguments()
+        if arguments is not None:
+            return devtools(arguments)
+        try:
+            sh.Command("sh")(
+                "-c",
+                self.command,
+                moment.hook,
+                *moment.arguments,
+                _cwd=str(moment.root),
+                _in=moment.stdin or "",
+                _out=sys.stdout,
+                _err=sys.stderr,
+            )
+        except sh.ErrorReturnCode as error:
+            return error.exit_code
+        return 0
 
 
 DECLARED_GUARDS = [
-    GitGuard(standdown=MERGE_STANDDOWN),
+    GitGuard(standdown=MergeInProgress()),
     # No standdown: a merge's own commit is where its markers get committed.
+    # lup: defer: the hook scrubs GIT_INDEX_FILE before this runs, so under
+    # `git commit -a` or `git commit <path>` it reads the checkout's index
+    # rather than the `index.lock` git is committing, and misses a conflict
+    # block only those staged. Hand the moment's index to the guards that
+    # judge it through the environment, which a runner predating it ignores.
     GitGuard(
         command=f"{CHECK_COMMAND} --conflict-markers --staged",
         refusal=(
-            "Refuses this commit while a staged file holds a conflict block a\n"
-            "# merge left behind. Resolve it, or excuse a fixture holding one on\n"
-            "# purpose with a `lup: ignore[conflict-marker]` line heading it."
+            "A staged file holds a conflict block a merge left behind. Resolve "
+            "it, or excuse a fixture holding one on purpose with a "
+            "`lup: ignore[conflict-marker]` line heading it."
         ),
     ),
     *(
         GitGuard(
             command=SETTLE_COMMAND,
             hook=moment,
-            standdown=SETTLE_STANDDOWN,
+            standdown=NoMergeCommit(),
             refusal=(
-                "Refuses nothing: folds what regeneration writes over a merge\n"
-                "# commit into that commit, so no merge leaves a stale proof."
+                "Refuses nothing, since the merge commit is already made: what "
+                "regeneration writes over it was not folded in, so its "
+                f"generated trees may be stale until `{SETTLE_COMMAND}` does."
             ),
         )
         for moment in ("post-merge", "post-commit")
@@ -275,90 +461,165 @@ regenerate-and-commit by hand.
 """
 
 
-# lup: ignore[constant-declaration] — a local name inside a script this module
-# both writes and reads back, so the definition and every use are here; a caller
-# given it to set would be naming a shell variable nothing outside can see
-REPLAY_CALL = "replay_stdin"
-"""The shell function a shared moment hands each of its guards stdin through."""
+class MomentOutcome(BaseModel, frozen=True):
+    """How one firing ended: passed, or refused by the first guard to refuse."""
+
+    refused_by: GitGuard | None = None
+    status: int = 0
+
+    def report(self) -> str:
+        """What whoever the moment stopped is told; empty where nothing refused."""
+        if self.refused_by is None:
+            return ""
+        return (
+            f"{GUARD_MARKER}: {self.refused_by.hook} refused by "
+            f"`{self.refused_by.command}` (exit {self.status}). "
+            f"{self.refused_by.refusal}"
+        )
 
 
 class HookScript(BaseModel, frozen=True):
-    """Every guard a repository declares at one moment, as the one file git runs.
+    """Every guard a repository declares at one moment, and the file git runs there.
 
     Git runs a single script per hook, so a moment guarded twice is one file
     rather than two — which is why the installed unit is a moment and not a
     guard. The guards run in the order they were declared and the first to
     refuse ends the operation, so the cheap check goes before the expensive
-    one and a reader of the script meets them in that order.
+    one.
     """
 
     hook: str
     guards: list[GitGuard]
 
-    @property
-    def replayed(self) -> bool:
-        """Whether this moment has to hand its guards a captured stdin.
+    environment: tuple[str, ...] = GIT_ENVIRONMENT
+    """What the hook drops before handing its moment over.
 
-        Both halves are load-bearing. A moment with one guard has nobody to
-        share with, and passing git's own stdin straight through is what that
-        guard already expects. A moment where nothing reads must not capture
-        at all: the capture is a ``cat``, and running one at a moment whose
-        stdin nothing fills would buy the guarding nothing.
+    Dropped in the hook rather than by any guard, because the checkout's
+    devtools is the first thing to ask git which repository it is in.
+    """
+
+    def captures_stdin(self) -> bool:
+        """Whether this moment reads git's stdin, once, for every guard at it.
+
+        Git delivers it once, so the first guard to read would drain it for
+        every guard after — a push whose data check read the ref list would
+        leave the gate beside it judging a push that looks empty, and
+        standing down. Read here and handed to each instead. A moment where
+        nothing reads does not read at all, so firing one by hand from a
+        terminal does not wait on the keyboard.
         """
-        return len(self.guards) > 1 and any(guard.reads_stdin for guard in self.guards)
+        return any(guard.reads() for guard in self.guards)
 
-    def capture(self) -> str:
-        """The read that makes this moment's stdin answerable more than once.
-
-        Git delivers it once, so the first guard to read drains it for every
-        guard after — a push whose data check read the ref list would leave
-        the gate beside it judging a push that looks empty, and standing
-        down. Replayed rather than teed so each guard reads from the start.
-
-        The emptiness test is not defensive: command substitution strips
-        trailing newlines, so replaying an empty capture with a bare
-        ``printf`` would hand a guard one blank line where git handed it
-        nothing, and a line that parses as no ref update reads to a guard
-        like a push it cannot account for.
-        """
-        if not self.replayed:
-            return ""
-        return (
-            "# Git delivers this moment's stdin once, and more than one guard\n"
-            "# below reads it. Captured here and replayed to each, so the first\n"
-            "# to read does not drain it for the rest.\n"
-            "guarded_stdin=$(cat)\n"
-            f'{REPLAY_CALL}() {{ [ -z "$guarded_stdin" ] || '
-            "printf '%s\\n' \"$guarded_stdin\"; }\n"
+    def fired(
+        self, arguments: tuple[str, ...], root: Path, stdin: TextIO
+    ) -> HookMoment:
+        """This moment as git fired it in ``root``."""
+        return HookMoment(
+            hook=self.hook,
+            root=root,
+            arguments=arguments,
+            stdin=stdin.read() if self.captures_stdin() else None,
         )
 
-    def framed(self, guard: GitGuard, *, tail: bool) -> str:
-        """One guard's check, in whatever this moment's sharing asks of it.
+    def run(self, moment: HookMoment, devtools: DevtoolsRunner) -> MomentOutcome:
+        """Run each guard in declaration order, until one refuses.
 
-        The last guard is left bare so the hook process becomes its command,
-        which is both a process saved and the reason a lone guard's script is
-        exactly what it was before any moment carried two. Every other guard
-        runs in a subshell, so a standdown's ``exit 0`` stands that guard down
-        rather than the moment, and ``|| exit $?`` carries a real refusal out.
+        A guard is judged against its standdown just before it would run, and
+        ``devtools`` is reached only by a guard that runs — so a moment where
+        each guard stands down ends having loaded nothing a guard needs.
         """
-        if tail and not self.replayed:
-            return guard.check()
-        piped = f"{REPLAY_CALL} | " if self.replayed else ""
-        carried = "" if tail else " || exit $?"
-        return f"{piped}(\n{guard.check()}){carried}\n"
+        for guard in self.guards:
+            if guard.standdown is not None and guard.standdown.applies(moment):
+                continue
+            status = guard.run(moment, devtools)
+            if status != 0:
+                return MomentOutcome(refused_by=guard, status=status)
+        return MomentOutcome()
 
     def body(self) -> str:
-        """The hook script: the marker that claims it, then each guard in turn."""
-        last = len(self.guards) - 1
-        framed = [
-            self.framed(guard, tail=index == last)
-            for index, guard in enumerate(self.guards)
-        ]
+        """The file git runs: the marker claiming it, then the hand-off to the checkout.
+
+        Names no guard, so every revision writes the same file and every
+        revision can answer it: a checkout reads its own declaration at
+        ``git hooks run``. The scrub stays here because it has to precede
+        the checkout's devtools itself — git names this repository to a hook
+        through the environment, which outranks the ``-C`` any command binds
+        itself with, so a check whose suite builds throwaway repositories
+        would resolve this one instead and commit into the branch being
+        worked on.
+
+        The call is spelled here and nowhere else, because it is the one
+        contract between a hook and every revision that may answer it:
+        ``git hooks run <hook> -- <what git passed the hook>``. Whatever a
+        later revision wants a hook to carry besides goes through the
+        environment, which a runner predating it ignores, rather than
+        through an option a runner predating it refuses.
+
+        One failure is let through, and only one: a checkout whose devtools
+        predates ``git hooks run``. Such a checkout declares no guard this
+        file could reach, and refusing its every commit would leave the one
+        way past to be skipping hooks altogether — so the moment passes and
+        says so, naming the checkout. It is told apart narrowly. Typer's
+        usage error, an unknown command among them, exits 2; the verb is then
+        asked for its help, which exits 2 only where it is missing; and the
+        CLI is asked for its own, which exits 0 only where the checkout's
+        devtools runs at all — so a broken environment, which ``uv`` also
+        reports as 2, still refuses. Every other failure, a guard's own 2
+        included, refuses as it came, and the probing costs only a moment
+        that already failed.
+        """
+        run = "uv run lup-devtools git hooks run"
+        passed = shlex.quote(
+            f"`{run}`, so it ran no {self.hook} guard; merging its base arms them."
+        )
         return (
             "#!/bin/sh\n"
             f"# {GUARD_MARKER}: written by `{INSTALL_COMMAND}`.\n"
-            f"{self.capture()}{''.join(framed)}"
+            "# Names no guard. Every worktree of this clone runs this one file,\n"
+            "# each at a revision of its own, so the checkout it fires in runs\n"
+            "# the guards its own devtools declares, which\n"
+            "# `uv run lup-devtools git hooks status` lists.\n"
+            "#\n"
+            "# Dropped so what runs below resolves this repository from the\n"
+            "# directory it runs in. Git names it here too, and that name would\n"
+            "# outrank the `-C` a test's throwaway repository binds git with.\n"
+            f"unset {' '.join(self.environment)}\n"
+            f'{run} {shlex.quote(self.hook)} -- "$@"\n'
+            "status=$?\n"
+            '[ "$status" -eq 2 ] || exit "$status"\n'
+            "# 2 is a usage error as well as a refusal. Let through only where\n"
+            "# the checkout's devtools runs but predates the verb above, which\n"
+            "# leaves it no guard to run; any other 2 refuses as it came.\n"
+            f"{run} --help </dev/null >/dev/null 2>&1\n"
+            '[ "$?" -eq 2 ] || exit 2\n'
+            "uv run lup-devtools --help </dev/null >/dev/null 2>&1 || exit 2\n"
+            f'echo "{GUARD_MARKER}: $(pwd) predates" {passed} >&2\n'
+            "exit 0\n"
         )
+
+
+def fire(
+    guards: list[GitGuard],
+    hook: str,
+    arguments: tuple[str, ...],
+    root: Path,
+    stdin: TextIO,
+    devtools: DevtoolsRunner,
+) -> int:
+    """Run the guards declared at ``hook`` as git fired it, answering its status.
+
+    What ``git hooks run`` does, and so what every installed hook reaches:
+    the guards are this checkout's own declaration at the revision it is at,
+    whichever revision wrote the hook. A moment nothing here declares runs
+    nothing and passes, which is how a hook armed by a newer declaration
+    reads to an older one. ``devtools`` runs the guards that are devtools
+    commands, and is not called at all where none is left standing.
+    """
+    script = HookScript(hook=hook, guards=[g for g in guards if g.hook == hook])
+    outcome = script.run(script.fired(arguments, root, stdin), devtools)
+    if outcome.refused_by is not None:
+        typer.echo(outcome.report(), err=True)
+    return outcome.status
 
 
 def hook_scripts(guards: list[GitGuard]) -> list[HookScript]:
@@ -372,6 +633,85 @@ def hook_scripts(guards: list[GitGuard]) -> list[HookScript]:
         HookScript(hook=hook, guards=[g for g in guards if g.hook == hook])
         for hook in moments
     ]
+
+
+def compiled_guards(root: Path) -> list[GitGuard] | None:
+    """The guards ``root``'s manifest compiles, or None where it compiles none.
+
+    What ``git hooks run`` reads before the project's application loads,
+    which is what lets a moment whose every guard stands down end in the
+    time it takes to import this module rather than to build the whole CLI.
+    It is the declaration itself, compiled into ``[tool.lup]`` by ``harness
+    generate all`` and held to it by the drift check, so a checkout reads the
+    declaration at the revision it is at.
+
+    None sends the moment to the application, which reads the declaration
+    directly: a manifest that is missing, one a merge left unparseable, one
+    that compiles no table, or one naming a standdown that no longer
+    resolves. Every one of those is slower and none of them skips a guard.
+    """
+    try:
+        manifest = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))
+    except (OSError, tomllib.TOMLDecodeError):
+        return None
+    match manifest:
+        case {"tool": {"lup": {"git-guards": list(compiled)}}}:
+            try:
+                return TypeAdapter(list[GitGuard]).validate_python(compiled)
+            except ValidationError:
+                return None
+        case _:
+            return None
+
+
+def write_git_guards(
+    guards: list[GitGuard], root: Path | None = None, *, check: bool = False
+) -> Path:
+    """Write or verify the guards compiled into ``pyproject.toml`` for the hooks.
+
+    A repository writer: ``harness generate all`` writes it, and the drift
+    check reads it with *check*, which reports the manifest stale rather than
+    writing it. Compiled rather than read from the declaration at hook time
+    because reading the declaration means loading the application, which is
+    most of what a moment costs.
+    """
+    manifest = (root or project_root()) / "pyproject.toml"
+    document = tomlkit.parse(manifest.read_text(encoding="utf-8"))
+    compiled = [guard.model_dump(mode="json", exclude_none=True) for guard in guards]
+    match document.unwrap():
+        case {"tool": {"lup": {"git-guards": list(current)}}}:
+            stale = current != compiled
+        case _:
+            stale = True
+    if stale and check:
+        raise RuntimeError(f"{manifest} is behind the declared git guards")
+    if not stale:
+        return manifest
+
+    tables = tomlkit.aot()
+    last = len(compiled) - 1
+    for index, fields in enumerate(compiled):
+        table = tomlkit.table()
+        if index == 0:
+            table.add(tomlkit.comment(f"Compiled by `{REGENERATE_COMMAND}` from the"))
+            table.add(tomlkit.comment("git guards the dev tree declares: edit those."))
+        for key, value in fields.items():
+            match value:
+                case dict():
+                    inline = tomlkit.inline_table()
+                    inline.update(value)
+                    table[key] = inline
+                case _:
+                    table[key] = value
+        if index == last:
+            table.add(tomlkit.nl())
+        tables.append(table)
+    tool = document.setdefault("tool", tomlkit.table())
+    lup = tool.setdefault("lup", tomlkit.table())
+    # An empty declaration is spelled as one, so it reads as compiled.
+    lup["git-guards"] = tables if compiled else tomlkit.array()
+    manifest.write_text(tomlkit.dumps(document), encoding="utf-8")
+    return manifest
 
 
 type GuardStatus = Literal[
@@ -582,6 +922,17 @@ def arming_is_refused(directory: Path) -> bool:
     )
 
 
+def host_install(root: Path) -> str:
+    """The exact command that arms this clone's hooks, typed on the host.
+
+    Installing is a host step: a contained session holds the shared hooks
+    directory read-only, because what it holds are scripts git executes at
+    the operator's next commit. Named with the checkout it runs in, which is
+    any of the clone's, since every worktree resolves the same directory.
+    """
+    return f"cd {shlex.quote(str(root))} && {INSTALL_COMMAND}"
+
+
 def blocked_arming(guards: list[GitGuard], root: Path) -> str:
     """Why this checkout cannot arm its guards, empty where it can or need not.
 
@@ -608,7 +959,7 @@ def blocked_arming(guards: list[GitGuard], root: Path) -> str:
         [
             f"{directory} is held read-only and these guards are not armed in it:",
             *(f"  - {state.describe()}" for state in outstanding),
-            f"Run `{INSTALL_COMMAND}` on the host, outside the sandbox. Hooks "
+            f"Run `{host_install(root)}` from a terminal on the host. Hooks "
             "resolve through the shared directory from every worktree of this "
             "clone, so arming them once there covers this checkout and every "
             "worktree cut after it.",
@@ -619,9 +970,16 @@ def blocked_arming(guards: list[GitGuard], root: Path) -> str:
 def install_script(
     script: HookScript, root: Path, *, force: bool = False
 ) -> GuardState:
-    """Write one moment's hook, refusing to displace one written elsewhere."""
+    """Write one moment's hook, refusing to displace one written elsewhere.
+
+    A moment already current is left as it is, so installing over an armed
+    clone writes nothing — which is what lets it succeed where the hooks
+    directory is held read-only and there is nothing to write.
+    """
     directory = hooks_directory(root)
     existing = guard_state(script, directory)
+    if existing.armed:
+        return existing
     if existing.status == "foreign" and not force:
         raise GuardConflict(
             f"{existing.path} holds a hook this did not write; read it, then pass "

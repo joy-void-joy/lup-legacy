@@ -13,6 +13,7 @@ from lup.harness.codescan.common import RuleSelection
 from lup.devtools.dev.model_catalog import catalog_writers, library_catalogs
 from lup.devtools.dev.settings_schema import SettingsSchemaSource, settings_writers
 from lup.devtools.dev.rules import write_rule_reference
+from lup.devtools.dev.git_guards import write_git_guards
 from lup.devtools.dev.subprojects import write_sub_projects
 from lup.devtools.dev.workflow import write_publish, write_workflow
 from lup.devtools.harness.composition import NativeTargets
@@ -38,6 +39,7 @@ from lup_template.harness.catalog import (
     launched_tool_servers,
     portable_harness,
 )
+from lup_template.devtools.dev.app import declared
 from lup_template.harness.content.catalog import COMPOSITION
 from lup_template.harness.content.docs.catalog import documents
 from lup_template.harness.content.modules.specs import TEMPLATE_INIT
@@ -119,6 +121,16 @@ TARGETS = NativeTargets(builders={"claude": claude_target, "codex": codex_target
 """Every native runtime this project generates a tree for, by CLI selector."""
 
 
+def write_declared_git_guards(root: Path | None = None, *, check: bool = False) -> Path:
+    """Compile the dev tree's own git guards, so the hooks run what it installs.
+
+    Read when generation runs rather than when this module loads, because the
+    declaration reads the checkout, and a manifest a merge left conflicted
+    must not stop the CLI that repairs it from importing.
+    """
+    return write_git_guards(declared().git_guards, root, check=check)
+
+
 # lup: ignore[constant-declaration] — which files outside a runtime tree this
 # project generates, decided here because nothing sits above it to be asked
 REPOSITORY_WIDE: list[RepositoryWriter] = [
@@ -126,6 +138,7 @@ REPOSITORY_WIDE: list[RepositoryWriter] = [
     partial(write_workflow, WORKFLOW),
     partial(write_publish, PUBLISH),
     partial(write_sub_projects, declared_sub_projects()),
+    write_declared_git_guards,
     partial(write_generated_paths, TARGETS),
     # The schema before the bundles, because the frontend build compiles its
     # types from it: written in this order, one generation leaves both true.

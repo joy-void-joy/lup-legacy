@@ -179,6 +179,7 @@ Run any of them with `uv run lup-devtools <command>`, and add `--help` for its a
 | `git conflict union` | Settle a conflict where both sides inserted at one place, keeping both. |
 | `git conflict complete` | Finalize the merge/rebase/cherry-pick after all conflicts are resolved. |
 | `git hooks install` | Install every git hook this repository declares. |
+| `git hooks run` | Run the guards this checkout declares at one git hook. |
 | `git hooks status` | Report what this clone refuses, at every moment a hook sits at. |
 | `git hooks uninstall` | Remove them, leaving hooks written elsewhere alone. |
 

@@ -36,6 +36,52 @@ report wherever routing sends it, and asks beside `--repo` as `gh issue edit
 --repo` does. `ShellOperationRule.amending_flags` is gone with the one row
 that declared it.
 
+### A git hook installed from any revision runs in a worktree at any other
+
+`git hooks install` writes hooks naming no guard: each hands its moment to
+`uv run lup-devtools git hooks run <hook>`, and the checkout git fired it in
+runs the guards its own devtools declares there. One clone's shared hooks
+directory serves worktrees at every revision, so a hook written from `dev`
+no longer fails every commit in a worktree whose devtools predates an option
+a guard uses, and one written from an older checkout no longer skips the
+guards a newer one declares. A checkout older than `git hooks run` itself
+commits with one line naming it; every other failure refuses as before.
+`GitGuard.standdown` takes a `Standdown` — `MergeInProgress`,
+`NoMergeCommit` or `DeletionOnly` for the `MERGE_STANDDOWN`,
+`SETTLE_STANDDOWN` and `DELETION_STANDDOWN` shell snippets — and a guard's
+refusal is said when it refuses. `GitGuard.environment`, `GitGuard.check`,
+`HookScript.replayed`, `capture`, `framed` and `REPLAY_CALL` are gone;
+`fire` is what the verb runs, and `git hooks status` lists the guards behind
+each moment. A clone armed before this runs `uv run lup-devtools git hooks
+install` once, on the host.
+
+### `git hooks install` names the host's command where it cannot write
+
+A contained session holds the shared hooks directory read-only, where `git
+hooks install` failed on an errno naming a path. It writes nothing where every
+moment is already current, and otherwise refuses naming the outstanding
+moments and the exact command to run from a host terminal, `cd <checkout> &&
+uv run lup-devtools git hooks install`, which `git worktree create` names too;
+`host_install(root)` in `lup.devtools.dev.git_guards` spells it.
+
+### A git hook moment loads the project's devtools at most once
+
+`harness generate all` compiles the declared git guards into `[tool.lup]
+git-guards` in `pyproject.toml` (`write_git_guards`, held to the declaration
+by the drift check, and by a `compiled git guards` row against the dev tree's
+own), and `lup-devtools git hooks run` reads it before the project's
+application loads (`compiled_guards`), so a moment where every guard stands
+down — a plain commit's settle, a push that only deletes — ends in about a
+third of a second instead of loading the application. A guard that is
+nothing but a `lup-devtools` invocation runs in that same process through
+`lup.devtools.entrypoint.in_process` rather than in one of its own; any other
+line still runs by `sh -c`. Measured here, a commit's `pre-commit` takes 7.0 s
+where one process per guard took 12.1 s, and its `post-commit` 0.29 s where it
+took 2.8 s. `fire`, `HookScript.run` and `GitGuard.run` take the runner for
+devtools commands; `GIT_ENVIRONMENT` lives in `lup.devtools.dev.git_guards`,
+the default of `HookScript.environment`; a standdown compiles by its import
+path, so a project's own compiles as lup's do.
+
 ### A runtime started from a session's shell is a member of its own
 
 `LUP_COORDINATION_MEMBER` reaches every process a launched session starts,

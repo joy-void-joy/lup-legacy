@@ -1,0 +1,43 @@
+subjects = [
+    "MERGE_STANDDOWN",
+    "SETTLE_STANDDOWN",
+    "DELETION_STANDDOWN",
+    "GitGuard.environment",
+    "GitGuard.check",
+    "REPLAY_CALL",
+    "HookScript.replayed",
+    "HookScript.capture",
+    "HookScript.framed",
+]
+reason = """
+an installed git hook names no guard: it hands its moment to `git hooks run`, \
+and the checkout git fired it in runs the guards its own devtools declares, so \
+a hook is the same file from every revision and a worktree at any other \
+revision can answer it. The shell a hook body was assembled from went with \
+that, and a standdown is a typed answer the runner asks"""
+
+[[steps]]
+instruction = """
+Declare a standdown as a Standdown from lup.devtools.dev.git_guards: \
+GitGuard(standdown=MergeInProgress()) where it named MERGE_STANDDOWN, \
+NoMergeCommit() for SETTLE_STANDDOWN and DeletionOnly() for \
+DELETION_STANDDOWN. A shell standdown of your own becomes a Standdown \
+subclass whose applies(moment) answers from the HookMoment, and whose \
+reads_stdin() says whether it needs what git handed the hook."""
+
+[[steps]]
+instruction = """
+Drop GitGuard.environment: every installed hook unsets GIT_ENVIRONMENT before \
+it hands the moment over, because the checkout's devtools has to resolve the \
+repository from the directory it runs in before any guard does."""
+
+[[steps]]
+instruction = """
+Run a moment with fire(guards, hook, arguments, root, stdin), as `git hooks \
+run` does, or HookScript.run(HookScript.fired(arguments, root, stdin)), where \
+GitGuard.check, HookScript.capture, framed, replayed and REPLAY_CALL \
+assembled its shell. HookScript.body() is the hook every revision writes."""
+
+[[steps]]
+instruction = "Re-arm the clone once, from a terminal on the host."
+command = ["uv", "run", "lup-devtools", "git", "hooks", "install"]
