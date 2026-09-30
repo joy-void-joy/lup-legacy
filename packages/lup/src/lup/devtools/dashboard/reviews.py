@@ -24,7 +24,6 @@ the command that serves it.
 import asyncio
 import hmac
 import logging
-import secrets
 import webbrowser
 from collections.abc import Callable, Iterator
 from functools import partial
@@ -44,7 +43,9 @@ from lup.devtools.dashboard.companion import (
     Dashboard,
     DashboardHealth,
     DashboardRegistry,
+    DashboardToken,
     KnownRepository,
+    dashboard_revision,
     dashboard_status,
     private_url,
     restarted,
@@ -769,8 +770,11 @@ def create_operator_dashboard_app(root: Path) -> typer.Typer:
         """Serve the dashboard in this terminal, over the selected repositories, until Ctrl+C."""
 
         def serve() -> None:
-            import uvicorn
-
+            from lup.devtools.dashboard.service import (
+                ServiceArguments,
+                said_in_output,
+                serve_dashboard,
+            )
             from lup.web.loopback import refuse_non_loopback
 
             refuse_non_loopback(host, "Dashboard")
@@ -779,30 +783,27 @@ def create_operator_dashboard_app(root: Path) -> typer.Typer:
                     path.resolve(strict=True) for path in (selected_roots or [root])
                 )
             )
-            authority = f"[{host}]" if ":" in host else host
-            url = f"http://{authority}" if port == 80 else f"http://{authority}:{port}"
-            token = secrets.token_urlsafe(32)
-            panes = SetupPanes(
-                lambda: named_repositories(roots),
-                token,
-                Path(mkdtemp(prefix="lup-setup-panes-")),
+            # This terminal's own state, private to it: the capability a
+            # restart in place keeps, and the repositories it serves.
+            state = Path(mkdtemp(prefix="lup-dashboard-serve-"))
+            token = DashboardToken(directory=state).minted().value
+            registry = DashboardRegistry(directory=state)
+            for known in named_repositories(roots):
+                registry.recorded(known)
+            served = ServiceArguments(
+                state=state,
+                port=port,
+                revision=dashboard_revision(),
+                host=host,
+                shared=False,
             )
-            page = dashboard_app(url, token, roots, discover=True, panes=panes)
-            browser_url = f"{url}/#token={token}"
-            typer.echo(f"Dashboard: {url} — Ctrl+C stops this server.")
+            browser_url = f"{served.url()}/#token={token}"
+            typer.echo(f"Dashboard: {served.url()} — Ctrl+C stops this server.")
             typer.echo(f"Operator launch URL: {browser_url}")
             if open_page:
                 webbrowser.open(browser_url)
-            try:
-                uvicorn.run(
-                    page,
-                    host=host,
-                    port=port,
-                    access_log=False,
-                    timeout_graceful_shutdown=2,
-                )
-            finally:
-                panes.close()
+            said_in_output()
+            serve_dashboard(served)
 
         refused("serve", serve)
 

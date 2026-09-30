@@ -230,6 +230,13 @@ class DashboardRegistry(BaseModel, frozen=True):
     def launches_directory(self) -> Path:
         return self.directory / "launches"
 
+    def recorded(self, known: KnownRepository) -> None:
+        """Keep one repository known, with a checkout of it, until its directory is gone."""
+        written(
+            self.repositories_directory() / f"{known.key()}.json",
+            known.model_dump_json(indent=2),
+        )
+
     @contextmanager
     def registered(self, checkout: Path) -> Iterator[None]:
         """Record one launch in ``checkout`` for as long as it holds the dashboard."""
@@ -243,10 +250,7 @@ class DashboardRegistry(BaseModel, frozen=True):
             checkout=known.checkout,
             holder=LiveProcess.of(os.getpid()),
         )
-        written(
-            self.repositories_directory() / f"{known.key()}.json",
-            known.model_dump_json(indent=2),
-        )
+        self.recorded(known)
         launch = self.launches_directory() / f"{uuid.uuid4().hex}.json"
         written(launch, record.model_dump_json(indent=2))
         try:
