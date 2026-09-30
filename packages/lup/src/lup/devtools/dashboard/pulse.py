@@ -17,9 +17,11 @@ so in its place (``halted``), which holds until a start replaces it.
 
 A session's status line (:func:`status_line`) reads, left to right:
 
-- **the session**, dimmed: what the roster calls it and the worktree it was
-  launched in, relative to its repository's directory — ``dev · tree/fix-x``,
-  found by the ids the runtime hands the line on stdin (:class:`StatusInput`);
+- **the session**, dimmed: the repository's name as the dashboard's tree
+  names it, what the roster calls the session, and the worktree it was
+  launched in, relative to its repository's directory —
+  ``lup · dev · tree/fix-x`` — found by the ids the runtime hands the line on
+  stdin (:class:`StatusInput`);
 - **what waits on the operator**, in the warning colour and only while
   something does: the reviews waiting, with how many of them this session or
   its subagents parked — naming the one by its short id, counting several —
@@ -28,18 +30,22 @@ A session's status line (:func:`status_line`) reads, left to right:
 - **what other agents need**, only while one does: ``⚠ 1 quiet``, an agent
   with a call outstanding and nothing new in its transcript for ten minutes,
   and ``⚠ held twice``, a path two sessions hold;
-- **the dashboard**, as one glyph: ``● :8767`` while it serves current code,
-  its whole address — a terminal hyperlink — in place of the port while
-  something waits; ``◐ dashboard restarting`` while it moves onto newer code;
-  ``○ dashboard down · dashboard restart`` where nothing serves; and the
-  operator's stop in the words it left.
+- **the dashboard**, as one glyph and the whole address the operator opens
+  it at — the first origin declared for it, else loopback's — as a terminal
+  hyperlink whose text is that address, never its capability:
+  ``● http://127.0.0.1:8767`` while it serves current code,
+  ``◐ http://127.0.0.1:8767 restarting`` while it moves onto newer code,
+  ``○ http://127.0.0.1:8767 down · dashboard restart`` where nothing serves,
+  and the operator's stop in the words it left.
 
 Where the terminal is narrower than the whole line, whole pieces drop and no
 word is cut: first what other agents need, then the session's worktree, then
-the review's id. What waits on the operator, the session's name and the
-dashboard stay, and a line still too wide is left to the runtime. A pulse
-written before it carried sessions and what needs the operator reads as one
-with none of them, so the line shows what it can.
+the review's id, then the session's name, and last the repository's name.
+What waits on the operator and the dashboard's glyph and address always stay,
+and a line still too wide is left to the runtime. A pulse written before it
+carried sessions, their repository's name, the operator's address and what
+needs the operator reads as one with none of them, so the line shows what it
+can.
 
 A leaf, imported by the status line a session runs at every render, so it
 reaches for nothing heavier than pydantic.
@@ -49,7 +55,6 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path, PurePath
 from shutil import get_terminal_size
 from typing import Literal, TextIO
-from urllib.parse import urlsplit
 
 from pydantic import BaseModel, ValidationError
 
@@ -96,6 +101,16 @@ class RunningCode(BaseModel, frozen=True):
         return "; ".join(part for part in (older, restarted) if part)
 
 
+def repository_name(repository: PurePath) -> str:
+    """What a reader calls a repository, by its shared git directory: the directory it is checked out as.
+
+    The name the dashboard's tree gives it and every status line starts with.
+    """
+    if repository.name == ".git":
+        return repository.parent.name
+    return repository.name.removesuffix(".git")
+
+
 class PulseSession(BaseModel, frozen=True):
     """One running session the dashboard serves, as its own status line finds it.
 
@@ -106,6 +121,9 @@ class PulseSession(BaseModel, frozen=True):
 
     repository: str
     """The repository it works in, by its shared git directory."""
+
+    project: str = ""
+    """That repository's name, as the dashboard's tree names it (:func:`repository_name`)."""
 
     id: str
     """Its roster id."""
@@ -130,6 +148,12 @@ class DashboardPulse(BaseModel, frozen=True):
 
     url: str
     """Where it serves, credential-free."""
+
+    address: str = ""
+    """Where the operator opens it, credential-free: the first origin declared
+    for it (``[dashboard] origins``), else where it serves. The page keeps its
+    capability per origin, so a link to it opens signed in only where the
+    operator signed in at this origin."""
 
     pid: int
     pending: int = 0
@@ -270,6 +294,12 @@ class Detail(BaseModel, frozen=True):
     review: bool = True
     """The id of the one review this session parked."""
 
+    name: bool = True
+    """What the roster calls this session."""
+
+    project: bool = True
+    """The repository's name."""
+
 
 class StatusWorkspace(BaseModel, frozen=True):
     """Where the runtime says the session works."""
@@ -319,27 +349,40 @@ class StatusInput(BaseModel, frozen=True):
         return self.workspace.project_dir or self.workspace.current_dir or self.cwd
 
 
-def place(worktree: str, repositories: list[str]) -> str:
+def anchor(repository: str) -> PurePath:
+    """The directory a repository's worktrees are named from, by its shared git directory.
+
+    The checkout holding its ``.git``, and a git directory of its own —
+    ``lup.git``, its worktrees beneath it — itself.
+    """
+    path = PurePath(repository)
+    return path.parent if path.name == ".git" else path
+
+
+def holder(worktree: str, repositories: list[str]) -> str:
+    """The repository whose directory holds *worktree*, by its shared git directory; empty where none does."""
+    if not worktree:
+        return ""
+    path = PurePath(worktree)
+    return next(
+        (each for each in repositories if path.is_relative_to(anchor(each))), ""
+    )
+
+
+def place(worktree: str, repository: str) -> str:
     """Where a session works, as its status line names it.
 
-    Its checkout relative to the directory of the repository holding it —
-    ``tree/fix-x`` — and otherwise the checkout's own name.
+    Its checkout relative to the repository's directory — ``tree/fix-x`` —
+    and nothing where it is that directory, which the repository's name
+    already says; the checkout's own name where no repository holds it.
     """
     if not worktree:
         return ""
     path = PurePath(worktree)
-    anchors = [
-        PurePath(each).parent if PurePath(each).name == ".git" else PurePath(each)
-        for each in repositories
-    ]
-    return next(
-        (
-            path.relative_to(anchor).as_posix()
-            for anchor in anchors
-            if path != anchor and path.is_relative_to(anchor)
-        ),
-        path.name,
-    )
+    home = anchor(repository) if repository else None
+    if home is None or not path.is_relative_to(home):
+        return path.name
+    return path.relative_to(home).as_posix() if path != home else ""
 
 
 class LineFacts(BaseModel, frozen=True):
@@ -354,6 +397,9 @@ class LineFacts(BaseModel, frozen=True):
     session: PulseSession | None = None
     """This session's row, where the pulse lists it."""
 
+    project: str = ""
+    """The name of the repository this session works in."""
+
     place: str = ""
     """Where this session works, as the line names it."""
 
@@ -365,10 +411,11 @@ class LineFacts(BaseModel, frozen=True):
 
         A session the pulse does not list — one the dashboard has not seen
         yet, or any session in a pulse from before it listed them — is still
-        placed, by the directory the runtime says it was launched in.
+        placed, by the directory the runtime says it was launched in, and
+        named by the repository whose directory holds that.
         """
         if pulse is None:
-            return cls(place=place(asking.directory(), []))
+            return cls(place=place(asking.directory(), ""))
         named = asking.identities()
         session = next(
             (
@@ -378,30 +425,40 @@ class LineFacts(BaseModel, frozen=True):
             ),
             None,
         )
+        worktree = session.worktree if session is not None else asking.directory()
+        repository = (
+            session.repository
+            if session is not None
+            else holder(worktree, pulse.repositories)
+        )
+        listed = session.project if session is not None else ""
         return cls(
             pulse=pulse,
             live=not pulse.halted and pulse.current(now),
             session=session,
-            place=place(session.worktree, [session.repository])
-            if session is not None
-            else place(asking.directory(), pulse.repositories),
+            project=listed
+            or (repository_name(PurePath(repository)) if repository else ""),
+            place=place(worktree, repository),
         )
 
     def counted(self) -> DashboardPulse | None:
         """The pulse, where what it counts holds now."""
         return self.pulse if self.live else None
 
-    def waits(self) -> bool:
-        """Whether anything waits on the operator now."""
-        counted = self.counted()
-        return counted is not None and bool(counted.pending or counted.unread)
-
     def who(self, detail: Detail) -> list[Piece]:
-        """Which session this is: its name, and where it works."""
+        """Which session this is: its repository's name, its own, and where it works."""
         session = self.session
-        named = [session.name] if session is not None and session.name else []
-        placed = [self.place] if detail.worktree and self.place else []
-        said = " · ".join([*named, *placed])
+        said = " · ".join(
+            [
+                *([self.project] if detail.project and self.project else []),
+                *(
+                    [session.name]
+                    if detail.name and session is not None and session.name
+                    else []
+                ),
+                *([self.place] if detail.worktree and self.place else []),
+            ]
+        )
         return [Piece(text=said, tone="dim")] if said else []
 
     def waiting(self, detail: Detail) -> list[Piece]:
@@ -446,17 +503,13 @@ class LineFacts(BaseModel, frozen=True):
         twice = [Piece(text=held, tone="warn")] if counted.contested else []
         return joined([quiet, twice])
 
-    def reach(self, pulse: DashboardPulse, idle: Piece) -> Piece:
-        """Where the dashboard is reached: its whole address, linked, while something waits; else *idle*."""
-        return Piece(text=pulse.url, link=pulse.url) if self.waits() else idle
-
-    def serving(self, pulse: DashboardPulse) -> list[Piece]:
+    def serving(self, pulse: DashboardPulse, reached: Piece) -> list[Piece]:
         """A dashboard that serves: on current code, moving onto newer, or held on older."""
         match pulse.code:
             case RunningCode(older=True, failing=str() as failing) if failing:
                 return [
                     Piece(text="◐ ", tone="warn"),
-                    self.reach(pulse, Piece(text="dashboard")),
+                    reached,
                     Piece(
                         text=" runs older code; its newer code does not start",
                         tone="warn",
@@ -465,27 +518,44 @@ class LineFacts(BaseModel, frozen=True):
             case RunningCode(older=True):
                 return [
                     Piece(text="◐ ", tone="warn"),
-                    self.reach(pulse, Piece(text="dashboard")),
+                    reached,
                     Piece(text=" restarting", tone="warn"),
                 ]
             case _:
-                address = urlsplit(pulse.url)
-                port = f":{address.port}" if address.port else address.netloc
-                return [
-                    Piece(text="● ", tone="good"),
-                    self.reach(pulse, Piece(text=port, tone="dim")),
-                ]
+                return [Piece(text="● ", tone="good"), reached]
 
     def dashboard(self) -> list[Piece]:
-        """The dashboard as one glyph, and why it stopped where it was started again."""
-        match (self.pulse, self.live):
-            case (DashboardPulse(halted=str() as halted), _) if halted:
-                return [Piece(text=f"○ {halted}", tone="dim")]
-            case (DashboardPulse() as pulse, True):
+        """The dashboard as one glyph and the address the operator opens it at, and why it stopped where it was started again.
+
+        The address is a link whose text is the address itself, so a
+        terminal that links a bare address and one that takes the link both
+        open it; it never carries the capability.
+        """
+        restart = Piece(text=" · dashboard restart", tone="dim")
+        pulse = self.pulse
+        if pulse is None:
+            return [Piece(text="○ dashboard down", tone="bad"), restart]
+        address = pulse.address or pulse.url
+        reached = Piece(text=address, link=address)
+        match (pulse.halted, self.live):
+            case (str() as halted, _) if halted:
+                return [
+                    Piece(text="○ ", tone="dim"),
+                    reached,
+                    Piece(text=f" · {halted}", tone="dim"),
+                ]
+            case (_, False):
+                return [
+                    Piece(text="○ ", tone="bad"),
+                    reached,
+                    Piece(text=" down", tone="bad"),
+                    restart,
+                ]
+            case _:
                 restarted = pulse.code.restarted
                 return joined(
                     [
-                        self.serving(pulse),
+                        self.serving(pulse, reached),
                         [
                             Piece(
                                 text=f"restarted after it stopped: {restarted}",
@@ -496,11 +566,6 @@ class LineFacts(BaseModel, frozen=True):
                         else [],
                     ]
                 )
-            case _:
-                return [
-                    Piece(text="○ dashboard down", tone="bad"),
-                    Piece(text=" · dashboard restart", tone="dim"),
-                ]
 
     def shown(self, detail: Detail) -> ShownLine:
         """The line with as much as *detail* keeps."""
@@ -524,6 +589,10 @@ class LineFacts(BaseModel, frozen=True):
             Detail(others=False),
             Detail(others=False, worktree=False),
             Detail(others=False, worktree=False, review=False),
+            Detail(others=False, worktree=False, review=False, name=False),
+            Detail(
+                others=False, worktree=False, review=False, name=False, project=False
+            ),
         ]
         lines = [self.shown(each) for each in narrowing]
         return next(

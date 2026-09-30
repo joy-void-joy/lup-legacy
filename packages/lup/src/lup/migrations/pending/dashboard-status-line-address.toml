@@ -1,0 +1,18 @@
+subjects = ["LineFacts.waits", "LineFacts.reach", "place"]
+reason = """
+the status line shows the dashboard's whole address at every render, the \
+address the operator opens the page at, so nothing chooses between it and \
+the port by whether anything waits; and a session's worktree is placed \
+against the one repository holding it, which also names the line"""
+
+[[steps]]
+instruction = """
+Where you asked LineFacts.waits(), ask whether counted() answers a pulse \
+whose pending or unread is more than zero. Where you called \
+LineFacts.reach(pulse, idle), take pulse.address or pulse.url as the \
+address, linked by Piece(text=address, link=address). Where you called \
+place(worktree, repositories) from lup.devtools.dashboard.pulse, call \
+place(worktree, holder(worktree, repositories)): holder answers the \
+repository whose directory holds the worktree, and place leaves out a \
+worktree that is that directory, which repository_name already names."""
+command = ["uv", "run", "lup-devtools", "dev", "py", "text", ".reach(", "."]

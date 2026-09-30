@@ -1,12 +1,14 @@
 """A session's status line: which session, what waits on the operator, what other agents need, the dashboard.
 
 Rendered from the dashboard's pulse and what the runtime hands the command
-on stdin, which names the session by its conversation. What waits and what
-other agents need show only while something does; the dashboard is one
-glyph, its whole address a link only while something waits. A narrow
-terminal drops whole pieces in their order, and a pulse from before the
-dashboard listed sessions shows what it can. The route answers on the CLI's
-fast path, loading nothing of the dashboard beyond the pulse.
+on stdin, which names the session by its conversation, beginning with the
+repository's name. What waits and what other agents need show only while
+something does; the dashboard is one glyph and the whole address the
+operator opens it at, always, as a link whose text is that address and
+never its capability. A narrow terminal drops whole pieces in their order,
+the address never, and a pulse from before the dashboard listed sessions
+shows what it can. The route answers on the CLI's fast path, loading nothing
+of the dashboard beyond the pulse.
 """
 
 import io
@@ -14,11 +16,12 @@ import json
 import sys
 import time
 from datetime import UTC, datetime, timedelta
-from pathlib import Path
+from pathlib import Path, PurePath
 
 import pytest
 import sh
 
+from lup.devtools.dashboard.companion import KnownRepository
 from lup.devtools.dashboard.pulse import (
     DashboardPulse,
     LineFacts,
@@ -27,6 +30,7 @@ from lup.devtools.dashboard.pulse import (
     RunningCode,
     StatusInput,
     StatusWorkspace,
+    repository_name,
     status_line,
 )
 from lup.launch.companions import lent_directory
@@ -42,6 +46,7 @@ ASKING = StatusInput(session_id=CONVERSATION)
 def session(worktree: str = "dev", reviews: list[str] | None = None) -> PulseSession:
     return PulseSession(
         repository=REPOSITORY,
+        project="lup",
         id="983914fca179",
         name="dev",
         worktree=f"{REPOSITORY}/tree/{worktree}",
@@ -72,36 +77,49 @@ def shown(
 @pytest.mark.parametrize(
     ("each", "line"),
     [
-        (pulse(), "dev · tree/dev │ ● :8767"),
+        (pulse(), f"lup · dev · tree/dev │ ● {URL}"),
         (
             pulse(pending=2, unread=1, members=[session("fix-x", [REVIEW])]),
-            f"dev · tree/fix-x │ ?2 reviews (1 here: 41cb73e1) · ✉1 │ ● {URL}",
+            f"lup · dev · tree/fix-x │ ?2 reviews (1 here: 41cb73e1) · ✉1 │ ● {URL}",
         ),
         (
             pulse(pending=3, members=[session("fix-x", [REVIEW, "q-2"])]),
-            f"dev · tree/fix-x │ ?3 reviews (2 here) │ ● {URL}",
+            f"lup · dev · tree/fix-x │ ?3 reviews (2 here) │ ● {URL}",
         ),
-        (pulse(unread=1), f"dev · tree/dev │ ✉1 │ ● {URL}"),
+        (pulse(unread=1), f"lup · dev · tree/dev │ ✉1 │ ● {URL}"),
         (
             pulse(quiet=1, code=RunningCode(older=True)),
-            "dev · tree/dev │ ⚠ 1 quiet │ ◐ dashboard restarting",
+            f"lup · dev · tree/dev │ ⚠ 1 quiet │ ◐ {URL} restarting",
         ),
-        (pulse(contested=1), "dev · tree/dev │ ⚠ held twice │ ● :8767"),
-        (pulse(contested=2), "dev · tree/dev │ ⚠ 2 paths held twice │ ● :8767"),
+        (
+            pulse(code=RunningCode(older=True, failing="SyntaxError")),
+            f"lup · dev · tree/dev │ ◐ {URL} runs older code; "
+            "its newer code does not start",
+        ),
+        (pulse(contested=1), f"lup · dev · tree/dev │ ⚠ held twice │ ● {URL}"),
+        (
+            pulse(contested=2),
+            f"lup · dev · tree/dev │ ⚠ 2 paths held twice │ ● {URL}",
+        ),
         (
             pulse(code=RunningCode(restarted="it was ended by SIGKILL")),
-            "dev · tree/dev │ ● :8767 · restarted after it stopped: it was ended by SIGKILL",
+            f"lup · dev · tree/dev │ ● {URL} · "
+            "restarted after it stopped: it was ended by SIGKILL",
+        ),
+        (
+            pulse(address="https://their.proxy.name"),
+            "lup · dev · tree/dev │ ● https://their.proxy.name",
         ),
         (
             pulse(beat=NOW - timedelta(minutes=5), pending=4),
-            "dev · tree/dev │ ○ dashboard down · dashboard restart",
+            f"lup · dev · tree/dev │ ○ {URL} down · dashboard restart",
         ),
         (
             pulse(
                 beat=NOW - timedelta(hours=1),
                 halted="dashboard stopped by the operator; `dashboard restart` starts it",
             ),
-            "dev · tree/dev │ ○ dashboard stopped by the operator; "
+            f"lup · dev · tree/dev │ ○ {URL} · dashboard stopped by the operator; "
             "`dashboard restart` starts it",
         ),
     ],
@@ -111,9 +129,11 @@ def shown(
         "several-here",
         "messages",
         "quiet-restarting",
+        "newer-code-fails",
         "held-twice",
         "held-twice-over",
         "restarted",
+        "declared-origin",
         "down",
         "halted",
     ],
@@ -132,7 +152,7 @@ def test_what_waits_is_painted_in_the_warning_colour_and_the_address_is_a_link()
     painted = LineFacts.of(each, ASKING, NOW).fitted(0).painted()
 
     assert painted == (
-        "\x1b[2mdev · tree/fix-x\x1b[0m"
+        "\x1b[2mlup · dev · tree/fix-x\x1b[0m"
         "\x1b[2m │ \x1b[0m"
         "\x1b[33m?2 reviews (1 here: 41cb73e1)\x1b[0m"
         "\x1b[2m · \x1b[0m"
@@ -156,19 +176,24 @@ def test_nothing_serving_is_down_and_says_what_starts_it() -> None:
     [
         (
             0,
-            f"dev · tree/fix-x │ ?3 reviews (1 here: 41cb73e1) · ✉2 │ "
+            f"lup · dev · tree/fix-x │ ?3 reviews (1 here: 41cb73e1) · ✉2 │ "
             f"⚠ 1 quiet · ⚠ held twice │ ● {URL}",
         ),
-        (100, f"dev · tree/fix-x │ ?3 reviews (1 here: 41cb73e1) · ✉2 │ ● {URL}"),
-        (70, f"dev │ ?3 reviews (1 here: 41cb73e1) · ✉2 │ ● {URL}"),
-        (60, f"dev │ ?3 reviews (1 here) · ✉2 │ ● {URL}"),
-        (20, f"dev │ ?3 reviews (1 here) · ✉2 │ ● {URL}"),
+        (
+            100,
+            f"lup · dev · tree/fix-x │ ?3 reviews (1 here: 41cb73e1) · ✉2 │ ● {URL}",
+        ),
+        (80, f"lup · dev │ ?3 reviews (1 here: 41cb73e1) · ✉2 │ ● {URL}"),
+        (70, f"lup · dev │ ?3 reviews (1 here) · ✉2 │ ● {URL}"),
+        (60, f"lup │ ?3 reviews (1 here) · ✉2 │ ● {URL}"),
+        (52, f"?3 reviews (1 here) · ✉2 │ ● {URL}"),
+        (20, f"?3 reviews (1 here) · ✉2 │ ● {URL}"),
     ],
 )
 def test_a_narrow_terminal_drops_whole_pieces_in_their_order(
     columns: int, line: str
 ) -> None:
-    """Other agents' needs first, then the worktree, then the review's id; the rest stays."""
+    """Other agents' needs, the worktree, the review's id, the session's name, the repository's; never the address."""
     busy = pulse(
         pending=3,
         unread=2,
@@ -203,8 +228,26 @@ def test_the_runtime_input_names_the_session_by_its_conversation() -> None:
 
     assert asking.identities() == ["a-conversation-opened-since", CONVERSATION]
     assert asking.directory() == f"{REPOSITORY}/tree/dev"
-    assert shown(pulse(), asking=asking) == "dev · tree/dev │ ● :8767"
-    assert shown(pulse(), asking=StatusInput()) == "● :8767"
+    assert shown(pulse(), asking=asking) == f"lup · dev · tree/dev │ ● {URL}"
+    assert shown(pulse(), asking=StatusInput()) == f"● {URL}"
+
+
+def test_the_repository_is_named_as_the_dashboard_tree_names_it() -> None:
+    """A row an older dashboard listed without it, and a checkout it lists none for, are named from their repository."""
+    older = session().model_copy(update={"project": ""})
+    checkout = StatusInput(cwd="/work/project/tree/fix-y")
+    plain = pulse(members=[], repositories=["/work/project/.git"])
+
+    assert shown(pulse(members=[older])) == f"lup · dev · tree/dev │ ● {URL}"
+    assert shown(plain, asking=checkout) == f"project · tree/fix-y │ ● {URL}"
+    assert shown(plain, asking=StatusInput(cwd="/work/project")) == f"project │ ● {URL}"
+    assert [
+        KnownRepository(repository=Path(each), checkout=Path("/work")).name()
+        for each in ("/work/lup.git", "/work/project/.git")
+    ] == [
+        repository_name(PurePath(each))
+        for each in ("/work/lup.git", "/work/project/.git")
+    ]
 
 
 def test_input_that_is_a_terminal_or_not_json_names_no_session() -> None:
@@ -242,7 +285,7 @@ def test_a_pulse_from_before_sessions_were_listed_shows_what_it_can(
     asking = StatusInput(session_id=CONVERSATION, cwd=f"{REPOSITORY}/tree/dev")
 
     assert status_line(kept.path, asking, NOW).plain() == (
-        f"tree/dev │ ?1 review │ ● {URL}"
+        f"lup · tree/dev │ ?1 review │ ● {URL}"
     )
 
 
@@ -295,7 +338,9 @@ def test_the_route_loads_nothing_of_the_dashboard_beyond_its_pulse(
     )
     shown_line, loaded = printed.splitlines()
 
-    assert "?1 review" in shown_line and "dev · tree/dev" in shown_line
+    assert "?1 review" in shown_line and "lup · dev · tree/dev" in shown_line
+    assert f"\x1b]8;;{URL}\x07{URL}\x1b]8;;\x07" in shown_line
+    assert "token" not in shown_line
     heavy = {
         "fastapi",
         "uvicorn",

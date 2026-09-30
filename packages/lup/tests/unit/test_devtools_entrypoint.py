@@ -75,10 +75,11 @@ def test_the_status_line_is_read_without_the_project_application(
     pulse = PulseFile.of(lent_directory(tmp_path))
     pulse.path.parent.mkdir(parents=True)
     lead = PulseSession(
-        repository=str(tmp_path),
+        repository=str(tmp_path / "lup.git"),
+        project="lup",
         id="lead",
         name="lead",
-        worktree=str(tmp_path / "tree" / "fix-x"),
+        worktree=str(tmp_path / "lup.git" / "tree" / "fix-x"),
         runtime=["conversation-1"],
         reviews=["41cb73e1a2b3"],
     )
@@ -108,6 +109,7 @@ def test_the_status_line_is_read_without_the_project_application(
     printed = capsys.readouterr().out
     expected = status_line(pulse.path, StatusInput.read(io.StringIO(handed)))
     assert expected.plain() == (
-        "lead · tree/fix-x │ ?2 reviews (1 here: 41cb73e1) │ ● http://127.0.0.1:8766"
+        "lup · lead · tree/fix-x │ ?2 reviews (1 here: 41cb73e1) │ "
+        "● http://127.0.0.1:8766"
     )
     assert printed == expected.painted() + "\n"

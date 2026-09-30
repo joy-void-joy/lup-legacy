@@ -557,6 +557,7 @@ class RepositoryWatch:
                 Answering(
                     session=PulseSession(
                         repository=str(self.known.repository),
+                        project=self.known.name(),
                         id=view.member.actor.id,
                         name=view.cli_name,
                         worktree=view.member.worktree,
