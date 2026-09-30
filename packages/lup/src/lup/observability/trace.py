@@ -10,7 +10,7 @@ artifacts side by side: a human-readable markdown trace and a machine-readable
 errors, and capability requests) that analysis loads as validated objects
 instead of regex-scanning the markdown.
 
-Typically driven through :func:`lup.observability.display.print_message` with a
+Typically driven through :func:`lup.observability.display.print_block` with a
 *trace* argument for combined display and tracing; the ``log_*`` methods here
 support trace-only logging without console output.
 
@@ -18,7 +18,7 @@ Examples:
     Log and save a trace::
 
         >>> trace = TraceLogger(trace_path=Path("/tmp/trace.md"), title="Session 1")
-        >>> trace.log_message(assistant_message)
+        >>> trace.log_block(block)
         >>> trace.save()
         PosixPath('/tmp/trace.md')
 """
@@ -34,7 +34,7 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 from lup.observability.blocks import extract_block_info, truncate_str
-from lup.types import LupContentBlock, LupMessage, normalize_content
+from lup.types import LupContentBlock, normalize_content
 
 logger = logging.getLogger(__name__)
 
@@ -156,9 +156,9 @@ class TraceLogger(BaseModel, arbitrary_types_allowed=True):
     records instead of regex-scanning the markdown. The ``.md`` trace is the
     human view and is never weakened by the sidecar.
 
-    Typically passed to ``print_message(message, trace=trace)`` for
-    combined display and tracing. Methods like ``log_message`` and
-    ``log_text`` support trace-only logging without console output.
+    Typically passed to ``print_block(block, trace=trace)`` for combined
+    display and tracing. Methods like ``log_block`` and ``log_text``
+    support trace-only logging without console output.
     """
 
     trace_path: Path = Field(description="Path to save the trace file")
@@ -242,14 +242,6 @@ class TraceLogger(BaseModel, arbitrary_types_allowed=True):
                 self.emit_event(
                     TraceEvent(kind="capability_request", timestamp=now, brief=request)
                 )
-
-    def log_message(self, message: LupMessage) -> None:
-        """Log all content blocks in a message.
-
-        A message that carries no content blocks contributes nothing.
-        """
-        for block in message.content_blocks:
-            self.log_block(block)
 
     def log_text(self, text: str, heading: str | None = None) -> None:
         """Add raw text to the trace, emitting a capability event if voiced.

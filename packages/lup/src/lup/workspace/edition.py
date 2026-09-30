@@ -22,8 +22,6 @@ from pathlib import Path
 
 from pydantic import BaseModel
 
-from lup.channels.models import publish_atomic
-
 
 def shared_git_directory(root: Path) -> Path:
     """The git directory every worktree of *root*'s repository shares.
@@ -69,11 +67,6 @@ def edition_path(root: Path) -> Path:
     the directory they all share, so both ends resolve to the same file.
     """
     return shared_git_directory(root) / "lup" / "edition.json"
-
-
-def publish_edition(path: Path, workspace: Path, file: Path) -> None:
-    """Record that editing is happening in *workspace*, atomically."""
-    publish_atomic(path, Edition(workspace=workspace, file=file))
 
 
 def read_edition(path: Path) -> Edition | None:

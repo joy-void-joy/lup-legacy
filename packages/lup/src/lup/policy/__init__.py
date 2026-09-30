@@ -10,13 +10,13 @@ from that split:
   stdlib allowlist so it can be copied verbatim into generated runtimes.
 - :mod:`lup.policy.models` — the typed semantic events and the
   allow/ask/deny ``Decision`` vocabulary.
-- :mod:`lup.policy.contracts` — the ``DecisionPolicy``/``Observer`` seams.
-- :mod:`lup.policy.native` — the decode/render seams a native adapter
-  implements at its wire boundary.
+- :mod:`lup.policy.contracts` — the ``DecisionPolicy`` seam.
+- :mod:`lup.policy.native` — the decode seam a native adapter implements at
+  its wire boundary.
 - :mod:`lup.policy.rules` — validated pydantic policies that erase their
   inputs into kernel rows and delegate every verdict to the kernel.
-- :mod:`lup.policy.chain` — deny-before-ask composition and observer
-  dispatch that can never weaken a verdict.
+- :mod:`lup.policy.chain` — the conservative answer for a call no semantic
+  family classifies.
 - :mod:`lup.policy.bundle` — assembly for generation: reads the kernel
   source verbatim and renders application-owned data rows as generated
   files; the adapters' hook renderers consume it.

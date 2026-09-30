@@ -1,0 +1,9 @@
+subjects = ["leased_read_only"]
+reason = """
+it only restated `refuses_writes` under a second name, and nothing asked it"""
+
+[[steps]]
+instruction = """
+Call `refuses_writes(str(path))` from lup.sandbox.observed where you called \
+`leased_read_only(path)`."""
+command = ["uv", "run", "lup-devtools", "dev", "py", "text", "leased_read_only", "."]

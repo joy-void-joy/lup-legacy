@@ -111,11 +111,6 @@ def digest_directory(root: Path, read_content: Callable[[Path], bytes]) -> str |
     return digest.hexdigest()
 
 
-def directory_digest(root: Path) -> str | None:
-    """Hash exact deployable relative paths, modes, and bytes."""
-    return digest_directory(root, lambda path: path.read_bytes())
-
-
 def plugin_content_digest(root: Path) -> str | None:
     """Hash plugin content while treating its cachebuster version as location."""
 

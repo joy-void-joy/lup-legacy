@@ -305,16 +305,3 @@ class CodexApprovalResponder(BaseModel, frozen=True, arbitrary_types_allowed=Tru
             for matcher, output in zip(matchers, outputs, strict=True)
         )
         return DECLINE if refused or not delivered or not authorized else ACCEPT
-
-
-type ApprovalHandler = Callable[[str, JsonObject], Awaitable[str]]
-
-
-def build_codex_approval_handler(hooks: LupHooksConfig) -> ApprovalHandler:
-    """Close one approval responder over a session's portable hooks."""
-    responder = CodexApprovalResponder(hooks=hooks)
-
-    async def respond(method: str, params: JsonObject) -> str:
-        return await responder.decide(method, params)
-
-    return respond

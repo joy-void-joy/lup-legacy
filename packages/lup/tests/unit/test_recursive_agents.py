@@ -11,7 +11,7 @@ from lup.sessions.recursion import (
     RecursiveAgentAllowance,
     RecursiveAgentLimitError,
     child_recursive_agent_allowance,
-    recursive_agent_allowed,
+    recursive_agent_allowance,
     recursive_agent_scope,
 )
 from lup.tools.mcp import RawStdioServerConfig, relay_recursive_agent_to_mcp
@@ -49,7 +49,7 @@ def test_an_explicit_allowance_ignores_unrelated_child_environment() -> None:
 def test_zero_refuses_another_agent(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv(MAX_RECURSIVE_AGENT_ENV, "0")
 
-    assert recursive_agent_allowed() is False
+    assert recursive_agent_allowance().remaining == 0
     with pytest.raises(RecursiveAgentLimitError, match=MAX_RECURSIVE_AGENT_ENV):
         child_recursive_agent_allowance()
 
@@ -60,7 +60,7 @@ def test_an_active_session_scope_overrides_the_process_relay(
     monkeypatch.setenv(MAX_RECURSIVE_AGENT_ENV, "9")
 
     with recursive_agent_scope(RecursiveAgentAllowance(remaining=0)):
-        assert recursive_agent_allowed() is False
+        assert recursive_agent_allowance().remaining == 0
 
 
 def test_stdio_mcp_inherits_the_same_remaining_allowance() -> None:

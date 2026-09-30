@@ -19,7 +19,6 @@ from itertools import count, groupby
 from pathlib import Path, PurePosixPath
 from urllib.parse import urlsplit
 
-from markdown_it import MarkdownIt
 from pydantic import BaseModel
 
 from lup.workspace.paths import outputs_dir
@@ -35,8 +34,6 @@ A filesystem bounds a name at 255 bytes and a path around it, so a slug is one
 of the few places a bound is imposed rather than chosen. It names the content
 rather than holding it: whatever the label said is inside the file.
 """
-
-parser = MarkdownIt()
 
 
 class ContentSafetyConfig(BaseModel):
@@ -56,7 +53,6 @@ class ContentSafetyConfig(BaseModel):
 
     directory: Path
     spill_threshold: int = 50_000
-    max_readable_size: int = 180_000
     preview_chars: int = 500
     label_fields: list[str] = [
         "url",
@@ -94,7 +90,6 @@ def configure(
     *,
     directory: Path | None = None,
     spill_threshold: int | None = None,
-    max_readable_size: int | None = None,
     preview_chars: int | None = None,
     label_fields: list[str] | None = None,
 ) -> None:
@@ -105,8 +100,6 @@ def configure(
             ``outputs/`` directory.
         spill_threshold: String fields longer than this are written to disk
             and replaced with a pointer.
-        max_readable_size: Files larger than this are split by
-            :func:`ensure_readable`.
         preview_chars: How much of the content a :class:`SavedContent`
             carries inline.
         label_fields: Which tool-input fields name the document a result came
@@ -117,11 +110,6 @@ def configure(
         directory=directory if directory is not None else current.directory,
         spill_threshold=(
             spill_threshold if spill_threshold is not None else current.spill_threshold
-        ),
-        max_readable_size=(
-            max_readable_size
-            if max_readable_size is not None
-            else current.max_readable_size
         ),
         preview_chars=(
             preview_chars if preview_chars is not None else current.preview_chars
@@ -144,20 +132,6 @@ class SavedContent(BaseModel):
     word_count: int
     char_count: int
     preview: str
-
-
-class Section(BaseModel):
-    """One heading and the body that runs until the next one."""
-
-    heading: str
-    text: str
-
-
-class HeadingStart(BaseModel):
-    """Where a heading begins in the source, and what it reads."""
-
-    line: int
-    heading: str
 
 
 class SpilledField(BaseModel):
@@ -314,70 +288,3 @@ def guard_result[T: BaseModel](
         (named[field] for field in config.label_fields if field in named), tool_name
     )
     return spill_oversized_result(tool_name, label, result, directory)
-
-
-def split_on_headings(content: str) -> list[Section]:
-    """Split Markdown at its top three heading levels.
-
-    Text before the first heading becomes ``Preamble``; content with no
-    headings stays whole under ``Full content``.
-
-    The document is parsed rather than scanned, so a ``#`` inside a fenced
-    code block stays code instead of silently becoming a split point.
-    """
-    tokens = parser.parse(content)
-    starts = [
-        HeadingStart(line=token.map[0], heading=tokens[position + 1].content.strip())
-        for position, token in enumerate(tokens)
-        if token.type == "heading_open"
-        and token.tag in {"h1", "h2", "h3"}
-        and token.map is not None
-    ]
-
-    if not starts:
-        return [Section(heading="Full content", text=content)]
-
-    lines = content.splitlines()
-
-    def sections() -> Iterator[Section]:
-        preamble = "\n".join(lines[: starts[0].line])
-        if preamble.strip():
-            yield Section(heading="Preamble", text=preamble)
-
-        for position, start in enumerate(starts):
-            following = starts[position + 1 :]
-            end = following[0].line if following else len(lines)
-            yield Section(
-                heading=start.heading, text="\n".join(lines[start.line : end])
-            )
-
-    return list(sections())
-
-
-def ensure_readable(path: Path, directory: Path | None = None) -> list[Path]:
-    """Split a file too large to read into per-heading chunks.
-
-    Returns the original path alone when the file is small enough, or when it
-    has no headings to split on — a caller gets a list either way and does not
-    branch on which happened.
-    """
-    config = resolve_state()
-    content = path.read_text(encoding="utf-8")
-    if len(content) <= config.max_readable_size:
-        return [path]
-
-    sections = split_on_headings(content)
-    if len(sections) <= 1:
-        return [path]
-
-    target = directory if directory is not None else config.directory
-    target.mkdir(parents=True, exist_ok=True)
-    suffix = path.suffix or ".md"
-
-    def written() -> Iterator[Path]:
-        for index, section in enumerate(sections):
-            chunk_path = target / f"{path.stem}_{index}{suffix}"
-            chunk_path.write_text(section.text, encoding="utf-8")
-            yield chunk_path
-
-    return list(written())

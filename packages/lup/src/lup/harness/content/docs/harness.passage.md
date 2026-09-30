@@ -399,7 +399,7 @@ path prefix that supports the workflow:
 
 ```python
 allowed_fetch=[
-    HookUrlScope.model_validate(
+    UrlScope.model_validate(
         {
             "origin": "https://docs.example.com",
             "path_prefix": "/agent-api/",

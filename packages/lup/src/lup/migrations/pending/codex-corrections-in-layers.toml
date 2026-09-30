@@ -1,0 +1,25 @@
+subjects = [
+    "Codex.correction",
+    "Codex.continuation",
+]
+reason = """
+Codex declared its correction and continuation twice, as fields of its own \
+and in `layers`, and a session honoured both, so a correction laid through \
+`layered()` corrected each turn a second time over the first; `layers` is \
+now the one place on Codex as on Claude, applied beneath Codex's hooks and \
+defaulting to the two cycles each the fields had"""
+
+[[steps]]
+instruction = """
+Pass `layers=SessionLayers(correction=..., continuation=...)` (lup.sessions.layers) \
+where you passed `Codex(correction=..., continuation=...)`, or lay them on \
+with `agent.layered(SessionLayers(...))`. Leaving both unset keeps two \
+correction cycles and two Stop-hook continuations, as the fields' defaults \
+did."""
+command = ["uv", "run", "lup-devtools", "dev", "py", "text", "correction=", "."]
+
+[[steps]]
+instruction = """
+Expect one correction loop where you both set `Codex(correction=...)` and \
+laid `layers` carrying a correction: the layers' value is the one applied, \
+and a turn is no longer retried by each in turn."""
