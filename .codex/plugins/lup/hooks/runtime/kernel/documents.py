@@ -193,9 +193,7 @@ def spelled_command(node: Command) -> str:
         )
         for redirect in node["redirects"]
     ]
-    return " ".join(
-        [*(retyped(word) for word in node["words"]), *redirections]
-    )
+    return " ".join([*(retyped(word) for word in node["words"]), *redirections])
 
 
 def counted_flag(word: str, flag: str) -> bool:
