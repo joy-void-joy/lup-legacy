@@ -7,6 +7,7 @@ records mean. What the channel owns is the part no consumer can enforce for
 itself: which doors it accepts at all.
 """
 
+import secrets
 from datetime import UTC, datetime
 from enum import StrEnum
 from pathlib import Path
@@ -76,12 +77,19 @@ def write_atomic(path: Path, content: bytes) -> None:
     here — a channel record, a state file, a rendered artifact, a metrics
     flush — so the temporary name, the parent creation, and the rename are
     decided once. The temporary is dot-prefixed so a lister that catches one
-    mid-write does not offer it as an ordinary file.
+    mid-write does not offer it as an ordinary file, and named for this write
+    alone: two writers sharing one name truncate each other's, and the first
+    rename then publishes a file whose front is NUL bytes. It is created as
+    ``write_bytes`` creates one, so the file keeps the mode the umask gives.
     """
     path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_name(f".{path.name}.tmp")
-    temporary.write_bytes(content)
-    temporary.replace(path)
+    temporary = path.with_name(f".{path.name}.{secrets.token_hex(8)}.tmp")
+    try:
+        with temporary.open("xb") as handle:
+            handle.write(content)
+        temporary.replace(path)
+    finally:
+        temporary.unlink(missing_ok=True)
 
 
 def publish_atomic(

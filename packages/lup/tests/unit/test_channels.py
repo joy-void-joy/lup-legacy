@@ -1,5 +1,7 @@
 """The two channel primitives: a value that settles, and an ordered log."""
 
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import pytest
@@ -11,6 +13,7 @@ from lup.channels.models import (
     ChannelOverflowError,
     Door,
     DoorPolicy,
+    write_atomic,
 )
 from lup.channels.slot import Slot, SlotSet
 from lup.channels.stream import Stream
@@ -173,3 +176,43 @@ def test_an_uncapped_stream_never_refuses_to_record(tmp_path: Path) -> None:
         stream.append(Decision(value="x" * 100 + str(index)))
 
     assert len(stream.read_all()) == 50
+
+
+def test_writers_racing_on_one_file_never_publish_a_torn_one(tmp_path: Path) -> None:
+    """Each stages under a name of its own, so the file is always one writer's whole bytes.
+
+    A staging name they shared was truncated by the next writer while the
+    first was still filling it, and the first's rename then published a file
+    whose front was NUL bytes.
+    """
+    path = tmp_path / "state.json"
+    bodies = [bytes([ord("a") + number]) * 200_000 for number in range(16)]
+    finished = threading.Event()
+
+    def torn_reads() -> list[int]:
+        torn: list[int] = []
+        for _ in iter(finished.is_set, True):
+            read = path.read_bytes() if path.exists() else bodies[0]
+            if read not in bodies:
+                torn.append(len(read))
+        return torn
+
+    with ThreadPoolExecutor(max_workers=len(bodies) + 1) as pool:
+        reading = pool.submit(torn_reads)
+        try:
+            list(pool.map(lambda body: write_atomic(path, body), bodies * 4))
+        finally:
+            finished.set()
+
+    assert reading.result() == []
+    assert path.read_bytes() in bodies
+    assert [held.name for held in tmp_path.iterdir()] == ["state.json"]
+
+
+def test_an_atomic_write_gets_the_mode_a_plain_one_would(tmp_path: Path) -> None:
+    plain = tmp_path / "plain"
+    plain.write_bytes(b"{}")
+
+    write_atomic(tmp_path / "atomic", b"{}")
+
+    assert (tmp_path / "atomic").stat().st_mode == plain.stat().st_mode
