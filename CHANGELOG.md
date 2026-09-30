@@ -19,8 +19,10 @@ already did.
 
 `.lup/questions.jsonl` opens with `{"relay": 2}` and keeps one record per
 question as it was parked -- every document it binds (a preimage, a verdict's
-after-document) stored once in `.lup/reviews/blobs/<sha256>` and named by
-digest -- and a small transition per state it moves to, never a full copy.
+after-document, each string of its call a kibibyte or longer) stored once in
+`.lup/reviews/blobs/<sha256>` and named by digest, with a retry payload that
+repeats the call recorded as null -- and a small transition per state it moves
+to, never a full copy.
 The first open under the relay's lock rewrites an older log into this shape;
 fingerprints and the host's answers are unchanged. `QuestionRelay` folds to
 `RecordedQuestion` and reads only what was appended since its last read;
@@ -35,11 +37,13 @@ sweep; the stream carries every waiting review and the fifty most recently
 settled as rows, a review's detail is read when it is opened and the next one
 ahead of time, older History is paged (`GET /api/reviews/history`), and an
 answer reads only its own review. Measured on a copy of tree/dev's 41.6 MB
-log (1201 reviews): the one-time rewrite takes 0.3 s and leaves a 3.5 MB log
-beside 7.1 MB of documents, and 0.8 MB once the 1044 reviews past a week are
-archived; a fold goes from 0.25 s to 0.1 s, then 0.02 s; the first snapshot
-from 1.4 s and 957 KB to 0.3-0.4 s and 54 KB; an answer from 0.8-0.9 s to
-5 ms once the review is open; a hook's park from 0.2 s to 0.01 s.
+log (1201 reviews): the one-time rewrite takes 0.3 s and leaves a 2.4 MB log
+beside 8.1 MB of documents, and 0.55 MB once the 1044 reviews past a week are
+archived; a fold goes from 0.25 s to 0.06 s, then 0.013 s; the first snapshot
+from 1.4 s and 957 KB to 0.1-0.4 s and 54 KB; an answer from 0.8-0.9 s to
+5 ms once the review is open; a hook's park from 0.2 s to 0.01 s. A benchmark
+in the unit suite bounds what a thousand reviews cost to keep, fold and hand
+the page.
 
 ### `dashboard serve` restarts onto new code, and a stopping dashboard ends its streams
 

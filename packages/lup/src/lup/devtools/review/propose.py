@@ -48,7 +48,6 @@ from lup.policy.relay import (
     Account,
     CapturedFileReview,
     PersistentQuestion,
-    QuestionRecord,
     QuestionRelay,
 )
 from lup.policy.review import FilePreview, ReviewedFile, reviewed_preview
@@ -120,8 +119,12 @@ class Proposal(BaseModel, frozen=True):
         ]
 
 
-def proposal_of(question: QuestionRecord) -> Proposal | None:
-    """The proposal a question carries, or ``None`` where it is not one."""
+def proposal_of(question: PersistentQuestion) -> Proposal | None:
+    """The proposal a question carries, or ``None`` where it is not one.
+
+    Read off the question whole: the relay's record keeps a file's
+    document of a kibibyte or more in its store, named in its place.
+    """
     if question.operation.tool != PROPOSE_TOOL:
         return None
     try:

@@ -16,11 +16,13 @@ import pytest
 from lup.policy.assets.host import (
     migrate_relay,
     native_review_records,
+    observe_hook_call,
     recorded_fingerprint,
     relay_blobs,
     relay_current,
     relay_header,
     resolved_entry,
+    review_hook_call,
     review_records,
 )
 from lup.policy.operations import Operation
@@ -67,6 +69,33 @@ def written_question(root: Path, identifier: str = "q-1") -> PersistentQuestion:
         execution_payload=operation.payload,
         scheme=["file_reviews", "unpreviewed", "segments"],
         reason="a rewrite asks",
+        chain_resolved=False,
+        resolved={target: target},
+    )
+    return question.model_copy(update={"fingerprint": question.native_fingerprint()})
+
+
+def new_file(root: Path, identifier: str, content: str) -> PersistentQuestion:
+    """A native review of a new file's write, whose document only the call carries."""
+    target = root / f"{identifier}.txt"
+    operation = Operation(
+        id=identifier,
+        session="session-1",
+        requester="session-1",
+        tool="Write",
+        payload={"file_path": str(target), "content": content},
+        cwd=root,
+        worktree=root,
+    )
+    question = PersistentQuestion(
+        id=identifier,
+        operation=operation,
+        fingerprint="",
+        preconditions={target: None},
+        resumption="native_retry",
+        execution_payload=operation.payload,
+        scheme=[],
+        reason="a new file asks",
         chain_resolved=False,
         resolved={target: target},
     )
@@ -195,6 +224,93 @@ def test_a_missing_document_refuses_an_answer_rather_than_guessing(
 
     with pytest.raises(ValueError, match="cannot be read back whole"):
         relay.answer("q-1", "operator", True)
+
+
+def test_a_call_s_long_strings_are_kept_once_and_leave_with_the_last_question_naming_them(
+    tmp_path: Path, relay: QuestionRelay
+) -> None:
+    content = "a line of the new file\n" * 100
+    first = relay.record(new_file(tmp_path, "q-1", content))
+    relay.record(new_file(tmp_path, "q-2", content))
+
+    records = [record["parked"] for record in review_records(relay.path)[1:]]
+    (kept,) = relay_blobs(relay.path).iterdir()
+    assert [record["stored"] for record in records] == [
+        [["operation", "payload", "content"]]
+    ] * 2
+    assert [record["execution_payload"] for record in records] == [None, None]
+    assert "a line of the new file" not in relay.path.read_text()
+    recorded, _ = relay.questions()
+    assert recorded == first.recorded()
+    assert recorded.operation.payload["content"] == {"sha256": kept.name}
+    whole = relay.resolve(recorded)
+    assert whole.operation == first.operation
+    assert whole.execution_payload is None and whole.bound()
+    assert first.shown().operation == first.operation
+    relay.advance("q-1", "completed", "done")
+    assert relay.retire(["q-1"]) == []
+    relay.advance("q-2", "completed", "done")
+    assert relay.retire(["q-2"]) == [kept.name]
+
+
+def test_a_short_call_stays_whole_in_its_record_and_a_rewrite_beside_it(
+    tmp_path: Path, relay: QuestionRelay
+) -> None:
+    question = new_file(tmp_path, "q-1", "short\n")
+    rewrite = {**question.operation.payload, "content": "rewritten\n"}
+    rewritten = question.model_copy(update={"execution_payload": rewrite})
+    relay.record(
+        rewritten.model_copy(update={"fingerprint": rewritten.native_fingerprint()})
+    )
+
+    (_, parked) = review_records(relay.path)
+    assert "stored" not in parked["parked"]
+    assert parked["parked"]["operation"]["payload"]["content"] == "short\n"
+    assert parked["parked"]["execution_payload"] == rewrite
+    (recorded,) = relay.questions()
+    assert relay.resolve(recorded).bound()
+
+
+@pytest.mark.parametrize(
+    ("ran", "state"), [("value = 1\n", "completed"), ("value = 2\n", "in_doubt")]
+)
+def test_a_retried_write_matches_its_record_and_what_ran_settles_it(
+    tmp_path: Path, ran: str, state: str
+) -> None:
+    target = tmp_path / "module.py"
+    content = "value = 1\n" * 300
+    relay = QuestionRelay(tmp_path / ".lup/questions.jsonl")
+    call = (
+        tmp_path,
+        "requester",
+        "Write",
+        json.dumps({"file_path": str(target), "content": content}),
+        json.dumps({str(target): None}),
+        "reason",
+        "rule",
+        "",
+        "human_only",
+    )
+
+    first = review_hook_call(*call, answers=str(relay.answers))
+    (_, parked) = review_records(relay.path)
+    relay.answer(first["id"], "operator", True)
+    retried = review_hook_call(*call, answers=str(relay.answers), execution_id="run")
+    observed = observe_hook_call(
+        tmp_path,
+        "requester",
+        "Write",
+        {"file_path": str(target), "content": ran * 300},
+        "run",
+    )
+
+    assert parked["parked"]["stored"] == [["operation", "payload", "content"]]
+    assert parked["parked"]["execution_payload"] is None
+    assert "value = 1" not in relay.path.read_text()
+    assert retried == {"state": "approved", "id": first["id"], "reason": ""}
+    assert (observed == []) == (state == "completed")
+    settled = relay.find(first["id"])
+    assert settled is not None and settled.state == state
 
 
 def full_copy_log(tmp_path: Path) -> tuple[Path, PersistentQuestion]:

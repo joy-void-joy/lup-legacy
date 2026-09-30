@@ -2891,6 +2891,24 @@
           "$ref": "#/$defs/QuestionState",
           "default": "pending"
         },
+        "stored": {
+          "default": [],
+          "items": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array"
+          },
+          "title": "Stored",
+          "type": "array"
+        },
         "unpreviewed": {
           "anyOf": [
             {
@@ -2939,7 +2957,8 @@
         "scheme",
         "changed",
         "preconditions",
-        "file_reviews"
+        "file_reviews",
+        "stored"
       ],
       "title": "RecordedQuestion",
       "type": "object"
@@ -3109,7 +3128,7 @@
     },
     "ReviewDetail": {
       "additionalProperties": false,
-      "description": "Everything the operator reviews before answering.\n\n``question`` is the record as the relay keeps it, each document named by\ndigest; the documents themselves are ``files``.",
+      "description": "Everything the operator reviews before answering.\n\n``question`` is the record with its call whole and each document named\nby digest (:meth:`~lup.policy.relay.PersistentQuestion.shown`); the\ndocuments themselves are ``files``.",
       "properties": {
         "command": {
           "anyOf": [

@@ -1052,21 +1052,134 @@ def blob_text(blobs: Path, stored: dict | None) -> str:
     return encoded.decode()
 
 
-def stored_entry(entry: dict, blobs: Path) -> dict:
-    """One question with every document it carries kept in the store, named in the record by digest.
+def document_name(text: str) -> dict:
+    """The name a record keeps for one document in place of it: the digest of its UTF-8 text."""
+    return {"sha256": sha256(text.encode()).hexdigest()}
 
-    The preimage of each file it binds, and the document each file verdict
-    judged; everything else it records stays in the record, and a question
-    carrying neither is recorded as it is.
+
+def kept_apart(text: str) -> bool:
+    """Whether one string of a call is kept in the relay's store rather than in its record.
+
+    A kibibyte of UTF-8 or more -- a document a call writes, a patch, a long
+    script. A shorter one costs the record less than the name it would keep
+    in its place, and a reader of the record less than the file it would
+    open for it.
+    """
+    return len(text.encode()) >= 1024
+
+
+def call_strings(
+    value: dict | list | str | int | float | bool | None, at: list
+) -> list[list]:
+    """Where each string in *value* long enough to keep apart stands, as a path of keys and indices after *at*."""
+    match value:
+        case str() if kept_apart(value):
+            return [at]
+        case dict():
+            return [
+                found
+                for key, item in value.items()
+                for found in call_strings(item, [*at, key])
+            ]
+        case list():
+            return [
+                found
+                for index, item in enumerate(value)
+                for found in call_strings(item, [*at, index])
+            ]
+    return []
+
+
+def stored_paths(entry: dict) -> list[list]:
+    """Where a recorded question keeps a name in place of a string of its call.
+
+    Only paths into the call -- the operation's payload, or the payload a
+    native retry runs -- each a list of keys and indices; a record naming
+    anywhere else names nothing.
+    """
+    listed = entry["stored"] if "stored" in entry else []
+
+    def into_call(at: list) -> bool:
+        match at:
+            case ["operation", "payload", *rest] | ["execution_payload", *rest]:
+                return all(isinstance(part, str) or type(part) is int for part in rest)
+        return False
+
+    return (
+        [at for at in listed if isinstance(at, list) and into_call(at)]
+        if isinstance(listed, list)
+        else []
+    )
+
+
+def standing_at(
+    tree: dict | list, at: list
+) -> dict | list | str | int | float | bool | None:
+    """What stands at the path *at* inside *tree*; ValueError where nothing does."""
+    found = tree
+    for part in at:
+        match found:
+            case dict() if isinstance(part, str) and part in found:
+                found = found[part]
+            case list() if type(part) is int and 0 <= part < len(found):
+                found = found[part]
+            case _:
+                raise ValueError(f"nothing stands at {at!r}")
+    return found
+
+
+def replaced_at(
+    entry: dict, paths: list[list], change: Callable[[str | dict], str | dict]
+) -> dict:
+    """A copy of *entry* with what stands at each of *paths* replaced by what *change* makes of it.
+
+    Raises ValueError where nothing stands at one, or where what does is
+    neither a string nor a name. A record is JSON, so it is copied as JSON.
+    """
+    copied = json.loads(json.dumps(entry))
+    for at in paths:
+        if not at:
+            raise ValueError("an empty path names the whole question")
+        *above, last = at
+        parent = standing_at(copied, above)
+        current = standing_at(copied, at)
+        if not isinstance(parent, dict | list) or not isinstance(current, str | dict):
+            raise ValueError(f"{at!r} names neither a string nor a document")
+        parent[last] = change(current)
+    return copied
+
+
+def stored_form(entry: dict, keep: Callable[[str], dict]) -> dict:
+    """One question as its record keeps it, every document it carries named by what *keep* makes of it.
+
+    The documents: the preimage of each file it binds, the document each
+    file verdict judged, and each string of its call a kibibyte or longer
+    (:func:`kept_apart`) -- in the operation's payload, and in the payload a
+    native retry runs, where one differs from the other. A retry's payload
+    repeating the operation's is recorded as null, which every reader of a
+    question takes for the operation's payload; the call's strings are
+    named where they stood, and the paths to them listed under ``stored``.
+
+    *keep* writes a document into the store and names it where a question is
+    parked (:func:`stored_blob`), or only names it (:func:`document_name`)
+    where the record is worked out to compare with one.
     """
     preconditions = entry["preconditions"] if "preconditions" in entry else None
     rows = entry["file_reviews"] if "file_reviews" in entry else None
-    return {
+    operation = entry["operation"] if "operation" in entry else None
+    payload = (
+        operation["payload"]
+        if isinstance(operation, dict) and "payload" in operation
+        else None
+    )
+    expected = entry["execution_payload"] if "execution_payload" in entry else None
+    repeated = expected is not None and expected == payload
+    documented = {
         **entry,
         **(
             {
                 "preconditions": {
-                    path: stored_blob(blobs, text) if isinstance(text, str) else None
+                    path: keep(text) if isinstance(text, str) else None
                     for path, text in preconditions.items()
                 }
             }
@@ -1078,7 +1191,7 @@ def stored_entry(entry: dict, blobs: Path) -> dict:
                 "file_reviews": [
                     {
                         **row,
-                        "after": stored_blob(blobs, row["after"])
+                        "after": keep(row["after"])
                         if isinstance(row["after"], str)
                         else None,
                     }
@@ -1090,7 +1203,46 @@ def stored_entry(entry: dict, blobs: Path) -> dict:
             if isinstance(rows, list)
             else {}
         ),
+        **({"execution_payload": None} if repeated else {}),
     }
+    paths = [
+        *(
+            call_strings(payload, ["operation", "payload"])
+            if isinstance(payload, dict)
+            else []
+        ),
+        *(
+            call_strings(expected, ["execution_payload"])
+            if isinstance(expected, dict) and not repeated
+            else []
+        ),
+    ]
+    if not paths:
+        return documented
+    return {
+        **replaced_at(
+            documented,
+            paths,
+            lambda text: keep(text) if isinstance(text, str) else text,
+        ),
+        "stored": paths,
+    }
+
+
+def resolved_call(entry: dict, blobs: Path) -> dict:
+    """One recorded question with each string of its call it names read back whole; its documents stay named.
+
+    Raises ValueError where one is missing or altered.
+    """
+    paths = stored_paths(entry)
+    unlisted = {field: value for field, value in entry.items() if field != "stored"}
+    if not paths:
+        return unlisted
+    return replaced_at(
+        unlisted,
+        paths,
+        lambda named: blob_text(blobs, named) if isinstance(named, dict) else named,
+    )
 
 
 def resolved_entry(entry: dict, blobs: Path) -> dict:
@@ -1099,10 +1251,11 @@ def resolved_entry(entry: dict, blobs: Path) -> dict:
     Raises ValueError where one is missing or altered, since a question that
     cannot be read back whole cannot be shown, or checked, for what it binds.
     """
-    preconditions = entry["preconditions"] if "preconditions" in entry else None
-    rows = entry["file_reviews"] if "file_reviews" in entry else None
+    called = resolved_call(entry, blobs)
+    preconditions = called["preconditions"] if "preconditions" in called else None
+    rows = called["file_reviews"] if "file_reviews" in called else None
     return {
-        **entry,
+        **called,
         **(
             {
                 "preconditions": {
@@ -1131,9 +1284,16 @@ def resolved_entry(entry: dict, blobs: Path) -> dict:
 
 
 def named_blobs(entry: dict) -> list[str]:
-    """Every document one recorded question names by digest."""
+    """Every document one recorded question names by digest, the strings of its call among them."""
     preconditions = entry["preconditions"] if "preconditions" in entry else None
     rows = entry["file_reviews"] if "file_reviews" in entry else None
+
+    def called(at: list) -> dict | list | str | int | float | bool | None:
+        try:
+            return standing_at(entry, at)
+        except ValueError:
+            return None
+
     return [
         digest
         for stored in [
@@ -1143,8 +1303,9 @@ def named_blobs(entry: dict) -> list[str]:
                 for row in (rows if isinstance(rows, list) else [])
                 if isinstance(row, dict) and "after" in row
             ),
+            *(called(at) for at in stored_paths(entry)),
         ]
-        if (digest := blob_digest(stored))
+        if (digest := blob_digest(stored if isinstance(stored, dict) else None))
     ]
 
 
@@ -1280,7 +1441,12 @@ def migrated_relay(records: list[dict], blobs: Path) -> list[dict]:
     return [
         relay_header(),
         *(
-            {"parked": {**stored_entry(entry, blobs), "changed": settled_time(entry)}}
+            {
+                "parked": {
+                    **stored_form(entry, lambda text: stored_blob(blobs, text)),
+                    "changed": settled_time(entry),
+                }
+            }
             for entry in latest.values()
         ),
         *(record for record in records if "reply" in record and "question" in record),
@@ -1345,7 +1511,14 @@ def append_relay_records(log: Path, records: Callable[[], list[dict]]) -> None:
 def park_relay_entry(log: Path, entry: dict) -> None:
     """Park one question as it was asked: its documents kept in the store, its record naming them."""
     append_relay_records(
-        log, lambda: [{"parked": stored_entry(entry, relay_blobs(log))}]
+        log,
+        lambda: [
+            {
+                "parked": stored_form(
+                    entry, lambda text: stored_blob(relay_blobs(log), text)
+                )
+            }
+        ],
     )
 
 
@@ -1519,7 +1692,8 @@ def recorded_fingerprint(entry: dict) -> str:
 
     What binds the record an approver reads to the call its fingerprint names:
     a record whose fields hash to another digest shows one call and carries
-    another's authority, and nothing may answer or spend it.
+    another's authority, and nothing may answer or spend it. A retry's
+    payload recorded as null is the operation's own, as it was hashed.
     """
     match entry:
         case {
@@ -1533,7 +1707,7 @@ def recorded_fingerprint(entry: dict) -> str:
             "reason": str() as reason,
             "rule": str() as rule,
             "requirement": str() as reviewer,
-            "execution_payload": dict() as expected,
+            "execution_payload": dict() | None as expected,
             "policy_identity": str() as policy_identity,
             "resolved": dict() as resolved,
         }:
@@ -1551,7 +1725,7 @@ def recorded_fingerprint(entry: dict) -> str:
                 rule,
                 purpose if isinstance(purpose, str) else "",
                 reviewer,
-                expected,
+                expected if expected is not None else payload,
                 policy_identity,
                 resolved,
                 bound,
@@ -1862,11 +2036,28 @@ def observe_hook_call(
     if not session or not log.exists():
         return []
     entries = native_review_records(log)
+    blobs = relay_blobs(log)
 
-    def same_call(entry):
-        expected = entry.get("execution_payload")
+    def called(entry: dict) -> dict | None:
+        """The entry with the strings of its call read back, or ``None`` where one cannot be."""
+        try:
+            return resolved_call(entry, blobs)
+        except ValueError:
+            return None
+
+    def same_call(entry: dict | None) -> bool:
+        if entry is None:
+            return False
+        expected = (
+            entry["execution_payload"] if "execution_payload" in entry else None
+        )
         return entry["operation"]["tool"] == tool and arguments == (
             entry["operation"]["payload"] if expected is None else expected
+        )
+
+    def requested(entry: dict | None) -> bool:
+        return entry is not None and (
+            entry["operation"]["payload"] == arguments or same_call(entry)
         )
 
     matches = [
@@ -1877,8 +2068,7 @@ def observe_hook_call(
         and (
             "execution_id" in entry and entry["execution_id"] == execution_id
             if execution_id
-            else entry["operation"]["tool"] == tool
-            and (entry["operation"]["payload"] == arguments or same_call(entry))
+            else entry["operation"]["tool"] == tool and requested(called(entry))
         )
         and entry["state"]
         in ("pending", "approved", "rejected", "dispatched", "prompted")
@@ -1886,7 +2076,7 @@ def observe_hook_call(
     if not matches:
         return []
     entry = matches[-1]
-    matches_call = same_call(entry)
+    matches_call = same_call(called(entry))
     # `prompted` is the runtime's own dialog answering for a call whose effect
     # a checkpoint restores: authority nobody recorded, so what is checked here
     # is only that what ran is what was shown. A receipt proves who answered;

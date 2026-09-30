@@ -1,28 +1,29 @@
 """What a thousand reviews cost to keep, to fold, and to hand the page, bounded.
 
-Run on purpose, as the integration suite is:
-`uv run pytest -m integration tests/integration/test_relay_benchmark.py`.
-
 The fixture is a thousand native reviews of a one-line edit, each binding a
 14 KB preimage and a 14 KB after-document of its own, 980 carried out and 20
 waiting -- the shape of a busy week in one checkout, where a review's
-documents outweigh its call. Measured on the workstation this was written
-on, with other test suites running (load average 6 to 34):
+documents outweigh its call. Built and measured in about two seconds, it
+runs with the rest of the suite. Measured on the workstation this was
+written on, with other test suites running:
 
-- the log holds 2.4 KB per review, where the same reviews kept whole in
+- the log holds 2.2 KB per review, where the same reviews kept whole in
   every record, one copy per transition, come to about 100 KB each;
 - the first snapshot is 37 KB, where one carrying a row for every review is
   535 KB;
-- a fold of the whole log from a reader that has read none of it takes
-  0.13 to 0.27 s, and the first snapshot 0.15 to 0.47 s.
+- a fold of the whole log from a reader that has read none of it takes 0.07
+  to 0.19 s of this process's CPU time, and the first snapshot 0.10 to
+  0.25 s.
 
 The two sizes are what tell the shapes apart: time alone does not at this
 scale, since the whole-copy log of these reviews still parses in about
 0.4 s, and a snapshot summarizing every review costs 0.5 to 0.7 s. So each
-size is bounded at about three times what was measured, and each time at
-about four times the slowest measurement, which a loaded machine passes and
-which only work growing faster than the log -- a question reading the log
-again, or a review reading a file for each of the others -- exceeds.
+size is bounded at three to four times what was measured, and each time at
+five to eight times the slowest measurement. The times are CPU time rather than
+elapsed, so a suite running beside others, or spread over processes, does
+not inflate them; only work growing faster than the log -- a question
+reading the log again, or a review reading a file for each of the others --
+exceeds them.
 """
 
 import time
@@ -36,8 +37,6 @@ from lup.devtools.dashboard.reviews import ReviewStore
 from lup.policy.operations import Operation
 from lup.policy.relay import CapturedFileReview, PersistentQuestion, QuestionRelay
 
-pytestmark = pytest.mark.integration
-
 LOG_BYTES_PER_REVIEW = 8 * 1024
 """The fixture's log, over the reviews it holds."""
 
@@ -45,16 +44,17 @@ SNAPSHOT_BYTES = 128 * 1024
 """The first snapshot of the fixture's queue, as JSON."""
 
 FOLD_SECONDS = 1.0
-"""A fold of the whole fixture's log, from a reader that has read none of it."""
+"""A fold of the whole fixture's log, from a reader that has read none of it, in CPU seconds."""
 
 SNAPSHOT_SECONDS = 2.0
-"""The first snapshot of the fixture's queue, from a store that has read none of it."""
+"""The first snapshot of the fixture's queue, from a store that has read none of it, in CPU seconds."""
 
 
 def timed(action: Callable[[], object]) -> float:
-    started = time.perf_counter()
+    """The CPU time this process spends on *action*, which other load does not inflate."""
+    started = time.process_time()
     action()
-    return time.perf_counter() - started
+    return time.process_time() - started
 
 
 def review(root: Path, index: int) -> PersistentQuestion:

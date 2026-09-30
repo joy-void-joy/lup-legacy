@@ -15,8 +15,9 @@ whose fields no longer hash to its fingerprint may not be answered at all.
 
 The relay keeps each question once. Its log holds a record per question as it
 was parked -- every document it binds, a file's preimage or what a verdict
-judged it becoming, kept once in a content store beside the log and named in
-the record by digest -- and a small transition per state it moves to since.
+judged it becoming, and every string of its call a kibibyte or longer, kept
+once in a content store beside the log and named in the record by digest --
+and a small transition per state it moves to since.
 Reading folds the transitions into the questions they move; a reader that
 stays open reads only what was appended since it last read. What the
 fingerprint binds is still each document whole: a record is read back through
@@ -49,12 +50,19 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal, Self
 
-from pydantic import BaseModel, Field, ValidationError, model_validator
+from pydantic import (
+    BaseModel,
+    Field,
+    SkipValidation,
+    ValidationError,
+    model_validator,
+)
 
 from lup.policy.assets.host import (
     append_relay_records,
     append_review_record,
     bound_parts,
+    document_name,
     fold_relay,
     migrate_relay,
     named_blobs,
@@ -69,6 +77,7 @@ from lup.policy.assets.host import (
     review_answers_home,
     review_fingerprint,
     rewrite_relay,
+    stored_form,
     stream_records,
 )
 from lup.policy.identity import REVIEW_ANSWERS_ENV
@@ -442,7 +451,11 @@ class QuestionRecord(BaseModel, frozen=True):
     execution_id: str = ""
     """Native invocation observed after dispatch; never an authority receipt."""
     execution_payload: JsonObject | None = None
-    """Exact approved native rewrite; the operation retains the requested input."""
+    """Exact approved native rewrite; the operation retains the requested input.
+
+    ``None`` where the retry runs the requested input itself, which is how a
+    record keeps a rewrite that repeats it.
+    """
     policy_identity: str = ""
     """Which policy judged a native review, part of what its fingerprint covers."""
     resolved: dict[Path, Path] = {}
@@ -567,6 +580,13 @@ class RecordedQuestion(QuestionRecord, frozen=True):
     """Each file the call binds, by the document it held when it was parked; ``None`` where none stood."""
     file_reviews: list[RecordedFileReview] | None = None
     """Original per-file attribution; absent on records that did not capture it."""
+    stored: list[list[str | int]] = []
+    """Where a string of the call stood that the store keeps instead, each a path of keys and indices.
+
+    Each leads into ``operation.payload`` or ``execution_payload``, where the
+    record keeps the string's name (:class:`StoredDocument`, as a JSON
+    object) in its place; nothing where the call keeps every string itself.
+    """
 
 
 class PersistentQuestion(QuestionRecord, frozen=True):
@@ -578,29 +598,29 @@ class PersistentQuestion(QuestionRecord, frozen=True):
     """Original per-file attribution; absent on records that did not capture it."""
 
     def recorded(self) -> RecordedQuestion:
-        """This question as the relay records it: every document it holds named by its digest."""
+        """This question as the relay records it: every document it holds, and each long string of its call, named by digest.
 
-        def named(text: str | None) -> StoredDocument | None:
-            return (
-                StoredDocument(sha256=sha256(text.encode()).hexdigest())
-                if text is not None
-                else None
-            )
-
+        Worked out as the relay works out the record it parks
+        (:func:`~lup.policy.assets.host.stored_form`), so the two never differ.
+        """
         return RecordedQuestion.model_validate(
-            {
-                **self.model_dump(exclude={"preconditions", "file_reviews"}),
-                "preconditions": {
-                    path: named(text) for path, text in self.preconditions.items()
-                },
-                "file_reviews": [
-                    RecordedFileReview.model_validate(
-                        {**row.model_dump(exclude={"after"}), "after": named(row.after)}
-                    )
-                    for row in self.file_reviews
-                ]
-                if self.file_reviews is not None
+            stored_form(self.model_dump(mode="json"), document_name)
+        )
+
+    def shown(self) -> RecordedQuestion:
+        """This question as a reviewer's page carries it: its call whole, its documents named by digest.
+
+        The page reads each file's documents beside the question, and the
+        tool input off the question itself.
+        """
+        recorded = self.recorded()
+        return recorded.model_copy(
+            update={
+                "operation": self.operation,
+                "execution_payload": self.execution_payload
+                if recorded.execution_payload is not None
                 else None,
+                "stored": [],
             }
         )
 
@@ -737,10 +757,12 @@ class Appended(BaseModel, frozen=True):
 
     From the start where the file is new to this reader, was moved over, or
     was cut short: what was folded from before is then the old file's, and
-    let go.
+    let go. The records are what the JSON reader made, each already an
+    object, so they are carried as they are rather than checked field by
+    field again: a cold read of a relay holds thousands.
     """
 
-    records: list[JsonObject]
+    records: SkipValidation[list[JsonObject]]
     began: bool
 
 

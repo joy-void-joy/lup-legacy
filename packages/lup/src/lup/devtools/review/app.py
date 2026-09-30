@@ -733,8 +733,9 @@ class ReviewDocuments(BaseModel, frozen=True):
 class ReviewDetail(BaseModel, frozen=True):
     """Everything the operator reviews before answering.
 
-    ``question`` is the record as the relay keeps it, each document named by
-    digest; the documents themselves are ``files``.
+    ``question`` is the record with its call whole and each document named
+    by digest (:meth:`~lup.policy.relay.PersistentQuestion.shown`); the
+    documents themselves are ``files``.
     """
 
     summary: ReviewSummary
@@ -769,7 +770,7 @@ class ReviewDetail(BaseModel, frozen=True):
                 shown.changes,
                 sum(said.kind != "answer" for said in thread),
             ),
-            question=entry.recorded(),
+            question=entry.shown(),
             files=shown.files,
             command=requested_command(entry),
             preview_unavailable=shown.unavailable,
