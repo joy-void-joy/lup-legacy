@@ -38,6 +38,7 @@ from lup.policy.assets.host import (
 from lup.policy.kernel.commands import unread_programs
 from lup.policy.kernel.decision import KernelDecision, carrying_readings
 from lup.policy.kernel.effects import declare
+from lup.policy.kernel.downloads import read_download
 from lup.policy.kernel.fetch import decide_fetch, loopback_port
 from lup.policy.kernel.rows import TargetLandingRow, UrlScopeRow, landing_rows
 from lup.policy.kernel.settlement import SettlementFacts, settle
@@ -1188,3 +1189,53 @@ def test_a_capture_never_retires_a_question_asked_of_a_word_nobody_read() -> Non
 
     assert captured("git rm tmp/x.txt") == "allow"
     assert captured("$X rm tmp/x.txt") == "ask"
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        pytest.param("curl -s http://127.0.0.1:8766/ | grep ok", id="piped"),
+        pytest.param(
+            "curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8766/",
+            id="write-out",
+        ),
+        pytest.param("curl --unclassified http://127.0.0.1:8766/", id="unread-option"),
+        pytest.param("curl -s 127.0.0.1:8766/health", id="bare-host"),
+    ],
+)
+def test_a_loopback_port_a_host_process_holds_asks_however_the_output_is_handled(
+    command: str,
+) -> None:
+    """Where the request goes is the question, and no output handling moves it.
+
+    `-w` was unread, so the fetch went unjudged and the container settled it
+    inside -- while the same URL piped into `grep` asked. The container shares
+    the host's loopback, so what it holds is not where this request lands.
+    """
+    settled = decide_shell(
+        command,
+        ROWS,
+        contained=True,
+        inside_placement=True,
+        existing_targets=[],
+        landings=[],
+        host_ports=[8766],
+    )
+
+    assert settled.effect == "ask"
+    assert "a process outside this container listens on" in settled.reason
+
+
+def test_a_write_out_format_prints_and_one_naming_a_file_is_unread() -> None:
+    """`-w '%{http_code}'` prints; `%output{…}` and `@file` reach a file."""
+    assert (
+        read_download(["curl", "-w", "%{http_code}", "http://x.test/"])["unread"] == ""
+    )
+    assert (
+        read_download(["curl", "-w", "%output{log}%{url}", "http://x.test/"])["unread"]
+        == "-w"
+    )
+    assert (
+        read_download(["curl", "--write-out=@format.txt", "http://x.test/"])["unread"]
+        == "--write-out"
+    )

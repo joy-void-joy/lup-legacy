@@ -121,7 +121,10 @@ fetch ask when a process the container cannot see holds the port: sharing the
 host's network means sharing its loopback, and the scope declared for this
 machine's own development servers would otherwise admit the operator's. It
 asks even where `unscoped_fetch` defers, since the runtime sees a loopback
-address and not whose service answers on it.
+address and not whose service answers on it — and however the rest of the
+command reads: `curl -s -o /dev/null -w '%{http_code}' <url>` asks as `curl
+-s <url> | grep x` does, and so does a `curl` carrying an option nobody
+classified, since where the request goes is what the container cannot hold.
 
 And the columns that say what a *word* adds or removes, each answering one
 question the row alone cannot:
@@ -515,9 +518,13 @@ redirection are: `-o`/`-O FILE`, the URL's own name that `curl -O` and a
 plain `wget` take (in `wget -P`'s directory), and a log or header file. So a
 download into scratch or a new file is ordinary, and one over a protected,
 human-authored or tracked file asks. A redirect `-L` follows is not
-re-judged; the network boundary answers for where it is sent. An option
-neither grammar lists — a config file, a cookie jar, a recursive crawl, a
-server-chosen name — leaves the invocation unread.
+re-judged; the network boundary answers for where it is sent. curl's
+`-w`/`--write-out` prints a format once the transfer ends, which is how a
+probe asks whether a service answered, and it reads; a format naming a
+file — one it writes, `%output{…}`, or one it is read from, `@file` — leaves
+the invocation unread. An option neither grammar lists — a config file, a
+cookie jar, a recursive crawl, a server-chosen name — leaves the invocation
+unread.
 
 ### A path no command may name
 

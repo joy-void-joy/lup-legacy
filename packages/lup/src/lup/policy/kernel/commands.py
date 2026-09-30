@@ -2256,7 +2256,11 @@ def decide_download_words(
     A redirect `-L` follows is not re-judged: the scope answers for the origin
     the command names, and the network boundary for where it is sent next.
     ``host_ports`` are the loopback ports a process outside this session's
-    container listens on, and a URL reaching one asks as `WebFetch` asks.
+    container listens on, and a URL reaching one asks as `WebFetch` asks --
+    however the rest of the line reads. An option this cannot read leaves the
+    operands unplaced, so every word that would reach such a port if it were
+    the URL is taken for one: what the container cannot hold is where the
+    request goes, and no reading of the output changes that.
 
     A `defer` returned from here is settled by `ProviderNative`, which is read
     before the rule that would otherwise allow unjudged work inside a
@@ -2268,7 +2272,19 @@ def decide_download_words(
     tool = posixpath.basename(words[0])
     reading = read_download(words)
     if reading["unread"]:
-        return unjudged(f"{tool} option {reading['unread']!r} is not classified")
+        held = [
+            decide_fetch(
+                curl_url(word),
+                allowed_scopes,
+                denied_scopes,
+                unscoped,
+                host_listener=True,
+            )
+            for word in words[1:]
+            if not word.startswith("-") and loopback_port(curl_url(word)) in host_ports
+        ]
+        unread = unjudged(f"{tool} option {reading['unread']!r} is not classified")
+        return joined_decision([unread, *held]) if held else unread
     if not reading["urls"]:
         return unjudged(f"{tool} has no URL")
     row = next(
