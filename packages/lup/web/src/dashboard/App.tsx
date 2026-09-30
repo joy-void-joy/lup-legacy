@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ReviewDecision, ReviewDetail, ReviewRoot, ReviewSnapshot, ReviewSummary, SetupPane, ThreadEntry } from "../generated/views";
-import { answerReview, followDashboard, readReview, readReviewLink, readSetupPanes, remarkReview, reviewLink, ReviewError, takeToken, TOKEN_KEY } from "./api";
+import { answerReview, followDashboard, readHistory, readReview, readReviewLink, readSetupPanes, remarkReview, reviewLink, ReviewError, takeToken, TOKEN_KEY } from "./api";
 import type { FileNavigation } from "./Files";
 import { applied, codeNotice, type LiveState } from "./live";
 import { EMPTY_DRAFT, RequestView, staleSentences, stateClass, stateLabel, type Action, type Draft } from "./Request";
@@ -44,6 +44,21 @@ function SetupView({ panes, chosen, onChoose }: { panes: SetupPane[] | null; cho
   </div>;
 }
 
+/** How many older requests one "Load older" reads: a page of History beyond what the stream carries. */
+const HISTORY_PAGE = 50;
+
+/** When a request left the queue, which History is ordered by: most recently settled first. */
+function settledFirst(rows: ReviewSummary[]): ReviewSummary[] {
+  const when = (row: ReviewSummary) => Date.parse(row.settled ?? row.created);
+  return [...rows].sort((left, right) => when(right) - when(left));
+}
+
+/** The requests the stream carries, then the older History pages read, each once: the stream's copy wins. */
+function merged(streamed: ReviewSummary[], older: ReviewSummary[]): ReviewSummary[] {
+  const carried = new Set(streamed.map((row) => row.key));
+  return [...streamed, ...older.filter((row) => !carried.has(row.key))];
+}
+
 function nextPending(rows: ReviewSummary[], key: string): string {
   const position = rows.findIndex((row) => row.key === key);
   return rows.find((row, index) => index > position && row.key !== key && row.state === "pending")?.key
@@ -77,6 +92,8 @@ export function App() {
   const [linked, setLinked] = useState(readReviewLink);
   const [accessDenied, setAccessDenied] = useState(false);
   const [streamed, setStreamed] = useState<ReviewSnapshot | null>(null);
+  const [older, setOlder] = useState<ReviewSummary[]>([]);
+  const [olderLoading, setOlderLoading] = useState(false);
   const [selected, setSelected] = useState("");
   const [filter, setFilter] = useState<"pending" | "history">("pending");
   const [fetched, setFetched] = useState<ReviewDetail | null>(null);
@@ -105,6 +122,10 @@ export function App() {
   const toastSeq = useRef(0);
   const current = useRef(selected);
   const detailRequest = useRef<AbortController | null>(null);
+  // Each request's detail as last read, beside the row it was read for: shown
+  // at once while that row stands, and read again once the stream moves it.
+  const readDetails = useRef(new Map<string, { row: ReviewSummary; detail: ReviewDetail }>());
+  const searchedLinks = useRef(new Set<string>());
   current.current = selected;
   // What the page knows before the stream does: an answer given here stands
   // over the stream's row until the stream says the review is no longer
@@ -113,7 +134,7 @@ export function App() {
     : { ...streamed, reviews: streamed.reviews.map((row) => answered.get(row.key)?.summary ?? row) }, [streamed, answered]);
   const liveQueue = useRef(queue);
   liveQueue.current = queue;
-  const rows = queue?.reviews ?? [];
+  const rows = useMemo(() => merged(queue?.reviews ?? [], older), [queue, older]);
   const queuePartial = queue !== null && queue.errors.length > 0;
   const queueCurrent = queue !== null && connection === "Live" && !queuePartial;
   // Why the queue is not current, where the operator looks: the stream reconnecting, or each
@@ -126,7 +147,9 @@ export function App() {
   /** A count as the header shows it: unknown before the first snapshot, the last one known while it refreshes. */
   const counted = (count: number) => queue === null ? "?" : queueCurrent ? `${count}` : `${count} · refreshing`;
   const pending = rows.filter((row) => row.state === "pending");
-  const groups = grouped(rows.filter((row) => filter === "pending" ? row.state === "pending" : row.state !== "pending"), queue?.roots ?? []);
+  const settled = settledFirst(rows.filter((row) => row.state !== "pending"));
+  const historyTotal = Math.max(queue?.history ?? 0, settled.length);
+  const groups = grouped(filter === "pending" ? pending : settled, queue?.roots ?? []);
   const visible = groups.flatMap((group) => group.sessions.flatMap((asking) => asking.rows));
   const position = visible.findIndex((row) => row.key === selected);
   const linkedRows = linked === null ? [] : rows.filter((row) => row.id === linked.id && (linked.root === null || row.root_id === linked.root));
@@ -204,7 +227,7 @@ export function App() {
       const first = queue.reviews.find((item) => item.state === "pending");
       if (first !== undefined) navigate(first, true);
     }
-  }, [queue, filter, linked, selected]);
+  }, [queue, rows, filter, linked, selected]);
 
   // An answer given here is dropped once the stream shows the review settled,
   // which is the stream catching up with it.
@@ -258,18 +281,71 @@ export function App() {
     detailRequest.current = null;
   }, [selected, token, retry]);
 
+  // A request's detail is read when it is opened, and again only once the
+  // stream moves its row: while the row stands, the detail read for it --
+  // or read ahead of the operator reaching it -- is shown at once.
   useEffect(() => {
     if (selected === "" || connection !== "Live" || detailRequest.current !== null) return;
+    const known = row === null ? undefined : readDetails.current.get(selected);
+    if (known !== undefined && known.row === row) {
+      setFetched(known.detail);
+      return;
+    }
     const controller = new AbortController();
+    const readFor = row;
     detailRequest.current = controller;
     void readReview(selected, token, controller.signal).then((fresh) => {
+      if (readFor !== null) readDetails.current.set(fresh.summary.key, { row: readFor, detail: fresh });
       if (!controller.signal.aborted) setFetched(fresh);
     }).catch((failure: unknown) => {
       if (!controller.signal.aborted) setError(String(failure));
     }).finally(() => {
       if (detailRequest.current === controller) detailRequest.current = null;
     });
-  }, [selected, token, queue, retry, connection]);
+  }, [selected, token, row, retry, connection]);
+
+  // The next request in the list is read once the one open has arrived, so
+  // moving on to it -- by hand or after an answer -- shows it at once.
+  const following = position >= 0 ? visible[position + 1] : undefined;
+  useEffect(() => {
+    if (following === undefined || connection !== "Live" || fetched?.summary.key !== selected) return;
+    const known = readDetails.current.get(following.key);
+    if (known !== undefined && known.row === following) return;
+    const controller = new AbortController();
+    void readReview(following.key, token, controller.signal).then((fresh) => {
+      readDetails.current.set(fresh.summary.key, { row: following, detail: fresh });
+    }).catch(() => {
+      // Opening it reads it again and says why where the operator looks.
+      readDetails.current.delete(following.key);
+    });
+    return () => controller.abort();
+  }, [following, fetched, selected, connection, token]);
+
+  // A link to a request past the History the stream carries asks the server
+  // for it once, rather than claiming it does not exist.
+  useEffect(() => {
+    if (linked === null || !queueCurrent || linkedRows.length > 0 || searchedLinks.current.has(linked.id)) return;
+    const controller = new AbortController();
+    void readHistory(0, HISTORY_PAGE, token, controller.signal, linked).then((found) => {
+      searchedLinks.current.add(linked.id);
+      setOlder((known) => merged(known, found.reviews));
+    }).catch((failure: unknown) => {
+      if (!controller.signal.aborted) setError(String(failure));
+    });
+    return () => controller.abort();
+  }, [linked, queueCurrent, linkedRows.length, token]);
+
+  async function loadOlder() {
+    setOlderLoading(true);
+    try {
+      const page = await readHistory(settled.length, HISTORY_PAGE, token);
+      setOlder((known) => merged(known, page.reviews));
+    } catch (failure) {
+      setError(String(failure));
+    } finally {
+      setOlderLoading(false);
+    }
+  }
 
   useEffect(() => {
     if (view !== "setup") return;
@@ -468,7 +544,7 @@ export function App() {
       <aside className="queue" aria-label="Review requests" aria-busy={!queueCurrent}>
         <div className="filters" aria-label="Request filter">
           <button type="button" aria-pressed={filter === "pending"} onClick={() => show("pending")}>Pending ({counted(pending.length)})</button>
-          <button type="button" aria-pressed={filter === "history"} onClick={() => show("history")}>History ({counted(rows.length - pending.length)})</button>
+          <button type="button" aria-pressed={filter === "history"} onClick={() => show("history")}>History ({counted(historyTotal)})</button>
         </div>
         {!queueCurrent && <p className="queue-state" role="status">{queueStatus}</p>}
         <label className="queue-setting"><input type="checkbox" checked={advance} onChange={(event) => setAdvance(event.target.checked)} /> Advance after decision</label>
@@ -496,6 +572,8 @@ export function App() {
             </button>{each.paths.length > 1 && <details className="queue-files"><summary>{each.paths.length} files to review</summary>{each.paths.map((path) => <code key={path}>{path}</code>)}</details>}</div>)}
           </section>)}
         </section>)}
+        {filter === "history" && settled.length < historyTotal && <button type="button" className="load-older" disabled={olderLoading} onClick={() => void loadOlder()}>
+          {olderLoading ? "Loading older requests…" : `Load older requests (${historyTotal - settled.length} more)`}</button>}
       </aside>
       <main className="stage">
         {queue?.errors.map((issue) => <p className="notice" role="alert" key={issue.root}>{issue.root}: {issue.message}</p>)}

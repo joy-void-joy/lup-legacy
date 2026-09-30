@@ -1232,19 +1232,39 @@ container at the path the host has it and named by `LUP_REVIEW_ANSWERS`, so a
 hook and `review wait` read the answer and nothing in the session can write
 one; a launch refuses a writable mount of it, and any mount of the rest of
 lup's state. The question stays in the checkout, which the session writes:
-`.lup/questions.jsonl`, and the claims under `.lup/review-claims` and
-`.lup/review-stage-claims` that spend an answer once, are protected roots.
-The hooks and `review wait` write them from their own processes, so a
-session's own write — a row appended, a copy over the file, a claim retired
-— asks. The library writes them, so the library protects them:
-`lup.policy.rules.invariant_path_rules` holds them — with the launch ledger
-under `.lup/preflight`, the policy snapshots, `.env` and a new devtools
-module — on both enforcement paths whatever a project declares, and no
-adopter has to know to list them. A record there claiming an answer is
+`.lup/questions.jsonl`, the store beside it under `.lup/reviews`, and the
+claims under `.lup/review-claims` and `.lup/review-stage-claims` that spend an
+answer once, are protected roots. The hooks and `review wait` write them from
+their own processes, so a session's own write — a row appended, a copy over
+the file, a claim retired — asks. The library writes them, so the library
+protects them: `lup.policy.rules.invariant_path_rules` holds them — with the
+launch ledger under `.lup/preflight`, the policy snapshots, `.env` and a new
+devtools module — on both enforcement paths whatever a project declares, and
+no adopter has to know to list them. A record there claiming an answer is
 ignored, and a parked record whose fields no longer hash to its fingerprint
 — one rewritten to show another call — can be neither answered nor spent.
 Nested command paths are declared with `ShellOperationRule.parents`, and the
 deepest matching path decides.
+
+The relay keeps each question once. Its log opens with a line naming its
+shape, `{"relay": 2}`, and holds a record per question as it was parked, then
+a transition per state it moves to — dispatched, completed, stale, expired —
+naming the question, the fields that moved and when, never a copy of the
+question. Every document a question binds — the preimage of each file it
+records, the document each file verdict judged — is kept once in
+`.lup/reviews/blobs/<sha256>`, written beside its name and moved into place,
+and the record names it by that digest. The fingerprint still binds each
+document whole: a record is read back through the documents its digests name,
+a document that no longer hashes to its name reads as missing, and a record
+that cannot be read back whole can be neither answered nor spent. Whoever
+reads the relay first under its lock — a hook, `review list`, `review wait`,
+the dashboard — rewrites a log still kept the older way, a full copy per
+transition, into this shape, and nothing reads the older one after; a writer
+that waited on a log rewritten meanwhile writes to the new one. A reader
+that stays open, as the dashboard and a waiter do, reads only what was
+appended since it last read. Settled reviews past the retention window
+(`docs/dashboard.md`) leave the log for `.lup/reviews/archive.jsonl`, and the
+documents no remaining question names leave the store with them.
 
 An approval is spent once. `review wait`, started in the session's own shell,
 carries the call out there: an approved edit writes the after-document the

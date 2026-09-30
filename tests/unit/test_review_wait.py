@@ -22,8 +22,9 @@ from lup.coordination.repository import RepositoryPeers
 from lup.coordination.wake import WakePath
 from lup.devtools.review import wait as waiter
 from lup.devtools.review.wait import ReviewWaiters
+from lup.policy.assets.host import review_records
 from lup.policy.identity import DASHBOARD_URL_ENV
-from lup.policy.relay import PersistentQuestion, QuestionRelay
+from lup.policy.relay import QuestionRelay, RecordedQuestion
 from lup.providers.claude.identity import CLAUDE_SESSION_ENV
 from lup.types import JsonObject
 from tests.unit.native import claude_effect
@@ -75,7 +76,7 @@ def relay_of(root: Path) -> QuestionRelay:
     return QuestionRelay(root / ".lup/questions.jsonl")
 
 
-def only(root: Path) -> PersistentQuestion:
+def only(root: Path) -> RecordedQuestion:
     (question,) = relay_of(root).pending()
     return question
 
@@ -179,7 +180,8 @@ def test_a_review_altered_after_its_answer_is_not_carried_out(root: Path) -> Non
     question = only(root)
     relay_of(root).answer(question.id, "operator", True)
     log = root / ".lup/questions.jsonl"
-    (parked,) = [json.loads(line) for line in log.read_text().splitlines()]
+    (_, record) = review_records(log)
+    parked = record["parked"]
     altered = {
         **parked,
         "operation": {
@@ -188,7 +190,7 @@ def test_a_review_altered_after_its_answer_is_not_carried_out(root: Path) -> Non
         },
     }
     with log.open("a", encoding="utf-8") as appended:
-        appended.write(json.dumps(altered) + "\n")
+        appended.write(json.dumps({"parked": altered}) + "\n")
 
     waited = RUNNER.invoke(create_review_app(root), ["wait", question.id])
 

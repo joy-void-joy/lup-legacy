@@ -47,7 +47,7 @@ from lup.devtools.dashboard.pulse import DashboardPulse, PulseFile, RunningCode
 from lup.devtools.dashboard.refresh import ImportedSource, Refresh, WriteGate
 from lup.devtools.dashboard.reviews import ReviewScan, ReviewStore
 from lup.devtools.review.app import RequesterPresence, ReviewSummary
-from lup.policy.relay import PersistentQuestion
+from lup.policy.relay import RecordedQuestion
 from lup.providers.user_config import UserConfigFile
 
 logger = logging.getLogger(__name__)
@@ -216,11 +216,16 @@ class Herald:
         crowd: int = 3,
         heartbeat: timedelta = timedelta(seconds=10),
         code: Callable[[], RunningCode] = RunningCode,
+        store: ReviewStore | None = None,
     ) -> None:
         self.record_path = directory / "herald.json"
         self.pulse = PulseFile.of(directory)
         self.registry = registry
-        self.store = ReviewStore(roots=(), discover=True, registry=registry)
+        self.store = (
+            store
+            if store is not None
+            else ReviewStore(roots=(), discover=True, registry=registry)
+        )
         self.url = url
         self.capability = capability
         self.tabs = tabs
@@ -268,13 +273,13 @@ class Herald:
         self.publish(len(pending), moment)
 
     def waiting(
-        self, root: Path, question: PersistentQuestion, scan: ReviewScan
+        self, root: Path, question: RecordedQuestion, scan: ReviewScan
     ) -> Waiting:
         """One review as a notice names it: what it asks, who asked, and where."""
         anchor = scan.repositories[root] if root in scan.repositories else root
         return Waiting(
             key=ReviewSummary.key_for(root, question.id),
-            title=ReviewSummary.of(root, question, "operator").title,
+            title=self.store.summary(root, question).title,
             session=RequesterPresence.of(root).called(question),
             repository=KnownRepository(repository=anchor, checkout=root).name(),
             checkout=question.operation.worktree.name,
@@ -383,11 +388,10 @@ def serve_dashboard(arguments: ServiceArguments) -> None:
     )
     url = f"http://127.0.0.1:{arguments.port}"
     refresh = Refresh(running_source())
-    feed = LiveFeed(
-        registry.repositories,
-        ReviewStore(roots=(), discover=True, registry=registry),
-        code=refresh.code,
-    )
+    # One store for the stream, every route, the herald and the sweep, so the
+    # relays it keeps open are read once however many of them ask.
+    store = ReviewStore(roots=(), discover=True, registry=registry)
+    feed = LiveFeed(registry.repositories, store, code=refresh.code)
     app = dashboard_app(
         url,
         token,
@@ -400,7 +404,6 @@ def serve_dashboard(arguments: ServiceArguments) -> None:
         feed=feed,
     )
     around = app.router.lifespan_context
-    sweeping = ReviewStore(roots=(), discover=True, registry=registry)
     herald = Herald(
         arguments.state,
         registry,
@@ -408,6 +411,7 @@ def serve_dashboard(arguments: ServiceArguments) -> None:
         token,
         tabs=lambda: feed.followers,
         code=refresh.code,
+        store=store,
     )
     refresh.source.taken()
     gate = WriteGate(app, refresh.refusal)
@@ -446,7 +450,7 @@ def serve_dashboard(arguments: ServiceArguments) -> None:
         for _ in count():
             await asyncio.sleep(10)
             try:
-                await asyncio.to_thread(sweeping.sweep)
+                await asyncio.to_thread(store.sweep)
                 await asyncio.to_thread(panes.retire)
             except Exception:
                 logger.exception(

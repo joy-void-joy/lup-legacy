@@ -89,6 +89,7 @@ def test_native_shell_capture_preserves_crlf_for_the_preview(tmp_path: Path) -> 
 
     hook(tmp_path, command, tool="Bash")
 
-    (entry,) = QuestionRelay(tmp_path / ".lup/questions.jsonl").pending()
-    assert entry.preconditions[target] == "old\r\n"
+    store = QuestionRelay(tmp_path / ".lup/questions.jsonl")
+    (entry,) = store.pending()
+    assert store.resolve(entry).preconditions[target] == "old\r\n"
     assert target.read_bytes() == b"old\r\n"

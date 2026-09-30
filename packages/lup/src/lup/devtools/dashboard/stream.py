@@ -165,14 +165,24 @@ class ReviewGoneEvent(StreamEvent, frozen=True):
 
 
 class ReviewScopeEvent(StreamEvent, frozen=True):
-    """Which checkouts' queues are read, and which could not be."""
+    """Which checkouts' queues are read, which could not be, and how many reviews left them.
+
+    ``history`` counts every review that left the queue, archived ones
+    included, of which the stream carries only the most recent: the page
+    reads the rest a page at a time.
+    """
 
     type: Literal["review_scope"] = "review_scope"
     roots: list[ReviewRoot]
     errors: list[ReviewError]
+    history: int = 0
 
     def moves(self, state: "LiveState") -> None:
-        state.roots, state.errors = self.roots, self.errors
+        state.roots, state.errors, state.history = (
+            self.roots,
+            self.errors,
+            self.history,
+        )
 
 
 type DashboardEvent = Annotated[
@@ -252,6 +262,7 @@ class LiveState:
         self.reviews: dict[str, ReviewSummary] = {}
         self.roots: list[ReviewRoot] = []
         self.errors: list[ReviewError] = []
+        self.history = 0
         self.code = RunningCode()
 
     def observed(self, seen: Observation) -> list[DashboardEvent]:
@@ -292,8 +303,15 @@ class LiveState:
         rows = {row.key: row for row in snapshot.reviews}
         scope: list[DashboardEvent] = (
             []
-            if (snapshot.roots, snapshot.errors) == (self.roots, self.errors)
-            else [ReviewScopeEvent(roots=snapshot.roots, errors=snapshot.errors)]
+            if (snapshot.roots, snapshot.errors, snapshot.history)
+            == (self.roots, self.errors, self.history)
+            else [
+                ReviewScopeEvent(
+                    roots=snapshot.roots,
+                    errors=snapshot.errors,
+                    history=snapshot.history,
+                )
+            ]
         )
         return [
             *scope,
@@ -317,6 +335,7 @@ class LiveState:
                     self.reviews.values(), key=lambda row: row.created, reverse=True
                 ),
                 errors=self.errors,
+                history=self.history,
             ),
             code=self.code,
         )

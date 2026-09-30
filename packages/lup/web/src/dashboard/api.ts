@@ -1,4 +1,4 @@
-import type { ReplyOutcome, ReplyRequest, ReviewAnswer, ReviewDecision, ReviewDetail, ReviewRemarkRequest, ReviewSnapshot, SetupPane, StreamFrame } from "../generated/views";
+import type { ReplyOutcome, ReplyRequest, ReviewAnswer, ReviewDecision, ReviewDetail, ReviewHistory, ReviewRemarkRequest, ReviewSnapshot, SetupPane, StreamFrame } from "../generated/views";
 
 /** Where this origin keeps the operator's capability, and the key a storage event names. */
 export const TOKEN_KEY = "lup-dashboard-token";
@@ -70,6 +70,16 @@ export async function readReview(key: string, token: string, signal?: AbortSigna
   return (await accepted(await fetch(`api/reviews/${encodeURIComponent(key)}`, {
     headers: authorization(token), signal,
   }))).json();
+}
+
+/**
+ * One page of History: `limit` of the reviews that left the queue, most recently settled first, from `offset`.
+ * Naming a `review` reads the ones it links to instead, wherever in History they stand.
+ */
+export async function readHistory(offset: number, limit: number, token: string, signal?: AbortSignal, review: ReviewLink | null = null): Promise<ReviewHistory> {
+  const query = new URLSearchParams({ offset: String(offset), limit: String(limit),
+    ...(review === null ? {} : { review: review.id, ...(review.root === null ? {} : { root: review.root }) }) });
+  return (await accepted(await fetch(`api/reviews/history?${query}`, { headers: authorization(token), signal }))).json();
 }
 
 export async function answerReview(key: string, answer: ReviewAnswer, token: string): Promise<ReviewDecision> {

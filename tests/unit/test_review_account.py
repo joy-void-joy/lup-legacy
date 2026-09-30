@@ -26,7 +26,6 @@ from lup.coordination.identity import MEMBER_ENV
 from lup.coordination.repository import RepositoryPeers
 from lup.devtools.review.app import ReviewDetail, create_review_app
 from lup.policy.assets.host import (
-    append_review_record,
     records_backwards,
     review_fingerprint,
     words_before,
@@ -82,8 +81,10 @@ def hooked(
 
 
 def parked(root: Path) -> PersistentQuestion:
-    (question,) = QuestionRelay(root / ".lup/questions.jsonl").pending()
-    return question
+    """The one question waiting, read back whole from the relay's store."""
+    store = QuestionRelay(root / ".lup/questions.jsonl")
+    (question,) = store.pending()
+    return store.resolve(question)
 
 
 def lines(path: Path, records: list[JsonObject]) -> Path:
@@ -434,7 +435,9 @@ def test_a_record_parked_before_the_scheme_was_kept_still_checks(root: Path) -> 
             "unpreviewed": legacy["unpreviewed"],
         },
     )
-    append_review_record(root / ".lup/questions.jsonl", json.dumps(legacy))
+    QuestionRelay(root / ".lup/questions.jsonl").record(
+        PersistentQuestion.model_validate(legacy)
+    )
 
     older = parked(root)
     assert older.scheme is None and older.segments is None

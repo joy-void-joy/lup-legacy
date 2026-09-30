@@ -15,7 +15,7 @@ from time import sleep
 
 import pytest
 
-from lup.policy.assets.host import review_records
+from lup.policy.assets.host import relay_header, review_records
 from lup.policy.kernel.semantics import ReviewerRequirement
 from lup.policy.operations import MutationFootprint, Operation
 from lup.policy.relay import (
@@ -23,6 +23,7 @@ from lup.policy.relay import (
     Principal,
     QuestionRelay,
     ReceiptKind,
+    RecordedQuestion,
     SupervisorChain,
 )
 
@@ -120,7 +121,7 @@ def delay_question_reads(monkeypatch: pytest.MonkeyPatch) -> None:
     """Expose stale-read races by holding every read before its caller appends."""
     original = QuestionRelay.find
 
-    def delayed_find(self: QuestionRelay, question: str) -> PersistentQuestion | None:
+    def delayed_find(self: QuestionRelay, question: str) -> RecordedQuestion | None:
         found = original(self, question)
         sleep(0.05)
         return found
@@ -151,7 +152,9 @@ def test_concurrent_threads_record_exactly_one_answer(
 
     assert results.count("refused") == 7
     assert results.count("approved") + results.count("rejected") == 1
-    assert len(review_records(relay.path)) == 1
+    assert [
+        record for record in review_records(relay.path) if "parked" not in record
+    ] == [relay_header()]
     assert len(review_records(relay.answers)) == 1
     settled = relay.find("q-1")
     assert settled is not None and settled.answer is not None
@@ -195,7 +198,9 @@ def test_concurrent_processes_record_exactly_one_answer(
                 process.kill()
             process.join(timeout=5)
 
-    assert len(review_records(relay.path)) == 1
+    assert [
+        record for record in review_records(relay.path) if "parked" not in record
+    ] == [relay_header()]
     assert len(review_records(relay.answers)) == 1
     settled = relay.find("q-1")
     assert settled is not None and settled.answer is not None
@@ -347,7 +352,7 @@ def test_concurrent_appenders_preserve_every_large_record(tmp_path: Path) -> Non
     ]
     with ThreadPoolExecutor(max_workers=8) as workers:
         list(workers.map(relay.record, questions))
-    assert {item.id: item for item in relay.questions()} == {
+    assert {item.id: relay.resolve(item) for item in relay.questions()} == {
         item.id: item for item in [question, *questions]
     }
 

@@ -5719,6 +5719,8 @@ def test_a_composed_session_enforces_the_rules_the_generated_tree_does() -> None
         ".lup/preflight/launch.json",
         ".lup/policy-snapshots/abc.json",
         ".lup/questions.jsonl",
+        ".lup/reviews/blobs/abc",
+        ".lup/reviews/archive.jsonl",
         ".lup/review-claims/abc",
         ".lup/review-stage-claims/abc",
     ],

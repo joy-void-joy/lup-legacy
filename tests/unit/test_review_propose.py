@@ -54,8 +54,10 @@ def staged(root: Path, files: dict[str, str], manifest: object = None) -> Path:
 
 
 def proposed(root: Path) -> PersistentQuestion:
-    (question,) = relay(root).pending()
-    return question
+    """The one proposal waiting, read back whole from the relay's store."""
+    store = relay(root)
+    (question,) = store.pending()
+    return store.resolve(question)
 
 
 def test_a_batch_parks_as_one_review_carrying_each_file_s_verdict(root: Path) -> None:

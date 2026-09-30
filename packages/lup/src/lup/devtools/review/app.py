@@ -13,6 +13,7 @@ agent's tool list: a policy whose reviewer is "whoever could reach the
 command" is one that changes when somebody adds a tool.
 """
 
+import threading
 from collections.abc import Callable, Iterator
 from datetime import UTC, datetime, timedelta
 from difflib import SequenceMatcher
@@ -24,7 +25,7 @@ from uuid import NAMESPACE_URL, uuid5
 
 import sh
 import typer
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 from rich.console import Console
 from rich.syntax import Syntax
 
@@ -39,7 +40,7 @@ from lup.devtools.review.propose import (
     proposal_of,
     previewed,
 )
-from lup.devtools.review.thread import ReviewThread, ThreadEntry
+from lup.devtools.review.thread import ReviewThread, ThreadEntry, spoken_on
 from lup.devtools.review.wait import Asker, resume_command, wait_on
 from lup.devtools.review.notifications import (
     ReviewNotification,
@@ -62,13 +63,21 @@ from lup.policy.kernel.edit import (
     resites_a_suppression,
     written_suppression,
 )
+from lup.policy.assets.host import append_review_record
 from lup.policy.relay import (
+    AppendedRecords,
     CapturedFileReview,
     PersistentQuestion,
+    QuestionRecord,
     QuestionRelay,
+    RecordedQuestion,
+    RecordedRemark,
+    Reply,
     UnpreviewedStep,
 )
 from lup.policy.review import ReviewedFile
+from lup.types import JsonObject
+from lup.workspace.paths import manifest_table
 
 
 class ReviewRoot(BaseModel, frozen=True):
@@ -131,6 +140,12 @@ class ReviewSummary(BaseModel, frozen=True):
 
     session: str = ""
     """What the roster calls the session that asked, where it knows it."""
+
+    settled: datetime | None = None
+    """When it left the waiting queue, which History is ordered by; nothing while it waits."""
+
+    archived: bool = False
+    """Whether it was retired to the archive, keeping its record and summary but not its documents."""
 
     @staticmethod
     def key_for(root: Path, question_id: str) -> str:
@@ -247,7 +262,42 @@ class ReviewSummary(BaseModel, frozen=True):
             ],
             said=said,
             target=str(target),
+            settled=settled_at(question),
         )
+
+    @classmethod
+    def retired(cls, root: Path, entry: "ArchivedReview") -> "ReviewSummary":
+        """An archived review's row, from what the archive kept of how it read."""
+        question = entry.question
+        return cls(
+            key=cls.key_for(root, question.id),
+            root_id=ReviewRoot.of(root).id,
+            id=question.id,
+            state=question.state,
+            requester=question.operation.requester,
+            reason=question.reason,
+            title=entry.title,
+            paths=entry.paths,
+            total_files=entry.total_files,
+            operation=question.operation.summary(),
+            rule=question.rule,
+            created=question.created,
+            answerable=False,
+            stale=[
+                MovedPreimage(path=path, cause="changed") for path in question.moved
+            ],
+            said=sum(said.kind != "answer" for said in entry.thread),
+            target=entry.target,
+            settled=settled_at(question),
+            archived=True,
+        )
+
+
+def settled_at(question: QuestionRecord) -> datetime | None:
+    """When a review left the waiting queue: when it came to its state, its expiry for one that lapsed, nothing while it waits."""
+    if question.state != "pending":
+        return question.since()
+    return question.expires if question.overdue() else None
 
 
 class ReviewLine(BaseModel, frozen=True):
@@ -630,11 +680,64 @@ class ReviewFile(BaseModel, frozen=True):
         )
 
 
+def requested_command(question: QuestionRecord) -> str | None:
+    """The command a shell call asks to run, or ``None`` where the call is not one."""
+    payload = question.operation.payload
+    requested = payload["command"] if "command" in payload else None
+    return (
+        requested
+        if question.operation.tool == "Bash" and isinstance(requested, str)
+        else None
+    )
+
+
+class ReviewDocuments(BaseModel, frozen=True):
+    """What a review shows of the documents it binds, worked out once for its fingerprint.
+
+    Each file as a diff with its markers and exceptions, and why any is not
+    shown: nothing here moves while the review keeps its fingerprint, so a
+    reader that shows the same review again -- the answer that settles it
+    included -- reuses it rather than diffing every document anew.
+    """
+
+    changes: list[ReviewedFile]
+    files: list[ReviewFile]
+    unavailable: str
+    notice: str = ""
+
+    @classmethod
+    def of(cls, entry: PersistentQuestion) -> "ReviewDocuments":
+        preview = previewed(entry)
+        proposal = proposal_of(entry)
+        about = (
+            {proposed.path: proposed.about for proposed in proposal.files}
+            if proposal is not None
+            else {}
+        )
+        return cls(
+            changes=preview.files,
+            files=[
+                ReviewFile.of(
+                    change,
+                    entry.file_reviews,
+                    about[change.path] if change.path in about else "",
+                )
+                for change in preview.files
+            ],
+            unavailable=preview.unavailable,
+            notice=preview.notice,
+        )
+
+
 class ReviewDetail(BaseModel, frozen=True):
-    """Everything the operator reviews before answering."""
+    """Everything the operator reviews before answering.
+
+    ``question`` is the record as the relay keeps it, each document named by
+    digest; the documents themselves are ``files``.
+    """
 
     summary: ReviewSummary
-    question: PersistentQuestion
+    question: RecordedQuestion
     files: list[ReviewFile]
     command: str | None
     preview_unavailable: str
@@ -645,46 +748,50 @@ class ReviewDetail(BaseModel, frozen=True):
 
     @classmethod
     def of(
-        cls, root: Path, entry: PersistentQuestion, principal: str
+        cls,
+        root: Path,
+        entry: PersistentQuestion,
+        principal: str,
+        store: QuestionRelay | None = None,
+        documents: ReviewDocuments | None = None,
     ) -> "ReviewDetail":
-        preview = previewed(entry)
-        proposal = proposal_of(entry)
-        about = (
-            {proposed.path: proposed.about for proposed in proposal.files}
-            if proposal is not None
-            else {}
+        """One review whole, its thread read through *store* and its documents reused where given."""
+        shown = documents if documents is not None else ReviewDocuments.of(entry)
+        thread = ReviewThread.of(store if store is not None else relay(root)).said(
+            entry
         )
-        files = [
-            ReviewFile.of(
-                change,
-                entry.file_reviews,
-                about[change.path] if change.path in about else "",
-            )
-            for change in preview.files
-        ]
-        payload = entry.operation.payload
-        requested = payload["command"] if "command" in payload else None
-        command = (
-            requested
-            if entry.operation.tool == "Bash" and isinstance(requested, str)
-            else None
-        )
-        thread = ReviewThread.of(relay(root)).said(entry)
         return cls(
             summary=ReviewSummary.from_files(
                 root,
                 entry,
                 principal,
-                preview.files,
+                shown.changes,
                 sum(said.kind != "answer" for said in thread),
             ),
-            question=entry,
-            files=files,
-            command=command,
-            preview_unavailable=preview.unavailable,
-            preview_notice=preview.notice,
+            question=entry.recorded(),
+            files=shown.files,
+            command=requested_command(entry),
+            preview_unavailable=shown.unavailable,
+            preview_notice=shown.notice,
             notification=ReviewNotifications(root=root).read(entry),
             thread=thread,
+        )
+
+    @classmethod
+    def retired(cls, root: Path, entry: "ArchivedReview") -> "ReviewDetail":
+        """An archived review, as far as the archive kept it: its record, its summary and its thread."""
+        return cls(
+            summary=ReviewSummary.retired(root, entry),
+            question=entry.question,
+            files=[],
+            command=requested_command(entry.question),
+            preview_unavailable=(
+                f"Archived {entry.archived:%Y-%m-%d}, past the retention window: "
+                "its documents left the relay's store, and its record, summary "
+                "and thread are what remain."
+            ),
+            notification=ReviewNotifications(root=root).read(entry.question),
+            thread=entry.thread,
         )
 
 
@@ -706,7 +813,7 @@ class QuestionView(BaseModel, frozen=True):
     note: str = ""
 
     @classmethod
-    def of(cls, question: PersistentQuestion) -> "QuestionView":
+    def of(cls, question: QuestionRecord) -> "QuestionView":
         return cls(
             id=question.id,
             state=question.state,
@@ -768,7 +875,7 @@ class RequesterPresence(BaseModel, frozen=True):
 
         return cls(sessions={**sighted(False), **sighted(True)})
 
-    def sightings(self, question: PersistentQuestion) -> list[Sighting]:
+    def sightings(self, question: QuestionRecord) -> list[Sighting]:
         """What the roster knows of the session that asked, by either identity."""
         operation = question.operation
         return [
@@ -777,7 +884,7 @@ class RequesterPresence(BaseModel, frozen=True):
             if identity and identity in self.sessions
         ]
 
-    def called(self, question: PersistentQuestion) -> str:
+    def called(self, question: QuestionRecord) -> str:
         """What the session that asked is called: its roster name, else its id."""
         operation = question.operation
         return next(
@@ -785,9 +892,7 @@ class RequesterPresence(BaseModel, frozen=True):
             operation.requester or operation.session,
         )
 
-    def gone(
-        self, question: PersistentQuestion, now: datetime, grace: timedelta
-    ) -> bool:
+    def gone(self, question: QuestionRecord, now: datetime, grace: timedelta) -> bool:
         """Whether no session that could retry this question runs any more.
 
         Gone at once where the roster saw its requester leave; after ``grace``
@@ -804,35 +909,219 @@ def expire_orphaned(
     root: Path,
     presence: RequesterPresence | None = None,
     grace: timedelta = timedelta(hours=1),
-) -> list[PersistentQuestion]:
+    store: QuestionRelay | None = None,
+) -> list[RecordedQuestion]:
     """Expire every review in this checkout whose requester is gone.
 
     Its answer could release nothing: a native retry comes only from the
     session that asked, and a coordinator dispatches only for the run that
     parked it. Left pending, such a review is a question nobody is waiting
-    on, and a queue of them buries the ones somebody is.
+    on, and a queue of them buries the ones somebody is. The roster is read
+    only where something waits.
     """
+    held = store if store is not None else relay(root)
+    waiting = held.pending()
+    if not waiting:
+        return []
     seen = presence if presence is not None else RequesterPresence.of(root)
     now = datetime.now(UTC)
-    store = relay(root)
-    return store.expire(
-        [entry.id for entry in store.pending() if seen.gone(entry, now, grace)],
+    return held.expire(
+        [entry.id for entry in waiting if seen.gone(entry, now, grace)],
         "its requester ended: no session that could retry it is running",
     )
 
 
-def retire_moved(root: Path, by: str) -> list[PersistentQuestion]:
+def retire_moved(
+    root: Path, by: str, store: QuestionRelay | None = None
+) -> list[RecordedQuestion]:
     """Retire every waiting review in this checkout a recorded file moved under.
 
     No approval could release one any more, so it leaves the queue as
     ``stale`` and its requester asks again against what stands now.
     """
-    store = relay(root)
+    held = store if store is not None else relay(root)
     return [
-        store.retire_stale(entry.id, [each.path for each in drifted], by)
-        for entry in store.pending()
+        held.retire_stale(entry.id, [each.path for each in drifted], by)
+        for entry in held.pending()
         if (drifted := moved(entry))
     ]
+
+
+def at_rest(question: QuestionRecord) -> bool:
+    """Whether a review came to a state nothing moves it out of again.
+
+    Carried out, whether or not it succeeded or anybody saw it finish;
+    declined; withdrawn; lapsed; or retired as stale.
+    """
+    match question.state:
+        case (
+            "completed"
+            | "failed"
+            | "in_doubt"
+            | "rejected"
+            | "cancelled"
+            | "expired"
+            | "stale"
+        ):
+            return True
+    return False
+
+
+def review_retention_days(root: Path) -> int:
+    """How many days a settled review keeps its documents before it moves to the archive.
+
+    A week unless the checkout's `pyproject.toml` says otherwise, as
+    ``review-retention-days`` under ``[tool.lup]``: long enough to reread
+    what a week of sessions asked and was answered, diffs and all; short
+    enough that the relay holds a week's reviews rather than every one ever
+    parked, which is what every reader of it -- a hook on each call, the
+    dashboard every second -- pays for. Past it the archive keeps each
+    review's record, summary and thread, never its documents.
+    """
+    match manifest_table(root / "pyproject.toml"):
+        case {"tool": {"lup": {"review-retention-days": int(days)}}} if (
+            days >= 0 and not isinstance(days, bool)
+        ):
+            return days
+    return 7
+
+
+class ArchivedReview(BaseModel, frozen=True):
+    """One settled review the relay retired, as the archive keeps it.
+
+    Its record, as the relay kept it; how it read -- its title, the files it
+    named, the checkout they are relative to -- worked out while its
+    documents were still in the store, since they left with it; and
+    everything said on it.
+    """
+
+    question: RecordedQuestion
+    title: str
+    paths: list[str]
+    total_files: int
+    target: str
+    thread: list[ThreadEntry] = []
+    archived: datetime
+
+    @classmethod
+    def of(
+        cls,
+        root: Path,
+        store: QuestionRelay,
+        entry: RecordedQuestion,
+        remarks: dict[str, list[RecordedRemark]],
+        replies: dict[str, list[Reply]],
+        at: datetime,
+    ) -> "ArchivedReview":
+        """One review as it reads now, kept for after its documents are gone.
+
+        A review whose documents cannot be read back is summarized from its
+        record alone, which names its command or tool.
+        """
+        thread = spoken_on(entry, remarks, replies)
+        said = sum(each.kind != "answer" for each in thread)
+        try:
+            summary = ReviewSummary.of(root, store.resolve(entry), "operator", said)
+        except ValueError:
+            summary = ReviewSummary.from_files(
+                root,
+                PersistentQuestion.model_validate(
+                    entry.model_dump(exclude={"preconditions", "file_reviews"})
+                ),
+                "operator",
+                [],
+                said,
+            )
+        return cls(
+            question=entry,
+            title=summary.title,
+            paths=summary.paths,
+            total_files=summary.total_files,
+            target=summary.target,
+            thread=thread,
+            archived=at,
+        )
+
+
+class ArchivedReviews(BaseModel):
+    """What one archive has read so far: each review it keeps, by id."""
+
+    kept: dict[str, ArchivedReview] = {}
+
+
+class ReviewArchive:
+    """One relay's archive of retired reviews, beside its store, read from where the last read stopped.
+
+    Appended to as reviews retire, and read back by id: a review archived
+    twice -- two sweeps that both caught it before either removed it -- is
+    the later copy.
+    """
+
+    def __init__(self, store: QuestionRelay) -> None:
+        self.path = store.store / "archive.jsonl"
+        self.log = AppendedRecords(self.path)
+        self.read = ArchivedReviews()
+        self.reading = threading.Lock()
+
+    def reviews(self) -> dict[str, ArchivedReview]:
+        """Every archived review, by id."""
+
+        def valid(records: list[JsonObject]) -> Iterator[ArchivedReview]:
+            for record in records:
+                try:
+                    yield ArchivedReview.model_validate(record)
+                except ValidationError:
+                    continue
+
+        with self.reading:
+            appended = self.log.read()
+            if appended.began:
+                self.read = ArchivedReviews()
+            self.read.kept.update(
+                {archived.question.id: archived for archived in valid(appended.records)}
+            )
+            return dict(self.read.kept)
+
+    def keep(self, reviews: list[ArchivedReview]) -> None:
+        """Append these reviews to the archive."""
+        for review in reviews:
+            append_review_record(self.path, review.model_dump_json())
+
+
+def retire_settled(
+    root: Path,
+    store: QuestionRelay | None = None,
+    archive: ReviewArchive | None = None,
+    now: datetime | None = None,
+    batch: int = 200,
+) -> list[str]:
+    """Move each review settled longer ago than the retention window into the archive.
+
+    Worked out from the fold already read, so a checkout with nothing past
+    the window costs nothing more. Each one's summary and thread are worked
+    out while its documents are still in the store, kept in the archive
+    under the relay's lock, and only then dropped from the log, its
+    documents with it (:meth:`~lup.policy.relay.QuestionRelay.retire`). At
+    most *batch* a call, so a checkout with a long history catching up
+    spreads the work over several sweeps rather than holding one.
+    """
+    held = store if store is not None else relay(root)
+    moment = now or datetime.now(UTC)
+    window = timedelta(days=review_retention_days(root))
+    due = [
+        entry
+        for entry in held.questions()
+        if at_rest(entry) and moment - entry.since() >= window
+    ][:batch]
+    if not due:
+        return []
+    kept_in = archive if archive is not None else ReviewArchive(held)
+    remarks, replies = held.remarks(), held.replies()
+    archived = [
+        ArchivedReview.of(root, held, entry, remarks, replies, moment) for entry in due
+    ]
+    held.retire([entry.id for entry in due], lambda: kept_in.keep(archived))
+    return [entry.id for entry in due]
 
 
 def listing(root: Path, principal: str, everything: bool, as_json: bool) -> None:
@@ -841,14 +1130,25 @@ def listing(root: Path, principal: str, everything: bool, as_json: bool) -> None
     Narrowed by eligibility rather than by ownership, because a supervisor
     shown a question it may not answer is a supervisor about to try — and the
     refusal it then gets teaches it nothing about which questions are its.
-    A review whose requester is gone is expired first, and one a recorded
-    file moved under is retired as stale, so what is listed as
-    waiting is something a session still waits on.
+    A review whose requester is gone is expired first, one a recorded file
+    moved under is retired as stale, and one settled past the retention
+    window moves to the archive, so what is listed as waiting is something a
+    session still waits on. ``--all`` lists the archived ones too, first,
+    from what the archive kept.
     """
-    expire_orphaned(root)
-    retire_moved(root, "review list")
     store = relay(root)
-    questions = store.questions() if everything else store.pending(principal)
+    expire_orphaned(root, store=store)
+    retire_moved(root, "review list", store)
+    retire_settled(root, store)
+    archived = (
+        [kept.question for kept in ReviewArchive(store).reviews().values()]
+        if everything
+        else []
+    )
+    questions: list[QuestionRecord] = [
+        *archived,
+        *(store.questions() if everything else store.pending(principal)),
+    ]
     if as_json:
         output_json([QuestionView.of(entry).model_dump() for entry in questions])
         return
@@ -940,12 +1240,23 @@ def show(
 
     The operation whole rather than summarized, because what an approval binds
     to is what a reviewer should have been able to read: an approval given
-    against a summary is an approval of the summary.
+    against a summary is an approval of the summary. A review retired to the
+    archive shows what the archive kept of it, since its documents are gone.
     """
-    entry = relay(root).find(question)
-    if entry is None:
+    store = relay(root)
+    found = store.find(question)
+    kept = ReviewArchive(store).reviews() if found is None else {}
+    if found is None and question in kept:
+        shown_archived(kept[question], as_json)
+        return
+    if found is None:
         typer.echo(f"no review {question!r} is recorded", err=True)
         raise typer.Exit(2)
+    try:
+        entry = store.resolve(found)
+    except ValueError as unread:
+        typer.echo(f"review {question!r} cannot be read back whole: {unread}", err=True)
+        raise typer.Exit(2) from unread
     if as_json:
         output_json(entry.model_dump(mode="json"))
         return
@@ -982,12 +1293,17 @@ def show(
             typer.echo(
                 f"  preimage {path}\n{before if before is not None else '(absent)'}"
             )
+    told(entry, ReviewThread.of(store).said(entry))
+
+
+def told(entry: QuestionRecord, thread: list[ThreadEntry]) -> None:
+    """Print how a review was answered, and everything said on it."""
     if entry.answer is not None:
         typer.echo(
             f"  answered    {'yes' if entry.answer.approved else 'no'}"
             f" by {entry.answer.principal} ({entry.answer.receipt})"
         )
-    for said in ReviewThread.of(relay(root)).said(entry):
+    for said in thread:
         match said.kind:
             case "answer":
                 heading = "note"
@@ -999,6 +1315,24 @@ def show(
             typer.echo(f"  {heading}: {said.text}")
         for comment in said.comments:
             typer.echo(f"    {comment.spelled(entry.operation.worktree)}")
+
+
+def shown_archived(kept: ArchivedReview, as_json: bool) -> None:
+    """Print a review the archive keeps: its record, how it read, and what was said on it."""
+    if as_json:
+        output_json(kept.model_dump(mode="json"))
+        return
+    entry = kept.question
+    typer.echo(entry.summary())
+    typer.echo(f"  requester   {entry.operation.requester}")
+    typer.echo(f"  rule        {entry.rule or 'unattributed'}")
+    typer.echo(f"  fingerprint {entry.fingerprint}")
+    typer.echo(
+        f"  archived    {kept.archived:%Y-%m-%d}, its documents gone: {kept.title}"
+    )
+    for path in kept.paths:
+        typer.echo(f"    {path}")
+    told(entry, kept.thread)
 
 
 def reply(root: Path, question: str, text: str) -> None:

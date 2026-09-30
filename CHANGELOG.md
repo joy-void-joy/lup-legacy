@@ -2,6 +2,32 @@
 
 ## Unreleased
 
+### The review relay keeps each question once, and the page reads rows
+
+`.lup/questions.jsonl` opens with `{"relay": 2}` and keeps one record per
+question as it was parked -- every document it binds (a preimage, a verdict's
+after-document) stored once in `.lup/reviews/blobs/<sha256>` and named by
+digest -- and a small transition per state it moves to, never a full copy.
+The first open under the relay's lock rewrites an older log into this shape;
+fingerprints and the host's answers are unchanged. `QuestionRelay` folds to
+`RecordedQuestion` and reads only what was appended since its last read;
+`resolve()` reads a question back whole as `PersistentQuestion` where its
+documents or fingerprint are needed. Settled reviews older than `[tool.lup]
+review-retention-days` (seven days by default) move to
+`.lup/reviews/archive.jsonl` with their summary and thread, and the documents
+nothing else names are swept, on the dashboard's sweep and `review list`;
+`review list --all`, `review show` and History still reach them. The
+dashboard keeps one store for the stream, every route, the herald and the
+sweep; the stream carries every waiting review and the fifty most recently
+settled as rows, a review's detail is read when it is opened and the next one
+ahead of time, older History is paged (`GET /api/reviews/history`), and an
+answer reads only its own review. Measured on a copy of tree/dev's 41.6 MB
+log (1201 reviews): the one-time rewrite takes 0.3 s and leaves a 3.5 MB log
+beside 7.1 MB of documents, and 0.8 MB once the 1044 reviews past a week are
+archived; a fold goes from 0.25 s to 0.1 s, then 0.02 s; the first snapshot
+from 1.4 s and 957 KB to 0.3-0.4 s and 54 KB; an answer from 0.8-0.9 s to
+5 ms once the review is open; a hook's park from 0.2 s to 0.01 s.
+
 ### A parked call keeps the asker's account, and each command of its line
 
 `PersistentQuestion.account` holds what the asker said the call is for, each

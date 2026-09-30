@@ -54,20 +54,25 @@ def test_selection_never_projects_unrelated_questions(
 
     match action:
         case "locate":
-            assert store.locate(key).question == entry
+            assert store.locate(key).question == entry.recorded()
             preview.assert_not_called()
         case "detail":
-            assert store.detail(key).question == entry
+            assert store.detail(key).question == entry.recorded()
             preview.assert_called_once_with(entry, patch_review)
         case "answer":
             result = store.answer(
                 key, ReviewAnswer(approved=True, fingerprint=entry.fingerprint)
             )
             assert result.review.question.state == "approved"
-            preview.assert_called_once_with(result.review.question, patch_review)
+            ((shown, reader),) = [call.args for call in preview.call_args_list]
+            assert (shown.id, shown.state, reader) == (
+                entry.id,
+                "approved",
+                patch_review,
+            )
     standalone.assert_not_called()
-    assert questions.relay(other).find(unrelated.id) == unrelated
-    assert questions.relay(selected).find(preceding.id) == preceding
+    assert questions.relay(other).find(unrelated.id) == unrelated.recorded()
+    assert questions.relay(selected).find(preceding.id) == preceding.recorded()
 
 
 @pytest.mark.parametrize("unavailable", [False, True])
@@ -82,7 +87,10 @@ def test_lookup_preserves_missing_key_and_unavailable_queue_errors(
     standalone = Mock(side_effect=AssertionError("Lookup must not project history"))
     monkeypatch.setattr(ReviewSummary, "of", standalone)
 
-    assert store.locate(ReviewSummary.key_for(healthy, entry.id)).question == entry
+    assert (
+        store.locate(ReviewSummary.key_for(healthy, entry.id)).question
+        == entry.recorded()
+    )
     with pytest.raises(HTTPException) as error:
         store.locate("unknown")
     assert error.value.status_code == (503 if unavailable else 404)

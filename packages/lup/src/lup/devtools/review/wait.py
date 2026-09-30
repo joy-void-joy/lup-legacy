@@ -56,13 +56,17 @@ from lup.coordination.repository import RepositoryPeers
 from lup.coordination.wake import WakePath, wake
 from lup.devtools.review.preimages import PreimageWatch, moved
 from lup.devtools.review.propose import previewed
-from lup.devtools.review.thread import RecordedRemark, Remark, ReviewThread
+from lup.devtools.review.thread import ReviewThread
 from lup.policy.kernel.review import literal_input
 from lup.policy.relay import (
     LineComment,
     PersistentQuestion,
+    QuestionRecord,
     QuestionRelay,
+    RecordedQuestion,
+    RecordedRemark,
     RelaySignature,
+    Remark,
 )
 from lup.policy.review import ReviewedFile
 from lup.providers.identity import native_session_ids
@@ -241,7 +245,7 @@ class Asker(BaseModel, frozen=True):
             worktree=row.worktree if row is not None else "",
         )
 
-    def asked(self, question: PersistentQuestion) -> bool:
+    def asked(self, question: QuestionRecord) -> bool:
         """Whether this session parked the question, or a subagent of its did."""
         return question.operation.session in self.sessions or bool(
             self.member and question.member == self.member
@@ -297,7 +301,7 @@ def written(files: list[ReviewedFile], review: str) -> str:
     return ", ".join(str(change.path) for change in files)
 
 
-def ran(question: PersistentQuestion, command: str) -> int:
+def ran(question: QuestionRecord, command: str) -> int:
     """Run one approved command where it was asked, its output this waiter's own."""
     typer.echo(f"$ {command}")
     finished = sh.Command("bash")(
@@ -313,7 +317,7 @@ def ran(question: PersistentQuestion, command: str) -> int:
     return finished.exit_code
 
 
-def claimed(root: Path, question: PersistentQuestion) -> bool:
+def claimed(root: Path, question: QuestionRecord) -> bool:
     """Spend the approval, or learn a retried call or another waiter already did.
 
     The claim the hook takes for a retry, under the same name, so exactly
@@ -338,14 +342,15 @@ def claimed(root: Path, question: PersistentQuestion) -> bool:
 
 
 def carried_out(
-    root: Path, store: QuestionRelay, question: PersistentQuestion
+    root: Path, store: QuestionRelay, question: RecordedQuestion
 ) -> WaitedReview:
     """Carry out one approved review here, or say why it is not.
 
     Checked in the order that spends nothing on a refusal: the record still
-    shows what the operator approved, the call is one a shell here can carry
-    out, and every file it recorded stands as it did; only then is the
-    approval spent and the call made.
+    shows what the operator approved, read back whole from the relay's
+    store, the call is one a shell here can carry out, and every file it
+    recorded stands as it did; only then is the approval spent and the call
+    made.
     """
     tool = question.operation.tool
 
@@ -361,15 +366,24 @@ def carried_out(
             "review, so it cannot check the approval covers it; nothing ran",
             False,
         )
-    if not question.bound():
+    try:
+        shown = store.resolve(question)
+    except ValueError as unread:
+        return settled(
+            "conflict",
+            f"the review cannot be read back whole ({unread}), so its approval "
+            "covers nothing it can check; nothing ran",
+            False,
+        )
+    if not shown.bound():
         return settled(
             "conflict",
             "the review changed after it was parked, so its approval covers "
             "something else; nothing ran",
             False,
         )
-    files = edits(question)
-    payload = question.execution_payload or question.operation.payload
+    files = edits(shown)
+    payload = shown.execution_payload or shown.operation.payload
     command = payload["command"] if "command" in payload else None
     if files is None and (tool != "Bash" or not isinstance(command, str)):
         return settled(
@@ -415,7 +429,7 @@ def carried_out(
 
 
 def settled_now(
-    root: Path, store: QuestionRelay, question: PersistentQuestion
+    root: Path, store: QuestionRelay, question: RecordedQuestion
 ) -> WaitedReview | None:
     """What one review came to, or ``None`` while it still waits.
 
@@ -478,7 +492,7 @@ class WaitRefused(ValueError):
 
 def chosen(
     store: QuestionRelay, asker: Asker, reviews: list[str]
-) -> list[PersistentQuestion]:
+) -> list[RecordedQuestion]:
     """The reviews to wait on: those named, else every one this session has waiting.
 
     Waiting is unanswered, or approved and not yet carried out. A named
@@ -508,7 +522,7 @@ def chosen(
 def settling(
     root: Path,
     store: QuestionRelay,
-    waiting: list[PersistentQuestion],
+    waiting: list[RecordedQuestion],
     heard: list[RecordedRemark],
     stop: "StopRequest",
     poll: float = 1.0,

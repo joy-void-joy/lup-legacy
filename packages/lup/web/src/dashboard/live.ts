@@ -57,7 +57,7 @@ export function applied(state: LiveState | null, frame: StreamFrame): LiveState 
       code: event.code,
     };
   }
-  const base: LiveState = { ...(state ?? { repositories: new Map(), sessions: new Map(), messages: new Map(), reviews: { roots: [], reviews: [], errors: [] }, code: UNSAID }), cursor: frame.cursor };
+  const base: LiveState = { ...(state ?? { repositories: new Map(), sessions: new Map(), messages: new Map(), reviews: { roots: [], reviews: [], errors: [], history: 0 }, code: UNSAID }), cursor: frame.cursor };
   switch (event.type) {
     case "repository": return { ...base, repositories: set(base.repositories, event.repository.key, event.repository) };
     case "repository_gone": return { ...base, repositories: without(base.repositories, event.key) };
@@ -69,7 +69,7 @@ export function applied(state: LiveState | null, frame: StreamFrame): LiveState 
       return { ...base, reviews: { ...base.reviews, reviews: newestFirst([...others, event.review]) } };
     }
     case "review_gone": return { ...base, reviews: { ...base.reviews, reviews: base.reviews.reviews.filter((row) => row.key !== event.key) } };
-    case "review_scope": return { ...base, reviews: { ...base.reviews, roots: event.roots, errors: event.errors } };
+    case "review_scope": return { ...base, reviews: { ...base.reviews, roots: event.roots, errors: event.errors, history: event.history } };
     case "service": return { ...base, code: event.code };
   }
 }

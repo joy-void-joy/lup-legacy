@@ -38,6 +38,7 @@ def test_operator_refresh_cannot_be_called_by_a_requesting_session(prefix: str) 
         ".lup/preflight/session.json",
         ".lup/policy-snapshots/digest/runtime/policy_data.py",
         ".lup/questions.jsonl",
+        ".lup/reviews/blobs/0123abcd",
         ".lup/review-claims/review-id",
         ".lup/review-stage-claims/review-id/stage-digest",
     ],
