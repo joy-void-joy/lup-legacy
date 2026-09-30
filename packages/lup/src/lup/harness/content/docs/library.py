@@ -64,13 +64,6 @@ def imported_modules(text: str) -> tuple[str, ...]:
     return tuple(name for node in ast.walk(ast.parse(text)) for name in named(node))
 
 
-class RosterEntry(BaseModel, frozen=True):
-    """One top-level entry, and the authored answer to why it is one."""
-
-    package: str
-    solves: str
-
-
 class TieredEntry(BaseModel, frozen=True):
     """One entry a section above the roster already describes, and which one.
 

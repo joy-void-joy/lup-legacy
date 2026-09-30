@@ -20,7 +20,6 @@ from lup.observability.display import (
     ColorAssigner,
     format_duration,
     print_block,
-    print_message,
     resolve_color_tag,
 )
 from lup.observability.trace import (
@@ -29,8 +28,6 @@ from lup.observability.trace import (
     read_trace_events,
 )
 from lup.types import (
-    LupAssistantMessage,
-    LupSystemMessage,
     LupTextBlock,
     LupThinkingBlock,
     LupToolResultBlock,
@@ -277,32 +274,6 @@ def test_prose_blocks_render_their_glyph_and_body(
     assert "💭 [redacted]" in shown
 
 
-def test_message_renders_every_block_in_order(
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    message = LupAssistantMessage(
-        content=[
-            LupTextBlock(text="reading it"),
-            LupToolUseBlock(id="m-1", name="Grep", input={"pattern": "x"}),
-        ]
-    )
-
-    print_message(message, prefix="> ", colors=ColorAssigner())
-
-    shown = displayed(capsys)
-    assert "> 💬 reading it" in shown
-    assert "> 🔧 Tool: Grep " in shown
-    assert shown.index("reading it") < shown.index("Tool: Grep")
-
-
-def test_message_without_blocks_prints_nothing(
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    print_message(LupSystemMessage(subtype="status", data="init"))
-
-    assert displayed(capsys) == ""
-
-
 def test_trace_argument_accumulates_what_it_printed(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -311,22 +282,20 @@ def test_trace_argument_accumulates_what_it_printed(
     trace = TraceLogger(trace_path=tmp_path / "t.md", title="S")
     header = len(trace.entries)
     payload = "y" * 600
-    message = LupAssistantMessage(
-        content=[
-            LupTextBlock(text="reading it"),
-            LupToolUseBlock(id="fan-1", name="Read", input={"file_path": "x.py"}),
-            LupToolResultBlock(tool_use_id="fan-1", content=payload),
-        ]
-    )
+    blocks = [
+        LupTextBlock(text="reading it"),
+        LupToolUseBlock(id="fan-1", name="Read", input={"file_path": "x.py"}),
+        LupToolResultBlock(tool_use_id="fan-1", content=payload),
+    ]
+    colors = ColorAssigner()
 
-    print_message(message, trace=trace, colors=ColorAssigner())
+    for block in blocks:
+        print_block(block, trace=trace, colors=colors)
 
     shown = displayed(capsys)
     # One entry per block, paired positionally: a trace written from its own
     # second walk could drift in count or order without the console noticing.
-    for block, entry in zip(
-        message.content_blocks, trace.entries[header:], strict=True
-    ):
+    for block, entry in zip(blocks, trace.entries[header:], strict=True):
         assert block.display_emoji in shown
         assert block.display_label in entry.content
         assert block.display_body in entry.content

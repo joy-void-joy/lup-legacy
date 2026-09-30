@@ -378,13 +378,6 @@ class BoundaryDirective(BaseModel):
     file_level: bool = False
 
 
-def native_module(name: str) -> bool:
-    """Recognize only concrete named adapter packages."""
-    return any(
-        name == prefix or name.startswith(f"{prefix}.") for prefix in NATIVE_PREFIXES
-    )
-
-
 def import_violations(
     text: str,
     rel_path: Path = Path(""),

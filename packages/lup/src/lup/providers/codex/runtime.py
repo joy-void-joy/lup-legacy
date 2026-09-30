@@ -1304,13 +1304,14 @@ class CodexSessionOpener:
             CodexTurnToolBinder(state),
             gate_resolver=config.submission_gate_resolver,
         )
+        lowered = config.turn_corrections()
         corrected = DecoratingSession(
             session,
             timeout=None,
             budget=None,
             recovery=None,
-            correction=config.correction,
-            continuation=config.continuation,
+            correction=lowered.correction,
+            continuation=lowered.continuation,
             persistence=None,
         )
 
@@ -1377,7 +1378,9 @@ class CodexSessionOpener:
                     directory.cleanup()
                     scratch.cleanup()
 
-        async with config.layers.around(process(), reopened or fork_from) as engine:
+        async with config.session_layers().around(
+            process(), reopened or fork_from
+        ) as engine:
             yield CodexSession(engine, CodexRecord(state), CodexFork(state))
 
     def compiled(self) -> Codex:

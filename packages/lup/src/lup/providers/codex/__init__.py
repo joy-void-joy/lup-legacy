@@ -389,12 +389,16 @@ class Codex(
 
     environment: EnvVars = {}
     submission_gate_resolver: SubmissionGateResolver | None = None
-    correction: CorrectionConfig = CorrectionConfig()
-    continuation: CorrectionConfig = CorrectionConfig(
-        instruction="Continue according to the Stop hook feedback."
-    )
     layers: SessionLayers = SessionLayers()
-    """What every session opened here is wrapped in, turn by turn and whole."""
+    """What every session opened here is wrapped in, turn by turn and whole.
+
+    ``correction`` and ``continuation`` are read here as on every agent, and
+    applied lower than the rest: beneath the hook session, where the
+    app-server's own turn is, since a typed answer is validated and a Stop
+    hook's refusal arrives there rather than in the tool call Claude answers
+    both through. Left unset, Codex still corrects twice and continues after
+    a Stop hook twice, as :meth:`turn_corrections` answers.
+    """
 
     tools: CodexTools = CodexTools()
     """Which built-ins and MCP servers every session carries; the web alone unset.
@@ -622,3 +626,26 @@ class Codex(
     def layered(self, layers: SessionLayers) -> Self:
         """This agent with ``layers`` laid over its own, the fields set there winning."""
         return self.model_copy(update={"layers": layers.over(self.layers)})
+
+    def turn_corrections(self) -> SessionLayers:
+        """The correction and continuation a session applies beneath its hooks.
+
+        What :attr:`layers` names, and Codex's own where it names neither:
+        two correction cycles for a typed answer that fails validation, and
+        two continuations after a Stop hook refused to let the turn end.
+        """
+        return SessionLayers(
+            correction=self.layers.correction or CorrectionConfig(),
+            continuation=self.layers.continuation
+            or CorrectionConfig(
+                instruction="Continue according to the Stop hook feedback."
+            ),
+        )
+
+    def session_layers(self) -> SessionLayers:
+        """:attr:`layers` less the two :meth:`turn_corrections` applies lower down.
+
+        Laid around the whole session, so a correction left in them would
+        correct each turn a second time over the one beneath the hooks.
+        """
+        return self.layers.model_copy(update={"correction": None, "continuation": None})

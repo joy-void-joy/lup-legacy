@@ -6,7 +6,7 @@
 # lup.policy vocabulary back across the boundary this adapter exists to hold,
 # and would make the vendor's tool roster, not ours, decide when a variant is
 # added.
-"""Codex-private native event parsing and capability-aware decisions."""
+"""Codex-private native event parsing."""
 
 from pathlib import Path
 from typing import Literal
@@ -15,7 +15,6 @@ from pydantic import AnyHttpUrl, BaseModel, Field, ValidationError
 
 from lup.policy.models import (
     BeforeTool,
-    Decision,
     EditBatch,
     EditChange,
     FetchUrl,
@@ -24,7 +23,7 @@ from lup.policy.models import (
     ToolIdentity,
     UnknownTool,
 )
-from lup.policy.native import NativeDecisionRenderer, NativeEventDecoder
+from lup.policy.native import NativeEventDecoder
 from lup.types import JsonObject
 
 
@@ -139,58 +138,3 @@ class CodexEventDecoder(NativeEventDecoder[CodexBeforeToolEvent]):
                 )
         identity = ToolIdentity(original_name=name)
         return BeforeTool(tool=tool, identity=identity)
-
-
-class CodexDecisionOutput(BaseModel, frozen=True):
-    """Exit behavior for one hermetic Codex command hook."""
-
-    exit_code: int
-    stdout: str = ""
-    stderr: str = ""
-    approximation: str | None = None
-
-
-class CodexDecisionRenderer(NativeDecisionRenderer[CodexDecisionOutput]):
-    """Render approval when supported and otherwise fail closed.
-
-    A placement is degraded away here, because what this boundary returns is
-    an accept or a decline and nothing else: the call it judges runs with the
-    arguments the model wrote, so a verdict of its own has no way to move one
-    outside the sandbox. Saying so is what keeps a placement from reading as
-    honoured — dropped in silence, an escape this boundary cannot perform
-    would look performed to everything upstream of it. Codex's agent requests
-    ``outside`` on its call; :func:`~lup.providers.codex.harness.codex_allow_prefixes`
-    compiles the approval for safe outside commands, not the placement itself.
-
-    A permission to escalate survives the degrading, because it was never
-    addressed to this boundary: the agent spends it on its own next call, with
-    the words :meth:`~lup.providers.codex.harness.CodexSpellings.escape_sandbox`
-    carries.
-    """
-
-    def __init__(self, supports_ask: bool) -> None:
-        if supports_ask:
-            raise ValueError(
-                "native Codex approval rendering has not been evidenced; "
-                "ask must remain fail-closed"
-            )
-        self.supports_ask = supports_ask
-
-    def render(
-        self, decision: Decision, tool_input: JsonObject | None = None
-    ) -> CodexDecisionOutput:
-        settled = decision.placed(escapable=False)
-        match settled.effect:
-            case "allow" | "defer":
-                return CodexDecisionOutput(exit_code=0)
-            case "deny":
-                return CodexDecisionOutput(exit_code=2, stderr=settled.reason)
-            case "ask":
-                return CodexDecisionOutput(
-                    exit_code=2,
-                    stderr=(
-                        f"Approval is required but unavailable at this boundary: "
-                        f"{settled.reason}"
-                    ),
-                    approximation="ask rendered as fail-closed denial",
-                )

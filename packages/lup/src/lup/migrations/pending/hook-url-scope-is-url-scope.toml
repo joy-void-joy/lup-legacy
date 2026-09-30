@@ -1,0 +1,26 @@
+subjects = [
+    "HookUrlScope",
+    "HookUrlScope.origin",
+    "HookUrlScope.path_prefix",
+    "HookUrlScope.reason",
+    "HookUrlScope.include_subdomains",
+    "HookUrlScope.any_port",
+    "declared_scope",
+]
+reason = """
+a hook set declared its fetch scopes as `HookUrlScope`, a field-for-field \
+copy of the policy's `UrlScope` that `declared_scope` converted back, so \
+`HookSet.allowed_fetch` and `denied_fetch` take the one `UrlScope`, which \
+lives in lup.policy.models beside the path prefix it holds"""
+
+[[steps]]
+instruction = """
+Construct `UrlScope(...)` from lup.policy.models, with the same fields, \
+where you constructed `HookUrlScope(...)` from lup.harness.models, and pass \
+a declared scope straight to what took `declared_scope(scope)`."""
+command = ["uv", "run", "lup-devtools", "dev", "py", "text", "HookUrlScope", "."]
+
+[[steps]]
+instruction = """
+Import `UrlScope` from lup.policy.models where you imported it from \
+lup.policy.rules."""

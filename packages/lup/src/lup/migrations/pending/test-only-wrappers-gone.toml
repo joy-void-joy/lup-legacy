@@ -1,0 +1,23 @@
+subjects = [
+    "directory_digest",
+    "recursive_agent_allowed",
+    "latest",
+    "publish_edition",
+]
+reason = """
+each wrapped one call under a second name and only a test called it: \
+`lup.providers.codex.harness_runtime.directory_digest`, \
+`lup.sessions.recursion.recursive_agent_allowed`, \
+`lup.devtools.dev.undo.latest` and `lup.workspace.edition.publish_edition` \
+went; the ledger's `latest` and the hook runtime's `publish_edition` are \
+other functions and stay"""
+
+[[steps]]
+instruction = """
+Call what each wrapped: `digest_directory(root, Path.read_bytes)` for \
+`directory_digest(root)`; `recursive_agent_allowance(environment).remaining \
+!= 0` for `recursive_agent_allowed(environment)`; the first of \
+`points(root, namespace)` (lup.devtools.dev.undo), or None where it is \
+empty, for `latest(root, namespace)`; and `publish_atomic(path, \
+Edition(workspace=workspace, file=file))` (lup.channels.models, \
+lup.workspace.edition) for `publish_edition(path, workspace, file)`."""

@@ -374,7 +374,7 @@ Four tiers, and imports only ever point downward.
    they sit at the top level rather than inside a subject. `lup.types` is the
    portable content and tool vocabulary every other package speaks
    (`JsonValue`/`JsonObject`, `ToolName`/`ToolGrant`, `LupContentBlock`,
-   `LupMessage`, `Usage`, `SubagentSpec`); `lup.channels` is the file-backed
+   `Usage`, `SubagentSpec`); `lup.channels` is the file-backed
    primitive both durable state and inter-process rendezvous are built on;
    `lup.formats` is how a compiled artifact has to be spelled to survive being
    one, the do-not-edit banner and the escaping of a derived table's cells;
@@ -497,8 +497,8 @@ library and inside a generated plugin that cannot import it.
 primitive rows in and a decision out. It is copied *verbatim* into every
 generated tree, which is why a traceback from a hook still points at real
 canonical line numbers. Above it, `rules.py` validates application inputs as
-Pydantic surfaces and erases them into kernel rows, `chain.py` composes
-policies deny-before-ask, and `bundle.py` assembles the kernel source plus
+Pydantic surfaces and erases them into kernel rows, `chain.py` holds a call
+no family classifies at ask, and `bundle.py` assembles the kernel source plus
 rendered data rows for generation. [permissions.md](permissions.md) is the
 full lattice.
 

@@ -514,10 +514,6 @@ def refuse_codex_in_process_fields(agent: "Codex") -> None:
                 agent.layers != SessionLayers(),
                 "layers wrap sessions opened in this process",
             ),
-            (
-                bool({"correction", "continuation"} & agent.model_fields_set),
-                "corrections answer a Stop hook for a program driving the turn",
-            ),
         )
         if asked
     ]

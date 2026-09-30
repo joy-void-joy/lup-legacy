@@ -17,7 +17,6 @@ from pydantic import BaseModel
 
 from lup.providers.claude.login import CLAUDE_LOGIN
 from lup.harness.codescan.common import RuleSelection
-from lup.providers.codex.login import CODEX_LOGIN
 from lup.devtools.harness.drift import refuse_generation
 from lup.harness.generate import (
     NativeHarnessComposition,
@@ -35,11 +34,6 @@ def claude_profile_directory() -> ProfileDirectory:
     an account signed in once opens in every repository.
     """
     return profile_directory(CLAUDE_LOGIN)
-
-
-def codex_profile_directory() -> ProfileDirectory:
-    """The Codex side of the same accounts, one name meaning one person on both."""
-    return profile_directory(CODEX_LOGIN)
 
 
 @runtime_checkable

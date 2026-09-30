@@ -21,7 +21,8 @@ from lup.tools.lsp.tools import (
 from lup.harness.codescan.common import PythonSource
 from lup.harness.codescan.antipatterns import PYTHON_ANTI_PATTERNS
 from lup.harness.codescan.resolution import refute
-from lup.workspace.edition import publish_edition
+from lup.channels.models import publish_atomic
+from lup.workspace.edition import Edition
 from lup.workspace.paths import project_root
 from lup.devtools.dev.pyright_oracle import PyrightOracle, langserver_path
 
@@ -216,7 +217,7 @@ async def test_a_relative_path_follows_where_editing_is_happening(
     caller.write_text("from helpers import only_here\n\nonly_here()\n")
 
     published = tmp_path / "edition.json"
-    publish_edition(published, elsewhere, caller)
+    publish_atomic(published, Edition(workspace=elsewhere, file=caller))
 
     result = await call(
         "find_definition",

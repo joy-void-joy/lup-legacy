@@ -807,7 +807,7 @@
     {
       "path": "docs/harness.md",
       "category": "generated",
-      "sha256": "d5d97e041bff9d5533da3f54823551858fdbe4e3abb9901424dd88d72ae08932",
+      "sha256": "398bfe30c301d6d4e860f5132caadacde636302ee8e60acfbf4b7dc5d1f881ac",
       "semantic_id": "docs.harness",
       "executable": false
     },
@@ -821,14 +821,14 @@
     {
       "path": "docs/library.md",
       "category": "generated",
-      "sha256": "265aa8e039a1a976c6e8fab49fc8b1d91f5635baec387bd9d492b7bf8a59eccb",
+      "sha256": "d88e0d8c637e98944d7edff6f314f26afdc356d3a06684c1e30970d804ee4fe1",
       "semantic_id": "docs.library",
       "executable": false
     },
     {
       "path": "docs/native-capabilities.md",
       "category": "generated",
-      "sha256": "d94562c79a8d470be338ace9a933c7f175ad3af3351fc9022e3e56580533fe6e",
+      "sha256": "a60831703493fe01139e9abd5dcc0921451cdee85920f7f9b031162fbcfb9a49",
       "semantic_id": "docs.native-capabilities",
       "executable": false
     },
@@ -856,7 +856,7 @@
     {
       "path": "docs/platform-differentiation.md",
       "category": "generated",
-      "sha256": "8ff7f0d82a11b388a0d610f447154326a16f216e0eed6de40225c46ae6eb7c2b",
+      "sha256": "da61a5c790936570f590f2fa7e9fac72632620e7a7f083f5acbc4b16c1458a00",
       "semantic_id": "docs.platform-differentiation",
       "executable": false
     },

@@ -1,0 +1,14 @@
+subjects = [
+    "RosterEntry.package",
+    "RosterEntry.solves",
+]
+reason = """
+the library page's generator reads each package's row from its docstring, \
+and `lup.harness.content.docs.library.RosterEntry` was left behind with no \
+reader; `lup.devtools.roster.RosterEntry` is a different class and stays"""
+
+[[steps]]
+instruction = """
+Say why a package is one in its package docstring, which `Roster` in \
+lup.harness.content.docs.library renders, where you built a \
+`RosterEntry(package=..., solves=...)`."""

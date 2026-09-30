@@ -1,4 +1,4 @@
-"""Spilling oversized tool results, and splitting what cannot be read whole."""
+"""Spilling oversized tool results."""
 
 from collections.abc import Iterator
 from pathlib import Path
@@ -13,7 +13,6 @@ from lup.workspace.content_safety import (
     save_content,
     slugify_label,
     spill_oversized_result,
-    split_on_headings,
     state,
 )
 
@@ -28,32 +27,6 @@ def clean_state(tmp_path: Path) -> Iterator[None]:
 class Fetched(BaseModel):
     url: str
     body: str
-
-
-class TestSplitOnHeadings:
-    def test_a_hash_inside_a_fence_is_not_a_split_point(self) -> None:
-        document = (
-            "# Real\n\ntext\n\n"
-            "```python\n# not a heading\nx = 1\n```\n\n"
-            "## Second\nmore\n"
-        )
-
-        assert [section.heading for section in split_on_headings(document)] == [
-            "Real",
-            "Second",
-        ]
-
-    def test_text_before_the_first_heading_becomes_preamble(self) -> None:
-        sections = split_on_headings("intro words\n\n## First\nbody\n")
-
-        assert [section.heading for section in sections] == ["Preamble", "First"]
-        assert sections[0].text.strip() == "intro words"
-
-    def test_a_document_without_headings_stays_whole(self) -> None:
-        sections = split_on_headings("just prose, no headings at all\n")
-
-        assert len(sections) == 1
-        assert sections[0].heading == "Full content"
 
 
 class TestSpill:

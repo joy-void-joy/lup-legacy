@@ -17,7 +17,6 @@ from typing import TYPE_CHECKING, Annotated, Literal, Self
 
 from pydantic import (
     AfterValidator,
-    AnyHttpUrl,
     BaseModel,
     Discriminator,
     Field,
@@ -46,7 +45,7 @@ from lup.tools.mcp import ToolDeclaration
 from lup.policy.boundary import BoundaryCapability
 from lup.policy.kernel.rows import AcceptanceGuardRow, PathRoleName, SpawnNameRow
 from lup.policy.kernel.semantics import UnjudgedAmbient
-from lup.policy.models import PolicyId, UrlPathPrefix
+from lup.policy.models import PolicyId, UrlScope
 from lup.policy.peer_policy import PeerPolicy
 from lup.policy.refused_paths import (
     RefusedPaths,
@@ -1302,35 +1301,6 @@ class ContentRoster(BaseModel, frozen=True):
         )
 
 
-class HookUrlScope(BaseModel, frozen=True):
-    """Portable generated-hook URL scope configured by the application."""
-
-    origin: AnyHttpUrl
-    path_prefix: UrlPathPrefix = "/"
-    reason: str = Field(
-        default="",
-        description=(
-            "Why this origin is reachable, carried into the decision the "
-            "kernel returns — the field the policy surface already had and "
-            "this declaration could not supply"
-        ),
-    )
-    include_subdomains: bool = Field(
-        default=False,
-        description=(
-            "Extend the scope to every host beneath the origin, rendered as a "
-            "*.host wildcard in the OS sandbox network allowlist"
-        ),
-    )
-    any_port: bool = Field(
-        default=False,
-        description=(
-            "Extend the scope to every port on the origin, for a host whose "
-            "port the caller chooses rather than the service"
-        ),
-    )
-
-
 class HookPathRole(BaseModel, frozen=True):
     """One repository root and the purpose the tree beneath it serves.
 
@@ -1559,8 +1529,8 @@ class CarrierPins(BaseModel, frozen=True):
 class HookSet(BaseModel, frozen=True):
     id: str
     policy_ids: list[PolicyId]
-    allowed_fetch: list[HookUrlScope] = []
-    denied_fetch: list[HookUrlScope] = []
+    allowed_fetch: list[UrlScope] = []
+    denied_fetch: list[UrlScope] = []
     protected_edit_roots: list[Path] = []
     import_boundaries: list[ImportBoundary] = []
     path_roles: list[HookPathRole] = Field(

@@ -1,0 +1,24 @@
+subjects = [
+    "listed_claude_model",
+    "listed_codex_model",
+    "ApprovalHandler",
+    "build_codex_approval_handler",
+]
+reason = """
+nothing read a model name as an optional catalog entry, and nothing closed \
+an approval handler over a session's hooks — the live path builds \
+`CodexApprovalResponder` itself — so the helpers went"""
+
+[[steps]]
+instruction = """
+Validate a name against a catalog with \
+`TypeAdapter(ClaudeModel).validate_python(name)` (lup.providers.claude.models) \
+or `TypeAdapter(CodexModel)` (lup.providers.codex.models), catching \
+`ValidationError` where an unlisted name is not an error, in place of \
+`listed_claude_model(name)` or `listed_codex_model(name)`."""
+
+[[steps]]
+instruction = """
+Construct `CodexApprovalResponder(hooks=hooks)` (lup.providers.codex.hooks) \
+and call its `decide(method, params)` where you called the handler \
+`build_codex_approval_handler(hooks)` returned."""

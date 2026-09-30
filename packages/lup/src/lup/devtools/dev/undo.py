@@ -249,7 +249,7 @@ def points(root: Path, namespace: str = UNDO_NAMESPACE) -> list[UndoPoint]:
     Ordered by ref name rather than by creation date, which sounds like the
     wrong key and is the right one. Git records a ref's date from the commit,
     whose resolution is one second, so two states reached inside one second
-    tie -- and a tie means `latest` can hand back the older of the two, which
+    tie -- and a tie means the first point can be the older of the two, which
     is the worst possible moment for a safety net to be approximate. The name
     carries a microsecond stamp in a fixed-width field, so sorting it as text
     is exact.
@@ -301,12 +301,6 @@ def expire(
     held = {item.ref: item for item in points(root, namespace)}
     retired = undo_expire(root, keep_days, namespace, now, keep_most)
     return [held[ref] for ref in retired if ref in held]
-
-
-def latest(root: Path, namespace: str = UNDO_NAMESPACE) -> UndoPoint | None:
-    """The most recent snapshot, or nothing where none was ever taken."""
-    found = points(root, namespace)
-    return found[0] if found else None
 
 
 def snapshot_quietly(root: Path, reason: str, session: str = "default") -> str:

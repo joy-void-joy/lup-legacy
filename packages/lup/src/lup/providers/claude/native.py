@@ -6,7 +6,7 @@
 # lup.policy vocabulary back across the boundary this adapter exists to hold,
 # and would make the vendor's tool roster, not ours, decide when a variant is
 # added.
-"""Claude-private native event parsing and decision rendering."""
+"""Claude-private native event parsing and the sandbox rewrite a verdict places."""
 
 from pathlib import Path
 from typing import Literal
@@ -15,7 +15,6 @@ from pydantic import AnyHttpUrl, BaseModel, Field, ValidationError
 
 from lup.policy.models import (
     BeforeTool,
-    Decision,
     EditBatch,
     EditChange,
     FetchUrl,
@@ -28,7 +27,7 @@ from lup.policy.kernel.decision import (
     SandboxPlacement,
     sandbox_escaped,
 )
-from lup.policy.native import NativeDecisionRenderer, NativeEventDecoder
+from lup.policy.native import NativeEventDecoder
 from lup.types import JsonObject
 
 
@@ -197,7 +196,10 @@ def claude_sandbox_input(
     Claude Code's one spelling of the sandbox axis, and the only place it is
     written. The rewrite replaces the arguments outright rather than merging
     into them, which is why the whole input is carried through; an unplaced
-    verdict rewrites nothing at all.
+    verdict rewrites nothing at all. The rewrite channel is what makes an
+    unprompted placement reachable: it arrives whole and the sandbox is chosen
+    from it, read out of the shipped binary at version 2.1.228, as the
+    compiled dispatcher in ``assets/policy_dispatcher.py`` records in full.
 
     Which placements leave is :func:`~lup.policy.kernel.decision.sandbox_escaped`
     and not this function, because the compiled dispatcher renders the same
@@ -207,50 +209,3 @@ def claude_sandbox_input(
     if tool_input is None or sandbox == "ambient":
         return None
     return {**tool_input, "dangerouslyDisableSandbox": sandbox_escaped(sandbox)}
-
-
-class ClaudeDecisionOutput(BaseModel, frozen=True, populate_by_name=True):
-    """Claude PreToolUse hook-specific decision payload."""
-
-    hook_event_name: Literal["PreToolUse"] = Field(
-        default="PreToolUse", alias="hookEventName"
-    )
-    permission_decision: Literal["allow", "ask", "deny"] | None = Field(
-        default=None, alias="permissionDecision"
-    )
-    reason: str = Field(default="", alias="permissionDecisionReason")
-    updated_input: JsonObject | None = Field(default=None, alias="updatedInput")
-    additional_context: str = Field(default="", alias="additionalContext")
-    """What the agent reads, as against what the human asked is shown.
-
-    The two are separate channels and a grant only travels on this one: a
-    permission reason on an allow reaches the user, so a verdict with
-    something for the agent to act on has to say it here as well."""
-
-
-class ClaudeDecisionRenderer(NativeDecisionRenderer[ClaudeDecisionOutput]):
-    """Render semantic effects; defer omits the decision so the client mode applies.
-
-    Claude Code takes a call's sandbox as an argument of the call, so a placed
-    verdict goes out as the permission decision plus a rewrite of the
-    arguments. That rewrite is what makes an unprompted placement reachable at
-    all, and the rewrite channel carries it: the hook schema types it as an
-    open record, the flag is a declared field of the shell tool's own input
-    schema rather than an unknown key the validation would reject, and the one
-    per-tool key filter applied before execution names a different tool
-    entirely — so the object arrives whole and the sandbox is chosen from it.
-    Read out of the shipped binary at version 2.1.228; the compiled dispatcher
-    in ``assets/policy_dispatcher.py`` carries the finding in full.
-    """
-
-    def render(
-        self, decision: Decision, tool_input: JsonObject | None = None
-    ) -> ClaudeDecisionOutput:
-        settled = decision.placed(escapable=True)
-        if settled.effect == "defer":
-            return ClaudeDecisionOutput(permissionDecisionReason=settled.reason)
-        return ClaudeDecisionOutput(
-            permissionDecision=settled.effect,
-            permissionDecisionReason=settled.reason,
-            updatedInput=claude_sandbox_input(tool_input, settled.sandbox),
-        )

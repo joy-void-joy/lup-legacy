@@ -94,18 +94,6 @@ def clear_env_file(path: Path, keys: Iterable[str]) -> None:
         unset_key(path, key)
 
 
-def clear_env_local(keys: Iterable[str]) -> None:
-    """Drop keys from .env.local, the file :func:`write_env_local` writes."""
-    clear_env_file(ENV_LOCAL, keys)
-
-
-def save_and_confirm(values: EnvVars) -> None:
-    """Write values to .env.local and print confirmation."""
-    if values:
-        write_env_local(values)
-        console.print("[green]Saved to .env.local[/]")
-
-
 def host_store() -> HostSecrets:
     """This project's host store, which every worktree of it shares."""
     return HostSecrets.for_checkout(PROJECT_ROOT)

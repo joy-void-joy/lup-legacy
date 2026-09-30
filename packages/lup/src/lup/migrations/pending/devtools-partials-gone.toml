@@ -1,0 +1,18 @@
+subjects = [
+    "codex_profile_directory",
+    "clear_env_local",
+    "save_and_confirm",
+    "current_head",
+]
+reason = """
+each restated one other call under a second name, and nothing called it"""
+
+[[steps]]
+instruction = """
+Call the function each one wrapped: `profile_directory(CODEX_LOGIN)` \
+(lup.providers.profile_tree, lup.providers.codex.login) for \
+`codex_profile_directory()`; `clear_env_file(ENV_LOCAL, keys)` for \
+`clear_env_local(keys)` and `write_env_local(values)` for \
+`save_and_confirm(values)` (lup.devtools.setup), printing your own \
+confirmation; `git_in(path, "rev-parse", "HEAD")` (lup.devtools.sync) for \
+`current_head(path)`."""

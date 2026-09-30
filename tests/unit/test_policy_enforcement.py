@@ -14,9 +14,7 @@ from pydantic import AnyHttpUrl, ValidationError
 
 from lup.providers.claude.harness import CLAUDE_DISPATCHER
 from lup.providers.claude.hooks import CLAUDE_SEMANTICS
-from lup.providers.claude.native import ClaudeDecisionRenderer
 from lup.launch.declaration import InnerSandbox
-from lup.providers.codex.native import CodexDecisionRenderer
 from lup.devtools.harness.resolve import worker_policy_hooks
 from lup.policy.hooks import LupHookInput, LupHookOutput
 from lup.policy.enforcement import (
@@ -43,8 +41,10 @@ from lup.policy.models import (
 )
 from lup.policy.grants import LeaseGrants
 from lup.policy.refused_tools import RefusedTool
-from lup.policy.rules import EditPolicy, FetchPolicy, ShellPolicy, UrlScope
+from lup.policy.models import UrlScope
+from lup.policy.rules import EditPolicy, FetchPolicy, ShellPolicy
 from lup_template.harness.catalog import declared_hook_set
+from tests.unit.native import claude_answer, codex_answer
 
 SHELL_RULES = declared_hook_set().resolved_shell_rules()
 """This project's vocabulary as the runtime resolves it, not as it is declared."""
@@ -78,24 +78,18 @@ def test_every_effect_maps_to_one_portable_decision() -> None:
     assert deferred.reason == "unjudged"
 
 
-def test_no_effect_reaches_codex_as_a_silent_allow() -> None:
-    """The neutral vocabulary carries ask; Codex's hook surface has no channel
+async def test_no_effect_reaches_codex_as_a_silent_allow() -> None:
+    """The neutral vocabulary carries ask; Codex's approval reply has no channel
     for it, so the widening is only safe while every non-allow effect still
-    refuses there — a fail-closed denial, recorded as an approximation."""
-    renderer = CodexDecisionRenderer(supports_ask=False)
-    exit_codes: dict[DecisionEffect, int] = {
-        "allow": 0,
-        "defer": 0,
-        "ask": 2,
-        "deny": 2,
+    refuses there — an approval nothing granted is declined."""
+    answers: dict[DecisionEffect, str] = {
+        "allow": "accept",
+        "defer": "decline",
+        "ask": "decline",
+        "deny": "decline",
     }
-    for effect, exit_code in exit_codes.items():
-        rendered = renderer.render(Decision(effect=effect, reason="reason"))
-        assert rendered.exit_code == exit_code
-    assert (
-        renderer.render(Decision(effect="ask")).approximation
-        == "ask rendered as fail-closed denial"
-    )
+    for effect, answer in answers.items():
+        assert await codex_answer(Decision(effect=effect, reason="reason")) == answer
 
 
 def test_router_sends_each_tool_to_the_policy_that_judges_it() -> None:
@@ -389,7 +383,6 @@ def test_a_stated_placement_is_not_the_session_read_back() -> None:
     the word in the verdict.
     """
     policy = ShellPolicy(placement_rules(), sandbox_active=False, escapable=True)
-    render = ClaudeDecisionRenderer().render
 
     following = policy.decide(ShellCommand(command="checker --run"))
     held = policy.decide(ShellCommand(command="confined --run"))
@@ -397,8 +390,8 @@ def test_a_stated_placement_is_not_the_session_read_back() -> None:
     assert (following.sandbox, held.sandbox) == ("ambient", "inside")
 
     call: JsonObject = {"command": "confined --run"}
-    assert render(following, call).updated_input is None
-    assert render(held, call).updated_input == {
+    assert claude_answer(following, call).get("updatedInput") is None
+    assert claude_answer(held, call).get("updatedInput") == {
         **call,
         "dangerouslyDisableSandbox": False,
     }
@@ -418,12 +411,15 @@ def test_an_inside_placement_survives_a_call_that_asked_to_leave() -> None:
         "dangerouslyDisableSandbox": True,
     }
 
-    rendered = ClaudeDecisionRenderer().render(
+    rendered = claude_answer(
         policy.decide(ShellCommand(command="confined --run")), asked_out
     )
 
-    assert rendered.updated_input == {**asked_out, "dangerouslyDisableSandbox": False}
-    assert rendered.permission_decision == "allow"
+    assert rendered.get("updatedInput") == {
+        **asked_out,
+        "dangerouslyDisableSandbox": False,
+    }
+    assert rendered.get("permissionDecision") == "allow"
 
 
 def test_asking_for_the_host_produces_a_question_rather_than_a_placement() -> None:

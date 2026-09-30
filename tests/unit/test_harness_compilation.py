@@ -29,7 +29,7 @@ from lup.providers.codex.harness import (
 )
 from lup.providers.codex.harness_runtime import (
     PluginCacheConfig,
-    directory_digest,
+    digest_directory,
     plugin_cache_evidence,
 )
 from lup.providers.harness import (
@@ -1784,11 +1784,11 @@ def test_codex_cache_digest_ignores_python_bytecode(tmp_path: Path) -> None:
     root = tmp_path / "plugin"
     (root / "__pycache__").mkdir(parents=True)
     (root / "policy.py").write_text("pass\n", encoding="utf-8")
-    before = directory_digest(root)
+    before = digest_directory(root, Path.read_bytes)
 
     (root / "__pycache__" / "policy.cpython-314.pyc").write_bytes(b"cache")
 
-    assert directory_digest(root) == before
+    assert digest_directory(root, Path.read_bytes) == before
 
 
 def test_binary_managed_file_becomes_typed_unknown_conflict(tmp_path: Path) -> None:

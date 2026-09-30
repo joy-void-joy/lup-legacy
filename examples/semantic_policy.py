@@ -19,7 +19,8 @@ from lup.providers.claude import ClaudeTools
 from lup.providers.claude.hooks import CLAUDE_SEMANTICS
 from lup.policy.hooks import LupHooksConfig
 from lup.policy.enforcement import SemanticToolPolicy, create_policy_hooks
-from lup.policy.rules import FetchPolicy, UrlScope
+from lup.policy.models import UrlScope
+from lup.policy.rules import FetchPolicy
 
 # lup: ignore[constant-declaration] — the one origin this example allows, which
 # is the example's subject rather than a value to pass in
