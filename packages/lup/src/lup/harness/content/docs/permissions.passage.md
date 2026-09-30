@@ -1496,9 +1496,15 @@ lease from the ledger, so a write the launch did not mount writable asks here
 as it asks there, and the roster, so an edit of a file another live session
 holds asks too. Its edit gates hold the rules the plugin was compiled with,
 the project's retirements and additions included. It assumes a capture holds
-what a write would replace, since only a running session takes one, and it
-answers with the selection the repository declares where a launch relaxed the
-rules for one session. With `--kind fetch` it reads a URL against the declared
+what a write would replace, since only a running session takes one, names
+every path it assumed that of, and it answers with the selection the
+repository declares where a launch relaxed the rules for one session. It
+reads the command from where the session's commands start — the checkout the
+launch names, else this directory, or the one `--from` gives — rather than
+from wherever it was itself run: `cd <worktree> && dev policy 'cp x
+<worktree>/y'` is asked about the copy the session's shell will make, into a
+sibling worktree no capture of the session's checkout holds, and it says
+which directory it read from when that is not its own. With `--kind fetch` it reads a URL against the declared
 scopes and lists every one of them beneath the verdict, which is where the
 question a fetch outside them raises sends its reader. `dev vocabulary` prints every shell form the vocabulary
 judges and where each rule came from, which is the one to reach for when the
