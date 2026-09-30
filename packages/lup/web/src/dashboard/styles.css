@@ -26,6 +26,7 @@ h3 { font-size: 1rem; }
 .queue { min-height: 0; overflow: auto; border-right: 1px solid var(--line); background: #fbfcfa; padding: .7rem; overscroll-behavior: contain; }
 .filters { display: flex; gap: .4rem; margin-bottom: 1rem; }
 .filters button { flex: 1; }
+.queue-state { margin: -.6rem 0 .8rem; font-size: .75rem; color: #805707; overflow-wrap: anywhere; }
 .filters [aria-pressed="true"] { background: #e7f1ec; border-color: #aac6b8; font-weight: 650; color: #174d3b; }
 .queue-setting { display: flex; align-items: center; gap: .4rem; font-size: .85rem; margin: .7rem 0; }
 .queue-navigation { display: flex; align-items: center; justify-content: space-between; gap: .4rem; margin: .8rem 0 1rem; font-size: .75rem; }

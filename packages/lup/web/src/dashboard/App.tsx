@@ -116,7 +116,15 @@ export function App() {
   const rows = queue?.reviews ?? [];
   const queuePartial = queue !== null && queue.errors.length > 0;
   const queueCurrent = queue !== null && connection === "Live" && !queuePartial;
-  const queueStatus = queue === null ? "Loading review queue…" : queuePartial ? "Some checkout queues are unavailable" : "Refreshing review queue…";
+  // Why the queue is not current, where the operator looks: the stream reconnecting, or each
+  // checkout whose queue could not be read, by name and with what reading it said.
+  const queueReasons = queue === null ? ["Loading review queue…"] : [
+    ...(connection === "Live" ? [] : [connection === "Connecting…" ? "Reconnecting…" : connection]),
+    ...queue.errors.map((issue) => `${issue.root.slice(issue.root.lastIndexOf("/") + 1) || issue.root} unavailable: ${issue.message}`),
+  ];
+  const queueStatus = queueReasons.join(" · ");
+  /** A count as the header shows it: unknown before the first snapshot, the last one known while it refreshes. */
+  const counted = (count: number) => queue === null ? "?" : queueCurrent ? `${count}` : `${count} · refreshing`;
   const pending = rows.filter((row) => row.state === "pending");
   const groups = grouped(rows.filter((row) => filter === "pending" ? row.state === "pending" : row.state !== "pending"), queue?.roots ?? []);
   const visible = groups.flatMap((group) => group.sessions.flatMap((asking) => asking.rows));
@@ -455,20 +463,21 @@ export function App() {
       {SHORTCUTS.map(([keys, meaning]) => <span key={`${keys.join("+")} ${meaning}`}>{keys.map((key, index) => <span key={key}>{index > 0 && " + "}<kbd>{key}</kbd></span>)} {meaning}</span>)}
       <p>The comment box is open on every waiting review: decisions and Alt+↑/↓ work from inside it, and Esc leaves it so the one-letter keys apply. Click a line number to comment on a line, Shift+click another to comment on the range. Holding a key cannot answer another request.</p>
     </section>}
-    <nav className="mobile-switch" aria-label="Workspace panel"><button type="button" aria-pressed={mobilePanel === "queue"} onClick={() => setMobilePanel("queue")}>Queue ({queueCurrent ? pending.length : "?"})</button><button type="button" aria-pressed={mobilePanel === "review"} onClick={() => setMobilePanel("review")}>Review</button></nav>
+    <nav className="mobile-switch" aria-label="Workspace panel"><button type="button" aria-pressed={mobilePanel === "queue"} onClick={() => setMobilePanel("queue")}>Queue ({counted(pending.length)})</button><button type="button" aria-pressed={mobilePanel === "review"} onClick={() => setMobilePanel("review")}>Review</button></nav>
     <div className="workspace" data-mobile-panel={mobilePanel}>
       <aside className="queue" aria-label="Review requests" aria-busy={!queueCurrent}>
         <div className="filters" aria-label="Request filter">
-          <button type="button" aria-pressed={filter === "pending"} onClick={() => show("pending")}>Pending ({queueCurrent ? pending.length : "?"})</button>
-          <button type="button" aria-pressed={filter === "history"} onClick={() => show("history")}>History ({queueCurrent ? rows.length - pending.length : "?"})</button>
+          <button type="button" aria-pressed={filter === "pending"} onClick={() => show("pending")}>Pending ({counted(pending.length)})</button>
+          <button type="button" aria-pressed={filter === "history"} onClick={() => show("history")}>History ({counted(rows.length - pending.length)})</button>
         </div>
+        {!queueCurrent && <p className="queue-state" role="status">{queueStatus}</p>}
         <label className="queue-setting"><input type="checkbox" checked={advance} onChange={(event) => setAdvance(event.target.checked)} /> Advance after decision</label>
         <div className="queue-navigation">
           <button type="button" disabled={position <= 0} onClick={() => move(-1)} aria-label="Previous request">← Previous</button>
-          <span>{!queueCurrent ? "Count unavailable" : position >= 0 ? `${position + 1} of ${visible.length}` : `${visible.length} requests`}</span>
+          <span>{queue === null ? "Count unavailable" : position >= 0 ? `${position + 1} of ${visible.length}` : `${visible.length} requests`}</span>
           <button type="button" disabled={position + 1 >= visible.length} onClick={() => move(1)} aria-label="Next request">Next →</button>
         </div>
-        {!queueCurrent && <p className="empty" role="status">{queueStatus}{queue !== null && " · Previously loaded requests may be incomplete."}</p>}
+        {!queueCurrent && queue !== null && <p className="empty">Showing the requests last read; they may be incomplete until the queue is current again.</p>}
         {queueCurrent && visible.length === 0 && <p className="empty">{filter === "pending" ? "No requests waiting. This page will update when one arrives." : "No answered requests yet."}</p>}
         {groups.map((group) => <section className="repository-group" key={group.repository} aria-label={`Repository ${group.name}`}>
           <h2 className="repository-name" title={group.repository}>{group.name} <span className="count">({group.sessions.reduce((total, asking) => total + asking.rows.length, 0)})</span></h2>

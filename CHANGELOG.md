@@ -19,7 +19,20 @@ conversation with two or more edits waiting is told in the refusal how to
 `review propose` the next ones. A command's review is stale only where a
 file it writes moved; the waiter also reads the files it copies from, and
 retires the review rather than run a copy of something the operator did not
-see.
+see. A parked record names the parts its fingerprint binds
+(`PersistentQuestion.scheme`, `bound_parts`), so a reader on older code says
+it cannot check the record (`PersistentQuestion.unverifiable`) instead of
+calling it changed, and the page labels a review it cannot answer "can't
+answer here" with the reason where Approve would be. A reader like `pyright`
+is no step only running shows: its row reads, and `--createstub` or
+`--writebaseline` makes it a writer again.
+
+### The queue keeps its counts while it refreshes
+
+While the stream reconnects or a checkout's queue cannot be read, the
+header keeps the last counts, marked as refreshing, and says which queue is
+unavailable and why; a queue read that fails is read again a moment later
+before it is reported.
 
 ### A review a recorded file moved under leaves the queue as stale
 

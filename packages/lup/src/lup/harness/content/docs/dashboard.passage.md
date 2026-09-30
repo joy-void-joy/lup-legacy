@@ -246,8 +246,13 @@ dashboard costs a few file checks a look however many sessions it shows and
 however long the history behind them.
 
 Until the first frame arrives, the page shows loading with unknown counts.
-Reconnecting or unreadable queues remain visibly incomplete; only a current
-stream with every queue read can confirm that no requests are waiting.
+After it, a queue that is not current — the stream reconnecting, or a
+checkout whose queue could not be read — keeps its last counts, marked as
+refreshing, and the line beneath them says why: reconnecting, or which
+checkout is unavailable and what reading it said. Only a current stream with
+every queue read can confirm that no requests are waiting. A queue read that
+fails is read again a moment later before it is reported, so a writer
+appending to a relay never blanks the page.
 
 ## Sessions
 

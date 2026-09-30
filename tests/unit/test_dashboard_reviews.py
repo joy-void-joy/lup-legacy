@@ -1167,3 +1167,37 @@ def test_terminal_review_commands_import_without_optional_web_dependencies(
     )
 
     assert result.returncode == 0, result.stderr
+
+
+def test_a_queue_caught_mid_write_is_read_again_before_it_is_called_unavailable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A writer's append is gone a moment later; the page never blanks for it."""
+    reads: list[int] = []
+    questions = QuestionRelay.questions
+
+    def torn_once(relay: QuestionRelay) -> list[PersistentQuestion]:
+        reads.append(len(reads))
+        if len(reads) == 1:
+            raise ValueError("a record was being written")
+        return questions(relay)
+
+    monkeypatch.setattr(QuestionRelay, "questions", torn_once)
+
+    queue = dashboard.ReviewQueue.read(tmp_path, pause=0)
+
+    assert queue.errors == []
+    assert len(reads) == 2
+
+
+def test_a_queue_that_stays_unreadable_says_why(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def held(relay: QuestionRelay) -> list[PersistentQuestion]:
+        raise OSError("the relay is not readable")
+
+    monkeypatch.setattr(QuestionRelay, "questions", held)
+
+    queue = dashboard.ReviewQueue.read(tmp_path, pause=0)
+
+    assert [error.message for error in queue.errors] == ["the relay is not readable"]

@@ -36,6 +36,7 @@ import httpx
 import sh
 import typer
 from pydantic import BaseModel, Field, PrivateAttr
+from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_fixed
 
 from lup.coordination.repository import PeerDepartedError
 from lup.devtools.dashboard.address import AdvertisedDashboard
@@ -176,11 +177,24 @@ class ReviewQueue(BaseModel, frozen=True):
     errors: list[ReviewError] = []
 
     @classmethod
-    def read(cls, root: Path) -> "ReviewQueue":
+    def read(cls, root: Path, attempts: int = 3, pause: float = 0.05) -> "ReviewQueue":
+        """One checkout's queue, read again a moment later before a failure is reported.
+
+        A writer appending to the relay or its answers while the page reads
+        them is gone a moment later, so a read that fails is tried *attempts*
+        times, *pause* seconds apart, before the queue is reported unavailable.
+        """
         store = relay(root)
         signature = store.signature()
         thread = ReviewThread.of(store)
-        try:
+
+        @retry(
+            stop=stop_after_attempt(attempts),
+            wait=wait_fixed(pause),
+            retry=retry_if_exception_type((OSError, ValueError)),
+            reraise=True,
+        )
+        def read_once() -> "ReviewQueue":
             return cls(
                 root=root,
                 signature=signature,
@@ -188,6 +202,9 @@ class ReviewQueue(BaseModel, frozen=True):
                 remarks=thread.remarks(),
                 replies=thread.replies(),
             )
+
+        try:
+            return read_once()
         except (OSError, ValueError) as error:
             return cls(
                 root=root,

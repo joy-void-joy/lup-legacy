@@ -523,26 +523,26 @@ describe("dashboard page", () => {
     await until(() => shown?.root.querySelector(".request h2") !== null, "the exact linked request");
   });
 
-  test("reconnecting an empty queue does not present its previous zero count as current", async () => {
+  test("reconnecting an empty queue keeps its last count, marked as refreshing, never as current", async () => {
     rows = [];
     shown = mount(<App />);
     await until(() => shown?.root.textContent?.includes("Queue complete") ?? false, "the confirmed empty queue");
     streamImmediately = false;
     await click(labelled(shown.root, "button", "Reconnect"));
     await until(() => requests.filter((request) => request.path === "api/stream").length === 2, "the replacement stream");
-    expect(shown.root.textContent).toContain("Pending (?)");
-    expect(shown.root.textContent).toContain("Refreshing review queue…");
+    expect(shown.root.textContent).toContain("Pending (0 · refreshing)");
+    expect(one(shown.root, ".queue-state").textContent).toBe("Reconnecting…");
     expect(shown.root.textContent).not.toContain("Queue complete");
     expect(shown.root.textContent).not.toContain("No requests waiting");
     await act(async () => stream?.enqueue(new TextEncoder().encode(framed(queue()))));
     await until(() => shown?.root.textContent?.includes("Queue complete") ?? false, "the refreshed empty queue");
   });
 
-  test("failed checkout reads leave counts unknown while retaining known requests", async () => {
+  test("failed checkout reads keep the last counts, marked, and name the queue that failed", async () => {
     issues = [{ root: "/project/tree/other", message: "Queue could not be read" }];
     const page = await open();
-    expect(page.root.textContent).toContain("Pending (?)");
-    expect(page.root.textContent).toContain("Some checkout queues are unavailable");
+    expect(page.root.textContent).toContain("Pending (1 · refreshing)");
+    expect(one(page.root, ".queue-state").textContent).toBe("other unavailable: Queue could not be read");
     expect(page.root.querySelectorAll(".queue-row")).toHaveLength(1);
     expect(page.root.textContent).toContain("Queue could not be read");
     expect(page.root.textContent).not.toContain("Queue complete");
@@ -553,13 +553,14 @@ describe("dashboard page", () => {
     expect(page.root.textContent).toContain("Requested review unavailable");
   });
 
-  test("a disconnected empty queue stays unknown during the automatic reconnect delay", async () => {
+  test("a disconnected empty queue keeps its count marked as refreshing during the reconnect delay", async () => {
     rows = [];
     shown = mount(<App />);
     await until(() => shown?.root.textContent?.includes("Queue complete") ?? false, "the empty snapshot");
     await act(async () => stream?.error(new Error("Connection lost")));
     await until(() => shown?.root.textContent?.includes("Reconnecting") ?? false, "the retry status");
-    expect(shown.root.textContent).toContain("Pending (?)");
+    expect(shown.root.textContent).toContain("Pending (0 · refreshing)");
+    expect(one(shown.root, ".queue-state").textContent).toContain("Reconnecting — ");
     expect(shown.root.textContent).not.toContain("Queue complete");
     expect(shown.root.textContent).not.toContain("No requests waiting");
   });
@@ -746,7 +747,7 @@ describe("dashboard page", () => {
     await click(labelled(page.root, "button", "Reconnect"));
     await until(() => requests.filter((request) => request.path === "api/stream").length === 2, "a fresh stream");
     expect(box(page.root).value).toBe("Preserve this draft.");
-    expect(page.root.textContent).toContain("Pending (?)");
+    expect(page.root.textContent).toContain("Pending (1 · refreshing)");
     await act(async () => stream?.enqueue(new TextEncoder().encode(framed(queue()))));
     expect(page.root.textContent).toContain("Live");
   });
