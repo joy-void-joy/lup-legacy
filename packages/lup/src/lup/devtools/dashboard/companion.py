@@ -498,6 +498,30 @@ class Dashboard(SharedProcess, frozen=True):
                 )
             yield contribution
 
+    def stopped(
+        self, root: Path, why: str = "the operator stopped it", stays: bool = True
+    ) -> bool:
+        """Stop it for ``why``; where it stays stopped, every session's status line says so.
+
+        The pulse the stopped dashboard took down is replaced by one saying
+        the operator stopped it and what starts it, which holds until a start
+        replaces it.
+        """
+        if not super().stopped(root, why, stays):
+            return False
+        slot = self.slot(root)
+        state = slot.read()
+        stop = state.stopped
+        if stays and stop is not None and "page" in state.given():
+            halted = DashboardPulse(
+                url=f"http://127.0.0.1:{state.given()['page']}",
+                pid=stop.process.pid,
+                beat=stop.at,
+                halted="dashboard stopped by the operator; `dashboard restart` starts it",
+            )
+            written(PulseFile.of(slot.directory).path, halted.model_dump_json(indent=2))
+        return True
+
 
 class DashboardStatus(BaseModel, frozen=True):
     """Whether the dashboard serves, where, and for whom; never its capability."""
@@ -560,6 +584,12 @@ def published_status(advertised: AdvertisedDashboard, now: datetime) -> Dashboar
             url=advertised.url,
             detail="The dashboard stopped: it took its pulse down.",
         )
+    if pulse.halted:
+        return DashboardStatus(
+            serving=False,
+            url=pulse.url,
+            detail=pulse.halted[:1].upper() + pulse.halted[1:] + ".",
+        )
     if not pulse.current(now):
         return DashboardStatus(
             serving=False,
@@ -600,6 +630,11 @@ def unserved_detail(standing: CompanionStanding) -> str:
         return (
             "Not running: the next `harness claude|codex` session starts it, "
             "or `uv run lup-devtools dashboard serve` serves one in this terminal."
+        )
+    if standing.stays_stopped:
+        return (
+            "Stopped by the operator; `uv run lup-devtools dashboard restart` "
+            "starts it."
         )
     held = (
         "1 session holds"
@@ -729,6 +764,7 @@ def restarted(dashboard: Dashboard, root: Path) -> str:
                 root,
                 why="the operator's restart replaces a dashboard that predates "
                 "restarting itself",
+                stays=False,
             )
             if not standing.leases:
                 return (

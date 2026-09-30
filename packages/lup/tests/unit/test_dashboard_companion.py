@@ -422,29 +422,45 @@ def test_a_dashboard_killed_while_held_comes_back_at_its_address(
     assert "Uvicorn running on" in "\n".join(status.exited.tail)
 
 
-def test_a_stop_while_sessions_hold_it_is_followed_by_a_restart(
+def test_a_held_dashboard_the_operator_stops_stays_stopped_until_restart(
     dashboard: Dashboard, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Whatever stopped it, the sessions holding it start it again, and the record says who stopped it."""
+    """The sessions holding it leave it stopped; the status line and `dashboard
+    status` say what starts it, and `dashboard restart` does, at the same address."""
     root = repository(tmp_path / "project")
-    watched = dashboard.model_copy(update={"backoff": (0.5,), "watched_every": 0.2})
+    watched = dashboard.model_copy(update={"backoff": (0.2,), "watched_every": 0.1})
     monkeypatch.setattr("lup.devtools.dashboard.reviews.Dashboard", lambda: watched)
     cli = create_operator_dashboard_app(root)
+    runner = CliRunner()
 
-    with held_companions([watched], launch_at(root)):
+    with held_companions([watched], launch_at(root)) as joined:
+        pulse = Path(joined.environment[DASHBOARD_PULSE_ENV])
+        opened = private_url(watched, root)
         before = watched.standing(root).serving
         assert before is not None
-        stopped = CliRunner().invoke(cli, ["stop"])
-        serving_again(watched, root, before)
-        standing = watched.standing(root)
+        stopped = runner.invoke(cli, ["stop"])
+        time.sleep(2.0)
+        left = watched.standing(root)
+        idle = dashboard_status(watched, root)
+        line = status_line(pulse)
+        restarted = runner.invoke(cli, ["restart"])
+        again = watched.standing(root)
+        reopened = private_url(watched, root)
 
-    exited = standing.exited
+    stop = left.stopped
     assert stopped.exit_code == 0 and "Dashboard stopped." in stopped.output
-    assert exited is not None and exited.stopped is not None
-    assert exited.stopped.why == "the operator stopped it"
-    assert exited.stopped.leases == 1 and exited.stopped.by == os.getpid()
-    assert exited.reason() == "lup stopped it: the operator stopped it"
-    assert standing.restarts == 1
+    assert left.serving is None and left.stays_stopped and left.leases == 1
+    assert stop is not None and stop.stays and stop.why == "the operator stopped it"
+    assert stop.leases == 1 and stop.by == os.getpid()
+    assert left.exited is None and left.restarts == 0
+    assert idle.detail == (
+        "Stopped by the operator; `uv run lup-devtools dashboard restart` starts it."
+    )
+    assert line == "dashboard stopped by the operator; `dashboard restart` starts it"
+    assert restarted.exit_code == 0, restarted.output
+    assert again.serving is not None and again.serving != before
+    assert not again.stays_stopped and again.exited is None and again.restarts == 0
+    assert reopened == opened
 
 
 def test_restart_starts_a_dashboard_for_sessions_holding_none(

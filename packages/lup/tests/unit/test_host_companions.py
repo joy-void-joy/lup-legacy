@@ -402,6 +402,32 @@ def test_a_lease_dropped_while_its_launcher_runs_is_taken_back_and_started_again
     assert "while that launch still holds it; taken back" in slot.log().read_text()
 
 
+def test_the_operators_stop_stays_until_a_launch_and_any_other_is_undone(
+    state: Path, tmp_path: Path
+) -> None:
+    """Holders start again what lup stopped, leave what the operator stopped, and a launch starts that."""
+    served = Served(
+        name="served", ports={"web": free_port()}, backoff=(0.2,), watched_every=0.1
+    )
+    slot = served.slot(tmp_path)
+
+    with served.held(launch_at(tmp_path)):
+        first = slot.read().running
+        assert first is not None
+        assert served.stopped(tmp_path, why="lup replaced it", stays=False)
+        second = started_after(slot, first)
+        assert served.stopped(tmp_path)
+        time.sleep(1.0)
+        left = slot.read()
+        with served.held(launch_at(tmp_path)):
+            third = slot.read()
+
+    assert left.stays_stopped() and left.running == second
+    assert not second.process.running() and left.restarts == 1
+    assert third.running is not None and third.running.process != second.process
+    assert not third.stays_stopped() and third.restarts == 1
+
+
 def test_every_stop_says_why_first_in_the_log_and_the_state(
     state: Path, tmp_path: Path
 ) -> None:
