@@ -211,12 +211,19 @@ class ResolutionRow(TypedDict):
 
 
 class RewrittenDocumentRow(TypedDict):
-    """One file an in-place rewrite names, as it stands and as it would stand.
+    """One file an in-place rewrite names, as it stands and as the line leaves it.
 
     The host produces this by running the screened script over a *copy*, never
     over the file, so a command still refused has changed nothing — and the
     classifier reads the result as the ``before`` and ``after`` of an ordinary
     edit, which is what lets one gate answer for both spellings of a write.
+
+    What the whole line leaves rather than what this one rewrite does, so a
+    second rewrite of one file is judged by what it introduces over the
+    first: ``before`` is the file before the line, ``None`` where the line
+    creates it, and ``after`` what it holds once every step writing it ran,
+    ``None`` where a later step removes it. ``operation`` is the class of
+    that change, as an edit states it.
 
     ``target`` and ``path`` differ because two readers need different
     spellings of the same file. The rules match on ``path``, relative to the
@@ -227,8 +234,9 @@ class RewrittenDocumentRow(TypedDict):
 
     target: str
     path: str
-    before: str
-    after: str
+    before: str | None
+    after: str | None
+    operation: str
     foreign: bool
     """Whether the file belongs to a repository that is not this one."""
 
@@ -860,15 +868,16 @@ class PathWord(TypedDict):
     path: str
 
 
-UnproducedCause = Literal["missing", "irregular", "unreadable", "refused"]
+UnproducedCause = Literal["missing", "irregular", "unreadable", "refused", "run"]
 """Why running a screened script over one file produced no after-document.
 
 A cause and not a sentence, because the host establishes these and the kernel
-words them -- the same division ``resolution`` crosses the boundary by. Four,
+words them -- the same division ``resolution`` crosses the boundary by. Five,
 because each sends its writer somewhere different: ``missing`` names no file
 at that path, ``irregular`` a path holding something an in-place rewrite
 cannot replace, ``unreadable`` a file whose text could not be read either
-before or after, and ``refused`` a script sed itself would not run.
+before or after, ``refused`` a script sed itself would not run, and ``run`` a
+file an earlier step of the same line writes with what only running it makes.
 """
 
 
@@ -916,8 +925,10 @@ def unproduced_cause(reported: str | None) -> UnproducedCause:
     crashed hook, which grants rather than refuses.
     """
     match reported:
-        case "missing" | "irregular" | "unreadable" | "refused":
+        case "missing" | "irregular" | "unreadable" | "refused" | "run":
             return reported
+        case "directory":
+            return "irregular"
     return "unreadable"
 
 

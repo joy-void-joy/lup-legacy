@@ -2,37 +2,35 @@
 
 A question carries the operation whole and, where a native hook captured them,
 the preimage of every file it would touch. What it does not carry is the
-*result*: that is implied by the tool's own arguments, and unless something
-works it out, a reviewer answering a whole-file write reads a JSON payload
-with the new contents inside it and the old contents printed underneath, and
-compares them by eye.
+*result* of a tool whose arguments imply it: a reviewer answering a
+whole-file write would read a JSON payload with the new contents inside it and
+the old contents printed underneath, and compare them by eye.
 
-So the pair is derived here rather than stored. Deriving it keeps the record
-append-only and keeps an approval bound to the operation it was given — the
-same arguments produce the same pair, and a record that stored a rendering
-could disagree with the arguments beside it.
+So for an edit the pair is derived here rather than stored. Deriving it keeps
+an approval bound to the operation it was given — the same arguments produce
+the same pair, and a record that stored a rendering could disagree with the
+arguments beside it. The arithmetic is per tool and most of it is neutral: a
+whole-file write carries its result, and a fragment edit is a splice against
+the preimage the hook captured. The one shape this cannot do alone is a patch
+envelope, whose format a provider owns — so a caller that has one hands in
+the reader for it, and a caller that does not gets the rest.
 
-The arithmetic is per tool and most of it is neutral: a whole-file write
-carries its result, and a fragment edit is a splice against the preimage the
-hook captured. The one shape this cannot do alone is a patch envelope, whose
-format a provider owns — so a caller that has one hands in the reader for it,
-and a caller that does not gets the rest.
+A shell command is the other way round: its arguments imply nothing a reader
+here could work out without running something. The policy worked each file
+out when it judged the command -- a rewrite over the text, a patch over a
+copy, a copy's source -- and the question keeps each document it judged, bound
+to the preimage by digest. So a command's pairs are read off that record, and
+nothing is run where the review is read.
 """
 
 import difflib
-from functools import cache
 from collections.abc import Callable
+from hashlib import sha256
 from pathlib import Path
 from typing import Literal
 
 from pydantic import BaseModel
 
-from lup.policy.assets.host import sed_output
-from lup.policy.kernel.bindings import literal_loop_word
-from lup.policy.kernel.decision import KernelDecision
-from lup.policy.kernel.review import single_command
-from lup.policy.kernel.syntax import word_text
-from lup.policy.kernel.words import safe_sed_script, sed_invocation
 from lup.policy.relay import PersistentQuestion
 
 type FileOperation = Literal["create", "modify", "overwrite", "delete"]
@@ -172,115 +170,66 @@ class FilePreview(BaseModel, frozen=True):
     notice: str = ""
 
 
-@cache
-def captured_sed_output(
-    scripts: tuple[str, ...], options: tuple[str, ...], before: str
-) -> dict[Literal["text", "cause"], str | None]:
-    """Reuse the same captured-input simulation without caching live target checks."""
-    return sed_output(list(scripts), list(options), before=before)
+def recorded_before(
+    question: PersistentQuestion, path: Path, digest: str | None
+) -> str | None:
+    """The document a recorded file replaced, or ``None`` where nothing stood there.
 
-
-def shell_preview(question: PersistentQuestion) -> FilePreview:
-    """Preview a literal sed rewrite over captured input, without running a shell."""
-    payload = question.operation.payload
-    command = payload["command"] if "command" in payload else None
-    if not isinstance(command, str):
-        return FilePreview(unavailable="No shell command was captured.")
-    if not question.operation.cwd.is_absolute():
-        return FilePreview(unavailable="No absolute command directory was captured.")
-    if question.execution_payload is not None and question.execution_payload != payload:
-        return FilePreview(
-            unavailable="The native execution rewrites this command; no exact preview is available."
-        )
-    for field in ("workdir", "cwd"):
-        if field in payload and payload[field] != str(question.operation.cwd):
-            return FilePreview(
-                unavailable="The command directory differs from the directory bound to this review."
-            )
-    parsed = single_command(command)
-    if parsed is None or parsed["redirects"]:
-        return FilePreview(
-            unavailable="File previews require one literal command without pipelines, redirections, or adjacent shell effects."
-        )
-    if not all(literal_loop_word(word) for word in parsed["words"]):
-        return FilePreview(
-            unavailable="Shell expansion prevents an exact captured-file preview."
-        )
-    words = [word_text(word) for word in parsed["words"]]
-    if not words or words[0] != "sed":
-        return FilePreview(
-            unavailable="No captured before-and-after preview is available for this command."
-        )
-    invocation = sed_invocation(words)
-    if isinstance(invocation, KernelDecision):
-        return FilePreview(unavailable=invocation.reason)
-    if not invocation["in_place"] or not invocation["targets"]:
-        return FilePreview(
-            unavailable="This sed command does not name files to rewrite in place."
-        )
-    if invocation["backup"]:
-        return FilePreview(
-            unavailable="A sed backup suffix adds file effects that this preview cannot capture."
-        )
-    if not all(
-        safe_sed_script(script, captured=True) for script in invocation["scripts"]
-    ):
-        return FilePreview(
-            unavailable="This sed script has external effects, depends on filename or process-exit behavior, or uses locale-sensitive constructs whose execution environment was not captured."
-        )
+    The preimage the hook bound where it bound one; otherwise the file as it
+    stands, where it still hashes to the digest the verdict recorded -- which
+    is the document it judged, whoever read it. Raises where neither is.
+    """
+    if digest is None:
+        return None
+    if path in question.preconditions:
+        return question.preconditions[path]
     try:
-        paths = [
-            (question.operation.cwd / target).resolve()
-            for target in invocation["targets"]
-        ]
-    except (OSError, RuntimeError) as error:
-        return FilePreview(
-            unavailable=f"A captured sed target cannot be resolved: {error}"
-        )
-    if len(dict.fromkeys(paths)) != len(paths):
-        return FilePreview(
-            unavailable="Repeated sed targets need sequential file effects; no exact preview is available."
-        )
-    if any(
-        path not in question.preconditions or question.preconditions[path] is None
-        for path in paths
-    ):
-        return FilePreview(
-            unavailable="One or more sed targets have no captured text preimage; no live file is substituted."
-        )
+        standing = path.read_text(encoding="utf-8", newline="")
+    except (OSError, UnicodeError) as error:
+        raise ValueError(f"{path} cannot be read: {error}") from error
+    if sha256(standing.encode()).hexdigest() != digest:
+        raise ValueError(f"{path} changed since the command was judged")
+    return standing
 
-    def transformed(path: Path) -> FilePreview:
-        before = question.preconditions[path]
-        if before is None:
-            return FilePreview(
-                unavailable=f"No captured text preimage exists for {path}."
-            )
-        if not before.isascii():
-            return FilePreview(
-                unavailable=f"The captured input for {path} is not ASCII and the execution locale was not captured; no output is inferred."
-            )
-        attempt = captured_sed_output(
-            tuple(invocation["scripts"]), tuple(invocation["options"]), before
-        )
-        after = attempt["text"]
-        if after is None:
-            return FilePreview(
-                unavailable=f"The sandboxed sed preview could not produce {path}: {attempt['cause']}."
-            )
-        return FilePreview(files=[ReviewedFile(path=path, before=before, after=after)])
 
-    results = [transformed(path) for path in paths]
-    failures = [result.unavailable for result in results if result.unavailable]
-    return (
-        FilePreview(unavailable="\n".join(failures))
-        if failures
-        else FilePreview(
-            files=[file for result in results for file in result.files],
-            notice=(
-                "Preview computed where the dashboard runs, using sandboxed GNU sed and the captured input. "
-                "The request did not capture its execution environment; compare this simulation with the exact command."
-            ),
+def recorded_preview(question: PersistentQuestion) -> FilePreview:
+    """Each file a parked shell command changes, as the policy judged it.
+
+    Read off the question's own record: the document the verdict judged for
+    each file, beside the preimage its digest names. What only running the
+    command shows is not here -- the question lists those steps apart -- and
+    nothing is recomputed, so what a reviewer reads is what was judged. A
+    question that kept no such record says so, so a command shown without a
+    diff is never read as one that changes nothing.
+    """
+    if question.file_reviews is None and question.unpreviewed is None:
+        return FilePreview(
+            unavailable=(
+                "This review kept no record of the files the command changes; "
+                "review the command itself."
+            )
         )
+    files: list[ReviewedFile] = []
+    missing: list[str] = []
+    for row in question.file_reviews or []:
+        if row.after is None and row.after_sha256 is not None:
+            missing.append(f"{row.path}: this record kept only a digest of the result")
+            continue
+        try:
+            before = recorded_before(question, row.path, row.before_sha256)
+        except ValueError as error:
+            missing.append(str(error))
+            continue
+        files.append(ReviewedFile(path=row.path, before=before, after=row.after))
+    return FilePreview(
+        files=files,
+        unavailable="\n".join(missing),
+        notice=(
+            "Each document is the one the policy worked out when it judged this "
+            "command, without running it."
+            if files
+            else ""
+        ),
     )
 
 
@@ -289,9 +238,10 @@ def reviewed_preview(
 ) -> FilePreview:
     """Every file change one parked question proposes, as before/after pairs.
 
-    Captured tool arguments and preimages are the only source of file results.
-    An unsupported shell command carries an explanation alongside its complete
-    input, so a missing preview cannot be mistaken for a command with no effects.
+    Captured tool arguments and preimages are the source of an edit's
+    results, and the recorded verdict a command's. A command's steps no
+    document shows are listed on the question itself, so a missing preview
+    cannot be mistaken for a command with no effects.
     """
     payload = question.operation.payload
     cwd = question.operation.cwd
@@ -352,7 +302,9 @@ def reviewed_preview(
             if files:
                 return FilePreview(files=files)
     return (
-        shell_preview(question) if question.operation.tool == "Bash" else FilePreview()
+        recorded_preview(question)
+        if question.operation.tool == "Bash"
+        else FilePreview()
     )
 
 

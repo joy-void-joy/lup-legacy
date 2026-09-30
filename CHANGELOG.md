@@ -2,6 +2,26 @@
 
 ## Unreleased
 
+### A shell command's review shows each file it changes, as the policy judged it
+
+The dashboard showed a diff for a lone `cp`, a patch envelope, and a lone
+`sed -i` over ASCII input it re-ran where it was read; a chain, a `cd`, a
+heredoc, `printf >`, `mv`, `rm` or a `git apply` showed the command alone.
+`lup.policy.kernel.documents` now follows a command line file by file, each
+write applied to what the line left -- sed sandboxed over the text in any
+encoding, copies, moves, installs, removals, authored bytes and appends, and
+`git apply` or `patch -pN` applied by Git to a copy -- and a question keeps
+each changed file's verdict and judged document (`FileReviewRow.after`,
+`CapturedFileReview.after`) beside the steps only running shows
+(`KernelDecision.unpreviewed`, `PersistentQuestion.unpreviewed`,
+`UnpreviewedStep`). The dashboard and `review show` read that record and run
+nothing; files the policy allows on their own, such as scratch and tests,
+leave the default view. The edit gates judge a file by what the whole line
+leaves, so a second rewrite of one file is no longer read against the first
+one's input. `sed_output(scripts, options, text)` is the one sed runner;
+`rewritten_text`, `copied_paths`, `shell_preview` and the captured sed screen
+are gone, and `captured_edit_decision` takes the judged `after`.
+
 ### An issue filed on this repository's own tracker is not a question
 
 `gh issue create` joins the compensable verbs — closing restores what filing

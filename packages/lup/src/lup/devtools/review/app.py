@@ -47,7 +47,12 @@ from lup.policy.kernel.edit import (
     resites_a_suppression,
     written_suppression,
 )
-from lup.policy.relay import CapturedFileReview, PersistentQuestion, QuestionRelay
+from lup.policy.relay import (
+    CapturedFileReview,
+    PersistentQuestion,
+    QuestionRelay,
+    UnpreviewedStep,
+)
 from lup.policy.review import (
     ReviewedFile,
     reviewed_files,
@@ -704,7 +709,20 @@ def render_diffs(entry: PersistentQuestion, console: Console) -> bool:
             console.print("    this would leave the file exactly as it stands")
             continue
         console.print(Syntax(change.unified(), "diff", theme="ansi_dark"))
+    for step in entry.unpreviewed or []:
+        console.print(f"  {unpreviewed_caption(step)}  {step.command}", style="bold")
+        for path in step.paths:
+            console.print(f"    {path}")
     return rendered
+
+
+def unpreviewed_caption(step: UnpreviewedStep) -> str:
+    """What a step no document shows is, in the words a reviewer reads it by."""
+    match step.cause:
+        case "run":
+            return "result known only after running"
+        case "unread":
+            return "leaves a file that is not text"
 
 
 def opened(entry: PersistentQuestion, difftool: list[str]) -> None:

@@ -229,7 +229,14 @@ def sandbox_escaped(sandbox: SandboxPlacement) -> bool:
 
 
 class FileReviewRow(TypedDict):
-    """A caller-bound record of the actual file verdict, never authority itself."""
+    """A caller-bound record of the actual file verdict, never authority itself.
+
+    ``after`` is the document the verdict judged, ``None`` where the call
+    removes the file: what a reviewer is shown, so what they read is what was
+    judged rather than a second reading of the call made where they read it.
+    The document it replaces is bound by ``before_sha256`` alone, since the
+    caller keeps it as the call's preimage already.
+    """
 
     path: str
     effect: DecisionEffect
@@ -238,6 +245,28 @@ class FileReviewRow(TypedDict):
     rules: list[str]
     before_sha256: str | None
     after_sha256: str | None
+    after: str | None
+
+
+type UnpreviewedCause = Literal["run", "unread"]
+"""Why a step of a command shows no document: ``run`` where only running it
+makes one, ``unread`` where the file it leaves does not read as text."""
+
+
+class UnpreviewedRow(TypedDict):
+    """One step of a command whose effect no document states, and the files it leaves so.
+
+    The other half of a command's per-file record: the files a reviewer is
+    shown as documents are the ones the policy worked out, and this names
+    what it did not, so a command with no diff is never read as a command
+    that changes nothing. ``command`` is the step as it reads, ``paths`` the
+    files it leaves holding what only it knows, resolved; a step naming none
+    is a program that may write where no word says.
+    """
+
+    command: str
+    paths: list[str]
+    cause: UnpreviewedCause
 
 
 class Revision(TypedDict, total=False):
@@ -268,6 +297,7 @@ class Revision(TypedDict, total=False):
     reach: Reach | None
     unread: bool
     file_reviews: tuple[FileReviewRow, ...]
+    unpreviewed: tuple[UnpreviewedRow, ...]
 
 
 class KernelDecision:
@@ -425,6 +455,14 @@ class KernelDecision:
     file_reviews: tuple[FileReviewRow, ...]
     """Original per-file findings attached by the caller after owner routing."""
 
+    unpreviewed: tuple[UnpreviewedRow, ...]
+    """The steps of a command whose effect no document states, in the order they run.
+
+    Beside ``file_reviews`` because the two are one record of what a command
+    changes: the files worked out, and the steps nobody could work out
+    without running them.
+    """
+
     def __init__(
         self,
         effect: DecisionEffect,
@@ -447,6 +485,7 @@ class KernelDecision:
         reach: Reach | None = None,
         unread: bool = False,
         file_reviews: tuple[FileReviewRow, ...] = (),
+        unpreviewed: tuple[UnpreviewedRow, ...] = (),
     ) -> None:
         if effect not in ("allow", "ask", "deny", "defer"):
             raise ValueError(f"invalid kernel decision effect {effect!r}")
@@ -473,6 +512,7 @@ class KernelDecision:
         self.reach = reach
         self.unread = unread
         self.file_reviews = file_reviews
+        self.unpreviewed = unpreviewed
         # Only a verdict this policy actually reached is placed: a refusal is
         # not softened by where the operation would have run, and a deferral
         # hands the whole question over, placement included.
@@ -513,6 +553,7 @@ class KernelDecision:
             changes["reach"] if "reach" in changes else self.reach,
             changes["unread"] if "unread" in changes else self.unread,
             changes["file_reviews"] if "file_reviews" in changes else self.file_reviews,
+            changes["unpreviewed"] if "unpreviewed" in changes else self.unpreviewed,
         )
 
     def placed(self, escapable: bool, contained: bool = False) -> "KernelDecision":
@@ -832,6 +873,7 @@ def file_review_row(
     path: str,
     before_sha256: str | None,
     after_sha256: str | None,
+    after: str | None,
 ) -> FileReviewRow:
     """One file's evidence: *decision* stated whole, bound to the images judged.
 
@@ -847,6 +889,7 @@ def file_review_row(
         rules=[part.rule for part in contributions(decision) if part.effect != "allow"],
         before_sha256=before_sha256,
         after_sha256=after_sha256,
+        after=after,
     )
 
 
@@ -856,8 +899,15 @@ def captured_edit_decision(
     *,
     before_sha256: str | None,
     after_sha256: str | None,
+    after: str | None,
 ) -> KernelDecision:
-    """Bind the already-routed verdict to the exact images its owner judged."""
+    """Bind the already-routed verdict to the exact images its owner judged.
+
+    The digests are the host's to take, which the kernel reads no hash of;
+    ``after`` is the document ``after_sha256`` names, carried whole.
+    """
     return decision.revised(
-        file_reviews=(file_review_row(decision, path, before_sha256, after_sha256),)
+        file_reviews=(
+            file_review_row(decision, path, before_sha256, after_sha256, after),
+        )
     )

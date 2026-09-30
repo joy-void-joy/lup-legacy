@@ -234,6 +234,11 @@ full-operation view. A captured deferral means Lup requests no approval for that
 file; the native provider still applies its own permissions. Approval still applies
 to the exact complete submission. Where recorded evidence cannot establish a
 file's status, it remains visible rather than being treated as automatically allowed.
+A shell command is shown the way an edit is, one diff per file it changes, in
+the order it writes them: the documents the policy worked out when it judged
+the command, read off the review rather than re-derived where it is read
+(`docs/permissions.md`). The steps whose result exists only once they run are
+listed beneath, each with the files it leaves so.
 The file navigator shows change counts and supports searching paths. Select
 one file to inspect its colored, numbered diff or complete Before, After and
 Raw views; `[` and `]` move between files. A shared directory appears once,

@@ -42,7 +42,7 @@ from lup.harness.models import (
 )
 from lup.harness.validation import validated_tree
 from lup.policy.review import ReviewedFile
-from lup.policy.kernel.review import copied_paths, literal_input
+from lup.policy.kernel.review import literal_input
 
 
 class AdapterName(StrEnum):
@@ -331,17 +331,6 @@ def patch_review(
 
     try:
         if shell:
-            copied = copied_paths(command)
-            if copied is not None:
-                source, target = copied["source"], copied["target"]
-                return [
-                    ReviewedFile(
-                        path=resolved(target),
-                        before=document(target),
-                        after=document(source),
-                        overwrite=document(target) is not None,
-                    )
-                ]
             envelope = literal_input(command, "apply_patch")
             if envelope is None:
                 return []

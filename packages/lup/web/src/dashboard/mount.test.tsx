@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { act } from "react";
-import type { ReviewFile, ReviewSuppression, ReviewNotification } from "../generated/views";
+import type { ReviewFile, ReviewSuppression, ReviewNotification, UnpreviewedStep } from "../generated/views";
 import { App } from "./App";
 import { click, labelled, mount, one, until, type Mounted } from "../testing";
 
@@ -36,7 +36,8 @@ function review(key = "tree-q1") {
     summary: { ...summary, key, id: key === "tree-q1" ? "q1" : key },
     question: {
       fingerprint: `bound-${key}`, resumption: "native_retry", answer: null as null | { approved: boolean; principal: string; note: string },
-      operation: { tool: "apply_patch", cwd: "/project", payload: { patch: "Complete requested patch" } },
+      operation: { tool: "apply_patch", cwd: "/project", payload: { patch: "Complete requested patch" } as Record<string, string> },
+      unpreviewed: null as UnpreviewedStep[] | null,
     },
     files: [{ path: "/project/file.py", operation: "modify", before: "before\n", after: "after\n",
       review_effect: "ask" as ReviewFile["review_effect"], review_reason: "This file requires approval.",
@@ -1244,6 +1245,31 @@ describe("dashboard page", () => {
     expect(page.root.querySelectorAll(".preview-note")).toHaveLength(1);
     expect(one<HTMLDetailsElement>(page.root, ".preview-note").open).toBe(false);
     expect(one(page.root, ".preview-note p").textContent).toBe(detail.preview_notice);
+  });
+
+  test("a command review shows each recorded file, leaves scratch out by default, and lists what only running shows", async () => {
+    const scratch = review().files[0];
+    if (scratch === undefined) throw new Error("fixture lacks a file");
+    scratch.path = "/project/tmp/scratch.txt";
+    scratch.review_effect = "allow";
+    scratch.review_reason = "Scratch is allowed however it is written.";
+    detail.files.unshift(scratch);
+    detail.command = "printf 'x\\n' > tmp/scratch.txt && sed -i 's/before/after/' file.py && sort -o sorted.txt file.py";
+    detail.question.operation = { tool: "Bash", cwd: "/project", payload: { command: detail.command } };
+    detail.question.unpreviewed = [{ command: "sort -o sorted.txt file.py", paths: ["/project/sorted.txt"], cause: "run" }];
+    detail.preview_notice = "Each document is the one the policy worked out when it judged this command, without running it.";
+    const page = await open();
+    expect(page.root.querySelectorAll(".file-list li")).toHaveLength(1);
+    expect(one(page.root, ".file-heading > code").textContent).toBe("file.py");
+    expect(page.root.querySelectorAll(".diff-line")).toHaveLength(2);
+    const steps = one(page.root, ".unpreviewed");
+    expect(steps.textContent).toContain("1 step no document shows");
+    expect(one(steps, ".unpreviewed-cause").textContent).toBe("Result known only after running");
+    expect(one(steps, "pre").textContent).toBe("sort -o sorted.txt file.py");
+    expect(one(steps, ".unpreviewed-paths code").textContent).toBe("/project/sorted.txt");
+    expect(one(page.root, ".preview-note summary").textContent).toBe("How these documents were worked out");
+    await click(labelled(page.root, "button", "Full operation (2)"));
+    expect(page.root.querySelectorAll(".file-list li")).toHaveLength(2);
   });
 
   test("a token-free link opens the exact request in another tab using origin storage", async () => {
