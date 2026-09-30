@@ -46,6 +46,7 @@ from lup.devtools.dashboard.companion import (
     KnownRepository,
     dashboard_status,
     private_url,
+    restarted,
     refuse_inside_a_session,
 )
 from lup.devtools.dashboard.panes import SetupPane, SetupPanes
@@ -696,6 +697,14 @@ def create_operator_dashboard_app(root: Path) -> typer.Typer:
             )
 
         refused("reopen", settled)
+
+    @app.command("restart")
+    def restart_cmd() -> None:
+        """Restart the running dashboard onto its checkout's code, keeping its address.
+
+        It does so by itself once its checkout's code moves; this asks now.
+        """
+        refused("restart", lambda: typer.echo(restarted(companion, root)))
 
     @app.command("stop")
     def stop_cmd() -> None:

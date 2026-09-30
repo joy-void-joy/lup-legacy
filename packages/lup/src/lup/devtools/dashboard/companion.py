@@ -57,6 +57,7 @@ from lup.launch.companions import (
     SharedProcess,
     StatusLine,
 )
+from lup.launch.compilation import inherited_environment
 from lup.launch.declaration import Mount
 from lup.launch.preflight import NONCE_VARIABLE
 from lup.policy.identity import AGENT_IDENTITY_ENV, DASHBOARD_URL_ENV
@@ -612,3 +613,61 @@ def private_url(dashboard: Dashboard, root: Path) -> str:
     token = DashboardToken(directory=standing.place.state).read()
     return f"{page_url(standing.place)}/#token={token}"
 
+
+def restarted(dashboard: Dashboard, root: Path) -> str:
+    """Restart the running dashboard onto its checkout's code, keeping its address.
+
+    Asked of the dashboard itself, behind its capability and from its own
+    origin, as the page asks: it restarts in place once no write is in
+    flight. One that predates restarting itself answers the ask with nothing
+    to take it, and is replaced instead — stopped, and started from this
+    checkout's code under a lease let go at once, so the sessions holding it
+    keep it; with none holding it, stopping is all there is to do.
+    """
+    refuse_inside_a_session("dashboard restart")
+    standing = dashboard.standing(root)
+    if standing.serving is None:
+        raise LookupError(
+            "No dashboard is running: the next `harness claude|codex` session starts it."
+        )
+    url = page_url(standing.place)
+    token = DashboardToken(directory=standing.place.state).read()
+    try:
+        answered = httpx.post(
+            f"{url}/api/service/restart",
+            headers={"Authorization": f"Bearer {token}", "Origin": url},
+            json={},
+            timeout=5,
+            trust_env=False,
+        )
+    except httpx.HTTPError as unanswered:
+        raise LookupError(
+            f"The dashboard at {url} did not answer: {unanswered}"
+        ) from unanswered
+    match answered.status_code:
+        case 202:
+            return (
+                "The dashboard restarts onto its checkout's code once no answer is "
+                f"in flight, at {url}; open tabs reconnect on their own."
+            )
+        case 503:
+            return (
+                "The dashboard is already restarting; open tabs reconnect on their own."
+            )
+        case 404 | 405:
+            dashboard.stopped(root)
+            if not standing.leases:
+                return (
+                    "The dashboard predated restarting itself and no session held it, "
+                    "so it was stopped; the next launch starts it."
+                )
+            launch = CompanionLaunch(
+                root=root, runtime="operator", environment=inherited_environment()
+            )
+            with dashboard.held(launch):
+                return (
+                    "The dashboard predated restarting itself, so it was replaced: "
+                    f"stopped, and started from {root}'s code for the sessions holding it."
+                )
+        case status:
+            raise LookupError(f"The dashboard refused the restart: HTTP {status}")
