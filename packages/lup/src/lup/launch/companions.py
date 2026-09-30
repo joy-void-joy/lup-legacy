@@ -612,6 +612,11 @@ class CompanionStop(BaseModel, frozen=True):
     leases: int = 0
     """The live leases it counted as it stopped it."""
 
+    stays: bool = False
+    """Whether it stays stopped: the operator's own stop, which the launches
+    holding it leave alone until a launch or a restart starts it again. Every
+    other stop they start it again after."""
+
 
 def ended(status: int | None) -> str:
     """How a process ended, in words, from its exit code or negated signal."""
@@ -701,6 +706,17 @@ class CompanionState(BaseModel, frozen=True):
     def holds(self, lease: Lease) -> bool:
         """Whether ``lease`` is among those kept."""
         return any(held.id == lease.id for held in self.leases)
+
+    def stays_stopped(self) -> bool:
+        """Whether what ran was stopped to stay stopped, and nothing has started since."""
+        stop = self.stopped
+        running = self.running
+        return (
+            stop is not None
+            and stop.stays
+            and running is not None
+            and stop.process == running.process
+        )
 
 
 class Started(BaseModel, frozen=True):
@@ -922,9 +938,11 @@ class SharedProcess(HostCompanion, ABC, frozen=True):
     ``watched_every`` seconds, and whichever finds it gone first records how
     it ended, then starts it again from the declaration it launched with, on
     the ports it had where they are still free — waiting longer after each
-    exit in a row, and never less than the first step of ``backoff``. Every
-    stop lup makes is written, with why and how many live leases held it,
-    into the companion's log and its state before the signal is sent.
+    exit in a row, and never less than the first step of ``backoff``. Only a
+    stop the operator asked to stay (``stopped``) is left alone, until a
+    launch or a restart starts it. Every stop lup makes is written, with why
+    and how many live leases held it, into the companion's log and its state
+    before the signal is sent.
     """
 
     scope: CompanionScope = CompanionScope.CHECKOUT
@@ -1194,12 +1212,18 @@ class SharedProcess(HostCompanion, ABC, frozen=True):
         return [lease for lease in leases if kept(lease)]
 
     def halted(
-        self, slot: CompanionSlot, state: CompanionState, process: LiveProcess, why: str
+        self,
+        slot: CompanionSlot,
+        state: CompanionState,
+        process: LiveProcess,
+        why: str,
+        stays: bool = False,
     ) -> CompanionState:
         """Stop ``process`` for ``why``, having written why into its log and its state first.
 
-        ``state`` carries the live leases, whose count the record keeps: a
-        stop with launches still holding it is one they start it again after.
+        ``state`` carries the live leases, whose count the record keeps. The
+        launches still holding it start it again after the stop, unless it
+        ``stays`` stopped.
         """
         stop = CompanionStop(
             at=datetime.now(UTC),
@@ -1207,6 +1231,7 @@ class SharedProcess(HostCompanion, ABC, frozen=True):
             why=why,
             by=os.getpid(),
             leases=len(state.leases),
+            stays=stays,
         )
         slot.noted(
             f"stopping pid {process.pid}: {why} (live leases: {len(state.leases)})"
@@ -1222,12 +1247,12 @@ class SharedProcess(HostCompanion, ABC, frozen=True):
         """The state once what ran no longer stands in a start's way.
 
         Stopped for ``why`` where it still runs; else, where launches hold
-        it, recorded as exited.
+        it and nobody stopped it to stay stopped, recorded as exited.
         """
         running = state.running
         if running is not None and running.process.running():
             return self.halted(slot, state, running.process, why)
-        if not state.leases:
+        if not state.leases or state.stays_stopped():
             return state
         return self.exit_recorded(slot, state, now)
 
@@ -1328,11 +1353,11 @@ class SharedProcess(HostCompanion, ABC, frozen=True):
             failed = 0
 
     def untended(self, state: CompanionState, lease: Lease) -> bool:
-        """Whether a holder has anything to do: its own lease dropped, or nothing running."""
+        """Whether a holder has anything to do: its own lease dropped, or nothing
+        running that nobody stopped to stay stopped."""
         running = state.running
-        return (
-            not state.holds(lease) or running is None or not running.process.running()
-        )
+        gone = running is None or not running.process.running()
+        return not state.holds(lease) or (gone and not state.stays_stopped())
 
     def tended(
         self, slot: CompanionSlot, launch: CompanionLaunch, lease: Lease
@@ -1341,8 +1366,9 @@ class SharedProcess(HostCompanion, ABC, frozen=True):
 
         A lease dropped while its launcher runs was judged gone by mistake,
         so it is taken back, saying so, and what that mistake stopped is
-        started again like any exit. A start that fails waits the next step
-        of the backoff, as an exit would.
+        started again like any exit. What the operator stopped to stay
+        stopped is left so. A start that fails waits the next step of the
+        backoff, as an exit would.
         """
         now = datetime.now(UTC)
         state = slot.read()
@@ -1355,7 +1381,9 @@ class SharedProcess(HostCompanion, ABC, frozen=True):
                 update={"leases": [*self.live(slot, state.leases), lease]}
             )
         running = state.running
-        if running is not None and running.process.running():
+        if (running is not None and running.process.running()) or (
+            state.stays_stopped()
+        ):
             slot.write(state)
             return
         state = self.exit_recorded(slot, state, now)
@@ -1397,17 +1425,22 @@ class SharedProcess(HostCompanion, ABC, frozen=True):
             serving=running.process if serving and running is not None else None,
             leases=sum(1 for lease in state.leases if lease.holder.running()),
             stopped=state.stopped,
+            stays_stopped=state.stays_stopped(),
             exited=state.exited,
             restarts=state.restarts,
             retry=state.retry,
         )
 
-    def stopped(self, root: Path, why: str = "the operator stopped it") -> bool:
+    def stopped(
+        self, root: Path, why: str = "the operator stopped it", stays: bool = True
+    ) -> bool:
         """Stop what runs for ``root`` now, whether or not it is held, saying ``why`` first.
 
-        The leases stay, and so does the record of what ran: the launches
-        holding it find it gone and start it again, and with none holding it
-        the next launch does.
+        The leases stay, and so does the record of what ran. Where it
+        ``stays`` stopped — the operator's own stop — the launches holding it
+        leave it so, until a launch or a restart starts it; otherwise they
+        find it gone and start it again. With none holding it, the next
+        launch starts it either way.
         """
         slot = self.slot(root)
         with slot.locked():
@@ -1420,6 +1453,7 @@ class SharedProcess(HostCompanion, ABC, frozen=True):
                 state.model_copy(update={"leases": self.live(slot, state.leases)}),
                 running.process,
                 why,
+                stays=stays,
             )
         return True
 
@@ -1447,6 +1481,9 @@ class CompanionStanding(BaseModel, frozen=True):
 
     stopped: CompanionStop | None = None
     """The last time lup stopped it, and why."""
+
+    stays_stopped: bool = False
+    """Whether the operator stopped it to stay stopped, and nothing has started it since."""
 
     exited: CompanionExit | None = None
     """The last time it was found gone while launches held it."""

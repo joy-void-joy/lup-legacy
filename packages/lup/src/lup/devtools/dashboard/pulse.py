@@ -10,6 +10,8 @@ read-only at the path the host has it, beside the variable naming it.
 
 The file is rewritten while the service runs and removed when it stops, so a
 pulse whose last beat is old says the service stopped without removing it.
+Where the operator stopped it to stay stopped, the stop leaves a pulse saying
+so in its place (``halted``), which holds until a start replaces it.
 
 A leaf, imported by the status line a session runs at every render, so it
 reaches for nothing heavier than pydantic.
@@ -89,9 +91,18 @@ class DashboardPulse(BaseModel, frozen=True):
     restarts: int = 0
     """How many times the sessions holding it started it again after it stopped."""
 
+    halted: str = ""
+    """Why nothing serves, where the operator stopped it to stay stopped. Left
+    by that stop rather than beaten by a service, so it holds, whatever its
+    age, until a start replaces it."""
+
     def current(self, now: datetime, within: timedelta = timedelta(seconds=30)) -> bool:
         """Whether the service wrote it recently enough to still be running."""
         return now - self.beat <= within
+
+    def shown(self, now: datetime) -> bool:
+        """Whether a session's status line shows it: a current beat, or a stop that holds."""
+        return bool(self.halted) or self.current(now)
 
     def line(self) -> str:
         """What waits and where, in one line; the address alone where nothing waits.
@@ -99,7 +110,10 @@ class DashboardPulse(BaseModel, frozen=True):
         A dashboard running older code than its checkout says so between the
         two, since what it answers until it restarts may be refused; so does
         one started again moments ago after it stopped, saying why it stopped.
+        One the operator stopped says that alone.
         """
+        if self.halted:
+            return self.halted
         noun = "review" if self.pending == 1 else "reviews"
         said = self.code.said()
         return " · ".join(
@@ -132,6 +146,6 @@ class PulseFile(BaseModel, frozen=True):
 def status_line(path: Path, now: datetime | None = None) -> str:
     """The line a session's status line shows, or nothing where no dashboard answers."""
     pulse = PulseFile(path=path).read()
-    if pulse is None or not pulse.current(now or datetime.now(UTC)):
+    if pulse is None or not pulse.shown(now or datetime.now(UTC)):
         return ""
     return pulse.line()
