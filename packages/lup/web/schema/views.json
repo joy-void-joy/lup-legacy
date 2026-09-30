@@ -1292,6 +1292,10 @@
       "additionalProperties": false,
       "description": "One message of one repository's mail record, and whether it still waits.",
       "properties": {
+        "at": {
+          "title": "At",
+          "type": "integer"
+        },
         "door": {
           "title": "Door",
           "type": "string"
@@ -1333,10 +1337,6 @@
           "title": "Sent At",
           "type": "string"
         },
-        "seq": {
-          "title": "Seq",
-          "type": "integer"
-        },
         "text": {
           "title": "Text",
           "type": "string"
@@ -1350,7 +1350,7 @@
         "key",
         "repository",
         "id",
-        "seq",
+        "at",
         "sender",
         "recipient",
         "recipient_kind",
@@ -1546,6 +1546,26 @@
       "title": "LiveSession",
       "type": "object"
     },
+    "MailExtent": {
+      "additionalProperties": false,
+      "description": "Where the stream's messages of one repository start on its mail record.",
+      "properties": {
+        "earlier": {
+          "title": "Earlier",
+          "type": "integer"
+        },
+        "repository": {
+          "title": "Repository",
+          "type": "string"
+        }
+      },
+      "required": [
+        "repository",
+        "earlier"
+      ],
+      "title": "MailExtent",
+      "type": "object"
+    },
     "MaterialQuestion": {
       "additionalProperties": false,
       "description": "A resolver question: the mailbox's shape, plus what the run consults.\n\nThe id, the prompt, the answer domain and the two validators over them\nare what any door reads, and live on :class:`~lup.coordination.questions.Question`.\nAdded here is only what the resolver itself consults \u2014 which concern the\nquestion belongs to, which edit gates an option would need, and which\nlost criteria a re-check is about.",
@@ -1710,6 +1730,29 @@
         "type"
       ],
       "title": "MessageOutstandingEvent",
+      "type": "object"
+    },
+    "MessagePage": {
+      "additionalProperties": false,
+      "description": "One page of a repository's mail record, older than what the page already held.",
+      "properties": {
+        "earlier": {
+          "title": "Earlier",
+          "type": "integer"
+        },
+        "messages": {
+          "items": {
+            "$ref": "#/$defs/LiveMessage"
+          },
+          "title": "Messages",
+          "type": "array"
+        }
+      },
+      "required": [
+        "messages",
+        "earlier"
+      ],
+      "title": "MessagePage",
       "type": "object"
     },
     "MessagePostedEvent": {
@@ -4527,6 +4570,14 @@
             "source": ""
           }
         },
+        "extents": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/MailExtent"
+          },
+          "title": "Extents",
+          "type": "array"
+        },
         "messages": {
           "items": {
             "$ref": "#/$defs/LiveMessage"
@@ -4563,6 +4614,7 @@
         "repositories",
         "sessions",
         "messages",
+        "extents",
         "reviews",
         "code"
       ],

@@ -34,6 +34,7 @@ from lup.devtools.dashboard.live import (
     LiveMessage,
     LiveRepository,
     LiveSession,
+    MailExtent,
     RepositoryWatch,
 )
 from lup.devtools.dashboard.pulse import RunningCode
@@ -76,6 +77,12 @@ class SnapshotEvent(StreamEvent, frozen=True):
     repositories: list[LiveRepository]
     sessions: list[LiveSession]
     messages: list[LiveMessage]
+    """Each repository's latest page of its mail record, and what was posted after it."""
+
+    extents: list[MailExtent] = []
+    """Where each repository's messages here start on its mail record, which
+    the page reads back from a page at a time."""
+
     reviews: ReviewSnapshot
     code: RunningCode = RunningCode()
 
@@ -245,6 +252,7 @@ class Observation(BaseModel, frozen=True):
     repositories: list[LiveRepository]
     sessions: list[LiveSession]
     messages: list[LiveMessage]
+    extents: list[MailExtent] = []
     reviews: ReviewSnapshot | None = None
     code: RunningCode = RunningCode()
 
@@ -259,6 +267,7 @@ class LiveState:
         self.repositories: dict[str, LiveRepository] = {}
         self.sessions: dict[str, LiveSession] = {}
         self.messages: dict[str, LiveMessage] = {}
+        self.extents: dict[str, MailExtent] = {}
         self.reviews: dict[str, ReviewSummary] = {}
         self.roots: list[ReviewRoot] = []
         self.errors: list[ReviewError] = []
@@ -296,7 +305,26 @@ class LiveState:
         ]
         for event in events:
             event.moves(self)
+        self.extents = {extent.repository: extent for extent in seen.extents}
+        self.messages = {
+            key: message
+            for key, message in self.messages.items()
+            if message.repository in self.repositories
+            and message.at >= self.earlier(message.repository)
+        }
         return events
+
+    def earlier(self, repository: str) -> int:
+        """Where one repository's messages here start on its mail record; 0 where all are here.
+
+        A tab is handed only what the state holds from there on, so what a
+        fresh tab is sent stays one page per repository and what has been
+        posted since, however long the record behind it; a tab already
+        following keeps every message it was sent, and pages back from where
+        its own start.
+        """
+        extent = self.extents.get(repository)
+        return extent.earlier if extent is not None else 0
 
     def reviewed(self, snapshot: ReviewSnapshot) -> list[DashboardEvent]:
         """Every difference between the queues as read now and this state."""
@@ -329,6 +357,7 @@ class LiveState:
             repositories=list(self.repositories.values()),
             sessions=list(self.sessions.values()),
             messages=sorted(self.messages.values(), key=lambda each: each.sent_at),
+            extents=list(self.extents.values()),
             reviews=ReviewSnapshot(
                 roots=self.roots,
                 reviews=sorted(
@@ -414,6 +443,7 @@ class LiveFeed:
                 for watch in self.watches.values()
                 for message in watch.fresh_messages()
             ],
+            extents=[watch.extent() for watch in self.watches.values()],
             reviews=reviews,
             code=self.code(),
         )

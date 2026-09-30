@@ -304,9 +304,10 @@ and the page reads as current even when nothing had changed.
 Each source is read again only where it moved. A roster is read when a member's
 file changes, and at least every five seconds, since a runtime can stop without
 writing; a transcript from the byte it was last read to, its last megabyte the
-first time; the mail record from its cursor; a checkout's review queue only when
-its relay changed on disk, and then only what was appended since, through the
-relay the dashboard keeps open; and a settled review is projected once. An idle
+first time; the mail record from its end the first time, then from its cursor;
+a checkout's review queue only when its relay changed on disk, and then only
+what was appended since, through the relay the dashboard keeps open; and a
+settled review is projected once. An idle
 dashboard costs a few file checks a look however many sessions it shows and
 however long the history behind them.
 
@@ -352,8 +353,13 @@ as waiting in its mailbox or taken. Choose a repository's name to read every
 message its sessions sent each other as one conversation. Messages come from
 the repository's mail record, `mail.jsonl` in its coordination store, where
 every message posted lands as well as in its reader's mailbox, so what was said
-stays readable after its reader took it — for the roster's retention window,
-past which the sweep cuts it from the record.
+stays readable after its reader took it, for as long as the clone stands: the
+record is never trimmed. So it is never read whole either. The stream carries
+each repository's latest hundred messages and whatever is posted after them,
+read from the record's end, and **Load earlier messages**, in a session's
+messages or a repository's, reads the hundred before the earliest the page
+holds (`GET /api/repositories/<key>/messages?before=<byte>`), back to the
+record's start.
 
 ## Writing to a session
 

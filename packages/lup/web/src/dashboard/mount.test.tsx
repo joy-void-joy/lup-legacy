@@ -12,6 +12,7 @@ let frameSeq = 0;
 let liveRepositories: object[] = [];
 let liveSessions: object[] = [];
 let liveMessages: object[] = [];
+let liveExtents: object[] = [];
 
 /** One frame as the dashboard's stream sends it: its cursor as the event id, the frame as data. */
 function sent(event: object): string {
@@ -23,7 +24,7 @@ function sent(event: object): string {
 /** The whole state as one frame, over the fixture's reviews and whatever sessions and messages it holds. */
 function framed(reviews: unknown): string {
   const code = { source: "fixture", root: "/project/packages/lup/src/lup", since: null, older: false, failing: "", restarted: "" };
-  return sent({ type: "snapshot", repositories: liveRepositories, sessions: liveSessions, messages: liveMessages, reviews, code });
+  return sent({ type: "snapshot", repositories: liveRepositories, sessions: liveSessions, messages: liveMessages, extents: liveExtents, reviews, code });
 }
 /** How the fake server says the requester heard of an answer. */
 const DELIVERED = { queued: true, woken: false, waited: false, copied: false, detail: "No `review wait` holds it: in lead's mailbox, not woken: asleep." };
@@ -84,6 +85,8 @@ describe("dashboard page", () => {
   let requests: { path: string; method: string; body: unknown; authorization: string | null }[] = [];
   let panes: { key: string; repository: string; name: string; path: string }[] = [];
   let replyStatus = 200;
+  // A repository's messages older than the stream carries, one page per byte a page is read back from.
+  let olderMail: { before: number; page: { messages: object[]; earlier: number } }[] = [];
   // History past what the stream carries: the server pages it, most recently settled first.
   let older: (typeof summary & { settled?: string })[] = [];
   const settledRows = () => [...rows.filter((row) => row.state !== "pending"), ...older];
@@ -109,6 +112,8 @@ describe("dashboard page", () => {
     liveRepositories = [];
     liveSessions = [];
     liveMessages = [];
+    liveExtents = [];
+    olderMail = [];
     sessionStorage.clear();
     localStorage.clear();
     window.history.replaceState(null, "", "/#token=browser-secret");
@@ -160,6 +165,11 @@ describe("dashboard page", () => {
         details.set(key, settled);
         rows = rows.map((row) => row.key === key ? settled.summary : row);
         return Response.json({ review: settled, notification: DELIVERED });
+      }
+      if (path.startsWith("api/repositories/r1/messages?")) {
+        const before = Number(new URLSearchParams(path.slice(path.indexOf("?") + 1)).get("before"));
+        const found = olderMail.find((each) => each.before === before);
+        return found === undefined ? Response.json({ detail: `No page before ${before}` }, { status: 404 }) : Response.json(found.page);
       }
       if (path.startsWith("api/repositories/") && path.endsWith("/messages")) {
         if (replyStatus !== 200) return Response.json({ detail: "lead left at noon" }, { status: replyStatus });
@@ -287,7 +297,7 @@ describe("dashboard page", () => {
 
   function liveMessage(id: string, fields: object = {}) {
     return {
-      key: `r1/${id}`, repository: "r1", id, seq: 0, sender: "", recipient: "lead", recipient_kind: "session",
+      key: `r1/${id}`, repository: "r1", id, at: 0, sender: "", recipient: "lead", recipient_kind: "session",
       text: id, door: "agent", redirect: false, in_reply_to: "", sent_at: "2026-09-29T10:00:00Z", waiting: false, ...fields,
     };
   }
@@ -413,6 +423,37 @@ describe("dashboard page", () => {
     expect(said).toHaveLength(2);
     expect(said[0]).toContain("reviewer → dev");
     expect(said[1]).toContain("dev → reviewer");
+    expect(page.root.querySelector(".repository-messages .earlier")).toBeNull();
+  });
+
+  test("messages older than the stream carries are read a page at a time, back to the record's start", async () => {
+    sessionsFixture();
+    liveMessages = [
+      liveMessage("m1", { sender: "other", text: "rebase onto staging first", waiting: true, at: 500 }),
+      liveMessage("m2", { sender: "lead", recipient: "other", text: "on it", sent_at: "2026-09-29T10:01:00Z", at: 700 }),
+    ];
+    liveExtents = [{ repository: "r1", earlier: 500 }];
+    olderMail = [
+      { before: 500, page: { messages: [liveMessage("m0", { sender: "other", text: "the base moved", sent_at: "2026-09-29T09:00:00Z", at: 200 })], earlier: 200 } },
+      { before: 200, page: { messages: [liveMessage("m-1", { sender: "user", text: "start here", sent_at: "2026-09-29T08:00:00Z" })], earlier: 0 } },
+    ];
+    const page = await open();
+    await click(labelled(page.root, ".views button", "Sessions (1)"));
+    await until(() => page.root.querySelector(".sessions") !== null, "the sessions view");
+    await click(one(page.root, "[data-session='r1/lead'] button"));
+    await until(() => page.root.querySelector(".session-detail .earlier button") !== null, "the way back");
+
+    await click(one(page.root, ".session-detail .earlier button"));
+    await until(() => page.root.querySelector(".session-detail")?.textContent?.includes("the base moved") === true, "the older page");
+    await click(one(page.root, ".session-detail .earlier button"));
+    await until(() => page.root.querySelector(".session-detail")?.textContent?.includes("start here") === true, "the oldest page");
+
+    const said = [...page.root.querySelectorAll(".session-detail .message")].map((node) => node.textContent ?? "");
+    expect(said.map((line) => ["start here", "the base moved", "rebase onto staging first", "on it"].find((text) => line.includes(text)))).toEqual(
+      ["start here", "the base moved", "rebase onto staging first", "on it"]);
+    expect(page.root.querySelector(".session-detail .earlier")).toBeNull();
+    expect(requests.filter((request) => request.path.startsWith("api/repositories/r1/messages?")).map((request) => request.path)).toEqual(
+      ["api/repositories/r1/messages?before=500", "api/repositories/r1/messages?before=200"]);
   });
 
   test("checkout and target identity preserve full literal paths in compact scrollable lines", async () => {

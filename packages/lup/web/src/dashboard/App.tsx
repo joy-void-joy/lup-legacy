@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ReviewDecision, ReviewDetail, ReviewRoot, ReviewSnapshot, ReviewSummary, SetupPane, ThreadEntry } from "../generated/views";
-import { answerReview, followDashboard, readHistory, readReview, readReviewLink, readSetupPanes, remarkReview, reviewLink, ReviewError, takeToken, TOKEN_KEY } from "./api";
+import { answerReview, followDashboard, readHistory, readMessages, readReview, readReviewLink, readSetupPanes, remarkReview, reviewLink, ReviewError, takeToken, TOKEN_KEY } from "./api";
 import type { FileNavigation } from "./Files";
-import { applied, codeNotice, type LiveState } from "./live";
+import { applied, codeNotice, paged, type LiveState } from "./live";
 import { EMPTY_DRAFT, RequestView, staleSentences, stateClass, stateLabel, type Action, type Draft } from "./Request";
 import { Sessions } from "./Sessions";
 
@@ -335,6 +335,18 @@ export function App() {
     return () => controller.abort();
   }, [linked, queueCurrent, linkedRows.length, token]);
 
+  // One older page of a repository's messages, read back from where the ones
+  // the page holds start, and folded into what the stream has moved so far.
+  async function loadEarlierMessages(repository: string) {
+    const before = liveState.current?.earlier.get(repository) ?? 0;
+    if (before === 0) return;
+    const page = await readMessages(repository, before, token);
+    if (liveState.current === null) return;
+    const next = paged(liveState.current, repository, before, page);
+    liveState.current = next;
+    setLive(next);
+  }
+
   async function loadOlder() {
     setOlderLoading(true);
     try {
@@ -533,7 +545,7 @@ export function App() {
     </header>
     {live !== null && codeNotice(live.code) !== "" && <p className="notice running-code" role="alert">{codeNotice(live.code)}</p>}
     {notice !== "" && <p className="notice" role="alert">{notice}</p>}
-    {view === "sessions" ? <Sessions live={live} current={connection === "Live"} token={token} />
+    {view === "sessions" ? <Sessions live={live} current={connection === "Live"} token={token} onEarlier={loadEarlierMessages} />
       : view === "setup" ? <>{error !== "" && <p className="error" role="alert">{error}</p>}<SetupView panes={panes} chosen={pane} onChoose={setPane} /></> : <>
     {help && <section className="shortcut-help" id="shortcut-help" aria-label="Keyboard shortcuts">
       {SHORTCUTS.map(([keys, meaning]) => <span key={`${keys.join("+")} ${meaning}`}>{keys.map((key, index) => <span key={key}>{index > 0 && " + "}<kbd>{key}</kbd></span>)} {meaning}</span>)}

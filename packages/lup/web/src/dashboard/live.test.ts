@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { DashboardEvent, LiveMessage, LiveSession, ReviewSummary, StreamFrame } from "../generated/views";
-import { applied, called, codeNotice, conversation, repositoryMessages, sessionTree, UNSAID, type LiveState } from "./live";
+import { applied, called, codeNotice, conversation, paged, repositoryMessages, sessionTree, UNSAID, type LiveState } from "./live";
 
 const repository = { key: "r1", name: "lup", repository: "/src/lup.git", checkout: "/src/lup.git/tree/dev" };
 
@@ -16,7 +16,7 @@ function row(id: string, fields: Partial<LiveSession> = {}): LiveSession {
 
 function message(id: string, fields: Partial<LiveMessage> = {}): LiveMessage {
   return {
-    key: `r1/${id}`, repository: "r1", id, seq: 0, sender: "", recipient: "lead", recipient_kind: "session",
+    key: `r1/${id}`, repository: "r1", id, at: 0, sender: "", recipient: "lead", recipient_kind: "session",
     text: id, door: "agent", redirect: false, in_reply_to: "", sent_at: "2026-09-29T10:00:00Z", waiting: true,
     ...fields,
   };
@@ -41,7 +41,8 @@ function snapshot(): LiveState {
     type: "snapshot",
     repositories: [repository],
     sessions: [row("lead"), row("lead-a1", { parent: "lead", kind: "subagent", name: "scout" }), row("other", { running: false })],
-    messages: [message("m1", { sender: "other" })],
+    messages: [message("m1", { sender: "other", at: 900 })],
+    extents: [{ repository: "r1", earlier: 900 }],
     reviews: { roots: [], errors: [], reviews: [review("q1", "2026-09-29T09:00:00Z")], history: 0 },
     code: UNSAID,
   }));
@@ -88,12 +89,25 @@ describe("live state", () => {
   test("a session's conversation is what it was sent and what it sent, oldest first", () => {
     const state = applied(snapshot(), frame({
       type: "message",
-      message: message("m2", { sender: "lead", recipient: "other", sent_at: "2026-09-29T10:05:00Z" }),
+      message: message("m2", { sender: "lead", recipient: "other", sent_at: "2026-09-29T10:05:00Z", at: 950 }),
     }));
-    const unrelated = applied(state, frame({ type: "message", message: message("m3", { sender: "user", recipient: "other" }) }));
+    const unrelated = applied(state, frame({ type: "message", message: message("m3", { sender: "user", recipient: "other", at: 1000 }) }));
 
     expect(conversation(unrelated, "r1", "lead").map((each) => each.id)).toEqual(["m1", "m2"]);
     expect(repositoryMessages(unrelated, "r1").map((each) => each.id)).toEqual(["m1", "m3", "m2"]);
+  });
+
+  test("an older page of a repository's messages joins the ones held, back from where they started", () => {
+    const whole = snapshot();
+    const older = { messages: [message("m0", { at: 0, sent_at: "2026-09-29T09:00:00Z" }), message("m1", { at: 900, waiting: false })], earlier: 0 };
+    const read = paged(whole, "r1", 900, older);
+    const stale = paged(read, "r1", 900, { messages: [message("stray", { at: 400 })], earlier: 0 });
+
+    expect(whole.earlier.get("r1")).toBe(900);
+    expect(repositoryMessages(read, "r1").map((each) => each.id)).toEqual(["m0", "m1"]);
+    expect(read.messages.get("r1/m1")?.waiting).toBe(true);
+    expect(read.earlier.get("r1")).toBe(0);
+    expect(stale).toBe(read);
   });
 
   test("an id reads as the name its roster row carries, and the person as the operator", () => {

@@ -33,9 +33,6 @@ inform.
 
 import fcntl
 import json
-import os
-from datetime import datetime
-from io import TextIOWrapper
 from pathlib import Path
 from typing import TypedDict
 from uuid import uuid4
@@ -50,7 +47,6 @@ from .store import (
     listed,
     loaded,
     published,
-    spoken_at,
     stamped,
     text,
 )
@@ -94,17 +90,6 @@ class Posted(TypedDict, total=False):
 
     recipient: Actor
     message: Message
-
-
-class Cut(TypedDict):
-    """The first line of a record whose head a sweep cut: how many lines went, all told.
-
-    On the record rather than beside it, so the count and the lines it counts
-    are replaced in one rename, and a reader numbering lines from it numbers
-    every line kept as it was numbered before the cut.
-    """
-
-    cut: int
 
 
 def mailbox_path(root: Path, mailbox: str) -> Path:
@@ -173,129 +158,23 @@ def post(root: Path, recipient: Actor, message: Message) -> bool:
     return True
 
 
-def held_record(path: Path) -> TextIOWrapper:
-    """The mail record, open to append to and locked against every other writer.
-
-    Checked, once locked, to still be the file at the record's name: a sweep
-    cutting the record's head replaces it whole, and a sender that opened the
-    one it replaced before taking the lock would otherwise append to a file
-    nobody reads again. Closing the handle lets the lock go.
-    """
-    record = path.open("a", encoding="utf-8")
-    try:
-        fcntl.flock(record.fileno(), fcntl.LOCK_EX)
-        current = path.stat().st_ino == os.fstat(record.fileno()).st_ino
-    except FileNotFoundError:
-        current = False
-    except OSError:
-        record.close()
-        raise
-    if current:
-        return record
-    record.close()
-    return held_record(path)
-
-
 def recorded(root: Path, posted: Posted) -> bool:
     """Append one line to the mail record, saying whether it was written.
 
-    Appended rather than rewritten, so a reader following the file never meets
-    a line it has read change under it; under a lock on the record itself, so
-    two senders' lines never interleave however long either message is.
+    Appended and never rewritten, so a line keeps the byte it starts at for
+    as long as the record stands, and a reader paging back from that byte
+    finds exactly what was older; under a lock on the record itself, so two
+    senders' lines never interleave however long either message is.
     """
     try:
         root.mkdir(parents=True, exist_ok=True)
-        with held_record(root / MAIL_RECORD) as record:
+        with (root / MAIL_RECORD).open("a", encoding="utf-8") as record:
+            fcntl.flock(record.fileno(), fcntl.LOCK_EX)
             record.write(json.dumps(posted) + "\n")
             record.flush()
     except OSError:
         return False
     return True
-
-
-def cut_of(line: bytes) -> int | None:
-    """How many lines a sweep cut ahead of the record this is the first line of.
-
-    ``None`` where the line is not that — a message, or a line still being
-    written — which is the first line of every record no sweep has cut.
-    """
-    if not line.endswith(b"\n"):
-        return None
-    try:
-        found: Cut = json.loads(line)
-    except ValueError:
-        return None
-    cut = found.get("cut") if isinstance(found, dict) else None
-    return cut if isinstance(cut, int) and not isinstance(cut, bool) else None
-
-
-def kept(line: bytes, since: datetime) -> bool:
-    """Whether one line of the record stays: a message sent since *since*.
-
-    A line still being written stays whatever it says, since its sender is
-    only part way through it; a whole line that does not read as a message
-    sent at a time goes with the stale ones around it.
-    """
-    if not line.endswith(b"\n"):
-        return True
-    try:
-        posted: Posted = json.loads(line)
-    except ValueError:
-        return False
-    message = posted.get("message") if isinstance(posted, dict) else None
-    sent = (
-        spoken_at(text(message.get("sent_at"))) if isinstance(message, dict) else None
-    )
-    return sent is not None and sent >= since
-
-
-def stale_head(path: Path, since: datetime) -> bool:
-    """Whether the record's first message was sent before *since*, read without the lock.
-
-    What a sweep asks on every tick before it takes the lock and reads the
-    whole record: nearly always the head is inside the window and the answer
-    costs two lines.
-    """
-    try:
-        with path.open("rb") as record:
-            head = record.readline()
-            first = record.readline() if cut_of(head) is not None else head
-    except OSError:
-        return False
-    return bool(first) and not kept(first, since)
-
-
-def trimmed(root: Path, since: datetime) -> int:
-    """Cut every line off the record's head sent before *since*, saying how many went.
-
-    The head only, so what stays is every line from the first one kept, in
-    the order it was posted. What is left is written whole beneath a first
-    line saying how many lines have been cut ahead of it, all told, and put
-    in the record's place by rename under the record's lock: a sender waiting
-    on the lock appends to what replaced it, and a reader following the file
-    is carried to the same line in the replacement by that count.
-    """
-    path = root / MAIL_RECORD
-    if not stale_head(path, since):
-        return 0
-    try:
-        with held_record(path):
-            lines = path.read_bytes().splitlines(keepends=True)
-            before = cut_of(lines[0]) if lines else None
-            body = lines if before is None else lines[1:]
-            gone = next(
-                (index for index, line in enumerate(body) if kept(line, since)),
-                len(body),
-            )
-            if gone == 0:
-                return 0
-            replacement = path.with_name(f"{path.name}.{uuid4().hex[:8]}.writing")
-            heading = json.dumps(Cut(cut=(before or 0) + gone)).encode() + b"\n"
-            replacement.write_bytes(heading + b"".join(body[gone:]))
-            replacement.replace(path)
-    except OSError:
-        return 0
-    return gone
 
 
 def waiting(root: Path, mailbox: str) -> list[Message]:

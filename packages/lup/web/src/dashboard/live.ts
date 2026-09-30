@@ -1,16 +1,20 @@
-import type { LiveMessage, LiveRepository, LiveSession, ReviewSnapshot, ReviewSummary, RunningCode, StreamFrame } from "../generated/views";
+import type { LiveMessage, LiveRepository, LiveSession, MessagePage, ReviewSnapshot, ReviewSummary, RunningCode, StreamFrame } from "../generated/views";
 
 /**
  * Everything live the page shows, as the stream has moved it so far.
  * Each collection is replaced only when a frame changes it, so a view reading
  * one — the review queue reading `reviews` — redraws only for its own frames.
  * `code` is which code the dashboard runs, and whether its checkout moved past it.
+ * `earlier` is, per repository, the byte of its mail record its messages here
+ * start at: older ones are read a page at a time from there back, and 0 is a
+ * repository whose every message is here.
  */
 export type LiveState = {
   cursor: string;
   repositories: ReadonlyMap<string, LiveRepository>;
   sessions: ReadonlyMap<string, LiveSession>;
   messages: ReadonlyMap<string, LiveMessage>;
+  earlier: ReadonlyMap<string, number>;
   reviews: ReviewSnapshot;
   code: RunningCode;
 };
@@ -59,11 +63,12 @@ export function applied(state: LiveState | null, frame: StreamFrame): LiveState 
       repositories: keyed(event.repositories),
       sessions: keyed(event.sessions),
       messages: keyed(event.messages),
+      earlier: new Map(event.extents.map((extent) => [extent.repository, extent.earlier])),
       reviews: { ...event.reviews, reviews: newestFirst(event.reviews.reviews) },
       code: event.code,
     };
   }
-  const base: LiveState = { ...(state ?? { repositories: new Map(), sessions: new Map(), messages: new Map(), reviews: { roots: [], reviews: [], errors: [], history: 0 }, code: UNSAID }), cursor: frame.cursor };
+  const base: LiveState = { ...(state ?? { repositories: new Map(), sessions: new Map(), messages: new Map(), earlier: new Map(), reviews: { roots: [], reviews: [], errors: [], history: 0 }, code: UNSAID }), cursor: frame.cursor };
   switch (event.type) {
     case "repository": return { ...base, repositories: set(base.repositories, event.repository.key, event.repository) };
     case "repository_gone": return { ...base, repositories: without(base.repositories, event.key) };
@@ -78,6 +83,18 @@ export function applied(state: LiveState | null, frame: StreamFrame): LiveState 
     case "review_scope": return { ...base, reviews: { ...base.reviews, roots: event.roots, errors: event.errors, history: event.history } };
     case "service": return { ...base, code: event.code };
   }
+}
+
+/**
+ * The state with one older page of a repository's messages folded in, as read back from `before`.
+ * A message the state already holds keeps the stream's copy. A page read from a byte the state no
+ * longer starts at — a snapshot replaced it meanwhile — is dropped, so what is shown never skips
+ * the messages between the two.
+ */
+export function paged(state: LiveState, repository: string, before: number, page: MessagePage): LiveState {
+  if (state.earlier.get(repository) !== before) return state;
+  const messages = new Map([...page.messages.map((message): [string, LiveMessage] => [message.key, message]), ...state.messages]);
+  return { ...state, messages, earlier: new Map(state.earlier).set(repository, page.earlier) };
 }
 
 /** One session and the subagents running inside it. */
@@ -108,7 +125,7 @@ export function sessionTree(state: LiveState): RepositorySessions[] {
 }
 
 function oldestFirst(messages: LiveMessage[]): LiveMessage[] {
-  return messages.sort((left, right) => Date.parse(left.sent_at) - Date.parse(right.sent_at) || left.seq - right.seq);
+  return messages.sort((left, right) => Date.parse(left.sent_at) - Date.parse(right.sent_at) || left.at - right.at);
 }
 
 /** Every message one repository's sessions said to each other, oldest first. */

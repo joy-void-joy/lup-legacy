@@ -51,6 +51,28 @@ function MessageLine({ live, message }: { live: LiveState; message: LiveMessage 
   </li>;
 }
 
+/** Reads what one repository's sessions said before the messages the page holds, a page at a time. */
+function Earlier({ live, repository, onEarlier }: { live: LiveState; repository: string; onEarlier(repository: string): Promise<void> }) {
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  if ((live.earlier.get(repository) ?? 0) === 0) return null;
+  async function load() {
+    setLoading(true);
+    setError("");
+    try {
+      await onEarlier(repository);
+    } catch (failure) {
+      setError(failure instanceof Error ? failure.message : String(failure));
+    } finally {
+      setLoading(false);
+    }
+  }
+  return <div className="earlier">
+    <button type="button" className="load-older" disabled={loading} onClick={() => void load()}>{loading ? "Loading earlier messages…" : "Load earlier messages"}</button>
+    {error !== "" && <p className="error" role="alert">{error}</p>}
+  </div>;
+}
+
 function SessionItem({ node, chosen, onChoose }: { node: SessionNode; chosen: string; onChoose(key: string): void }) {
   const { session } = node;
   return <li className={`session-item ${standing(session)}`} data-session={session.key}>
@@ -99,7 +121,7 @@ function Reply({ session, token }: { session: LiveSession; token: string }) {
   </form>;
 }
 
-function SessionDetail({ live, session, token, onChoose }: { live: LiveState; session: LiveSession; token: string; onChoose(key: string): void }) {
+function SessionDetail({ live, session, token, onChoose, onEarlier }: { live: LiveState; session: LiveSession; token: string; onChoose(key: string): void; onEarlier(repository: string): Promise<void> }) {
   const here = [...live.sessions.values()].filter((each) => each.repository === session.repository);
   const parent = here.find((each) => each.id === session.parent);
   const subagents = here.filter((each) => each.parent === session.id);
@@ -128,25 +150,28 @@ function SessionDetail({ live, session, token, onChoose }: { live: LiveState; se
       {subagents.map((subagent) => <li key={subagent.key}><button type="button" onClick={() => onChoose(subagent.key)}>{subagent.name || subagent.id}</button> <small>{subagent.doing}</small></li>)}
     </ul></section>}
     <section className="conversation"><h3>Messages ({messages.length})</h3>
-      {messages.length === 0 ? <p className="empty">Nothing said to it or by it yet.</p> : <ul>{messages.map((message) => <MessageLine key={message.key} live={live} message={message} />)}</ul>}
+      <Earlier live={live} repository={session.repository} onEarlier={onEarlier} />
+      {messages.length === 0 ? <p className="empty">{(live.earlier.get(session.repository) ?? 0) === 0 ? "Nothing said to it or by it yet." : "Nothing said to it or by it among the messages loaded."}</p>
+        : <ul>{messages.map((message) => <MessageLine key={message.key} live={live} message={message} />)}</ul>}
     </section>
     {session.running ? <Reply session={session} token={token} />
       : <p className="notice">This session has stopped; nothing would read a message to it.</p>}
   </article>;
 }
 
-function RepositoryMessages({ live, repository }: { live: LiveState; repository: LiveRepository }) {
+function RepositoryMessages({ live, repository, onEarlier }: { live: LiveState; repository: LiveRepository; onEarlier(repository: string): Promise<void> }) {
   const messages = repositoryMessages(live, repository.key);
   return <section className="repository-messages session-detail" aria-label={`Messages in ${repository.name}`}>
     <header><h2>{repository.name}</h2><p className="watched-checkout"><code>{repository.repository}</code></p></header>
     <section className="conversation"><h3>Messages between its sessions ({messages.length})</h3>
+      <Earlier live={live} repository={repository.key} onEarlier={onEarlier} />
       {messages.length === 0 ? <p className="empty">No session here has written to another yet.</p> : <ul>{messages.map((message) => <MessageLine key={message.key} live={live} message={message} />)}</ul>}
     </section>
   </section>;
 }
 
 /** Every session of every repository the dashboard serves, what each is doing, and what was said. */
-export function Sessions({ live, current, token }: { live: LiveState | null; current: boolean; token: string }) {
+export function Sessions({ live, current, token, onEarlier }: { live: LiveState | null; current: boolean; token: string; onEarlier(repository: string): Promise<void> }) {
   const [chosen, setChosen] = useState<Chosen>(null);
   if (live === null) return <div className="sessions"><p className="empty" role="status">Loading sessions…</p></div>;
   const tree = sessionTree(live);
@@ -167,8 +192,8 @@ export function Sessions({ live, current, token }: { live: LiveState | null; cur
       </section>)}
     </aside>
     <main className="stage">
-      {session !== undefined ? <SessionDetail key={session.key} live={live} session={session} token={token} onChoose={choose} />
-        : repository !== undefined ? <RepositoryMessages live={live} repository={repository} />
+      {session !== undefined ? <SessionDetail key={session.key} live={live} session={session} token={token} onChoose={choose} onEarlier={onEarlier} />
+        : repository !== undefined ? <RepositoryMessages live={live} repository={repository} onEarlier={onEarlier} />
         : <section className="welcome"><h2>Every session, as it works</h2><p>Choose a session to read what it is doing, what it holds and what was said to it, and to write to it; choose a repository to read what its sessions said to each other.</p></section>}
     </main>
   </div>;

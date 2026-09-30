@@ -8,6 +8,7 @@ operator's reply goes out through the page's own capability.
 """
 
 import asyncio
+import json
 from collections.abc import AsyncIterator, Callable
 from pathlib import Path
 
@@ -17,11 +18,14 @@ from starlette.types import Message, Scope
 
 from lup.channels.models import Door
 from lup.coordination import watch as watching
+from lup.coordination.bare import mail as bare_mail
+from lup.coordination.bare.store import MAIL_RECORD, session_actor
 from lup.coordination.identity import mint_member_id
+from lup.coordination.mail import MAIL_PAGE
 from lup.coordination.repository import RepositoryPeers
 from lup.coordination.wake import WakePath, Woken
 from lup.devtools.dashboard.companion import KnownRepository
-from lup.devtools.dashboard.live import ReplyOutcome
+from lup.devtools.dashboard.live import MessagePage, ReplyOutcome
 from lup.devtools.dashboard.reviews import ReviewStore, dashboard_app
 from lup.devtools.dashboard.stream import (
     LiveFeed,
@@ -214,6 +218,85 @@ async def test_a_tab_further_behind_than_the_feed_keeps_gets_the_whole_state(
     first = received[0].event
     assert isinstance(first, SnapshotEvent)
     assert len(first.messages) == 5
+
+
+def long_record(root: Path, reader: str, count: int) -> None:
+    """A mail record of *count* messages to *reader*, written whole rather than posted."""
+    record = RepositoryPeers(root).root / MAIL_RECORD
+    record.write_text(
+        "".join(
+            json.dumps(
+                bare_mail.Posted(
+                    recipient=session_actor(reader),
+                    message=bare_mail.new_message(
+                        sender="other", to=reader, body=f"message {index}", door="agent"
+                    ),
+                )
+            )
+            + "\n"
+            for index in range(count)
+        ),
+        encoding="utf-8",
+    )
+
+
+async def test_a_fresh_tab_is_handed_one_page_of_a_long_mail_record(
+    tmp_path: Path,
+) -> None:
+    """Ten thousand messages on the record, and the first frame carries the latest page."""
+    lead = session(tmp_path, "lead")
+    long_record(tmp_path, lead, 10_000)
+
+    received = await frames(feed(tmp_path), "", lambda received: len(received) >= 1)
+
+    snapshot = received[0].event
+    assert isinstance(snapshot, SnapshotEvent)
+    assert [each.text for each in snapshot.messages] == [
+        f"message {index}" for index in range(10_000 - MAIL_PAGE, 10_000)
+    ]
+    [extent] = snapshot.extents
+    assert extent.earlier == min(each.at for each in snapshot.messages) > 0
+
+    async with client(tmp_path) as http:
+        response = await http.get(
+            f"/api/repositories/{known(tmp_path).key()}/messages",
+            params={"before": extent.earlier},
+            headers=AUTHORIZATION,
+        )
+
+    older = MessagePage.model_validate_json(response.content)
+    assert [each.text for each in older.messages] == [
+        f"message {index}"
+        for index in range(10_000 - 2 * MAIL_PAGE, 10_000 - MAIL_PAGE)
+    ]
+    assert 0 < older.earlier < extent.earlier
+
+
+async def test_the_stream_holds_each_repository_s_latest_page_as_mail_arrives(
+    tmp_path: Path,
+) -> None:
+    lead = session(tmp_path, "lead")
+    long_record(tmp_path, lead, MAIL_PAGE)
+    source = feed(tmp_path)
+    seen = await frames(source, "", lambda received: len(received) >= 1)
+    peers = RepositoryPeers(tmp_path)
+    for index in range(3):
+        peers.send(lead, f"later {index}", sender="other")
+
+    await frames(
+        source,
+        seen[-1].cursor,
+        lambda received: (
+            sum(isinstance(each.event, MessageEvent) for each in received) >= 3
+        ),
+    )
+
+    snapshot = source.state.snapshot()
+    texts = [each.text for each in snapshot.messages]
+    assert len(texts) == MAIL_PAGE
+    assert texts[-3:] == [f"later {index}" for index in range(3)]
+    assert texts[0] == "message 3"
+    assert snapshot.extents[0].earlier == snapshot.messages[0].at
 
 
 def client(root: Path) -> AsyncClient:

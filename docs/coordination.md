@@ -391,10 +391,11 @@ own processes, and every relation between members derived at the read:
 | What is this member called? | The names on its file, newest last |
 | What is waiting for it? | The files in its mailbox |
 
-Nothing is folded and nothing is replayed, so what the store holds is bounded
-by the population rather than by its history: a member that stops takes its
-file to `departed/`, and the sweep deletes that after the retention window.
-Nothing here needs compaction.
+Nothing is folded and nothing is replayed, so the roster is bounded by the
+population rather than by its history: a member that stops takes its file to
+`departed/`, and the sweep deletes that after the retention window. The one
+history the store keeps is the mail record (below), kept whole and read a page
+at a time. Nothing here needs compaction.
 
 A clone that ran 0.2.x still holds the records that store folded —
 `touches.jsonl`, `roster.jsonl`, `messages.jsonl`, `names.jsonl`, and the
@@ -474,11 +475,12 @@ run steering its workers, signs nothing and reads `[message by <door>] …`.
 Every message posted also lands on the store's mail record, `mail.jsonl`, one
 line naming the member it went to: the mailbox is its reader's position and
 empties as it is read, so what was said to a member, and by whom, is read
-from the record — the dashboard follows it from a cursor. The record holds
-the roster's retention window, as the departed do: the sweep cuts every
-message sent before it off the record's head, leaving a first line that
-counts what was cut, so a line keeps its number and a reader following the
-record is carried across the cut.
+from the record. The record is kept whole — the sweep deletes nothing from it
+— and only ever appended to, so a line starts at the byte it was written at
+for as long as the clone stands. Nothing reads it whole: a reader takes its
+latest page from the end, follows what is appended from a cursor, and reads
+an older page back from the byte the page it holds starts at
+(`ActorMail.posted` and `ActorMail.earlier`).
 
 **A notice is neither.** "The base moved under all of you" is a fact about the
 population rather than about its recipients: it stays true after it is said,

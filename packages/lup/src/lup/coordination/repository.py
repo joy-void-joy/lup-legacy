@@ -40,7 +40,6 @@ from pathlib import Path
 from pydantic import BaseModel, computed_field
 
 from lup.channels.models import Door, utc_now
-from lup.coordination.bare import mail as bare_mail
 from lup.coordination.bare import store
 from lup.coordination.bare.runtime import Runtime
 from lup.coordination.cohort import ActorCohort
@@ -587,13 +586,13 @@ class RepositoryPeers:
         """Move what the read already derives, and delete what nobody reads.
 
         A member whose pulse stopped has its file moved to the departed, so a
-        reader that lists the directory agrees with one that stats the file; a
-        departed stub past the retention window is deleted, and so is every
-        message on the mail record sent before that window opened, which is
-        what keeps the store the size of the population rather than of its
+        reader that lists the directory agrees with one that stats the file;
+        and a departed stub past the retention window is deleted, which is
+        what keeps the roster the size of the population rather than of its
         history. A session that beats again after this re-joins on its next
         call, which the roster's own idempotence allows once the file has
-        moved.
+        moved. The mail record is not touched: every message stays on it, and
+        its readers page it rather than read it whole.
 
         What the 0.2.x store kept here, and the member-file store replaced, is
         deleted by the first sweep that finds it; a sweep finding none of it
@@ -615,7 +614,6 @@ class RepositoryPeers:
         # has not settled whether this sweep keeps it to the retention window
         # (taking the dashboard's older history with it) or it stays whole
         retired = store.swept(self.root, moment, self.pulse.stale_after_seconds)
-        bare_mail.trimmed(self.root, self.retention.since(moment))
         for leftover in self.leftovers():
             cleared(leftover)
         return [folded_member(member) for member in retired]

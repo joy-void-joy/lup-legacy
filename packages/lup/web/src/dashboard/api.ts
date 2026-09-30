@@ -1,4 +1,4 @@
-import type { ReplyOutcome, ReplyRequest, ReviewAnswer, ReviewDecision, ReviewDetail, ReviewHistory, ReviewRemarkRequest, ReviewSnapshot, SetupPane, StreamFrame } from "../generated/views";
+import type { MessagePage, ReplyOutcome, ReplyRequest, ReviewAnswer, ReviewDecision, ReviewDetail, ReviewHistory, ReviewRemarkRequest, ReviewSnapshot, SetupPane, StreamFrame } from "../generated/views";
 
 /** Where this origin keeps the operator's capability, and the key a storage event names. */
 export const TOKEN_KEY = "lup-dashboard-token";
@@ -106,6 +106,17 @@ export async function sendReply(repository: string, member: string, text: string
     method: "POST",
     headers: { ...authorization(token), "Content-Type": "application/json" },
     body: JSON.stringify(request),
+  }))).json();
+}
+
+/**
+ * One older page of a repository's messages, oldest first: those whose lines on its mail record end
+ * by byte `before`, which is where the messages the page holds for it start.
+ */
+export async function readMessages(repository: string, before: number, token: string, signal?: AbortSignal): Promise<MessagePage> {
+  const query = new URLSearchParams({ before: String(before) });
+  return (await accepted(await fetch(`api/repositories/${encodeURIComponent(repository)}/messages?${query}`, {
+    headers: authorization(token), signal,
   }))).json();
 }
 

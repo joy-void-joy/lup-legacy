@@ -221,6 +221,36 @@ def test_messages_are_read_off_the_record_with_whether_each_still_waits(
     assert rows[other].waiting == 0
 
 
+def test_a_watch_holds_where_the_latest_page_of_what_it_read_starts(
+    tmp_path: Path,
+) -> None:
+    peers = RepositoryPeers(tmp_path)
+    lead = session(peers, tmp_path, "lead")
+    for index in range(2):
+        peers.send(lead, f"early {index}")
+    watch = RepositoryWatch(known(tmp_path), page=3)
+
+    first = watch.fresh_messages()
+    whole = watch.extent().earlier
+    for index in range(2):
+        peers.send(lead, f"later {index}")
+    then = watch.fresh_messages()
+    past = watch.extent().earlier
+    for index in range(5):
+        peers.send(lead, f"burst {index}")
+    burst = watch.fresh_messages()
+
+    assert [each.text for each in first] == ["early 0", "early 1"]
+    assert whole == 0
+    assert [each.text for each in then] == ["later 0", "later 1"]
+    # Four read is one past a page: the stream's messages start at the second.
+    assert past == first[1].at
+    # Five posted since the last look is more than a page: the look reads the
+    # latest page, and the stream's messages start where it does.
+    assert [each.text for each in burst] == [f"burst {index}" for index in (2, 3, 4)]
+    assert watch.extent().earlier == burst[0].at
+
+
 def test_a_session_counts_what_waits_for_it(tmp_path: Path) -> None:
     peers = RepositoryPeers(tmp_path)
     lead = session(peers, tmp_path, "lead")
