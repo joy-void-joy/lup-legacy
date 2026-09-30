@@ -10,8 +10,11 @@ its checkout's code when that moves (:mod:`lup.devtools.dashboard.refresh`),
 and stops what it started when it is stopped. ``--probe`` imports what
 serving imports and exits, which is how a restart learns the new code starts.
 
-Its page is copied beside its state before it serves, so a dashboard started
-from a worktree keeps serving after that worktree is removed.
+Its page and every asset the page names are read whole as it starts and
+served from memory, so a rebuild of the bundle on disk never leaves an open
+tab a page naming scripts that are gone, and a dashboard started from a
+worktree keeps serving after that worktree is removed. A rebuilt bundle is
+code like any other: it moves the dashboard onto it in place.
 """
 
 import asyncio
@@ -66,27 +69,14 @@ class ServiceArguments(BaseModel, frozen=True):
         return cls(state=Path(state), port=int(port), revision=revision)
 
 
-def kept_page(state: Path, revision: str) -> Path:
-    """The dashboard's page, copied beside its state under the revision it belongs to.
-
-    The directory handed to the page's server as its bundles, so the page and
-    its assets are read from here rather than from the checkout that started
-    it, which may be removed while the dashboard serves.
-    """
-    bundles = state / "bundles" / revision
-    target = bundles / "dashboard"
-    if not (target / "index.html").is_file():
-        source = resources.files("lup.web").joinpath("bundles", "dashboard")
-        with resources.as_file(source) as built:
-            shutil.copytree(built, target, dirs_exist_ok=True)
-    return bundles
-
-
 def running_source() -> ImportedSource:
-    """The lup package this process imports, and the page it serves from it."""
-    page = resources.files("lup.web").joinpath("bundles", "dashboard", "index.html")
-    with resources.as_file(page) as index:
-        return ImportedSource(Path(__file__).parents[2], (index,))
+    """The lup package this process imports, and every file of the page it serves from it."""
+    bundle = resources.files("lup.web").joinpath("bundles", "dashboard")
+    with resources.as_file(bundle) as built:
+        return ImportedSource(
+            Path(__file__).parents[2],
+            tuple(path for path in built.rglob("*") if path.is_file()),
+        )
 
 
 def probe_imports(
@@ -388,13 +378,15 @@ def serve_dashboard(arguments: ServiceArguments) -> None:
         ReviewStore(roots=(), discover=True, registry=registry),
         code=refresh.code,
     )
+    # Taken before the page is read, so a bundle rebuilt while it is read
+    # moves the dashboard onto the new one rather than past it unseen.
+    refresh.source.taken()
     app = dashboard_app(
         url,
         token,
         (),
         discover=True,
         registry=registry,
-        bundles=kept_page(arguments.state, arguments.revision),
         health=DashboardHealth(revision=arguments.revision, pid=os.getpid()),
         panes=panes,
         feed=feed,
