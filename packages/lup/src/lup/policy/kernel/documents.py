@@ -838,7 +838,10 @@ class FollowedDocument(TypedDict):
     judge; ``cause`` is why it is not known. ``whole`` is whether some step
     replaced the document rather than changing it, and ``authored`` whether
     bytes the command carries reached it: the route the authored review
-    judges, as an in-place rewrite is the route the rewrite rows judge.
+    judges, as an in-place rewrite is the route the rewrite rows judge. A
+    copy over a file changes it rather than replacing it, since what it
+    lands is read against what stood there as an edit of that file would be,
+    so it leaves ``whole`` as it found it.
     """
 
     target: str
@@ -854,11 +857,13 @@ class FollowedDocument(TypedDict):
 
 
 class RewriteOutcome(TypedDict):
-    """What became of one file an in-place sed names, by the spelling it names it with.
+    """What became of one file an in-place sed or a copy names, by the spelling it names it with.
 
     ``cause`` is ``None`` where the rewrite was worked out and the reading's
     word where it was not, ``run`` among them: a file an earlier segment
-    writes by running holds nothing a rewrite of it can be read against.
+    writes by running holds nothing a rewrite of it can be read against. A
+    copy's spelling is where it lands, its source's name joined on where
+    the destination is a directory.
     """
 
     target: str
@@ -870,12 +875,14 @@ class FollowedReading(TypedDict):
     """A whole line's documents in the order it first writes them, and the rest.
 
     ``rewrites`` are the in-place seds among them, for the classifier that
-    judges a rewrite by what it leaves; ``unpreviewed`` every segment whose
-    effect no document states.
+    judges a rewrite by what it leaves; ``copies`` the copies landing over a
+    file that stood there, which it judges the same way; ``unpreviewed``
+    every segment whose effect no document states.
     """
 
     documents: list[FollowedDocument]
     rewrites: list[RewriteOutcome]
+    copies: list[RewriteOutcome]
     unpreviewed: list[UnpreviewedRow]
 
 
@@ -909,6 +916,7 @@ def followed_documents(
     """
     states: dict[str, FollowedDocument] = {}
     rewrites: dict[str, RewriteOutcome] = {}
+    copies: list[RewriteOutcome] = []
     unseen: list[Unseen] = []
     # lup: ignore[empty-collection] — the directories the line has made so far,
     # where a later copy lands under its name: state the fold carries in step
@@ -1008,7 +1016,18 @@ def followed_documents(
         if source["text"] is None:
             unknown(taken, document, source["cause"] or "unreadable")
         else:
-            landed(document, source["text"], whole=True, authored=False)
+            landed(
+                document,
+                source["text"],
+                whole=taken["action"] == "move",
+                authored=False,
+            )
+        if taken["action"] == "copy" and document["existed"]:
+            copies.append(
+                RewriteOutcome(
+                    target=target, path=document["path"], cause=document["cause"]
+                )
+            )
         if taken["action"] != "move":
             return
         moved = written(taken["source"], taken)
@@ -1113,6 +1132,7 @@ def followed_documents(
             )
         ],
         rewrites=list(rewrites.values()),
+        copies=copies,
         unpreviewed=unpreviewed_rows(unseen, states),
     )
 
@@ -1195,13 +1215,17 @@ def shown_documents(reading: FollowedReading) -> list[FollowedDocument]:
 
 
 def judged_documents(reading: FollowedReading) -> list[FollowedDocument]:
-    """The files the edit gates judge: those the command's bytes or a rewrite reached.
+    """The files the edit gates judge: those the command's bytes, a rewrite or a copy reached.
 
     The document each is judged by is what the whole line leaves, or the last
     one anybody could state where a later step's result only running shows.
+    A copy counts where it lands over a file that stood there, which is an
+    edit of that file whose text the copy's source holds.
     """
     rewritten_paths = {
-        outcome["path"] for outcome in reading["rewrites"] if outcome["cause"] is None
+        outcome["path"]
+        for outcome in [*reading["rewrites"], *reading["copies"]]
+        if outcome["cause"] is None
     }
     return [
         document
@@ -1230,12 +1254,17 @@ def rewrite_reading(
     every other write to its file; ``row`` is the host's, which resolves
     where the file sits and puts it to the edit gates. A rewrite nothing
     could work out carries the reading's word for why.
+
+    A copy over a file is handed on the same way, under the spelling it
+    lands at, for the classifier that judges `cp` as the edit it makes. One
+    nothing worked out is left out rather than named: a copy the classifier
+    finds no document for is judged as it always was.
     """
     documents = {document["path"]: document for document in reading["documents"]}
     return RewriteReading(
         documents=[
             row(outcome["target"], documents[outcome["path"]])
-            for outcome in reading["rewrites"]
+            for outcome in [*reading["rewrites"], *reading["copies"]]
             if outcome["cause"] is None and outcome["path"] in documents
         ],
         unproduced=[

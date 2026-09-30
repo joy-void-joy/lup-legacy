@@ -58,6 +58,7 @@ from .words import (
     opaque_argument,
     operand_positions,
     operand_words,
+    path_verb_operands,
     protected_write_target,
     refspec_destination,
     refspec_effects,
@@ -1664,7 +1665,10 @@ def unproduced_verdict(target: str, cause: UnproducedCause | None) -> KernelDeci
 
 
 def rewrite_verdict(
-    target: str, document: RewrittenDocumentRow, context: "SedContext"
+    target: str,
+    document: RewrittenDocumentRow,
+    context: "SedContext",
+    act: str = "sed would rewrite {target} in place",
 ) -> KernelDecision:
     """What the edit gates say about one file an in-place rewrite would produce.
 
@@ -1672,7 +1676,13 @@ def rewrite_verdict(
     anchored at the repository top has to be asked about where the file sits,
     and the word is spelled relative to wherever the session was launched.
     The word is still what the reason names, because that is what the writer
-    typed and what they would have to change.
+    typed and what they would have to change; ``act`` is how the reason
+    names the command that writes it.
+
+    Everything else the gate decided is carried over as it came, the
+    abstention among it: a change too large for the small-change gate is the
+    runtime's own to answer, and a copy of the verdict that dropped the field
+    made it a deferral nobody had judged, which is refused.
     """
     if "decision" in document:
         return document["decision"]
@@ -1701,15 +1711,72 @@ def rewrite_verdict(
     )
     if verdict.effect == "allow":
         return verdict
-    return KernelDecision(
-        verdict.effect,
-        f"sed would rewrite {target} in place: {verdict.reason}",
-        recovery=verdict.recovery,
-        checkpoint=verdict.checkpoint,
-        purpose=verdict.purpose,
-        rule=verdict.rule,
-        reviewer=verdict.reviewer,
-    )
+    return verdict.revised(reason=f"{act.format(target=target)}: {verdict.reason}")
+
+
+def decide_copy_words(
+    words: list[str], context: "SedContext", directory: str | None = ""
+) -> KernelDecision | None:
+    """Judge a copy over files that stand there as the edit it makes of each.
+
+    `cp new.py src/app.py` leaves in `src/app.py` what `new.py` holds, which
+    is the edit an `Edit` of that file would make -- so it meets the gates an
+    `Edit` meets, reading the real difference between what stood there and
+    what lands: the review-note gate, the anti-pattern audit, the protected
+    paths, and the small-change gate, whose larger change the runtime's own
+    mode answers. What a copy over a file might lose is what the same edit
+    might lose, and it was never asked about there.
+
+    The host lands each source's text where it goes and hands back each
+    document under the spelling it lands at, the target joined with the
+    source's name where the target is a directory. ``None`` leaves the verb
+    to its row and its grants wherever one landing has no document: a copy
+    that brings a file into being, a flag this cannot read, a source that is
+    not text, or a composition that resolved nothing.
+    """
+    if posixpath.basename(words[0]) != "cp":
+        return None
+    verb = path_verb_operands(words)
+    if not verb["inert"] or len(verb["operands"]) < 2:
+        return None
+    spelled = [placed_path(word, directory) for word in verb["operands"]]
+    *sources, target = [word for word in spelled if word is not None]
+    if len(sources) + 1 != len(spelled):
+        return None
+    documents = {row["target"]: row for row in context["rewritten_documents"]}
+    landings = [
+        next(
+            (
+                landing
+                for landing in (
+                    target,
+                    posixpath.join(target, posixpath.basename(source)),
+                )
+                if landing in documents
+            ),
+            None,
+        )
+        for source in sources
+    ]
+    judged = [landing for landing in landings if landing is not None]
+    if len(judged) != len(sources):
+        return None
+    act = "cp would write {target}"
+    stopped = [
+        verdict.revised(reason=f"{act.format(target=landing)}: {verdict.reason}")
+        if "decision" in documents[landing]
+        else verdict
+        for landing in dict.fromkeys(judged)
+        for verdict in [rewrite_verdict(landing, documents[landing], context, act)]
+        if verdict.effect != "allow"
+    ]
+    if not stopped:
+        return KernelDecision(
+            "allow",
+            "every file this copies over was judged as the edit it makes, and the"
+            " edit gates passed it",
+        )
+    return max(stopped, key=lambda verdict: STRENGTH.index(verdict.effect))
 
 
 def safe_awk_program(program: str) -> bool:

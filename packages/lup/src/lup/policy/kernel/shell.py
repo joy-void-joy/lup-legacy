@@ -126,6 +126,7 @@ from .commands import (
     unresolved_evidence,
     decide_awk_words,
     decide_command_rows,
+    decide_copy_words,
     decide_download_words,
     decide_gh_words,
     decide_sed_words,
@@ -859,6 +860,11 @@ def decide_segment_words(
         return row_verdict(
             teed, "allow", "tee's files are judged as a redirection's are"
         )
+    # A copy over files that stand there is the edit it makes of each, and is
+    # judged as one before any grant reads it as a loss that could be undone.
+    copied = decide_copy_words(words, sed_facts(context), directory)
+    if copied is not None:
+        return copied
     recoverable = confined_to_recoverable_roots(
         words,
         context["path_roles"],

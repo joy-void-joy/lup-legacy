@@ -686,6 +686,21 @@ because the shell substitutes into the body — a reading that was wrong would
 put a document in front of the gates that the command never writes, which is
 worse than putting nothing there. Everything unread keeps the answer it had.
 
+A copy over a file carries its content too, from a file rather than from the
+command: `cp new.py src/app.py` leaves in `src/app.py` what `new.py` holds,
+and the host reads both before the copy runs. So a `cp` whose every
+destination already stands, and whose every source reads as text, is judged
+as the edit it makes of each — the gates an `Edit` of that file meets,
+reading the real difference between what stood there and what lands: a small
+change allows, a larger one is handed to the runtime's own mode as a large
+`Edit` is, a dropped `# lup:` note is denied, a protected path asks. It is the
+same answer wherever the file is — this checkout, or a sibling worktree
+reached by its absolute path, which no capture of this checkout holds — and
+no question about losing what the copy replaces is put, since an `Edit` of
+the same file is not asked one either. A copy that brings a file into being,
+one carrying a flag the reading does not model (`-r`, `--backup`), and one
+whose source is not text keep the verb's own row and its grants.
+
 Codex's native prefix evaluator deliberately leaves an assignment-bearing
 script opaque. Its permission-request hook still passes literal assignments
 through this same classifier, so `ENV_VAR=constant git status` is approved

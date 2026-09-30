@@ -397,6 +397,12 @@ def test_unquoted_shell_patch_is_not_interpreted_as_literal(root: Path) -> None:
 
 @pytest.mark.parametrize("changed", ["source", "destination"])
 def test_copy_approval_binds_both_documents(root: Path, changed: str) -> None:
+    """A copy the edit gates refuse, put to a reviewer, binds what it reads and replaces.
+
+    A copy over a file is judged as the edit it makes, so it is one dropping a
+    note -- a refusal an escalation turns into a question -- that parks here.
+    """
+    (root / "DESIGN.md").write_text("# lup: settle the storage question\n")
     source = root / "proposal.md"
     source.write_text("# Agreed design\n")
     command = "# lup: escalate[decision]: install the reviewed design\ncp proposal.md DESIGN.md"
@@ -405,11 +411,12 @@ def test_copy_approval_binds_both_documents(root: Path, changed: str) -> None:
     (question,) = store.pending()
     assert store.resolve(question).preconditions == {
         source: "# Agreed design\n",
-        root / "DESIGN.md": "# Previous design\n",
+        root / "DESIGN.md": "# lup: settle the storage question\n",
     }
     store.answer(question.id, "operator", True)
     target = source if changed == "source" else root / "DESIGN.md"
-    target.write_text("# Another document\n")
+    kept = "" if changed == "source" else "# lup: settle the storage question\n"
+    target.write_text(kept + "# Another document\n")
     assert denial(hook(root, command, tool="Bash"))
     assert len(store.pending()) == 1
     approved = store.find(question.id)
