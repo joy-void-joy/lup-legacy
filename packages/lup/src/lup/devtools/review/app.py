@@ -30,22 +30,31 @@ from rich.console import Console
 from rich.syntax import Syntax
 
 from lup.coordination.bare import store as roster
+from lup.coordination.identity import session_member_id
 from lup.coordination.repository import RepositoryPeers
 from lup.devtools.dashboard.companion import refuse_inside_a_session
 from lup.devtools.review.preimages import MovedPreimage, moved
 from lup.devtools.review.propose import (
     MANIFEST,
     ProposalRefused,
+    asking_agent,
     gathered,
     parked,
     proposal_of,
     previewed,
 )
 from lup.devtools.review.thread import ReviewThread, ThreadEntry, spoken_on
-from lup.devtools.review.wait import Asker, resume_command, wait_on
+from lup.devtools.review.wait import (
+    Asker,
+    kept_elsewhere,
+    resume_command,
+    review_command,
+    wait_on,
+)
 from lup.devtools.review.notifications import (
     ReviewNotification,
     ReviewNotifications,
+    notify_requester,
 )
 from lup.devtools.sync import registered_difftool
 from lup.devtools.utils import output_json
@@ -64,7 +73,12 @@ from lup.policy.kernel.edit import (
     resites_a_suppression,
     written_suppression,
 )
-from lup.policy.assets.host import append_review_record
+from lup.policy.assets.host import (
+    append_review_record,
+    checkout_home,
+    review_home,
+    worktree_root,
+)
 from lup.policy.relay import (
     AppendedRecords,
     CapturedFileReview,
@@ -106,6 +120,28 @@ class ReviewRoot(BaseModel, frozen=True):
         return self.model_copy(
             update={"repository": str(repository), "repository_name": name}
         )
+
+
+def terminal_answer(root: Path, question: str, principal: str) -> str:
+    """The commands that answer one review from a terminal, with the code of the checkout keeping it.
+
+    The way out of a review this reader's code cannot answer: a session's
+    reviews are kept in the checkout whose code parks them, so that
+    checkout's review commands read what an older reader could not.
+    """
+    approve = review_command(root, ["approve", question, "--as", principal])
+    decline = review_command(root, ["decline", question, "--as", principal])
+    return f"`{approve}` or `{decline}`, from a terminal outside every session"
+
+
+def newer_code(restarting: bool) -> str:
+    """What a reader about to restart onto newer code adds to a review it cannot read."""
+    return (
+        " The dashboard restarts onto its checkout's newer code shortly, which "
+        "may answer it here."
+        if restarting
+        else ""
+    )
 
 
 class ReviewSummary(BaseModel, frozen=True):
@@ -155,10 +191,15 @@ class ReviewSummary(BaseModel, frozen=True):
 
     @classmethod
     def of(
-        cls, root: Path, question: PersistentQuestion, principal: str, said: int = 0
+        cls,
+        root: Path,
+        question: PersistentQuestion,
+        principal: str,
+        said: int = 0,
+        restarting: bool = False,
     ) -> "ReviewSummary":
         return cls.from_files(
-            root, question, principal, previewed(question).files, said
+            root, question, principal, previewed(question).files, said, restarting
         )
 
     @classmethod
@@ -169,8 +210,13 @@ class ReviewSummary(BaseModel, frozen=True):
         principal: str,
         complete: list[ReviewedFile],
         said: int = 0,
+        restarting: bool = False,
     ) -> "ReviewSummary":
-        """Project the same file preview already used by this response's detail."""
+        """Project the same file preview already used by this response's detail.
+
+        *restarting* says the reader is about to restart onto newer code,
+        which a review this code cannot read may be answered by.
+        """
         operation = question.operation
         files = [
             change
@@ -178,12 +224,25 @@ class ReviewSummary(BaseModel, frozen=True):
             if ReviewAttribution.of(change, question.file_reviews).effect
             not in {"allow", "defer"}
         ]
-        target = (
-            operation.worktree
-            if operation.worktree.is_absolute()
-            and all(file.path.is_relative_to(operation.worktree) for file in files)
-            else root
-        )
+
+        def holding() -> Path:
+            """The checkout every file lies in, which the paths are read relative to.
+
+            Read off the files themselves, since the session that asked may
+            sit in another checkout than the one its call changes; the
+            checkout recorded with the call where the files lie in none, or
+            in several.
+            """
+            match sorted({worktree_root(str(file.path)) for file in files}):
+                case [str(only)] if only:
+                    return Path(only)
+            if operation.worktree.is_absolute() and all(
+                file.path.is_relative_to(operation.worktree) for file in files
+            ):
+                return operation.worktree
+            return root
+
+        target = holding()
 
         def relative(path: Path) -> str:
             return str(
@@ -191,7 +250,7 @@ class ReviewSummary(BaseModel, frozen=True):
             )
 
         def unanswerable() -> str:
-            """Why a waiting review cannot be answered here, or nothing where it can."""
+            """Why a waiting review cannot be answered here, and the way out, or nothing where it can."""
             if question.state != "pending":
                 return ""
             if question.overdue():
@@ -200,13 +259,24 @@ class ReviewSummary(BaseModel, frozen=True):
                 return "The session that asked cannot answer its own review."
             if not question.answerable_by(principal):
                 eligible = ", ".join(question.eligible) or "nobody"
-                return f"Only {eligible} may answer it."
+                return f"Only {eligible} may answer it" + (
+                    f": {terminal_answer(root, question.id, question.eligible[0])}."
+                    if question.eligible
+                    else "."
+                )
             if unverifiable := question.unverifiable():
-                return f"{unverifiable.capitalize()}."
+                return (
+                    f"{unverifiable.capitalize()}. The code that parked it can "
+                    f"answer it: {terminal_answer(root, question.id, principal)}."
+                    + newer_code(restarting)
+                )
             if not question.bound():
                 return (
                     "Its record changed after it was parked: what it shows is not "
-                    "what its fingerprint covers, so nothing may answer it."
+                    "what its fingerprint covers, so nothing here may answer it. "
+                    "Where newer code parked it, that code can: "
+                    f"{terminal_answer(root, question.id, principal)}."
+                    + newer_code(restarting)
                 )
             return ""
 
@@ -1360,7 +1430,12 @@ def reply(root: Path, question: str, text: str) -> None:
     store = relay(root)
     entry = store.find(question)
     if entry is None:
-        typer.echo(f"no review {question!r} is recorded", err=True)
+        elsewhere = kept_elsewhere(root, ["reply", question, text])
+        typer.echo(
+            f"no review {question!r} is recorded here"
+            + (f"; {elsewhere}" if elsewhere else ""),
+            err=True,
+        )
         raise typer.Exit(2)
     asker = Asker.here(root)
     if not asker.asked(entry):
@@ -1388,6 +1463,11 @@ def answer(
     own message rather than a generic one, because every way this can fail
     is a distinct thing the reviewer needs to know: the question is gone,
     already answered, expired, altered, or theirs to read and not to answer.
+
+    The session that asked hears of it as it hears of an answer given on the
+    dashboard, by its one channel: its waiter where one holds the review,
+    else its mailbox and its wake, since a session's own conversation holds
+    no waiter.
     """
     try:
         refuse_inside_a_session(f"review {'approve' if approved else 'decline'}")
@@ -1399,6 +1479,14 @@ def answer(
     typer.echo(
         f"{settled.id}: {verb[settled.state] if settled.state in verb else settled.state}"
     )
+    if settled.answer is not None:
+        notifications = ReviewNotifications(root=root)
+        heard = notifications.complete(
+            settled,
+            notifications.prepare(settled),
+            lambda: notify_requester((root,), root, settled),
+        )
+        typer.echo(f"the session that asked: {heard.detail}")
     if settled.state == "approved":
         if settled.resumption == "native_retry":
             typer.echo(
@@ -1418,42 +1506,97 @@ def cancel(root: Path, question: str, reason: str) -> None:
     try:
         settled = relay(root).cancel(question, reason)
     except ValueError as refusal:
-        typer.echo(str(refusal), err=True)
+        elsewhere = kept_elsewhere(root, ["cancel", question, "--reason", reason])
+        typer.echo(f"{refusal}; {elsewhere}" if elsewhere else str(refusal), err=True)
         raise typer.Exit(2) from refusal
     typer.echo(f"{settled.id}: cancelled")
 
 
-def propose(root: Path, hooks: HookSet, directory: Path, why: str) -> None:
-    """Park one review for every file under *directory*, mapped onto this checkout.
+def proposal_waiting(wait: str, agent: str | None) -> str:
+    """How the conversation that proposed hears the answer, as a parked call's refusal says it.
 
-    Each file meets the gates a direct write of it would; a file they refuse
+    A session's own conversation holds no waiter: the operator's answer
+    wakes it. A subagent is woken by nothing but its own work, so it holds
+    one. Where nothing can tell which asked, both are said.
+    """
+    session = (
+        "Carry on with other work, or end your turn: the operator's answer wakes "
+        f"this session, and `{wait}` then writes every file at once. Don't start "
+        "a waiter."
+    )
+    subagent = (
+        f"Carry on with other work, and hold `{wait}`: nothing else wakes a "
+        "subagent. On Claude Code, in the background with the longest timeout "
+        "the tool takes (run_in_background, 7200000 ms) and `--timeout 7140`; "
+        "on Codex, in your shell tool, read before you report. If it ends with "
+        "the review still waiting, start it again quietly, reporting that to "
+        "nobody."
+    )
+    match agent:
+        case None:
+            return f"From a session's own conversation: {session} From a subagent: {subagent}"
+        case "":
+            return session
+        case _:
+            return subagent
+
+
+def propose(
+    root: Path,
+    hooks: HookSet,
+    directory: Path,
+    why: str,
+    checkout: Path | None = None,
+) -> None:
+    """Park one review for every file under *directory*, in this checkout's queue.
+
+    The files land in *checkout*, else in the checkout holding *directory*
+    -- a proposal is written under the tmp/ of the checkout it changes --
+    and in this one where the directory lies in none. The review is kept
+    here, in the session's own checkout, read with its code and labelled
+    with the checkout its files land in; run from another checkout than the
+    session's, it is refused with the command that parks it there. Each
+    file meets the gates a direct write of it would; a file they refuse
     refuses the proposal, naming it, and nothing is parked.
     """
+    written = directory.resolve()
+    target = (
+        checkout_home(checkout.resolve())
+        if checkout is not None
+        else Path(worktree_root(str(written)) or root)
+    )
+    named = ["--checkout", str(target)] if checkout is not None else []
+    elsewhere = kept_elsewhere(root, ["propose", str(written), "--why", why, *named])
+    if elsewhere:
+        typer.echo(f"nothing was parked: {elsewhere}", err=True)
+        raise typer.Exit(2)
     store = relay(root)
+    agent = asking_agent(root, session_member_id())
     try:
-        question = parked(root, hooks, gathered(root, directory, why), store)
+        question = parked(
+            root, target, hooks, gathered(target, written, why), store, agent or ""
+        )
     except ProposalRefused as refusal:
         typer.echo(str(refusal), err=True)
         raise typer.Exit(2) from refusal
     proposal = proposal_of(question)
     count = len(proposal.files) if proposal is not None else 0
-    wait = resume_command(root, [question.id])
     typer.echo(
         f"Queued for the operator as review {question.id}: {count} "
-        f"{'file' if count == 1 else 'files'}, approved or declined as one. "
-        f"Start `{wait}` the way a parked call's refusal says -- in the "
-        "background with your tool's longest timeout on Claude, left running "
-        "in your shell tool on Codex -- and carry on: it writes every file "
-        "once approved, where each still stands as recorded, and reports the "
-        "operator's note and line comments. Declined, revise the files under "
-        f"{directory} and propose again."
+        f"{'file' if count == 1 else 'files'} in {target}, approved or declined "
+        "as one. "
+        + proposal_waiting(resume_command(root, [question.id]), agent)
+        + " Approved, it writes every file where each still stands as recorded "
+        "and reports the operator's note and line comments. Declined, revise "
+        f"the files under {written} and propose again."
     )
     unnoted = proposal.unnoted() if proposal is not None else []
     if unnoted:
+        reply = review_command(root, ["reply", question.id])
         typer.echo(
             "Warning: the operator sees no note from you on "
-            + ", ".join(str(path.relative_to(root)) for path in unnoted)
-            + f'. Say what changes in each with `review reply {question.id} "…"`, '
+            + ", ".join(str(path.relative_to(target)) for path in unnoted)
+            + f'. Say what changes in each with `{reply} "…"`, '
             f'or next time give each one under "about" in {MANIFEST}.',
             err=True,
         )
@@ -1464,11 +1607,16 @@ def create_review_app(
 ) -> typer.Typer:
     """Wire the `review` group: the reviewer's verbs over one checkout's relay.
 
+    The relay is the checkout's own, at its top, however deep in it *root*
+    names: a command run from a subdirectory reads and writes the queue the
+    hooks and the dashboard do, never one of its own.
+
     ``hooks`` is the declared hook set, read only by `review propose`, which
     judges each proposed file as a direct write of it is judged; a
     composition declaring none has no gates to judge a proposal by, and
     refuses one.
     """
+    root = checkout_home(root.resolve())
     app = typer.Typer(no_args_is_help=True)
 
     @app.command("list")
@@ -1528,9 +1676,9 @@ def create_review_app(
     @app.command("propose")
     def propose_cmd(
         directory: Path = typer.Argument(
-            help="A directory under scratch holding the new version of each file, "
-            "at its path in this checkout; its .proposal.json notes files and "
-            "names deletions"
+            help="A directory under the tmp/ of the checkout the files land in, "
+            "holding the new version of each file at its path there; its "
+            ".proposal.json notes files and names deletions"
         ),
         why: str = typer.Option(
             ...,
@@ -1538,8 +1686,22 @@ def create_review_app(
             help="A short paragraph for the operator: what the whole change "
             "does, in plain words, then why (see above)",
         ),
+        checkout: Path | None = typer.Option(
+            None,
+            "--checkout",
+            help="The checkout the files land in, where it is not the one "
+            "holding the directory",
+        ),
     ) -> None:
         """Park one review for a batch of edits written under scratch, approved as one.
+
+        Run it with your session's own checkout's code, into its queue, the
+        way a parked call's refusal spells every review command:
+
+          uv run --directory <session checkout> lup-devtools review propose \\
+            <checkout>/tmp/<name> --why "…"
+
+        The files land in the checkout holding the directory, or --checkout.
 
         The operator reads your --why and notes before deciding, so write them
         the way you would tell a colleague at their desk. Lead with what
@@ -1571,7 +1733,7 @@ def create_review_app(
                 err=True,
             )
             raise typer.Exit(2)
-        propose(root, hooks(), directory, why)
+        propose(root, hooks(), directory, why, checkout)
 
     @app.command("reply")
     def reply_cmd(
@@ -1582,7 +1744,11 @@ def create_review_app(
             "changed or will change and why"
         ),
     ) -> None:
-        """Answer the operator's note on a review this session asked, in its thread."""
+        """Answer the operator's note on a review this session asked, in its thread.
+
+        Run it with your session's own checkout's code, into its queue:
+        `uv run --directory <session checkout> lup-devtools review reply <id> "…"`.
+        """
         reply(root, review, text)
 
     @app.command("wait")
@@ -1607,9 +1773,13 @@ def create_review_app(
 
         Reports each as it settles: an approved edit is written as the operator
         saw it, an approved command runs where it was asked, a declined one
-        brings the operator's note. Start it in the background and carry on;
-        it waits as long as the operator takes, saying now and then that it
-        still is.
+        brings the operator's note. A session's own conversation runs it once
+        the operator's answer wakes it, and it carries the call out at once; a
+        subagent, which nothing else wakes, holds it in the background and
+        carries on, starting it again quietly whenever it ends still waiting.
+        It waits as long as the operator takes, saying now and then that it
+        still is. Run it with your session's own checkout's code, into its
+        queue: `uv run --directory <session checkout> lup-devtools review wait <id>`.
         """
         raise typer.Exit(wait_on(root, reviews or [], first, timeout))
 

@@ -3,7 +3,7 @@ import type { ReviewDecision, ReviewDetail, ReviewRoot, ReviewSnapshot, ReviewSu
 import { answerReview, followDashboard, readHistory, readMessages, readReview, readReviewLink, readSetupPanes, remarkReview, reviewLink, ReviewError, takeToken, TOKEN_KEY } from "./api";
 import type { FileNavigation } from "./Files";
 import { applied, codeNotice, paged, type LiveState } from "./live";
-import { EMPTY_DRAFT, RequestView, staleSentences, stateClass, stateLabel, type Action, type Draft } from "./Request";
+import { changedElsewhere, EMPTY_DRAFT, RequestView, staleSentences, stateClass, stateLabel, type Action, type Draft } from "./Request";
 import { Sessions } from "./Sessions";
 
 type SessionGroup = { session: string; rows: ReviewSummary[] };
@@ -575,6 +575,7 @@ export function App() {
               aria-current={selected === each.key ? "true" : undefined} onClick={() => select(each.key)}>
               <span className="row-top"><span className={`state ${stateClass(each)}`}>{stateLabel(each)}</span>{inflight.current.has(each.key) && <span className="muted">sending…</span>}<time>{new Date(each.created).toLocaleTimeString()}</time></span>
               <strong>{each.title}</strong><small>{each.requester}</small>
+              {changedElsewhere(each, queue?.roots.find((root) => root.id === each.root_id)) !== "" && <small className="row-target" title={each.target}>in {changedElsewhere(each, queue?.roots.find((root) => root.id === each.root_id))}</small>}
               {each.stale.length > 0 && <small className="row-stale">Stale: {staleSentences(each).join("; ")}</small>}
               {each.unanswerable !== "" && <small className="row-unanswerable">{each.unanswerable}</small>}
               {failures[each.key] !== undefined && <small className="row-failed">{failures[each.key]}</small>}
