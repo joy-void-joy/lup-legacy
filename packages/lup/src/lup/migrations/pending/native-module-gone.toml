@@ -1,0 +1,10 @@
+subjects = ["native_module"]
+reason = """
+the prefix test over `NATIVE_PREFIXES` had no caller: the seam rule reads \
+adapter imports through the declared import boundaries"""
+
+[[steps]]
+instruction = """
+Test `name == prefix or name.startswith(prefix + ".")` over \
+`NATIVE_PREFIXES` (lup.harness.codescan.boundaries) where you called \
+`native_module(name)`."""
