@@ -2,6 +2,41 @@
 
 ## Unreleased
 
+### Containers starting at once on one config home no longer tear or drop what the others wrote
+
+Several contained sessions of one repository start on its config volume at
+once — a launch's probes, a run's workers, a second terminal — and each
+amends the runtime's documents there before the runtime starts.
+
+- Claude Code: the entrypoint's `jq … > .claude.json.lup && mv` is gone.
+  `/opt/lup/trust-seed.py` records the checkout's and its repository's
+  trust, seeding a missing or empty document, and `/opt/lup/home-seed.py`
+  merges your settings in; both hold `.lup-trust.lock` in the home, stage
+  through a file of their own and rename it over, and write nothing where
+  the home already holds what they would. A start used to be able to publish
+  a `.claude.json` that was empty or began with NUL bytes, which the next
+  session refused as corrupt, or to drop another start's trust entry; and
+  every start rewrote the document, so a session running in the volume lost
+  whatever it saved in between.
+- Codex: every write a launch's home preparation makes to `config.toml` —
+  the settings, the plugin's registration, the checkout's and the hooks'
+  trust — holds `.lup-plugin-install.lock` and is renamed into place
+  (`replace_codex_config`), keeping the file's mode and a linked file linked.
+  Trust and hook-trust records were rewritten in place with no lock, so two
+  launches at once could each drop the other's checkout from the trusted
+  projects, strip the plugin's registration, or let a starting Codex read an
+  empty config. A worktree home's derivation and the settings a session
+  returns to its account go the same way.
+- `lup.channels.models.write_atomic` stages each write under a name of its
+  own (`.<file>.<random>.tmp`) instead of the one `.<file>.tmp` every writer
+  of that file shared, which tore a file two writers wrote at once.
+
+A `.claude.json` that does not parse, whatever tore it, is left byte for byte
+for Claude Code's own recovery by both programs, each saying so on stderr —
+the settings seed used to replace it with its own keys alone — and the start
+after that recovery seeds it afresh. A volume needs nothing done: the next
+start takes the locks.
+
 ### The policy reads what these commands do, and a deferral never parks
 
 A set of commands that stopped for the operator, or passed unread, are now
