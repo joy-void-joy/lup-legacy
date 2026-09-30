@@ -1237,16 +1237,22 @@ def worktree_text(path: str) -> str | None:
         return None
 
 
-def run_conflict_markers(staged: bool) -> None:
+def run_conflict_markers(staged: bool, index: Path | None = None) -> None:
     """Refuse what holds a conflict block: the tracked tree, or the next commit.
 
     *staged* reads what the index holds for the paths the next commit adds or
     changes, which is what the commit hook asks about — the working tree can
-    already hold the resolution of a block the index still carries.
+    already hold the resolution of a block the index still carries. *index*
+    is the index the commit is made from where git made one for it -- `git
+    commit -a`, `git commit <path>` -- as the hook hands it over; relative, it
+    is spelled from the checkout's top, where git runs its hooks.
     """
     root = project_root()
+    committed = None if index is None else root / index
     report = (
-        conflict_marker_report(staged_paths(root), partial(staged_text, root))
+        conflict_marker_report(
+            staged_paths(root, committed), partial(staged_text, root, committed)
+        )
         if staged
         else conflict_marker_report(tracked_files(), worktree_text)
     )

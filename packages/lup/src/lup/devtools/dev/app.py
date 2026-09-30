@@ -45,6 +45,7 @@ import lup.devtools.dev.relocate as relocate_mod
 import lup.devtools.dev.rules as rules
 from lup.devtools.changelog import Changelog
 from lup.devtools.dev.branches import get_integration_branch
+from lup.devtools.dev.git_guards import INDEX_VARIABLE
 from lup.execution.shell import git
 from lup.harness.codescan.markers import NoteKind
 from lup.harness.codescan.registry import all_rules
@@ -433,10 +434,21 @@ def create_dev_app(
                 "as the commit hook does",
             ),
         ] = False,
+        index: Annotated[
+            Path | None,
+            typer.Option(
+                "--index",
+                envvar=INDEX_VARIABLE,
+                show_envvar=False,
+                help="With --staged: the index file the commit is being made "
+                "from (default: the one the commit hook hands over, else the "
+                "checkout's own)",
+            ),
+        ] = None,
     ) -> None:
         """Run ruff format, ruff check, pyright, and pytest. Read-only by default."""
         if conflict_markers:
-            check.run_conflict_markers(staged)
+            check.run_conflict_markers(staged, index)
             return
         declarations = declared()
         if changed:

@@ -13,6 +13,7 @@ import lup.devtools.gitguard as gitguard
 from lup.devtools.dev.git_guards import (
     DECLARED_GUARDS,
     GIT_ENVIRONMENT,
+    INDEX_VARIABLE,
     DeletionOnly,
     GitGuard,
     HookMoment,
@@ -761,3 +762,41 @@ def test_the_report_names_the_reading_the_refs_cannot_rule_out() -> None:
     assert "find the fixture" in said
     assert "reflog show" in said
     assert "stopped moving" in said
+
+
+def test_the_hook_hands_the_index_git_commits_from_on_under_lups_own_name(
+    tmp_path: Path,
+) -> None:
+    """`GIT_INDEX_FILE` is dropped before the checkout's devtools runs; the index is not.
+
+    Under `git commit -a` or `git commit <path>` it is the only name the index
+    being committed has, so the guard judging the commit is handed it as
+    :data:`INDEX_VARIABLE`. A value left in the environment from somewhere
+    else is not handed on where git named no index.
+    """
+    (script,) = [
+        script
+        for script in hook_scripts(DECLARED_GUARDS)
+        if script.hook == "pre-commit"
+    ]
+    hook = tmp_path / "pre-commit"
+    hook.write_text(script.body(), encoding="utf-8")
+    tools = tmp_path / "bin"
+    tools.mkdir()
+    runner = tools / "uv"
+    runner.write_text(
+        '#!/bin/sh\nprintf "%s|%s" "${LUP_GIT_INDEX_FILE-}" "${GIT_INDEX_FILE-dropped}"\n',
+        encoding="utf-8",
+    )
+    runner.chmod(0o755)
+    path = f"{tools}:/usr/bin:/bin"
+
+    committing = sh.Command("sh")(
+        str(hook), _env={"PATH": path, "GIT_INDEX_FILE": "/repo/.git/index.lock"}
+    )
+    stale = sh.Command("sh")(
+        str(hook), _env={"PATH": path, INDEX_VARIABLE: "/elsewhere/index"}
+    )
+
+    assert str(committing) == "/repo/.git/index.lock|dropped"
+    assert str(stale) == "|dropped"

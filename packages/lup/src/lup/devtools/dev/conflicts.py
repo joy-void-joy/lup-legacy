@@ -29,6 +29,7 @@ reaches them; one keeping it anywhere else gets the bare name instead::
 """
 
 import logging
+import os
 import re
 from pathlib import Path
 from collections.abc import Iterator
@@ -44,6 +45,7 @@ from lup.devtools.launcher import (
     launcher_invocation,
 )
 from lup.execution.shell import git
+from lup.types import EnvVars
 from lup.devtools.utils import (
     format_table,
     decode_stderr,
@@ -545,17 +547,51 @@ def conflict_blocks(
     return list(opened())
 
 
-def staged_text(root: Path, path: str) -> str | None:
-    """A file's text as the index holds it, which is what a commit records."""
+def committing(index: Path | None) -> EnvVars | None:
+    """The environment git reads a commit's own index through, or ``None`` for the checkout's.
+
+    `git commit -a` and `git commit <path>` commit from an index git makes for
+    the purpose, not the checkout's, and name it to their hooks only through
+    ``GIT_INDEX_FILE`` -- so a reader of what the commit holds is handed the
+    same name.
+    """
+    if index is None:
+        return None
+    # lup: ignore[os-environ] — inherited, not read: git keeps its PATH and
+    # configuration, and the one name added is the index the commit is made from
+    return {**os.environ, "GIT_INDEX_FILE": str(index)}
+
+
+def staged_text(root: Path, index: Path | None, path: str) -> str | None:
+    """A file's text as the index being committed holds it, which is what a commit records.
+
+    ``index`` is that index where it is not the checkout's own
+    (:func:`committing`), and ``None`` reads the checkout's.
+    """
     try:
-        return str(git("-C", str(root), "show", f":{path}", _tty_out=False))
+        return str(
+            git(
+                "-C",
+                str(root),
+                "show",
+                f":{path}",
+                _tty_out=False,
+                _env=committing(index),
+            )
+        )
     except (sh.ErrorReturnCode, UnicodeDecodeError):
         return None
 
 
-def staged_paths(root: Path) -> list[str]:
-    """Every path the next commit adds or changes."""
+def staged_paths(root: Path, index: Path | None = None) -> list[str]:
+    """Every path the next commit adds or changes, read from the index it is made from."""
     named = git.lines(
-        "-C", str(root), "diff", "--cached", "--name-only", "--diff-filter=ACMR"
+        "-C",
+        str(root),
+        "diff",
+        "--cached",
+        "--name-only",
+        "--diff-filter=ACMR",
+        _env=committing(index),
     )
     return [path for path in named if path]
