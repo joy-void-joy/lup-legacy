@@ -58,7 +58,13 @@ from .rows import (
     unproduced_cause,
 )
 from .syntax import Command, Script, Word, word_text
-from .words import flag_write_targets, global_span, path_verb_operands, sed_invocation
+from .words import (
+    flag_matches,
+    flag_write_targets,
+    global_span,
+    path_verb_operands,
+    sed_invocation,
+)
 
 type StepAction = Literal[
     "author",
@@ -335,14 +341,16 @@ def observes(words: list[str], rows: list[ShellRuleRow]) -> bool:
     """Whether the row these words reach declares only effects that change nothing.
 
     The reading `xargs` already takes of a payload. A command no row names
-    reads as one that may write, because nothing says otherwise.
+    reads as one that may write, because nothing says otherwise; nor does
+    one spelling a flag its row guards, which turns a reader into a writer.
     """
     matched = matched_command_row(words, rows)
     if isinstance(matched, KernelDecision):
         return False
+    row = matched["row"]
     return all(
-        member_for(effect["kind"]).observes for effect in matched["row"]["effects"]
-    )
+        member_for(effect["kind"]).observes for effect in row["effects"]
+    ) and not any(flag_matches(word, row["ask_flags"]) for word in words[1:])
 
 
 def verb_steps(

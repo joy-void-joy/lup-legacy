@@ -67,12 +67,14 @@ from host import (
     record_hook_evidence,
     sandbox_active,
     unjudged_reason,
+    words_before,
 )
 from kernel.rows import PostToolReport
+from kernel.review import Said
 from kernel.decision import KernelDecision
 from kernel.review import literal_input
 from kernel.shell import auto_escape_matches
-from caller_payload import caller_of
+from caller_payload import caller_of, spoken, transcript_of
 from policy_data import AUTO_ESCAPE_PREFIXES
 from policy_data import AGENT_IDENTITY_ENV, AUTONOMOUS_AGENT_IDENTITIES
 from policy_data import HOOK_DEADLINE_SECONDS
@@ -300,6 +302,31 @@ def waiting(command):
     )
 
 
+def account(payload) -> list[Said]:
+    """What the agent said this call is for, each with where it was found.
+
+    The ``justification`` Codex's shell tool carries beside a request to run
+    outside its sandbox, which the model writes to say why, and the words the
+    agent wrote since it last heard anything, read back off the rollout of
+    the conversation making the call. Codex's tools carry no note saying
+    what a command does, as Claude Code's ``description`` does, so a call
+    staying inside its sandbox is accounted for by the words alone. Either is
+    left out where it says nothing.
+    """
+    tool_input = payload["tool_input"]
+    justified = tool_input["justification"] if "justification" in tool_input else ""
+    transcript = transcript_of(payload)
+    preceding = words_before(transcript, spoken) if transcript is not None else ""
+    return [
+        *(
+            [Said(source="justification", text=justified)]
+            if isinstance(justified, str) and justified.strip()
+            else []
+        ),
+        *([Said(source="preceding", text=preceding)] if preceding.strip() else []),
+    ]
+
+
 def queued_review(payload, decision):
     """Both judging events require the same explicit review authority.
 
@@ -343,6 +370,8 @@ def queued_review(payload, decision):
         else "",
         policy_identity=review_policy_identity(cwd, Path(__file__)),
         provider="codex",
+        agent=payload["agent_id"] if "agent_id" in payload else "",
+        account=account(payload),
     )
     return reviewed["decision"], reviewed["notice"]
 

@@ -90,10 +90,13 @@ def test_with_a_dashboard_held_the_same_question_is_parked_and_said_to_be(
     assert spoken["hookSpecificOutput"]["permissionDecision"] == "deny"
     assert f"Queued for the operator as review {question.id} — not refused." in reason
     assert "Don't change the command; carry on with other work." in reason
-    assert f"lup-devtools review wait {question.id}` in the background" in reason
+    assert (
+        f"lup-devtools review wait {question.id} --timeout 7140` in the background"
+        in reason
+    )
     assert "(run_in_background, with the longest timeout the tool takes, " in reason
     assert "7200000" in reason
-    assert "if it is stopped before the operator answers, start it again" in reason
+    assert "if it ends first, it says how to wait again, so start it again" in reason
     assert DASHBOARD in reason
     assert question.id in spoken["systemMessage"]
     assert DASHBOARD in spoken["systemMessage"]
@@ -113,7 +116,7 @@ def test_where_a_background_command_ends_with_the_run_the_wait_moves_forward(
     spoken = json.loads(str(hooked(root, "claude", QUALITY, environment, agent)))
     reason = spoken["hookSpecificOutput"]["permissionDecisionReason"]
 
-    assert ("run it in the foreground instead" in reason) is background_ends
+    assert ("--timeout 540` in the foreground instead" in reason) is background_ends
 
 
 def test_codex_is_told_to_leave_its_waiter_running_under_its_shell_tool(
@@ -141,7 +144,7 @@ def test_the_wait_a_parked_call_names_is_one_the_policy_lets_through(
     )
     start = reason.index("`uv run ")
     wait = reason[start + 1 : reason.index("`", start + 1)]
-    assert wait.endswith(f"review wait {question.id}")
+    assert f"review wait {question.id}" in wait
 
     waited = hooked(root, runtime, wait, HELD)
 

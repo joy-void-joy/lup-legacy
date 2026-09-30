@@ -15,6 +15,8 @@
     "@tanstack/react-table": "^9.2.4",
     "@tanstack/react-virtual": "^3.14.11",
     "cytoscape": "^3.34.3",
+    "highlight.js": "^11.11.1",
+    "lowlight": "^3.3.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8"
   },

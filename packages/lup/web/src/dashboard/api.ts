@@ -1,4 +1,4 @@
-import type { ReplyOutcome, ReplyRequest, ReviewAnswer, ReviewDecision, ReviewDetail, ReviewSnapshot, SetupPane, StreamFrame } from "../generated/views";
+import type { ReplyOutcome, ReplyRequest, ReviewAnswer, ReviewDecision, ReviewDetail, ReviewRemarkRequest, ReviewSnapshot, SetupPane, StreamFrame } from "../generated/views";
 
 /** Where this origin keeps the operator's capability, and the key a storage event names. */
 export const TOKEN_KEY = "lup-dashboard-token";
@@ -77,6 +77,15 @@ export async function answerReview(key: string, answer: ReviewAnswer, token: str
     method: "POST",
     headers: { ...authorization(token), "Content-Type": "application/json" },
     body: JSON.stringify(answer),
+  }))).json();
+}
+
+/** The operator's note and line comments on a review, sent without deciding it. */
+export async function remarkReview(key: string, remark: ReviewRemarkRequest, token: string): Promise<ReviewDecision> {
+  return (await accepted(await fetch(`api/reviews/${encodeURIComponent(key)}/remark`, {
+    method: "POST",
+    headers: { ...authorization(token), "Content-Type": "application/json" },
+    body: JSON.stringify(remark),
   }))).json();
 }
 

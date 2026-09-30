@@ -30,7 +30,7 @@ from datetime import UTC, datetime, timedelta
 
 # lup: ignore[subprocess] — `sh` is third-party and this half is compiled into a bare script that has no virtual environment to resolve it from
 import subprocess
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import Literal
 from urllib.parse import urlsplit
@@ -974,14 +974,16 @@ def review_fingerprint(
     expected: dict,
     policy_identity: str,
     resolved: dict,
-    evidence: list[dict] | None,
-    unpreviewed: list[dict] | None,
+    bound: dict,
 ) -> str:
     """The digest one parked call is approved under: everything the approver reads.
 
-    ``evidence`` is each file's verdict with the document it judged, and
-    ``unpreviewed`` the steps no document states -- the two halves of what a
-    reviewer is shown a command changes.
+    *bound* is what else the approver reads, each part under the name the
+    record keeps it by, in the order its scheme lists them
+    (:func:`bound_parts`): ``file_reviews``, each file's verdict with the
+    document it judged, and ``unpreviewed``, the steps no document states --
+    the two halves of what a command changes -- and ``segments``, each
+    command of the line with the verdict it reached.
     """
     material = json.dumps(
         [
@@ -997,12 +999,35 @@ def review_fingerprint(
             expected,
             policy_identity,
             resolved,
-            evidence,
-            unpreviewed,
+            *bound.values(),
         ],
         sort_keys=True,
     )
     return sha256(material.encode()).hexdigest()
+
+
+def bound_parts(
+    entry: dict,
+    known: tuple[str, ...] = ("file_reviews", "unpreviewed", "segments"),
+) -> dict | None:
+    """What else a parked record's fingerprint binds, by name in its scheme's order.
+
+    A record keeps its scheme -- the parts it bound, in order -- so a reader
+    on other code tells a record it cannot check from one that changed:
+    ``None`` where the scheme names a part this code does not know. A record
+    parked before the scheme was kept bound the parts it carries; one it
+    holds as null, which a relay writes for a part it never had, it did not.
+    """
+    scheme = (
+        entry["scheme"]
+        if "scheme" in entry
+        else [name for name in known if name in entry and entry[name] is not None]
+    )
+    if not isinstance(scheme, list) or not all(
+        isinstance(name, str) and name in known for name in scheme
+    ):
+        return None
+    return {name: entry[name] if name in entry else None for name in scheme}
 
 
 def recorded_fingerprint(entry: dict) -> str:
@@ -1029,8 +1054,9 @@ def recorded_fingerprint(entry: dict) -> str:
             "resolved": dict() as resolved,
         }:
             purpose = entry["purpose"] if "purpose" in entry else None
-            evidence = entry["file_reviews"] if "file_reviews" in entry else None
-            unpreviewed = entry["unpreviewed"] if "unpreviewed" in entry else None
+            bound = bound_parts(entry)
+            if bound is None:
+                return ""
             return review_fingerprint(
                 session,
                 root,
@@ -1044,8 +1070,7 @@ def recorded_fingerprint(entry: dict) -> str:
                 expected,
                 policy_identity,
                 resolved,
-                evidence if isinstance(evidence, list) else None,
-                unpreviewed if isinstance(unpreviewed, list) else None,
+                bound,
             )
     return ""
 
@@ -1071,6 +1096,9 @@ def review_hook_call(
     placement: str = "ambient",
     provider: str = "",
     unpreviewed: str = "null",
+    segments: str = "null",
+    agent: str = "",
+    account: str = "[]",
 ) -> dict[Literal["state", "id", "reason"], str]:
     """Park a call or spend its explicit, single-use reviewer answer.
 
@@ -1081,7 +1109,14 @@ def review_hook_call(
 
     *file_reviews* and *unpreviewed* are the verdict's record of what the
     call changes -- each file with the document it would hold, and each step
-    no document states -- kept on the question for the reviewer to read.
+    no document states -- kept on the question for the reviewer to read, as
+    *segments* is its record of what each command of the line decided.
+
+    *agent* is the native subagent that asked, blank for the session's own
+    conversation, and *account* what the asker said the call is for, each
+    with where it was found. Both are kept on a question when it is first
+    parked and bound into nothing: they say who asked and what it claims,
+    never what an approval releases.
 
     A declared successor stage may spend one further claim for that same
     identified invocation. The immutable primary claim proves which stage
@@ -1099,8 +1134,11 @@ def review_hook_call(
         json.loads(execution_payload) if execution_payload is not None else payload
     )
     before = json.loads(preconditions)
-    evidence = json.loads(file_reviews)
-    unseen = json.loads(unpreviewed)
+    bound = {
+        "file_reviews": json.loads(file_reviews),
+        "unpreviewed": json.loads(unpreviewed),
+        "segments": json.loads(segments),
+    }
     resolved = {path: str(Path(path).resolve()) for path in before}
     fingerprint = review_fingerprint(
         session,
@@ -1115,8 +1153,7 @@ def review_hook_call(
         expected,
         policy_identity,
         resolved,
-        evidence,
-        unseen,
+        bound,
     )
     log = root / ".lup/questions.jsonl"
 
@@ -1233,10 +1270,12 @@ def review_hook_call(
         "preconditions": before,
         "resolved": resolved,
         "policy_identity": policy_identity,
-        "file_reviews": evidence,
-        "unpreviewed": unseen,
+        **bound,
+        "scheme": list(bound),
         "resumption": "native_retry",
         "member": member,
+        "agent": agent,
+        "account": json.loads(account),
         "operation": {
             "id": identifier,
             "session": session,
@@ -1251,6 +1290,75 @@ def review_hook_call(
     }
     append_review_record(log, json.dumps(entry, sort_keys=True))
     return {"state": "pending", "id": identifier, "reason": reason}
+
+
+def waiting_edits(root: Path, session: str, agent: str) -> int:
+    """How many calls one conversation has waiting on the operator here that change files.
+
+    A call recorded with the files it would change, still waiting, asked by
+    *session*'s conversation *agent* -- blank for the session's own. What
+    tells a conversation its edits are arriving one review at a time.
+    """
+    return sum(
+        1
+        for entry in native_review_records(root / ".lup/questions.jsonl").values()
+        if entry["state"] == "pending"
+        and entry["operation"]["session"] == session
+        and (entry["agent"] if "agent" in entry else "") == agent
+        and "preconditions" in entry
+        and entry["preconditions"]
+    )
+
+
+def records_backwards(path: Path, block: int = 1 << 16) -> Iterator[dict]:
+    """A JSON-lines file's records, newest first, read back from its end.
+
+    What an agent said last is at the end of a transcript that runs to
+    hundreds of megabytes, so it is read *block* bytes at a time from the
+    end and never whole. A line that is not a JSON object -- the one still
+    being written among them -- is passed over; a file that cannot be read
+    has no records.
+    """
+    try:
+        stream = path.open("rb")
+    except OSError:
+        return
+    with stream:
+        size = stream.seek(0, os.SEEK_END)
+        carried = b""
+        for end in range(size, 0, -block):
+            start = max(0, end - block)
+            stream.seek(start)
+            lines = (stream.read(end - start) + carried).splitlines()
+            carried = lines[0] if start else b""
+            for line in reversed(lines[1:] if start else lines):
+                try:
+                    record = json.loads(line)
+                except (ValueError, UnicodeDecodeError):
+                    continue
+                if isinstance(record, dict):
+                    yield record
+
+
+def words_before(transcript: Path, spoken: Callable[[dict], str | None]) -> str:
+    """What an agent said since it last heard anything, read back off its transcript.
+
+    *spoken* reads one record in its runtime's own words: the text the agent
+    wrote there, blank where the record holds nothing it said, or ``None``
+    where it is something the agent heard -- a person's message, a tool's
+    result -- before which nothing it said is about this call. Kept whole,
+    in the order it was said.
+    """
+
+    def said() -> Iterator[str]:
+        for record in records_backwards(transcript):
+            words = spoken(record)
+            if words is None:
+                return
+            if words.strip():
+                yield words
+
+    return "\n\n".join(reversed(list(said())))
 
 
 def observe_hook_call(

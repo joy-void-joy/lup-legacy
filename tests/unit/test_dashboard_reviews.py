@@ -292,7 +292,7 @@ async def test_detail_keeps_the_full_command_and_its_metadata(tmp_path: Path) ->
     assert detail.question == entry
     assert detail.files == []
     assert detail.summary.answerable
-    assert detail.stale_reason == ""
+    assert detail.summary.stale == []
     assert detail.command == entry.operation.payload["command"]
     assert detail.preview_unavailable
 
@@ -349,9 +349,11 @@ async def test_file_detail_uses_the_captured_preimage_and_preserves_both_documen
     assert detail.files[0].hunks[0].lines[-1] == ReviewLine(
         kind="add", text="replacement line 599\n", new_line=600
     )
-    assert detail.stale_reason
+    assert detail.summary.state == "stale"
+    assert [each.path for each in detail.summary.stale] == [path]
     assert refused.status_code == 409
-    assert rejected.status_code == 200
+    assert rejected.status_code == 409
+    assert "went stale" in rejected.json()["detail"]
 
 
 @pytest.mark.parametrize(
@@ -560,12 +562,12 @@ def test_captured_null_bytes_and_unterminated_context_are_preserved() -> None:
     ]
 
 
-async def test_an_absent_preimage_becoming_a_file_prevents_approval(
+async def test_an_absent_preimage_becoming_a_file_retires_the_review_as_stale(
     tmp_path: Path,
 ) -> None:
     entry = parked(tmp_path)
     path = tmp_path / "created-later.txt"
-    entry = entry.model_copy(update={"preconditions": {path: None}})
+    entry = bound(entry.model_copy(update={"preconditions": {path: None}}))
     relay(tmp_path).record(entry)
     path.write_text("must survive", encoding="utf-8")
     async with client(tmp_path) as http:
@@ -577,7 +579,10 @@ async def test_an_absent_preimage_becoming_a_file_prevents_approval(
         )
 
     assert response.status_code == 409
-    assert relay(tmp_path).find(entry.id) == entry
+    stored = relay(tmp_path).find(entry.id)
+    assert stored is not None and stored.state == "stale" and stored.answer is None
+    assert stored.moved == [path]
+    assert path.read_text(encoding="utf-8") == "must survive"
 
 
 async def test_a_changed_fingerprint_never_records_a_decision(tmp_path: Path) -> None:
@@ -658,8 +663,9 @@ async def test_notification_failure_cannot_undo_the_recorded_answer(
 ) -> None:
     entry = parked(tmp_path)
 
-    def fail(roots: tuple[Path, ...], question: PersistentQuestion) -> None:
+    def fail(roots: tuple[Path, ...], root: Path, question: PersistentQuestion) -> None:
         assert roots == (tmp_path,)
+        assert root == tmp_path
         assert question.state == "rejected"
         raise OSError("notification transport unavailable")
 
@@ -682,7 +688,7 @@ async def test_notification_failure_cannot_undo_the_recorded_answer(
     assert relay(tmp_path).find(entry.id) == decision.review.question
     assert not decision.notification.queued
     assert not decision.notification.woken
-    assert "no confirmed outcome" in decision.notification.detail
+    assert "notification transport unavailable" in decision.notification.detail
     persisted = ReviewNotifications(root=tmp_path).read(decision.review.question)
     assert persisted is not None
     assert "notification transport unavailable" in persisted.detail
@@ -1009,7 +1015,7 @@ def test_requester_notification_crosses_repositories_and_deduplicates_worktree_r
     monkeypatch.setattr(RepositoryPeers, "send", send)
     monkeypatch.setattr(notifications, "roused", roused)
 
-    notification = notify_requester((upstream, consumer, sibling), entry)
+    notification = notify_requester((upstream, consumer, sibling), upstream, entry)
 
     assert visited.count(consumer_store) == 1
     assert visited.count(upstream_store) == 1
@@ -1081,9 +1087,10 @@ async def test_saved_answer_is_returned_when_notification_makes_the_queue_unavai
         raise OSError("requester removed its checkout after receiving the decision")
 
     def notify(
-        roots: tuple[Path, ...], settled: PersistentQuestion
+        roots: tuple[Path, ...], root: Path, settled: PersistentQuestion
     ) -> ReviewNotification:
         assert roots == (tmp_path,)
+        assert root == tmp_path
         assert settled.state == "approved"
         assert settled.answer is not None
         monkeypatch.setattr(dashboard, "relay", unavailable)
@@ -1105,8 +1112,8 @@ async def test_saved_answer_is_returned_when_notification_makes_the_queue_unavai
     assert response.status_code == 200
     decision = ReviewDecision.model_validate(response.json())
     assert decision.review.question.state == "approved"
-    assert not decision.notification.queued
-    assert not decision.notification.woken
+    assert decision.notification.queued
+    assert decision.notification.woken
     persisted = ReviewNotifications(root=tmp_path).read(decision.review.question)
     assert persisted is not None and persisted.queued and persisted.woken
     assert (
@@ -1160,3 +1167,37 @@ def test_terminal_review_commands_import_without_optional_web_dependencies(
     )
 
     assert result.returncode == 0, result.stderr
+
+
+def test_a_queue_caught_mid_write_is_read_again_before_it_is_called_unavailable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A writer's append is gone a moment later; the page never blanks for it."""
+    reads: list[int] = []
+    questions = QuestionRelay.questions
+
+    def torn_once(relay: QuestionRelay) -> list[PersistentQuestion]:
+        reads.append(len(reads))
+        if len(reads) == 1:
+            raise ValueError("a record was being written")
+        return questions(relay)
+
+    monkeypatch.setattr(QuestionRelay, "questions", torn_once)
+
+    queue = dashboard.ReviewQueue.read(tmp_path, pause=0)
+
+    assert queue.errors == []
+    assert len(reads) == 2
+
+
+def test_a_queue_that_stays_unreadable_says_why(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def held(relay: QuestionRelay) -> list[PersistentQuestion]:
+        raise OSError("the relay is not readable")
+
+    monkeypatch.setattr(QuestionRelay, "questions", held)
+
+    queue = dashboard.ReviewQueue.read(tmp_path, pause=0)
+
+    assert [error.message for error in queue.errors] == ["the relay is not readable"]

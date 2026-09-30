@@ -1,0 +1,23 @@
+subjects = [
+    "ReviewDetail.stale_reason",
+    "stale_preimages",
+    "PersistentQuestion.stale",
+]
+reason = """
+A review a recorded file moved under is retired into the `stale` state by \
+whoever notices first, rather than shown waiting with a sentence beside it, \
+and `PersistentQuestion.stale()` -- which asked whether a review had outlived \
+its window -- is named for that: `overdue()`"""
+
+[[steps]]
+instruction = """
+Where `ReviewDetail.stale_reason` was read, read `summary.state == "stale"` and \
+`summary.stale`, each a `MovedPreimage` with its `path` and `cause`; where \
+`stale_preimages(question)` was called, call \
+`lup.devtools.review.preimages.moved(question)`, which judges only what this \
+process can see."""
+command = ["uv", "run", "lup-devtools", "dev", "py", "text", "stale_preimages(", "."]
+
+[[steps]]
+instruction = "Call `question.overdue()` where you called `question.stale()`."
+command = ["uv", "run", "lup-devtools", "dev", "py", "text", ".stale(", "."]

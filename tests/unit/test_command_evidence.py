@@ -22,6 +22,7 @@ import pytest
 import sh
 
 from lup.devtools.review.app import ReviewDetail
+from lup.devtools.review.preimages import moved
 from lup.harness.enforcement import semantic_policy_for
 from lup.policy.assets.host import document_digest
 from lup.policy.identity import DASHBOARD_URL_ENV
@@ -332,7 +333,7 @@ def test_the_dashboard_shows_what_was_judged_without_running_anything(
     assert shown["gone.md"] == ("bye\n", None)
     assert shown["copy.md"] == (None, "the new way — ünïcödé\nkept\n")
     assert detail.preview_unavailable == ""
-    assert detail.stale_reason
+    assert checkout / PROTECTED / "notes.md" in [each.path for each in moved(question)]
     assert [entry.command for entry in detail.question.unpreviewed or []] == [
         "sort -o sorted.txt notes.md"
     ]

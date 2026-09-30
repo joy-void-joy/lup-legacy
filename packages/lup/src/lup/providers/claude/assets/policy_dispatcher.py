@@ -69,10 +69,12 @@ from host import (
     record_hook_evidence,
     sandbox_active,
     unjudged_reason,
+    words_before,
 )
 from kernel.rows import PostToolReport
+from kernel.review import Said
 from kernel.decision import KernelDecision, sandbox_escaped
-from caller_payload import caller_of
+from caller_payload import caller_of, spoken, transcript_of
 from policy_data import (
     AGENT_IDENTITY_ENV,
     AUTONOMOUS_AGENT_IDENTITIES,
@@ -256,22 +258,24 @@ def waiting(command, payload):
     minutes in the background unless the call names more, two hours at most,
     and ten minutes at most in the foreground -- the Bash tool's own schema
     on 2.1.285. The waiter has no limit of its own, so it is started with the
-    longest the tool takes, and started again when stopped still waiting.
+    longest the tool takes and told to end itself a minute sooner: ending on
+    its own, it says the review is still waiting and how to wait again,
+    where the tool stopping it would leave the session a bare timeout.
     """
     started = (
-        f"Start `{command}` in the background (run_in_background, with the "
-        "longest timeout the tool takes, 7200000 ms) to be woken with the "
-        "result. It waits until the operator answers; if it is stopped before "
-        "the operator answers, start it again."
+        f"Start `{command} --timeout 7140` in the background (run_in_background, "
+        "with the longest timeout the tool takes, 7200000 ms) to be woken with "
+        "the result. It waits until the operator answers; if it ends first, it "
+        "says how to wait again, so start it again."
     )
     interactive = declared_identity("CLAUDE_CODE_ENTRYPOINT") == "cli"
     if interactive and "agent_id" not in payload:
         return started
     return (
         started + " A background command ends with this run, so once nothing "
-        "else is left, run it in the foreground instead, with the longest "
-        "timeout the tool takes there, 600000 ms, again each time it stops "
-        "still waiting."
+        f"else is left, run `{command} --timeout 540` in the foreground instead, "
+        "with the longest timeout the tool takes there, 600000 ms, again each "
+        "time it ends still waiting."
     )
 
 
@@ -295,6 +299,29 @@ def preimages(payload, cwd):
             return {}
 
 
+def account(payload) -> list[Said]:
+    """What the agent said this call is for, each with where it was found.
+
+    The ``description`` Claude Code's Bash tool carries beside a command,
+    which the model writes to say what the command does, and the words the
+    agent wrote since it last heard anything, read back off the transcript
+    of the conversation making the call. Either is left out where it says
+    nothing.
+    """
+    tool_input = payload["tool_input"]
+    described = tool_input["description"] if "description" in tool_input else ""
+    transcript = transcript_of(payload)
+    preceding = words_before(transcript, spoken) if transcript is not None else ""
+    return [
+        *(
+            [Said(source="description", text=described)]
+            if isinstance(described, str) and described.strip()
+            else []
+        ),
+        *([Said(source="preceding", text=preceding)] if preceding.strip() else []),
+    ]
+
+
 def queued_review(payload, decision, placed):
     """Park one ask in the review queue, or spend the operator's recorded answer.
 
@@ -315,6 +342,8 @@ def queued_review(payload, decision, placed):
         execution_payload=placed,
         policy_identity=review_policy_identity(cwd, Path(__file__)),
         provider="claude",
+        agent=payload["agent_id"] if "agent_id" in payload else "",
+        account=account(payload),
     )
 
 

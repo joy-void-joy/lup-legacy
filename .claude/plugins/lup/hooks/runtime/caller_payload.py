@@ -70,15 +70,58 @@ class Rewrite(TypedDict):
     hookSpecificOutput: Rewritten
 
 
+def subagent_record(transcript: str, agent: str, suffix: str) -> Path:
+    """Where Claude Code keeps one of a subagent's files, beside its session's transcript."""
+    return Path(transcript).with_suffix("") / "subagents" / f"agent-{agent}{suffix}"
+
+
 def spawned_name(transcript: str, agent: str) -> str:
     """What the spawn called this subagent, blank where nothing recorded one."""
     if not transcript or not agent:
         return ""
-    recorded = loaded(
-        Path(transcript).with_suffix("") / "subagents" / f"agent-{agent}.meta.json",
-        Spawned,
-    )
+    recorded = loaded(subagent_record(transcript, agent, ".meta.json"), Spawned)
     return text(recorded.get("name")) if recorded is not None else ""
+
+
+def transcript_of(payload: Payload) -> Path | None:
+    """The transcript of the conversation that made this call, where one is named.
+
+    A subagent's own, which Claude Code writes beside its session's -- the
+    one ``transcript_path`` names in every event, a subagent's included --
+    as ``subagents/agent-<agent_id>.jsonl``, measured on 2.1.283.
+    """
+    transcript = text(payload.get("transcript_path"))
+    agent = text(payload.get("agent_id"))
+    if not transcript:
+        return None
+    return subagent_record(transcript, agent, ".jsonl") if agent else Path(transcript)
+
+
+def said_in(block: WireValue) -> str:
+    """The text one content block holds, blank for any other block."""
+    match block:
+        case {"type": "text", "text": str(said)}:
+            return said
+        case _:
+            return ""
+
+
+def spoken(record: dict[str, WireValue]) -> str | None:
+    """One transcript record, as far as the words an agent says before a call go.
+
+    An assistant record's text is what the agent wrote, and a user record --
+    a person's message, a tool's result -- what it heard, before which
+    nothing it said is about the call; any other record says nothing. Each
+    of a message's blocks is a record of its own, and the call's is written
+    before its ``PreToolUse`` hook runs, measured on 2.1.283.
+    """
+    match record:
+        case {"type": "user"}:
+            return None
+        case {"type": "assistant", "message": {"content": list(blocks)}}:
+            return "".join(said_in(block) for block in blocks)
+        case _:
+            return ""
 
 
 def caller_of(payload: Payload) -> Caller:

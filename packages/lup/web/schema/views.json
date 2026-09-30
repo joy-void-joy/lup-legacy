@@ -1,5 +1,34 @@
 {
   "$defs": {
+    "Account": {
+      "additionalProperties": false,
+      "description": "What the requester said a call is for, in its own words, and where the words were found.\n\nA claim by the agent and never a fact the policy checked, shown beside\nthe policy's own reason as the agent's: what it is for is the agent's to\nsay, why it asks is the policy's. Recorded when the call parks, so the\npage never reads a transcript, and kept whole.",
+      "properties": {
+        "source": {
+          "$ref": "#/$defs/AccountSource"
+        },
+        "text": {
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "source",
+        "text"
+      ],
+      "title": "Account",
+      "type": "object"
+    },
+    "AccountSource": {
+      "enum": [
+        "description",
+        "justification",
+        "preceding",
+        "doing",
+        "proposal"
+      ],
+      "type": "string"
+    },
     "ActorBindingRetiredEvent": {
       "additionalProperties": false,
       "description": "An operator authorized replacing this binding with a fresh conversation.",
@@ -371,6 +400,35 @@
         "inside"
       ],
       "title": "CarriedParent",
+      "type": "object"
+    },
+    "CommandSegment": {
+      "additionalProperties": false,
+      "description": "One command of a parked line, and the verdict it reached on its own.\n\nThe line's record as a reviewer reads it: every command that asks, each\nwith its own reason and rule, beside the ones allowed on their own: the\nrows the verdict kept when it parked\n(:attr:`~lup.policy.kernel.decision.KernelDecision.segments`). ``command``\nis blank for a verdict about the line rather than one of its commands.",
+      "properties": {
+        "command": {
+          "title": "Command",
+          "type": "string"
+        },
+        "effect": {
+          "$ref": "#/$defs/DecisionEffect"
+        },
+        "reason": {
+          "title": "Reason",
+          "type": "string"
+        },
+        "rule": {
+          "title": "Rule",
+          "type": "string"
+        }
+      },
+      "required": [
+        "command",
+        "effect",
+        "reason",
+        "rule"
+      ],
+      "title": "CommandSegment",
       "type": "object"
     },
     "ConcernAllowance": {
@@ -1261,6 +1319,50 @@
       "title": "LeaseRefreshedEvent",
       "type": "object"
     },
+    "LineComment": {
+      "additionalProperties": false,
+      "description": "One comment the operator anchored to lines of one document a review shows.\n\nA pull request's line comment, kept as data rather than folded into the\nnote: the file, the first and last line, and which side of the change\nthose lines number -- ``before``, the file as the review recorded it, or\n``after``, as the call would leave it. The requester reads each back as\n``path:line[-end]: note``, which is where its editor takes it.",
+      "properties": {
+        "end": {
+          "minimum": 1,
+          "title": "End",
+          "type": "integer"
+        },
+        "note": {
+          "minLength": 1,
+          "title": "Note",
+          "type": "string"
+        },
+        "path": {
+          "format": "path",
+          "title": "Path",
+          "type": "string"
+        },
+        "side": {
+          "default": "after",
+          "enum": [
+            "before",
+            "after"
+          ],
+          "title": "Side",
+          "type": "string"
+        },
+        "start": {
+          "minimum": 1,
+          "title": "Start",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "path",
+        "start",
+        "end",
+        "side",
+        "note"
+      ],
+      "title": "LineComment",
+      "type": "object"
+    },
     "LiveMessage": {
       "additionalProperties": false,
       "description": "One message of one repository's mail record, and whether it still waits.",
@@ -1790,6 +1892,41 @@
       "title": "Move",
       "type": "object"
     },
+    "MoveCause": {
+      "enum": [
+        "changed",
+        "created",
+        "deleted",
+        "directory"
+      ],
+      "type": "string"
+    },
+    "MovedPreimage": {
+      "additionalProperties": false,
+      "description": "One file a review recorded that no longer stands as it recorded it.",
+      "properties": {
+        "cause": {
+          "$ref": "#/$defs/MoveCause"
+        },
+        "path": {
+          "format": "path",
+          "title": "Path",
+          "type": "string"
+        },
+        "read": {
+          "default": false,
+          "title": "Read",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "path",
+        "cause",
+        "read"
+      ],
+      "title": "MovedPreimage",
+      "type": "object"
+    },
     "MutationFootprint": {
       "additionalProperties": false,
       "description": "Every local path an operation can change, and how exactly it is known.\n\n``exact`` is the whole of what decides which capture covers it. Targets\nthat resolve statically take a targeted snapshot of exactly those paths;\nvariables, globs, substitutions, or a directory walk mean the footprint\ncannot be enumerated, and the capture widens to every precious writable\nroot rather than the operation being refused. The wider capture is what\nthe opacity costs.",
@@ -1997,6 +2134,17 @@
       "title": "NodeView",
       "type": "object"
     },
+    "NoteKind": {
+      "description": "The closed vocabulary of review-note flavors.\n\nAn ordinary actionable note, parked work \u2014 behind a stated gate or simply\nparked \u2014 a claim that a note has been addressed and is waiting to be\nchecked, or a customization point the scaffold leaves to the domain\nadopting it. A `StrEnum` rather than a `Literal` so the same declaration\nis both the type every consumer dispatches on and the choice list\n`dev comments --kind` offers, which is one fewer place for the vocabulary\nto drift out of agreement with itself.",
+      "enum": [
+        "note",
+        "defer",
+        "solved",
+        "template"
+      ],
+      "title": "NoteKind",
+      "type": "string"
+    },
     "Operation": {
       "additionalProperties": false,
       "description": "One immutable native call, normalized, with everything it plans to do.\n\nImmutable because an approval binds to it. A model that could be edited\nafter a person answered would make \"the exact operation was approved\" a\nclaim nothing checks \u2014 which is the whole content of exact approval.",
@@ -2202,6 +2350,19 @@
       "additionalProperties": false,
       "description": "One parked ask, durable, with everything needed to resume it exactly.\n\nThe operation is carried whole rather than summarized, because the\nrequesting agent must not be the thing that reconstructs it: an agent\nasked to reissue an approved call is an agent that can reissue a\ndifferent one.",
       "properties": {
+        "account": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/Account"
+          },
+          "title": "Account",
+          "type": "array"
+        },
+        "agent": {
+          "default": "",
+          "title": "Agent",
+          "type": "string"
+        },
         "answer": {
           "anyOf": [
             {
@@ -2311,6 +2472,15 @@
           "title": "Member",
           "type": "string"
         },
+        "moved": {
+          "default": [],
+          "items": {
+            "format": "path",
+            "type": "string"
+          },
+          "title": "Moved",
+          "type": "array"
+        },
         "operation": {
           "$ref": "#/$defs/Operation"
         },
@@ -2387,6 +2557,36 @@
           "title": "Rule",
           "type": "string"
         },
+        "scheme": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Scheme"
+        },
+        "segments": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/CommandSegment"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Segments"
+        },
         "state": {
           "$ref": "#/$defs/QuestionState",
           "default": "pending"
@@ -2414,6 +2614,7 @@
         "preconditions",
         "file_reviews",
         "unpreviewed",
+        "segments",
         "resumption",
         "reason",
         "rule",
@@ -2433,7 +2634,11 @@
         "execution_payload",
         "policy_identity",
         "resolved",
-        "member"
+        "member",
+        "agent",
+        "moved",
+        "account",
+        "scheme"
       ],
       "title": "PersistentQuestion",
       "type": "object"
@@ -2512,6 +2717,7 @@
         "rejected",
         "expired",
         "cancelled",
+        "stale",
         "preparing",
         "dispatched",
         "completed",
@@ -2794,11 +3000,19 @@
     },
     "ReviewAnswer": {
       "additionalProperties": false,
-      "description": "A decision bound to the fingerprint the browser displayed.",
+      "description": "A decision bound to the fingerprint the browser displayed, with what the operator wrote.",
       "properties": {
         "approved": {
           "title": "Approved",
           "type": "boolean"
+        },
+        "comments": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/LineComment"
+          },
+          "title": "Comments",
+          "type": "array"
         },
         "fingerprint": {
           "title": "Fingerprint",
@@ -2813,6 +3027,7 @@
       "required": [
         "approved",
         "note",
+        "comments",
         "fingerprint"
       ],
       "title": "ReviewAnswer",
@@ -2820,7 +3035,7 @@
     },
     "ReviewDecision": {
       "additionalProperties": false,
-      "description": "The recorded answer and the result of notifying its requester.",
+      "description": "What the operator's action recorded, and how the requester hears of it.",
       "properties": {
         "notification": {
           "$ref": "#/$defs/ReviewNotification"
@@ -2881,23 +3096,27 @@
         "question": {
           "$ref": "#/$defs/PersistentQuestion"
         },
-        "stale_reason": {
-          "title": "Stale Reason",
-          "type": "string"
-        },
         "summary": {
           "$ref": "#/$defs/ReviewSummary"
+        },
+        "thread": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/ThreadEntry"
+          },
+          "title": "Thread",
+          "type": "array"
         }
       },
       "required": [
         "summary",
         "question",
         "files",
-        "stale_reason",
         "command",
         "preview_unavailable",
         "preview_notice",
-        "notification"
+        "notification",
+        "thread"
       ],
       "title": "ReviewDetail",
       "type": "object"
@@ -2947,6 +3166,11 @@
       "additionalProperties": false,
       "description": "Captured file contents and the corresponding proposed change.",
       "properties": {
+        "about": {
+          "default": "",
+          "title": "About",
+          "type": "string"
+        },
         "additions": {
           "title": "Additions",
           "type": "integer"
@@ -2982,6 +3206,14 @@
             "$ref": "#/$defs/ReviewHunk"
           },
           "title": "Hunks",
+          "type": "array"
+        },
+        "markers": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/ReviewMarker"
+          },
+          "title": "Markers",
           "type": "array"
         },
         "operation": {
@@ -3036,8 +3268,10 @@
         "additions",
         "deletions",
         "suppressions",
+        "markers",
         "review_effect",
-        "review_reason"
+        "review_reason",
+        "about"
       ],
       "title": "ReviewFile",
       "type": "object"
@@ -3066,7 +3300,7 @@
     },
     "ReviewHunk": {
       "additionalProperties": false,
-      "description": "A contiguous group of changes with unchanged context around it.",
+      "description": "A contiguous group of changes with unchanged context around it.\n\nWhere it sits in each document, as the first and last line it covers:\nwhat lies between two hunks, and around them, is unchanged, so a reader\nasking for the whole file in context reads those lines off the documents\nby these numbers. A side the hunk takes no line of ends before it starts.",
       "properties": {
         "header": {
           "title": "Header",
@@ -3078,11 +3312,31 @@
           },
           "title": "Lines",
           "type": "array"
+        },
+        "new_end": {
+          "title": "New End",
+          "type": "integer"
+        },
+        "new_start": {
+          "title": "New Start",
+          "type": "integer"
+        },
+        "old_end": {
+          "title": "Old End",
+          "type": "integer"
+        },
+        "old_start": {
+          "title": "Old Start",
+          "type": "integer"
         }
       },
       "required": [
         "header",
-        "lines"
+        "lines",
+        "old_start",
+        "old_end",
+        "new_start",
+        "new_end"
       ],
       "title": "ReviewHunk",
       "type": "object"
@@ -3145,16 +3399,86 @@
       "title": "ReviewLine",
       "type": "object"
     },
+    "ReviewMarker": {
+      "additionalProperties": false,
+      "description": "One `# lup:` marker in a document the review shows, located and classified.\n\nEvery kind the vocabulary has, found the way `dev comments` finds them\nand the edit gate counts them: an open note, parked work (``condition``\ncarrying a `defer[<gate>]:` head's gate), a resolution claim, a\ncustomization point, and a rule exception. ``side`` says which document\nthe lines number.",
+      "properties": {
+        "condition": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Condition"
+        },
+        "end_line": {
+          "title": "End Line",
+          "type": "integer"
+        },
+        "kind": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/NoteKind"
+            },
+            {
+              "const": "ignore",
+              "type": "string"
+            }
+          ],
+          "title": "Kind"
+        },
+        "line": {
+          "title": "Line",
+          "type": "integer"
+        },
+        "side": {
+          "enum": [
+            "before",
+            "after"
+          ],
+          "title": "Side",
+          "type": "string"
+        },
+        "text": {
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "side",
+        "line",
+        "end_line",
+        "kind",
+        "condition",
+        "text"
+      ],
+      "title": "ReviewMarker",
+      "type": "object"
+    },
     "ReviewNotification": {
       "additionalProperties": false,
-      "description": "Queue acceptance is separate from both approval and recipient delivery.",
+      "description": "How the requester hears of an answer, apart from the answer itself.\n\nOne channel: ``waited`` where its `review wait` held the review and\ncarries the news itself, else ``queued`` in its mailbox and ``woken``\nwhere its runtime accepted the wake. ``copied`` where the session a\nsubagent runs in got a copy of the operator's words. ``detail`` says\nwhich, as the operator reads it.",
       "properties": {
+        "copied": {
+          "default": false,
+          "title": "Copied",
+          "type": "boolean"
+        },
         "detail": {
           "title": "Detail",
           "type": "string"
         },
         "queued": {
           "title": "Queued",
+          "type": "boolean"
+        },
+        "waited": {
+          "default": false,
+          "title": "Waited",
           "type": "boolean"
         },
         "woken": {
@@ -3165,7 +3489,9 @@
       "required": [
         "queued",
         "woken",
-        "detail"
+        "detail",
+        "waited",
+        "copied"
       ],
       "title": "ReviewNotification",
       "type": "object"
@@ -3180,6 +3506,36 @@
         "untrusted_dependency"
       ],
       "type": "string"
+    },
+    "ReviewRemarkRequest": {
+      "additionalProperties": false,
+      "description": "The operator's note and line comments on a review, sent without deciding it.",
+      "properties": {
+        "comments": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/LineComment"
+          },
+          "title": "Comments",
+          "type": "array"
+        },
+        "fingerprint": {
+          "title": "Fingerprint",
+          "type": "string"
+        },
+        "note": {
+          "default": "",
+          "title": "Note",
+          "type": "string"
+        }
+      },
+      "required": [
+        "note",
+        "comments",
+        "fingerprint"
+      ],
+      "title": "ReviewRemarkRequest",
+      "type": "object"
     },
     "ReviewResidualEvent": {
       "additionalProperties": false,
@@ -3365,13 +3721,31 @@
           "title": "Rule",
           "type": "string"
         },
+        "said": {
+          "default": 0,
+          "title": "Said",
+          "type": "integer"
+        },
         "session": {
           "default": "",
           "title": "Session",
           "type": "string"
         },
+        "stale": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/MovedPreimage"
+          },
+          "title": "Stale",
+          "type": "array"
+        },
         "state": {
           "title": "State",
+          "type": "string"
+        },
+        "target": {
+          "default": "",
+          "title": "Target",
           "type": "string"
         },
         "title": {
@@ -3382,6 +3756,11 @@
           "default": 0,
           "title": "Total Files",
           "type": "integer"
+        },
+        "unanswerable": {
+          "default": "",
+          "title": "Unanswerable",
+          "type": "string"
         }
       },
       "required": [
@@ -3398,6 +3777,10 @@
         "rule",
         "created",
         "answerable",
+        "unanswerable",
+        "stale",
+        "said",
+        "target",
         "session"
       ],
       "title": "ReviewSummary",
@@ -4453,6 +4836,65 @@
       "title": "SupervisorState",
       "type": "object"
     },
+    "ThreadEntry": {
+      "additionalProperties": false,
+      "description": "One thing said on a review, as a reader of its thread sees it.\n\n``kind`` says who could have said it: the operator remarking or\nanswering, or the requester replying. ``approved`` is the answer's\nverdict, and nothing on the other two.",
+      "properties": {
+        "approved": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Approved"
+        },
+        "at": {
+          "format": "date-time",
+          "title": "At",
+          "type": "string"
+        },
+        "author": {
+          "title": "Author",
+          "type": "string"
+        },
+        "comments": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/LineComment"
+          },
+          "title": "Comments",
+          "type": "array"
+        },
+        "kind": {
+          "enum": [
+            "remark",
+            "reply",
+            "answer"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "text": {
+          "default": "",
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "author",
+        "text",
+        "comments",
+        "at",
+        "approved"
+      ],
+      "title": "ThreadEntry",
+      "type": "object"
+    },
     "TurnCompletedEvent": {
       "additionalProperties": false,
       "description": "A native turn reached a terminal state.",
@@ -4981,7 +5423,7 @@
     },
     "lup__policy__relay__Answer": {
       "additionalProperties": false,
-      "description": "One decision about one question, and who made it.\n\n``note`` is how yes-plus-instructions and no-plus-instructions travel\nwithout a second message. It reaches the agent with the resumption or the\nrefusal, which is the moment it is worth reading.",
+      "description": "One decision about one question, and who made it.\n\n``note`` is how yes-plus-instructions and no-plus-instructions travel\nwithout a second message. It reaches the agent with the resumption or the\nrefusal, which is the moment it is worth reading. ``comments`` are the\noperator's line comments, which travel the same way.",
       "properties": {
         "approved": {
           "title": "Approved",
@@ -4991,6 +5433,14 @@
           "format": "date-time",
           "title": "At",
           "type": "string"
+        },
+        "comments": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/LineComment"
+          },
+          "title": "Comments",
+          "type": "array"
         },
         "note": {
           "default": "",
@@ -5017,6 +5467,7 @@
         "receipt",
         "unresolved_chain",
         "note",
+        "comments",
         "at"
       ],
       "title": "Answer",

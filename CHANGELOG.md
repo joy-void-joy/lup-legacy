@@ -2,6 +2,95 @@
 
 ## Unreleased
 
+### A parked call keeps the asker's account, and each command of its line
+
+`PersistentQuestion.account` holds what the asker said the call is for, each
+`Account` with its source: Claude Code's `Bash` `description`, Codex's shell
+`justification`, the text the agent wrote since it last heard anything --
+read back off the transcript of the conversation making the call, a
+subagent's own -- or, where it said nothing, its roster row's `doing`; a
+proposal's is its `--why`. Recorded once, when the call first parks, and
+bound into nothing. `KernelDecision.segments` keeps each command a line was
+joined from with the verdict it reached alone (`SegmentRow`), carried to the
+question as `PersistentQuestion.segments` (`CommandSegment`) and bound into
+its fingerprint; the page lists every command that asks with its own reason
+and folds the ones allowed alone, and `review show` prints both. A
+conversation with two or more edits waiting is told in the refusal how to
+`review propose` the next ones. A command's review is stale only where a
+file it writes moved; the waiter also reads the files it copies from, and
+retires the review rather than run a copy of something the operator did not
+see. A parked record names the parts its fingerprint binds
+(`PersistentQuestion.scheme`, `bound_parts`), so a reader on older code says
+it cannot check the record (`PersistentQuestion.unverifiable`) instead of
+calling it changed, and the page labels a review it cannot answer "can't
+answer here" with the reason where Approve would be. A reader like `pyright`
+is no step only running shows: its row reads, and `--createstub` or
+`--writebaseline` makes it a writer again.
+
+### The queue keeps its counts while it refreshes
+
+While the stream reconnects or a checkout's queue cannot be read, the
+header keeps the last counts, marked as refreshing, and says which queue is
+unavailable and why; a queue read that fails is read again a moment later
+before it is reported.
+
+### A review a recorded file moved under leaves the queue as stale
+
+A parked call binds its approval to the files it recorded, and the waiter
+carries it out only where each still stands as recorded; a review whose
+sources the session edited afterwards stayed in the queue with Approve
+enabled, and approving it failed out of sight. Whoever notices first -- the
+dashboard on each look (`PreimageWatch` reads a file again only where its
+size, time or inode moved), the page opening it, an answer, the requester's
+own waiter, `review list` -- retires it with `QuestionRelay.retire_stale`
+into the `stale` state, naming each file that moved and how
+(`lup.devtools.review.preimages.moved`: changed, created, deleted, or a
+directory where absence was recorded), and the requester is told to re-read
+the file and ask again. Only what the reader can see is judged: a path inside
+a session's container, or a file it may not read, is never stale. A stale
+review shows only in History; an answer to one is refused with the reason.
+`PersistentQuestion.stale()` is `overdue()`, and `moved` records what moved.
+
+### What the operator writes reaches the conversation that asked, once
+
+A waiter holding a review reports its verdict with the operator's note and
+line comments, an approval's included; the mailbox and the wake carry it only
+where no waiter holds the review, and a bare approval pings nobody but the
+waiter. A subagent's review records it (`PersistentQuestion.agent`), its own
+row hears the answer, and the session it runs in gets a copy of anything the
+operator said, marked `[copy]`. Claude Code's refusal names the waiter with
+`--timeout 7140` under the tool's two-hour background limit, and `--timeout
+540` in the foreground, so it ends on its own saying the review still waits
+and how to wait again rather than being stopped mute; SIGTERM or SIGHUP
+makes it say the same. The page's answer is delivered before the reply, so
+its toast says how the requester heard.
+
+### The review page is an editor
+
+The editor takes the height left at any width, the title names the change
+relative to its checkout, the policy's reason sits in a strip above it, and
+the comment box is pinned open and focused beneath. Ctrl+Enter (Cmd+Enter)
+approves, Alt+Delete declines, Alt+Enter sends the note and line comments
+without deciding, Alt+↑/↓ move between reviews, and Esc leaves the box for
+the one-letter keys; Shift+A and Shift+D are gone. A line number takes a
+comment on its line, Shift+click on a range, stored on the answer or remark
+as `LineComment` (path, lines, side, note) and printed to the requester as
+`path:line[-end]: note`. What was said is the review's thread, the operator's
+remarks and the requester's replies (`review reply <id> <text>`,
+`lup.devtools.review.thread`) beside the answer. Diffs are highlighted by
+extension, every `# lup:` marker kind is marked in its colour with `m` and
+`Shift+M` to jump between them, gaps fold behind expanders, and `f` shows the
+whole file. Answering is immediate and a refusal puts it back, with a toast.
+
+### Several edits go to the operator as one review
+
+`review propose <dir> --why <text>` parks every file under a scratch
+directory, each at its path in the checkout, as one review: each file meets
+the gates a direct write of it would, a refused one refuses the proposal,
+and one they let through is folded. `.proposal.json` notes files and names
+deletions. An approval releases every file or none, where each still stands
+as recorded; a file moved since stales the whole proposal.
+
 ### A shell command's review shows each file it changes, as the policy judged it
 
 The dashboard showed a diff for a lone `cp`, a patch envelope, and a lone

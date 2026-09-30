@@ -1197,11 +1197,17 @@ The refusal is written for the agent, because a refusal normally means
 "change course" and an agent reading this one that way reshapes the call and
 spends the review. It reads: "Queued for the operator as review `<id>` — not
 refused. Don't change the command; carry on with other work. Start `uv run
-lup-devtools review wait <id>` in the background (run_in_background) to be
-woken with the result." A subagent and a `-p` run, whose background commands
-end with them, are told to run it in the foreground once nothing else is
-left; Codex is told to leave it running under its shell tool, which keeps it
-past the turn. Beside it, the operator is shown where the review waits — on
+lup-devtools review wait <id> --timeout 7140` in the background
+(run_in_background, with the longest timeout the tool takes, 7200000 ms) to
+be woken with the result. It waits until the operator answers; if it ends
+first, it says how to wait again, so start it again." The waiter's own
+timeout ends it a minute before the tool would, so its session reads that
+the review still waits rather than a bare timeout. A subagent and a `-p`
+run, whose background commands end with them, are told to run it in the
+foreground once nothing else is left, with `--timeout 540` under the tool's
+ten-minute foreground limit; Codex is told to leave it running under its
+shell tool, which keeps it past the turn. Beside it, the operator is shown
+where the review waits — on
 the dashboard, or the terminal commands that answer it — as `systemMessage`
 on both runtimes. Codex delivers the refusal as a structured `deny`
 carrying that line, so its app-server raises an operator-visible warning in
@@ -1301,9 +1307,43 @@ one. A step whose result exists only once it runs -- a program's output
 redirected into a file, `sort -o`, a formatter, a script, a loop, a word
 the shell expands into other words -- is listed as that, with the files it
 leaves so, and never run to find out; a file that does not read as text is
-named rather than shown. Every file a step lands the text of, and every
+named rather than shown. A reader writes nothing only running would show: a
+command whose row only reads, printing to a stream -- `pyright` reporting
+what it found, `2>&1` beside it -- is no such step, unless it spells a flag
+its row guards, as `pyright --createstub` does. Every file a step lands the text of, and every
 file a row shows, contributes its preimage, so a change to any of them
 before the call is carried out makes it a fresh question.
+
+The question keeps each command of the line too, with the verdict it reached
+on its own -- effect, reason and rule -- in the order they run. The line's
+verdict is joined from them and its reason speaks for all of them; these
+rows say which command asked what, so a line that asks twice is put to the
+reviewer as two questions, and the commands allowed on their own are listed
+apart. They are bound into the fingerprint with the rest of what a reviewer
+reads, and cross no owner's wire: they are the caller's reading of the line.
+
+Beside them the question keeps who asked and what it said the call is for,
+bound into nothing: they name the asker and its claim, never what an approval
+releases. `agent` is the runtime's own id for the subagent that asked, blank
+for the session's own conversation, which is how the operator's words reach
+the conversation handling the call and a copy the session it runs in.
+`account` is the asker's own words, each with where they were found: the
+note the tool call carries -- Claude Code's `Bash` `description`, Codex's
+shell `justification` for running outside its sandbox; Codex's tools carry
+no note saying what a command does -- and what the agent wrote since it last
+heard anything, read back from the end of the transcript of the conversation
+making the call: a Claude subagent's own `subagents/agent-<agent_id>.jsonl`
+beside its session's, a Codex subagent's own rollout. Claude Code writes a
+call's own record before its `PreToolUse` hook runs, measured on 2.1.283;
+Codex's rollout is read so that it makes no difference whether the call's own
+line is written yet. Where the agent said nothing, what its roster row says
+it is on stands in, as `doing`. Recorded once, when the call first parks, and
+kept whole.
+
+A conversation with two or more edits waiting on the operator is told, in the
+refusal, how to put the next ones as one: each file as it should end up,
+under one directory in `tmp/` mirroring the checkout, and `review propose`
+over it, which parks every file as one review.
 
 
 ## Two markers change a decision

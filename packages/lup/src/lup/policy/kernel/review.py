@@ -14,6 +14,17 @@ class Reviewed(TypedDict):
     """The line a runtime shows the person beside the refusal, empty on an allow."""
 
 
+class Said(TypedDict):
+    """One thing the asker said a parked call is for, and where it was found.
+
+    ``source`` is where -- the note the call carries, the words before it, the
+    roster -- and ``text`` the words, whole.
+    """
+
+    source: str
+    text: str
+
+
 def single_command(command: str) -> Command | None:
     """A single foreground command, preserving its words and redirects."""
     tree = parse_shell(command)

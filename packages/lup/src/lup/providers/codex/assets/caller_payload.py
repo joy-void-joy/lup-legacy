@@ -40,7 +40,7 @@ what every call did before there was anything to stamp.
 
 import json
 import sys
-from pathlib import PurePosixPath
+from pathlib import Path, PurePosixPath
 from typing import Literal, TypedDict
 
 from coordination.store import Caller, called_by, text
@@ -99,6 +99,51 @@ def spawned_name(transcript: str, agent: str) -> str:
     if not isinstance(thread, dict) or text(thread.get("id")) != agent:
         return ""
     return PurePosixPath(text(thread.get("agent_path"))).name
+
+
+def transcript_of(payload: Payload) -> Path | None:
+    """The rollout of the conversation that made this call, where one is named.
+
+    Every event fired inside a subagent names the subagent's own rollout,
+    measured on 0.158.0, so the one named is the caller's.
+    """
+    transcript = text(payload.get("transcript_path"))
+    return Path(transcript) if transcript else None
+
+
+def said_in(part: WireValue) -> str:
+    """The text one part of an assistant message holds, blank for any other part."""
+    match part:
+        case {"type": "output_text", "text": str(said)}:
+            return said
+        case _:
+            return ""
+
+
+def spoken(record: dict[str, WireValue]) -> str | None:
+    """One rollout line, as far as the words an agent says before a call go.
+
+    An assistant message's text is what the agent wrote, and a user message
+    or a tool's output what it heard, before which nothing it said is about
+    the call. Every other line -- its reasoning, the calls themselves, the
+    events a rollout keeps beside the conversation -- says nothing, so the
+    words read the same whether or not the call's own line is written yet.
+    """
+    match record:
+        case {
+            "type": "response_item",
+            "payload": {"type": "message", "role": "assistant", "content": list(parts)},
+        }:
+            return "".join(said_in(part) for part in parts)
+        case {"type": "response_item", "payload": {"type": "message", "role": "user"}}:
+            return None
+        case {
+            "type": "response_item",
+            "payload": {"type": "function_call_output" | "custom_tool_call_output"},
+        }:
+            return None
+        case _:
+            return ""
 
 
 def caller_of(payload: Payload) -> Caller:

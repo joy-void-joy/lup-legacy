@@ -1,29 +1,29 @@
 {
   "schema_version": 1,
   "generator_version": "0.4.0",
-  "source_digest": "ad754065b0db651edaae0acbeaf98734a0a0cfb392f509207822d8e190e98dcd",
+  "source_digest": "da1a0af59f955777ad7affd638b994a550c97112648141a411e36de0397b8cb7",
   "target_requirements": [
     "bun"
   ],
   "files": [
     {
-      "path": "packages/lup/src/lup/web/bundles/dashboard/assets/index-CkVPNL24.css",
+      "path": "packages/lup/src/lup/web/bundles/dashboard/assets/index-CkgwLCiv.css",
       "category": "generated",
-      "sha256": "5e523c2fb2b39442b28251c45c908cdeeda37518fe13bc17228a51d5328461f1",
-      "semantic_id": "web.dashboard.assets/index-CkVPNL24.css",
+      "sha256": "6812043954319939c5f61e3c3f272e82a0e22d29c8c05208b2a84f76f57a739c",
+      "semantic_id": "web.dashboard.assets/index-CkgwLCiv.css",
       "executable": false
     },
     {
-      "path": "packages/lup/src/lup/web/bundles/dashboard/assets/index-LKIHVbdY.js",
+      "path": "packages/lup/src/lup/web/bundles/dashboard/assets/index-DK43W3gl.js",
       "category": "generated",
-      "sha256": "9a69461a6dc9f309373ec3933274e557288dfc743686f4cd3500363b2b128edb",
-      "semantic_id": "web.dashboard.assets/index-LKIHVbdY.js",
+      "sha256": "f65a6b38aadd89d6f5de13c430266e93bd2b6927cd354bb54d06b11118891211",
+      "semantic_id": "web.dashboard.assets/index-DK43W3gl.js",
       "executable": false
     },
     {
       "path": "packages/lup/src/lup/web/bundles/dashboard/index.html",
       "category": "generated",
-      "sha256": "0267c01177d263a48b549dc4be103fc710a86b6384150f987a99a3742852a6de",
+      "sha256": "84661a05ee7c1e1f384edd6302788714357f2928a099f00baceb7d6f046f8bee",
       "semantic_id": "web.dashboard.index.html",
       "executable": false
     },
