@@ -25,10 +25,11 @@ Not defended: other processes on this machine, which only a token would
 address.
 """
 
-from collections.abc import Awaitable, Callable
 from urllib.parse import urlsplit
 
-from fastapi import FastAPI, Request, Response
+from fastapi import FastAPI, Response
+from starlette.datastructures import Headers
+from starlette.types import ASGIApp, Receive, Scope, Send
 
 # lup: ignore[library-default] — the loopback interface's own spellings, fixed by the OS and the name it always resolves to; omitting one is a hole rather than a preference
 LOOPBACK_HOSTS = [
@@ -71,17 +72,31 @@ def allowed_host_values(url: str) -> list[str]:
     ]
 
 
+class LoopbackHost:
+    """Refuse any request whose ``Host`` is not one the surface answers for, before it is served.
+
+    Plain ASGI rather than an ``http`` middleware function: that wraps every
+    response body in a task group of its own, so a stream the server ends as
+    it stops is cancelled there and logged as an error instead of ending.
+    """
+
+    def __init__(self, app: ASGIApp, allowed: list[str]) -> None:
+        self.app = app
+        self.allowed = allowed
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] == "http":
+            headers = Headers(scope=scope)
+            header = headers["host"] if "host" in headers else ""
+            if header not in self.allowed:
+                refused = Response(
+                    status_code=MISDIRECTED_REQUEST, content="unexpected Host header"
+                )
+                await refused(scope, receive, send)
+                return
+        await self.app(scope, receive, send)
+
+
 def guard_loopback_host(app: FastAPI, url: str) -> None:
     """Refuse any request whose ``Host`` is not one this surface answers for."""
-    allowed = allowed_host_values(url)
-
-    @app.middleware("http")
-    async def guard_host(
-        request: Request, call_next: Callable[[Request], Awaitable[Response]]
-    ) -> Response:
-        header = request.headers.get("host", "")  # lup: ignore[dict-get] — header map
-        if header not in allowed:
-            return Response(
-                status_code=MISDIRECTED_REQUEST, content="unexpected Host header"
-            )
-        return await call_next(request)
+    app.add_middleware(LoopbackHost, allowed=allowed_host_values(url))

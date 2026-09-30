@@ -26,7 +26,7 @@ import hmac
 import logging
 import secrets
 import webbrowser
-from collections.abc import Awaitable, Callable, Iterator
+from collections.abc import Callable, Iterator
 from functools import partial
 from pathlib import Path
 from tempfile import mkdtemp
@@ -538,6 +538,8 @@ def dashboard_app(
     """
     from fastapi import HTTPException, Request
     from fastapi.responses import JSONResponse, Response, StreamingResponse
+    from starlette.datastructures import MutableHeaders
+    from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
     from lup.devtools.dashboard.live import ReplyOutcome, ReplyRequest, reply
     from lup.devtools.dashboard.stream import LiveFeed
@@ -566,12 +568,9 @@ def dashboard_app(
 
     feed = feed if feed is not None else LiveFeed(watched, store)
 
-    @app.middleware("http")
-    async def authorize(
-        request: Request, call_next: Callable[[Request], Awaitable[Response]]
-    ) -> Response:
+    def refused(request: Request) -> JSONResponse | None:
+        """Why a request is turned away before it is served; nothing where it is not."""
         headers = ReviewHeaders.model_validate(request.headers)
-        pane = request.url.path.startswith("/setup/")
         if request.url.path.startswith("/api/"):
             provided = headers.authorization.encode("utf-8")
             expected = f"Bearer {token}".encode("utf-8")
@@ -584,15 +583,46 @@ def dashboard_app(
                 return JSONResponse({"detail": "Origin refused"}, status_code=403)
             if headers.content_type != "application/json":
                 return JSONResponse({"detail": "JSON required"}, status_code=415)
-        response = await call_next(request)
-        response.headers["Cache-Control"] = "no-store"
-        response.headers["Referrer-Policy"] = "no-referrer"
-        response.headers["X-Content-Type-Options"] = "nosniff"
-        response.headers["X-Frame-Options"] = "SAMEORIGIN" if pane else "DENY"
-        response.headers["Content-Security-Policy"] = (
-            "frame-ancestors 'self'" if pane else "frame-ancestors 'none'"
-        )
-        return response
+        return None
+
+    class Authorized:
+        """Every request's gate: the capability on the API, the origin and JSON
+        on a write, and the headers every answer carries.
+
+        Plain ASGI rather than an ``http`` middleware function, which runs each
+        response body in a task group of its own: a stream the server ends as it
+        stops then ends, rather than being cancelled there and logged as an error.
+        """
+
+        def __init__(self, inner: ASGIApp) -> None:
+            self.inner = inner
+
+        async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+            if scope["type"] != "http":
+                await self.inner(scope, receive, send)
+                return
+            request = Request(scope)
+            refusal = refused(request)
+            if refusal is not None:
+                await refusal(scope, receive, send)
+                return
+            pane = request.url.path.startswith("/setup/")
+
+            async def headed(message: Message) -> None:
+                if message["type"] == "http.response.start":
+                    answered = MutableHeaders(scope=message)
+                    answered["Cache-Control"] = "no-store"
+                    answered["Referrer-Policy"] = "no-referrer"
+                    answered["X-Content-Type-Options"] = "nosniff"
+                    answered["X-Frame-Options"] = "SAMEORIGIN" if pane else "DENY"
+                    answered["Content-Security-Policy"] = (
+                        "frame-ancestors 'self'" if pane else "frame-ancestors 'none'"
+                    )
+                await send(message)
+
+            await self.inner(scope, receive, headed)
+
+    app.add_middleware(Authorized)
 
     @app.get("/api/reviews")
     def reviews() -> ReviewSnapshot:

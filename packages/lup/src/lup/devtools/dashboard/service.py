@@ -26,6 +26,7 @@ import importlib
 import logging
 import os
 import shutil
+import socket
 import sys
 import threading
 import webbrowser
@@ -393,7 +394,8 @@ def serve_dashboard(arguments: ServiceArguments) -> None:
     stop, and replaces itself with the same command in the same process, so
     it keeps its port, its capability and its herald's record, and every tab
     reconnects. A signal that stops it is raised again once it has stopped
-    serving, so a stop is never taken for a restart.
+    serving, so a stop is never taken for a restart. Either way, every open
+    stream ends as serving stops rather than being cut off after the grace.
     """
     import uvicorn
     from fastapi import FastAPI
@@ -451,7 +453,19 @@ def serve_dashboard(arguments: ServiceArguments) -> None:
     )
     refresh.source.taken()
     gate = WriteGate(app, refresh.refusal)
-    server = uvicorn.Server(
+
+    class Serving(uvicorn.Server):
+        """uvicorn's server, ending every open stream as it begins to stop.
+
+        A stream only ends when its tab leaves or the feed closes, so without
+        this the server waits out its grace for each, then cancels them.
+        """
+
+        async def shutdown(self, sockets: list[socket.socket] | None = None) -> None:
+            feed.close()
+            await super().shutdown(sockets)
+
+    server = Serving(
         uvicorn.Config(
             gate,
             host="127.0.0.1",
