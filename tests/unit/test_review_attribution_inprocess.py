@@ -209,11 +209,13 @@ def test_parked_attribution_is_durable_and_cannot_reuse_a_different_receipt(
     # The one record a session can still write is its question's: an answer
     # is the host's. Rewritten under the same id, the question keeps the
     # operator's answer and loses the attribution that answer was bound to.
+    whole = running.relay.resolve(recorded)
+    assert whole.file_reviews is not None
     running.relay.record(
-        recorded.model_copy(
+        whole.model_copy(
             update={
                 "file_reviews": [
-                    recorded.file_reviews[0].model_copy(update={"effect": "allow"})
+                    whole.file_reviews[0].model_copy(update={"effect": "allow"})
                 ]
             }
         )
