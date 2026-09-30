@@ -2,6 +2,42 @@
 
 ## Unreleased
 
+### A session's reviews live in its own checkout, and only subagents hold waiters
+
+A parked call's refusal no longer tells a session's own conversation to start
+a `review wait`: Claude Code stops a background command after two hours at
+most, so that waiter expired and woke the session every two hours for
+nothing. The session now carries on or ends its turn, and the operator's
+answer -- on the dashboard, or from a terminal with `review approve` or
+`decline`, which now tells the session the same way -- wakes it through its
+mailbox (the wake socket on Claude, `codex queue` on Codex); the
+`review wait` it names then carries the call out at once. A subagent, which
+nothing else wakes, still holds a waiter: on Claude in the background with
+`--timeout 7140`, on Codex in its shell tool until it reports, and it
+restarts it quietly when it ends. A `-p` run still waits in the foreground.
+A Codex waiter queues its report into the session's thread only when it was
+left running for a session's own thread.
+
+Every review is kept at the top of the checkout the session's launch opened
+(`LUP_BOUNDARY_ROOT`), whatever directory or checkout the call ran in, and
+every review command a refusal, a notice or `--help` prints is spelled
+`uv run --directory <session checkout> lup-devtools review …`, so the review
+is written and read with the session's code. A call from a subdirectory no
+longer leaves a `.lup` of its own there, the hook observations included, and
+the review CLI run from a subdirectory reads the checkout's queue.
+`review propose <checkout>/tmp/<name>` lands the files in the checkout
+holding the directory (or `--checkout`), records the review in the session's
+queue, records the subagent that proposed it (`agent`), and is refused, with
+the command to run instead, from a checkout other than the session's;
+`review reply`, `wait` and `cancel` name the session's queue when the review
+is not found where they ran.
+
+Titles read the paths relative to the checkout the files lie in, and the
+queue row and desktop notice name that checkout where it is not the queue's.
+A review the page cannot answer says why and gives the terminal commands that
+can, run with the code of the checkout keeping it, and, while the dashboard
+is about to restart onto newer code, that it will shortly.
+
 ### Agents are told to write review notes in plain words
 
 `review propose --help` now explains how to write `--why` and the per-file
