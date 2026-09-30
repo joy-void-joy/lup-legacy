@@ -30,6 +30,7 @@ from lup.harness.assets.home_seed import (
     Absent,
     Seeded,
     apply,
+    main,
     read_tree,
     three_way,
 )
@@ -281,6 +282,52 @@ def test_a_start_whose_seed_changes_nothing_writes_nothing(
     assert starting.seeds() == []
 
     assert starting.held() == before
+
+
+def test_a_document_that_does_not_parse_is_left_for_the_runtime(
+    starting: StartingHome,
+) -> None:
+    """Merged, it would be replaced by the seed's keys alone and the rest lost.
+
+    As the trust program leaves it; the start after the runtime's own recovery
+    seeds it afresh, rather than reading the keys that recovery reset as ones
+    a session removed.
+    """
+    starting.seeds()
+    torn = b"\0" * 64 + b'"projects": {}}\n'
+    starting.document.write_bytes(torn)
+
+    said = starting.seeds()
+
+    assert said == [
+        ".claude.json does not parse, so your settings were left out of it "
+        "for the runtime's own recovery"
+    ]
+    assert starting.document.read_bytes() == torn
+    assert not (starting.home / ".lup-seed" / "merge" / ".claude.json").exists()
+    assert json.loads((starting.home / "settings.json").read_text()) == {
+        "theme": "dark"
+    }
+    starting.document.write_text("{}")
+    assert starting.seeds() == []
+    assert json.loads(starting.document.read_text()) == {"autoUpdates": False}
+
+
+def test_a_failure_is_said_and_the_start_goes_on(
+    starting: StartingHome,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """The entrypoint stops at a failure, and a session that never starts recovers nothing."""
+    starting.document.write_bytes(b'{"projects": "\xff"}')
+    monkeypatch.setattr(
+        "sys.argv", ["home-seed", str(starting.seed), str(starting.home)]
+    )
+
+    main()
+
+    assert "lup: your settings were not applied" in capsys.readouterr().err
+    assert starting.document.read_bytes() == b'{"projects": "\xff"}'
 
 
 def test_both_start_programs_wait_on_the_one_lock(starting: StartingHome) -> None:
