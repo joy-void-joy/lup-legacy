@@ -52,6 +52,38 @@ type UrlPathPrefix = Annotated[str, StringConstraints(pattern=r"^/")]
 """An absolute URL path prefix scoping a fetch rule beneath an origin."""
 
 
+class UrlScope(BaseModel, frozen=True):
+    """One normalized scheme/host/port and path-prefix rule.
+
+    What a fetch policy judges against and what a hook set declares, one
+    model for both, so a declared scope reaches the policy as it was written.
+    """
+
+    origin: AnyHttpUrl
+    path_prefix: UrlPathPrefix = "/"
+    reason: str = Field(
+        default="",
+        description=(
+            "Why this origin is reachable, carried into the decision the "
+            "kernel returns"
+        ),
+    )
+    include_subdomains: bool = Field(
+        default=False,
+        description=(
+            "Extend the scope to every host beneath the origin, rendered as a "
+            "*.host wildcard in the OS sandbox network allowlist"
+        ),
+    )
+    any_port: bool = Field(
+        default=False,
+        description=(
+            "Extend the scope to every port on the origin, for a host whose "
+            "port the caller chooses rather than the service"
+        ),
+    )
+
+
 class ToolIdentity(BaseModel, frozen=True):
     """Opaque source identity retained only for diagnostics."""
 

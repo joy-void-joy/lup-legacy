@@ -20,10 +20,7 @@ import typer
 from pydantic import AnyHttpUrl, BaseModel
 
 from lup.devtools.utils import output_json
-from lup.harness.enforcement import (
-    declared_scope,
-    semantic_policy_for,
-)
+from lup.harness.enforcement import semantic_policy_for
 from lup.harness.models import HookSet
 from lup.policy.kernel.fetch import scope_text
 from lup.policy.assets.host import (
@@ -315,10 +312,7 @@ def declared_scopes(kind: str, hooks: HookSet) -> list[str]:
     """
     if kind != "fetch":
         return []
-    return [
-        scope_text(url_scope_row(declared_scope(scope)))
-        for scope in hooks.allowed_fetch
-    ]
+    return [scope_text(url_scope_row(scope)) for scope in hooks.allowed_fetch]
 
 
 def chosen_placements(

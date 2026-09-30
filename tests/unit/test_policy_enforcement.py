@@ -41,7 +41,8 @@ from lup.policy.models import (
 )
 from lup.policy.grants import LeaseGrants
 from lup.policy.refused_tools import RefusedTool
-from lup.policy.rules import EditPolicy, FetchPolicy, ShellPolicy, UrlScope
+from lup.policy.models import UrlScope
+from lup.policy.rules import EditPolicy, FetchPolicy, ShellPolicy
 from lup_template.harness.catalog import declared_hook_set
 from tests.unit.native import claude_answer, codex_answer
 

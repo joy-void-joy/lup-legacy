@@ -12,7 +12,7 @@ import json
 from pathlib import Path, PurePosixPath
 from urllib.parse import urlsplit
 
-from pydantic import AnyHttpUrl, BaseModel, Field
+from pydantic import BaseModel, Field
 
 from lup.harness.codescan.antipatterns import RuleSet, patterns_for_suffix
 from lup.harness.codescan.common import AntiPattern
@@ -116,7 +116,7 @@ from lup.policy.models import (
     EditChange,
     FetchUrl,
     ShellCommand,
-    UrlPathPrefix,
+    UrlScope,
 )
 
 
@@ -129,16 +129,6 @@ def pydantic_decision(decision: KernelDecision) -> Decision:
     read as, at the point where a kernel call returns.
     """
     return Decision.of(decision)
-
-
-class UrlScope(BaseModel, frozen=True):
-    """One normalized scheme/host/port and path-prefix rule."""
-
-    origin: AnyHttpUrl
-    path_prefix: UrlPathPrefix = "/"
-    reason: str = ""
-    include_subdomains: bool = False
-    any_port: bool = False
 
 
 # The three erasures to the kernel's primitive rows read alike on purpose, and

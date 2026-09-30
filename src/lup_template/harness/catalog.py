@@ -24,7 +24,6 @@ from lup.harness.models import (
     HookPathRole,
     HookSandbox,
     HookSet,
-    HookUrlScope,
     Plugin,
     ResolveSpec,
     SkillInvocation,
@@ -34,6 +33,7 @@ from lup.providers.claude.login import CLAUDE_LOGIN
 from lup.providers.codex.harness import CodexSpellings
 from lup.providers.codex.login import CODEX_LOGIN
 from lup.policy.bundle import compilation_sources
+from lup.policy.models import UrlScope
 from lup.policy.refused_paths import credential_files
 from lup.policy.rules import dependency_declarations
 from lup.harness.codescan.common import ApplicationRoots
@@ -694,48 +694,48 @@ def portable_harness(
                 application_roots([plugin_name])
             ),
             allowed_fetch=[
-                HookUrlScope(origin=AnyHttpUrl("https://docs.claude.com")),
-                HookUrlScope(origin=AnyHttpUrl("http://docs.claude.com")),
-                HookUrlScope(origin=AnyHttpUrl("https://code.claude.com")),
-                HookUrlScope(origin=AnyHttpUrl("http://code.claude.com")),
+                UrlScope(origin=AnyHttpUrl("https://docs.claude.com")),
+                UrlScope(origin=AnyHttpUrl("http://docs.claude.com")),
+                UrlScope(origin=AnyHttpUrl("https://code.claude.com")),
+                UrlScope(origin=AnyHttpUrl("http://code.claude.com")),
                 # docs.claude.com now redirects the Agent SDK and API paths
                 # here, so the route the guidance prescribes leaves the
                 # declared scopes one hop in.
-                HookUrlScope(origin=AnyHttpUrl("https://platform.claude.com")),
-                HookUrlScope(origin=AnyHttpUrl("http://platform.claude.com")),
+                UrlScope(origin=AnyHttpUrl("https://platform.claude.com")),
+                UrlScope(origin=AnyHttpUrl("http://platform.claude.com")),
                 # docs.anthropic.com 301s both of those routes onward: the
                 # Claude Code paths to code.claude.com and the API paths to
                 # platform.claude.com, each declared above. Admitting the
                 # legacy host admits the origin a redirect starts at, not a
                 # document these scopes did not already carry.
-                HookUrlScope(origin=AnyHttpUrl("https://docs.anthropic.com")),
-                HookUrlScope(origin=AnyHttpUrl("http://docs.anthropic.com")),
+                UrlScope(origin=AnyHttpUrl("https://docs.anthropic.com")),
+                UrlScope(origin=AnyHttpUrl("http://docs.anthropic.com")),
                 # The product's own pages — what it is, what it costs, what it
                 # claims — which no reference manual answers and which a
                 # question about the product rather than the API lands on.
                 # Declared for what they are rather than as a redirect: this
                 # admits an origin these scopes did not already reach, and
                 # widens the egress the same table grants to it.
-                HookUrlScope(origin=AnyHttpUrl("https://claude.com")),
-                HookUrlScope(origin=AnyHttpUrl("https://www.claude.com")),
+                UrlScope(origin=AnyHttpUrl("https://claude.com")),
+                UrlScope(origin=AnyHttpUrl("https://www.claude.com")),
                 # Where a session publishes a settled classification for a
                 # later one to read back, so a briefing can cite the artifact
                 # rather than restate it.
-                HookUrlScope(origin=AnyHttpUrl("https://claude.ai")),
-                HookUrlScope(origin=AnyHttpUrl("https://ai.pydantic.dev")),
-                HookUrlScope(origin=AnyHttpUrl("http://ai.pydantic.dev")),
-                HookUrlScope(origin=AnyHttpUrl("https://learn.chatgpt.com")),
-                HookUrlScope(origin=AnyHttpUrl("http://learn.chatgpt.com")),
-                HookUrlScope(origin=AnyHttpUrl("https://developers.openai.com")),
-                HookUrlScope(origin=AnyHttpUrl("http://developers.openai.com")),
-                HookUrlScope(origin=AnyHttpUrl("https://github.com")),
-                HookUrlScope(origin=AnyHttpUrl("https://api.github.com")),
-                HookUrlScope(
+                UrlScope(origin=AnyHttpUrl("https://claude.ai")),
+                UrlScope(origin=AnyHttpUrl("https://ai.pydantic.dev")),
+                UrlScope(origin=AnyHttpUrl("http://ai.pydantic.dev")),
+                UrlScope(origin=AnyHttpUrl("https://learn.chatgpt.com")),
+                UrlScope(origin=AnyHttpUrl("http://learn.chatgpt.com")),
+                UrlScope(origin=AnyHttpUrl("https://developers.openai.com")),
+                UrlScope(origin=AnyHttpUrl("http://developers.openai.com")),
+                UrlScope(origin=AnyHttpUrl("https://github.com")),
+                UrlScope(origin=AnyHttpUrl("https://api.github.com")),
+                UrlScope(
                     origin=AnyHttpUrl("https://githubusercontent.com"),
                     include_subdomains=True,
                 ),
-                HookUrlScope(origin=AnyHttpUrl("https://pypi.org")),
-                HookUrlScope(origin=AnyHttpUrl("https://files.pythonhosted.org")),
+                UrlScope(origin=AnyHttpUrl("https://pypi.org")),
+                UrlScope(origin=AnyHttpUrl("https://files.pythonhosted.org")),
                 # This machine's own services: the dashboard, the setup page, the
                 # resolver supervisor, and whatever a session is running to
                 # look at. Reaching one is how a session establishes that it
@@ -744,7 +744,7 @@ def portable_harness(
                 # because every one of these surfaces takes `--port`, and a
                 # scope that went stale on a flag would put the question back.
                 *(
-                    HookUrlScope(
+                    UrlScope(
                         origin=AnyHttpUrl(f"http://{host}"),
                         any_port=True,
                         reason="this machine's own pages, on whatever port they took",

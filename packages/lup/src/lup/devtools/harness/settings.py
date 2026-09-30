@@ -18,7 +18,8 @@ from urllib.parse import urlsplit
 
 from pydantic import BaseModel, Field
 
-from lup.harness.models import HookSet, HookUrlScope, Plugin
+from lup.harness.models import HookSet, Plugin
+from lup.policy.models import UrlScope
 from lup.mcp import ToolServer
 from lup.types import EnvVars, JsonObject, JsonValue
 
@@ -139,7 +140,7 @@ def allowed_network_domains(hooks: HookSet) -> list[str]:
     if hooks.sandbox is None:
         return []
 
-    def sandbox_domains(scope: HookUrlScope) -> list[str]:
+    def sandbox_domains(scope: UrlScope) -> list[str]:
         host = urlsplit(str(scope.origin)).hostname
         if host is None:
             return []

@@ -37,7 +37,6 @@ from lup.providers.codex.native import (
 from lup.harness.enforcement import (
     declared_path_rules,
     declared_role_rows,
-    declared_scope,
     semantic_policy_for,
 )
 from lup.harness.models import HookSet
@@ -95,6 +94,7 @@ from lup.policy.models import (
     ShellCommand,
     ToolIdentity,
     UnknownTool,
+    UrlScope,
 )
 from lup.policy.rules import (
     EditPolicy,
@@ -102,7 +102,6 @@ from lup.policy.rules import (
     FetchPolicy,
     PathRule,
     ShellPolicy,
-    UrlScope,
     human_owned_path_rule,
     path_rule_row,
     protected_root_rule,
@@ -3778,7 +3777,7 @@ def test_an_unscoped_origin_is_the_runtime_s_to_answer_by_every_route(
     assert hooks.unscoped_fetch == "defer"
     bundled = load_bundled_kernel(tmp_path, "shell")
     rows = ShellPolicy(SHELL_RULES).rules
-    scopes = [url_scope_row(declared_scope(scope)) for scope in hooks.allowed_fetch]
+    scopes = [url_scope_row(scope) for scope in hooks.allowed_fetch]
     for sandboxed in (False, True):
         policy = semantic_policy_for(hooks, sandbox_active=sandboxed)
         fetched = policy.decide(FetchUrl(url=AnyHttpUrl("https://example.com/")))

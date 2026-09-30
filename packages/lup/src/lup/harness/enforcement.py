@@ -17,7 +17,7 @@ from pathlib import Path
 from pydantic import BaseModel
 
 from lup.harness.codescan.antipatterns import NO_RUNTIME_READER, rule_set_for
-from lup.harness.models import HookPathRole, HookSet, HookUrlScope
+from lup.harness.models import HookPathRole, HookSet
 from lup.policy.assets.host import contained as measured_contained
 from lup.policy.assets.host import delivers, measured_boundary
 from lup.policy.enforcement import SemanticToolPolicy
@@ -30,22 +30,10 @@ from lup.policy.rules import (
     FetchPolicy,
     PathRule,
     ShellPolicy,
-    UrlScope,
     human_owned_path_rule,
     invariant_path_rules,
     protected_root_rule,
 )
-
-
-def declared_scope(scope: HookUrlScope) -> UrlScope:
-    """One declared hook scope, as the policies take it."""
-    return UrlScope(
-        origin=scope.origin,
-        path_prefix=scope.path_prefix,
-        reason=scope.reason,
-        include_subdomains=scope.include_subdomains,
-        any_port=scope.any_port,
-    )
 
 
 def declared_path_rules(hooks: HookSet) -> list[PathRule]:
@@ -131,8 +119,8 @@ def semantic_policy_for(
         if unjudged_ambient is None
         else hooks.unscoped_fetch or unjudged_ambient
     )
-    allowed = [declared_scope(scope) for scope in hooks.allowed_fetch]
-    denied = [declared_scope(scope) for scope in hooks.denied_fetch]
+    allowed = list(hooks.allowed_fetch)
+    denied = list(hooks.denied_fetch)
     roles = declared_role_rows(list(hooks.path_roles))
     # One instance, given to both families. A shell write carrying its own
     # content reaches the edit gates, and it has to reach the same ones an
