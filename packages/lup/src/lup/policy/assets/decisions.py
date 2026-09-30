@@ -70,6 +70,7 @@ from host import (
     walked_withheld,
     record_deferral,
     record_question,
+    review_home,
     review_hook_call,
     waiting_edits,
     committed_text,
@@ -571,8 +572,10 @@ def reviewed_decision(
 
     The call is refused while it waits, with a recovery written for the agent:
     it is queued rather than refused, the call is not to be reshaped, and
-    ``waiting`` spells, in the runtime's own words, how to start `review wait`
-    on it, which carries the approved call out and reports the result.
+    ``waiting`` spells, in the runtime's own words, how the conversation that
+    asked hears the answer, and when to run the `review wait` that carries
+    the approved call out and reports the result. Every review command it
+    names runs in :func:`review_home`, with that checkout's code.
 
     Every file the verdict records a document for is bound as it stands, the
     preimage its row's ``before_sha256`` names: the operator reads each diff
@@ -595,6 +598,7 @@ def reviewed_decision(
     directory = peer_directory(cwd)
     member = answering_member(directory)
     told = account or roster_doing(directory, member, agent)
+    home = review_home(cwd)
     result = review_hook_call(
         cwd,
         session,
@@ -618,7 +622,7 @@ def reviewed_decision(
         json.dumps(decision.file_reviews, sort_keys=True),
         answers=str(
             review_answers(
-                cwd / ".lup/questions.jsonl", review_answers_home(REVIEW_ANSWERS_ENV)
+                home / ".lup/questions.jsonl", review_answers_home(REVIEW_ANSWERS_ENV)
             )
         ),
         member=member,
@@ -656,10 +660,15 @@ def reviewed_decision(
         "uv",
         "run",
         # The checkout holding the review queue, so the line runs from
-        # anywhere; the project, where declared, selects the application's CLI.
+        # anywhere with that checkout's code, which is the code that parked
+        # it; a project declared apart from it selects the application's CLI.
         "--directory",
-        str(cwd),
-        *(["--project", project] if project else []),
+        str(home),
+        *(
+            ["--project", project]
+            if project and Path(project).resolve() != home.resolve()
+            else []
+        ),
         "lup-devtools",
         "review",
     ]
@@ -675,12 +684,13 @@ def reviewed_decision(
     together = (
         f" {waiting_here} of your edits now wait on the operator one review at "
         "a time. Where changes belong together, write each file as it should "
-        "end up under one directory in tmp/, mirroring the checkout, and run "
-        f"`{shlex.join([*prefix, 'propose'])} <directory> --why '<what they "
-        "change and why>'`: the operator reads them as one review and answers "
-        "all of them at once. Write --why and each file's note in plain words, "
-        "as you would tell a colleague at their desk; `review propose --help` "
-        "shows how."
+        "end up under one directory in the tmp/ of the checkout they change, "
+        "mirroring that checkout, and run "
+        f"`{shlex.join([*prefix, 'propose'])} <that directory, absolute> --why "
+        "'<what they change and why>'`: the operator reads them as one review "
+        "and answers all of them at once. Write --why and each file's note in "
+        "plain words, as you would tell a colleague at their desk; `review "
+        "propose --help` shows how."
         if waiting_here >= 2
         else ""
     )
@@ -689,7 +699,7 @@ def reviewed_decision(
             effect="deny",
             recovery=(
                 f"Queued for the operator as review {identifier} — not refused. "
-                "Don't change the command; carry on with other work. "
+                "Don't change the command. "
                 + waiting(shlex.join([*prefix, "wait", identifier]))
                 + f" The operator answers it {where}."
                 + together

@@ -156,6 +156,10 @@ EVERYDAY_COMMANDS: list[CommandFamily] = everyday_commands(
                 "uv run lup-devtools harness generate all",
                 "uv run lup-devtools review wait 0f3c9b1e2d4a",
                 "uv run --directory . lup-devtools review wait --any",
+                "uv run --directory . lup-devtools review propose "
+                "./tmp/cdx --why 'Retire the unused flag.'",
+                "uv run --directory . lup-devtools review reply 0f3c9b1e2d4a "
+                "'Renamed it as you asked.'",
             ],
         )
     ]
@@ -164,10 +168,12 @@ EVERYDAY_COMMANDS: list[CommandFamily] = everyday_commands(
 
 The library's families, plus the half no other project inherits: every one of
 these reaches `lup-devtools` through `uv run`, and a rule that stopped one of
-them would stop a step the guidance documents by name. `review wait` among
-them, in the shape a parked call's refusal tells the agent to start it: a rule
-that stopped it would leave every parked call waiting on a waiter that cannot
-run.
+them would stop a step the guidance documents by name. The review commands
+among them, in the shape a parked call's refusal spells them -- run in the
+session's own checkout with ``--directory`` -- since a rule that stopped
+`review wait` would leave every parked call waiting on a waiter that cannot
+run, and one stopping `review propose` or `reply` would leave the operator
+without the batch or the answer the guidance asks for.
 """
 
 

@@ -1796,6 +1796,12 @@ def review_hook_call(
     identified invocation. The immutable primary claim proves which stage
     consumed the answer; neither a dispatched log row nor observed execution
     alone establishes that authority.
+
+    *root* is where the call runs, which its record names and its
+    fingerprint binds; the relay and the claims that spend an answer are
+    kept in :func:`review_home`, so a call made from a subdirectory or a
+    sibling worktree is recorded where the session's waiter and dashboard
+    read it.
     """
     if not session:
         return {
@@ -1803,6 +1809,7 @@ def review_hook_call(
             "id": "",
             "reason": "the hook carries no session_id",
         }
+    home = review_home(root)
     payload = json.loads(arguments)
     expected = (
         json.loads(execution_payload) if execution_payload is not None else payload
@@ -1829,7 +1836,7 @@ def review_hook_call(
         resolved,
         bound,
     )
-    log = root / ".lup/questions.jsonl"
+    log = home / ".lup/questions.jsonl"
     blobs = relay_blobs(log)
 
     def binds(entry: dict) -> bool:
@@ -1858,7 +1865,7 @@ def review_hook_call(
     ]
     if continuations:
         entry = continuations[-1]
-        claim = root / ".lup/review-claims" / entry["id"]
+        claim = home / ".lup/review-claims" / entry["id"]
         with claim.open(encoding="utf-8") as handle:
             consumed = json.load(handle)
         spent_by = {
@@ -1868,7 +1875,7 @@ def review_hook_call(
         }
         if consumed == spent_by:
             successor = (
-                root
+                home
                 / ".lup/review-stage-claims"
                 / entry["id"]
                 / sha256(stage.encode()).hexdigest()
@@ -1908,7 +1915,7 @@ def review_hook_call(
                 raise ValueError(
                     "hook approval has no recorded independent affirmative answer"
                 )
-        claim = root / ".lup/review-claims" / entry["id"]
+        claim = home / ".lup/review-claims" / entry["id"]
         claim.parent.mkdir(parents=True, exist_ok=True)
         try:
             with claim.open("x", encoding="utf-8") as handle:
@@ -1935,8 +1942,9 @@ def review_hook_call(
     identifier = os.urandom(16).hex()
     # The checkout the call changes: the one holding every file it records,
     # which a session editing a sibling worktree does not sit in, and the
-    # session's own where it records none or files in several.
+    # checkout the call runs in where it records none or files in several.
     changed = {worktree_root(path) for path in resolved.values()} - {""}
+    labelled = changed.pop() if len(changed) == 1 else str(checkout_home(root))
     entry = {
         "id": identifier,
         "fingerprint": fingerprint,
@@ -1966,7 +1974,7 @@ def review_hook_call(
             "tool": tool,
             "payload": payload,
             "cwd": str(root),
-            "worktree": changed.pop() if len(changed) == 1 else str(root),
+            "worktree": labelled,
             "placement": placement,
             "provider": provider,
         },
@@ -1982,9 +1990,10 @@ def waiting_edits(root: Path, session: str, agent: str) -> int:
     *session*'s conversation *agent* -- blank for the session's own. What
     tells a conversation its edits are arriving one review at a time.
     """
+    log = review_home(root) / ".lup/questions.jsonl"
     return sum(
         1
-        for entry in native_review_records(root / ".lup/questions.jsonl").values()
+        for entry in native_review_records(log).values()
         if entry["state"] == "pending"
         and entry["operation"]["session"] == session
         and (entry["agent"] if "agent" in entry else "") == agent
@@ -2048,7 +2057,7 @@ def observe_hook_call(
     root: Path, session: str, tool: str, arguments: dict, execution_id: str
 ) -> list[str]:
     """Reconcile execution with its receipt without inferring authorization."""
-    log = root / ".lup/questions.jsonl"
+    log = review_home(root) / ".lup/questions.jsonl"
     if not session or not log.exists():
         return []
     entries = native_review_records(log)
@@ -2192,7 +2201,7 @@ def record_question(
         "state": "pending",
         "created": datetime.now(UTC).isoformat(),
     }
-    path = root / relay
+    path = review_home(root) / relay
     try:
         folded: dict[str, dict] = {}
         fold_relay(folded, relay_records(path))
@@ -2248,7 +2257,7 @@ def record_deferral(
     """
     if root is None or not command:
         return ""
-    path = root / corpus
+    path = checkout_home(root) / corpus
     try:
         seen = path.read_text(encoding="utf-8") if path.exists() else ""
     except OSError:
@@ -2291,7 +2300,7 @@ def approvals_log(root: Path) -> Path:
     than an erasure. A function rather than a constant because the compiled
     dispatcher carries this half's functions and nothing beside them.
     """
-    return root / ".lup/hooks/approvals.jsonl"
+    return checkout_home(root) / ".lup/hooks/approvals.jsonl"
 
 
 def approval_fingerprint(kind: str, subject: str, root: Path | None) -> str:
@@ -2462,6 +2471,34 @@ def worktree_root(path_text: str) -> str:
         if is_git_marker(root / ".git"):
             return str(root)
     return ""
+
+
+def checkout_home(cwd: Path) -> Path:
+    """The top of the checkout *cwd* sits in, where its `.lup` state is kept; *cwd* where it is in none.
+
+    A session's shell moves: a `cd` into `tmp/` leaves every later call
+    there, and state written beside the working directory would scatter a
+    `.lup` into each directory a call happened to run from, where nothing
+    reads it.
+    """
+    root = worktree_root(str(cwd))
+    return Path(root) if root else cwd
+
+
+def review_home(cwd: Path) -> Path:
+    """The checkout a session's reviews are kept in, wherever the call it parks runs.
+
+    The checkout its launch opened, which ``LUP_BOUNDARY_ROOT`` names: the
+    relay whose answers the launch lends the session, which the dashboard
+    reads with the code the session runs and the session's review commands
+    name as ``uv run --directory <it>``. So a call made from a subdirectory,
+    a sibling worktree or another repository is recorded there, labelled
+    with the checkout it changes. Unlaunched, the checkout holding *cwd*.
+    """
+    launched = Path(declared_identity("LUP_BOUNDARY_ROOT"))
+    if launched.is_absolute() and launched.is_dir():
+        return launched
+    return checkout_home(cwd)
 
 
 def sibling_worktrees(root: Path | None = None) -> list[str]:
@@ -4797,8 +4834,10 @@ def reviewed_decision(
 
     The call is refused while it waits, with a recovery written for the agent:
     it is queued rather than refused, the call is not to be reshaped, and
-    ``waiting`` spells, in the runtime's own words, how to start `review wait`
-    on it, which carries the approved call out and reports the result.
+    ``waiting`` spells, in the runtime's own words, how the conversation that
+    asked hears the answer, and when to run the `review wait` that carries
+    the approved call out and reports the result. Every review command it
+    names runs in :func:`review_home`, with that checkout's code.
 
     Every file the verdict records a document for is bound as it stands, the
     preimage its row's ``before_sha256`` names: the operator reads each diff
@@ -4821,6 +4860,7 @@ def reviewed_decision(
     directory = peer_directory(cwd)
     member = answering_member(directory)
     told = account or roster_doing(directory, member, agent)
+    home = review_home(cwd)
     result = review_hook_call(
         cwd,
         session,
@@ -4844,7 +4884,7 @@ def reviewed_decision(
         json.dumps(decision.file_reviews, sort_keys=True),
         answers=str(
             review_answers(
-                cwd / ".lup/questions.jsonl", review_answers_home(REVIEW_ANSWERS_ENV)
+                home / ".lup/questions.jsonl", review_answers_home(REVIEW_ANSWERS_ENV)
             )
         ),
         member=member,
@@ -4882,10 +4922,15 @@ def reviewed_decision(
         "uv",
         "run",
         # The checkout holding the review queue, so the line runs from
-        # anywhere; the project, where declared, selects the application's CLI.
+        # anywhere with that checkout's code, which is the code that parked
+        # it; a project declared apart from it selects the application's CLI.
         "--directory",
-        str(cwd),
-        *(["--project", project] if project else []),
+        str(home),
+        *(
+            ["--project", project]
+            if project and Path(project).resolve() != home.resolve()
+            else []
+        ),
         "lup-devtools",
         "review",
     ]
@@ -4901,12 +4946,13 @@ def reviewed_decision(
     together = (
         f" {waiting_here} of your edits now wait on the operator one review at "
         "a time. Where changes belong together, write each file as it should "
-        "end up under one directory in tmp/, mirroring the checkout, and run "
-        f"`{shlex.join([*prefix, 'propose'])} <directory> --why '<what they "
-        "change and why>'`: the operator reads them as one review and answers "
-        "all of them at once. Write --why and each file's note in plain words, "
-        "as you would tell a colleague at their desk; `review propose --help` "
-        "shows how."
+        "end up under one directory in the tmp/ of the checkout they change, "
+        "mirroring that checkout, and run "
+        f"`{shlex.join([*prefix, 'propose'])} <that directory, absolute> --why "
+        "'<what they change and why>'`: the operator reads them as one review "
+        "and answers all of them at once. Write --why and each file's note in "
+        "plain words, as you would tell a colleague at their desk; `review "
+        "propose --help` shows how."
         if waiting_here >= 2
         else ""
     )
@@ -4915,7 +4961,7 @@ def reviewed_decision(
             effect="deny",
             recovery=(
                 f"Queued for the operator as review {identifier} — not refused. "
-                "Don't change the command; carry on with other work. "
+                "Don't change the command. "
                 + waiting(shlex.join([*prefix, "wait", identifier]))
                 + f" The operator answers it {where}."
                 + together
@@ -5957,37 +6003,47 @@ def parks():
 
 
 def waiting(command, payload):
-    """How this session waits on a parked call, in its own tool's words.
+    """How the conversation that asked hears the operator's answer, in its tool's words.
 
-    A command the main conversation of an interactive session starts with
-    `run_in_background` keeps running after the turn and re-invokes the model
-    when it exits, which is the whole wake. A subagent's, or a `-p` run's,
-    ends with it -- `CLAUDE_CODE_ENTRYPOINT` is `sdk-cli` there, measured on
-    2.1.283, where a subagent's hook payload carries `agent_id` -- so there
-    the wait moves to the foreground once nothing else is left.
+    The session's own conversation holds no waiter. Where no `review wait`
+    holds the review, the operator's answer goes to its mailbox and wakes it
+    through its wake socket -- an idle interactive session took a turn on
+    it, measured live -- and the `review wait` it runs then carries the call
+    out at once. A waiter held instead ended at the tool's limit every two
+    hours and woke the session for nothing.
 
-    The tool stops a command at its `timeout` whatever it waits on: thirty
-    minutes in the background unless the call names more, two hours at most,
-    and ten minutes at most in the foreground -- the Bash tool's own schema
-    on 2.1.285. The waiter has no limit of its own, so it is started with the
-    longest the tool takes and told to end itself a minute sooner: ending on
-    its own, it says the review is still waiting and how to wait again,
-    where the tool stopping it would leave the session a bare timeout.
+    A subagent is woken by nothing but its own background work: a message to
+    it waits for its next tool call. So it holds the waiter, started with
+    `run_in_background` and the longest timeout the tool takes -- two hours,
+    the Bash tool's own schema on 2.1.285 -- and told to end itself a minute
+    sooner, saying the review still waits, rather than leave a bare timeout.
+    It starts it again without telling anybody: a waiter ending is no news.
+
+    A `-p` run's background commands end with it, about five seconds after
+    its final result, and nothing wakes a run that ended --
+    `CLAUDE_CODE_ENTRYPOINT` is `sdk-cli` there, measured on 2.1.283 -- so it
+    waits in the foreground once nothing else is left, under the ten minutes
+    the tool takes there.
     """
-    started = (
-        f"Start `{command} --timeout 7140` in the background (run_in_background, "
-        "with the longest timeout the tool takes, 7200000 ms) to be woken with "
-        "the result. It waits until the operator answers; if it ends first, it "
-        "says how to wait again, so start it again."
-    )
-    interactive = declared_identity("CLAUDE_CODE_ENTRYPOINT") == "cli"
-    if interactive and "agent_id" not in payload:
-        return started
+    if "agent_id" in payload:
+        return (
+            f"Carry on with other work, and hold `{command} --timeout 7140` in the "
+            "background (run_in_background, with the longest timeout the tool "
+            "takes, 7200000 ms): nothing else wakes a subagent, and it wakes you "
+            "with the result. If it ends with the review still waiting, start it "
+            "again quietly, reporting that to nobody."
+        )
+    if declared_identity("CLAUDE_CODE_ENTRYPOINT") == "cli":
+        return (
+            "Carry on with other work, or end your turn: the operator's answer "
+            f"wakes this session, and `{command}` then carries the call out at "
+            "once. Don't start a waiter."
+        )
     return (
-        started + " A background command ends with this run, so once nothing "
-        f"else is left, run `{command} --timeout 540` in the foreground instead, "
-        "with the longest timeout the tool takes there, 600000 ms, again each "
-        "time it ends still waiting."
+        "Carry on with other work. This run ends with its last turn and nothing "
+        "wakes it after, so once nothing else is left, run "
+        f"`{command} --timeout 540` in the foreground (the longest timeout the "
+        "tool takes there, 600000 ms), again each time it ends still waiting."
     )
 
 
