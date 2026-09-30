@@ -259,7 +259,11 @@ def apply(seed_dir: Path, home: Path) -> list[str]:
     Under the lock trust-seed.py takes in the same home, since both read a
     document there, merge into it and write it back: interleaved by two
     containers starting at once, whichever renames second drops what the
-    other added.
+    other added. A file the merge leaves as the home holds it is not written
+    at all: a session running in the home saves the same document holding no
+    lock of ours, and a start that rewrote it anyway would drop whatever that
+    session saved between the read and the rename -- at every start, rather
+    than only at one whose seed changed something.
     """
     managed_file = seed_dir / "managed"
     if not managed_file.is_file():
@@ -280,7 +284,8 @@ def apply(seed_dir: Path, home: Path) -> list[str]:
         ]
         settled = settle(seed, held, managed)
         for outcome in settled:
-            write(home / outcome.file.name, outcome.file.text)
+            if loaded(outcome.file.text) != loaded(text_of(held, outcome.file.name)):
+                write(home / outcome.file.name, outcome.file.text)
         seeded = [item.name for item in seed]
         for stale in record:
             if stale.name not in seeded:
