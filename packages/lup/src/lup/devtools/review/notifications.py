@@ -312,8 +312,7 @@ def answered_message(root: Path, entry: QuestionRecord) -> str:
         case "approved", "native_retry":
             state = "approved"
             instruction = (
-                f"Run `{wait}` now: it carries it out at once and reports what "
-                "it did."
+                f"Run `{wait}` now: it carries it out at once and reports what it did."
             )
         case "rejected", _:
             state = "declined"
