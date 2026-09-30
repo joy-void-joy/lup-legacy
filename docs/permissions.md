@@ -123,7 +123,10 @@ fetch ask when a process the container cannot see holds the port: sharing the
 host's network means sharing its loopback, and the scope declared for this
 machine's own development servers would otherwise admit the operator's. It
 asks even where `unscoped_fetch` defers, since the runtime sees a loopback
-address and not whose service answers on it.
+address and not whose service answers on it — and however the rest of the
+command reads: `curl -s -o /dev/null -w '%{http_code}' <url>` asks as `curl
+-s <url> | grep x` does, and so does a `curl` carrying an option nobody
+classified, since where the request goes is what the container cannot hold.
 
 And the columns that say what a *word* adds or removes, each answering one
 question the row alone cannot:
@@ -134,6 +137,7 @@ question the row alone cannot:
 | `flag_effects` | what the escalation is *about* — `git reset --hard` discards working-tree content, which the bare verb never did |
 | `write_flags` | options whose value is a path this command writes, so the path is resolved and judged by the write row every other spelling reaches |
 | `allow_flags`, `read_verbs`, `frozen_flags`, `write_markers`, `bare_reads`, `guarded_keys` | the de-escalations: a pure read-only form, a verb that pins the query action, a flag that pins a dependency restore to what its lockfile already declares (`bun install --frozen-lockfile`, and `uv sync --frozen` or `--locked` by the same judgement), a marker whose absence means it only reads, the argument-less form, a setting that redirects neither execution nor the repository this checkout talks to |
+| `read_operands`, `read_options` | the reading form a guarded subject still has, told by its count of operands and the options it may carry: `git config core.hooksPath` looks the key up and `git config core.hooksPath /x` sets it, so the first reads; an option off the list — `--unset`, `--add` — keeps the question |
 | `setting_flags`, `guarded_settings` | the same absence test about a global that carries a setting — `git -c color.ui=false` turns off colour, `git -c core.pager=x` runs a program and `git -c remote.origin.url=x` aims the next push somewhere else, and only the last two are worth interrupting about; the question a guarded one raises never stands in for the subcommand behind it, so `git -c core.pager=x checkout main` is refused as `git checkout main` is |
 | `ask_refspecs` | the effects an operand's *grammar* carries, for a push that spells a delete twice — `--delete main` and `:main` |
 | `force_flags`, `lease_flags`, `protected_refs` | a forced update judged by what it can discard: `--force-with-lease` onto a named feature branch allows, because it replaces only what this checkout last saw; `--force`, a refspec's leading `+`, a lease onto a protected branch (`main`, `dev`), or a lease naming no branch asks |
@@ -533,9 +537,13 @@ redirection are: `-o`/`-O FILE`, the URL's own name that `curl -O` and a
 plain `wget` take (in `wget -P`'s directory), and a log or header file. So a
 download into scratch or a new file is ordinary, and one over a protected,
 human-authored or tracked file asks. A redirect `-L` follows is not
-re-judged; the network boundary answers for where it is sent. An option
-neither grammar lists — a config file, a cookie jar, a recursive crawl, a
-server-chosen name — leaves the invocation unread.
+re-judged; the network boundary answers for where it is sent. curl's
+`-w`/`--write-out` prints a format once the transfer ends, which is how a
+probe asks whether a service answered, and it reads; a format naming a
+file — one it writes, `%output{…}`, or one it is read from, `@file` — leaves
+the invocation unread. An option neither grammar lists — a config file, a
+cookie jar, a recursive crawl, a server-chosen name — leaves the invocation
+unread.
 
 ### A path no command may name
 
@@ -703,6 +711,21 @@ absent because its first argument is a format, and an unquoted heredoc
 because the shell substitutes into the body — a reading that was wrong would
 put a document in front of the gates that the command never writes, which is
 worse than putting nothing there. Everything unread keeps the answer it had.
+
+A copy over a file carries its content too, from a file rather than from the
+command: `cp new.py src/app.py` leaves in `src/app.py` what `new.py` holds,
+and the host reads both before the copy runs. So a `cp` whose every
+destination already stands, and whose every source reads as text, is judged
+as the edit it makes of each — the gates an `Edit` of that file meets,
+reading the real difference between what stood there and what lands: a small
+change allows, a larger one is handed to the runtime's own mode as a large
+`Edit` is, a dropped `# lup:` note is denied, a protected path asks. It is the
+same answer wherever the file is — this checkout, or a sibling worktree
+reached by its absolute path, which no capture of this checkout holds — and
+no question about losing what the copy replaces is put, since an `Edit` of
+the same file is not asked one either. A copy that brings a file into being,
+one carrying a flag the reading does not model (`-r`, `--backup`), and one
+whose source is not text keep the verb's own row and its grants.
 
 Codex's native prefix evaluator deliberately leaves an assignment-bearing
 script opaque. Its permission-request hook still passes literal assignments
@@ -1067,6 +1090,16 @@ surfaces every change to it, edit or shell write, as an approval its author
 answers. An edit over the size gate alone is deferred — the hook
 emits no decision, so auto-accept applies while hard gates stay explicit.
 
+A deferral is never a question lup puts, and nothing parks one, whichever
+spelling carried the change — an `Edit`, a `cp` over a file, a heredoc, a
+`sed -i`, or a line whose strongest part is the handoff. On Claude Code the
+hook returns no permission decision, and the runtime's own mode answers: auto
+mode's classifier, or the prompt in the terminal. On Codex the pre-tool hook
+lets the call through to Codex's own approval policy, and its
+permission-request hook returns nothing, which leaves Codex's own prompt. A
+`# lup: escalate[decision]:` line over a deferred command changes nothing
+either: the handoff stands, and the agent is told the reason was not needed.
+
 Size is counted in *real* changed lines per change block, and an edit of
 three or fewer auto-allows. Imports, comments, whitespace, blank lines,
 docstrings, string literals, type annotations, and TypedDict/BaseModel bodies
@@ -1325,14 +1358,18 @@ A shell command is read the way the shell runs it: segment by segment, each
 write applied to what the writes before it left, through a `cd` and across
 `&&`, `;` and pipes (`lup.policy.kernel.documents`). An in-place `sed`, with
 every expression and every file it names, runs sandboxed over the text the
-line has left there -- any encoding sed reads, the file never touched; `cp`,
+line has left there -- any encoding sed reads, the file never touched -- under
+the `C.UTF-8` locale, since no runtime hands a hook its shell's environment
+and a locale decides what `.`, a class and a range match; `cp`,
 `mv` and `install` land their source's text, a move's source gone; `rm`
 removes; a heredoc, `echo`, `printf` or `tee` lands the bytes the command
 carries, `>>` after what stands; `patch -pN` and `git apply` are applied by
 Git to a copy of the files they touch. The edit gates judge each file as the
 edit the whole line makes of it, so a second rewrite of a file is read
 against what the first left, and several appends meet the size gate as the one
-change they add up to.
+change they add up to. A rewrite whose document nobody could produce -- over a
+file an earlier step writes by running, say -- asks, except in scratch, where
+no gate reads the content and only a rule protecting the path is put.
 
 Where somebody is asked, the question keeps that reading as its per-file
 record: each file the line changes, in the order it writes them, with the
@@ -1490,9 +1527,15 @@ lease from the ledger, so a write the launch did not mount writable asks here
 as it asks there, and the roster, so an edit of a file another live session
 holds asks too. Its edit gates hold the rules the plugin was compiled with,
 the project's retirements and additions included. It assumes a capture holds
-what a write would replace, since only a running session takes one, and it
-answers with the selection the repository declares where a launch relaxed the
-rules for one session. With `--kind fetch` it reads a URL against the declared
+what a write would replace, since only a running session takes one, names
+every path it assumed that of, and it answers with the selection the
+repository declares where a launch relaxed the rules for one session. It
+reads the command from where the session's commands start — the checkout the
+launch names, else this directory, or the one `--from` gives — rather than
+from wherever it was itself run: `cd <worktree> && dev policy 'cp x
+<worktree>/y'` is asked about the copy the session's shell will make, into a
+sibling worktree no capture of the session's checkout holds, and it says
+which directory it read from when that is not its own. With `--kind fetch` it reads a URL against the declared
 scopes and lists every one of them beneath the verdict, which is where the
 question a fetch outside them raises sends its reader. `dev vocabulary` prints every shell form the vocabulary
 judges and where each rule came from, which is the one to reach for when the

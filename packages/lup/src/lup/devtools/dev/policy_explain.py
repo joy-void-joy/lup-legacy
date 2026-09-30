@@ -35,11 +35,11 @@ from lup.policy.assets.host import (
     text_at,
 )
 from lup.policy.bundle import hook_deadline
-from lup.policy.kernel.lex import shell_write_targets
+from lup.policy.kernel.lex import shell_write_targets, shell_written_targets
 from lup.policy.kernel.semantics import UnjudgedAmbient
 from lup.policy.models import EditBatch, EditChange, FetchUrl, ShellCommand
 from lup.policy.rules import url_scope_row
-from lup.policy.shell_rules import ShellCommandRule
+from lup.policy.shell_rules import ShellCommandRule, erase_shell_rules
 from lup.policy.survey import classify_forms, survey_shell_rules
 from lup.types import StringMap
 
@@ -140,6 +140,10 @@ class PolicyVerdict(BaseModel, frozen=True):
     the question a fetch outside every scope raises names the URL and nothing
     else, because a table repeated on every occurrence is read by nobody."""
 
+    directory: str = ""
+    """Where the session's commands start, which every path the input names
+    was read against."""
+
     def settled(self) -> bool:
         """Whether placement changes nothing here, so one line says it all."""
         return len({reading.effect for reading in self.readings}) == 1
@@ -149,17 +153,26 @@ class PolicyVerdict(BaseModel, frozen=True):
         return any(reading.effect == "allow" for reading in self.readings)
 
 
-def unresolved_facts(subject: str, kind: str) -> list[str]:
+def unresolved_facts(subject: str, kind: str, hooks: HookSet) -> list[str]:
     """Which session facts a reading of a bare command string had to assume.
 
     Only the ones that could move *this* subject. A line naming a fact that
     cannot reach the verdict teaches a reader to skip the line, which costs
     more than the line ever saves -- so a command that writes nothing says
     nothing, and the note appears exactly where the answer is soft.
+
+    Every path the command writes is named, whichever spelling writes it --
+    a redirection, a `cp` or `mv` destination, a write flag -- because the
+    capture the reading assumed is what a dispatcher reads for each of them.
     """
     if kind != "shell":
         return []
-    targets = shell_write_targets(subject)
+    rows = erase_shell_rules(hooks.resolved_shell_rules())
+    targets = list(
+        dict.fromkeys(
+            [*shell_write_targets(subject), *shell_written_targets(subject, rows)]
+        )
+    )
     if not targets:
         return []
     return [f"a capture holds {', '.join(targets)}"]
@@ -221,7 +234,7 @@ def read_under(
         case "fetch":
             event = FetchUrl(url=AnyHttpUrl(subject))
         case "edit-batch":
-            event = concrete_edit_batch(cwd / subject, cwd)
+            event = concrete_edit_batch(Path.cwd() / subject, cwd)
         case _:
             path = (cwd / subject).resolve()
             current = text_at(cwd, str(path))
@@ -286,7 +299,7 @@ def verdict_for(
             read_under(subject, kind, placement, autonomous, cwd, hooks)
             for placement in placements
         ],
-        assumed=unresolved_facts(subject, kind),
+        assumed=unresolved_facts(subject, kind, hooks),
         unavailable=(
             [
                 "proposed content and operation: this is a path-only preview of unchanged content; use --kind edit-batch with a JSON EditBatch for a concrete verdict",
@@ -300,6 +313,7 @@ def verdict_for(
             else []
         ),
         declared=declared_scopes(kind, hooks),
+        directory=str(cwd),
     )
 
 
@@ -342,14 +356,25 @@ def explain(
     hooks: HookSet,
     placement: str | None = None,
     styles: StringMap = EFFECT_STYLES,
+    session: Path | None = None,
 ) -> None:
     """Print each subject's verdict, exiting non-zero when none of them allow.
 
     The verdict is this session's unless a placement is named. A subject
     every reading agrees on prints once, because repeating an answer to say
     it did not change is how a table teaches its reader to stop reading it.
+
+    ``session`` is the directory the session's commands start from, which is
+    what a dispatcher is handed and reads every path against: which checkout
+    a capture holds, whether a destination is this checkout's or a sibling
+    worktree's. Asked from somewhere else -- a `cd` into the worktree the
+    change is in, or `uv run --directory` choosing whose code answers -- the
+    same command reads as a different write, so the directory is named
+    wherever it is not this process's own. ``None`` is this directory.
     """
-    root = Path.cwd()
+    root = (session or Path.cwd()).resolve()
+    if not as_json and root != Path.cwd().resolve():
+        typer.echo(f"judged from {root}, where this session's commands start")
     try:
         verdicts = [
             verdict_for(

@@ -606,3 +606,100 @@ def test_a_probe_still_asks_where_it_would_reach_an_inline_destination() -> None
         "git push --dry-run https://example.test/repo.git main", [git_rule()]
     )
     assert probed.effect == "ask"
+
+
+def test_a_guarded_config_key_named_alone_is_looked_up_rather_than_set() -> None:
+    """`git config <key>` reads; only the value after it sets the key.
+
+    The row asks about a guarded key because writing one hands over what git
+    runs next, and reading one hands over nothing. Asking both ways spent the
+    question on `git config core.hooksPath`, which only prints the setting.
+    """
+    rules = [git_rule()]
+
+    assert verdict("git config core.hooksPath", rules).effect == "allow"
+    assert verdict("git config --global core.hooksPath", rules).effect == "allow"
+    assert verdict("git config --type=bool core.hooksPath", rules).effect == "allow"
+    assert verdict("git config --type bool core.hooksPath", rules).effect == "allow"
+    assert verdict("git config -z --show-origin alias.co", rules).effect == "allow"
+    # A value, an option that writes, or one nobody listed keeps the question.
+    assert verdict("git config core.hooksPath /tmp/x", rules).effect == "ask"
+    assert verdict("git config --unset core.hooksPath", rules).effect == "ask"
+    assert verdict("git config --add alias.co checkout", rules).effect == "ask"
+    assert verdict("git config -ez core.hooksPath", rules).effect == "ask"
+    assert verdict("git config --file /tmp/c core.hooksPath", rules).effect == "ask"
+    assert verdict('git config "$KEY"', rules).effect == "ask"
+
+
+def test_the_config_verbs_git_added_read_and_write_as_their_flags_do() -> None:
+    """`git config get` is `--get`, and `git config edit` is `--edit`.
+
+    Before these verbs were read, `edit` named no guarded key and was allowed
+    though it opens every key at once, and `get` of a guarded key asked.
+    """
+    rules = [git_rule()]
+
+    assert verdict("git config get core.hooksPath", rules).effect == "allow"
+    assert verdict("git config list", rules).effect == "allow"
+    assert verdict("git config get --file /tmp/c core.hooksPath", rules).effect == "ask"
+    assert verdict("git config edit", rules).effect == "ask"
+    assert verdict("git config set core.hooksPath /tmp/x", rules).effect == "ask"
+    assert verdict("git config set user.email a@b.invalid", rules).effect == "allow"
+
+
+def test_a_section_renamed_or_removed_asks_whatever_it_is_called() -> None:
+    """Renaming a section moves every key in it without naming one.
+
+    `x.hooksPath` renamed into `core` is `core.hooksPath`, which no word of the
+    command spells, so the absence test over its words cannot answer it.
+    """
+    rules = [git_rule()]
+
+    assert verdict("git config --rename-section x core", rules).effect == "ask"
+    assert verdict("git config --remove-section core", rules).effect == "ask"
+    assert verdict("git config rename-section x core", rules).effect == "ask"
+    assert verdict("git config remove-section core", rules).effect == "ask"
+
+
+def test_a_merge_printed_rather_than_written_is_a_read() -> None:
+    """`git merge-file -p` sends the merge to standard output and writes no file.
+
+    The written form replaces the first file with the merge, and which file
+    that is no path reader names, so it keeps its question.
+    """
+    rules = [git_rule()]
+
+    assert verdict("git merge-file -p ours.py base.py theirs.py", rules).effect == (
+        "allow"
+    )
+    assert verdict("git merge-file --stdout a b c", rules).effect == "allow"
+    assert verdict("git merge-file ours.py base.py theirs.py", rules).effect == "ask"
+
+
+def test_a_gh_api_write_answers_as_the_typed_verb_reaching_it() -> None:
+    """One write spelled two ways was answered two ways.
+
+    `gh_rule(allow_filing=False)` made `gh issue create` ask while `gh api
+    repos/{owner}/{repo}/issues -f title=x` still filed the same issue
+    unasked, because the routes were never handed the vocabulary's rows.
+    """
+    filing = [gh_rule()]
+    publishing = [gh_rule(allow_filing=False, allow_authoring=False)]
+    issue = "gh api repos/{owner}/{repo}/issues -f title=x"
+    pull = "gh api repos/{owner}/{repo}/pulls -f title=x -f head=b -f base=main"
+    edit = "gh api -X PATCH repos/{owner}/{repo}/pulls/3 -f title=x"
+
+    assert verdict(issue, filing).effect == "allow"
+    assert verdict(pull, filing).effect == "allow"
+    assert verdict(edit, filing).effect == "allow"
+    filed = verdict(issue, publishing)
+    assert filed.effect == "ask"
+    assert "`gh issue create` by another name" in filed.reason
+    assert verdict(pull, publishing).effect == "ask"
+    assert verdict(edit, publishing).effect == "ask"
+    # A route no typed verb reaches keeps its own answer either way.
+    merge = "gh api repos/{owner}/{repo}/merges -f base=main -f head=b"
+    assert verdict(merge, publishing).effect == "allow"
+    # A table that classifies no `gh issue create` grants no route to it.
+    unclassified = [gh_rule().model_copy(update={"subcommands": []})]
+    assert verdict(issue, unclassified).effect != "allow"

@@ -45,7 +45,9 @@ import lup.devtools.dev.relocate as relocate_mod
 import lup.devtools.dev.rules as rules
 from lup.devtools.changelog import Changelog
 from lup.devtools.dev.branches import get_integration_branch
+from lup.devtools.dev.git_guards import INDEX_VARIABLE
 from lup.execution.shell import git
+from lup.launch.preflight import ROOT_VARIABLE
 from lup.harness.codescan.markers import NoteKind
 from lup.harness.codescan.registry import all_rules
 import lup.devtools.py.app as py
@@ -397,15 +399,25 @@ def create_dev_app(
                 "the fix-one-file loop. Repeatable",
             ),
         ] = None,
+        landing: Annotated[
+            str | None,
+            typer.Option(
+                "--as",
+                help="With --antipatterns and one --path naming a scratch copy: "
+                "judge its text as the repository file at this path, where it "
+                "will land, and report its findings against the copy",
+            ),
+        ] = None,
         changed: Annotated[
             bool,
             typer.Option(
                 "--changed",
                 help="Run ruff and pyright over the Python files changed since "
                 "the merge base with --since (default: this branch's recorded "
-                "base), and the declared-migrations row from that base, naming "
-                "what else changed and every gate left unrun — the loop while a "
-                "change is moving, not the bar a commit passes",
+                "base), the anti-pattern rules over the changed files, and the "
+                "declared-migrations row from that base, naming what else "
+                "changed and every gate left unrun — the loop while a change is "
+                "moving, not the bar a commit passes",
             ),
         ] = False,
         base: Annotated[
@@ -433,10 +445,21 @@ def create_dev_app(
                 "as the commit hook does",
             ),
         ] = False,
+        index: Annotated[
+            Path | None,
+            typer.Option(
+                "--index",
+                envvar=INDEX_VARIABLE,
+                show_envvar=False,
+                help="With --staged: the index file the commit is being made "
+                "from (default: the one the commit hook hands over, else the "
+                "checkout's own)",
+            ),
+        ] = None,
     ) -> None:
         """Run ruff format, ruff check, pyright, and pytest. Read-only by default."""
         if conflict_markers:
-            check.run_conflict_markers(staged)
+            check.run_conflict_markers(staged, index)
             return
         declarations = declared()
         if changed:
@@ -452,18 +475,32 @@ def create_dev_app(
             )
             return
         if antipatterns:
+            mirrored = None
+            if landing is not None:
+                if not path or len(path) != 1:
+                    raise typer.BadParameter(
+                        "--as judges one scratch copy: name it with one --path"
+                    )
+                try:
+                    mirrored = antipatterns_mod.mirrored_file(path[0], landing)
+                except ValueError as error:
+                    raise typer.BadParameter(str(error)) from error
+            scope = path if mirrored is None else [mirrored.judged_as]
             match (profiled, stats):
                 case (True, _):
-                    antipatterns_mod.profile(declarations.project, path)
+                    antipatterns_mod.profile(declarations.project, scope)
                 case (False, True):
-                    antipatterns_mod.summarize(declarations.project, as_json, path)
+                    antipatterns_mod.summarize(
+                        declarations.project, as_json, scope, mirrored=mirrored
+                    )
                 case _:
                     antipatterns_mod.report(
                         declarations.project,
                         as_json,
-                        path,
+                        scope,
                         fix=fix,
                         refutations=refutations,
+                        mirrored=mirrored,
                     )
             return
         if boundaries:
@@ -1780,6 +1817,17 @@ def create_dev_app(
             ),
         ] = False,
         as_json: Annotated[bool, typer.Option("--json", help="Emit JSON")] = False,
+        session: Annotated[
+            Path | None,
+            typer.Option(
+                "--from",
+                envvar=ROOT_VARIABLE,
+                show_envvar=False,
+                help="Judge the input as a session whose commands start in this"
+                " directory would (default: the checkout this session was"
+                " launched in, else this directory)",
+            ),
+        ] = None,
     ) -> None:
         """Show what the declared permission policy decides about an input, and why."""
         if kind not in ("shell", "fetch", "edit", "edit-batch"):
@@ -1798,6 +1846,7 @@ def create_dev_app(
             as_json,
             declared().hooks,
             placement,
+            session=session,
         )
 
     @app.command("vocabulary")

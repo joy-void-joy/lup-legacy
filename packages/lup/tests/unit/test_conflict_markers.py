@@ -4,12 +4,20 @@ A merge committed its markers into a markdown passage and the page generated
 from it, and the whole gate passed 23 of 23: nothing looked for them.
 """
 
+import shutil
 from pathlib import Path
 
 import pytest
+import typer
 
+import lup.devtools.dev.check as check
 from lup.devtools.dev.check import conflict_marker_report
-from lup.devtools.dev.conflicts import conflict_blocks, staged_text
+from lup.devtools.dev.conflicts import (
+    committing,
+    conflict_blocks,
+    staged_paths,
+    staged_text,
+)
 from lup.devtools.dev.git_guards import DECLARED_GUARDS
 from lup.execution.shell import git
 
@@ -92,7 +100,7 @@ def test_the_staged_content_is_what_a_commit_is_judged_by(tmp_path: Path) -> Non
     git("-C", str(tmp_path), "add", "page.md")
     page.write_text("resolved\n", encoding="utf-8")
 
-    assert conflict_blocks(staged_text(tmp_path, "page.md") or "") == [1]
+    assert conflict_blocks(staged_text(tmp_path, None, "page.md") or "") == [1]
 
 
 def test_a_commit_holding_a_block_is_refused_at_pre_commit() -> None:
@@ -106,3 +114,32 @@ def test_a_commit_holding_a_block_is_refused_at_pre_commit() -> None:
     assert len(guards) == 1
     assert "--staged" in guards[0].command
     assert guards[0].standdown is None
+
+
+def test_the_index_a_commit_is_made_from_is_the_one_read(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """`git commit -a` commits from an index git made for it, named only to the hook.
+
+    The checkout's own index holds the file clean; the index being committed
+    holds the block. Read from the checkout's, the guard passed a commit that
+    was about to record the block.
+    """
+    git("init", "-q", "-b", "main", str(tmp_path))
+    page = tmp_path / "page.md"
+    page.write_text("clean\n", encoding="utf-8")
+    git("-C", str(tmp_path), "add", "page.md")
+    page.write_text(CONFLICT, encoding="utf-8")
+    index = tmp_path / ".git" / "next-index"
+    shutil.copyfile(tmp_path / ".git" / "index", index)
+    git("-C", str(tmp_path), "add", "page.md", _env=committing(index))
+
+    assert staged_text(tmp_path, None, "page.md") == "clean\n"
+    assert conflict_blocks(staged_text(tmp_path, index, "page.md") or "") == [1]
+    assert staged_paths(tmp_path, index) == ["page.md"]
+
+    monkeypatch.setattr(check, "project_root", lambda: tmp_path)
+    check.run_conflict_markers(True)
+    with pytest.raises(typer.Exit):
+        check.run_conflict_markers(True, Path(".git/next-index"))
+    assert "  page.md:1" in capsys.readouterr().out.splitlines()

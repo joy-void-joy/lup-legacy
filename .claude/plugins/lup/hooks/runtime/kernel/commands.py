@@ -58,6 +58,7 @@ from .words import (
     opaque_argument,
     operand_positions,
     operand_words,
+    path_verb_operands,
     protected_write_target,
     refspec_destination,
     refspec_effects,
@@ -77,6 +78,7 @@ from .words import (
 from .downloads import read_download
 from .fetch import decide_fetch, loopback_port
 from .lex import placed_path
+from .roles import path_role
 from .syntax import expands, verbatim_piece
 from .programs import program_verdict, read_program
 from .semantics import UnjudgedAmbient
@@ -648,6 +650,38 @@ def unread_argument_readings(
     return flagged
 
 
+def reading_form(arguments: list[str], row: ShellRuleRow) -> bool:
+    """Whether these words are the row's reading form, by count and by option.
+
+    No more operands than ``read_operands``, each value option's value
+    stepped over, and every option one ``read_options`` names -- as spelled
+    or, for a long one, with its value after ``=``. Every word has to be
+    legible, since an expansion could become the value that turns the lookup
+    into a write, or an option that is not on the list. An operand carrying
+    a value of its own -- `core.pager=x`, the shape `git -c` takes -- is read
+    as the write it spells, as :func:`key_matches` reads it.
+    """
+    if any(opaque_argument(word) or expands(word) for word in arguments):
+        return False
+    ended = arguments.index("--") if "--" in arguments else len(arguments)
+    allowed = row["read_options"]
+    listed = all(
+        any(
+            word == option
+            or (option.startswith("--") and word.startswith(option + "="))
+            for option in allowed
+        )
+        for word in arguments[:ended]
+        if word.startswith("-")
+    )
+    operands = operand_words(arguments, row["value_flags"])
+    return (
+        listed
+        and len(operands) <= row["read_operands"]
+        and not any("=" in operand for operand in operands)
+    )
+
+
 def apply_command_row(
     row: ShellRuleRow, arguments: list[str], facts: WriteFacts | None = None
 ) -> KernelDecision:
@@ -673,7 +707,10 @@ def apply_command_row(
     list and nothing else. One with ``guarded_keys`` states absence about the
     write's subject instead of its form: it allows when no legible word names
     a setting that decides how later commands execute, so the row keeps its
-    effect for ``core.hooksPath`` and lets ``user.email`` past.
+    effect for ``core.hooksPath`` and lets ``user.email`` past. One with
+    ``read_operands`` allows the form naming no more operands than that and
+    no option beyond ``read_options``, so ``git config core.hooksPath`` reads
+    the setting the same row asks about writing (:func:`reading_form`).
 
     What the row earns before any of that is derived from what it says it
     does, rather than read off a verdict written beside the declaration. The
@@ -692,6 +729,10 @@ def apply_command_row(
             return row_verdict(
                 row, "allow", "every argument is a declared read-only flag"
             )
+    if stated != "allow" and row["read_operands"] and reading_form(arguments, row):
+        return row_verdict(
+            row, "allow", "no value follows what this names, so it only looks it up"
+        )
     if stated != "allow" and row["guarded_keys"] and arguments:
         # Absence is the test, so every word has to be legible on the same
         # strict bar `write_markers` sets: a word this cannot read might be
@@ -1488,7 +1529,9 @@ def unread_readings(
     ]
 
 
-def decide_sed_words(words: list[str], context: "SedContext") -> KernelDecision:
+def decide_sed_words(
+    words: list[str], context: "SedContext", directory: str | None = ""
+) -> KernelDecision:
     """Allow read-only sed; judge an in-place rewrite as the edit it performs.
 
     ``--sandbox`` makes sed itself reject the write and execute commands, so
@@ -1515,8 +1558,22 @@ def decide_sed_words(words: list[str], context: "SedContext") -> KernelDecision:
     a rewrite about to happen that nothing has read, and an unjudgeable
     rewrite is exactly the one that must not go through unasked. Composition
     paths that forget to resolve the documents therefore ask rather than
-    allow, which is the only arrangement in which forgetting is safe.
+    allow, which is the only arrangement in which forgetting is safe. Except
+    in scratch, placed from where the line's `cd` left it: no gate reads a
+    scratch file's content, so a document nobody could produce there was
+    never going to be read, and only a rule protecting the path is asked.
     """
+
+    def scratch_rewrite(target: str) -> KernelDecision | None:
+        placed = placed_path(target, directory)
+        if placed is None or path_role(placed, context["path_roles"]) != "scratch":
+            return None
+        return protected_write_target(
+            [placed], context["path_rules"], True, context["path_roles"]
+        ) or KernelDecision(
+            "allow", f"sed rewrites {target} in scratch, whose content no gate reads"
+        )
+
     invocation = sed_invocation(words)
     if isinstance(invocation, KernelDecision):
         return invocation
@@ -1535,7 +1592,7 @@ def decide_sed_words(words: list[str], context: "SedContext") -> KernelDecision:
     verdicts = [
         rewrite_verdict(target, documents[target], context)
         if target in documents
-        else unproduced_verdict(target, unread.get(target))
+        else scratch_rewrite(target) or unproduced_verdict(target, unread.get(target))
         for target in invocation["targets"]
     ]
     stopped = [verdict for verdict in verdicts if verdict.effect != "allow"]
@@ -1625,7 +1682,10 @@ def unproduced_verdict(target: str, cause: UnproducedCause | None) -> KernelDeci
 
 
 def rewrite_verdict(
-    target: str, document: RewrittenDocumentRow, context: "SedContext"
+    target: str,
+    document: RewrittenDocumentRow,
+    context: "SedContext",
+    act: str = "sed would rewrite {target} in place",
 ) -> KernelDecision:
     """What the edit gates say about one file an in-place rewrite would produce.
 
@@ -1633,7 +1693,13 @@ def rewrite_verdict(
     anchored at the repository top has to be asked about where the file sits,
     and the word is spelled relative to wherever the session was launched.
     The word is still what the reason names, because that is what the writer
-    typed and what they would have to change.
+    typed and what they would have to change; ``act`` is how the reason
+    names the command that writes it.
+
+    Everything else the gate decided is carried over as it came, the
+    abstention among it: a change too large for the small-change gate is the
+    runtime's own to answer, and a copy of the verdict that dropped the field
+    made it a deferral nobody had judged, which is refused.
     """
     if "decision" in document:
         return document["decision"]
@@ -1662,15 +1728,72 @@ def rewrite_verdict(
     )
     if verdict.effect == "allow":
         return verdict
-    return KernelDecision(
-        verdict.effect,
-        f"sed would rewrite {target} in place: {verdict.reason}",
-        recovery=verdict.recovery,
-        checkpoint=verdict.checkpoint,
-        purpose=verdict.purpose,
-        rule=verdict.rule,
-        reviewer=verdict.reviewer,
-    )
+    return verdict.revised(reason=f"{act.format(target=target)}: {verdict.reason}")
+
+
+def decide_copy_words(
+    words: list[str], context: "SedContext", directory: str | None = ""
+) -> KernelDecision | None:
+    """Judge a copy over files that stand there as the edit it makes of each.
+
+    `cp new.py src/app.py` leaves in `src/app.py` what `new.py` holds, which
+    is the edit an `Edit` of that file would make -- so it meets the gates an
+    `Edit` meets, reading the real difference between what stood there and
+    what lands: the review-note gate, the anti-pattern audit, the protected
+    paths, and the small-change gate, whose larger change the runtime's own
+    mode answers. What a copy over a file might lose is what the same edit
+    might lose, and it was never asked about there.
+
+    The host lands each source's text where it goes and hands back each
+    document under the spelling it lands at, the target joined with the
+    source's name where the target is a directory. ``None`` leaves the verb
+    to its row and its grants wherever one landing has no document: a copy
+    that brings a file into being, a flag this cannot read, a source that is
+    not text, or a composition that resolved nothing.
+    """
+    if posixpath.basename(words[0]) != "cp":
+        return None
+    verb = path_verb_operands(words)
+    if not verb["inert"] or len(verb["operands"]) < 2:
+        return None
+    spelled = [placed_path(word, directory) for word in verb["operands"]]
+    *sources, target = [word for word in spelled if word is not None]
+    if len(sources) + 1 != len(spelled):
+        return None
+    documents = {row["target"]: row for row in context["rewritten_documents"]}
+    landings = [
+        next(
+            (
+                landing
+                for landing in (
+                    target,
+                    posixpath.join(target, posixpath.basename(source)),
+                )
+                if landing in documents
+            ),
+            None,
+        )
+        for source in sources
+    ]
+    judged = [landing for landing in landings if landing is not None]
+    if len(judged) != len(sources):
+        return None
+    act = "cp would write {target}"
+    stopped = [
+        verdict.revised(reason=f"{act.format(target=landing)}: {verdict.reason}")
+        if "decision" in documents[landing]
+        else verdict
+        for landing in dict.fromkeys(judged)
+        for verdict in [rewrite_verdict(landing, documents[landing], context, act)]
+        if verdict.effect != "allow"
+    ]
+    if not stopped:
+        return KernelDecision(
+            "allow",
+            "every file this copies over was judged as the edit it makes, and the"
+            " edit gates passed it",
+        )
+    return max(stopped, key=lambda verdict: STRENGTH.index(verdict.effect))
 
 
 def safe_awk_program(program: str) -> bool:
@@ -1760,6 +1883,11 @@ class GhApiRoute(TypedDict):
     owner and name can be anybody's: the same line ``gh pr create --repo``
     draws. An ``ask`` holds wherever the route points, and is here for the
     reason it gives, which says more than the method does.
+
+    ``verb`` is the typed gh command reaching the same write -- ``["pr",
+    "create"]`` -- whose row the route's answer is taken from, so the two
+    spellings cannot be judged apart (:func:`gh_api_routes`). Empty where no
+    typed verb reaches it, and the route's own effect stands.
     """
 
     methods: list[str]
@@ -1767,6 +1895,7 @@ class GhApiRoute(TypedDict):
     act: str
     effect: DecisionEffect
     reason: str
+    verb: list[str]
 
 
 GH_API_ROUTES: tuple[GhApiRoute, ...] = (
@@ -1776,6 +1905,7 @@ GH_API_ROUTES: tuple[GhApiRoute, ...] = (
         act="opening a pull request",
         effect="allow",
         reason="gh api opening a pull request is `gh pr create` by another name",
+        verb=["pr", "create"],
     ),
     GhApiRoute(
         methods=["PATCH"],
@@ -1783,6 +1913,7 @@ GH_API_ROUTES: tuple[GhApiRoute, ...] = (
         act="editing a pull request",
         effect="allow",
         reason="gh api editing a pull request is `gh pr edit` by another name",
+        verb=["pr", "edit"],
     ),
     GhApiRoute(
         methods=["POST", "DELETE"],
@@ -1791,6 +1922,7 @@ GH_API_ROUTES: tuple[GhApiRoute, ...] = (
         effect="allow",
         reason="gh api changing a pull request's reviewers is `gh pr edit`"
         " by another name",
+        verb=["pr", "edit"],
     ),
     GhApiRoute(
         methods=["PUT"],
@@ -1798,6 +1930,7 @@ GH_API_ROUTES: tuple[GhApiRoute, ...] = (
         act="merging a pull request",
         effect="allow",
         reason="gh api merging a pull request is `gh pr merge` by another name",
+        verb=["pr", "merge"],
     ),
     GhApiRoute(
         methods=["POST"],
@@ -1805,6 +1938,7 @@ GH_API_ROUTES: tuple[GhApiRoute, ...] = (
         act="merging one branch into another",
         effect="allow",
         reason="gh api merging one branch into another is `git merge` on the forge",
+        verb=[],
     ),
     GhApiRoute(
         methods=["POST"],
@@ -1812,6 +1946,7 @@ GH_API_ROUTES: tuple[GhApiRoute, ...] = (
         act="filing an issue",
         effect="allow",
         reason="gh api filing an issue is `gh issue create` by another name",
+        verb=["issue", "create"],
     ),
     GhApiRoute(
         methods=["DELETE"],
@@ -1819,6 +1954,7 @@ GH_API_ROUTES: tuple[GhApiRoute, ...] = (
         act="deleting a remote branch",
         effect="ask",
         reason="deleting a remote branch loses work no later push restores",
+        verb=[],
     ),
 )
 """The routes a write through ``gh api`` is judged by, as ``gh`` judges them.
@@ -1826,15 +1962,69 @@ GH_API_ROUTES: tuple[GhApiRoute, ...] = (
 The pull-request, merge and issue routes allow because the typed verbs
 reaching them do: an endpoint is one more spelling of opening, editing or
 merging a request, or of filing an issue, and a verdict that changed with the
-spelling would be two policies. Deleting a branch asks for what it is, rather
-than for the method that happens to reach it. A project whose forge access
-differs passes its own routes.
+spelling would be two policies -- which is why each names that verb, and the
+row the vocabulary composed for it answers in the end (:func:`gh_api_routes`).
+Deleting a branch asks for what it is, rather than for the method that happens
+to reach it. A project whose forge access differs passes its own routes.
 """
-# lup: defer: `gh_rule(allow_authoring=False)` and `gh_rule(allow_filing=False)`
+# lup: solved: `gh_rule(allow_authoring=False)` and `gh_rule(allow_filing=False)`
 # make `gh pr create` and `gh issue create` ask, while these routes still allow
 # the same writes through `gh api`: `decide_gh_words` calls `decide_gh_api_words`
 # with the defaults, so no vocabulary's parameters reach them. Compile the
 # routes from the gh rule the vocabulary composed.
+
+
+def gh_api_routes(
+    rows: list[ShellRuleRow], routes: tuple[GhApiRoute, ...] = GH_API_ROUTES
+) -> tuple[GhApiRoute, ...]:
+    """The routes, each answering as the gh row for its typed verb answers.
+
+    A route whose verb the vocabulary allows keeps its allow and its reason.
+    One whose verb asks or refuses -- `gh issue create` under
+    `gh_rule(allow_filing=False)` -- asks or refuses here too, for the reason
+    that row gives. One whose verb no row classifies is dropped, so the write
+    meets `gh api`'s own question rather than a grant nothing stands behind.
+    """
+
+    def compiled(route: GhApiRoute) -> list[GhApiRoute]:
+        if not route["verb"]:
+            return [route]
+        row = next(
+            (
+                row
+                for row in rows
+                if row["command"] == "gh"
+                and [row["subcommand"], *row["operation_path"]] == route["verb"]
+            ),
+            None,
+        )
+        if row is None:
+            return []
+        stated = declared_verdict(
+            row["effects"],
+            row["refuses"],
+            unresolved_evidence(no_write_facts()),
+            "ambient",
+        )
+        typed = " ".join(route["verb"])
+        match stated:
+            case "allow":
+                return [route]
+            case "ask" | "deny":
+                return [
+                    GhApiRoute(
+                        methods=route["methods"],
+                        path=route["path"],
+                        act=route["act"],
+                        effect=stated,
+                        reason=f"gh api {route['act']} is `gh {typed}` by another"
+                        f" name: {row['refuses'] or row['reason']}",
+                        verb=route["verb"],
+                    )
+                ]
+        return []
+
+    return tuple(found for route in routes for found in compiled(route))
 
 
 def gh_api_route(
@@ -2037,7 +2227,7 @@ def decide_gh_words(
             " `gh pr merge 1 --repo owner/repo`, `gh api -X GET <endpoint>`.",
         )
     if subcommand == ["api"]:
-        return decide_gh_api_words(words)
+        return decide_gh_api_words(words, gh_api_routes(rows))
     return decide_command_rows(words, rows, facts)
 
 
@@ -2083,7 +2273,11 @@ def decide_download_words(
     A redirect `-L` follows is not re-judged: the scope answers for the origin
     the command names, and the network boundary for where it is sent next.
     ``host_ports`` are the loopback ports a process outside this session's
-    container listens on, and a URL reaching one asks as `WebFetch` asks.
+    container listens on, and a URL reaching one asks as `WebFetch` asks --
+    however the rest of the line reads. An option this cannot read leaves the
+    operands unplaced, so every word that would reach such a port if it were
+    the URL is taken for one: what the container cannot hold is where the
+    request goes, and no reading of the output changes that.
 
     A `defer` returned from here is settled by `ProviderNative`, which is read
     before the rule that would otherwise allow unjudged work inside a
@@ -2095,7 +2289,19 @@ def decide_download_words(
     tool = posixpath.basename(words[0])
     reading = read_download(words)
     if reading["unread"]:
-        return unjudged(f"{tool} option {reading['unread']!r} is not classified")
+        held = [
+            decide_fetch(
+                curl_url(word),
+                allowed_scopes,
+                denied_scopes,
+                unscoped,
+                host_listener=True,
+            )
+            for word in words[1:]
+            if not word.startswith("-") and loopback_port(curl_url(word)) in host_ports
+        ]
+        unread = unjudged(f"{tool} option {reading['unread']!r} is not classified")
+        return joined_decision([unread, *held]) if held else unread
     if not reading["urls"]:
         return unjudged(f"{tool} has no URL")
     row = next(

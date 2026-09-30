@@ -121,6 +121,19 @@ Scrubbed where the hook is written, because unlike a misbound command this
 arrives through one door.
 """
 
+# lup: ignore[constant-declaration] — the name a hook this command wrote hands
+# the index on under, which every revision's guards read: an identity between
+# the installed hook and the checkout answering it, not a setting
+INDEX_VARIABLE = "LUP_GIT_INDEX_FILE"
+"""The index a commit is being made from, as the hook hands it to its guards.
+
+Git names it to the hook as ``GIT_INDEX_FILE`` -- `index.lock` under `git
+commit -a`, an index made for the purpose under `git commit <path>` -- and the
+hook drops that name with the rest of :data:`GIT_ENVIRONMENT`. So it goes on
+under this one, which a guard judging the commit reads and a runner predating
+it ignores.
+"""
+
 type DevtoolsRunner = Callable[[tuple[str, ...]], int]
 """Runs one ``lup-devtools`` invocation in the devtools already loaded.
 
@@ -418,7 +431,7 @@ class GitGuard(BaseModel, frozen=True):
 DECLARED_GUARDS = [
     GitGuard(standdown=MergeInProgress()),
     # No standdown: a merge's own commit is where its markers get committed.
-    # lup: defer: the hook scrubs GIT_INDEX_FILE before this runs, so under
+    # lup: solved: the hook scrubs GIT_INDEX_FILE before this runs, so under
     # `git commit -a` or `git commit <path>` it reads the checkout's index
     # rather than the `index.lock` git is committing, and misses a conflict
     # block only those staged. Hand the moment's index to the guards that
@@ -580,6 +593,15 @@ class HookScript(BaseModel, frozen=True):
             "# the guards its own devtools declares, which\n"
             "# `uv run lup-devtools git hooks status` lists.\n"
             "#\n"
+            "# The index a commit is made from, handed on under lup's own name\n"
+            "# for the guards that judge what it holds, since the name git gave\n"
+            "# it is dropped below with the rest.\n"
+            'if [ -n "${GIT_INDEX_FILE-}" ]; then\n'
+            f'    {INDEX_VARIABLE}="$GIT_INDEX_FILE"\n'
+            f"    export {INDEX_VARIABLE}\n"
+            "else\n"
+            f"    unset {INDEX_VARIABLE}\n"
+            "fi\n"
             "# Dropped so what runs below resolves this repository from the\n"
             "# directory it runs in. Git names it here too, and that name would\n"
             "# outrank the `-C` a test's throwaway repository binds git with.\n"

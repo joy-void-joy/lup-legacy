@@ -516,3 +516,64 @@ def test_a_placement_nobody_launches_is_refused_with_the_ones_that_exist() -> No
 
     assert result.exit_code != 0
     assert "none, inner, outer" in result.output
+
+
+def test_dev_policy_reads_its_input_from_where_the_session_s_commands_start(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Asked from somewhere else, the preview still answers for the session's shell.
+
+    A session's hook reads every command from where the session's commands
+    start -- the checkout the launch named. Asked from inside another
+    worktree, by a `cd` there or by `uv run --directory` choosing whose code
+    answers, the preview read the same command against that checkout, and
+    told a subagent a copy was captured and restorable which the hook then
+    parked. So the launch's checkout is the default, `--from` names another,
+    and the answer says which it read from.
+    """
+    session = tmp_path / "session"
+    session.mkdir()
+    (session / "only-here.txt").write_text("here\n", encoding="utf-8")
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    monkeypatch.chdir(elsewhere)
+    missing = "current file content: no readable preimage at this path"
+
+    def answered(arguments: list[str], launched: dict[str, str | None]) -> dict:
+        result = runner.invoke(
+            app,
+            ["dev", "policy", "--json", "--kind", "edit", *arguments, "only-here.txt"],
+            env={**UNLAUNCHED, **launched},
+        )
+        return json.loads(result.stdout)[0]
+
+    here = answered([], {})
+    named = answered(["--from", str(session)], {})
+    launched = answered([], {"LUP_BOUNDARY_ROOT": str(session)})
+
+    assert missing in here["unavailable"]
+    assert here["directory"] == str(elsewhere)
+    assert missing not in named["unavailable"]
+    assert named["directory"] == str(session)
+    assert launched == named
+
+
+def test_the_capture_a_preview_assumes_is_named_for_every_path_it_writes(
+    tmp_path: Path,
+) -> None:
+    """A copy's destination is written as surely as a redirection's target.
+
+    Only redirections were named, so a copy settled as "captured and
+    restorable" said nothing about having assumed it -- the one line that
+    would have explained why the hook, whose capture held nothing there,
+    answered otherwise.
+    """
+    verdict = policy_explain.verdict_for(
+        "cp tmp/a.py src/b.py && echo x > tmp/log.txt",
+        "shell",
+        autonomous=False,
+        cwd=tmp_path,
+        hooks=declared_hook_set(),
+    )
+
+    assert verdict.assumed == ["a capture holds tmp/log.txt, src/b.py"]

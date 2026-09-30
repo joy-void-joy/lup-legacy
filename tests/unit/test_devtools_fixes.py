@@ -15,9 +15,10 @@ import pytest
 import sh
 import typer
 
-from lup.devtools.dev.antipatterns import scan_antipatterns
+from lup.devtools.dev.antipatterns import mirrored_file, scan_antipatterns
 from lup.devtools.dev.check import changed_paths
 from lup.devtools.project import DevProject
+from lup.policy.kernel.rows import PathRoleRow
 from lup.observability.trace import TraceLogger
 from lup.sandbox.models import Mount
 from lup.sandbox.translation import MountTopology
@@ -545,6 +546,36 @@ class TestTheAntiPatternSweepIsScopedToWhatATreeChanged:
         scan = scan_antipatterns(project, ["mine.py"])
 
         assert {finding.file for finding in scan.findings} == {"mine.py"}
+
+    @pytest.mark.parametrize("landing", ["mine.py", "fresh.py"])
+    def test_a_scratch_copy_is_judged_as_the_file_it_will_land_as(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, landing: str
+    ) -> None:
+        """No rule reads scratch, so a copy there is read at the path it mirrors.
+
+        Its findings are the copy's -- the file somebody is about to fix --
+        and a landing nothing stands at yet is read all the same.
+        """
+        project = self.two_files_that_trip_a_rule(tmp_path, monkeypatch)
+        copy = tmp_path / "repo/tmp/copy.py"
+        copy.parent.mkdir()
+        copy.write_text(
+            "from typing import Any\n\n\ndef g(x: Any) -> None: ...\n\n\n"
+            "def h(y: Any) -> None: ...\n",
+            encoding="utf-8",
+        )
+        read = scan_antipatterns(project, ["tmp/copy.py"])
+        scratch = project.model_copy(
+            update={"path_roles": [PathRoleRow(root="tmp", role="scratch")]}
+        )
+
+        unjudged = scan_antipatterns(scratch, ["tmp/copy.py"])
+        mirrored = mirrored_file("tmp/copy.py", landing)
+        judged = scan_antipatterns(scratch, [mirrored.judged_as], mirrored)
+
+        assert unjudged.findings == []
+        assert judged.findings == read.findings
+        assert {finding.line for finding in judged.findings} >= {4, 7}
 
     def test_a_tree_that_changed_nothing_is_answerable_for_nothing(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

@@ -2,6 +2,45 @@
 
 ## Unreleased
 
+### The policy reads what these commands do, and a deferral never parks
+
+A set of commands that stopped for the operator, or passed unread, are now
+judged by what they do.
+
+- `git config <key>` reads the key, whatever the key is; a value after it,
+  or `--unset`/`--add`, still asks for a guarded key. `git config get` and
+  `list` read, while `git config edit` and a section renamed or removed
+  (`--rename-section x core` makes `core.hooksPath` out of `x.hooksPath`) ask.
+- `install` is read by its own grammar: `-m 644`, `-o`, `-g` and `-t <dir>`
+  no longer make the file it reads count as one it writes.
+- `git merge-file -p` prints the merge and reads; the written form asks.
+- A scratch copy under `tmp/` mirroring a devtools module is scratch.
+- `cp` over a file that stands there is judged as the edit it makes: the gates
+  an `Edit` meets read the real difference, so a small change allows, a larger
+  one is the runtime's own to answer, a dropped `# lup:` note is refused and a
+  protected path asks -- the same in this checkout and in a sibling worktree.
+  A copy creating a file keeps the verb's own row.
+- A deferral is never a parked review, on either runtime; a
+  `# lup: escalate[decision]:` line over one leaves it the runtime's.
+- `gh api` writes to the pull-request and issue routes answer as the typed
+  verb does, so `gh_rule(allow_filing=False)` and `allow_authoring=False`
+  reach `gh api repos/{owner}/{repo}/issues` too.
+- A `curl` reaching a loopback port a host process holds asks however its
+  output is handled -- `-w '%{http_code}'`, a pipe, an unclassified option;
+  `-w` itself reads unless its format names a file.
+- The `sed -i` preview runs under `C.UTF-8`, since no runtime hands a hook its
+  shell's environment; a rewrite of a scratch file nothing could preview is
+  allowed rather than asked.
+- `dev policy` reads its input from where the session's commands start (the
+  launch's checkout, or `--from`), says so when that is not where it runs,
+  and names every path whose capture it assumed.
+- `dev check --antipatterns --path <copy> --as <path>` judges a scratch copy
+  as the file it will land as; `dev check --changed` runs the anti-pattern
+  rules over the changed files.
+- The pre-commit conflict guard reads the index git commits from under `git
+  commit -a` and `git commit <path>`. The installed hook hands it on, so
+  re-arm with `uv run lup-devtools git hooks install` from a host terminal.
+
 ### A session's reviews live in its own checkout, and only subagents hold waiters
 
 A parked call's refusal no longer tells a session's own conversation to start
