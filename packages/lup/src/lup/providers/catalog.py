@@ -19,17 +19,6 @@ from pydantic import BaseModel
 type CatalogRuntime = Literal["claude", "codex"]
 """Which runtime a catalog was read from."""
 
-type SessionEffort = Literal["low", "medium", "high", "xhigh", "max", "ultra"]
-"""How hard a session is asked to think before it answers.
-
-Every rung is one both runtimes' catalogs list, so none is narrowed on the
-way to either: ``ultra`` is Codex's own top rung, and Claude's ``xhigh`` with
-ultracode on. Nothing sits below ``low``, because neither catalog lists a
-rung there — ``minimal`` and ``none`` left Codex's, and admitting either here
-would turn "barely reason" into "reason a little" without saying so. Which
-rungs one *model* takes is narrower still, and refused where it is declared.
-"""
-
 
 class CatalogModel(BaseModel, frozen=True, extra="forbid"):
     """One model a runtime's CLI accepts, and the efforts it takes."""
