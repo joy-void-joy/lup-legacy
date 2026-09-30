@@ -6,6 +6,7 @@ import socket
 import subprocess
 import sys
 import webbrowser
+from collections.abc import Callable, Sequence
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from textwrap import dedent
@@ -46,6 +47,7 @@ from lup.devtools.review.notifications import (
 from lup.policy.operations import Operation
 from lup.policy.relay import PersistentQuestion, QuestionRelay, RecordedQuestion
 from lup.policy.review import ReviewedFile
+from lup.providers.user_config import UserConfigFile
 from lup.web import serve as web_serve
 from lup.web.serve import page_app
 from tests.unit.native import bound
@@ -63,9 +65,17 @@ def isolated_bundle(monkeypatch: pytest.MonkeyPatch) -> None:
         if isinstance(field.validation_alias, str):
             monkeypatch.delenv(field.validation_alias, raising=False)
 
-    def build(title: str, url: str, surface: str) -> FastAPI:
+    def build(
+        title: str,
+        url: str,
+        surface: str,
+        *,
+        origins: Callable[[], Sequence[str]],
+        refusal: str,
+    ) -> FastAPI:
         assert surface == "dashboard"
-        return page_app(title, url, "<!doctype html><main>Dashboard</main>")
+        page = "<!doctype html><main>Dashboard</main>"
+        return page_app(title, url, page, origins=origins, refusal=refusal)
 
     monkeypatch.setattr(web_serve, "bundle_app", build)
 
@@ -195,6 +205,83 @@ async def test_answer_requires_authentication_even_with_the_correct_origin(
 
     assert response.status_code == 401
     assert relay(tmp_path).find(entry.id) == entry.recorded()
+
+
+PROXY: Final = "https://their.proxy.name"
+
+
+def behind_a_proxy(root: Path, config: UserConfigFile) -> AsyncClient:
+    """The dashboard as a browser reaches it through a reverse proxy passing Host through."""
+    app = dashboard.dashboard_app(BASE_URL, TOKEN, (root,), config=config)
+    return AsyncClient(transport=ASGITransport(app=app), base_url=PROXY)
+
+
+async def test_a_declared_origin_reaches_the_page_and_answers_a_review(
+    tmp_path: Path,
+) -> None:
+    entry = parked(tmp_path)
+    config = UserConfigFile(tmp_path / "person")
+    config.record({("dashboard", "origins"): [PROXY]})
+    answer = {"approved": True, "note": "", "fingerprint": entry.fingerprint}
+    async with behind_a_proxy(tmp_path, config) as http:
+        page = await http.get("/")
+        with_its_port = await http.get("/", headers={"Host": "their.proxy.name:443"})
+        key = await only_key(http)
+        undeclared = await http.post(
+            f"/api/reviews/{key}/answer",
+            headers={**AUTHORIZATION, "Origin": "https://other.proxy.name"},
+            json=answer,
+        )
+        unanswered = relay(tmp_path).find(entry.id)
+        answered = await http.post(
+            f"/api/reviews/{key}/answer",
+            headers={**AUTHORIZATION, "Origin": PROXY},
+            json=answer,
+        )
+
+    assert page.status_code == 200 and with_its_port.status_code == 200
+    assert undeclared.status_code == 403
+    assert unanswered == entry.recorded()
+    assert answered.status_code == 200
+    decision = ReviewDecision.model_validate(answered.json())
+    assert decision.review.question.state == "approved"
+
+
+@pytest.mark.parametrize(
+    "host",
+    ["attacker.example", "their.proxy.name:8443", "rebound.their.proxy.name"],
+)
+async def test_with_an_origin_declared_any_other_name_is_still_refused(
+    tmp_path: Path, host: str
+) -> None:
+    """DNS rebinding sends the attacker's own name, which no declaration admits."""
+    config = UserConfigFile(tmp_path / "person")
+    config.record({("dashboard", "origins"): [PROXY]})
+    async with behind_a_proxy(tmp_path, config) as http:
+        page = await http.get("/", headers={"Host": host})
+        api = await http.get("/api/reviews", headers={**AUTHORIZATION, "Host": host})
+
+    assert page.status_code == 421 and api.status_code == 421
+    assert "`[dashboard] origins`" in page.text
+
+
+async def test_origins_changed_while_it_serves_hold_from_the_next_request(
+    tmp_path: Path,
+) -> None:
+    """Declared, withdrawn, or made unreadable: loopback alone is answered unless declared."""
+    config = UserConfigFile(tmp_path / "person")
+    async with behind_a_proxy(tmp_path, config) as http:
+        before = await http.get("/")
+        config.record({("dashboard", "origins"): [PROXY]})
+        declared = await http.get("/")
+        config.path().write_text('[dashboard]\norigins = "not a list', encoding="utf-8")
+        unreadable = await http.get("/")
+        loopback = await http.get("/", headers={"Host": "127.0.0.1:8765"})
+
+    assert before.status_code == 421
+    assert declared.status_code == 200
+    assert unreadable.status_code == 421
+    assert loopback.status_code == 200
 
 
 @pytest.mark.parametrize(
