@@ -35,6 +35,7 @@ of the few places a bound is imposed rather than chosen. It names the content
 rather than holding it: whatever the label said is inside the file.
 """
 
+
 class ContentSafetyConfig(BaseModel):
     """Where spilled content lands, and the sizes that trigger a spill.
 
@@ -287,5 +288,3 @@ def guard_result[T: BaseModel](
         (named[field] for field in config.label_fields if field in named), tool_name
     )
     return spill_oversized_result(tool_name, label, result, directory)
-
-
