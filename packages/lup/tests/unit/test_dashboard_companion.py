@@ -325,6 +325,70 @@ def test_the_service_tells_the_desktop_and_publishes_what_it_counts(
     assert pulse.read() is None
 
 
+def running_since(pulse: PulseFile, after: datetime | None = None) -> datetime:
+    """When the dashboard began running the code its pulse names, once it names one after ``after``."""
+    for _ in range(150):
+        published = pulse.read()
+        since = published.code.since if published is not None else None
+        if since is not None and (after is None or since > after):
+            return since
+        time.sleep(0.2)
+    raise AssertionError(f"{pulse.path} named no code running after {after}")
+
+
+def test_the_operator_restarts_the_dashboard_in_place(
+    dashboard: Dashboard, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Same process, port and capability; its pulse names the code it now runs."""
+    root = repository(tmp_path / "project")
+    monkeypatch.setattr("lup.devtools.dashboard.reviews.Dashboard", lambda: dashboard)
+    cli = create_operator_dashboard_app(root)
+    runner = CliRunner()
+
+    with held_companions([dashboard], launch_at(root)) as joined:
+        pulse = PulseFile(path=Path(joined.environment[DASHBOARD_PULSE_ENV]))
+        serving = dashboard.standing(root).serving
+        opened = private_url(dashboard, root)
+        first = running_since(pulse)
+        restarted = runner.invoke(cli, ["restart"])
+        again = running_since(pulse, first)
+        published = pulse.read()
+        assert dashboard.standing(root).serving == serving
+        assert private_url(dashboard, root) == opened
+        monkeypatch.setenv(MEMBER_ENV, "a-session")
+        refused = runner.invoke(cli, ["restart"])
+
+    assert restarted.exit_code == 0, restarted.output
+    assert "restarts onto its checkout's code" in restarted.output
+    assert again > first
+    assert published is not None and published.code.source and not published.code.older
+    assert refused.exit_code == 2 and "outside the agent session" in refused.output
+
+
+def test_a_dashboard_too_old_to_restart_itself_is_replaced(
+    dashboard: Dashboard, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """One that predates restarting in place is stopped and started again, still held."""
+    root = repository(tmp_path / "project")
+    monkeypatch.setattr("lup.devtools.dashboard.reviews.Dashboard", lambda: dashboard)
+    monkeypatch.setattr(
+        "lup.devtools.dashboard.companion.httpx.post",
+        lambda *_words, **_named: httpx.Response(404),
+    )
+    cli = create_operator_dashboard_app(root)
+
+    with held_companions([dashboard], launch_at(root)):
+        before = dashboard.standing(root).serving
+        replaced = CliRunner().invoke(cli, ["restart"])
+        after = dashboard.standing(root)
+
+    assert replaced.exit_code == 0, replaced.output
+    assert "replaced" in replaced.output
+    assert before is not None and after.serving is not None
+    assert after.serving != before and not before.running()
+    assert after.leases == 1
+
+
 def test_reopening_is_turned_off_and_on_from_the_operators_terminal(
     state: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

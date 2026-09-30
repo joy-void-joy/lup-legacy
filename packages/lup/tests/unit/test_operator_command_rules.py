@@ -76,6 +76,7 @@ def devtools_policy() -> ShellPolicy:
         "dashboard open",
         "dashboard stop",
         "dashboard reopen --off",
+        "dashboard restart",
         "harness policy-refresh --nonce abc --repository /example",
     ],
 )

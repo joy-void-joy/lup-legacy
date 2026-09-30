@@ -80,13 +80,39 @@ page is the newest one launched. The page is copied beside the dashboard's
 state before it serves, so it keeps serving after the worktree that started it
 is removed.
 
+It also follows the checkout it was started from. A process keeps the code it
+imported, and that checkout moves every time something lands on it: once a
+review's fingerprint is spelled differently there, sessions park reviews the
+old code cannot answer. So every two seconds the dashboard compares the lup
+files it imported — and the page it serves — with the disk, reading a file
+again only where its size or time moved. When they have moved, it waits for
+them to settle (a look finding them as the last one did), starts the new
+code once in a fresh interpreter (`python -m lup.devtools.dashboard.service
+--probe`), and, once no write is in flight, stops serving as it would for a
+stop and replaces itself with the same command in the same process: the same
+pid, port and capability, the herald's record kept, and every open tab
+reconnecting on its own. Until then it says so — "dashboard runs older code;
+restarting" on the page, in `dashboard status` and in every session's status
+line — and refuses a new write with that reason, rather than refusing an
+answer as though the review had been altered. Where the new code does not
+start, it stays on the code it runs, says "its newer code does not start" with
+the error, keeps taking answers, and tries again once the files move again.
+The pulse names the code it runs (`code.source`, a digest of those files, and
+`code.since`).
+
+`uv run lup-devtools dashboard restart` does the same now, onto its checkout's
+code as it stands. A dashboard that predates restarting itself is replaced
+instead: stopped, and started from the checkout the command runs in for the
+sessions holding it.
+
 `uv run lup-devtools dashboard status` says whether it serves, where, for how
-many sessions, over which repositories, how many reviews wait and how many tabs
-follow it; inside a session it reads all of that from the dashboard's pulse
-(below), never from the operator's private state. `dashboard stop` stops it
-now, and the next launch starts it again. `dashboard open`, `dashboard stop`,
-`dashboard serve` and `dashboard reopen` are the operator's, run from a
-terminal outside every agent session.
+many sessions, over which repositories, how many reviews wait, how many tabs
+follow it and which code it runs; inside a session it reads all of that from
+the dashboard's pulse (below), never from the operator's private state.
+`dashboard stop` stops it now, and the next launch starts it again.
+`dashboard open`, `dashboard stop`, `dashboard restart`, `dashboard serve` and
+`dashboard reopen` are the operator's, run from a terminal outside every agent
+session.
 
 `dashboard serve` serves one in this terminal instead, with a capability of its
 own, over the current repository or each `--root <checkout>` named, until

@@ -26,6 +26,33 @@ DASHBOARD_PULSE_ENV = "LUP_DASHBOARD_PULSE"
 """The variable naming the pulse file, which a launch holding the dashboard exports."""
 
 
+class RunningCode(BaseModel, frozen=True):
+    """Which lup source the dashboard runs, and whether its checkout has moved past it."""
+
+    source: str = ""
+    """A digest of the package files it imported, as it imported them."""
+
+    root: str = ""
+    """Where it imported them from."""
+
+    since: datetime | None = None
+    """When this process began running it."""
+
+    older: bool = False
+    """Its checkout holds newer code than it runs."""
+
+    failing: str = ""
+    """Why that newer code would not start, where it would not."""
+
+    def said(self) -> str:
+        """What the page and the status line say of it; nothing while it is current."""
+        if not self.older:
+            return ""
+        if self.failing:
+            return "dashboard runs older code; its newer code does not start"
+        return "dashboard runs older code; restarting"
+
+
 class DashboardPulse(BaseModel, frozen=True):
     """The dashboard as a session may read it: counts and its address, never its capability."""
 
@@ -46,16 +73,28 @@ class DashboardPulse(BaseModel, frozen=True):
     beat: datetime
     """When the service last wrote it."""
 
+    code: RunningCode = RunningCode()
+    """Which code it runs."""
+
     def current(self, now: datetime, within: timedelta = timedelta(seconds=30)) -> bool:
         """Whether the service wrote it recently enough to still be running."""
         return now - self.beat <= within
 
     def line(self) -> str:
-        """What waits and where, in one line; the address alone where nothing waits."""
-        if not self.pending:
-            return self.url
+        """What waits and where, in one line; the address alone where nothing waits.
+
+        A dashboard running older code than its checkout says so between the
+        two, since what it answers until it restarts may be refused.
+        """
         noun = "review" if self.pending == 1 else "reviews"
-        return f"{self.pending} {noun} pending · {self.url}"
+        said = self.code.said()
+        return " · ".join(
+            [
+                *([f"{self.pending} {noun} pending"] if self.pending else []),
+                *([said] if said else []),
+                self.url,
+            ]
+        )
 
 
 class PulseFile(BaseModel, frozen=True):
