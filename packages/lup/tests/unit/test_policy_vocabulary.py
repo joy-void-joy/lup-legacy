@@ -659,3 +659,18 @@ def test_a_section_renamed_or_removed_asks_whatever_it_is_called() -> None:
     assert verdict("git config --remove-section core", rules).effect == "ask"
     assert verdict("git config rename-section x core", rules).effect == "ask"
     assert verdict("git config remove-section core", rules).effect == "ask"
+
+
+def test_a_merge_printed_rather_than_written_is_a_read() -> None:
+    """`git merge-file -p` sends the merge to standard output and writes no file.
+
+    The written form replaces the first file with the merge, and which file
+    that is no path reader names, so it keeps its question.
+    """
+    rules = [git_rule()]
+
+    assert verdict("git merge-file -p ours.py base.py theirs.py", rules).effect == (
+        "allow"
+    )
+    assert verdict("git merge-file --stdout a b c", rules).effect == "allow"
+    assert verdict("git merge-file ours.py base.py theirs.py", rules).effect == "ask"

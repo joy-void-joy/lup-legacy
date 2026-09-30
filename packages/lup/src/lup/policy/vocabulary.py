@@ -1822,6 +1822,19 @@ def git_rule(
             reason="a patch that writes outside the working area requires approval",
         ),
         ShellSubcommandRule(
+            # A three-way merge of three files, written over the first of
+            # them. `-p` sends the result to standard output and writes no
+            # file, which is how a merge is previewed before it replaces
+            # anything -- the result `git merge-tree` computes from objects,
+            # taken from files. Which file the written form replaces is an
+            # operand no path reader here names, so no capture is claimed
+            # for it and it keeps its question.
+            name="merge-file",
+            effects=[declare("destroys_uncaptured", scope="unrecoverable")],
+            probe_flags=["-p", "--stdout"],
+            reason="merging into a file replaces what it holds",
+        ),
+        ShellSubcommandRule(
             name="restore",
             # Discards working-tree changes, which is the one thing in a
             # checkout the object store was never holding.
