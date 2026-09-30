@@ -289,7 +289,7 @@ async def test_detail_keeps_the_full_command_and_its_metadata(tmp_path: Path) ->
         response = await http.get(f"/api/reviews/{key}", headers=AUTHORIZATION)
 
     detail = ReviewDetail.model_validate(response.json())
-    assert detail.question == entry.recorded()
+    assert detail.question == entry.shown()
     assert detail.files == []
     assert detail.summary.answerable
     assert detail.summary.stale == []
@@ -907,7 +907,7 @@ async def test_open_dashboard_discovers_a_worktree_created_after_startup(
     }
     assert {Path(row.path) for row in snapshot.roots} == {root, sibling}
     assert detail.status_code == 200
-    assert ReviewDetail.model_validate(detail.json()).question == entry.recorded()
+    assert ReviewDetail.model_validate(detail.json()).question == entry.shown()
 
 
 async def test_dashboard_tracks_siblings_after_its_launch_worktree_is_removed(
@@ -943,7 +943,7 @@ async def test_dashboard_tracks_siblings_after_its_launch_worktree_is_removed(
         "arrived-question",
     }
     assert detail.status_code == 200
-    assert ReviewDetail.model_validate(detail.json()).question == entry.recorded()
+    assert ReviewDetail.model_validate(detail.json()).question == entry.shown()
 
 
 @pytest.mark.parametrize(
@@ -1068,7 +1068,7 @@ async def test_unavailable_first_queue_does_not_hide_a_healthy_repository(
     assert Path(snapshot.errors[0].root) == unavailable
     assert snapshot.errors[0].message
     assert found.status_code == 200
-    assert ReviewDetail.model_validate(found.json()).question == entry.recorded()
+    assert ReviewDetail.model_validate(found.json()).question == entry.shown()
     assert missing.status_code == 503
     assert answered.status_code == 200
     assert (

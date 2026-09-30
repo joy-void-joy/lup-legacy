@@ -8,7 +8,11 @@ subjects = [
     "QuestionRelay.advance",
     "QuestionRelay.dispatchable",
     "PersistentQuestion.preconditions",
+    "PersistentQuestion.execution_payload",
+    "RecordedQuestion.stored",
+    "stored_entry",
     "ReviewDetail.question",
+    "proposal_of",
     "ReviewThread.questions",
     "ReviewThread.answers",
     "ReviewQueue.read",
@@ -22,8 +26,9 @@ subjects = [
 reason = """
 the review relay keeps each question once: `.lup/questions.jsonl` opens with \
 a `{"relay": 2}` line, holds one record per question as it was parked -- each \
-document it binds (a preimage, a verdict's after-document) kept once in \
-`.lup/reviews/blobs/<sha256>` and named in the record by digest -- and a \
+document it binds (a preimage, a verdict's after-document, and each string of \
+its call a kibibyte or longer) kept once in `.lup/reviews/blobs/<sha256>` and \
+named in the record by digest -- and a \
 small transition per state it moves to since, never a full copy; settled \
 reviews older than the retention window move to `.lup/reviews/archive.jsonl` \
 without their documents. A relay's readers fold the log to RecordedQuestion, \
@@ -54,8 +59,19 @@ PersistentQuestion those need and raises ValueError where a document is \
 missing or altered. What they return otherwise is a RecordedQuestion: \
 `preconditions` maps each path to a StoredDocument (its `sha256`) or None, and \
 each `file_reviews` row is a RecordedFileReview whose `after` is a \
-StoredDocument. QuestionRelay.record still takes a PersistentQuestion; \
-`PersistentQuestion.recorded()` gives the form the relay folds it to."""
+StoredDocument. The call is folded the same way: each string of \
+`operation.payload` or `execution_payload` a kibibyte or longer stands there as \
+a StoredDocument's JSON object, the paths to them listed in \
+RecordedQuestion.stored, so read a call's input -- \
+lup.devtools.review.propose.proposal_of included, which takes a \
+PersistentQuestion -- off the resolved question. A resolved question's \
+`execution_payload` is None where the retry runs the requested input itself, \
+as every reader already took None to mean. QuestionRelay.record still takes a \
+PersistentQuestion; `PersistentQuestion.recorded()` gives the form the relay \
+folds it to, and `shown()` that form with the call whole, as ReviewDetail \
+carries it. lup.policy.assets.host.stored_entry(entry, blobs) is \
+`stored_form(entry, keep)`: pass `lambda text: stored_blob(blobs, text)` to \
+write each document into the store, or `document_name` to only name it."""
 command = ["uv", "run", "lup-devtools", "dev", "py", "text", ".preconditions", "."]
 
 [[steps]]

@@ -163,7 +163,7 @@ def test_mixed_batch_summary_references_only_original_asks(tmp_path: Path) -> No
     assert detail.summary.paths == ["app.py"]
     assert detail.summary.total_files == 2
     assert [file.review_effect for file in detail.files] == ["ask", "allow"]
-    assert detail.question == question.recorded()
+    assert detail.question == question.shown()
     assert detail.question.operation.payload == {"command": patch}
     assert detail.summary.reason == "original batch reason"
     assert detail.question.fingerprint == "unchanged-binding"
@@ -248,7 +248,7 @@ def test_twenty_file_review_focuses_three_asks_and_keeps_the_exact_operation(
     assert detail.summary.total_files == 20
     assert len(detail.files) == 20
     assert [file.review_effect for file in detail.files] == effects
-    assert detail.question == question.recorded()
+    assert detail.question == question.shown()
     assert detail.question.operation.payload == {"command": patch}
     assert detail.question.fingerprint == "unchanged-twenty-file-binding"
 

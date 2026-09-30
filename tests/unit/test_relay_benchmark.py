@@ -7,19 +7,19 @@ documents outweigh its call. Built and measured in about two seconds, it
 runs with the rest of the suite. Measured on the workstation this was
 written on, with other test suites running:
 
-- the log holds 2.4 KB per review, where the same reviews kept whole in
+- the log holds 2.2 KB per review, where the same reviews kept whole in
   every record, one copy per transition, come to about 100 KB each;
 - the first snapshot is 37 KB, where one carrying a row for every review is
   535 KB;
-- a fold of the whole log from a reader that has read none of it takes 0.15
-  to 0.27 s of this process's CPU time, and the first snapshot 0.14 to
-  0.35 s.
+- a fold of the whole log from a reader that has read none of it takes 0.07
+  to 0.19 s of this process's CPU time, and the first snapshot 0.10 to
+  0.25 s.
 
 The two sizes are what tell the shapes apart: time alone does not at this
 scale, since the whole-copy log of these reviews still parses in about
 0.4 s, and a snapshot summarizing every review costs 0.5 to 0.7 s. So each
-size is bounded at about three times what was measured, and each time at
-about four times the slowest measurement. The times are CPU time rather than
+size is bounded at three to four times what was measured, and each time at
+five to eight times the slowest measurement. The times are CPU time rather than
 elapsed, so a suite running beside others, or spread over processes, does
 not inflate them; only work growing faster than the log -- a question
 reading the log again, or a review reading a file for each of the others --

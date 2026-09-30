@@ -159,8 +159,8 @@ def test_identified_execution_matches_the_approved_tool_and_input(
         == "allow"
     )
     dispatched = relay.find(question.id)
-    assert dispatched is not None and dispatched.execution_payload is not None
-    expected = dispatched.execution_payload
+    assert dispatched is not None and dispatched.execution_payload is None
+    expected = dispatched.operation.payload
     tool = "Bash"
     executed: JsonObject
     match change:
@@ -184,8 +184,8 @@ def test_identified_execution_matches_the_approved_tool_and_input(
     )
     recorded = relay.find(question.id)
     assert recorded is not None
-    assert recorded.operation.payload == arguments
-    assert recorded.execution_payload == expected
+    assert recorded.operation.payload == arguments == expected
+    assert recorded.execution_payload is None
     if change == "none":
         assert recorded.state == "completed"
         assert observed.exit_code == 0

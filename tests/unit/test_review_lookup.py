@@ -57,7 +57,7 @@ def test_selection_never_projects_unrelated_questions(
             assert store.locate(key).question == entry.recorded()
             preview.assert_not_called()
         case "detail":
-            assert store.detail(key).question == entry.recorded()
+            assert store.detail(key).question == entry.shown()
             preview.assert_called_once_with(entry, patch_review)
         case "answer":
             result = store.answer(

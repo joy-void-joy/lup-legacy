@@ -1251,9 +1251,13 @@ shape, `{"relay": 2}`, and holds a record per question as it was parked, then
 a transition per state it moves to — dispatched, completed, stale, expired —
 naming the question, the fields that moved and when, never a copy of the
 question. Every document a question binds — the preimage of each file it
-records, the document each file verdict judged — is kept once in
-`.lup/reviews/blobs/<sha256>`, written beside its name and moved into place,
-and the record names it by that digest. The fingerprint still binds each
+records, the document each file verdict judged, and each string of its call a
+kibibyte or longer, such as a written file's content, a proposal's files or a
+long command — is kept once in `.lup/reviews/blobs/<sha256>`, written beside
+its name and moved into place, and the record names it by that digest; for a
+call's string the record also lists where in the call it stood. A native
+retry's payload that repeats the call's is recorded as null, which every
+reader takes for the call's own payload. The fingerprint still binds each
 document whole: a record is read back through the documents its digests name,
 a document that no longer hashes to its name reads as missing, and a record
 that cannot be read back whole can be neither answered nor spent. Whoever
