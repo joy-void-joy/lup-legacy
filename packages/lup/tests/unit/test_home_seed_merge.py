@@ -10,8 +10,10 @@ closes, a change only the person made still arrives, and where both changed
 the same setting the person's wins and is named.
 """
 
+import fcntl
 import json
-from concurrent.futures import ThreadPoolExecutor
+import threading
+from concurrent.futures import ThreadPoolExecutor, wait
 from pathlib import Path
 
 import pytest
@@ -24,9 +26,11 @@ from lup.launch.config_volume import (
 )
 from lup.harness.assets.home_seed import (
     ABSENT,
+    LOCK,
     Absent,
     Seeded,
     apply,
+    main,
     read_tree,
     three_way,
 )
@@ -216,8 +220,135 @@ def test_a_contained_codex_home_keeps_a_running_sessions_theme(tmp_path: Path) -
     assert first.settings == installed and first.conflicts == []
 
 
+class StartingHome:
+    """A config home both start programs amend, with the seeds each reads.
+
+    The trust program's seed file, and a settings seed that owns
+    ``settings.json`` whole and ``autoUpdates`` of ``.claude.json``.
+    """
+
+    def __init__(self, tmp_path: Path) -> None:
+        self.home = tmp_path / "config"
+        self.home.mkdir()
+        self.document = self.home / ".claude.json"
+        self.trust_seed = tmp_path / "trust-seed.json"
+        self.trust_seed.write_text(json.dumps({"projects": {}}), encoding="utf-8")
+        self.seed = tmp_path / "seed"
+        (self.seed / "replace").mkdir(parents=True)
+        (self.seed / "merge").mkdir()
+        (self.seed / "managed").write_text("settings.json\n", encoding="utf-8")
+        (self.seed / "replace" / "settings.json").write_text(
+            json.dumps({"theme": "dark"}), encoding="utf-8"
+        )
+        (self.seed / "merge" / ".claude.json").write_text(
+            json.dumps({"autoUpdates": False}), encoding="utf-8"
+        )
+
+    def trusts(self, checkout: str) -> bool:
+        return record_trust(self.document, self.trust_seed, [checkout])
+
+    def seeds(self) -> list[str]:
+        return apply(self.seed, self.home)
+
+    def held(self) -> list[tuple[int, int]]:
+        """Each file the runtime reads, by the inode and the time it was written."""
+        return [
+            (held.st_ino, held.st_mtime_ns)
+            for held in (
+                (self.home / name).stat() for name in (".claude.json", "settings.json")
+            )
+        ]
+
+
+@pytest.fixture
+def starting(tmp_path: Path) -> StartingHome:
+    return StartingHome(tmp_path)
+
+
+def test_a_start_whose_seed_changes_nothing_writes_nothing(
+    starting: StartingHome,
+) -> None:
+    """Nearly every start, and the one that would race a running session's save.
+
+    The session saves ``.claude.json`` holding no lock of ours, so a start
+    rewriting it unchanged would drop whatever the session saved between that
+    start's read and its rename.
+    """
+    starting.seeds()
+    saved = json.loads(starting.document.read_text(encoding="utf-8"))
+    starting.document.write_text(json.dumps({**saved, "numStartups": 3}))
+    before = starting.held()
+
+    assert starting.seeds() == []
+
+    assert starting.held() == before
+
+
+def test_a_document_that_does_not_parse_is_left_for_the_runtime(
+    starting: StartingHome,
+) -> None:
+    """Merged, it would be replaced by the seed's keys alone and the rest lost.
+
+    As the trust program leaves it; the start after the runtime's own recovery
+    seeds it afresh, rather than reading the keys that recovery reset as ones
+    a session removed.
+    """
+    starting.seeds()
+    torn = b"\0" * 64 + b'"projects": {}}\n'
+    starting.document.write_bytes(torn)
+
+    said = starting.seeds()
+
+    assert said == [
+        ".claude.json does not parse, so your settings were left out of it "
+        "for the runtime's own recovery"
+    ]
+    assert starting.document.read_bytes() == torn
+    assert not (starting.home / ".lup-seed" / "merge" / ".claude.json").exists()
+    assert json.loads((starting.home / "settings.json").read_text()) == {
+        "theme": "dark"
+    }
+    starting.document.write_text("{}")
+    assert starting.seeds() == []
+    assert json.loads(starting.document.read_text()) == {"autoUpdates": False}
+
+
+def test_a_failure_is_said_and_the_start_goes_on(
+    starting: StartingHome,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """The entrypoint stops at a failure, and a session that never starts recovers nothing."""
+    starting.document.write_bytes(b'{"projects": "\xff"}')
+    monkeypatch.setattr(
+        "sys.argv", ["home-seed", str(starting.seed), str(starting.home)]
+    )
+
+    main()
+
+    assert "lup: your settings were not applied" in capsys.readouterr().err
+    assert starting.document.read_bytes() == b'{"projects": "\xff"}'
+
+
+def test_both_start_programs_wait_on_the_one_lock(starting: StartingHome) -> None:
+    """The trust program names its lock itself; the settings seed must name the same."""
+    # The pool opened first so it is left last: a failed assertion closes the
+    # lock before the pool waits on the programs held behind it.
+    with (
+        ThreadPoolExecutor(max_workers=2) as pool,
+        (starting.home / LOCK).open("a") as lock,
+    ):
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        started = [pool.submit(starting.trusts, "/w"), pool.submit(starting.seeds)]
+        waited = wait(started, timeout=0.5)
+        assert waited.done == set()
+        assert not starting.document.exists()
+        fcntl.flock(lock, fcntl.LOCK_UN)
+        assert [start.result(timeout=10) for start in started] == [True, []]
+
+
 def test_containers_starting_at_once_neither_tear_nor_drop_the_trust_document(
-    tmp_path: Path,
+    starting: StartingHome,
 ) -> None:
     """Every container on a home records trust and applies the seed, several at once.
 
@@ -225,45 +356,48 @@ def test_containers_starting_at_once_neither_tear_nor_drop_the_trust_document(
     staging name they shared was measured publishing a document whose front
     was NUL bytes, and a merge interleaved with the other's drops what that
     one added -- so each holds the lock the other takes, and stages through a
-    file of its own.
+    file of its own. A runtime starting meanwhile reads whichever whole
+    document was last renamed into place, never one being written.
     """
-    home = tmp_path / "config"
-    home.mkdir()
-    document = home / ".claude.json"
     cached: JsonObject = {
         f"/cached/{number}": {"lastCost": number} for number in range(2000)
     }
-    document.write_text(json.dumps({"projects": cached}), encoding="utf-8")
-    seed = tmp_path / "seed"
-    (seed / "merge").mkdir(parents=True)
-    (seed / "managed").write_text("", encoding="utf-8")
-    (seed / "merge" / ".claude.json").write_text(
-        json.dumps({"autoUpdates": False}), encoding="utf-8"
-    )
-    trust_seed = tmp_path / "trust-seed.json"
-    trust_seed.write_text(json.dumps({"projects": {}}), encoding="utf-8")
+    starting.document.write_text(json.dumps({"projects": cached}), encoding="utf-8")
     checkouts = [f"/w/tree/{number}" for number in range(16)]
+    finished = threading.Event()
 
-    with ThreadPoolExecutor(max_workers=2 * len(checkouts)) as pool:
+    def torn_reads() -> list[str]:
+        torn: list[str] = []
+        for _ in iter(finished.is_set, True):
+            try:
+                json.loads(starting.document.read_text(encoding="utf-8"))
+            except ValueError as error:
+                torn.append(str(error))
+        return torn
+
+    with ThreadPoolExecutor(max_workers=2 * len(checkouts) + 1) as pool:
+        reading = pool.submit(torn_reads)
         started = [
-            *(
-                pool.submit(record_trust, document, trust_seed, [checkout])
-                for checkout in checkouts
-            ),
-            *(pool.submit(apply, seed, home) for _ in checkouts),
+            *(pool.submit(starting.trusts, checkout) for checkout in checkouts),
+            *(pool.submit(starting.seeds) for _ in checkouts),
         ]
-        for start in started:
-            start.result()
+        try:
+            for start in started:
+                start.result()
+        finally:
+            finished.set()
 
-    content = json.loads(document.read_text(encoding="utf-8"))
+    assert reading.result() == []
+    content = json.loads(starting.document.read_text(encoding="utf-8"))
     assert content["autoUpdates"] is False
     assert len(content["projects"]) == len(cached) + len(checkouts)
     assert all(
         content["projects"][checkout]["hasTrustDialogAccepted"] is True
         for checkout in checkouts
     )
-    assert sorted(path.name for path in home.iterdir()) == [
+    assert sorted(path.name for path in starting.home.iterdir()) == [
         ".claude.json",
         ".lup-seed",
         ".lup-trust.lock",
+        "settings.json",
     ]

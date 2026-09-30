@@ -254,12 +254,23 @@ def write(path: Path, text: str | None) -> None:
 
 
 def apply(seed_dir: Path, home: Path) -> list[str]:
-    """Merge the seed at ``seed_dir`` into ``home`` and record it, answering conflicts.
+    """Merge the seed at ``seed_dir`` into ``home`` and record it, answering what to say.
 
     Under the lock trust-seed.py takes in the same home, since both read a
     document there, merge into it and write it back: interleaved by two
     containers starting at once, whichever renames second drops what the
-    other added.
+    other added. A file the merge leaves as the home holds it is not written
+    at all: a session running in the home saves the same document holding no
+    lock of ours, and a start that rewrote it anyway would drop whatever that
+    session saved between the read and the rename -- at every start, rather
+    than only at one whose seed changed something.
+
+    A document the seed merges into that the home holds but that does not
+    parse is left as it is, as trust-seed.py leaves it, for the runtime's own
+    recovery: merged, it would be replaced by the seed's keys alone, the rest
+    of it gone with nothing kept. Its record is dropped with it, so the start
+    after that recovery seeds it afresh rather than reading the keys the
+    recovery reset as ones a session removed.
     """
     managed_file = seed_dir / "managed"
     if not managed_file.is_file():
@@ -278,16 +289,40 @@ def apply(seed_dir: Path, home: Path) -> list[str]:
             ),
             *(SeedFile(f"{RECORD}/{item.name}", item.text) for item in record),
         ]
-        settled = settle(seed, held, managed)
+        unreadable = [
+            name
+            for name in merged_names(seed)
+            if not isinstance(loaded(text_of(held, name) or "{}"), dict)
+        ]
+        settled = [
+            outcome
+            for outcome in settle(seed, held, managed)
+            if outcome.file.name not in unreadable
+        ]
         for outcome in settled:
-            write(home / outcome.file.name, outcome.file.text)
-        seeded = [item.name for item in seed]
+            if loaded(outcome.file.text) != loaded(text_of(held, outcome.file.name)):
+                write(home / outcome.file.name, outcome.file.text)
+        refused = [f"merge/{name}" for name in unreadable]
+        seeded = [item.name for item in seed if item.name not in refused]
         for stale in record:
             if stale.name not in seeded:
                 write(home / RECORD / stale.name, None)
         for item in seed:
-            write(home / RECORD / item.name, item.text)
-        return [conflict for outcome in settled for conflict in outcome.conflicts]
+            if item.name in seeded:
+                write(home / RECORD / item.name, item.text)
+        return [
+            *(
+                f"{name} does not parse, so your settings were left out of it "
+                "for the runtime's own recovery"
+                for name in unreadable
+            ),
+            *(
+                f"{conflict} changed in a running session and in your settings; "
+                "your settings win"
+                for outcome in settled
+                for conflict in outcome.conflicts
+            ),
+        ]
 
 
 def main() -> None:
@@ -295,12 +330,15 @@ def main() -> None:
     parser.add_argument("seed", type=Path)
     parser.add_argument("home", type=Path)
     arguments = parser.parse_args()
-    for conflict in apply(arguments.seed, arguments.home):
-        print(
-            f"lup: {conflict} changed in a running session and in your settings; "
-            "your settings win",
-            file=sys.stderr,
-        )
+    try:
+        said = apply(arguments.seed, arguments.home)
+    except (OSError, ValueError) as error:
+        # Said and passed over rather than fatal, as trust-seed.py does: the
+        # entrypoint stops at a failure, and the runtime's own recovery for a
+        # document nothing here can read only runs if the session starts.
+        said = [f"your settings were not applied: {error}"]
+    for line in said:
+        print(f"lup: {line}", file=sys.stderr)
 
 
 if __name__ == "__main__":

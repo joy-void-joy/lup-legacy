@@ -3,13 +3,17 @@
 import json
 import plistlib
 import shutil
+import threading
+from concurrent.futures import ThreadPoolExecutor, wait
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import jwt
 import tomlkit
+from tomlkit.exceptions import TOMLKitError
 from tomlkit.items import Table
 
+from lup.providers.codex.harness_runtime import codex_home_lock
 from lup.launch.homes import kept_homes
 from lup.execution.shell import git
 from lup.providers.user_config import UserConfigFile
@@ -875,6 +879,105 @@ def test_seeding_keeps_what_the_home_already_recorded(tmp_path: Path) -> None:
 
     document = tomlkit.parse((home / "config.toml").read_text(encoding="utf-8"))
     assert str(tmp_path / "checkout") in document["projects"]
+
+
+def test_preparations_starting_at_once_keep_every_record_and_never_tear_the_config(
+    tmp_path: Path,
+) -> None:
+    """A repository's contained sessions share one home volume, and prepare it at once.
+
+    Each trusts its checkout and answers for the plugin's hooks, reading
+    ``config.toml``, changing it and writing it back. Rewritten in place, a
+    Codex starting beside the write reads half a document or none; changed
+    without the home's lock, whichever write lands second drops what the
+    other recorded.
+    """
+    home = tmp_path / "home"
+    home.mkdir()
+    (home / "config.toml").write_text(ACCOUNT_CONFIG, encoding="utf-8")
+    checkouts = [tmp_path / "tree" / str(number) for number in range(16)]
+    answers = [
+        hooks_of(reported([resolved_hook(f"pre_tool_use:{number}:0")]), "lup@proj")
+        for number in range(16)
+    ]
+    finished = threading.Event()
+
+    def torn_reads() -> list[int]:
+        torn: list[int] = []
+        for _ in iter(finished.is_set, True):
+            text = (home / "config.toml").read_text(encoding="utf-8")
+            try:
+                held = tomlkit.parse(text)
+            except TOMLKitError:
+                held = tomlkit.document()
+            if "model" not in held:
+                torn.append(len(text))
+        return torn
+
+    with ThreadPoolExecutor(max_workers=len(checkouts) + len(answers) + 1) as pool:
+        reading = pool.submit(torn_reads)
+        started = [
+            *(pool.submit(trust_project, home, checkout) for checkout in checkouts),
+            *(pool.submit(seed_hook_trust, home, hooks) for hooks in answers),
+        ]
+        try:
+            for start in started:
+                start.result()
+        finally:
+            finished.set()
+
+    assert reading.result() == []
+    document = tomlkit.parse((home / "config.toml").read_text(encoding="utf-8"))
+    assert sorted(document["projects"]) == sorted(str(path) for path in checkouts)
+    assert {hook.key for hooks in answers for hook in hooks} < set(
+        document["hooks"]["state"]
+    )
+    assert document["model"] == "gpt-personal"
+    assert sorted(path.name for path in home.iterdir()) == [
+        ".lup-plugin-install.lock",
+        "config.toml",
+    ]
+
+
+def test_every_config_writer_waits_on_the_home_s_lock(tmp_path: Path) -> None:
+    """The lock plugin publication and the settings seed take, and no other."""
+    home = tmp_path / "home"
+    hooks = hooks_of(reported([resolved_hook("pre:0:0")]), "lup@proj")
+    # The pool opened first so it is left last: a failed assertion releases
+    # the lock before the pool waits on the writers held behind it.
+    with ThreadPoolExecutor(max_workers=2) as pool, codex_home_lock(home):
+        started = [
+            pool.submit(trust_project, home, tmp_path / "checkout"),
+            pool.submit(seed_hook_trust, home, hooks),
+        ]
+        assert wait(started, timeout=0.5).done == set()
+        assert not (home / "config.toml").exists()
+    assert [start.result(timeout=10) for start in started] == [
+        True,
+        [hook.key for hook in hooks],
+    ]
+
+
+def test_a_linked_config_stays_linked_and_keeps_its_mode(tmp_path: Path) -> None:
+    """The person's own configuration may be a link into their dotfiles."""
+    dotfiles = tmp_path / "dotfiles" / "config.toml"
+    dotfiles.parent.mkdir()
+    dotfiles.write_text(ACCOUNT_CONFIG, encoding="utf-8")
+    dotfiles.chmod(0o640)
+    home = tmp_path / "home"
+    home.mkdir()
+    (home / "config.toml").symlink_to(dotfiles)
+    fresh = tmp_path / "fresh"
+    fresh.mkdir()
+
+    trust_project(home, tmp_path / "checkout")
+    trust_project(fresh, tmp_path / "checkout")
+
+    assert (home / "config.toml").is_symlink()
+    assert str(tmp_path / "checkout") in tomlkit.parse(dotfiles.read_text())["projects"]
+    assert dotfiles.stat().st_mode & 0o777 == 0o640
+    assert (fresh / "config.toml").stat().st_mode & 0o777 == 0o600
+    assert sorted(path.name for path in dotfiles.parent.iterdir()) == ["config.toml"]
 
 
 def test_only_a_home_this_store_derived_may_be_written_into(tmp_path: Path) -> None:

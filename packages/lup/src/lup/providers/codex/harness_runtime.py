@@ -3,11 +3,12 @@
 import fcntl
 import hashlib
 import json
+import os
 import shutil
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from pathlib import Path
-from tempfile import TemporaryDirectory
+from tempfile import TemporaryDirectory, mkstemp
 
 import sh
 import tomlkit
@@ -23,11 +24,42 @@ from lup.types import EnvVars
 
 @contextmanager
 def codex_home_lock(home: Path) -> Iterator[None]:
-    """Serialize owned configuration writes with native plugin publication."""
+    """Serialize owned configuration writes with native plugin publication.
+
+    Held across every read, change and write of a home's ``config.toml``
+    lup makes. A repository's contained sessions share one home volume and
+    start concurrently -- a launch's probes, a run's workers, a second
+    terminal -- each preparing it: two such writes that read the same
+    document each rename a copy lacking what the other added.
+    """
     home.mkdir(parents=True, exist_ok=True)
     with (home / ".lup-plugin-install.lock").open("a") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
         yield
+
+
+def replace_codex_config(home: Path, text: str) -> None:
+    """Replace a home's ``config.toml`` whole, through a file of this writer's own.
+
+    Renamed over the old one rather than rewritten in place, so a Codex
+    starting beside the write never reads half of it, and staged under a
+    name no other writer shares, since the next writer would truncate a
+    shared one while the first is still filling it. Staged beside the file a
+    link resolves to, so a person's linked configuration stays linked. The
+    mode is kept, 0600 where the file is new, since it can carry a tool
+    server's secrets. The last step of a change made under
+    :func:`codex_home_lock`.
+    """
+    settings = (home / "config.toml").resolve()
+    mode = settings.stat().st_mode & 0o777 if settings.exists() else 0o600
+    descriptor, staged = mkstemp(prefix=".config.toml.lup-", dir=settings.parent)
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+            handle.write(text)
+        Path(staged).chmod(mode)
+        Path(staged).replace(settings)
+    finally:
+        Path(staged).unlink(missing_ok=True)
 
 
 class CodexCliEvidence(BaseModel, frozen=True):
@@ -534,10 +566,7 @@ class CodexPluginInstaller:
         ):
             entries = document.setdefault(key, tomlkit.table(is_super_table=True))
             entries[name] = native[key][name]
-        temporary = staged.codex_home / "published.config.toml"
-        temporary.write_text(tomlkit.dumps(document), encoding="utf-8")
-        temporary.chmod(settings.stat().st_mode & 0o777 if settings.exists() else 0o600)
-        temporary.replace(settings)
+        replace_codex_config(self.config.codex_home, tomlkit.dumps(document))
 
     def remove(self, cwd: Path) -> None:
         """Explicitly remove this plugin and its configured marketplace."""

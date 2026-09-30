@@ -6,6 +6,7 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field, StringConstraints
 
+from lup.channels.models import write_atomic
 from lup.harness.models import NativeName
 
 
@@ -71,10 +72,13 @@ class CodexTheme(BaseModel, frozen=True):
         )
 
     def write(self, codex_home: Path) -> Path:
-        """Materialize this theme without changing the home's selection."""
+        """Materialize this theme without changing the home's selection.
+
+        Renamed into place, since every start preparing a shared home writes
+        it again while a Codex beside it may be reading it.
+        """
         target = codex_home / "themes" / f"{self.slug}.tmTheme"
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text(self.render(), encoding="utf-8", newline="\n")
+        write_atomic(target, self.render().encode("utf-8"))
         return target
 
 

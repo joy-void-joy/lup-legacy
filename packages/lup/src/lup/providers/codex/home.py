@@ -27,7 +27,13 @@ from pydantic import BaseModel, TypeAdapter, ValidationError
 
 from lup.harness.assets.home_seed import RECORD, three_way
 from lup.launch.homes import checkout_directory, claimed_directory, homes_root
-from lup.providers.codex.harness_runtime import CodexPluginInstaller, PluginCacheConfig
+from lup.channels.models import write_atomic
+from lup.providers.codex.harness_runtime import (
+    CodexPluginInstaller,
+    PluginCacheConfig,
+    codex_home_lock,
+    replace_codex_config,
+)
 from lup.providers.codex.login import CODEX_LOGIN
 from lup.providers.codex.marketplace import CodexMarketplace
 from lup.providers.codex.preferences import (
@@ -399,19 +405,20 @@ def trust_project(home: Path, worktree: Path) -> bool:
     their own decisions, and those are not ours to write.
     """
     config = home / "config.toml"
-    document = (
-        tomlkit.parse(config.read_text(encoding="utf-8"))
-        if config.is_file()
-        else tomlkit.document()
-    )
-    projects = document.setdefault(PROJECTS_KEY, tomlkit.table(is_super_table=True))
-    named = str(worktree.expanduser().resolve())
-    if named in projects:
-        return False
-    entry = tomlkit.table()
-    entry["trust_level"] = TRUSTED_PROJECT
-    projects[named] = entry
-    config.write_text(tomlkit.dumps(document), encoding="utf-8")
+    with codex_home_lock(home):
+        document = (
+            tomlkit.parse(config.read_text(encoding="utf-8"))
+            if config.is_file()
+            else tomlkit.document()
+        )
+        projects = document.setdefault(PROJECTS_KEY, tomlkit.table(is_super_table=True))
+        named = str(worktree.expanduser().resolve())
+        if named in projects:
+            return False
+        entry = tomlkit.table()
+        entry["trust_level"] = TRUSTED_PROJECT
+        projects[named] = entry
+        replace_codex_config(home, tomlkit.dumps(document))
     return True
 
 
@@ -540,22 +547,26 @@ class CodexWorktreeHomeStore:
         )
         account = self.account_home / "config.toml"
         config = scoped_home / "config.toml"
-        derived = themed_codex_config(
-            personalized_codex_config(
-                derived_codex_config(
-                    account.read_text(encoding="utf-8") if account.is_file() else "",
-                    config.read_text(encoding="utf-8") if config.is_file() else "",
+        with codex_home_lock(scoped_home):
+            derived = themed_codex_config(
+                personalized_codex_config(
+                    derived_codex_config(
+                        account.read_text(encoding="utf-8")
+                        if account.is_file()
+                        else "",
+                        config.read_text(encoding="utf-8") if config.is_file() else "",
+                    ),
+                    self.settings,
+                    self.editor,
                 ),
-                self.settings,
-                self.editor,
-            ),
-            self.theme,
-            self.fallback_theme.slug,
-        )
-        config.write_text(derived, encoding="utf-8")
+                self.theme,
+                self.fallback_theme.slug,
+            )
+            replace_codex_config(scoped_home, derived)
         trust_project(scoped_home, worktree)
-        (scoped_home / self.launched_record).write_text(
-            json.dumps(personal_settings(derived)), encoding="utf-8"
+        write_atomic(
+            scoped_home / self.launched_record,
+            json.dumps(personal_settings(derived)).encode("utf-8"),
         )
         return scoped_home
 
@@ -628,14 +639,17 @@ class CodexWorktreeHomeStore:
         if account_changes:
             account = self.account_home / "config.toml"
             self.account_home.mkdir(mode=0o700, parents=True, exist_ok=True)
-            account.write_text(
-                settled_codex_config(
-                    account.read_text(encoding="utf-8") if account.is_file() else "",
-                    account_changes,
-                ),
-                encoding="utf-8",
-            )
-        record.write_text(json.dumps(now), encoding="utf-8")
+            with codex_home_lock(self.account_home):
+                replace_codex_config(
+                    self.account_home,
+                    settled_codex_config(
+                        account.read_text(encoding="utf-8")
+                        if account.is_file()
+                        else "",
+                        account_changes,
+                    ),
+                )
+        write_atomic(record, json.dumps(now).encode("utf-8"))
         carried_themes(scoped_home, self.account_home)
         return returned
 
@@ -726,19 +740,20 @@ def seed_hook_trust(home: Path, hooks: list[CodexHook]) -> list[str]:
     written at all.
     """
     config = home / "config.toml"
-    document = (
-        tomlkit.parse(config.read_text(encoding="utf-8"))
-        if config.is_file()
-        else tomlkit.document()
-    )
-    hooks_table = document.setdefault(HOOKS_KEY, tomlkit.table(is_super_table=True))
-    state = hooks_table.setdefault(STATE_KEY, tomlkit.table(is_super_table=True))
-    for hook in hooks:
-        entry = tomlkit.table()
-        entry[TRUSTED_HASH_KEY] = hook.current_hash
-        entry[ENABLED_KEY] = True
-        state[hook.key] = entry
-    config.write_text(tomlkit.dumps(document), encoding="utf-8")
+    with codex_home_lock(home):
+        document = (
+            tomlkit.parse(config.read_text(encoding="utf-8"))
+            if config.is_file()
+            else tomlkit.document()
+        )
+        hooks_table = document.setdefault(HOOKS_KEY, tomlkit.table(is_super_table=True))
+        state = hooks_table.setdefault(STATE_KEY, tomlkit.table(is_super_table=True))
+        for hook in hooks:
+            entry = tomlkit.table()
+            entry[TRUSTED_HASH_KEY] = hook.current_hash
+            entry[ENABLED_KEY] = True
+            state[hook.key] = entry
+        replace_codex_config(home, tomlkit.dumps(document))
     return [hook.key for hook in hooks]
 
 
