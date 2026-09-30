@@ -21,7 +21,7 @@ from datetime import UTC, datetime, timedelta
 # lup: ignore[subprocess] — `sh` is third-party and this half is compiled into a bare script that has no virtual environment to resolve it from
 import subprocess
 from collections.abc import Callable, Iterator
-from typing import Literal
+from typing import BinaryIO, Literal
 from urllib.parse import urlsplit
 import shlex
 import policy_data as identity_policy
@@ -912,46 +912,447 @@ def referral_noted(
     return False
 
 
+def stream_records(stream: BinaryIO) -> list[dict]:
+    """Every complete object record in an open file, read from its start.
+
+    A line with no terminator is a write still under way, or one that never
+    finished, and a line that is not a JSON object is inert evidence: neither
+    is a record.
+    """
+    stream.seek(0)
+
+    def complete() -> Iterator[dict]:
+        for line in stream:
+            if not line.endswith(b"\n"):
+                continue
+            try:
+                entry = json.loads(line)
+            except (ValueError, UnicodeDecodeError):
+                continue
+            if isinstance(entry, dict):
+                yield entry
+
+    return list(complete())
+
+
 def review_records(path: Path) -> list[dict]:
     """Read complete object records, preserving malformed bytes as inert evidence."""
     try:
         stream = path.open("rb")
     except FileNotFoundError:
         return []
+    with stream:
+        fcntl.flock(stream, fcntl.LOCK_SH)
+        return stream_records(stream)
 
-    def complete():
-        with stream:
-            fcntl.flock(stream, fcntl.LOCK_SH)
-            for line in stream:
-                if not line.endswith(b"\n"):
-                    continue
-                try:
-                    entry = json.loads(line)
-                except (ValueError, UnicodeDecodeError):
-                    continue
-                if isinstance(entry, dict):
-                    yield entry
 
-    return list(complete())
+def framed(stream: BinaryIO, lines: list[str]) -> None:
+    """Append *lines* to a file its writers' lock is held on, repairing no incomplete record into authority.
+
+    An unterminated tail is retained and marked invalid before the first of
+    them, even if its partial write happened to end after a syntactically
+    complete JSON object. The lines are written in one call, so a reader
+    never finds half of them.
+    """
+    stream.seek(0, os.SEEK_END)
+    if stream.tell():
+        stream.seek(-1, os.SEEK_END)
+        if stream.read(1) != b"\n":
+            stream.write(b" [incomplete review record]\n")
+    stream.write(b"".join(line.encode("utf-8") + b"\n" for line in lines))
+    stream.flush()
 
 
 def append_review_record(path: Path, encoded: str) -> None:
-    """Frame an append without repairing an incomplete record into authority.
-
-    Every writer holds the same file lock. An unterminated tail is retained
-    and marked invalid before the next record, even if its partial write
-    happened to end after a syntactically complete JSON object.
-    """
+    """Frame an append under the one lock every writer of *path* holds."""
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("a+b") as stream:
         fcntl.flock(stream, fcntl.LOCK_EX)
-        stream.seek(0, os.SEEK_END)
-        if stream.tell():
-            stream.seek(-1, os.SEEK_END)
-            if stream.read(1) != b"\n":
-                stream.write(b" [incomplete review record]\n")
-        stream.write(encoded.encode("utf-8") + b"\n")
-        stream.flush()
+        framed(stream, [encoded])
+
+
+def relay_header() -> dict:
+    """The line a relay's log opens with: its records name the documents they bind by digest.
+
+    A log without it keeps a full copy of a question at every transition, and
+    is rewritten into this shape the first time it is opened
+    (:func:`migrate_relay`), after which nothing reads the older shape.
+    """
+    return {"relay": 2}
+
+
+def relay_lock(log: Path) -> Path:
+    """The lock a relay's transactions hold, and the rewriting of its log beside them."""
+    located = log.resolve()
+    return located.with_name(f"{located.name}.lock")
+
+
+def relay_blobs(log: Path) -> Path:
+    """Where a relay keeps every document its records name, once each, under its digest."""
+    return log.parent / "reviews" / "blobs"
+
+
+def transition_fields() -> tuple[str, ...]:
+    """What a transition may move on a question: never what it asks, nor its answer."""
+    return ("state", "outcome", "completed", "expires", "moved", "execution_id")
+
+
+def blob_digest(stored: dict | None) -> str:
+    """The digest a stored-document reference names, or "" where it names none.
+
+    Sixty-four lowercase hex digits and nothing else, so a reference can
+    never name a path beside the store.
+    """
+    match stored:
+        case {"sha256": str() as digest} if len(digest) == 64 and all(
+            character in "0123456789abcdef" for character in digest
+        ):
+            return digest
+    return ""
+
+
+def stored_blob(blobs: Path, text: str) -> dict:
+    """Keep one document in a relay's store, once, and name it by the digest of its UTF-8 text.
+
+    Written beside its name and moved into place, so a reader never meets a
+    half-written document under a digest it does not hash to; one the store
+    already keeps is not written again.
+    """
+    encoded = text.encode()
+    digest = sha256(encoded).hexdigest()
+    target = blobs / digest
+    if not target.is_file():
+        blobs.mkdir(parents=True, exist_ok=True)
+        staged = blobs / f".{digest}.{os.urandom(8).hex()}"
+        try:
+            with staged.open("xb") as stream:
+                stream.write(encoded)
+            staged.replace(target)
+        finally:
+            staged.unlink(missing_ok=True)
+    return {"sha256": digest}
+
+
+def blob_text(blobs: Path, stored: dict | None) -> str:
+    """The document a record names by digest, read back whole.
+
+    Refused with ValueError where the store does not keep it, or keeps
+    something that no longer hashes to its name: what a record binds by
+    digest is that document or nothing.
+    """
+    digest = blob_digest(stored)
+    if not digest:
+        raise ValueError(f"{stored!r} names no document")
+    try:
+        encoded = (blobs / digest).read_bytes()
+    except OSError as error:
+        raise ValueError(f"document {digest} is not kept: {error}") from error
+    if sha256(encoded).hexdigest() != digest:
+        raise ValueError(f"document {digest} no longer hashes to its name")
+    return encoded.decode()
+
+
+def stored_entry(entry: dict, blobs: Path) -> dict:
+    """One question with every document it carries kept in the store, named in the record by digest.
+
+    The preimage of each file it binds, and the document each file verdict
+    judged; everything else it records stays in the record, and a question
+    carrying neither is recorded as it is.
+    """
+    preconditions = entry["preconditions"] if "preconditions" in entry else None
+    rows = entry["file_reviews"] if "file_reviews" in entry else None
+    return {
+        **entry,
+        **(
+            {
+                "preconditions": {
+                    path: stored_blob(blobs, text) if isinstance(text, str) else None
+                    for path, text in preconditions.items()
+                }
+            }
+            if isinstance(preconditions, dict)
+            else {}
+        ),
+        **(
+            {
+                "file_reviews": [
+                    {
+                        **row,
+                        "after": stored_blob(blobs, row["after"])
+                        if isinstance(row["after"], str)
+                        else None,
+                    }
+                    if isinstance(row, dict) and "after" in row
+                    else row
+                    for row in rows
+                ]
+            }
+            if isinstance(rows, list)
+            else {}
+        ),
+    }
+
+
+def resolved_entry(entry: dict, blobs: Path) -> dict:
+    """One question as it was asked: every document it names by digest read back whole.
+
+    Raises ValueError where one is missing or altered, since a question that
+    cannot be read back whole cannot be shown, or checked, for what it binds.
+    """
+    preconditions = entry["preconditions"] if "preconditions" in entry else None
+    rows = entry["file_reviews"] if "file_reviews" in entry else None
+    return {
+        **entry,
+        **(
+            {
+                "preconditions": {
+                    path: blob_text(blobs, stored) if stored is not None else None
+                    for path, stored in preconditions.items()
+                }
+            }
+            if isinstance(preconditions, dict)
+            else {}
+        ),
+        **(
+            {
+                "file_reviews": [
+                    {**row, "after": blob_text(blobs, row["after"])}
+                    if isinstance(row, dict)
+                    and "after" in row
+                    and row["after"] is not None
+                    else row
+                    for row in rows
+                ]
+            }
+            if isinstance(rows, list)
+            else {}
+        ),
+    }
+
+
+def named_blobs(entry: dict) -> list[str]:
+    """Every document one recorded question names by digest."""
+    preconditions = entry["preconditions"] if "preconditions" in entry else None
+    rows = entry["file_reviews"] if "file_reviews" in entry else None
+    return [
+        digest
+        for stored in [
+            *(preconditions.values() if isinstance(preconditions, dict) else []),
+            *(
+                row["after"]
+                for row in (rows if isinstance(rows, list) else [])
+                if isinstance(row, dict) and "after" in row
+            ),
+        ]
+        if (digest := blob_digest(stored))
+    ]
+
+
+def fold_relay(folded: dict[str, dict], records: list[dict]) -> None:
+    """Move each question in *folded* by the records that follow.
+
+    A parked record adds a question, or replaces one parked earlier under its
+    id; a transition moves, on a question already parked, the fields
+    :func:`transition_fields` names, and says when. Neither may claim an
+    answer -- the answer is the host's, so a record saying `approved` or
+    `rejected` is passed over -- and anything else a relay holds is not a
+    question's. A question that moves is a new dict, so a reader keeping
+    what it made of the old one can tell.
+    """
+    for record in records:
+        match record:
+            case {
+                "parked": {"id": str() as identifier, "state": str() as state} as entry
+            } if state not in ("approved", "rejected"):
+                folded[identifier] = dict(entry)
+            case {
+                "transition": {"id": str() as identifier, "at": str() as at} as step
+            } if identifier in folded and (
+                "state" not in step or step["state"] not in ("approved", "rejected")
+            ):
+                folded[identifier] = {
+                    **folded[identifier],
+                    **{
+                        field: step[field]
+                        for field in transition_fields()
+                        if field in step
+                    },
+                    "changed": at,
+                }
+
+
+def relay_current(log: Path) -> bool:
+    """Whether a relay's log is kept in the shape this code reads, or holds nothing to rewrite yet."""
+    try:
+        with log.open("rb") as stream:
+            first = stream.readline()
+    except FileNotFoundError:
+        return True
+    if not first:
+        return True
+    try:
+        return json.loads(first) == relay_header()
+    except (ValueError, UnicodeDecodeError):
+        return False
+
+
+def opened_relay(log: Path) -> BinaryIO:
+    """A relay's log held exclusively, as the file its path names once the lock is taken.
+
+    A log is rewritten by moving a new file over it, so a writer that waited
+    for the lock on the file its path named before holds one nothing reads
+    any more: it opens the path again rather than write there.
+    """
+    log.parent.mkdir(parents=True, exist_ok=True)
+    for _attempt in range(64):
+        stream = log.open("a+b")
+        fcntl.flock(stream, fcntl.LOCK_EX)
+        try:
+            named = log.stat().st_ino
+        except FileNotFoundError:
+            named = -1
+        if named == os.fstat(stream.fileno()).st_ino:
+            return stream
+        stream.close()
+    raise OSError(f"{log} was replaced each time it was opened")
+
+
+def rewrite_relay(log: Path, records: list[dict]) -> None:
+    """Replace a relay's log whole: the new file moved over the old, so a crash leaves one or the other.
+
+    Called with the old one held, so nothing lands in it after its records
+    were read; a writer that waited on it opens the new one instead
+    (:func:`opened_relay`). The new file keeps the old one's mode.
+    """
+    staged = log.with_name(f".{log.name}.{os.urandom(8).hex()}")
+    try:
+        with staged.open("xb") as stream:
+            stream.write(
+                b"".join(
+                    json.dumps(record, sort_keys=True).encode() + b"\n"
+                    for record in records
+                )
+            )
+            stream.flush()
+            os.fsync(stream.fileno())
+        staged.chmod(log.stat().st_mode & 0o7777)
+        staged.replace(log)
+    finally:
+        staged.unlink(missing_ok=True)
+
+
+def settled_time(entry: dict) -> str | None:
+    """When a question kept the older way came to the state its last copy records."""
+    match entry:
+        case {"state": "expired", "expires": str() as at}:
+            return at
+        case {"completed": str() as at}:
+            return at
+        case {"created": str() as at}:
+            return at
+    return None
+
+
+def migrated_relay(records: list[dict], blobs: Path) -> list[dict]:
+    """A relay kept as a full copy per transition, as records naming documents by digest.
+
+    Each question's copies collapse into the last, which is the state it came
+    to, with when it came to it beside it and its documents kept once in the
+    store; replies stay as they were, and a record already in the new shape
+    follows them. A copy claiming an answer is passed over, as it always was,
+    and so is anything that is not a question or a reply.
+    """
+
+    def copied(record: dict) -> str:
+        """The question a record is a full copy of, or "" where it is none -- or claims an answer."""
+        match record:
+            case {
+                "id": str() as identifier,
+                "state": str() as state,
+                "operation": dict(),
+            } if state not in ("approved", "rejected"):
+                return identifier
+        return ""
+
+    latest = {
+        identifier: record for record in records if (identifier := copied(record))
+    }
+    return [
+        relay_header(),
+        *(
+            {"parked": {**stored_entry(entry, blobs), "changed": settled_time(entry)}}
+            for entry in latest.values()
+        ),
+        *(record for record in records if "reply" in record and "question" in record),
+        *(record for record in records if "parked" in record or "transition" in record),
+    ]
+
+
+def migrate_relay(log: Path) -> None:
+    """Rewrite a relay kept the older way into the shape it is read in now, once.
+
+    Under the relay's transaction lock and its log's own, so no transition
+    and no append lands midway: whoever takes them first rewrites it, and the
+    rest find it rewritten.
+    """
+    lock = relay_lock(log)
+    lock.parent.mkdir(parents=True, exist_ok=True)
+    with lock.open("a") as held:
+        fcntl.flock(held, fcntl.LOCK_EX)
+        with opened_relay(log) as stream:
+            if relay_current(log):
+                return
+            rewrite_relay(log, migrated_relay(stream_records(stream), relay_blobs(log)))
+
+
+def relay_records(log: Path) -> list[dict]:
+    """Every record a relay's log holds after its heading line, an older log rewritten first."""
+    if not relay_current(log):
+        migrate_relay(log)
+    records = review_records(log)
+    return records[1:] if records and records[0] == relay_header() else []
+
+
+def append_relay_records(log: Path, records: Callable[[], list[dict]]) -> None:
+    """Append what *records* builds to a relay's log, built while its lock is held.
+
+    Built under the lock because a parked question keeps its documents in the
+    store as it is recorded, and the store is swept under the same lock: a
+    document written for a question about to be recorded is never taken for
+    one nobody names. A new log opens with its heading line; one an older
+    writer started meanwhile is rewritten first, so nothing lands beneath a
+    shape it is not read in.
+    """
+    for _attempt in range(8):
+        if not relay_current(log):
+            migrate_relay(log)
+        with opened_relay(log) as stream:
+            size = stream.seek(0, os.SEEK_END)
+            if size and not relay_current(log):
+                continue
+            heading = [relay_header()] if not size else []
+            framed(
+                stream,
+                [
+                    json.dumps(record, sort_keys=True)
+                    for record in [*heading, *records()]
+                ],
+            )
+            return
+    raise OSError(f"{log} kept being started in an older shape")
+
+
+def park_relay_entry(log: Path, entry: dict) -> None:
+    """Park one question as it was asked: its documents kept in the store, its record naming them."""
+    append_relay_records(
+        log, lambda: [{"parked": stored_entry(entry, relay_blobs(log))}]
+    )
+
+
+def transition_relay_entry(log: Path, identifier: str, fields: dict) -> None:
+    """Record one question's move to another state, and when, beside the question it moves."""
+    step = {"id": identifier, "at": datetime.now(UTC).isoformat(), **fields}
+    append_relay_records(log, lambda: [{"transition": step}])
 
 
 def native_review_records(path: Path) -> dict[str, dict]:
@@ -961,12 +1362,12 @@ def native_review_records(path: Path) -> dict[str, dict]:
     session's to write, so an answer found there is one the session could
     have written, and the answer is read from the host instead.
     """
+    folded: dict[str, dict] = {}
+    fold_relay(folded, relay_records(path))
 
     def valid():
-        for entry in review_records(path):
+        for entry in folded.values():
             match entry:
-                case {"state": "approved" | "rejected"}:
-                    continue
                 case {
                     "id": str(),
                     "fingerprint": str(),
@@ -1239,13 +1640,20 @@ def review_hook_call(
         bound,
     )
     log = root / ".lup/questions.jsonl"
+    blobs = relay_blobs(log)
+
+    def binds(entry: dict) -> bool:
+        """Whether a parked record, its documents read back, hashes to this call's fingerprint."""
+        try:
+            return recorded_fingerprint(resolved_entry(entry, blobs)) == fingerprint
+        except ValueError:
+            return False
 
     entries = native_review_records(log)
     matches = [
         entry
         for entry in entries.values()
-        if entry["fingerprint"] == fingerprint
-        and recorded_fingerprint(entry) == fingerprint
+        if entry["fingerprint"] == fingerprint and binds(entry)
     ]
     continuations = [
         entry
@@ -1326,9 +1734,11 @@ def review_hook_call(
         except FileExistsError:
             entry = None
         else:
-            entry["state"] = "dispatched"
-            entry["execution_id"] = execution_id
-            append_review_record(log, json.dumps(entry, sort_keys=True))
+            transition_relay_entry(
+                log,
+                entry["id"],
+                {"state": "dispatched", "execution_id": execution_id},
+            )
             return {"state": "approved", "id": entry["id"], "reason": ""}
     if entry is not None and entry["state"] == "pending":
         return {"state": "pending", "id": entry["id"], "reason": entry["reason"]}
@@ -1371,7 +1781,7 @@ def review_hook_call(
             "provider": provider,
         },
     }
-    append_review_record(log, json.dumps(entry, sort_keys=True))
+    park_relay_entry(log, entry)
     return {"state": "pending", "id": identifier, "reason": reason}
 
 
@@ -1488,14 +1898,17 @@ def observe_hook_call(
         if settled and not matches_call
         else "without a consumed approval receipt"
     )
-    entry["state"] = "completed" if authorized else "in_doubt"
-    entry["completed"] = datetime.now(UTC).isoformat()
-    entry["outcome"] = (
-        "Native execution observed; effect success is not verified."
-        if authorized
-        else f"Native execution observed {problem}."
+    transition_relay_entry(
+        log,
+        entry["id"],
+        {
+            "state": "completed" if authorized else "in_doubt",
+            "completed": datetime.now(UTC).isoformat(),
+            "outcome": "Native execution observed; effect success is not verified."
+            if authorized
+            else f"Native execution observed {problem}.",
+        },
     )
-    append_review_record(log, json.dumps(entry, sort_keys=True))
     if authorized:
         return []
     return [
@@ -1528,7 +1941,7 @@ def record_question(
     the pinned standard library and a verdict is the kernel's. The caller
     reads the fields off it.
 
-    Append-only, because the failure this survives is a crash between
+    Appended, because the failure this survives is a crash between
     recording a question and answering it, and a store rewritten in place has
     a window where the question is neither the old one nor the new one.
 
@@ -1547,45 +1960,41 @@ def record_question(
     if root is None or not command:
         return ""
     identifier = sha256(f"{session}:{command}:{reason}".encode()).hexdigest()[:16]
-    entry = json.dumps(
-        {
+    entry = {
+        "id": identifier,
+        "operation": {
             "id": identifier,
-            "operation": {
-                "id": identifier,
-                "session": session,
-                "requester": requester,
-                "tool": "Bash",
-                "payload": {"command": command},
-                "cwd": str(root),
-                "worktree": str(root),
-                "placement": placement,
-            },
-            "fingerprint": identifier,
-            "reason": reason,
-            "rule": rule,
-            "purpose": purpose or None,
-            "requirement": reviewer,
-            # Empty and *said to be unresolved*, which are different facts: this
-            # boundary is hermetic and cannot reach the session's principals, so
-            # it has no chain to resolve rather than a chain that resolved to
-            # nobody. Written as the second, every question parked here would be
-            # answerable by nobody and the queue could only grow.
-            "eligible": [],
-            "chain_resolved": False,
-            "escalation": escalated,
-            "state": "pending",
-            "created": datetime.now(UTC).isoformat(),
+            "session": session,
+            "requester": requester,
+            "tool": "Bash",
+            "payload": {"command": command},
+            "cwd": str(root),
+            "worktree": str(root),
+            "placement": placement,
         },
-        sort_keys=True,
-    )
+        "fingerprint": identifier,
+        "reason": reason,
+        "rule": rule,
+        "purpose": purpose or None,
+        "requirement": reviewer,
+        # Empty and *said to be unresolved*, which are different facts: this
+        # boundary is hermetic and cannot reach the session's principals, so
+        # it has no chain to resolve rather than a chain that resolved to
+        # nobody. Written as the second, every question parked here would be
+        # answerable by nobody and the queue could only grow.
+        "eligible": [],
+        "chain_resolved": False,
+        "escalation": escalated,
+        "state": "pending",
+        "created": datetime.now(UTC).isoformat(),
+    }
     path = root / relay
     try:
-        if any(
-            "id" in entry and entry["id"] == identifier
-            for entry in review_records(path)
-        ):
+        folded: dict[str, dict] = {}
+        fold_relay(folded, relay_records(path))
+        if identifier in folded:
             return identifier
-        append_review_record(path, entry)
+        park_relay_entry(path, entry)
     except OSError:
         return ""
     return identifier

@@ -82,7 +82,9 @@ def test_document_replacement_waits_for_review_then_runs_once(
     store = QuestionRelay(root / ".lup/questions.jsonl")
     (question,) = store.pending()
     assert question.operation.requester == "requester"
-    assert question.preconditions == {root / "DESIGN.md": "# Previous design\n"}
+    assert store.resolve(question).preconditions == {
+        root / "DESIGN.md": "# Previous design\n"
+    }
     assert question.id in detail
     assert "not refused" in detail
     assert "Don't change the command" in detail
@@ -401,7 +403,7 @@ def test_copy_approval_binds_both_documents(root: Path, changed: str) -> None:
     assert denial(hook(root, command, tool="Bash"))
     store = QuestionRelay(root / ".lup/questions.jsonl")
     (question,) = store.pending()
-    assert question.preconditions == {
+    assert store.resolve(question).preconditions == {
         source: "# Agreed design\n",
         root / "DESIGN.md": "# Previous design\n",
     }
@@ -430,7 +432,7 @@ def test_shell_write_approval_binds_existing_document(root: Path, command: str) 
     assert denial(hook(root, command, tool="Bash"))
     store = QuestionRelay(root / ".lup/questions.jsonl")
     (question,) = store.pending()
-    assert question.preconditions == {target: before}
+    assert store.resolve(question).preconditions == {target: before}
     store.answer(question.id, "operator", True)
     target.write_text(before + "# Another writer\n")
     assert denial(hook(root, command, tool="Bash"))

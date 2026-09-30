@@ -120,14 +120,15 @@ def effect(runtime: Runtime, answer: sh.RunningCommand) -> str:
 
 
 def parked(runtime: Runtime, root: Path, command: str) -> PersistentQuestion:
-    """The one question a runtime parks for a command that asks.
+    """The one question a runtime parks for a command that asks, its documents read back.
 
     Under a launch holding a dashboard, which is where a question a
     supervisor may answer parks on Claude too.
     """
     dispatched(runtime, root, command, {DASHBOARD_URL_ENV: "http://127.0.0.1:8766"})
-    (question,) = QuestionRelay(root / ".lup/questions.jsonl").pending()
-    return question
+    store = QuestionRelay(root / ".lup/questions.jsonl")
+    (question,) = store.pending()
+    return store.resolve(question)
 
 
 CHAIN = (
@@ -333,7 +334,9 @@ def test_the_dashboard_shows_what_was_judged_without_running_anything(
     assert shown["gone.md"] == ("bye\n", None)
     assert shown["copy.md"] == (None, "the new way — ünïcödé\nkept\n")
     assert detail.preview_unavailable == ""
-    assert checkout / PROTECTED / "notes.md" in [each.path for each in moved(question)]
+    assert checkout / PROTECTED / "notes.md" in [
+        each.path for each in moved(question.recorded())
+    ]
     assert [entry.command for entry in detail.question.unpreviewed or []] == [
         "sort -o sorted.txt notes.md"
     ]

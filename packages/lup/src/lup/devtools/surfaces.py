@@ -10,6 +10,7 @@ with a surface of its own lists it beside these in its composition.
 from lup.devtools.dashboard.reviews import (
     ReviewAnswer,
     ReviewDecision,
+    ReviewHistory,
     ReviewRemarkRequest,
     ReviewSnapshot,
 )
@@ -62,6 +63,7 @@ DASHBOARD = Surface(
     models=[
         StreamFrame,
         ReviewSnapshot,
+        ReviewHistory,
         ReviewDetail,
         ReviewAnswer,
         ReviewDecision,

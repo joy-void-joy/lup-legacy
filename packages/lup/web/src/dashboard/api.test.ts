@@ -4,7 +4,7 @@ import { answerReview, remarkReview, followDashboard, readReviews, readReviewLin
 
 const originalFetch = globalThis.fetch;
 const originalStorage = Object.getOwnPropertyDescriptor(globalThis, "localStorage");
-const snapshot = { roots: [], reviews: [], errors: [] };
+const snapshot = { roots: [], reviews: [], errors: [], history: 0 };
 
 afterEach(() => {
   if (originalStorage !== undefined) Object.defineProperty(globalThis, "localStorage", originalStorage);

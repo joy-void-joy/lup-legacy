@@ -20,7 +20,7 @@ from lup.devtools.dashboard.panes import SetupPanes
 from lup.devtools.dashboard.reviews import ReviewStore, dashboard_app
 from lup.devtools.review.app import relay
 from lup.policy.operations import Operation
-from lup.policy.relay import PersistentQuestion
+from lup.policy.relay import PersistentQuestion, QuestionRelay
 from tests.unit.reviews import bound
 
 BASE_URL = "http://127.0.0.1:8766"
@@ -129,9 +129,9 @@ def test_a_queue_is_read_again_only_where_its_relay_changed(
     reads: list[Path] = []
     original = reviews.ReviewQueue.read
 
-    def counted(root: Path) -> reviews.ReviewQueue:
+    def counted(root: Path, store: QuestionRelay) -> reviews.ReviewQueue:
         reads.append(root)
-        return original(root)
+        return original(root, store)
 
     monkeypatch.setattr(reviews.ReviewQueue, "read", counted)
     store = ReviewStore(roots=(tmp_path,))

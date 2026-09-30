@@ -84,12 +84,16 @@ describe("dashboard page", () => {
   let requests: { path: string; method: string; body: unknown; authorization: string | null }[] = [];
   let panes: { key: string; repository: string; name: string; path: string }[] = [];
   let replyStatus = 200;
-  const queue = () => ({ roots, reviews: rows, errors: issues });
+  // History past what the stream carries: the server pages it, most recently settled first.
+  let older: (typeof summary & { settled?: string })[] = [];
+  const settledRows = () => [...rows.filter((row) => row.state !== "pending"), ...older];
+  const queue = () => ({ roots, reviews: rows, errors: issues, history: settledRows().length });
 
   beforeEach(() => {
     detail = review();
     details = new Map([[detail.summary.key, detail]]);
     rows = [{ ...summary }];
+    older = [];
     roots = [root];
     answerStatus = 200;
     answerWait = null;
@@ -124,6 +128,13 @@ describe("dashboard page", () => {
         },
       }));
       if (path === "api/reviews") return refreshStatus === 200 ? Response.json(queue()) : Response.json({ detail: "Refresh unavailable" }, { status: refreshStatus });
+      if (path.startsWith("api/reviews/history?")) {
+        const query = new URLSearchParams(path.slice(path.indexOf("?") + 1));
+        const linked = query.get("review");
+        const offset = Number(query.get("offset")), limit = Number(query.get("limit"));
+        const chosen = linked === null ? settledRows() : settledRows().filter((row) => row.id === linked);
+        return Response.json({ reviews: chosen.slice(offset, offset + limit), total: settledRows().length });
+      }
       if (path === "api/setup") return Response.json(panes);
       for (const [key, captured] of details) {
         if (path === `api/reviews/${key}`) {
@@ -711,6 +722,39 @@ describe("dashboard page", () => {
     expect(streamingAborted).toBe(true);
   });
 
+  test("History past what the stream carries is read a page at a time", async () => {
+    older = [{ ...summary, key: "tree-old", id: "old", state: "completed", title: "An older request", settled: "2026-09-20T12:00:00Z" }];
+    const page = await open();
+    await click(labelled(page.root, "button", "History (1)"));
+    expect(page.root.textContent).not.toContain("An older request");
+    await click(labelled(page.root, "button", "Load older requests (1 more)"));
+    await until(() => page.root.textContent?.includes("An older request") ?? false, "the older page");
+    expect(requests.map((request) => request.path)).toContain("api/reviews/history?offset=0&limit=50");
+    expect(page.root.textContent).not.toContain("Load older requests");
+  });
+
+  test("the next request is read ahead, and opening it reads nothing more", async () => {
+    addRequest();
+    const page = await open();
+    await until(() => requests.some((request) => request.path === "api/reviews/tree-q2"), "the next request read ahead");
+    await keydown("j", "KeyJ");
+    await keyup("j", "KeyJ");
+    await until(() => page.root.querySelector(".request .reason")?.textContent === "Request tree-q2", "the next request at once");
+    expect(requests.filter((request) => request.path === "api/reviews/tree-q2")).toHaveLength(1);
+  });
+
+  test("a link to a request past what the stream carries is found in History", async () => {
+    older = [{ ...summary, key: "tree-old", id: "old", state: "completed", title: "An older request", settled: "2026-09-20T12:00:00Z" }];
+    const kept = review("tree-old");
+    kept.summary = { ...kept.summary, ...older[0], key: "tree-old" };
+    details.set("tree-old", kept);
+    window.history.replaceState(null, "", "/#token=browser-secret&review=old&root=tree");
+    shown = mount(<App />);
+    await until(() => shown?.root.querySelector(".request h2")?.textContent?.endsWith("An older request") ?? false, "the linked older request");
+    expect(requests.some((request) => request.path.startsWith("api/reviews/history?") && request.path.includes("review=old"))).toBe(true);
+    expect(labelled(shown.root, "button", "History (1)").getAttribute("aria-pressed")).toBe("true");
+  });
+
   test("missing or expired browser authorization gives launch instructions without selecting another review", async () => {
     window.history.replaceState(null, "", "/#review=missing");
     refreshStatus = 401;
@@ -976,9 +1020,10 @@ describe("dashboard page", () => {
 
   test("a slow next-request load cannot submit the previously displayed fingerprint", async () => {
     addRequest();
-    const page = await open();
     let finish: (() => void) | undefined;
+    // Held from the start, so reading it ahead of the operator is as slow as opening it.
     detailWait.set("tree-q2", new Promise<void>((resolve) => { finish = resolve; }));
+    const page = await open();
     await keydown("j", "KeyJ");
     await keyup("j", "KeyJ");
     await until(() => page.root.textContent?.includes("Loading request…") ?? false, "the pending detail read");

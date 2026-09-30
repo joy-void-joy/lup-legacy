@@ -21,7 +21,7 @@ from lup.devtools.review.answers import ReviewAnswers
 from lup.devtools.review.app import create_review_app
 from lup.launch.companions import CompanionLaunch, held_companions
 from lup.launch.pointer_trust import launcher_state_exposure
-from lup.policy.assets.host import review_answers, review_answers_home
+from lup.policy.assets.host import review_answers, review_answers_home, review_records
 from lup.policy.identity import REVIEW_ANSWERS_ENV
 from lup.policy.relay import QuestionRelay
 from lup.sandbox.rail import Lease, same_path
@@ -91,7 +91,8 @@ def test_an_answer_is_kept_on_the_host_and_releases_the_exact_retry(
 def test_an_approval_written_into_the_checkout_releases_nothing(root: Path) -> None:
     assert hook(root) == "deny"
     log = root / ".lup/questions.jsonl"
-    (pending,) = [json.loads(line) for line in log.read_text().splitlines()]
+    (_, parked) = review_records(log)
+    pending = parked["parked"]
     forged = {
         **pending,
         "state": "approved",
@@ -104,8 +105,14 @@ def test_an_approval_written_into_the_checkout_releases_nothing(root: Path) -> N
             "at": "2026-09-29T00:00:00+00:00",
         },
     }
+    moved = {
+        "id": pending["id"],
+        "at": "2026-09-29T00:00:00+00:00",
+        "state": "approved",
+    }
     with log.open("a", encoding="utf-8") as appended:
-        appended.write(json.dumps(forged) + "\n")
+        appended.write(json.dumps({"parked": forged}) + "\n")
+        appended.write(json.dumps({"transition": moved}) + "\n")
 
     (question,) = relay_of(root).questions()
     assert question.state == "pending"
@@ -168,13 +175,14 @@ def test_a_review_altered_after_it_was_parked_cannot_be_answered_or_spent(
     """
     assert hook(root) == "deny"
     log = root / ".lup/questions.jsonl"
-    (pending,) = [json.loads(line) for line in log.read_text().splitlines()]
+    (_, parked) = review_records(log)
+    pending = parked["parked"]
     shown = {
         **pending,
         "operation": {**pending["operation"], "payload": {"command": "git status"}},
     }
     with log.open("a", encoding="utf-8") as appended:
-        appended.write(json.dumps(shown) + "\n")
+        appended.write(json.dumps({"parked": shown}) + "\n")
     store = relay_of(root)
 
     with pytest.raises(ValueError, match="changed after it was parked"):

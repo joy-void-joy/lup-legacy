@@ -20,12 +20,13 @@ moved: such a path is never stale, whoever asks.
 """
 
 from collections.abc import Sequence
+from hashlib import sha256
 from pathlib import Path
 from typing import Literal
 
 from pydantic import BaseModel
 
-from lup.policy.relay import FileSignature, PersistentQuestion
+from lup.policy.relay import FileSignature, RecordedQuestion, StoredDocument
 
 type MoveCause = Literal["changed", "created", "deleted", "directory"]
 """How one recorded file differs from what the review recorded."""
@@ -69,12 +70,13 @@ def seen_here(path: Path, roots: Sequence[Path]) -> bool:
 
 
 def moved_preimage(
-    path: Path, recorded: str | None, roots: Sequence[Path] = ()
+    path: Path, recorded: StoredDocument | None, roots: Sequence[Path] = ()
 ) -> MovedPreimage | None:
     """How one recorded file moved since the review recorded it, or ``None`` where it did not.
 
-    ``None`` too where this process cannot tell: a path it cannot see, or a
-    file it may not read.
+    The file is read against the digest the review names its preimage by,
+    so nothing the review keeps is read to tell. ``None`` too where this
+    process cannot tell: a path it cannot see, or a file it may not read.
     """
     if not seen_here(path, roots):
         return None
@@ -90,12 +92,12 @@ def moved_preimage(
         return MovedPreimage(path=path, cause="created")
     if standing is None:
         return MovedPreimage(path=path, cause="deleted")
-    if standing == recorded.encode():
+    if sha256(standing).hexdigest() == recorded.sha256:
         return None
     return MovedPreimage(path=path, cause="changed")
 
 
-def written(question: PersistentQuestion) -> dict[Path, str | None]:
+def written(question: RecordedQuestion) -> dict[Path, StoredDocument | None]:
     """The recorded preimages of the files the call writes.
 
     A command's record says which they are: each file its verdict worked out
@@ -116,7 +118,7 @@ def written(question: PersistentQuestion) -> dict[Path, str | None]:
     }
 
 
-def moved(question: PersistentQuestion, sources: bool = False) -> list[MovedPreimage]:
+def moved(question: RecordedQuestion, sources: bool = False) -> list[MovedPreimage]:
     """Every file the call writes that no longer stands as recorded, as far as this process sees.
 
     With *sources*, the files it reads from too: what runs the call has to
@@ -154,7 +156,7 @@ class PreimageWatch:
         self.sources = sources
         self.seen: dict[str, WatchedReading] = {}
 
-    def moved(self, question: PersistentQuestion) -> list[MovedPreimage]:
+    def moved(self, question: RecordedQuestion) -> list[MovedPreimage]:
         def signature(path: Path) -> FileSignature:
             """What one recorded path is on disk now; one that cannot be stated reads as absent."""
             try:

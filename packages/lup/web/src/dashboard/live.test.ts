@@ -26,6 +26,7 @@ function review(key: string, created: string): ReviewSummary {
   return {
     key, root_id: "root", id: key, state: "pending", requester: "lead", reason: "", title: key, paths: [],
     total_files: 0, operation: "Bash", rule: "", created, answerable: true, unanswerable: "", stale: [], said: 0, target: "", session: "lead",
+    settled: null, archived: false,
   };
 }
 
@@ -41,7 +42,7 @@ function snapshot(): LiveState {
     repositories: [repository],
     sessions: [row("lead"), row("lead-a1", { parent: "lead", kind: "subagent", name: "scout" }), row("other", { running: false })],
     messages: [message("m1", { sender: "other" })],
-    reviews: { roots: [], errors: [], reviews: [review("q1", "2026-09-29T09:00:00Z")] },
+    reviews: { roots: [], errors: [], reviews: [review("q1", "2026-09-29T09:00:00Z")], history: 0 },
     code: UNSAID,
   }));
 }
@@ -65,13 +66,14 @@ describe("live state", () => {
     const parked = applied(described, frame({ type: "review", review: review("q2", "2026-09-29T11:00:00Z") }));
     const settled = applied(parked, frame({ type: "review", review: { ...review("q1", "2026-09-29T09:00:00Z"), state: "approved" } }));
     const dropped = applied(settled, frame({ type: "review_gone", key: "q2" }));
-    const scoped = applied(dropped, frame({ type: "review_scope", roots: [{ id: "root", path: "/tree", repository: "", repository_name: "" }], errors: [] }));
+    const scoped = applied(dropped, frame({ type: "review_scope", roots: [{ id: "root", path: "/tree", repository: "", repository_name: "" }], errors: [], history: 1204 }));
 
     expect(described.reviews).toBe(whole.reviews);
     expect(parked.reviews.reviews.map((each) => each.key)).toEqual(["q2", "q1"]);
     expect(settled.reviews.reviews.map((each) => each.state)).toEqual(["pending", "approved"]);
     expect(dropped.reviews.reviews.map((each) => each.key)).toEqual(["q1"]);
     expect(scoped.reviews.roots.map((each) => each.path)).toEqual(["/tree"]);
+    expect(scoped.reviews.history).toBe(1204);
   });
 
   test("sessions nest their subagents beneath them, working ones first", () => {

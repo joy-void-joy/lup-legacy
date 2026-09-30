@@ -21,9 +21,8 @@ from lup.coordination.repository import RepositoryPeers
 from lup.coordination.roster import RosterMember
 from lup.coordination.peers import USER_ADDRESS
 from lup.coordination.watch import roused
-from lup.devtools.review.thread import Remark
 from lup.devtools.review.wait import ReviewWaiters
-from lup.policy.relay import Answer, LineComment, PersistentQuestion
+from lup.policy.relay import Answer, LineComment, QuestionRecord, Remark
 
 
 class ReviewNotification(BaseModel, frozen=True):
@@ -65,11 +64,11 @@ class ReviewNotifications(BaseModel, frozen=True):
 
     root: Path
 
-    def path(self, entry: PersistentQuestion) -> Path:
+    def path(self, entry: QuestionRecord) -> Path:
         identity = uuid5(NAMESPACE_URL, entry.id)
         return self.root / ".lup" / "review-notifications" / f"{identity}.json"
 
-    def read(self, entry: PersistentQuestion) -> ReviewNotification | None:
+    def read(self, entry: QuestionRecord) -> ReviewNotification | None:
         path = self.path(entry)
         if entry.answer is None or not path.is_file():
             return None
@@ -89,7 +88,7 @@ class ReviewNotifications(BaseModel, frozen=True):
             return None
         return record.notification
 
-    def write(self, entry: PersistentQuestion, outcome: ReviewNotification) -> None:
+    def write(self, entry: QuestionRecord, outcome: ReviewNotification) -> None:
         if entry.answer is None:
             raise ValueError("A notification requires a recorded answer")
         publish_atomic(
@@ -103,7 +102,7 @@ class ReviewNotifications(BaseModel, frozen=True):
             ),
         )
 
-    def prepare(self, entry: PersistentQuestion) -> ReviewNotificationAttempt:
+    def prepare(self, entry: QuestionRecord) -> ReviewNotificationAttempt:
         """Record an honest pending outcome before delivery is scheduled."""
         pending = ReviewNotification(
             queued=False,
@@ -126,7 +125,7 @@ class ReviewNotifications(BaseModel, frozen=True):
 
     def complete(
         self,
-        entry: PersistentQuestion,
+        entry: QuestionRecord,
         attempt: ReviewNotificationAttempt,
         deliver: Callable[[], ReviewNotification],
     ) -> ReviewNotification:
@@ -160,8 +159,8 @@ class ReviewNotifications(BaseModel, frozen=True):
     def notify(
         self,
         roots: tuple[Path, ...],
-        entry: PersistentQuestion,
-        deliver: Callable[[tuple[Path, ...], PersistentQuestion], ReviewNotification],
+        entry: QuestionRecord,
+        deliver: Callable[[tuple[Path, ...], QuestionRecord], ReviewNotification],
     ) -> ReviewNotification:
         """Prepare and complete delivery synchronously for non-HTTP callers."""
         return self.complete(entry, self.prepare(entry), lambda: deliver(roots, entry))
@@ -241,9 +240,7 @@ class ReviewRecipients(BaseModel, frozen=True):
     parent: ReviewRecipient | None = None
 
     @classmethod
-    def of(
-        cls, roots: tuple[Path, ...], entry: PersistentQuestion
-    ) -> "ReviewRecipients":
+    def of(cls, roots: tuple[Path, ...], entry: QuestionRecord) -> "ReviewRecipients":
         rosters = {
             peers.root: peers for peers in (RepositoryPeers(root) for root in roots)
         }
@@ -291,7 +288,7 @@ class ReviewRecipients(BaseModel, frozen=True):
         return cls(requester=session)
 
 
-def waiting_command(root: Path, entry: PersistentQuestion) -> str:
+def waiting_command(root: Path, entry: QuestionRecord) -> str:
     """The `review wait` that carries out or reports one review, runnable from anywhere."""
     return shlex.join(
         [
@@ -318,7 +315,7 @@ def spoken(note: str, comments: list[LineComment], root: Path) -> str:
     )
 
 
-def answered_message(root: Path, entry: PersistentQuestion) -> str:
+def answered_message(root: Path, entry: QuestionRecord) -> str:
     """What the session that asked is told of how its review settled, and what to do about it.
 
     An approved native call is carried out by `review wait`, which the
@@ -360,7 +357,7 @@ def answered_message(root: Path, entry: PersistentQuestion) -> str:
     )
 
 
-def remarked_message(root: Path, entry: PersistentQuestion, remark: Remark) -> str:
+def remarked_message(root: Path, entry: QuestionRecord, remark: Remark) -> str:
     """What the session that asked is told of a remark: the words, and that nothing was decided."""
     return (
         f"The operator commented on review {entry.id} in "
@@ -372,7 +369,7 @@ def remarked_message(root: Path, entry: PersistentQuestion, remark: Remark) -> s
     )
 
 
-def copied_message(entry: PersistentQuestion, requester: str, message: str) -> str:
+def copied_message(entry: QuestionRecord, requester: str, message: str) -> str:
     """The copy a subagent's session gets of what the operator said to the subagent."""
     return (
         f"[copy] The operator's words on review {entry.id}, which your subagent "
@@ -385,7 +382,7 @@ def copied_message(entry: PersistentQuestion, requester: str, message: str) -> s
 def notify_requester(
     roots: tuple[Path, ...],
     root: Path,
-    entry: PersistentQuestion,
+    entry: QuestionRecord,
     remark: Remark | None = None,
 ) -> ReviewNotification:
     """Tell the conversation that asked what came of its review, by one channel.

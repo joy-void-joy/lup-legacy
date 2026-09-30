@@ -270,7 +270,7 @@ def test_external_workspace_preserves_application_human_owned_paths(
     assert spoken["systemMessage"]
     (question,) = relay.pending()
     assert "human-authored" in question.reason
-    assert question.preconditions == {path: before}
+    assert relay.resolve(question).preconditions == {path: before}
     assert path.read_text() == before
 
 
@@ -378,9 +378,10 @@ def test_a_protected_path_edit_is_parked_for_its_author(root: Path) -> None:
         "new_string": "excluded_commands=served_exclusions(composed),  # reviewed",
     }
     assert native_call(root, "claude", tool="Edit", arguments=arguments) == "deny"
-    (question,) = QuestionRelay(root / ".lup/questions.jsonl").pending()
+    parked = QuestionRelay(root / ".lup/questions.jsonl")
+    (question,) = parked.pending()
     assert question.requirement == "human_only"
-    assert question.preconditions == {target: target.read_text()}
+    assert parked.resolve(question).preconditions == {target: target.read_text()}
     assert "# reviewed" not in target.read_text(encoding="utf-8")
 
 

@@ -163,7 +163,7 @@ def test_mixed_batch_summary_references_only_original_asks(tmp_path: Path) -> No
     assert detail.summary.paths == ["app.py"]
     assert detail.summary.total_files == 2
     assert [file.review_effect for file in detail.files] == ["ask", "allow"]
-    assert detail.question is question
+    assert detail.question == question.recorded()
     assert detail.question.operation.payload == {"command": patch}
     assert detail.summary.reason == "original batch reason"
     assert detail.question.fingerprint == "unchanged-binding"
@@ -248,7 +248,7 @@ def test_twenty_file_review_focuses_three_asks_and_keeps_the_exact_operation(
     assert detail.summary.total_files == 20
     assert len(detail.files) == 20
     assert [file.review_effect for file in detail.files] == effects
-    assert detail.question is question
+    assert detail.question == question.recorded()
     assert detail.question.operation.payload == {"command": patch}
     assert detail.question.fingerprint == "unchanged-twenty-file-binding"
 
@@ -284,7 +284,7 @@ def test_captured_attribution_changes_require_fresh_native_review(
         review_hook_call(*arguments, file_reviews=original, answers=answers)["state"]
         == "approved"
     )
-    stored = relay.find(first["id"])
+    stored = relay.question(first["id"])
     assert stored is not None
     assert stored.file_reviews == [captured(change)]
 
@@ -316,7 +316,9 @@ def test_native_queue_retains_the_asked_and_automatic_file_verdicts(
     (tmp_path / "tests/test_example.py").write_text("value = 1\n")
     command = "*** Begin Patch\n*** Add File: DESIGN.md\n+# Reviewed design\n*** Update File: tests/test_example.py\n@@\n-value = 1\n+value = 2\n*** End Patch\n"
     assert "written whole" in denial(hook(tmp_path, command))
-    (question,) = QuestionRelay(tmp_path / ".lup/questions.jsonl").pending()
+    store = QuestionRelay(tmp_path / ".lup/questions.jsonl")
+    (waiting,) = store.pending()
+    question = store.resolve(waiting)
     assert question.file_reviews is not None
     shown = ReviewDetail.of(tmp_path, question, "operator")
     assert {file.path: file.review_effect for file in shown.files} == {

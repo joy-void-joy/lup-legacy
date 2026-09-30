@@ -307,81 +307,6 @@
       "title": "BlockStartedEvent",
       "type": "object"
     },
-    "CapturedFileReview": {
-      "additionalProperties": false,
-      "description": "The original routed file verdict, bound to its captured input and result.\n\n``after`` is the document the verdict judged, which is what a reviewer\nis shown the file becoming; ``None`` with a digest beside it is a record\nthat kept only the digest.",
-      "properties": {
-        "after": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "After"
-        },
-        "after_sha256": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "title": "After Sha256"
-        },
-        "before_sha256": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "title": "Before Sha256"
-        },
-        "effect": {
-          "$ref": "#/$defs/DecisionEffect"
-        },
-        "path": {
-          "format": "path",
-          "title": "Path",
-          "type": "string"
-        },
-        "reason": {
-          "title": "Reason",
-          "type": "string"
-        },
-        "rule": {
-          "title": "Rule",
-          "type": "string"
-        },
-        "rules": {
-          "items": {
-            "type": "string"
-          },
-          "title": "Rules",
-          "type": "array"
-        }
-      },
-      "required": [
-        "path",
-        "effect",
-        "reason",
-        "rule",
-        "rules",
-        "before_sha256",
-        "after_sha256",
-        "after"
-      ],
-      "title": "CapturedFileReview",
-      "type": "object"
-    },
     "CarriedParent": {
       "additionalProperties": false,
       "description": "One parent whose commits another parent already contains.",
@@ -2346,303 +2271,6 @@
       "title": "PendingQuestionView",
       "type": "object"
     },
-    "PersistentQuestion": {
-      "additionalProperties": false,
-      "description": "One parked ask, durable, with everything needed to resume it exactly.\n\nThe operation is carried whole rather than summarized, because the\nrequesting agent must not be the thing that reconstructs it: an agent\nasked to reissue an approved call is an agent that can reissue a\ndifferent one.",
-      "properties": {
-        "account": {
-          "default": [],
-          "items": {
-            "$ref": "#/$defs/Account"
-          },
-          "title": "Account",
-          "type": "array"
-        },
-        "agent": {
-          "default": "",
-          "title": "Agent",
-          "type": "string"
-        },
-        "answer": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/lup__policy__relay__Answer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null
-        },
-        "chain_resolved": {
-          "default": true,
-          "title": "Chain Resolved",
-          "type": "boolean"
-        },
-        "checkpoint_failure": {
-          "default": "",
-          "title": "Checkpoint Failure",
-          "type": "string"
-        },
-        "completed": {
-          "anyOf": [
-            {
-              "format": "date-time",
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Completed"
-        },
-        "created": {
-          "format": "date-time",
-          "title": "Created",
-          "type": "string"
-        },
-        "eligible": {
-          "default": [],
-          "items": {
-            "type": "string"
-          },
-          "title": "Eligible",
-          "type": "array"
-        },
-        "escalation": {
-          "default": "",
-          "title": "Escalation",
-          "type": "string"
-        },
-        "execution_id": {
-          "default": "",
-          "title": "Execution Id",
-          "type": "string"
-        },
-        "execution_payload": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/JsonObject"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null
-        },
-        "expires": {
-          "anyOf": [
-            {
-              "format": "date-time",
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Expires"
-        },
-        "file_reviews": {
-          "anyOf": [
-            {
-              "items": {
-                "$ref": "#/$defs/CapturedFileReview"
-              },
-              "type": "array"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "File Reviews"
-        },
-        "fingerprint": {
-          "title": "Fingerprint",
-          "type": "string"
-        },
-        "id": {
-          "title": "Id",
-          "type": "string"
-        },
-        "member": {
-          "default": "",
-          "title": "Member",
-          "type": "string"
-        },
-        "moved": {
-          "default": [],
-          "items": {
-            "format": "path",
-            "type": "string"
-          },
-          "title": "Moved",
-          "type": "array"
-        },
-        "operation": {
-          "$ref": "#/$defs/Operation"
-        },
-        "outcome": {
-          "default": "",
-          "title": "Outcome",
-          "type": "string"
-        },
-        "policy_identity": {
-          "default": "",
-          "title": "Policy Identity",
-          "type": "string"
-        },
-        "preconditions": {
-          "additionalProperties": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "default": {},
-          "propertyNames": {
-            "format": "path"
-          },
-          "title": "Preconditions",
-          "type": "object"
-        },
-        "purpose": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/ReviewPurpose"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null
-        },
-        "reason": {
-          "title": "Reason",
-          "type": "string"
-        },
-        "requirement": {
-          "$ref": "#/$defs/ReviewerRequirement",
-          "default": "human_only"
-        },
-        "resolved": {
-          "additionalProperties": {
-            "format": "path",
-            "type": "string"
-          },
-          "default": {},
-          "propertyNames": {
-            "format": "path"
-          },
-          "title": "Resolved",
-          "type": "object"
-        },
-        "resumption": {
-          "default": "coordinator",
-          "enum": [
-            "coordinator",
-            "native_retry"
-          ],
-          "title": "Resumption",
-          "type": "string"
-        },
-        "rule": {
-          "default": "",
-          "title": "Rule",
-          "type": "string"
-        },
-        "scheme": {
-          "anyOf": [
-            {
-              "items": {
-                "type": "string"
-              },
-              "type": "array"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Scheme"
-        },
-        "segments": {
-          "anyOf": [
-            {
-              "items": {
-                "$ref": "#/$defs/CommandSegment"
-              },
-              "type": "array"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Segments"
-        },
-        "state": {
-          "$ref": "#/$defs/QuestionState",
-          "default": "pending"
-        },
-        "unpreviewed": {
-          "anyOf": [
-            {
-              "items": {
-                "$ref": "#/$defs/UnpreviewedStep"
-              },
-              "type": "array"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Unpreviewed"
-        }
-      },
-      "required": [
-        "id",
-        "operation",
-        "fingerprint",
-        "preconditions",
-        "file_reviews",
-        "unpreviewed",
-        "segments",
-        "resumption",
-        "reason",
-        "rule",
-        "purpose",
-        "requirement",
-        "eligible",
-        "chain_resolved",
-        "escalation",
-        "checkpoint_failure",
-        "state",
-        "answer",
-        "created",
-        "expires",
-        "completed",
-        "outcome",
-        "execution_id",
-        "execution_payload",
-        "policy_identity",
-        "resolved",
-        "member",
-        "agent",
-        "moved",
-        "account",
-        "scheme"
-      ],
-      "title": "PersistentQuestion",
-      "type": "object"
-    },
     "PhaseChangedEvent": {
       "additionalProperties": false,
       "description": "The run moved to a new phase.",
@@ -2888,6 +2516,391 @@
       "title": "RecheckReusedEvent",
       "type": "object"
     },
+    "RecordedFileReview": {
+      "additionalProperties": false,
+      "description": "A file verdict as the relay records it: the document it judged named by digest.\n\n``None`` where the call removes the file, or where the record kept only\nthe digest beside it.",
+      "properties": {
+        "after": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/StoredDocument"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "after_sha256": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "After Sha256"
+        },
+        "before_sha256": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Before Sha256"
+        },
+        "effect": {
+          "$ref": "#/$defs/DecisionEffect"
+        },
+        "path": {
+          "format": "path",
+          "title": "Path",
+          "type": "string"
+        },
+        "reason": {
+          "title": "Reason",
+          "type": "string"
+        },
+        "rule": {
+          "title": "Rule",
+          "type": "string"
+        },
+        "rules": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Rules",
+          "type": "array"
+        }
+      },
+      "required": [
+        "path",
+        "effect",
+        "reason",
+        "rule",
+        "rules",
+        "before_sha256",
+        "after_sha256",
+        "after"
+      ],
+      "title": "RecordedFileReview",
+      "type": "object"
+    },
+    "RecordedQuestion": {
+      "additionalProperties": false,
+      "description": "One question as the relay folds it from its log: every document it binds named by digest.\n\nWhat a queue is read as, since it needs none of the documents; the\nrelay reads one back whole (:meth:`QuestionRelay.resolve`) for whoever\nshows it, checks it against its fingerprint, or carries it out.",
+      "properties": {
+        "account": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/Account"
+          },
+          "title": "Account",
+          "type": "array"
+        },
+        "agent": {
+          "default": "",
+          "title": "Agent",
+          "type": "string"
+        },
+        "answer": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/lup__policy__relay__Answer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "chain_resolved": {
+          "default": true,
+          "title": "Chain Resolved",
+          "type": "boolean"
+        },
+        "changed": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Changed"
+        },
+        "checkpoint_failure": {
+          "default": "",
+          "title": "Checkpoint Failure",
+          "type": "string"
+        },
+        "completed": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Completed"
+        },
+        "created": {
+          "format": "date-time",
+          "title": "Created",
+          "type": "string"
+        },
+        "eligible": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Eligible",
+          "type": "array"
+        },
+        "escalation": {
+          "default": "",
+          "title": "Escalation",
+          "type": "string"
+        },
+        "execution_id": {
+          "default": "",
+          "title": "Execution Id",
+          "type": "string"
+        },
+        "execution_payload": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/JsonObject"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "expires": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Expires"
+        },
+        "file_reviews": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/RecordedFileReview"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "File Reviews"
+        },
+        "fingerprint": {
+          "title": "Fingerprint",
+          "type": "string"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "member": {
+          "default": "",
+          "title": "Member",
+          "type": "string"
+        },
+        "moved": {
+          "default": [],
+          "items": {
+            "format": "path",
+            "type": "string"
+          },
+          "title": "Moved",
+          "type": "array"
+        },
+        "operation": {
+          "$ref": "#/$defs/Operation"
+        },
+        "outcome": {
+          "default": "",
+          "title": "Outcome",
+          "type": "string"
+        },
+        "policy_identity": {
+          "default": "",
+          "title": "Policy Identity",
+          "type": "string"
+        },
+        "preconditions": {
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/StoredDocument"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "default": {},
+          "propertyNames": {
+            "format": "path"
+          },
+          "title": "Preconditions",
+          "type": "object"
+        },
+        "purpose": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ReviewPurpose"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "reason": {
+          "title": "Reason",
+          "type": "string"
+        },
+        "requirement": {
+          "$ref": "#/$defs/ReviewerRequirement",
+          "default": "human_only"
+        },
+        "resolved": {
+          "additionalProperties": {
+            "format": "path",
+            "type": "string"
+          },
+          "default": {},
+          "propertyNames": {
+            "format": "path"
+          },
+          "title": "Resolved",
+          "type": "object"
+        },
+        "resumption": {
+          "default": "coordinator",
+          "enum": [
+            "coordinator",
+            "native_retry"
+          ],
+          "title": "Resumption",
+          "type": "string"
+        },
+        "rule": {
+          "default": "",
+          "title": "Rule",
+          "type": "string"
+        },
+        "scheme": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Scheme"
+        },
+        "segments": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/CommandSegment"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Segments"
+        },
+        "state": {
+          "$ref": "#/$defs/QuestionState",
+          "default": "pending"
+        },
+        "unpreviewed": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/UnpreviewedStep"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Unpreviewed"
+        }
+      },
+      "required": [
+        "id",
+        "operation",
+        "fingerprint",
+        "unpreviewed",
+        "segments",
+        "resumption",
+        "reason",
+        "rule",
+        "purpose",
+        "requirement",
+        "eligible",
+        "chain_resolved",
+        "escalation",
+        "checkpoint_failure",
+        "state",
+        "answer",
+        "created",
+        "expires",
+        "completed",
+        "outcome",
+        "execution_id",
+        "execution_payload",
+        "policy_identity",
+        "resolved",
+        "member",
+        "agent",
+        "moved",
+        "account",
+        "scheme",
+        "changed",
+        "preconditions",
+        "file_reviews"
+      ],
+      "title": "RecordedQuestion",
+      "type": "object"
+    },
     "ReplyOutcome": {
       "additionalProperties": false,
       "description": "What became of the operator's message: queued in the mailbox, and whether a wake landed.",
@@ -3053,7 +3066,7 @@
     },
     "ReviewDetail": {
       "additionalProperties": false,
-      "description": "Everything the operator reviews before answering.",
+      "description": "Everything the operator reviews before answering.\n\n``question`` is the record as the relay keeps it, each document named by\ndigest; the documents themselves are ``files``.",
       "properties": {
         "command": {
           "anyOf": [
@@ -3094,7 +3107,7 @@
           "type": "string"
         },
         "question": {
-          "$ref": "#/$defs/PersistentQuestion"
+          "$ref": "#/$defs/RecordedQuestion"
         },
         "summary": {
           "$ref": "#/$defs/ReviewSummary"
@@ -3296,6 +3309,29 @@
         "key"
       ],
       "title": "ReviewGoneEvent",
+      "type": "object"
+    },
+    "ReviewHistory": {
+      "additionalProperties": false,
+      "description": "One page of History: reviews that left the queue, most recently settled first, and how many there are.",
+      "properties": {
+        "reviews": {
+          "items": {
+            "$ref": "#/$defs/ReviewSummary"
+          },
+          "title": "Reviews",
+          "type": "array"
+        },
+        "total": {
+          "title": "Total",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "reviews",
+        "total"
+      ],
+      "title": "ReviewHistory",
       "type": "object"
     },
     "ReviewHunk": {
@@ -3606,7 +3642,7 @@
     },
     "ReviewScopeEvent": {
       "additionalProperties": false,
-      "description": "Which checkouts' queues are read, and which could not be.",
+      "description": "Which checkouts' queues are read, which could not be, and how many reviews left them.\n\n``history`` counts every review that left the queue, archived ones\nincluded, of which the stream carries only the most recent: the page\nreads the rest a page at a time.",
       "properties": {
         "errors": {
           "items": {
@@ -3614,6 +3650,11 @@
           },
           "title": "Errors",
           "type": "array"
+        },
+        "history": {
+          "default": 0,
+          "title": "History",
+          "type": "integer"
         },
         "roots": {
           "items": {
@@ -3632,14 +3673,15 @@
       "required": [
         "type",
         "roots",
-        "errors"
+        "errors",
+        "history"
       ],
       "title": "ReviewScopeEvent",
       "type": "object"
     },
     "ReviewSnapshot": {
       "additionalProperties": false,
-      "description": "A complete snapshot of the configured review queues.",
+      "description": "The configured review queues as the page is handed them.\n\n``reviews`` holds every review still waiting and History's first page,\nthe most recently settled (:attr:`ReviewStore.recent`), each as its queue\nrow; the documents a review binds are read only when it is opened.\n``history`` is how many reviews have left the queue, archived ones\nincluded.",
       "properties": {
         "errors": {
           "default": [],
@@ -3648,6 +3690,11 @@
           },
           "title": "Errors",
           "type": "array"
+        },
+        "history": {
+          "default": 0,
+          "title": "History",
+          "type": "integer"
         },
         "reviews": {
           "default": [],
@@ -3668,7 +3715,8 @@
       "required": [
         "roots",
         "reviews",
-        "errors"
+        "errors",
+        "history"
       ],
       "title": "ReviewSnapshot",
       "type": "object"
@@ -3679,6 +3727,11 @@
       "properties": {
         "answerable": {
           "title": "Answerable",
+          "type": "boolean"
+        },
+        "archived": {
+          "default": false,
+          "title": "Archived",
           "type": "boolean"
         },
         "created": {
@@ -3731,6 +3784,19 @@
           "title": "Session",
           "type": "string"
         },
+        "settled": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Settled"
+        },
         "stale": {
           "default": [],
           "items": {
@@ -3781,7 +3847,9 @@
         "stale",
         "said",
         "target",
-        "session"
+        "session",
+        "settled",
+        "archived"
       ],
       "title": "ReviewSummary",
       "type": "object"
@@ -4727,6 +4795,21 @@
         "undoes"
       ],
       "title": "StepView",
+      "type": "object"
+    },
+    "StoredDocument": {
+      "additionalProperties": false,
+      "description": "A document the relay keeps once, in the store beside its log, named by the SHA-256 of its UTF-8 text.",
+      "properties": {
+        "sha256": {
+          "title": "Sha256",
+          "type": "string"
+        }
+      },
+      "required": [
+        "sha256"
+      ],
+      "title": "StoredDocument",
       "type": "object"
     },
     "StreamFrame": {

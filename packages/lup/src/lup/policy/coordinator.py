@@ -294,7 +294,7 @@ class OperationCoordinator:
         payload, a worktree that moved, a target that resolved differently.
         Any difference is a fresh question rather than a stale approval.
         """
-        entry = self.relay.find(question)
+        entry = self.relay.question(question)
         if entry is None:
             raise ValueError(f"no question {question!r} is recorded")
         if entry.state == "rejected":

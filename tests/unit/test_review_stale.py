@@ -168,11 +168,11 @@ async def test_opening_a_review_retires_it_when_its_files_moved(root: Path) -> N
 
 def test_a_directory_where_absence_was_recorded_is_a_move(root: Path) -> None:
     question = copied_then_rewritten(root)
-    assert moved(question) == []
+    assert moved(question.recorded()) == []
 
     (root / "tmp/amend").mkdir(parents=True)
 
-    (found,) = moved(question)
+    (found,) = moved(question.recorded())
     assert found.path == root / "tmp/amend"
     assert found.cause == "directory"
     assert "a directory now stands at" in found.sentence()
@@ -220,11 +220,11 @@ def test_a_preimage_is_compared_byte_for_byte_line_endings_included(
             )
         )
     )
-    assert moved(question) == []
+    assert moved(question.recorded()) == []
 
     source.write_bytes(recorded.replace("\r\n", "\n").encode())
 
-    (found,) = moved(question)
+    (found,) = moved(question.recorded())
     assert found.path == source and found.cause == "changed"
 
 
@@ -249,7 +249,7 @@ async def test_a_path_the_dashboard_cannot_see_is_never_stale(
     container = tmp_path / "container/tmp/claude-1000/scratchpad/source.py"
     question = recorded_beside(root, {container: "# copied from inside\n"})
 
-    assert moved(question) == []
+    assert moved(question.recorded()) == []
     async with client(root) as http:
         (waiting,) = (await snapshot(http)).reviews
         opened = await http.get(f"/api/reviews/{waiting.key}", headers=AUTHORIZATION)
@@ -271,7 +271,7 @@ async def test_a_file_the_dashboard_may_not_read_is_never_stale(root: Path) -> N
     question = recorded_beside(root, {sealed: "# as the session read it\n"})
     sealed.chmod(0)
     try:
-        assert moved(question) == []
+        assert moved(question.recorded()) == []
         async with client(root) as http:
             (waiting,) = (await snapshot(http)).reviews
     finally:
@@ -331,7 +331,7 @@ async def test_a_source_a_command_reads_from_is_not_what_the_page_judges(
     question = copied_by_a_command(root)
     (root / "packages/notes.md").write_text("# notes, edited since\n")
 
-    assert moved(question) == []
+    assert moved(question.recorded()) == []
     async with client(root) as http:
         (waiting,) = (await snapshot(http)).reviews
     assert waiting.state == "pending" and waiting.answerable
@@ -373,8 +373,8 @@ async def test_a_source_the_dashboard_cannot_read_never_shows_stale(
         )
     )
 
-    assert moved(question) == []
-    assert moved(question, sources=True) == []
+    assert moved(question.recorded()) == []
+    assert moved(question.recorded(), sources=True) == []
     async with client(root) as http:
         (waiting,) = (await snapshot(http)).reviews
     assert waiting.state == "pending" and waiting.answerable

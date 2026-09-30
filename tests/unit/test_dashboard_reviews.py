@@ -42,7 +42,7 @@ from lup.devtools.review.notifications import (
     notify_requester,
 )
 from lup.policy.operations import Operation
-from lup.policy.relay import PersistentQuestion, QuestionRelay
+from lup.policy.relay import PersistentQuestion, QuestionRelay, RecordedQuestion
 from lup.policy.review import ReviewedFile
 from lup.web import serve as web_serve
 from lup.web.serve import page_app
@@ -175,7 +175,7 @@ async def test_answer_requires_the_exact_origin(
         )
 
     assert response.status_code == 403
-    assert relay(tmp_path).find(entry.id) == entry
+    assert relay(tmp_path).find(entry.id) == entry.recorded()
 
 
 async def test_answer_requires_authentication_even_with_the_correct_origin(
@@ -192,7 +192,7 @@ async def test_answer_requires_authentication_even_with_the_correct_origin(
         )
 
     assert response.status_code == 401
-    assert relay(tmp_path).find(entry.id) == entry
+    assert relay(tmp_path).find(entry.id) == entry.recorded()
 
 
 @pytest.mark.parametrize(
@@ -213,7 +213,7 @@ async def test_answer_refuses_browser_simple_request_media_types(
         )
 
     assert response.status_code == 415
-    assert relay(tmp_path).find(entry.id) == entry
+    assert relay(tmp_path).find(entry.id) == entry.recorded()
 
 
 async def test_browser_cannot_choose_the_answering_principal(tmp_path: Path) -> None:
@@ -232,7 +232,7 @@ async def test_browser_cannot_choose_the_answering_principal(tmp_path: Path) -> 
         )
 
     assert response.status_code == 422
-    assert relay(tmp_path).find(entry.id) == entry
+    assert relay(tmp_path).find(entry.id) == entry.recorded()
 
 
 async def test_malformed_answer_is_a_validation_error(tmp_path: Path) -> None:
@@ -246,7 +246,7 @@ async def test_malformed_answer_is_a_validation_error(tmp_path: Path) -> None:
         )
 
     assert response.status_code == 422
-    assert relay(tmp_path).find(entry.id) == entry
+    assert relay(tmp_path).find(entry.id) == entry.recorded()
 
 
 async def test_same_question_id_in_two_roots_stays_distinct(tmp_path: Path) -> None:
@@ -289,7 +289,7 @@ async def test_detail_keeps_the_full_command_and_its_metadata(tmp_path: Path) ->
         response = await http.get(f"/api/reviews/{key}", headers=AUTHORIZATION)
 
     detail = ReviewDetail.model_validate(response.json())
-    assert detail.question == entry
+    assert detail.question == entry.recorded()
     assert detail.files == []
     assert detail.summary.answerable
     assert detail.summary.stale == []
@@ -596,7 +596,7 @@ async def test_a_changed_fingerprint_never_records_a_decision(tmp_path: Path) ->
         )
 
     assert response.status_code == 409
-    assert relay(tmp_path).find(entry.id) == entry
+    assert relay(tmp_path).find(entry.id) == entry.recorded()
 
 
 async def test_expired_questions_are_visible_but_cannot_be_answered(
@@ -907,7 +907,7 @@ async def test_open_dashboard_discovers_a_worktree_created_after_startup(
     }
     assert {Path(row.path) for row in snapshot.roots} == {root, sibling}
     assert detail.status_code == 200
-    assert ReviewDetail.model_validate(detail.json()).question == entry
+    assert ReviewDetail.model_validate(detail.json()).question == entry.recorded()
 
 
 async def test_dashboard_tracks_siblings_after_its_launch_worktree_is_removed(
@@ -943,7 +943,7 @@ async def test_dashboard_tracks_siblings_after_its_launch_worktree_is_removed(
         "arrived-question",
     }
     assert detail.status_code == 200
-    assert ReviewDetail.model_validate(detail.json()).question == entry
+    assert ReviewDetail.model_validate(detail.json()).question == entry.recorded()
 
 
 @pytest.mark.parametrize(
@@ -1068,7 +1068,7 @@ async def test_unavailable_first_queue_does_not_hide_a_healthy_repository(
     assert Path(snapshot.errors[0].root) == unavailable
     assert snapshot.errors[0].message
     assert found.status_code == 200
-    assert ReviewDetail.model_validate(found.json()).question == entry
+    assert ReviewDetail.model_validate(found.json()).question == entry.recorded()
     assert missing.status_code == 503
     assert answered.status_code == 200
     assert (
@@ -1176,15 +1176,15 @@ def test_a_queue_caught_mid_write_is_read_again_before_it_is_called_unavailable(
     reads: list[int] = []
     questions = QuestionRelay.questions
 
-    def torn_once(relay: QuestionRelay) -> list[PersistentQuestion]:
+    def torn_once(store: QuestionRelay) -> list[RecordedQuestion]:
         reads.append(len(reads))
         if len(reads) == 1:
             raise ValueError("a record was being written")
-        return questions(relay)
+        return questions(store)
 
     monkeypatch.setattr(QuestionRelay, "questions", torn_once)
 
-    queue = dashboard.ReviewQueue.read(tmp_path, pause=0)
+    queue = dashboard.ReviewQueue.read(tmp_path, relay(tmp_path), pause=0)
 
     assert queue.errors == []
     assert len(reads) == 2
@@ -1193,11 +1193,11 @@ def test_a_queue_caught_mid_write_is_read_again_before_it_is_called_unavailable(
 def test_a_queue_that_stays_unreadable_says_why(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    def held(relay: QuestionRelay) -> list[PersistentQuestion]:
+    def held(store: QuestionRelay) -> list[RecordedQuestion]:
         raise OSError("the relay is not readable")
 
     monkeypatch.setattr(QuestionRelay, "questions", held)
 
-    queue = dashboard.ReviewQueue.read(tmp_path, pause=0)
+    queue = dashboard.ReviewQueue.read(tmp_path, relay(tmp_path), pause=0)
 
     assert [error.message for error in queue.errors] == ["the relay is not readable"]

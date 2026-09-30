@@ -296,9 +296,24 @@ Each source is read again only where it moved. A roster is read when a member's
 file changes, and at least every five seconds, since a runtime can stop without
 writing; a transcript from the byte it was last read to, its last megabyte the
 first time; the mail record from its cursor; a checkout's review queue only when
-its relay changed on disk, and a settled review is projected once. An idle
+its relay changed on disk, and then only what was appended since, through the
+relay the dashboard keeps open; and a settled review is projected once. An idle
 dashboard costs a few file checks a look however many sessions it shows and
 however long the history behind them.
+
+The reviews on the stream are rows: every review waiting, and the fifty that
+most recently left the queue, each with what the queue shows of it — its
+title, the files it names, who asked, why the policy asks, whether it can be
+answered here — and how many reviews History holds in all. A review's
+documents, diffs and thread are read when it is opened
+(`GET /api/reviews/<key>`), and the next one in the list is read as soon as
+the open one has arrived, so moving on shows it at once; a review opened again
+while its row stands is shown from what was read. What a review's documents
+show is worked out once for its fingerprint, so opening it again, and the
+answer that settles it, diff nothing anew. History past the fifty is read a
+page at a time (`GET /api/reviews/history?offset=<n>&limit=<m>`, most
+recently settled first) with **Load older requests**, and a link to a review
+further back is looked up there by its id.
 
 Until the first frame arrives, the page shows loading with unknown counts.
 After it, a queue that is not current — the stream reconnecting, or a
@@ -356,6 +371,20 @@ never knew it, since a session it never recorded cannot be told from one that
 has not joined yet. The dashboard sweeps every ten seconds, and
 `review list` sweeps its checkout before it lists. A retry of an expired
 review's call parks a fresh review.
+
+The same sweep archives what settled long enough ago. A review that came to
+rest — carried out, declined, withdrawn, expired or stale — keeps its
+documents for the retention window after it settled, seven days unless the
+checkout's `pyproject.toml` says otherwise as `review-retention-days` under
+`[tool.lup]`: long enough to reread a week's reviews with their diffs, short
+enough that the relay every hook and every look reads holds a week of them.
+Past it the review moves to the relay's archive, `.lup/reviews/archive.jsonl`,
+keeping its record, how it read — its title, the files it named — and its
+thread; its documents leave the store, unless a review still in the relay
+names the same one. History shows archived reviews beside the rest, and one
+opened says it was archived and shows what the archive kept; `review list
+--all` and `review show <id>` read them too. At most two hundred move per
+sweep, so a checkout with a long history catches up over several sweeps.
 
 A waiting review a recorded file moved under leaves the pending queue at once
 as `stale`, and shows only in History, labelled stale, with each file that

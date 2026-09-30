@@ -535,6 +535,13 @@ PATH_RULES: list[PathRuleRow] = [
     },
     {
         "kind": "subtree",
+        "value": ".lup/reviews",
+        "reason": "protected path requires approval",
+        "recovery": "",
+        "allow_autonomous": False,
+    },
+    {
+        "kind": "subtree",
         "value": ".lup/review-claims",
         "reason": "protected path requires approval",
         "recovery": "",

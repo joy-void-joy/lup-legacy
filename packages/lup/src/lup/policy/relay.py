@@ -13,6 +13,18 @@ reaches read-only. So nothing a session writes into its relay answers
 anything: a record there claiming an answer is ignored, and a parked record
 whose fields no longer hash to its fingerprint may not be answered at all.
 
+The relay keeps each question once. Its log holds a record per question as it
+was parked -- every document it binds, a file's preimage or what a verdict
+judged it becoming, kept once in a content store beside the log and named in
+the record by digest -- and a small transition per state it moves to since.
+Reading folds the transitions into the questions they move; a reader that
+stays open reads only what was appended since it last read. What the
+fingerprint binds is still each document whole: a record is read back through
+the documents its digests name, and one that cannot be read back cannot be
+answered. A question that settled long enough ago leaves the log for the
+archive its reader keeps (:meth:`QuestionRelay.retire`), and the documents no
+question names any more leave the store with it.
+
 Two invariants hold everywhere:
 
 - **The requester never answers its own question.** Eligibility comes from
@@ -26,24 +38,38 @@ Two invariants hold everywhere:
 
 import fcntl
 import json
+import os
+import threading
+import time
 from hashlib import sha256
-from collections.abc import Iterator, Sequence
+from collections.abc import Callable, Collection, Iterator, Sequence
 from contextlib import contextmanager
 from functools import cache
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal, Self
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, ValidationError, model_validator
 
 from lup.policy.assets.host import (
+    append_relay_records,
     append_review_record,
-    recorded_answers,
+    bound_parts,
+    fold_relay,
+    migrate_relay,
+    named_blobs,
+    opened_relay,
+    park_relay_entry,
+    relay_blobs,
+    relay_current,
+    relay_header,
+    relay_lock,
+    resolved_entry,
     review_answers,
     review_answers_home,
-    bound_parts,
     review_fingerprint,
-    review_records,
+    rewrite_relay,
+    stream_records,
 )
 from lup.policy.identity import REVIEW_ANSWERS_ENV
 from lup.policy.kernel.decision import DecisionEffect
@@ -265,13 +291,46 @@ class RecordedAnswer(BaseModel, frozen=True):
     answer: Answer
 
 
-class CapturedFileReview(BaseModel, frozen=True):
-    """The original routed file verdict, bound to its captured input and result.
+class Remark(BaseModel, frozen=True):
+    """The operator's note and line comments on a review, sent without deciding it."""
 
-    ``after`` is the document the verdict judged, which is what a reviewer
-    is shown the file becoming; ``None`` with a digest beside it is a record
-    that kept only the digest.
-    """
+    principal: str
+    note: str = ""
+    comments: list[LineComment] = []
+    at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+
+
+class RecordedRemark(BaseModel, frozen=True):
+    """One remark as the host keeps it beside the answers: the review it was written on, bound to its fingerprint."""
+
+    question: str
+    fingerprint: str
+    remark: Remark
+
+
+class Reply(BaseModel, frozen=True):
+    """What the requester said back on its own review."""
+
+    author: str
+    text: str = Field(min_length=1)
+    at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+
+
+class RecordedReply(BaseModel, frozen=True):
+    """One reply as the requester's relay keeps it, beside the reviews it parked."""
+
+    question: str
+    reply: Reply
+
+
+class StoredDocument(BaseModel, frozen=True):
+    """A document the relay keeps once, in the store beside its log, named by the SHA-256 of its UTF-8 text."""
+
+    sha256: str
+
+
+class FileVerdict(BaseModel, frozen=True):
+    """The original routed verdict on one file, bound by digest to the images it judged."""
 
     path: Path
     effect: DecisionEffect
@@ -280,7 +339,27 @@ class CapturedFileReview(BaseModel, frozen=True):
     rules: list[str]
     before_sha256: str | None
     after_sha256: str | None
+
+
+class CapturedFileReview(FileVerdict, frozen=True):
+    """The original routed file verdict, bound to its captured input and result.
+
+    ``after`` is the document the verdict judged, which is what a reviewer
+    is shown the file becoming; ``None`` with a digest beside it is a record
+    that kept only the digest.
+    """
+
     after: str | None = None
+
+
+class RecordedFileReview(FileVerdict, frozen=True):
+    """A file verdict as the relay records it: the document it judged named by digest.
+
+    ``None`` where the call removes the file, or where the record kept only
+    the digest beside it.
+    """
+
+    after: StoredDocument | None = None
 
 
 class CommandSegment(BaseModel, frozen=True):
@@ -313,22 +392,22 @@ class UnpreviewedStep(BaseModel, frozen=True):
     cause: Literal["run", "unread"]
 
 
-class PersistentQuestion(BaseModel, frozen=True):
-    """One parked ask, durable, with everything needed to resume it exactly.
+class QuestionRecord(BaseModel, frozen=True):
+    """One parked ask, and everything it records beside the documents it binds.
 
     The operation is carried whole rather than summarized, because the
     requesting agent must not be the thing that reconstructs it: an agent
     asked to reissue an approved call is an agent that can reissue a
-    different one.
+    different one. The documents -- each file's preimage, and what each
+    file verdict judged it becoming -- are the two forms' own:
+    :class:`RecordedQuestion` names them by digest, as the relay folds its
+    log, and :class:`PersistentQuestion` holds them whole, as a reviewer and
+    a fingerprint read them.
     """
 
     id: str
     operation: Operation
     fingerprint: str
-    preconditions: dict[Path, str | None] = {}
-    """File preimages bound to a native hook review, rechecked before dispatch."""
-    file_reviews: list[CapturedFileReview] | None = None
-    """Original per-file attribution; absent on records that did not capture it."""
     unpreviewed: list[UnpreviewedStep] | None = None
     """The steps of a command no document shows, beside the files ``file_reviews`` does."""
     segments: list[CommandSegment] | None = None
@@ -400,6 +479,130 @@ class PersistentQuestion(BaseModel, frozen=True):
     that changed; absent on a record parked before it was kept, which bound
     the parts it carries.
     """
+    changed: datetime | None = None
+    """When it came to the state it stands in, where a transition moved it; its parking otherwise."""
+
+    def since(self) -> datetime:
+        """When it came to the state it stands in: the operator's answer, its last transition, else its parking."""
+        if self.state in ("approved", "rejected") and self.answer is not None:
+            return self.answer.at
+        return self.changed if self.changed is not None else self.created
+
+    def unverifiable(self) -> str:
+        """Why this reader cannot check the record against its fingerprint, or nothing where it can.
+
+        A record whose scheme names a part this code does not know was
+        parked by a newer hook: it has not changed, and this reader cannot
+        tell either way, so it says which rather than refusing it as altered.
+        """
+        if (
+            self.resumption != "native_retry"
+            or self.scheme is None
+            or bound_parts({"scheme": self.scheme}) is not None
+        ):
+            return ""
+        return (
+            "this dashboard runs older code than the hook that parked this "
+            "review, so it cannot check the review against its fingerprint"
+        )
+
+    def settled_by(self, recorded: "RecordedAnswer | None") -> Self:
+        """This question with the operator's answer, where one was recorded for it.
+
+        A waiting question becomes approved or declined; one already carried
+        further keeps its state and shows who answered it. An answer given
+        against another fingerprint is not this question's.
+        """
+        if recorded is None or recorded.fingerprint != self.fingerprint:
+            return self
+        if self.state != "pending":
+            return self.model_copy(update={"answer": recorded.answer})
+        return self.model_copy(
+            update={
+                "state": "approved" if recorded.answer.approved else "rejected",
+                "answer": recorded.answer,
+            }
+        )
+
+    def answerable_by(self, principal: str) -> bool:
+        """Whether this principal may answer, which the requester never may.
+
+        Every half is checked here rather than at each caller, because a
+        caller that remembered only the eligibility list is a caller that lets
+        a requester answer itself by appearing in its own chain.
+
+        An unresolved chain narrows nothing and excludes nobody but the
+        requester. That is the honest reading: eligibility unknown here is a
+        gap in what this boundary could compute, not a finding that nobody
+        qualifies — and read as the second it made the durable queue
+        unanswerable on the path that produces most of it.
+        """
+        if self.state != "pending" or principal == self.operation.requester:
+            return False
+        return not self.chain_resolved or principal in self.eligible
+
+    def overdue(self, now: datetime | None = None) -> bool:
+        """Whether this question has passed its expiry without being answered."""
+        if self.expires is None or self.state != "pending":
+            return False
+        return (now or datetime.now(UTC)) >= self.expires
+
+    def summary(self) -> str:
+        """One line for a queue, which says what is being asked and by whom."""
+        return (
+            f"{self.id}  {self.state:<10} {self.requirement:<18}"
+            f" {self.operation.summary()}  — {self.reason}"
+        )
+
+
+class RecordedQuestion(QuestionRecord, frozen=True):
+    """One question as the relay folds it from its log: every document it binds named by digest.
+
+    What a queue is read as, since it needs none of the documents; the
+    relay reads one back whole (:meth:`QuestionRelay.resolve`) for whoever
+    shows it, checks it against its fingerprint, or carries it out.
+    """
+
+    preconditions: dict[Path, StoredDocument | None] = {}
+    """Each file the call binds, by the document it held when it was parked; ``None`` where none stood."""
+    file_reviews: list[RecordedFileReview] | None = None
+    """Original per-file attribution; absent on records that did not capture it."""
+
+
+class PersistentQuestion(QuestionRecord, frozen=True):
+    """One parked ask with every document it binds whole: everything needed to resume it exactly."""
+
+    preconditions: dict[Path, str | None] = {}
+    """File preimages bound to a native hook review, rechecked before dispatch."""
+    file_reviews: list[CapturedFileReview] | None = None
+    """Original per-file attribution; absent on records that did not capture it."""
+
+    def recorded(self) -> RecordedQuestion:
+        """This question as the relay records it: every document it holds named by its digest."""
+
+        def named(text: str | None) -> StoredDocument | None:
+            return (
+                StoredDocument(sha256=sha256(text.encode()).hexdigest())
+                if text is not None
+                else None
+            )
+
+        return RecordedQuestion.model_validate(
+            {
+                **self.model_dump(exclude={"preconditions", "file_reviews"}),
+                "preconditions": {
+                    path: named(text) for path, text in self.preconditions.items()
+                },
+                "file_reviews": [
+                    RecordedFileReview.model_validate(
+                        {**row.model_dump(exclude={"after"}), "after": named(row.after)}
+                    )
+                    for row in self.file_reviews
+                ]
+                if self.file_reviews is not None
+                else None,
+            }
+        )
 
     def bound_parts(self) -> dict[str, JsonValue] | None:
         """What else this record's fingerprint binds, by name, or ``None`` where its scheme is not this code's."""
@@ -419,20 +622,6 @@ class PersistentQuestion(BaseModel, frozen=True):
                 **carried,
                 **({"scheme": self.scheme} if self.scheme is not None else {}),
             }
-        )
-
-    def unverifiable(self) -> str:
-        """Why this reader cannot check the record against its fingerprint, or nothing where it can.
-
-        A record whose scheme names a part this code does not know was
-        parked by a newer hook: it has not changed, and this reader cannot
-        tell either way, so it says which rather than refusing it as altered.
-        """
-        if self.resumption != "native_retry" or self.bound_parts() is not None:
-            return ""
-        return (
-            "this dashboard runs older code than the hook that parked this "
-            "review, so it cannot check the review against its fingerprint"
         )
 
     def native_fingerprint(self) -> str:
@@ -478,24 +667,6 @@ class PersistentQuestion(BaseModel, frozen=True):
             return True
         return self.native_fingerprint() == self.fingerprint
 
-    def settled_by(self, recorded: "RecordedAnswer | None") -> "PersistentQuestion":
-        """This question with the operator's answer, where one was recorded for it.
-
-        A waiting question becomes approved or declined; one already carried
-        further keeps its state and shows who answered it. An answer given
-        against another fingerprint is not this question's.
-        """
-        if recorded is None or recorded.fingerprint != self.fingerprint:
-            return self
-        if self.state != "pending":
-            return self.model_copy(update={"answer": recorded.answer})
-        return self.model_copy(
-            update={
-                "state": "approved" if recorded.answer.approved else "rejected",
-                "answer": recorded.answer,
-            }
-        )
-
     @classmethod
     def review_fingerprint(
         cls,
@@ -518,36 +689,6 @@ class PersistentQuestion(BaseModel, frozen=True):
             ),
         ]
         return sha256(json.dumps(material, sort_keys=True).encode()).hexdigest()
-
-    def answerable_by(self, principal: str) -> bool:
-        """Whether this principal may answer, which the requester never may.
-
-        Every half is checked here rather than at each caller, because a
-        caller that remembered only the eligibility list is a caller that lets
-        a requester answer itself by appearing in its own chain.
-
-        An unresolved chain narrows nothing and excludes nobody but the
-        requester. That is the honest reading: eligibility unknown here is a
-        gap in what this boundary could compute, not a finding that nobody
-        qualifies — and read as the second it made the durable queue
-        unanswerable on the path that produces most of it.
-        """
-        if self.state != "pending" or principal == self.operation.requester:
-            return False
-        return not self.chain_resolved or principal in self.eligible
-
-    def overdue(self, now: datetime | None = None) -> bool:
-        """Whether this question has passed its expiry without being answered."""
-        if self.expires is None or self.state != "pending":
-            return False
-        return (now or datetime.now(UTC)) >= self.expires
-
-    def summary(self) -> str:
-        """One line for a queue, which says what is being asked and by whom."""
-        return (
-            f"{self.id}  {self.state:<10} {self.requirement:<18}"
-            f" {self.operation.summary()}  — {self.reason}"
-        )
 
 
 class FileSignature(BaseModel, frozen=True):
@@ -591,14 +732,139 @@ def answers_file(relay: Path, home: Path) -> Path:
     return review_answers(relay, home)
 
 
+class Appended(BaseModel, frozen=True):
+    """What one read of an appended file found: the records since the last read, and whether it read from the start.
+
+    From the start where the file is new to this reader, was moved over, or
+    was cut short: what was folded from before is then the old file's, and
+    let go.
+    """
+
+    records: list[JsonObject]
+    began: bool
+
+
+def named_question(record: JsonObject) -> str:
+    """The question a record of a relay's log is about -- parked, moved, or replied on -- or "" where none."""
+    match record:
+        case {"parked": {"id": str() as question}}:
+            return question
+        case {"transition": {"id": str() as question}}:
+            return question
+        case {"question": str() as question, "reply": dict()}:
+            return question
+    return ""
+
+
+class AppendedRecords:
+    """One JSON-lines file written only at its end, read from where the last read stopped.
+
+    A reader that stays open -- the dashboard, a waiter -- pays for what was
+    appended since it last looked, never the whole file again. A file moved
+    over the path, or cut short, is read again from its start, and the read
+    says so, so what was folded from the old one is let go. A line with no
+    terminator yet is left for the next read; one that is not a JSON object
+    is inert evidence, as it is to every reader of these files.
+    """
+
+    def __init__(self, path: Path) -> None:
+        self.path = path
+        self.inode = -1
+        self.offset = 0
+
+    def read(self) -> Appended:
+        """The records appended since the last read, and whether this read began at the file's start."""
+        try:
+            stream = self.path.open("rb")
+        except FileNotFoundError:
+            self.inode, self.offset = -1, 0
+            return Appended(records=[], began=True)
+        with stream:
+            fcntl.flock(stream, fcntl.LOCK_SH)
+            status = os.fstat(stream.fileno())
+            if status.st_ino != self.inode or status.st_size < self.offset:
+                self.inode, self.offset = status.st_ino, 0
+            began = self.offset == 0
+            stream.seek(self.offset)
+            appended = stream.read()
+        complete = appended.rfind(b"\n") + 1
+        self.offset += complete
+
+        def records() -> Iterator[JsonObject]:
+            for line in appended[:complete].splitlines():
+                try:
+                    record = json.loads(line)
+                except (ValueError, UnicodeDecodeError):
+                    continue
+                if isinstance(record, dict):
+                    yield record
+
+        return Appended(records=list(records()), began=began)
+
+
+def swept_blobs(
+    blobs: Path, named: Collection[str], grace: float = 3600.0
+) -> list[str]:
+    """Remove every document the store keeps that no record names, and say which.
+
+    A document is written beside its name and moved into place, so one found
+    still beside its name an hour on was left by a writer that stopped
+    midway, and goes too.
+    """
+    if not blobs.is_dir():
+        return []
+
+    def unnamed(kept: Path) -> bool:
+        if not kept.name.startswith("."):
+            return kept.name not in named
+        try:
+            return time.time() - kept.stat().st_mtime > grace
+        except FileNotFoundError:
+            return False
+
+    stranded = [kept for kept in blobs.iterdir() if unnamed(kept)]
+    for kept in stranded:
+        kept.unlink(missing_ok=True)
+    return [kept.name for kept in stranded]
+
+
+class QuestionFold(BaseModel):
+    """What one relay's log has folded to so far.
+
+    Each question as its records leave it, what was made of each until a
+    record moves it again -- ``None`` where it does not read as a question --
+    and the replies on each, in the order they were written.
+    """
+
+    entries: dict[str, JsonObject] = {}
+    validated: dict[str, RecordedQuestion | None] = {}
+    replied: dict[str, list[RecordedReply]] = {}
+
+
+class AnswerFold(BaseModel):
+    """What the host's file of answers to one relay has folded to so far.
+
+    The first answer recorded for each review -- ``None`` where that record
+    does not read as one, which no later record then replaces -- and every
+    remark on each, oldest first.
+    """
+
+    answered: dict[str, RecordedAnswer | None] = {}
+    remarked: dict[str, list[RecordedRemark]] = {}
+
+
 class QuestionRelay:
     """The durable store every final ask is written to before anybody sees it.
 
-    Append-only on disk, because the failure this has to survive is a crash
-    between recording a question and answering it — and a store that rewrites
-    a file in place has a window where the question is neither the old one nor
-    the new one. Reading folds the log forward, so the last record for an id
-    is its state and every earlier record is still there to be read.
+    Appended rather than rewritten in place, because the failure this has to
+    survive is a crash between recording a question and answering it — and a
+    store that rewrites a file in place has a window where the question is
+    neither the old one nor the new one. A question is recorded once, as it
+    was parked, and each state it moves to after is a transition naming it;
+    reading folds them together, and only what was appended since the last
+    read is read again. The two rewrites the log ever sees -- an older log
+    brought into this shape, settled questions moved out
+    (:meth:`retire`) -- move a whole new file over the old.
 
     ``answers`` is the host's file of answers to this relay's questions,
     derived from where the relay is unless a caller names it: the one place
@@ -615,6 +881,22 @@ class QuestionRelay:
             if answers is not None
             else answers_file(path, review_answers_home(REVIEW_ANSWERS_ENV))
         )
+        self.reading = threading.RLock()
+        self.holder = 0
+        self.log = AppendedRecords(path)
+        self.answer_log = AppendedRecords(self.answers)
+        self.fold = QuestionFold()
+        self.heard = AnswerFold()
+
+    @property
+    def blobs(self) -> Path:
+        """Where this relay keeps each document its records name, once."""
+        return relay_blobs(self.path)
+
+    @property
+    def store(self) -> Path:
+        """The directory beside the log holding what the relay keeps apart from it."""
+        return self.blobs.parent
 
     def signature(self) -> RelaySignature:
         """What this relay's queue is on disk now, to read it again only once it changes."""
@@ -623,10 +905,99 @@ class QuestionRelay:
             answers=FileSignature.of(self.answers),
         )
 
+    def refreshed(self) -> None:
+        """Fold what was appended to the log and to the host's answers since the last read.
+
+        An older log is rewritten into this shape the first time it is read,
+        which takes the relay's lock: inside a transaction, which holds it
+        already, a log moved over by one in the older shape is refused
+        rather than waited on.
+        """
+        appended = self.log.read()
+        records, began = appended.records, appended.began
+        if began and records and records[0] != relay_header():
+            if self.holder:
+                raise ValueError(
+                    f"{self.path} was replaced by a log in an older shape while a "
+                    "transaction held it"
+                )
+            migrate_relay(self.path)
+            appended = self.log.read()
+            records, began = appended.records, appended.began
+        if began:
+            self.fold = QuestionFold()
+        fold_relay(self.fold.entries, records)
+        for moved in [
+            question for record in records if (question := named_question(record))
+        ]:
+            self.fold.validated.pop(moved, None)
+        for record in records:
+            match record:
+                case {"question": str() as question, "reply": dict()}:
+                    try:
+                        reply = RecordedReply.model_validate(record)
+                    except ValidationError:
+                        continue
+                    self.fold.replied.setdefault(question, []).append(reply)
+        heard = self.answer_log.read()
+        if heard.began:
+            self.heard = AnswerFold()
+        for record in heard.records:
+            match record:
+                case {
+                    "question": str() as question,
+                    "fingerprint": str(),
+                    "answer": {
+                        "approved": bool(),
+                        "principal": str(),
+                        "receipt": str(),
+                    },
+                } if question not in self.heard.answered:
+                    try:
+                        answer = RecordedAnswer.model_validate(record)
+                    except ValidationError:
+                        answer = None
+                    self.heard.answered[question] = answer
+                case {"question": str() as question, "remark": dict()}:
+                    try:
+                        remark = RecordedRemark.model_validate(record)
+                    except ValidationError:
+                        continue
+                    self.heard.remarked.setdefault(question, []).append(remark)
+
+    def folded(self, question: str) -> RecordedQuestion | None:
+        """One question as the log folds it, before the host's answer is laid over it.
+
+        Made once until a record moves it again.
+        """
+        if question not in self.fold.entries:
+            return None
+        if question not in self.fold.validated:
+            try:
+                made = RecordedQuestion.model_validate(self.fold.entries[question])
+            except ValidationError:
+                made = None
+            self.fold.validated[question] = made
+        return self.fold.validated[question]
+
+    def settled(self, question: str) -> RecordedQuestion | None:
+        """One question as it stands: folded, with the host's answer where one was recorded."""
+        entry = self.folded(question)
+        if entry is None:
+            return None
+        return entry.settled_by(
+            self.heard.answered[question] if question in self.heard.answered else None
+        )
+
     def record(self, question: PersistentQuestion) -> PersistentQuestion:
-        """Append one question's current state, and return it unchanged."""
-        append_review_record(self.path, question.model_dump_json())
+        """Park one question: its documents kept in the store, its record naming them."""
+        park_relay_entry(self.path, question.model_dump(mode="json"))
         return question
+
+    def reply(self, recorded: RecordedReply) -> RecordedReply:
+        """Record what the requester said back on one of its reviews, beside the reviews it parked."""
+        append_relay_records(self.path, lambda: [recorded.model_dump(mode="json")])
+        return recorded
 
     @contextmanager
     def transaction(self) -> Iterator[None]:
@@ -634,18 +1005,22 @@ class QuestionRelay:
 
         A separate lock leaves the log's own read and append locks available.
         Each call opens its own descriptor, so threads also contend for it.
+        An older log is rewritten before it is taken, since rewriting takes it.
         """
-        path = self.path.resolve()
-        lock = path.with_name(f"{path.name}.lock")
+        if not relay_current(self.path):
+            migrate_relay(self.path)
+        lock = relay_lock(self.path)
         lock.parent.mkdir(parents=True, exist_ok=True)
         with lock.open("a", encoding="utf-8") as handle:
             fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+            self.holder = threading.get_ident()
             try:
                 yield
             finally:
+                self.holder = 0
                 fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
 
-    def questions(self) -> list[PersistentQuestion]:
+    def questions(self) -> list[RecordedQuestion]:
         """Every question, folded forward to its latest state, with the host's answer.
 
         Malformed or unterminated lines remain inert evidence. Appenders
@@ -654,39 +1029,64 @@ class QuestionRelay:
         A record in this relay claiming an answer is skipped: the answer is
         the host's, and :meth:`recorded` is where it is read.
         """
-
-        def valid() -> Iterator[PersistentQuestion]:
-            for record in review_records(self.path):
-                try:
-                    entry = PersistentQuestion.model_validate(record)
-                except ValueError:
-                    continue
-                if entry.state not in ("approved", "rejected"):
-                    yield entry
-
-        folded = {entry.id: entry for entry in valid()}
-        recorded = self.recorded()
-        return [
-            entry.settled_by(recorded[entry.id] if entry.id in recorded else None)
-            for entry in folded.values()
-        ]
+        with self.reading:
+            self.refreshed()
+            return [
+                entry
+                for question in list(self.fold.entries)
+                if (entry := self.settled(question)) is not None
+            ]
 
     def recorded(self) -> dict[str, RecordedAnswer]:
         """The operator's answer to each of this relay's reviews, by review id."""
+        with self.reading:
+            self.refreshed()
+            return {
+                question: answer
+                for question, answer in self.heard.answered.items()
+                if answer is not None
+            }
 
-        def valid() -> Iterator[RecordedAnswer]:
-            for entry in recorded_answers(self.answers).values():
-                try:
-                    yield RecordedAnswer.model_validate(entry)
-                except ValueError:
-                    continue
+    def remarks(self) -> dict[str, list[RecordedRemark]]:
+        """Every remark the operator made on this relay's reviews, by review id, oldest first."""
+        with self.reading:
+            self.refreshed()
+            return {
+                question: list(said) for question, said in self.heard.remarked.items()
+            }
 
-        return {recorded.question: recorded for recorded in valid()}
+    def replies(self) -> dict[str, list[Reply]]:
+        """Every reply a requester wrote on this relay's reviews, by review id, oldest first."""
+        with self.reading:
+            self.refreshed()
+            return {
+                question: [each.reply for each in said]
+                for question, said in self.fold.replied.items()
+            }
 
-    def find(self, question: str) -> PersistentQuestion | None:
-        return next((entry for entry in self.questions() if entry.id == question), None)
+    def find(self, question: str) -> RecordedQuestion | None:
+        """One question as it stands, reading only what was appended since the last read."""
+        with self.reading:
+            self.refreshed()
+            return self.settled(question)
 
-    def pending(self, principal: str = "") -> list[PersistentQuestion]:
+    def resolve(self, entry: RecordedQuestion) -> PersistentQuestion:
+        """One question with every document it names read back whole from the store.
+
+        Raises ValueError where one is missing or no longer hashes to its
+        name -- a question retired to the archive keeps none -- since what
+        cannot be read back cannot be shown, or checked, for what it binds.
+        """
+        return PersistentQuestion.model_validate(
+            resolved_entry(entry.model_dump(mode="json"), self.blobs)
+        )
+
+    def question(self, question: str) -> PersistentQuestion | None:
+        """One question as it stands with its documents whole, or ``None`` where none is recorded."""
+        entry = self.find(question)
+        return self.resolve(entry) if entry is not None else None
+
+    def pending(self, principal: str = "") -> list[RecordedQuestion]:
         """Questions still waiting, optionally narrowed to one reviewer's own.
 
         Narrowed by *eligibility* rather than by ownership: a supervisor
@@ -700,6 +1100,22 @@ class QuestionRelay:
         if not principal:
             return waiting
         return [entry for entry in waiting if entry.answerable_by(principal)]
+
+    def transitioned(
+        self, steps: dict[str, JsonObject], at: datetime | None = None
+    ) -> list[RecordedQuestion]:
+        """Record each question's move to another state in one append, and return each as it now stands."""
+        when = (at or datetime.now(UTC)).isoformat()
+        append_relay_records(
+            self.path,
+            lambda: [
+                {"transition": {"id": question, "at": when, **fields}}
+                for question, fields in steps.items()
+            ],
+        )
+        return [
+            entry for question in steps if (entry := self.find(question)) is not None
+        ]
 
     def answer(
         self,
@@ -716,8 +1132,9 @@ class QuestionRelay:
         reused or forged: a question that does not exist, one already
         answered, one whose expiry passed, one this principal may not answer
         — which includes the requester, always — and one whose record no
-        longer shows what its fingerprint covers. ``comments`` ride on the
-        answer beside the note, and settle nothing of their own.
+        longer shows what its fingerprint covers, the documents it names read
+        back included. ``comments`` ride on the answer beside the note, and
+        settle nothing of their own.
         """
         with self.transaction():
             entry = self.find(question)
@@ -728,7 +1145,8 @@ class QuestionRelay:
                     f"question {question!r} is {entry.state} and cannot be answered again"
                 )
             if entry.overdue():
-                return self.record(entry.model_copy(update={"state": "expired"}))
+                (expired,) = self.transitioned({question: {"state": "expired"}})
+                return self.resolve(expired)
             if not entry.answerable_by(principal):
                 raise ValueError(
                     f"{principal!r} may not answer {question!r}"
@@ -736,7 +1154,14 @@ class QuestionRelay:
                 )
             if unverifiable := entry.unverifiable():
                 raise ValueError(f"review {question!r}: {unverifiable}")
-            if not entry.bound():
+            try:
+                shown = self.resolve(entry)
+            except ValueError as unread:
+                raise ValueError(
+                    f"review {question!r} cannot be read back whole, so nothing "
+                    f"may answer it: {unread}"
+                ) from unread
+            if not shown.bound():
                 raise ValueError(
                     f"review {question!r} changed after it was parked: what it "
                     "shows is not what its fingerprint covers, so nothing may "
@@ -757,51 +1182,52 @@ class QuestionRelay:
             for directory in (self.answers.parent.parent, self.answers.parent):
                 directory.mkdir(mode=0o700, parents=True, exist_ok=True)
             append_review_record(self.answers, given.model_dump_json())
-            return entry.settled_by(given)
+            return shown.settled_by(given)
 
-    def cancel(self, question: str, reason: str = "") -> PersistentQuestion:
+    def cancel(self, question: str, reason: str = "") -> RecordedQuestion:
         """Withdraw a question nobody needs answered any more."""
         with self.transaction():
-            entry = self.find(question)
-            if entry is None:
+            if self.find(question) is None:
                 raise ValueError(f"no question {question!r} is recorded")
-            return self.record(
-                entry.model_copy(update={"state": "cancelled", "outcome": reason})
+            (cancelled,) = self.transitioned(
+                {question: {"state": "cancelled", "outcome": reason}}
             )
+            return cancelled
 
-    def expire(self, questions: list[str], reason: str) -> list[PersistentQuestion]:
+    def expire(self, questions: list[str], reason: str) -> list[RecordedQuestion]:
         """Expire each of these questions still waiting, saying why.
 
         For questions nobody can use any more — their requester is gone, so
         no retry will ever read the answer — which is not the same as ones
         their requester withdrew. Settled in one transaction over one read, so
         an answer recorded a moment before is never overwritten by the sweep,
-        and a sweep over a long record reads it once.
+        and one append records every one of them.
         """
         expired = datetime.now(UTC)
         with self.transaction():
-            waiting = {
-                entry.id: entry
-                for entry in self.questions()
-                if entry.state == "pending"
-            }
-            return [
-                self.record(
-                    waiting[question].model_copy(
-                        update={
-                            "state": "expired",
-                            "outcome": reason,
-                            "expires": expired,
-                        }
-                    )
-                )
-                for question in questions
-                if question in waiting
+            waiting = [
+                question
+                for question in dict.fromkeys(questions)
+                if (entry := self.find(question)) is not None
+                and entry.state == "pending"
             ]
+            if not waiting:
+                return []
+            return self.transitioned(
+                {
+                    question: {
+                        "state": "expired",
+                        "outcome": reason,
+                        "expires": expired.isoformat(),
+                    }
+                    for question in waiting
+                },
+                expired,
+            )
 
     def retire_stale(
         self, question: str, moved: Sequence[Path], by: str
-    ) -> PersistentQuestion:
+    ) -> RecordedQuestion:
         """Retire one waiting question whose recorded files moved since it was parked.
 
         No approval could release it any more: an approval binds to the files
@@ -820,20 +1246,23 @@ class QuestionRelay:
             if entry.state not in ("pending", "approved"):
                 return entry
             named = ", ".join(str(path) for path in moved)
-            return self.record(
-                entry.model_copy(
-                    update={
+            now = datetime.now(UTC)
+            (retired,) = self.transitioned(
+                {
+                    question: {
                         "state": "stale",
-                        "moved": list(moved),
+                        "moved": [str(path) for path in moved],
                         "outcome": f"{named} changed since it was recorded; noticed by {by}",
-                        "completed": datetime.now(UTC),
+                        "completed": now.isoformat(),
                     }
-                )
+                },
+                now,
             )
+            return retired
 
     def advance(
         self, question: str, state: QuestionState, outcome: str = ""
-    ) -> PersistentQuestion:
+    ) -> RecordedQuestion:
         """Move one question along its lifecycle after it was answered.
 
         The dispatch states live here rather than beside the executor because
@@ -842,21 +1271,20 @@ class QuestionRelay:
         down, and a coordinator that finds it does not send again.
         """
         with self.transaction():
-            entry = self.find(question)
-            if entry is None:
+            if self.find(question) is None:
                 raise ValueError(f"no question {question!r} is recorded")
-            completed = (
-                datetime.now(UTC)
+            now = datetime.now(UTC)
+            finished: JsonObject = (
+                {"completed": now.isoformat()}
                 if state in ("completed", "failed", "in_doubt")
-                else entry.completed
+                else {}
             )
-            return self.record(
-                entry.model_copy(
-                    update={"state": state, "outcome": outcome, "completed": completed}
-                )
+            (advanced,) = self.transitioned(
+                {question: {"state": state, "outcome": outcome, **finished}}, now
             )
+            return advanced
 
-    def dispatchable(self, question: str) -> PersistentQuestion:
+    def dispatchable(self, question: str) -> RecordedQuestion:
         """The approved question this operation may act on, or a refusal saying why.
 
         The single-use check is here rather than at the executor because every
@@ -882,3 +1310,45 @@ class QuestionRelay:
                 f"question {question!r} has no recorded independent approval"
             )
         return entry
+
+    def retire(
+        self, questions: Collection[str], kept: Callable[[], None] = lambda: None
+    ) -> list[str]:
+        """Move these questions out of the log, and every document none of the rest names out of the store.
+
+        Whoever retires a question keeps what it wants of it first -- the
+        archive of settled reviews keeps each one's summary -- and *kept*
+        runs under the relay's lock before anything is removed, so no
+        transition lands between the two. The log is rewritten whole, the
+        new file moved over the old, and the store swept under the log's own
+        lock, which every writer of a document holds while it writes one.
+        Returns the documents removed.
+        """
+        named = dict.fromkeys(questions)
+        if not named:
+            return []
+        with self.transaction():
+            kept()
+            with opened_relay(self.path) as stream:
+                records = stream_records(stream)
+                if not records or records[0] != relay_header():
+                    return []
+
+                def documents(record: JsonObject) -> list[str]:
+                    match record:
+                        case {"parked": dict() as parked}:
+                            return named_blobs(parked)
+                    return []
+
+                remaining = [
+                    record
+                    for record in records[1:]
+                    if named_question(record) not in named
+                ]
+                rewrite_relay(self.path, [relay_header(), *remaining])
+                return swept_blobs(
+                    self.blobs,
+                    dict.fromkeys(
+                        digest for record in remaining for digest in documents(record)
+                    ),
+                )

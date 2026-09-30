@@ -53,7 +53,7 @@ Run any of them with `uv run lup-devtools <command>`, and add `--help` for its a
 | `dashboard line` | Print what a session&#x27;s status line shows: the reviews waiting, and where. |
 | `dashboard reopen` | Whether a review parking while no tab is open reopens the page in the browser. |
 | `dashboard restart` | Restart the running dashboard onto its checkout&#x27;s code, keeping its address. |
-| `dashboard stop` | Stop the running dashboard now; the next session&#x27;s launch starts it again. |
+| `dashboard stop` | Stop the running dashboard; it stays stopped until a restart or a launch. |
 
 ## `dev`
 

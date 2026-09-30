@@ -31,6 +31,7 @@ h3 { font-size: 1rem; }
 .queue-setting { display: flex; align-items: center; gap: .4rem; font-size: .85rem; margin: .7rem 0; }
 .queue-navigation { display: flex; align-items: center; justify-content: space-between; gap: .4rem; margin: .8rem 0 1rem; font-size: .75rem; }
 .queue-navigation button { padding: .4rem .5rem; }
+.load-older { display: block; width: 100%; margin: .8rem 0; padding: .5rem; font-size: .85rem; }
 .queue-row { display: flex; flex-direction: column; width: 100%; text-align: left; gap: .25rem; margin-bottom: .5rem; padding: .6rem; overflow-wrap: anywhere; }
 .queue-row.selected { border-color: #4c9176; box-shadow: 0 0 0 1px #4c9176; }
 .queue-entry { margin-bottom: .7rem; }
