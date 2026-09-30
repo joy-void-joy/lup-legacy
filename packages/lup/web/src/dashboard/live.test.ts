@@ -103,7 +103,7 @@ describe("live state", () => {
 
   test("the code the dashboard runs is moved by its own frame, and said only while older", () => {
     const whole = snapshot();
-    const code = { source: "abc", root: "/src/lup", since: null, older: true, failing: "" };
+    const code = { source: "abc", root: "/src/lup", since: null, older: true, failing: "", restarted: "" };
     const older = applied(whole, frame({ type: "service", code }));
 
     expect(codeNotice(whole.code)).toBe("");
@@ -111,5 +111,12 @@ describe("live state", () => {
     expect(older.sessions).toBe(whole.sessions);
     expect(codeNotice(older.code)).toContain("is restarting onto it");
     expect(codeNotice({ ...code, failing: "ImportError" })).toContain("does not start (ImportError)");
+  });
+
+  test("a dashboard the sessions started again after it stopped says why, beside anything older", () => {
+    const code = { source: "abc", root: "/src/lup", since: null, older: false, failing: "", restarted: "it was ended by SIGKILL" };
+
+    expect(codeNotice(code)).toBe("This dashboard was restarted after it stopped: it was ended by SIGKILL.");
+    expect(codeNotice({ ...code, older: true })).toContain("is restarting onto it; answers wait until the page reconnects. This dashboard was restarted");
   });
 });
