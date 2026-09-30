@@ -1157,8 +1157,12 @@ inside a shell tool call never reaches the dispatcher that judges it.
 
 A policy ask is parked for the operator where somebody reads what parks, and
 is otherwise put to the runtime's own prompt. Parking writes the call to the
-review queue — `.lup/questions.jsonl` in the checkout — and refuses it while
-it waits; the answer releases it once. Codex parks every ask, having no ask
+review queue — `.lup/questions.jsonl` at the top of the checkout the
+session's launch opened (`LUP_BOUNDARY_ROOT`), or of the checkout the call
+runs in for an unlaunched session, never a subdirectory's — and refuses it
+while it waits; the answer releases it once. The call keeps the directory it
+runs in and the checkout it changes, and every review command the refusal
+names runs in the queue's checkout, with its code (`host.review_home`). Codex parks every ask, having no ask
 effect at its pre-tool boundary, at both pre-tool and permission-request
 events, and is answered on the dashboard or from the terminal. Claude parks
 every ask where the session's launch holds a dashboard (the launch hands the
@@ -1180,18 +1184,25 @@ authority over the next.
 
 The refusal is written for the agent, because a refusal normally means
 "change course" and an agent reading this one that way reshapes the call and
-spends the review. It reads: "Queued for the operator as review `<id>` — not
-refused. Don't change the command; carry on with other work. Start `uv run
-lup-devtools review wait <id> --timeout 7140` in the background
-(run_in_background, with the longest timeout the tool takes, 7200000 ms) to
-be woken with the result. It waits until the operator answers; if it ends
-first, it says how to wait again, so start it again." The waiter's own
-timeout ends it a minute before the tool would, so its session reads that
-the review still waits rather than a bare timeout. A subagent and a `-p`
-run, whose background commands end with them, are told to run it in the
+spends the review. It reads "Queued for the operator as review `<id>` — not
+refused. Don't change the command.", then how the conversation that asked
+hears the answer, in its runtime's words. A session's own conversation is
+told: "Carry on with other work, or end your turn: the operator's answer
+wakes this session, and `uv run --directory <session checkout> lup-devtools
+review wait <id>` then carries the call out at once. Don't start a
+waiter." — the answer goes to its mailbox and its wake, the socket on
+Claude and `codex queue` on Codex, and a waiter it held instead ended at the
+tool's limit every two hours and woke it for nothing. A subagent, carrying
+`agent_id` in its payload, is woken by nothing but its own work: on Claude it
+is told to hold `review wait <id> --timeout 7140` in the background
+(run_in_background, with the longest timeout the tool takes, 7200000 ms),
+whose own timeout ends it a minute before the tool would, saying the review
+still waits; on Codex, whose subagent's last message is its report, to hold
+it in its shell tool and read it before it reports. Either starts it again
+quietly, reporting that to nobody. A `-p` run, whose background commands
+end with it and which nothing wakes after, is told to run it in the
 foreground once nothing else is left, with `--timeout 540` under the tool's
-ten-minute foreground limit; Codex is told to leave it running under its
-shell tool, which keeps it past the turn. Beside it, the operator is shown
+ten-minute foreground limit. Beside it, the operator is shown
 where the review waits — on
 the dashboard, or the terminal commands that answer it — as `systemMessage`
 on both runtimes. Codex delivers the refusal as a structured `deny`
@@ -1200,10 +1211,12 @@ carrying that line, so its app-server raises an operator-visible warning in
 still receives the same refusal. Neither surface turns a policy question
 into an implicit approval.
 
-{{ dashboard }}The terminal answers every review: run `uv run lup-devtools review show
-<id>` from the indicated checkout, then `uv run lup-devtools review approve
-<id> --as operator` or `uv run lup-devtools review decline <id> --as
-operator` outside the agent session. Review answers are declared
+{{ dashboard }}The terminal answers every review: run `uv run --directory <checkout>
+lup-devtools review show <id>` over the indicated checkout, then `review
+approve <id> --as operator` or `review decline <id> --as operator` the same
+way, outside the agent session. The session that asked hears of it as it
+hears of an answer on the dashboard, by its waiter or its mailbox and wake,
+and the command says which. Review answers are declared
 `operator_only` in the shell vocabulary, and the verbs refuse a caller inside
 a launched session themselves; an escalation cannot grant the requester
 authority to answer itself.
@@ -1350,8 +1363,9 @@ kept whole.
 
 A conversation with two or more edits waiting on the operator is told, in the
 refusal, how to put the next ones as one: each file as it should end up,
-under one directory in `tmp/` mirroring the checkout, and `review propose`
-over it, which parks every file as one review. It is told too that `--why`
+under one directory in the `tmp/` of the checkout they change, mirroring
+that checkout, and `review propose` over its absolute path, run in the
+session's queue's checkout, which parks every file as one review. It is told too that `--why`
 and each file's note are written in plain words, and that
 `review propose --help` shows how.
 

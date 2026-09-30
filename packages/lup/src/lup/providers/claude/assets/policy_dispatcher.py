@@ -245,37 +245,47 @@ def parks():
 
 
 def waiting(command, payload):
-    """How this session waits on a parked call, in its own tool's words.
+    """How the conversation that asked hears the operator's answer, in its tool's words.
 
-    A command the main conversation of an interactive session starts with
-    `run_in_background` keeps running after the turn and re-invokes the model
-    when it exits, which is the whole wake. A subagent's, or a `-p` run's,
-    ends with it -- `CLAUDE_CODE_ENTRYPOINT` is `sdk-cli` there, measured on
-    2.1.283, where a subagent's hook payload carries `agent_id` -- so there
-    the wait moves to the foreground once nothing else is left.
+    The session's own conversation holds no waiter. Where no `review wait`
+    holds the review, the operator's answer goes to its mailbox and wakes it
+    through its wake socket -- an idle interactive session took a turn on
+    it, measured live -- and the `review wait` it runs then carries the call
+    out at once. A waiter held instead ended at the tool's limit every two
+    hours and woke the session for nothing.
 
-    The tool stops a command at its `timeout` whatever it waits on: thirty
-    minutes in the background unless the call names more, two hours at most,
-    and ten minutes at most in the foreground -- the Bash tool's own schema
-    on 2.1.285. The waiter has no limit of its own, so it is started with the
-    longest the tool takes and told to end itself a minute sooner: ending on
-    its own, it says the review is still waiting and how to wait again,
-    where the tool stopping it would leave the session a bare timeout.
+    A subagent is woken by nothing but its own background work: a message to
+    it waits for its next tool call. So it holds the waiter, started with
+    `run_in_background` and the longest timeout the tool takes -- two hours,
+    the Bash tool's own schema on 2.1.285 -- and told to end itself a minute
+    sooner, saying the review still waits, rather than leave a bare timeout.
+    It starts it again without telling anybody: a waiter ending is no news.
+
+    A `-p` run's background commands end with it, about five seconds after
+    its final result, and nothing wakes a run that ended --
+    `CLAUDE_CODE_ENTRYPOINT` is `sdk-cli` there, measured on 2.1.283 -- so it
+    waits in the foreground once nothing else is left, under the ten minutes
+    the tool takes there.
     """
-    started = (
-        f"Start `{command} --timeout 7140` in the background (run_in_background, "
-        "with the longest timeout the tool takes, 7200000 ms) to be woken with "
-        "the result. It waits until the operator answers; if it ends first, it "
-        "says how to wait again, so start it again."
-    )
-    interactive = declared_identity("CLAUDE_CODE_ENTRYPOINT") == "cli"
-    if interactive and "agent_id" not in payload:
-        return started
+    if "agent_id" in payload:
+        return (
+            f"Carry on with other work, and hold `{command} --timeout 7140` in the "
+            "background (run_in_background, with the longest timeout the tool "
+            "takes, 7200000 ms): nothing else wakes a subagent, and it wakes you "
+            "with the result. If it ends with the review still waiting, start it "
+            "again quietly, reporting that to nobody."
+        )
+    if declared_identity("CLAUDE_CODE_ENTRYPOINT") == "cli":
+        return (
+            "Carry on with other work, or end your turn: the operator's answer "
+            f"wakes this session, and `{command}` then carries the call out at "
+            "once. Don't start a waiter."
+        )
     return (
-        started + " A background command ends with this run, so once nothing "
-        f"else is left, run `{command} --timeout 540` in the foreground instead, "
-        "with the longest timeout the tool takes there, 600000 ms, again each "
-        "time it ends still waiting."
+        "Carry on with other work. This run ends with its last turn and nothing "
+        "wakes it after, so once nothing else is left, run "
+        f"`{command} --timeout 540` in the foreground (the longest timeout the "
+        "tool takes there, 600000 ms), again each time it ends still waiting."
     )
 
 

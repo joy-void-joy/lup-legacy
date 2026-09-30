@@ -9,6 +9,8 @@ nothing altered since the operator answered, and nothing twice.
 """
 
 import json
+import threading
+import time
 import os
 from pathlib import Path
 
@@ -285,14 +287,10 @@ def test_a_waiter_is_seen_holding_what_it_waits_on(root: Path) -> None:
     assert not waiters.held("review-one")
 
 
-def test_a_codex_session_is_woken_with_what_its_waiter_reported(
-    root: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """Codex starts no turn when a command its shell tool left running ends.
+def codex_asked(root: Path, monkeypatch: pytest.MonkeyPatch, agent: str = "") -> str:
+    """A Codex session's call parked by its generated hook, its subagent's where *agent* names one.
 
-    So the waiter queues its report into the session's thread, the way a
-    peer's mail wakes it: through the member's own wake route on the roster,
-    here recorded rather than sent.
+    The session joins the roster with Codex's wake route.
     """
     monkeypatch.delenv(CLAUDE_SESSION_ENV, raising=False)
     monkeypatch.setenv(MEMBER_ENV, "codex-member")
@@ -307,6 +305,7 @@ def test_a_codex_session_is_woken_with_what_its_waiter_reported(
         "hook_event_name": "PreToolUse",
         "tool_name": "Bash",
         "tool_input": {"command": f"{ESCALATED}echo queued > marker.txt"},
+        **({"agent_id": agent} if agent else {}),
     }
     sh.Command(str(Path(".codex/plugins/lup/hooks/scripts/policy.py").resolve()))(
         _in=json.dumps(payload),
@@ -315,15 +314,85 @@ def test_a_codex_session_is_woken_with_what_its_waiter_reported(
     )
     question = only(root)
     assert question.member == "codex-member"
-    relay_of(root).answer(question.id, "operator", True)
+    assert question.agent == agent
+    return question.id
+
+
+def answered_while_waiting(root: Path, review: str) -> int:
+    """Run a waiter on *review*, and approve it once the waiter holds it.
+
+    The waiter runs on this thread, where it can take the signals that stop
+    it; the operator answers from another.
+    """
+
+    def operator() -> None:
+        for _ in range(500):
+            if ReviewWaiters(root=root).held(review):
+                break
+            time.sleep(0.01)
+        relay_of(root).answer(review, "operator", True)
+
+    answering = threading.Thread(target=operator)
+    answering.start()
+    exit_code = waiter.wait_on(root, [review], False, poll=0.02)
+    answering.join(timeout=30)
+    return exit_code
+
+
+def test_a_codex_session_is_woken_with_what_its_waiter_reported(
+    root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Codex starts no turn when a command its shell tool left running ends.
+
+    So a waiter that waited queues its report into the session's thread, the
+    way a peer's mail wakes it: through the member's own wake route on the
+    roster, here recorded rather than sent.
+    """
+    review = codex_asked(root, monkeypatch)
     queued: list[str] = []
     monkeypatch.setattr(
         waiter, "wake", lambda path, message, cwd: queued.append(message)
     )
 
-    waited = RUNNER.invoke(create_review_app(root), ["wait"])
+    assert answered_while_waiting(root, review) == 0
+
+    (message,) = queued
+    assert f"review {review} — ran:" in message
+    assert (root / "marker.txt").read_text() == "queued\n"
+
+
+def test_a_waiter_run_once_the_answer_is_in_queues_nothing(
+    root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The session's own thread runs it when the answer wakes it, and reads it there.
+
+    Queuing the same report into the thread would start a turn for nothing.
+    """
+    review = codex_asked(root, monkeypatch)
+    relay_of(root).answer(review, "operator", True)
+    queued: list[str] = []
+    monkeypatch.setattr(
+        waiter, "wake", lambda path, message, cwd: queued.append(message)
+    )
+
+    waited = RUNNER.invoke(create_review_app(root), ["wait", review])
 
     assert waited.exit_code == 0, waited.output
-    (message,) = queued
-    assert f"review {question.id} — ran:" in message
+    assert f"review {review} — ran:" in waited.output
+    assert queued == []
+
+
+def test_a_codex_subagent_s_waiter_wakes_nobody_else(
+    root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The session's thread is not the subagent, which reads its waiter itself."""
+    review = codex_asked(root, monkeypatch, agent="codex-subagent")
+    queued: list[str] = []
+    monkeypatch.setattr(
+        waiter, "wake", lambda path, message, cwd: queued.append(message)
+    )
+
+    assert answered_while_waiting(root, review) == 0
+
+    assert queued == []
     assert (root / "marker.txt").read_text() == "queued\n"

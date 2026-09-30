@@ -474,7 +474,8 @@ def test_policy_identity_changes_require_another_review(root: Path) -> None:
 
 def test_review_notice_quotes_the_checkout(root: Path) -> None:
     nested = root / "checkout with 'quotes' and $substitution"
-    nested.mkdir()
+    (nested / ".git").mkdir(parents=True)
+    (nested / ".git/HEAD").write_text("ref: refs/heads/feature\n")
     (nested / "DESIGN.md").write_text("# Previous design\n")
     notice = denial(hook(nested, replacement()))
     assert "uv run --directory '" in notice

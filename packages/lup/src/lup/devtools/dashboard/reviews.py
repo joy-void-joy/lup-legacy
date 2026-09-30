@@ -66,8 +66,10 @@ from lup.devtools.review.app import (
     ReviewRoot,
     ReviewSummary,
     expire_orphaned,
+    newer_code,
     relay,
     retire_settled,
+    terminal_answer,
 )
 from lup.devtools.review.notifications import (
     ReviewNotification,
@@ -325,6 +327,12 @@ class ReviewStore(BaseModel, frozen=True):
     otherwise.
     """
 
+    restarting: Callable[[], bool] = lambda: False
+    """Whether the dashboard is about to restart onto its checkout's newer code.
+
+    Said beside a review this code cannot read, which that code may.
+    """
+
     _queues: dict[Path, ReviewQueue] = {}
     _rows: dict[str, ReviewSummary] = {}
     _preimages: PreimageWatch = PrivateAttr(default_factory=PreimageWatch)
@@ -418,9 +426,14 @@ class ReviewStore(BaseModel, frozen=True):
     def summary(self, root: Path, question: RecordedQuestion) -> ReviewSummary:
         """One review's row, as its documents read; one whose documents cannot be read back says so."""
         said = self.queue(root).said(question)
+        restarting = self.restarting()
         try:
             return ReviewSummary.of(
-                root, self.relay(root).resolve(question), self.principal, said
+                root,
+                self.relay(root).resolve(question),
+                self.principal,
+                said,
+                restarting,
             )
         except ValueError as unread:
             summary = ReviewSummary.from_files(
@@ -436,7 +449,10 @@ class ReviewStore(BaseModel, frozen=True):
                 update={
                     "answerable": False,
                     "unanswerable": (
-                        f"Its documents cannot be read back whole: {unread}."
+                        f"Its documents cannot be read back whole: {unread}. "
+                        "Where newer code parked it, that code can answer it: "
+                        f"{terminal_answer(root, question.id, self.principal)}."
+                        + newer_code(restarting)
                         if question.state == "pending"
                         else ""
                     ),
@@ -444,13 +460,18 @@ class ReviewStore(BaseModel, frozen=True):
             )
 
     def row(self, queue: ReviewQueue, question: RecordedQuestion) -> ReviewSummary:
-        """One review's row, projected once where nothing but a new record changes it."""
+        """One review's row, projected once where nothing but a new record changes it.
+
+        Not kept while the dashboard is about to restart, when a row it
+        cannot answer says so and the restart ends the saying.
+        """
         entry = self.retired(queue.root, question)
         key = settled_key(queue.root, entry, queue.said(entry))
-        if key is not None and key in self._rows:
+        restarting = self.restarting()
+        if key is not None and not restarting and key in self._rows:
             return self._rows[key]
         summary = self.summary(queue.root, entry)
-        if key is not None:
+        if key is not None and not restarting:
             self._rows[key] = summary
         return summary
 
