@@ -64,8 +64,7 @@ class UrlScope(BaseModel, frozen=True):
     reason: str = Field(
         default="",
         description=(
-            "Why this origin is reachable, carried into the decision the "
-            "kernel returns"
+            "Why this origin is reachable, carried into the decision the kernel returns"
         ),
     )
     include_subdomains: bool = Field(
