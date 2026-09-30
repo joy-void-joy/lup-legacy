@@ -471,10 +471,11 @@ rather than from a second table naming the same files.
 
 [quality-pipeline.md](quality-pipeline.md) explains which of the three
 automated layers catches what. The short version: `git hooks install`
-refuses a commit whose generated artifacts are behind their source and a
-push whose branch fails the gate, the per-push CI workflow runs those same
-commands and binds whether or not anyone armed the hooks, and the nightly
-lane owns everything that needs a real native CLI.
+arms hooks refusing a commit whose generated artifacts are behind their
+source or that holds a conflict block a merge left, the per-push CI workflow
+runs those same commands and the whole gate beside them and binds whether or
+not anyone armed the hooks, and the nightly lane owns everything that needs a
+real native CLI.
 
 Two conventions catch most first-time review comments:
 

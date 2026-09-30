@@ -75,27 +75,6 @@ identity leak at least signs the work it spoils; this one leaves no trace at
 all until something it should have refused gets through.
 """
 
-GIT_ENVIRONMENT = (
-    "GIT_DIR",
-    "GIT_WORK_TREE",
-    "GIT_INDEX_FILE",
-    "GIT_OBJECT_DIRECTORY",
-    "GIT_COMMON_DIR",
-)
-"""What names a repository to git ahead of any directory a command is given.
-
-The third way into the same accident, and the one no fixture can defend
-itself against: `-C <throwaway>` chooses where git works, while these choose
-which repository it resolves, and the environment wins. A suite that inherits
-them commits into whatever they name, however carefully each helper bound its
-own git.
-
-Git exports them to every hook, so a gate installed as one — see
-:mod:`lup.devtools.dev.git_guards` — hands the suite the very checkout being
-pushed. Scrubbed where the hook is written rather than watched for afterwards,
-because unlike a misbound command this arrives through one door.
-"""
-
 
 class CommitterIdentity(BaseModel):
     """Somebody for a suite's throwaway repositories to commit as."""

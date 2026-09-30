@@ -75,6 +75,35 @@ agent_version = "0.2.0"
 # standing. Never set it in a repository built from this one.
 template = true
 
+[[tool.lup.git-guards]]
+# Compiled by `uv run lup-devtools harness generate all` from the
+# git guards the dev tree declares: edit those.
+command = "uv run lup-devtools harness check all"
+hook = "pre-commit"
+standdown = {kind = "lup.devtools.dev.git_guards:MergeInProgress"}
+refusal = "A generated artifact differs from what its source renders. Settle it with `uv run lup-devtools harness generate all`."
+reads_stdin = false
+
+[[tool.lup.git-guards]]
+command = "uv run lup-devtools dev check --conflict-markers --staged"
+hook = "pre-commit"
+refusal = "A staged file holds a conflict block a merge left behind. Resolve it, or excuse a fixture holding one on purpose with a `lup: ignore[conflict-marker]` line heading it."
+reads_stdin = false
+
+[[tool.lup.git-guards]]
+command = "uv run lup-devtools git settle"
+hook = "post-merge"
+standdown = {kind = "lup.devtools.dev.git_guards:NoMergeCommit"}
+refusal = "Refuses nothing, since the merge commit is already made: what regeneration writes over it was not folded in, so its generated trees may be stale until `uv run lup-devtools git settle` does."
+reads_stdin = false
+
+[[tool.lup.git-guards]]
+command = "uv run lup-devtools git settle"
+hook = "post-commit"
+standdown = {kind = "lup.devtools.dev.git_guards:NoMergeCommit"}
+refusal = "Refuses nothing, since the merge commit is already made: what regeneration writes over it was not folded in, so its generated trees may be stale until `uv run lup-devtools git settle` does."
+reads_stdin = false
+
 [tool.uv]
 exclude-newer = "3 days"
 
