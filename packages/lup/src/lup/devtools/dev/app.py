@@ -47,6 +47,7 @@ from lup.devtools.changelog import Changelog
 from lup.devtools.dev.branches import get_integration_branch
 from lup.devtools.dev.git_guards import INDEX_VARIABLE
 from lup.execution.shell import git
+from lup.launch.preflight import ROOT_VARIABLE
 from lup.harness.codescan.markers import NoteKind
 from lup.harness.codescan.registry import all_rules
 import lup.devtools.py.app as py
@@ -1816,6 +1817,17 @@ def create_dev_app(
             ),
         ] = False,
         as_json: Annotated[bool, typer.Option("--json", help="Emit JSON")] = False,
+        session: Annotated[
+            Path | None,
+            typer.Option(
+                "--from",
+                envvar=ROOT_VARIABLE,
+                show_envvar=False,
+                help="Judge the input as a session whose commands start in this"
+                " directory would (default: the checkout this session was"
+                " launched in, else this directory)",
+            ),
+        ] = None,
     ) -> None:
         """Show what the declared permission policy decides about an input, and why."""
         if kind not in ("shell", "fetch", "edit", "edit-batch"):
@@ -1834,6 +1846,7 @@ def create_dev_app(
             as_json,
             declared().hooks,
             placement,
+            session=session,
         )
 
     @app.command("vocabulary")
