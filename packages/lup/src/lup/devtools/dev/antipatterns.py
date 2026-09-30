@@ -161,8 +161,43 @@ def declared_rules(project: DevProject) -> RuleSet:
     )
 
 
+class Mirrored(BaseModel, frozen=True):
+    """A scratch file audited as the repository file it will land as.
+
+    A copy under `tmp/` is scratch, and no rule reads scratch -- which is
+    right of a scratch file and wrong of one about to be copied over
+    ``judged_as``: the path decides which rules apply and what role the file
+    has, so the text is read at the path it mirrors, and its findings are
+    reported against the copy a person edits.
+    """
+
+    scratch: Path
+    judged_as: str
+
+
+def mirrored_file(scratch: str, landing: str) -> Mirrored:
+    """A scratch copy to audit as the file at ``landing``, spelled as the walk spells it.
+
+    The walk names files relative to the repository, so an absolute landing is
+    read back to that spelling; one outside this checkout names no file the
+    sweep answers for, and is refused rather than audited as nothing.
+    """
+    named = Path(landing)
+    if not named.is_absolute():
+        return Mirrored(
+            scratch=Path(scratch), judged_as=PurePosixPath(named).as_posix()
+        )
+    try:
+        inside = named.resolve().relative_to(Path.cwd().resolve())
+    except ValueError as error:
+        raise ValueError(f"{landing} is not in this checkout") from error
+    return Mirrored(scratch=Path(scratch), judged_as=PurePosixPath(inside).as_posix())
+
+
 def scanned_files(
-    project: DevProject, paths: Sequence[str] | None = None
+    project: DevProject,
+    paths: Sequence[str] | None = None,
+    mirrored: Mirrored | None = None,
 ) -> list[ScannedFile]:
     """Every tracked production file the audits read, with its table and text.
 
@@ -171,20 +206,33 @@ def scanned_files(
     rather than an absent one, so a tree that changed nothing is read for
     nothing. The declared path roles decide the rest: a rule the edit hook
     never enforces in a test or scratch tree is not read there either.
+    ``mirrored`` reads one file's text from its scratch copy instead, the
+    file standing at the path it mirrors whether or not one stands there yet.
     """
     roles = project.path_roles
     declared = declared_rules(project)
+    listed = tracked_files(others=True)
+    landing = (
+        [mirrored.judged_as]
+        if mirrored is not None and mirrored.judged_as not in listed
+        else []
+    )
 
     def found() -> Iterator[ScannedFile]:
-        for rel in tracked_files(others=True):
+        for rel in [*listed, *landing]:
             path = Path(rel)
             patterns = patterns_for_suffix(path.suffix.lower(), declared)
             if patterns is None or path_role(rel, roles) != "production":
                 continue
             if not within_scope(rel, paths):
                 continue
+            source = (
+                mirrored.scratch
+                if mirrored is not None and rel == mirrored.judged_as
+                else path
+            )
             try:
-                text = path.read_text(encoding="utf-8")
+                text = source.read_text(encoding="utf-8")
             except (OSError, UnicodeDecodeError):
                 continue
             yield ScannedFile(rel=rel, path=path, patterns=patterns, text=text)
@@ -193,7 +241,9 @@ def scanned_files(
 
 
 def scan_antipatterns(
-    project: DevProject, paths: Sequence[str] | None = None
+    project: DevProject,
+    paths: Sequence[str] | None = None,
+    mirrored: Mirrored | None = None,
 ) -> AntiPatternScan:
     """Every missing/spurious marker across tracked production `.py`/TS files.
 
@@ -220,7 +270,7 @@ def scan_antipatterns(
     """
     if paths is not None and not paths:
         return AntiPatternScan(findings=[], refuted=[])
-    all_scanned = scanned_files(project)
+    all_scanned = scanned_files(project, None, mirrored)
     scanned = [item for item in all_scanned if within_scope(item.rel, paths)]
     declaration_sources = [
         PythonSource(
@@ -319,12 +369,21 @@ def scan_antipatterns(
         )
         for finding in declared
     )
+
+    def shown(file: str) -> str:
+        """Where a finding is reported: the scratch copy, for the file it mirrors."""
+        if mirrored is not None and file == mirrored.judged_as:
+            return mirrored.scratch.as_posix()
+        return file
+
     return AntiPatternScan(
         findings=[
-            finding for finding in results if project.rules.keeps(finding.rule_id)
+            finding.model_copy(update={"file": shown(finding.file)})
+            for finding in results
+            if project.rules.keeps(finding.rule_id)
         ],
         refuted=[
-            FoundRefutation(file=file, **refutation.model_dump())
+            FoundRefutation(file=shown(file), **refutation.model_dump())
             for file, refutations in sorted(refuted.items())
             for refutation in refutations
         ],
@@ -591,6 +650,7 @@ def summarize(
     as_json: bool,
     paths: Sequence[str] | None = None,
     advisory: AbstractSet[str] = ADVISORY_KINDS,
+    mirrored: Mirrored | None = None,
 ) -> None:
     """Tally anti-pattern findings by rule and kind — the sweep triage view.
 
@@ -599,7 +659,7 @@ def summarize(
     reading the whole listing, plus how many findings the typed grammar
     refuted. ``--json`` emits the same tally for tooling.
     """
-    scan = scan_antipatterns(project, paths)
+    scan = scan_antipatterns(project, paths, mirrored)
     found = scan.findings
     by_rule: Counter[str] = Counter()
     by_kind: Counter[str] = Counter()
@@ -652,6 +712,7 @@ def report(
     advisory: AbstractSet[str] = ADVISORY_KINDS,
     fix: bool = False,
     refutations: bool = False,
+    mirrored: Mirrored | None = None,
 ) -> None:
     """List anti-pattern findings; exit non-zero when a blocking one remains.
 
@@ -669,7 +730,7 @@ def report(
     on top of, and a repair pass that printed its own pre-repair findings
     would claim to have fixed something it had just moved.
     """
-    scan = scan_antipatterns(project, paths)
+    scan = scan_antipatterns(project, paths, mirrored)
     repaired: list[RepairedDirective] = []
     if fix:
         repaired = repair_spurious(project, scan.findings)
@@ -684,7 +745,7 @@ def report(
         if repaired:
             if not as_json:
                 typer.echo(f"{len(repaired)} dead directive(s) removed\n")
-            scan = scan_antipatterns(project, paths)
+            scan = scan_antipatterns(project, paths, mirrored)
     blocking = [finding for finding in scan.findings if finding.kind not in advisory]
     if as_json:
         output_json(

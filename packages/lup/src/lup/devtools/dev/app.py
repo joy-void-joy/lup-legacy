@@ -398,6 +398,15 @@ def create_dev_app(
                 "the fix-one-file loop. Repeatable",
             ),
         ] = None,
+        landing: Annotated[
+            str | None,
+            typer.Option(
+                "--as",
+                help="With --antipatterns and one --path naming a scratch copy: "
+                "judge its text as the repository file at this path, where it "
+                "will land, and report its findings against the copy",
+            ),
+        ] = None,
         changed: Annotated[
             bool,
             typer.Option(
@@ -465,18 +474,32 @@ def create_dev_app(
             )
             return
         if antipatterns:
+            mirrored = None
+            if landing is not None:
+                if not path or len(path) != 1:
+                    raise typer.BadParameter(
+                        "--as judges one scratch copy: name it with one --path"
+                    )
+                try:
+                    mirrored = antipatterns_mod.mirrored_file(path[0], landing)
+                except ValueError as error:
+                    raise typer.BadParameter(str(error)) from error
+            scope = path if mirrored is None else [mirrored.judged_as]
             match (profiled, stats):
                 case (True, _):
-                    antipatterns_mod.profile(declarations.project, path)
+                    antipatterns_mod.profile(declarations.project, scope)
                 case (False, True):
-                    antipatterns_mod.summarize(declarations.project, as_json, path)
+                    antipatterns_mod.summarize(
+                        declarations.project, as_json, scope, mirrored=mirrored
+                    )
                 case _:
                     antipatterns_mod.report(
                         declarations.project,
                         as_json,
-                        path,
+                        scope,
                         fix=fix,
                         refutations=refutations,
+                        mirrored=mirrored,
                     )
             return
         if boundaries:
