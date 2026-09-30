@@ -19,12 +19,27 @@ Where no dashboard is held, Codex parks all the same, answered from the
 terminal, and Claude puts every question to its own permission prompt
 (`docs/permissions.md`, "Where a native ask is put").
 
+The review is kept in the queue of the checkout the session's launch opened
+(`LUP_BOUNDARY_ROOT`), at its top, wherever the call runs: from a
+subdirectory, a sibling worktree or another repository, the call is recorded
+there, labelled with the checkout it changes, and the directory it runs in
+kept with it. That is the queue whose answers the launch lends the session,
+and every review command the session is handed is spelled to run there, with
+that checkout's code — `uv run --directory <session checkout> lup-devtools
+review …` — so what a session parks is written and read by one version of
+lup, the one the operator's dashboard follows. An unlaunched session keeps
+its reviews at the top of the checkout it runs in.
+
 The refusal is written for the agent: the call is queued as review `<id>`,
-not refused; it is not to be changed; the agent carries on and starts
-`uv run lup-devtools review wait <id>` in the background, which wakes it with
-the result. `review wait <id>...` waits for every review named, `--any` for
-the first of them, and with none named for every review this session and its
-subagents have waiting; it reports each as it settles. An approved one it
+not refused; it is not to be changed; and how the conversation that asked
+hears the answer. A session's own conversation carries on or ends its turn,
+and starts no waiter: the operator's answer wakes it, and the
+`review wait <id>` it names then carries the call out at once. A subagent,
+which nothing but its own background work wakes, holds `review wait <id>`
+in the background and carries on, starting it again quietly whenever it ends
+with the review still waiting. `review wait <id>...` waits for every review
+named, `--any` for the first of them, and with none named for every review
+this session and its subagents have waiting; it reports each as it settles. An approved one it
 carries out itself, inside the session's own shell and sandbox: an edit is
 written as the after-document the operator saw, only where the file still
 stands as the review recorded it — otherwise it reports the conflict and
@@ -41,9 +56,13 @@ command — is reported as approved, for one exact retry the hook allows once.
 The operator can also write without deciding: a note and line comments sent
 alone. That ends the waiter too, as "commented", with the words beneath it,
 the review still pending, and the command that waits on it again. The agent
-answers on the review with `uv run lup-devtools review reply <id> <text>`,
-which the page shows in the review's thread — only the session that asked
-may — or cancels it and asks again.
+answers on the review with `uv run --directory <session checkout>
+lup-devtools review reply <id> <text>`, which the page shows in the review's
+thread — only the session that asked may — or cancels it and asks again. A
+`review reply`, `wait` or `cancel` run from another checkout than the
+session's names the review's queue and the command that reaches it, and a
+`review propose` run there is refused with the command that parks it in the
+session's queue.
 
 A review whose recorded files moved before anybody approved it can never be
 carried out, since the waiter writes and runs only where every recorded file
@@ -57,28 +76,38 @@ The waiter carries out only a review this session asked, by the id its
 runtime gave the session or the roster member its launch named, reads the
 answer where only the operator writes it, and takes the claim a retry would,
 so an approval is spent once whichever comes first. On Claude, a background
-command's end re-invokes the session. On Codex a command the shell tool
-started keeps running after the turn and its end starts none — measured on
-0.158.0 — so the waiter queues its report into the session's thread with
-`codex queue` when it settles, which starts a turn in an idle session.
+command's end re-invokes the subagent that started it. On Codex a command
+the shell tool started keeps running after the turn and its end starts none
+— measured on 0.158.0 — and a subagent's last message is its report, after
+which nothing wakes it: a Codex subagent holds its waiter in its shell tool
+and reads it before it reports. A waiter a session's own Codex thread left
+running queues its report into the thread with `codex queue` when it
+settles, which starts a turn in an idle session; one run once the answer
+was in queues nothing, its report read in the call that ran it, and a
+subagent's queues nothing into its session's thread.
 
 A waiter waits as long as the operator takes: it has no limit of its own,
 and every ten minutes it says which reviews it still waits on. `--timeout
 <seconds>` ends it early, exit 3, carrying nothing out and naming the
 `review wait` that waits again. A runtime can still stop it: Claude Code's
 shell tool stops a command at its `timeout`, thirty minutes in the background
-unless the call names more, two hours at most. So the refusal asks for the
-longest the tool takes and names the waiter with `--timeout 7140`, which ends
-it a minute sooner with that line; and a waiter sent SIGTERM or SIGHUP with a
-review still pending says the same before it exits. On Codex the waiter
-queues that line into the thread as it would a verdict. A review whose waiter
-is gone is not lost either way: the operator's answer then goes to the
-session's mailbox, naming the `review wait` that carries it out.
+unless the call names more, two hours at most, and no monitor outlives half
+an hour. That is why a session's own conversation holds no waiter: one
+restarted every two hours woke the session for nothing, where the operator's
+answer wakes it only when there is something to do. A subagent's refusal
+asks for the longest the tool takes and names the waiter with `--timeout
+7140`, which ends it a minute sooner saying the review still waits and to
+start it again quietly — a waiter ending is news to nobody; and a waiter
+sent SIGTERM or SIGHUP with a review still pending says the same before it
+exits. A review no waiter holds is not lost: the operator's answer goes to
+the asker's mailbox, naming the `review wait` that carries it out.
 
 The waiter is the requester's one channel. Where a `review wait` holds the
 review — or already put the news to its session — the dashboard mails nothing
 beside it; only where none does is the answer, the remark or the staleness
-mailed to the requester and its wake tried. Where a subagent asked, the
+mailed to the requester and its wake tried, whether the operator answered on
+the page or with `review approve` or `decline` from a terminal, which says
+how the session heard. Where a subagent asked, the
 review records it (`agent`), its own row is the requester, and whenever the
 operator said something — a note, line comments, a remark — the session it
 runs in gets a copy, marked `[copy]`: the subagent handles the call, its
@@ -89,9 +118,14 @@ session anything past it. A bare approval pings nobody but the waiter.
 Several edits the operator has to see, parked one call at a time, are
 answered one at a time — each against a file the next edit then moves. A
 session writes them under scratch instead, each at its path in the checkout
-(`tmp/cdx/<path>`), tests them there, and runs
-`uv run lup-devtools review propose tmp/cdx --why "<what it changes and why>"`, which
-parks one review holding every file. Each file meets the edit gates a direct
+it changes (`<checkout>/tmp/cdx/<path>`), tests them there, and runs
+`uv run --directory <session checkout> lup-devtools review propose
+<checkout>/tmp/cdx --why "<what it changes and why>"`, which parks one review
+holding every file, in the session's queue. The files land in the checkout
+holding the directory, or the one `--checkout` names, which the review is
+labelled with; the subagent that proposed it is recorded as the hooks record
+one for a call (`agent`), read off which of the session's conversations has
+a command running. Each file meets the edit gates a direct
 write of it would meet — protected paths, anti-patterns, markers, size — and
 the review carries each verdict; a file the gates refuse outright refuses the
 proposal, naming it, and nothing is parked. A file they would let through is
@@ -142,7 +176,9 @@ alone and never handed to a session, so a tab left open while the dashboard
 restarts reconnects on its own. The page opens in a browser the first time
 that capability is minted, for a launch the operator made; afterwards
 `uv run lup-devtools dashboard open` opens it. Each launch prints the address
-and hands it to its session as `LUP_DASHBOARD_URL`, credential-free.
+and hands it to its session as `LUP_DASHBOARD_URL`, credential-free; one the
+operator made on a terminal also prints the launch address at each origin
+(below).
 
 A launch from a checkout whose dashboard differs from the one running replaces
 it for everyone, the sessions already holding it keeping their hold, so the
@@ -222,7 +258,9 @@ follow it, which code it runs, and how many times the sessions holding it
 started it again; from the operator's terminal it also gives the last exit
 (`exited`: when, how, and its last lines of output), the last stop lup made
 (`stopped`: why, by which process, and the live leases it counted), and, while
-none runs, when the sessions start it again. Inside a session it reads what
+none runs, when the sessions start it again, and the origins declared for it
+(`origins`), its launch address at each (`launch`) and what to heed of them
+(`warnings`), as "Behind a reverse proxy" says. Inside a session it reads what
 the dashboard publishes, its pulse (below), never the operator's private
 state. `dashboard stop` stops it now, and it stays stopped, the sessions
 holding it included, until `dashboard restart` or the next launch starts it.
@@ -464,7 +502,24 @@ result exists only once they run are listed beside it, each with the files it
 leaves so.
 
 The dashboard titles requests from captured evidence: a file's action and path,
-the number of files, or the command to run. The default view includes files
+the number of files, or the command to run. The paths are relative to the
+checkout the files lie in, found from the files themselves — a session kept
+in one checkout editing another is titled in the one it edits — and the
+queue's row and the desktop notice name that checkout where it is not the
+queue's own. The checkout recorded with the call stands in where the files
+lie in several.
+
+A waiting review the page cannot answer is marked "can't answer here", with
+why and the way out beside it: the terminal commands that answer it,
+`uv run --directory <queue's checkout> lup-devtools review approve <id> --as
+<who>` or `decline`, run with the code of the checkout keeping the queue,
+which is the code that parked it; and, where the dashboard is about to
+restart onto its checkout's newer code, that it restarts shortly and may
+answer it then. That covers a review only another principal may answer, one
+parked by newer code than the dashboard runs, and one whose record or
+documents this code cannot read back.
+
+The default view includes files
 that require review and highlights newly introduced rule exceptions. Files the
 policy allows automatically or explicitly leaves to the native provider, and
 existing exceptions, remain available in the full-operation view. A captured
@@ -550,7 +605,57 @@ assets contain no credential. The dashboard every launch holds keeps its
 capability across restarts; one `dashboard serve` mints is its own, and ends
 with it. Treat the full address as an operator credential and keep it out of
 agent messages. The server binds loopback, checks Host against DNS rebinding,
-and checks the origin of every submission. These controls protect the browser
+and checks the origin of every submission, answering loopback's names and the
+origins the person declared alone. These controls protect the browser
 surface; they are not isolation against arbitrary processes running as the
 operator's user. The session's filesystem and process boundary remains part
 of the authority boundary.
+
+## Behind a reverse proxy
+
+The dashboard binds loopback alone, so a browser elsewhere reaches it only
+through a reverse proxy on this machine, at the proxy's name. The person
+declares each origin they reach it at in their lup config, never in a
+project's:
+
+```toml
+# ~/.config/lup/config.toml
+[dashboard]
+origins = ["https://their.proxy.name"]
+```
+
+Each is a whole origin, `scheme://host[:port]` over http or https, with no
+path: the page names its routes from the root, so a proxy serving it under a
+path is not supported. Each is read as a browser writes it, lowercase and
+without its scheme's default port. The Host check then answers each origin's
+host beside loopback's, with and without that default port, and a write is
+taken where its `Origin` is exactly a declared origin or the dashboard's own
+address. Nothing else changes: any other name is refused as before, which is
+what a rebinding site sends; the API still wants the capability; and the
+dashboard still binds loopback alone. The dashboard every launch holds and
+`dashboard serve` read the list the same way, again on each request where
+the file moved, so a change holds from the next request with nothing to
+restart. A file lup cannot read declares nothing: the dashboard answers
+loopback alone and says why in its log and in `dashboard status`, and a
+launch refuses the file.
+
+The proxy needs no header rewriting. Caddy passes the browser's `Host`
+through and flushes the stream as it arrives, so this is the whole of it:
+
+```caddy
+their.proxy.name {
+    reverse_proxy 127.0.0.1:8766
+}
+```
+
+`8766` stands for the port `dashboard status` names, which the dashboard
+keeps while it stays free. The page opens through the proxy at its launch
+address there, `https://their.proxy.name/#token=…`: `dashboard status` gives
+it under `launch`, `dashboard open` and `dashboard serve` print it, and so
+does a launch the operator made on a terminal. A session's launch, and a
+launch whose output is captured, print none, since the address carries the
+capability. The page keeps the capability for the proxy's origin as it does
+for loopback's, and every link it builds or copies names the origin it was
+opened at. `dashboard status` warns of a declared origin that is neither
+https nor loopback, whose launch address carries the capability across the
+network in the clear.

@@ -1,29 +1,29 @@
 {
   "schema_version": 1,
   "generator_version": "0.4.0",
-  "source_digest": "87b3a059e6c515431206b4380a71009c5c3571d4488121dd534cf16a074b8956",
+  "source_digest": "f6d2cb6a8326ed276dc886180b422eaa742bfbb0a2f39e9b8b1c4185923bf088",
   "target_requirements": [
     "bun"
   ],
   "files": [
     {
-      "path": "packages/lup/src/lup/web/bundles/dashboard/assets/index-CsqBFYjd.css",
+      "path": "packages/lup/src/lup/web/bundles/dashboard/assets/index-CXRC9L1O.js",
       "category": "generated",
-      "sha256": "3400370715b8f4a94f8520a58dff4b03ee1a9bb78596fdedf1badb3955b7f9ac",
-      "semantic_id": "web.dashboard.assets/index-CsqBFYjd.css",
+      "sha256": "68c6e32507369e6024dcb991d924e199275f2c8109a68f0f2330a1b2bf7667c3",
+      "semantic_id": "web.dashboard.assets/index-CXRC9L1O.js",
       "executable": false
     },
     {
-      "path": "packages/lup/src/lup/web/bundles/dashboard/assets/index-vkczWSKA.js",
+      "path": "packages/lup/src/lup/web/bundles/dashboard/assets/index-SRecjAfa.css",
       "category": "generated",
-      "sha256": "52a9ba6e59a003a9d9d6ef212a11405c549b2e35bfcfb8814f7d165caeda33d3",
-      "semantic_id": "web.dashboard.assets/index-vkczWSKA.js",
+      "sha256": "a6943006e8795b97cb4a1ada10007ad85d509b3d753f1d54e08ed83da774d954",
+      "semantic_id": "web.dashboard.assets/index-SRecjAfa.css",
       "executable": false
     },
     {
       "path": "packages/lup/src/lup/web/bundles/dashboard/index.html",
       "category": "generated",
-      "sha256": "d89ea51a92c557f732474403f5da8e608d9106788a6a8b037895d1783a438a0e",
+      "sha256": "f79ffbee96d8a2672158c91d3bd2f2357415afb83e37c4e85739c1a2abdafadb",
       "semantic_id": "web.dashboard.index.html",
       "executable": false
     },

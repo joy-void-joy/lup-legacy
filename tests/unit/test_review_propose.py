@@ -15,7 +15,9 @@ import pytest
 import typer
 from typer.testing import CliRunner
 
+from lup.coordination.bare import store
 from lup.coordination.identity import MEMBER_ENV
+from lup.coordination.repository import RepositoryPeers
 from lup.devtools.review.app import ReviewDetail, create_review_app, relay
 from lup.policy.relay import PersistentQuestion
 from lup.providers.claude.identity import CLAUDE_SESSION_ENV
@@ -199,3 +201,130 @@ def test_show_prints_each_file_s_note_whole_under_its_name(root: Path) -> None:
     assert shown.exit_code == 0, shown.output
     assert " ".join(note.split()) in " ".join(shown.output.split())
     assert "agent's note: Fixes a typo; no behaviour change." in shown.output
+
+
+def checkout_at(path: Path) -> Path:
+    """A directory Git would call a checkout: a `.git` holding a HEAD."""
+    (path / ".git").mkdir(parents=True)
+    (path / ".git/HEAD").write_text("ref: refs/heads/feature\n")
+    return path
+
+
+def test_a_proposal_for_another_checkout_is_kept_in_the_session_s_queue(
+    root: Path, tmp_path: Path
+) -> None:
+    """Run with the session's own code, into its queue, landing where the directory lies."""
+    feature = checkout_at(tmp_path / "feature")
+    (feature / ".pre-commit-config.yaml").write_text("repos: []\n")
+    directory = staged(feature, {".pre-commit-config.yaml": "repos: [x]\n"})
+
+    parked = RUNNER.invoke(app(root), ["propose", str(directory), "--why", WHY])
+
+    assert parked.exit_code == 0, parked.output
+    assert not (feature / ".lup/questions.jsonl").exists()
+    question = proposed(root)
+    assert question.operation.worktree == feature
+    summary = ReviewDetail.of(root, question, "operator").summary
+    assert summary.target == str(feature)
+    assert summary.paths == [".pre-commit-config.yaml"]
+    assert summary.title.endswith(" .pre-commit-config.yaml")
+    assert f"in {feature}" in parked.output
+    relay(root).answer(question.id, "operator", True)
+
+    waited = RUNNER.invoke(app(root), ["wait", question.id])
+
+    assert waited.exit_code == 0, waited.output
+    assert (feature / ".pre-commit-config.yaml").read_text() == "repos: [x]\n"
+
+
+def test_a_proposal_names_the_checkout_its_files_land_in(
+    root: Path, tmp_path: Path
+) -> None:
+    feature = checkout_at(tmp_path / "feature")
+    directory = staged(root, {"fresh.md": "created\n"})
+
+    parked = RUNNER.invoke(
+        app(root),
+        ["propose", str(directory), "--why", WHY, "--checkout", str(feature)],
+    )
+
+    assert parked.exit_code == 0, parked.output
+    detail = ReviewDetail.of(root, proposed(root), "operator")
+    assert [file.path for file in detail.files] == [str(feature / "fresh.md")]
+
+
+def test_a_proposal_from_another_checkout_than_the_session_s_is_refused_with_the_way(
+    root: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """That checkout's code writes its own queue, which the operator's page may not read."""
+    feature = checkout_at(tmp_path / "feature")
+    directory = staged(feature, {"notes.md": "# Notes\n"})
+    monkeypatch.setenv("LUP_BOUNDARY_ROOT", str(root))
+    monkeypatch.chdir(feature)
+
+    refused = RUNNER.invoke(app(feature), ["propose", "tmp/cdx", "--why", WHY])
+
+    assert refused.exit_code == 2
+    assert "nothing was parked" in refused.output
+    assert (
+        f"`uv run --directory {root} lup-devtools review propose {directory} --why"
+    ) in refused.output
+    assert relay(feature).pending() == []
+
+
+def test_a_proposal_from_a_subdirectory_is_kept_at_the_top_of_its_checkout(
+    root: Path,
+) -> None:
+    below = root / "docs"
+    below.mkdir()
+    directory = staged(root, {"notes.md": "# Notes\n"})
+
+    parked = RUNNER.invoke(app(below), ["propose", str(directory), "--why", WHY])
+
+    assert parked.exit_code == 0, parked.output
+    assert not (below / ".lup").exists()
+    assert proposed(root).operation.worktree == root
+
+
+@pytest.mark.parametrize(
+    ("running", "agent", "rule"),
+    [
+        ("subagent", "a7c1", "nothing else wakes a subagent"),
+        ("session", "", "the operator's answer wakes this session"),
+        ("", "", "From a session's own conversation:"),
+    ],
+    ids=["subagent", "session", "nobody-can-tell"],
+)
+def test_a_proposal_records_the_conversation_running_it(
+    root: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    running: str,
+    agent: str,
+    rule: str,
+) -> None:
+    """As the hooks record ``agent`` off a call, read here off the roster's open command window."""
+    member = "proposing-member"
+    monkeypatch.setenv(MEMBER_ENV, member)
+    peers = RepositoryPeers(root)
+    peers.join(member, root, cli_name="lead")
+    store.joined_subagent(
+        peers.root,
+        member,
+        store.Caller(
+            agent_id="a7c1", agent_type="general-purpose", cwd=str(root), name="b"
+        ),
+    )
+    window = {"subagent": store.subagent_id(member, "a7c1"), "session": member}
+    if running:
+        windows = peers.root / store.WINDOWS_DIR
+        windows.mkdir(parents=True, exist_ok=True)
+        (windows / f"{window[running]}.json").write_text("{}")
+    directory = staged(root, {"notes.md": "# Notes\n"})
+
+    parked = RUNNER.invoke(app(root), ["propose", str(directory), "--why", WHY])
+
+    assert parked.exit_code == 0, parked.output
+    question = proposed(root)
+    assert question.member == member
+    assert question.agent == agent
+    assert rule in " ".join(parked.output.split())

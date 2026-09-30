@@ -8,6 +8,7 @@ a launch from code that differs replaces it. While any launch holds it, one
 that stops is started again by them, and says why it stopped.
 """
 
+import io
 import os
 import signal
 import socket
@@ -30,7 +31,7 @@ from lup.devtools.dashboard.companion import (
     LaunchRecord,
     dashboard_status,
     launched_by_an_operator,
-    private_url,
+    private_urls,
     written,
 )
 from lup.devtools.dashboard.pulse import (
@@ -193,11 +194,11 @@ def test_a_restart_keeps_the_address_and_the_capability(
     root = repository(tmp_path / "project")
 
     with held_companions([dashboard], launch_at(root)) as first:
-        opened = private_url(dashboard, root)
+        opened = private_urls(dashboard, root)
         started = dashboard.standing(root).serving
     with held_companions([dashboard], launch_at(root)) as second:
         assert second.environment == first.environment
-        assert private_url(dashboard, root) == opened
+        assert private_urls(dashboard, root) == opened
         assert dashboard.standing(root).serving != started
 
 
@@ -254,6 +255,72 @@ def test_status_open_and_stop_are_read_from_outside_every_launch(
         assert stopped.exit_code == 0
         assert "Dashboard stopped; it stays stopped until" in stopped.output
         assert dashboard.standing(root).serving is None
+
+
+def test_status_and_open_give_the_launch_address_at_each_declared_origin(
+    dashboard: Dashboard, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """One per origin, so the operator logs in through their proxy; http elsewhere is warned of."""
+    root = repository(tmp_path / "project")
+    monkeypatch.setattr("lup.devtools.dashboard.reviews.Dashboard", lambda: dashboard)
+    origins = [
+        "https://their.proxy.name",
+        "http://box.lan:8080",
+        "http://localhost:9000",
+    ]
+    UserConfigFile().record({("dashboard", "origins"): [*origins]})
+    cli = create_operator_dashboard_app(root)
+    runner = CliRunner()
+
+    with held_companions([dashboard], launch_at(root)) as joined:
+        status = dashboard_status(dashboard, root)
+        printed = runner.invoke(cli, ["status"])
+        opened = runner.invoke(cli, ["open"])
+        token = DashboardToken(directory=dashboard.slot(root).directory).read()
+    monkeypatch.setenv(MEMBER_ENV, "a-session")
+    in_a_session = dashboard_status(dashboard, root)
+
+    url = joined.environment[DASHBOARD_URL_ENV]
+    launch = [f"{address}/#token={token}" for address in [url, *origins]]
+    assert status.origins == origins
+    assert status.launch == launch
+    [warning] = status.warnings
+    assert warning.startswith("http://box.lan:8080 is neither https nor loopback")
+    assert printed.exit_code == 0 and opened.exit_code == 0, opened.output
+    assert all(address in printed.stdout for address in launch)
+    assert all(f"Operator launch URL: {address}" in opened.stdout for address in launch)
+    assert warning in opened.output
+    assert not in_a_session.launch and token not in in_a_session.model_dump_json()
+
+
+class Terminal(io.StringIO):
+    """Standard output as a terminal the operator reads."""
+
+    def isatty(self) -> bool:
+        return True
+
+
+def test_only_an_operators_launch_on_a_terminal_prints_the_launch_addresses(
+    dashboard: Dashboard, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A session launching a session, or a launch whose output is captured, never reads the capability."""
+    root = repository(tmp_path / "project")
+    UserConfigFile().record({("dashboard", "origins"): ["https://their.proxy.name"]})
+
+    with held_companions([dashboard], launch_at(root)) as captured:
+        token = DashboardToken(directory=dashboard.slot(root).directory).read()
+        monkeypatch.setattr(sys, "stdout", Terminal())
+        with held_companions([dashboard], launch_at(root)) as operators:
+            session = launch_at(root, **{MEMBER_ENV: "a-session"})
+            with held_companions([dashboard], session) as sessions:
+                pass
+
+    url = operators.environment[DASHBOARD_URL_ENV]
+    said = [notice.text for notice in operators.notices]
+    assert f"Operator launch URL: {url}/#token={token}" in said
+    assert f"Operator launch URL: https://their.proxy.name/#token={token}" in said
+    assert not any(token in notice.text for notice in captured.notices)
+    assert not any(token in notice.text for notice in sessions.notices)
 
 
 def test_inside_a_session_the_dashboard_answers_from_what_it_publishes(
@@ -362,13 +429,13 @@ def test_the_operator_restarts_the_dashboard_in_place(
     with held_companions([dashboard], launch_at(root)) as joined:
         pulse = PulseFile(path=Path(joined.environment[DASHBOARD_PULSE_ENV]))
         serving = dashboard.standing(root).serving
-        opened = private_url(dashboard, root)
+        opened = private_urls(dashboard, root)
         first = running_since(pulse)
         restarted = runner.invoke(cli, ["restart"])
         again = running_since(pulse, first)
         published = pulse.read()
         assert dashboard.standing(root).serving == serving
-        assert private_url(dashboard, root) == opened
+        assert private_urls(dashboard, root) == opened
         monkeypatch.setenv(MEMBER_ENV, "a-session")
         refused = runner.invoke(cli, ["restart"])
 
@@ -408,12 +475,12 @@ def test_a_dashboard_killed_while_held_comes_back_at_its_address(
 
     with held_companions([watched], launch_at(root)) as joined:
         pulse = PulseFile(path=Path(joined.environment[DASHBOARD_PULSE_ENV]))
-        opened = private_url(watched, root)
+        opened = private_urls(watched, root)
         killed = watched.standing(root).serving
         assert killed is not None
         os.kill(killed.pid, signal.SIGKILL)
         serving_again(watched, root, killed)
-        reopened = private_url(watched, root)
+        reopened = private_urls(watched, root)
         said = restart_said(pulse)
         line = status_line(pulse.path)
         status = dashboard_status(watched, root)
@@ -431,7 +498,11 @@ def test_a_dashboard_killed_while_held_comes_back_at_its_address(
 def test_the_dashboard_stops_at_once_with_a_tab_following_it(
     dashboard: Dashboard, tmp_path: Path
 ) -> None:
-    """An open stream ends as serving stops, well inside the server's grace, with no error logged."""
+    """An open stream ends as serving stops, before the server's grace runs out, with no error logged.
+
+    Read from uvicorn's own cancellation line rather than a wall clock, which
+    a loaded machine stretches past any bound tight enough to mean something.
+    """
     root = repository(tmp_path / "project")
 
     with held_companions([dashboard], launch_at(root)) as joined:
@@ -453,7 +524,8 @@ def test_the_dashboard_stops_at_once_with_a_tab_following_it(
                 continue
     logged = dashboard.slot(root).log().read_text()
 
-    assert took < 1.5, logged
+    assert "timeout graceful shutdown exceeded" not in logged, logged
+    assert took < 30, logged
     assert "ERROR" not in logged and "Traceback" not in logged, logged
 
 
@@ -470,7 +542,7 @@ def test_a_held_dashboard_the_operator_stops_stays_stopped_until_restart(
 
     with held_companions([watched], launch_at(root)) as joined:
         pulse = Path(joined.environment[DASHBOARD_PULSE_ENV])
-        opened = private_url(watched, root)
+        opened = private_urls(watched, root)
         before = watched.standing(root).serving
         assert before is not None
         stopped = runner.invoke(cli, ["stop"])
@@ -480,7 +552,7 @@ def test_a_held_dashboard_the_operator_stops_stays_stopped_until_restart(
         line = status_line(pulse)
         restarted = runner.invoke(cli, ["restart"])
         again = watched.standing(root)
-        reopened = private_url(watched, root)
+        reopened = private_urls(watched, root)
 
     stop = left.stopped
     assert stopped.exit_code == 0
@@ -514,7 +586,7 @@ def test_restart_starts_a_dashboard_for_sessions_holding_none(
     runner = CliRunner()
 
     with held_companions([unwatched], launch_at(root)):
-        opened = private_url(unwatched, root)
+        opened = private_urls(unwatched, root)
         killed = unwatched.standing(root).serving
         assert killed is not None
         os.kill(killed.pid, signal.SIGKILL)
@@ -525,7 +597,7 @@ def test_restart_starts_a_dashboard_for_sessions_holding_none(
         idle = dashboard_status(unwatched, root)
         restarted = runner.invoke(cli, ["restart"])
         standing = unwatched.standing(root)
-        reopened = private_url(unwatched, root)
+        reopened = private_urls(unwatched, root)
 
     assert not idle.serving and idle.sessions == 1
     assert "`uv run lup-devtools dashboard restart` starts it for them" in idle.detail

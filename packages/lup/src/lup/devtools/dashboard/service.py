@@ -342,14 +342,21 @@ class Herald:
     def waiting(
         self, root: Path, question: RecordedQuestion, scan: ReviewScan
     ) -> Waiting:
-        """One review as a notice names it: what it asks, who asked, and where."""
+        """One review as a notice names it: what it asks, who asked, and where.
+
+        Where is the checkout its files lie in, which its title's paths are
+        relative to, rather than the one keeping the queue.
+        """
         anchor = scan.repositories[root] if root in scan.repositories else root
+        summary = self.store.summary(root, question)
         return Waiting(
             key=ReviewSummary.key_for(root, question.id),
-            title=self.store.summary(root, question).title,
+            title=summary.title,
             session=RequesterPresence.of(root).called(question),
             repository=KnownRepository(repository=anchor, checkout=root).name(),
-            checkout=question.operation.worktree.name,
+            checkout=Path(summary.target).name
+            if summary.target
+            else question.operation.worktree.name,
         )
 
     def announce(self, fresh: list[Waiting]) -> None:
@@ -467,7 +474,12 @@ def serve_dashboard(arguments: ServiceArguments) -> None:
 
     # One store for the stream, every route, the herald and the sweep, so the
     # relays it keeps open are read once however many of them ask.
-    store = ReviewStore(roots=(), discover=True, registry=registry)
+    store = ReviewStore(
+        roots=(),
+        discover=True,
+        registry=registry,
+        restarting=lambda: bool(refresh.refusal()),
+    )
     feed = LiveFeed(registry.repositories, store, code=code)
     # Taken before the page is read, so a bundle rebuilt while it is read
     # moves the dashboard onto the new one rather than past it unseen.

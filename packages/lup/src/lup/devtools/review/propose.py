@@ -4,8 +4,11 @@ A session making several edits the operator has to see parks one question
 per edit, and each is answered alone -- against a file the next edit then
 moves, which stales the rest. So a session writes the new versions under
 scratch instead, at the path each has in its checkout (`tmp/cdx/<path>`),
-tests them there, and `review propose tmp/cdx --why "…"` parks one review
-holding every file.
+tests them there, and `review propose <checkout>/tmp/cdx --why "…"` parks
+one review holding every file. Run with the session's own checkout as
+``uv run --directory``, the review is kept in that checkout's queue and read
+with its code, labelled with the checkout the files land in: the one holding
+the directory, or ``--checkout``.
 
 Each file meets the edit gates a direct write of it would meet -- protected
 paths, anti-patterns, markers, size -- and the review records each verdict:
@@ -38,7 +41,9 @@ from uuid import uuid4
 
 from pydantic import BaseModel, ValidationError
 
+from lup.coordination.bare import store as roster
 from lup.coordination.identity import session_member_id
+from lup.coordination.repository import RepositoryPeers
 from lup.devtools.dev.policy_explain import session_placement
 from lup.harness.enforcement import semantic_policy_for
 from lup.harness.models import HookSet
@@ -281,10 +286,39 @@ def judged(root: Path, hooks: HookSet, proposal: Proposal) -> list[Decision]:
     ]
 
 
+def asking_agent(root: Path, member: str) -> str | None:
+    """The subagent whose command this is, blank for the session's own conversation.
+
+    A process run as a command carries its session's id and nothing naming
+    the subagent whose call started it; the roster knows which conversation
+    of the session has a command running now, as the hooks record ``agent``
+    from the call's own payload. ``None`` where nothing can tell: no roster
+    here, or two conversations running a command at once.
+    """
+    if not member:
+        return None
+    acting = roster.commanding(RepositoryPeers(root).root, member)
+    if not acting:
+        return None
+    return "" if acting == member else roster.agent_of(acting, member)
+
+
 def parked(
-    root: Path, hooks: HookSet, proposal: Proposal, relay: QuestionRelay
+    root: Path,
+    target: Path,
+    hooks: HookSet,
+    proposal: Proposal,
+    relay: QuestionRelay,
+    agent: str = "",
 ) -> PersistentQuestion:
-    """Park one review holding every file of *proposal*, or refuse it naming what the gates refuse."""
+    """Park one review holding every file of *proposal*, or refuse it naming what the gates refuse.
+
+    *root* is the session's checkout, whose policy judges each file as the
+    session's direct write of it and whose *relay* keeps the review; *target*
+    is the checkout the files land in, which the review is labelled with.
+    *agent* is the subagent that asked, blank for the session's own
+    conversation, as the hooks record it for a call.
+    """
     verdicts = judged(root, hooks, proposal)
     refused = [
         f"{proposed.path}: {verdict.reason}"
@@ -306,7 +340,7 @@ def parked(
         f"{'file' if len(proposal.files) == 1 else 'files'}: "
         + (
             "; ".join(
-                f"{proposed.path.relative_to(root)} — {verdict.reason}"
+                f"{proposed.path.relative_to(target)} — {verdict.reason}"
                 for proposed, verdict in asking
             )
             if asking
@@ -320,14 +354,15 @@ def parked(
         for proposed in proposal.files
     }
     sessions = native_session_ids()
+    member = session_member_id()
     operation = Operation(
         id=uuid4().hex,
         session=sessions[0] if sessions else "",
-        requester=sessions[0] if sessions else session_member_id(),
+        requester=sessions[0] if sessions else member,
         tool=PROPOSE_TOOL,
         payload=proposal.model_dump(mode="json"),
-        cwd=root,
-        worktree=root,
+        cwd=target,
+        worktree=target,
     )
     question = PersistentQuestion(
         id=operation.id,
@@ -345,7 +380,8 @@ def parked(
         purpose=asking[0][1].purpose if asking else None,
         chain_resolved=False,
         resolved={path: path.resolve() for path in preconditions},
-        member=session_member_id(),
+        member=member,
+        agent=agent,
         account=[Account(source="proposal", text=proposal.why)],
     )
     return relay.record(

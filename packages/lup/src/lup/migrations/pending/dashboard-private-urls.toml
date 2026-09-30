@@ -1,0 +1,12 @@
+subjects = ["private_url"]
+reason = """
+the dashboard is also reached at each origin the person declares in \
+`[dashboard] origins`, so what opens it is one launch address per origin \
+rather than loopback's alone"""
+
+[[steps]]
+instruction = """
+Call `private_urls(dashboard, root, origins)` from \
+lup.devtools.dashboard.companion where `private_url(dashboard, root)` was \
+called: its first address is the loopback one `private_url` returned, and one \
+follows for each of the `origins` passed, such as `DeclaredOrigins()()`."""

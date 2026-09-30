@@ -128,6 +128,7 @@ time { font-size: .75rem; }
 .row-stale, .row-failed { color: #963e30 !important; }
 .row-unanswerable { color: #805707 !important; }
 .row-said { color: #245e9a !important; }
+.row-target { color: var(--muted); }
 .metadata { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: .35rem 1rem; font-size: .85rem; }
 dt { color: var(--muted); }
 dd { margin: 0; overflow-wrap: anywhere; }

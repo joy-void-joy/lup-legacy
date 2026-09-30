@@ -52,6 +52,15 @@ export function checkoutLabel(path: string, root: ReviewRoot | undefined): strin
   return path.slice(path.lastIndexOf("/") + 1) || path;
 }
 
+/**
+ * The checkout a review's files lie in, where it is not the one keeping its
+ * queue -- a session parks every review in its own checkout's queue, whichever
+ * checkout the call changes -- and nothing where it is, so a row names it.
+ */
+export function changedElsewhere(row: ReviewSummary, root: ReviewRoot | undefined): string {
+  return row.target !== "" && root !== undefined && row.target !== root.path ? checkoutLabel(row.target, root) : "";
+}
+
 /** What went stale, in a sentence per file. */
 export function staleSentences(row: ReviewSummary): string[] {
   return row.stale.map((moved) => {

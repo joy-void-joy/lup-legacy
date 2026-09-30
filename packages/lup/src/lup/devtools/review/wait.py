@@ -1,9 +1,10 @@
 """Wait on parked reviews, and carry out each one the operator approves.
 
-A parked call is refused while it waits, so nothing retries it: the session
-starts `review wait` in its own shell -- in the background, where its runtime
-wakes it when a background command ends -- and the waiter reports each review
-as it settles. An approved one it carries out there, inside the session's own
+A parked call is refused while it waits, so nothing retries it: the
+conversation that asked runs `review wait` in its own shell -- a session's
+own conversation once the operator's answer wakes it, a subagent in the
+background from the start, since nothing else wakes a subagent -- and the
+waiter reports each review as it settles. An approved one it carries out there, inside the session's own
 sandbox: an edit as the after-document the operator saw, only where the file
 still stands as the review recorded it; a command in the directory recorded
 with it, in a fresh shell, so nothing the session did to its own shell since
@@ -57,6 +58,7 @@ from lup.coordination.wake import WakePath, wake
 from lup.devtools.review.preimages import PreimageWatch, moved
 from lup.devtools.review.propose import previewed
 from lup.devtools.review.thread import ReviewThread
+from lup.policy.assets.host import review_home
 from lup.policy.kernel.review import literal_input
 from lup.policy.relay import (
     LineComment,
@@ -122,19 +124,38 @@ class WaitedReview(BaseModel, frozen=True):
         )
 
 
+def review_command(root: Path, words: Sequence[str]) -> str:
+    """One `review` command over *root*'s queue, runnable from anywhere with *root*'s code.
+
+    Every review command a session or the operator is handed is spelled this
+    way: the checkout keeping the queue holds the code that parked what is in
+    it, where a command run from another checkout reads and writes the queue
+    with that checkout's code, or another checkout's queue.
+    """
+    return shlex.join(
+        ["uv", "run", "--directory", str(root), "lup-devtools", "review", *words]
+    )
+
+
 def resume_command(root: Path, reviews: Sequence[str]) -> str:
     """The `review wait` that waits on *reviews* again, runnable from anywhere."""
-    return shlex.join(
-        [
-            "uv",
-            "run",
-            "--directory",
-            str(root),
-            "lup-devtools",
-            "review",
-            "wait",
-            *reviews,
-        ]
+    return review_command(root, ["wait", *reviews])
+
+
+def kept_elsewhere(root: Path, words: Sequence[str]) -> str:
+    """Where this session keeps its reviews, and the command reaching them, where that is not *root*.
+
+    A session keeps its reviews in the checkout its launch opened, read with
+    that checkout's code. The same command run from another checkout reads
+    and writes that one's queue with that one's code -- how a review came to
+    be parked where the operator's dashboard could not answer it.
+    """
+    home = review_home(root)
+    if home.resolve() == root.resolve():
+        return ""
+    return (
+        f"this session's reviews are kept in {home} and read with its code: run "
+        f"`{review_command(home, words)}`"
     )
 
 
@@ -628,16 +649,24 @@ def settling(
             yield told(report)
 
 
-def woken(asker: Asker, said: list[str]) -> None:
-    """Hand what the waiter said to a Codex session through its queue, where it may be idle.
+def woken(asker: Asker, said: list[str], waited: list[RecordedQuestion]) -> None:
+    """Hand what a waiter left running said to a Codex session through its queue, where it may be idle.
 
     A Claude session is woken by its runtime when this background command
     ends; a Codex session's shell tool keeps the command running after the
     turn and starts no turn when it ends -- measured on 0.158.0, where
-    `codex queue` did start one in the idle thread -- so the waiter queues
-    what it reported, the line saying how to wait again included.
+    `codex queue` did start one in the idle thread -- so a waiter that
+    waited queues what it reported, the line saying how to wait again
+    included. One run once every answer was in reports in the call that ran
+    it, and queuing that too would start a turn for nothing. A subagent's
+    waiter queues nothing: the session's thread is not the subagent, which
+    reads its waiter itself before it reports.
     """
     if asker.wake.runtime != "codex" or not said:
+        return
+    if all(question.agent for question in waited):
+        return
+    if all(question.state != "pending" for question in waited):
         return
     wake(
         asker.wake,
@@ -697,7 +726,8 @@ def wait_on(
     try:
         waiting = chosen(store, asker, reviews)
     except WaitRefused as refusal:
-        typer.echo(str(refusal))
+        elsewhere = kept_elsewhere(root, ["wait", *reviews])
+        typer.echo(f"{refusal}; {elsewhere}" if elsewhere else str(refusal))
         return 2
     if not waiting:
         typer.echo("nothing this session asked is waiting for review")
@@ -719,27 +749,29 @@ def wait_on(
     said = [report.line() for report in reports]
     commented = [report.review for report in reports if report.verdict == "commented"]
     if not left or not (stop.signal or commented or not (first and reports)):
-        woken(asker, said)
+        woken(asker, said, waiting)
         return 0 if all(report.carried for report in reports) else 1
     again = resume_command(root, left)
     match commented, stop.signal:
         case [review, *_], _:
             ending = (
                 f"{', '.join(commented)} still pending, with the operator's words "
-                "above: answer on the review with `uv run lup-devtools review "
-                f"reply {review} <text>`, or cancel it and ask again; `{again}` "
-                "waits on it again"
+                "above: answer on the review with "
+                f"`{review_command(root, ['reply', review])} <text>`, or cancel "
+                f"it and ask again; `{again}` waits on it again"
             )
         case [], str(name) if name:
             ending = (
                 f"stopped by {name} with {', '.join(left)} still pending and "
-                f"nothing carried out for it — start `{again}` again to keep waiting"
+                f"nothing carried out for it — start `{again}` again to keep "
+                "waiting, quietly: a waiter ending is news to nobody"
             )
         case _:
             ending = (
                 f"still waiting on {', '.join(left)}: its timeout passed and nothing "
-                f"was carried out for it — start `{again}` again to keep waiting"
+                f"was carried out for it — start `{again}` again to keep waiting, "
+                "quietly: a waiter ending is news to nobody"
             )
     typer.echo(ending)
-    woken(asker, [*said, ending])
+    woken(asker, [*said, ending], waiting)
     return 3

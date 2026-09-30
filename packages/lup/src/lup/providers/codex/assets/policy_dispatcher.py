@@ -286,19 +286,34 @@ def named_input(payload):
     return None if named in ("", given) else {**tool_input, "task_name": named}
 
 
-def waiting(command):
-    """How a Codex session waits on a parked call, in the words of its shell tool.
+def waiting(command, payload):
+    """How the conversation that asked hears the operator's answer, in its shell tool's words.
 
-    Measured on 0.158.0 in the interactive TUI: a command its shell tool
-    starts keeps running after the turn that started it ends, shown as a
-    background terminal, and ending does not start a turn; `codex queue`
-    does, into the idle thread. So the waiter is left running and wakes the
-    session through the queue when it settles.
+    The session's own thread holds no waiter. Where no `review wait` holds
+    the review, the operator's answer goes to its mailbox and is queued into
+    its thread with `codex queue`, which starts a turn in an idle thread --
+    measured on 0.158.0, a browser decision reached a second turn that way
+    -- and the `review wait` it runs then carries the call out at once.
+
+    A subagent's last message is its report, and nothing wakes it after: a
+    command it leaves running outlives the report and wakes nobody, measured
+    on 0.155.1 and again on 0.158.0, and a message to it waits for its next
+    tool call. So it holds the waiter in its shell tool and reads it before
+    it reports, starting it again without telling anybody where it ends
+    with the review still waiting: a waiter ending is no news.
     """
+    if "agent_id" in payload:
+        return (
+            f"Carry on with other work, and hold `{command}` in your shell tool, "
+            "reading its output before you report: once a subagent reports, "
+            "nothing wakes it, and a command it left running wakes nobody. If it "
+            "ends with the review still waiting, start it again quietly, "
+            "reporting that to nobody."
+        )
     return (
-        f"Start `{command}` with your shell tool and leave it running: it keeps "
-        "running after the tool yields and after your turn ends, and queues its "
-        "result to this session when the operator answers."
+        "Carry on with other work, or end your turn: the operator's answer is "
+        f"queued into this thread, which starts a turn, and `{command}` then "
+        "carries the call out at once. Don't start a waiter."
     )
 
 
@@ -361,7 +376,7 @@ def queued_review(payload, decision):
         name,
         tool_input,
         before,
-        waiting,
+        lambda command: waiting(command, payload),
         payload["tool_use_id"] if "tool_use_id" in payload else "",
         payload["hook_event_name"] if "hook_event_name" in payload else "",
         "PreToolUse"

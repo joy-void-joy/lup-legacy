@@ -20,7 +20,11 @@ from tests.unit.reviews import bound
 
 
 def parked(
-    root: Path, question_id: str, requester: str, created: datetime | None = None
+    root: Path,
+    question_id: str,
+    requester: str,
+    created: datetime | None = None,
+    member: str = "",
 ) -> PersistentQuestion:
     operation = Operation(
         id=f"operation-{question_id}",
@@ -41,6 +45,7 @@ def parked(
                 eligible=["operator"],
                 resumption="native_retry",
                 created=created or datetime.now(UTC),
+                member=member,
             )
         )
     )
@@ -71,6 +76,27 @@ def test_only_reviews_nobody_can_retry_expire(tmp_path: Path) -> None:
     }
     [reason] = {entry.outcome for entry in expired}
     assert "requester ended" in reason
+
+
+def test_a_resumed_session_s_review_stays_while_its_member_runs(tmp_path: Path) -> None:
+    """Resumed, a session keeps its roster member and hands commands the id it began with.
+
+    That id's row has ended, and the session that asked still runs.
+    """
+    parked(tmp_path, "resumed", "first-runtime-id")
+    parked(tmp_path, "by-member", "first-runtime-id", member="member-id")
+    presence = RequesterPresence(
+        sessions={
+            "first-runtime-id": Sighting(name="lead", running=False),
+            "member-id": Sighting(name="lead", running=True),
+        }
+    )
+
+    expired = expire_orphaned(tmp_path, presence)
+
+    assert [each.id for each in expired] == ["resumed"]
+    kept = relay(tmp_path).find("by-member")
+    assert kept is not None and kept.state == "pending"
 
 
 def test_an_answered_review_is_never_expired_by_the_sweep(tmp_path: Path) -> None:

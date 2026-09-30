@@ -1725,6 +1725,14 @@ describe("dashboard page", () => {
     expect(one(plain.root, ".diff-line.add .line-content").textContent).toBe("def after():");
   });
 
+  test("a row names the checkout its files lie in, where it is not the one keeping the queue", async () => {
+    rows = [{ ...summary, target: "/project/tree/other" }, { ...summary, key: "tree-q2", id: "q2", target: root.path }];
+    const page = await open();
+    const targets = [...page.root.querySelectorAll(".queue-row")].map((row) => row.querySelector(".row-target")?.textContent ?? "");
+    expect(targets).toEqual(["in other", ""]);
+    expect(one(page.root, ".queue-row .row-target").getAttribute("title")).toBe("/project/tree/other");
+  });
+
   test("the thread shows what the operator remarked and what the requester replied", async () => {
     detail.thread = [
       { kind: "remark", author: "operator", text: "Why not a flag?", comments: [{ path: "/project/file.py", start: 1, end: 1, side: "after", note: "here" }], at: "2026-09-24T12:01:00Z", approved: null },

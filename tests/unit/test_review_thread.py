@@ -155,7 +155,10 @@ def test_a_remark_is_printed_with_how_to_answer_and_wait_again(
     printed = capsys.readouterr().out
     assert f"review {question.id} — commented:" in printed
     assert "operator note: why not a flag?" in printed
-    assert f"review reply {question.id} <text>" in printed
+    assert (
+        f"`uv run --directory {root} lup-devtools review reply {question.id} <text>`"
+        in printed
+    )
     assert f"lup-devtools review wait {question.id}" in printed
 
 
@@ -326,6 +329,84 @@ def test_a_bare_approval_pings_nobody_but_the_requester(
     assert RepositoryPeers(root).waiting(member).messages == []
     assert (
         RepositoryPeers(root).waiting(store.subagent_id(member, agent)).messages == []
+    )
+
+
+def test_an_answer_from_the_terminal_reaches_the_session_as_the_page_s_does(
+    root: Path, wakes: Wakes
+) -> None:
+    """A session's own conversation holds no waiter, so the answer is what wakes it."""
+    member = joined(root)
+    question = parked(root, member=member)
+
+    answered = RUNNER.invoke(
+        create_review_app(root), ["approve", question.id, "--as", "operator"]
+    )
+
+    assert answered.exit_code == 0, answered.output
+    assert (
+        "the session that asked: No `review wait` holds it: sent to lead, which "
+        "was woken." in answered.output
+    )
+    assert wakes.woken == [member]
+    (message,) = RepositoryPeers(root).waiting(member).messages
+    assert (
+        f"Run `uv run --directory {root} lup-devtools review wait {question.id}` "
+        "now: it carries it out at once"
+    ) in message.text
+
+
+@pytest.mark.parametrize("agent", ["", "a7c1"], ids=["session", "subagent"])
+def test_a_remark_mailed_says_how_the_asker_hears_the_answer(
+    root: Path, wakes: Wakes, agent: str
+) -> None:
+    """A subagent holds its waiter again; a session's own conversation is woken again."""
+    member = joined(root)
+    if agent:
+        store.joined_subagent(
+            RepositoryPeers(root).root,
+            member,
+            store.Caller(
+                agent_id=agent,
+                agent_type="general-purpose",
+                cwd=str(root),
+                name="builder",
+            ),
+        )
+    question = parked(root, member=member, agent=agent)
+    remark = ReviewThread.of(relay(root)).remark(question, "operator", "why?").remark
+
+    notify_requester((root,), root, question, remark)
+
+    asker = store.subagent_id(member, agent) if agent else member
+    (message,) = RepositoryPeers(root).waiting(asker).messages
+    assert (
+        f"`uv run --directory {root} lup-devtools review reply {question.id} <text>`"
+        in message.text
+    )
+    assert (
+        f"`uv run --directory {root} lup-devtools review wait {question.id}` waits "
+        "on it again." in message.text
+    ) is bool(agent)
+    assert ("The answer wakes you as this did." in message.text) is not bool(agent)
+
+
+def test_a_reply_from_another_checkout_names_where_the_session_keeps_it(
+    root: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The review is in the session's queue, which a sibling checkout's command does not read."""
+    question = parked(root)
+    sibling = tmp_path / "sibling"
+    (sibling / ".git").mkdir(parents=True)
+    (sibling / ".git/HEAD").write_text("ref: refs/heads/other\n")
+    monkeypatch.setenv("LUP_BOUNDARY_ROOT", str(root))
+
+    replied = RUNNER.invoke(create_review_app(sibling), ["reply", question.id, "done"])
+
+    assert replied.exit_code == 2
+    assert (
+        f"`uv run --directory {root} lup-devtools review reply {question.id} done`"
+        in replied.output
     )
 
 

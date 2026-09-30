@@ -87,3 +87,93 @@ def test_multiline_shell_title_counts_complete_script(tmp_path: Path) -> None:
     summary = ReviewSummary.of(tmp_path, entry, "operator")
     assert summary.title == "Run shell script (3 lines)"
     assert entry.operation.payload["command"] == command
+
+
+def checkout_at(path: Path) -> Path:
+    """A directory Git would call a checkout: a `.git` holding a HEAD."""
+    (path / ".git").mkdir(parents=True)
+    (path / ".git/HEAD").write_text("ref: refs/heads/feature\n")
+    return path
+
+
+def test_a_session_editing_another_checkout_is_titled_relative_to_that_checkout(
+    tmp_path: Path,
+) -> None:
+    """The review sits in the session's queue; its title reads in the checkout it changes."""
+    session = checkout_at(tmp_path / "dev")
+    other = checkout_at(tmp_path / "feat-x")
+    path = other / "src/module.py"
+    entry = question(
+        session, "Write", {"file_path": str(path), "content": "new\n"}, {path: None}
+    )
+
+    summary = ReviewSummary.of(session, entry, "operator")
+
+    assert summary.title == "Create src/module.py"
+    assert summary.paths == ["src/module.py"]
+    assert summary.target == str(other)
+
+
+def test_files_in_several_checkouts_keep_the_recorded_one(tmp_path: Path) -> None:
+    session = checkout_at(tmp_path / "dev")
+    first = checkout_at(tmp_path / "one") / "a.py"
+    second = checkout_at(tmp_path / "two") / "b.py"
+    patch = (
+        "*** Begin Patch\n"
+        f"*** Add File: {first}\n+a = 1\n*** Add File: {second}\n+b = 2\n"
+        "*** End Patch\n"
+    )
+    entry = question(
+        session, "apply_patch", {"command": patch}, dict.fromkeys([first, second])
+    )
+
+    summary = ReviewSummary.of(session, entry, "operator")
+
+    assert summary.target == str(session)
+    assert summary.paths == [str(first), str(second)]
+
+
+def test_a_review_only_others_may_answer_names_the_command_they_answer_with(
+    tmp_path: Path,
+) -> None:
+    entry = question(tmp_path, "Bash", {"command": "make"}, {}).model_copy(
+        update={"eligible": ["operator-two"]}
+    )
+
+    summary = ReviewSummary.of(tmp_path, entry, "operator")
+
+    assert not summary.answerable
+    assert summary.unanswerable == (
+        "Only operator-two may answer it: "
+        f"`uv run --directory {tmp_path} lup-devtools review approve review-id --as "
+        f"operator-two` or `uv run --directory {tmp_path} lup-devtools review "
+        "decline review-id --as operator-two`, from a terminal outside every "
+        "session."
+    )
+
+
+@pytest.mark.parametrize("restarting", [False, True])
+def test_a_review_newer_code_parked_names_the_code_that_can_answer_it(
+    tmp_path: Path, restarting: bool
+) -> None:
+    """The checkout keeping the queue parked it with its own code, which reads it."""
+    entry = question(tmp_path, "Bash", {"command": "make"}, {}).model_copy(
+        update={
+            "resumption": "native_retry",
+            "scheme": ["file_reviews", "unpreviewed", "segments", "later"],
+        }
+    )
+
+    summary = ReviewSummary.of(tmp_path, entry, "operator", restarting=restarting)
+
+    assert not summary.answerable
+    assert summary.unanswerable.startswith("This dashboard runs older code")
+    assert (
+        "The code that parked it can answer it: "
+        f"`uv run --directory {tmp_path} lup-devtools review approve review-id --as "
+        "operator`"
+    ) in summary.unanswerable
+    assert (
+        "The dashboard restarts onto its checkout's newer code shortly"
+        in summary.unanswerable
+    ) is restarting

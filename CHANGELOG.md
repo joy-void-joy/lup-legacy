@@ -41,6 +41,64 @@ judged by what they do.
   commit -a` and `git commit <path>`. The installed hook hands it on, so
   re-arm with `uv run lup-devtools git hooks install` from a host terminal.
 
+### A session's reviews live in its own checkout, and only subagents hold waiters
+
+A parked call's refusal no longer tells a session's own conversation to start
+a `review wait`: Claude Code stops a background command after two hours at
+most, so that waiter expired and woke the session every two hours for
+nothing. The session now carries on or ends its turn, and the operator's
+answer -- on the dashboard, or from a terminal with `review approve` or
+`decline`, which now tells the session the same way -- wakes it through its
+mailbox (the wake socket on Claude, `codex queue` on Codex); the
+`review wait` it names then carries the call out at once. A subagent, which
+nothing else wakes, still holds a waiter: on Claude in the background with
+`--timeout 7140`, on Codex in its shell tool until it reports, and it
+restarts it quietly when it ends. A `-p` run still waits in the foreground.
+A Codex waiter queues its report into the session's thread only when it was
+left running for a session's own thread.
+
+Every review is kept at the top of the checkout the session's launch opened
+(`LUP_BOUNDARY_ROOT`), whatever directory or checkout the call ran in, and
+every review command a refusal, a notice or `--help` prints is spelled
+`uv run --directory <session checkout> lup-devtools review …`, so the review
+is written and read with the session's code. A call from a subdirectory no
+longer leaves a `.lup` of its own there, the hook observations included, and
+the review CLI run from a subdirectory reads the checkout's queue.
+`review propose <checkout>/tmp/<name>` lands the files in the checkout
+holding the directory (or `--checkout`), records the review in the session's
+queue, records the subagent that proposed it (`agent`), and is refused, with
+the command to run instead, from a checkout other than the session's;
+`review reply`, `wait` and `cancel` name the session's queue when the review
+is not found where they ran.
+
+Titles read the paths relative to the checkout the files lie in, and the
+queue row and desktop notice name that checkout where it is not the queue's.
+A review the page cannot answer says why and gives the terminal commands that
+can, run with the code of the checkout keeping it, and, while the dashboard
+is about to restart onto newer code, that it will shortly.
+
+### The dashboard answers behind a reverse proxy the person declares
+
+`[dashboard] origins = ["https://their.proxy.name"]` in the person's lup
+config (`~/.config/lup/config.toml`) declares each origin a reverse proxy
+serves the dashboard at. Each must be a whole origin, `scheme://host[:port]`
+over http or https with no path, and is read lowercase and without its
+default port. The Host check that guards against DNS rebinding answers each
+declared origin's host, with and without that port, beside loopback's, and a
+write is taken from a declared `Origin` as from the dashboard's own address;
+every other name is still answered 421, now saying where origins are
+declared, and every other origin 403. The running dashboard, shared or
+`dashboard serve`, reads the list again on the next request after the file
+moves, so no restart is needed; a file it cannot read leaves loopback alone.
+`dashboard status` gains `origins`, `launch` (the launch address, capability
+included, at loopback and each origin; from the operator's terminal only)
+and `warnings` (a declared origin that is neither https nor loopback);
+`dashboard open` and `dashboard serve` print every launch address, and so
+does a launch the operator makes on a terminal, never a session's or a
+captured one. `lup.web` pages take `origins` and `refusal` for their Host
+guard. docs/dashboard.md, "Behind a reverse proxy", has a Caddy example that
+is `reverse_proxy 127.0.0.1:8766` and nothing more.
+
 ### Agents are told to write review notes in plain words
 
 `review propose --help` now explains how to write `--why` and the per-file

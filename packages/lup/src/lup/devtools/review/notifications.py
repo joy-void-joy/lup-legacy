@@ -8,7 +8,6 @@ persisted apart from the relay, bound to the exact answer it reports.
 from collections.abc import Callable
 from datetime import datetime
 import logging
-import shlex
 from pathlib import Path
 from uuid import NAMESPACE_URL, uuid5
 
@@ -21,7 +20,7 @@ from lup.coordination.repository import RepositoryPeers
 from lup.coordination.roster import RosterMember
 from lup.coordination.peers import USER_ADDRESS
 from lup.coordination.watch import roused
-from lup.devtools.review.wait import ReviewWaiters
+from lup.devtools.review.wait import ReviewWaiters, resume_command, review_command
 from lup.policy.relay import Answer, LineComment, QuestionRecord, Remark
 
 
@@ -288,22 +287,6 @@ class ReviewRecipients(BaseModel, frozen=True):
         return cls(requester=session)
 
 
-def waiting_command(root: Path, entry: QuestionRecord) -> str:
-    """The `review wait` that carries out or reports one review, runnable from anywhere."""
-    return shlex.join(
-        [
-            "uv",
-            "run",
-            "--directory",
-            str(root),
-            "lup-devtools",
-            "review",
-            "wait",
-            entry.id,
-        ]
-    )
-
-
 def spoken(note: str, comments: list[LineComment], root: Path) -> str:
     """The operator's note and line comments, as lines the requester reads."""
     listed = [f"\n  {comment.spelled(root)}" for comment in comments]
@@ -318,19 +301,18 @@ def spoken(note: str, comments: list[LineComment], root: Path) -> str:
 def answered_message(root: Path, entry: QuestionRecord) -> str:
     """What the session that asked is told of how its review settled, and what to do about it.
 
-    An approved native call is carried out by `review wait`, which the
-    session was told to start when the call was parked; the message names the
-    command again for a session that never started it, rather than asking
-    for a retry that a running waiter might already have made unnecessary.
+    An approved native call is carried out by `review wait`: a session's own
+    conversation holds no waiter and runs it now, woken by this message; a
+    subagent whose waiter was between runs does the same, rather than retry a
+    call a waiter might already have carried out.
     """
     answer = entry.answer
-    wait = waiting_command(root, entry)
+    wait = resume_command(root, [entry.id])
     match entry.state, entry.resumption:
         case "approved", "native_retry":
             state = "approved"
             instruction = (
-                f"`{wait}` carries it out and reports what it did; start it "
-                "if it is not already running."
+                f"Run `{wait}` now: it carries it out at once and reports what it did."
             )
         case "rejected", _:
             state = "declined"
@@ -358,14 +340,23 @@ def answered_message(root: Path, entry: QuestionRecord) -> str:
 
 
 def remarked_message(root: Path, entry: QuestionRecord, remark: Remark) -> str:
-    """What the session that asked is told of a remark: the words, and that nothing was decided."""
+    """What the session that asked is told of a remark: the words, and that nothing was decided.
+
+    A subagent is told to hold its waiter again, since nothing else wakes it;
+    a session's own conversation, that the answer wakes it as this did.
+    """
+    reply = review_command(root, ["reply", entry.id])
+    again = (
+        f"`{resume_command(root, [entry.id])}` waits on it again."
+        if entry.agent
+        else "The answer wakes you as this did."
+    )
     return (
         f"The operator commented on review {entry.id} in "
         f"{entry.operation.worktree} without deciding it; it is still pending."
         + spoken(remark.note, remark.comments, entry.operation.worktree)
-        + f"\nReply on the review with `uv run lup-devtools review reply {entry.id} "
-        f"<text>`, or cancel it and ask again; `{waiting_command(root, entry)}` "
-        "waits on it again."
+        + f"\nReply on the review with `{reply} <text>`, or cancel it and ask "
+        f"again. {again}"
     )
 
 
