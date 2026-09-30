@@ -38,6 +38,7 @@ import signal
 import socket
 import tempfile
 import threading
+import traceback
 import uuid
 from abc import ABC, abstractmethod
 from collections import deque
@@ -1301,18 +1302,30 @@ class SharedProcess(HostCompanion, ABC, frozen=True):
         slot only where something is to be done, so whichever holder locks
         first records the exit and, once its wait is over, starts it; every
         other then finds it recorded, or running again. A look that fails is
-        logged and the next one tries again.
+        written into the companion's log — the launcher's terminal is the
+        session's, drawn over whole by its runtime — and the next waits along
+        the backoff while they keep failing.
         """
-        for _ in iter(lambda: letting_go.wait(self.watched_every), True):
+        failed = 0
+
+        def waited() -> bool:
+            steps = self.backoff
+            pause = steps[min(failed, len(steps)) - 1] if failed else self.watched_every
+            return letting_go.wait(pause)
+
+        for _ in iter(waited, True):
             try:
                 if self.untended(slot.read(), lease):
                     with slot.locked():
                         if not letting_go.is_set():
                             self.tended(slot, launch, lease)
             except Exception:
-                logger.exception(
-                    "host companion %s: this launch could not look after it", self.name
+                failed += 1
+                slot.noted(
+                    f"this launch could not look after it:\n{traceback.format_exc()}"
                 )
+                continue
+            failed = 0
 
     def untended(self, state: CompanionState, lease: Lease) -> bool:
         """Whether a holder has anything to do: its own lease dropped, or nothing running."""

@@ -421,6 +421,48 @@ def test_every_stop_says_why_first_in_the_log_and_the_state(
     )
 
 
+class Breaking(Served, frozen=True):
+    """A companion whose command cannot be made once ``broken`` exists."""
+
+    broken: Path
+
+    def process(self, place: CompanionPlace, root: Path) -> CompanionProcess:
+        if self.broken.exists():
+            raise RuntimeError("the command cannot be made here")
+        return super().process(place, root)
+
+
+def test_a_look_that_fails_goes_to_the_log_and_the_next_waits_longer(
+    state: Path, tmp_path: Path, capfd: pytest.CaptureFixture[str]
+) -> None:
+    """Never to the launcher's terminal, which the session's runtime draws over."""
+    broken = tmp_path / "broken"
+    breaking = Breaking(
+        name="breaking",
+        ports={"web": free_port()},
+        broken=broken,
+        backoff=(0.2, 30.0),
+        watched_every=0.05,
+    )
+    slot = breaking.slot(tmp_path)
+
+    with breaking.held(launch_at(tmp_path)):
+        running = slot.read().running
+        assert running is not None
+        broken.touch()
+        running.process.stop(breaking.grace)
+        for _ in range(200):
+            if "could not look after it" in slot.log().read_text():
+                break
+            time.sleep(0.05)
+        time.sleep(1.0)
+        logged = slot.log().read_text()
+
+    assert "RuntimeError: the command cannot be made here" in logged
+    assert 1 <= logged.count("could not look after it") <= 2
+    assert capfd.readouterr().err == ""
+
+
 def test_checkouts_hold_companions_of_their_own_and_a_person_one(
     state: Path, tmp_path: Path
 ) -> None:
