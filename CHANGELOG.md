@@ -2,6 +2,38 @@
 
 ## Unreleased
 
+### The launches holding a shared companion keep it running
+
+`SharedProcess.held` watches what it holds on a thread of the launcher's,
+every `watched_every` seconds: whichever holder finds the process gone first
+records a `CompanionExit` in the slot — when, its exit status or signal where
+it can still be collected (`LiveProcess.collected`), and its last
+`exit_lines` of output — and starts it again from its own declaration, on the
+ports it had, under the slot's lock, waiting along `backoff` (1, 5, 30, then
+60 seconds) for exits in a row. A lease dropped while its launcher still
+runs is taken back. Every stop lup makes writes a `CompanionStop` — why, by
+which process, how many live leases — into the slot and a line into the
+companion's log before the signal, and each lease let go says why its
+launcher was judged gone. `CompanionStanding` and the dashboard's
+`dashboard status` carry `exited`, `stopped`, `restarts` and `retry`; the
+page's banner and every status line say "restarted after it stopped" and
+why for five minutes (`RunningCode.restarted`, `DashboardPulse.restarts`).
+`dashboard restart` with sessions holding a dashboard that does not run
+starts one for them. A running companion of the same declaration gets five
+seconds to answer before a launch replaces it, and the dashboard a minute to
+answer its first start.
+
+### A page and its assets come from one build
+
+`bundle_app` reads a surface's page and every asset it names into memory as
+it is built, reading again while a rebuild has written the page but not its
+assets (`whole_bundle`), so a page it serves never names an asset that is
+gone; an asset it does not hold answers a plain-text 404. The dashboard's
+page says "This page is out of date — reload it" where its script fails to
+load, and every file of the page counts as the dashboard's code, so a
+rebuilt bundle restarts it onto the new one. The dashboard no longer copies
+its page beside its state.
+
 ### A parked call keeps the asker's account, and each command of its line
 
 `PersistentQuestion.account` holds what the asker said the call is for, each
