@@ -153,7 +153,8 @@ async def test_browser_decision_relays_from_the_recipient_scope_once(
     assert str(upstream) in message.text
     assert NOTE in message.text
     instruction = (
-        f"lup-devtools review wait {entry.id}` carries it out"
+        f"Run `uv run --directory {upstream} lup-devtools review wait {entry.id}` "
+        "now: it carries it out at once"
         if approved
         else "Don't retry the call as it stands"
     )

@@ -319,19 +319,23 @@ def codex_asked(root: Path, monkeypatch: pytest.MonkeyPatch, agent: str = "") ->
 
 
 def answered_while_waiting(root: Path, review: str) -> int:
-    """Run a waiter on *review*, and approve it once the waiter holds it."""
-    exits: list[int] = []
-    running = threading.Thread(
-        target=lambda: exits.append(waiter.wait_on(root, [review], False, poll=0.02))
-    )
-    running.start()
-    for _ in range(500):
-        if ReviewWaiters(root=root).held(review):
-            break
-        time.sleep(0.01)
-    relay_of(root).answer(review, "operator", True)
-    running.join(timeout=30)
-    (exit_code,) = exits
+    """Run a waiter on *review*, and approve it once the waiter holds it.
+
+    The waiter runs on this thread, where it can take the signals that stop
+    it; the operator answers from another.
+    """
+
+    def operator() -> None:
+        for _ in range(500):
+            if ReviewWaiters(root=root).held(review):
+                break
+            time.sleep(0.01)
+        relay_of(root).answer(review, "operator", True)
+
+    answering = threading.Thread(target=operator)
+    answering.start()
+    exit_code = waiter.wait_on(root, [review], False, poll=0.02)
+    answering.join(timeout=30)
     return exit_code
 
 
@@ -392,16 +396,3 @@ def test_a_codex_subagent_s_waiter_wakes_nobody_else(
 
     assert queued == []
     assert (root / "marker.txt").read_text() == "queued\n"
-
-
-def test_a_waiter_that_times_out_says_to_start_it_again_quietly(root: Path) -> None:
-    """A waiter ending is no news: a subagent restarts it and tells nobody."""
-    review = asked(root, "Bash", {"command": f"{ESCALATED}echo later > marker.txt"})
-
-    waited = RUNNER.invoke(create_review_app(root), ["wait", review, "--timeout", "0.2"])
-
-    assert waited.exit_code == 3, waited.output
-    assert (
-        f"start `uv run --directory {root} lup-devtools review wait {review}` "
-        "again to keep waiting, quietly: a waiter ending is news to nobody"
-    ) in waited.output

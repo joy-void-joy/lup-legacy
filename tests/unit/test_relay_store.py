@@ -25,6 +25,7 @@ from lup.policy.assets.host import (
     review_hook_call,
     review_records,
 )
+from lup.devtools.dashboard.reviews import ReviewStore
 from lup.policy.operations import Operation
 from lup.policy.relay import (
     CapturedFileReview,
@@ -224,6 +225,30 @@ def test_a_missing_document_refuses_an_answer_rather_than_guessing(
 
     with pytest.raises(ValueError, match="cannot be read back whole"):
         relay.answer("q-1", "operator", True)
+
+
+@pytest.mark.parametrize("restarting", [False, True])
+def test_a_review_the_page_cannot_read_back_names_the_code_that_can(
+    tmp_path: Path, relay: QuestionRelay, restarting: bool
+) -> None:
+    """Newer code spells a record this code cannot read; the queue's own checkout can."""
+    relay.record(written_question(tmp_path))
+    for kept in relay_blobs(relay.path).iterdir():
+        kept.write_text("altered\n")
+    (question,) = relay.pending()
+
+    summary = ReviewStore(roots=(tmp_path,), restarting=lambda: restarting).summary(
+        tmp_path, question
+    )
+
+    assert not summary.answerable
+    assert "cannot be read back whole" in summary.unanswerable
+    assert (
+        f"`uv run --directory {tmp_path} lup-devtools review approve q-1 --as operator`"
+    ) in summary.unanswerable
+    assert (
+        "restarts onto its checkout's newer code shortly" in summary.unanswerable
+    ) is restarting
 
 
 def test_a_call_s_long_strings_are_kept_once_and_leave_with_the_last_question_naming_them(
