@@ -222,6 +222,25 @@ not make it a create: `sort -o a$X f` is not a new file called `a$X`. A
 declared scratch root reached through the variable that names it, like
 `$TMPDIR/out.txt`, is still scratch.
 
+**Indirection is judged as the path it reaches, or as a path only the run
+knows.** A variable the line settles is resolved before any rule reads a
+word: an assignment standing first in its chain holds for everything after
+it, and one reached through nothing but `&&` holds for the rest of that
+chain, so `cd w && F=<protected path> && sed -i … $F` asks exactly as the
+same `sed` naming the path does. Where the line cannot settle the value — a
+`read`, a substitution, an assignment an `||` or a branch may skip, a loop
+over a glob or over more words than it reads, `find`'s `{}`, a path named
+from a directory a `cd` may or may not have reached — the word is left as
+spelled and the command is judged with it standing there, so a write
+through it asks as `sed -i 1d $F` does for a name the line never assigned,
+at every placement. A word that could also become a flag still puts its
+command on a floor (*an opaquely bound variable could become a guarded
+flag*, *a command substitution result could become a guarded flag*), but a
+floor never stands in for what the command asks as spelled: a boundary
+settling it confines the call, not the checkout the call writes in, and a
+protected file there was rewritten unasked. `eval`, `source` and an
+interpreter's inline code stay refused, and `xargs` keeps its own question.
+
 Where the capture was actually *taken*, `RecoveredLoss` settles the question
 as a **permission**. Not a deferral: deferring would make the outcome depend
 on which mode the session happened to be started in, for a fact that has
@@ -438,8 +457,10 @@ at the command keeps its one documented entry point by clearing `refuses` on
 the subcommand that has one.
 
 `$(...)` classifies recursively — the inner command joins the batch and its
-opaque result rides only argument-safe commands; command position, deep
-nesting, and backticks stay conservative. File writes (redirection, `rm`)
+opaque result rides only argument-safe commands, and anywhere else the
+command is judged with the result standing where it is spelled, so a write
+through it asks; command position, deep nesting, and backticks stay
+conservative. File writes (redirection, `rm`)
 auto-allow only into a repo `tmp/` — the one at the top or any a package
 opened beside itself, in this checkout or in another worktree of the same
 repository reached by its absolute path, where every write and every delete
@@ -456,16 +477,36 @@ wherever git stands, a `--git-dir` moves it, and `--template` copies a
 directory in.
 Loops, conditionals, case
 arms, subshells, and brace groups classify recursively over frozen bindings —
-literal assignments instantiate, opaque ones (`read`, globs) gate
-flag-guarded commands. A `for` loop over at most sixteen literal words is read
+literal assignments instantiate, and opaque ones (`read`, globs, a
+substitution) put each command referencing them that is not argument-safe
+on a floor, beside whatever it asks as spelled. A construct the walk does not
+read as a structure — a `select`, an arithmetic command, one nested past the
+depth the walk opens — keeps its floor too, and every command inside it and
+after it is judged all the same: what runs after it is still what runs. A
+`for` loop over at most sixteen literal words is read
 once per word in the binding pass every reader of the line shares, so a
 redirection, a `tee` or a `cd` in its body names the path each pass reaches:
 `for f in tmp/a tmp/b; do echo x > $f; done` writes two scratch files rather
 than a path only the run knows. A body that assigns the loop's own name is
 not read that way, since a later reference is then some other value
 (`f=README.md; rm $f`), and its references gate as an opaque list's do.
+Where a `cd` leaves the shell is followed the way the shell follows it:
+through `&&`, `||` and `!`, and into the `if` branch its condition chose. A
+`cd` that fails leaves the shell where it stood, so `cd a || rm x` removes
+the `x` beside it. Past a `cd` that may or may not have happened — `cd a; rm
+x`, a chain after its `cd` that may have stopped early, a loop whose next
+pass starts wherever the last one left — no directory is named, and a
+relative path written there is a path only the run knows, which asks. A
+pipeline's commands and a backgrounded list run in processes of their own,
+so a `cd` among them moves nothing after them; `command cd` and `builtin
+cd` move the shell as `cd` does, and `time cd` may run in a child, so where
+it lands is not named.
 `find -exec` payloads and wrappers (`env`, `time`,
 `timeout`, `nice`, `stdbuf`, `setsid`, `nohup`, `exec`, `command`) recurse;
+a payload is judged with each `{}` standing for a path only the run names,
+beneath each starting point, so `find packages -exec rm {} +` asks as a
+deletion of files nobody listed, and `-execdir` runs its payload in a
+directory the run chooses, from which every path it names is read;
 each wrapper's options are read by the grammar its `--help` lists, clusters
 included, and one the grammar does not list leaves the command unread and
 refuses. A wrapper option that acts on its own keeps the wrapper as the
@@ -664,8 +705,8 @@ been read, or carry the content in the command.
 same code: `| tee` and `>` into one path reach one verdict in every
 placement, and `tee -a` is judged as `>>` is. Each is read at the file it
 reaches from the directory a `cd` left, so `cd tests && date > ../README.md`
-is a write to the human-owned README, and a `cd` nothing can read leaves
-the target unjudged. A `tee` handed its operands by `find -exec` or
+is a write to the human-owned README, and a `cd` nothing can read leaves a
+target only the run can name, which asks. A `tee` handed its operands by `find -exec` or
 `xargs` is not one of these: it writes files no word of the command
 names, so it keeps its own question.
 
