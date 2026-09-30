@@ -33,6 +33,7 @@ from lup.coordination.repository import RepositoryPeers
 from lup.devtools.dashboard.companion import refuse_inside_a_session
 from lup.devtools.review.preimages import MovedPreimage, moved
 from lup.devtools.review.propose import (
+    MANIFEST,
     ProposalRefused,
     gathered,
     parked,
@@ -872,15 +873,28 @@ def changes(entry: PersistentQuestion) -> list[ReviewedFile]:
 def render_diffs(entry: PersistentQuestion, console: Console) -> bool:
     """Print what each file would become, and say whether anything was shown.
 
+    A proposal's note on a file is printed whole under its name, as the page
+    shows it on the file's header.
+
     A diff rather than the payload, because a payload carrying the new
     contents with the preimage printed underneath is two documents a reviewer
     compares by eye — which is the whole of what was wrong with this surface,
     and most of why an operator would rather answer somewhere else.
     """
     rendered = False
+    proposal = proposal_of(entry)
+    notes = (
+        {proposed.path: proposed.about for proposed in proposal.files}
+        if proposal is not None
+        else {}
+    )
     for change in changes(entry):
         rendered = True
         console.print(f"  {change.operation():<9} {change.path}", style="bold")
+        if change.path in notes and notes[change.path]:
+            console.print(
+                f"    agent's note: {notes[change.path]}", markup=False, highlight=False
+            )
         if change.unchanged():
             console.print("    this would leave the file exactly as it stands")
             continue
@@ -1099,6 +1113,15 @@ def propose(root: Path, hooks: HookSet, directory: Path, why: str) -> None:
         "operator's note and line comments. Declined, revise the files under "
         f"{directory} and propose again."
     )
+    unnoted = proposal.unnoted() if proposal is not None else []
+    if unnoted:
+        typer.echo(
+            "Warning: the operator sees no note from you on "
+            + ", ".join(str(path.relative_to(root)) for path in unnoted)
+            + f'. Say what changes in each with `review reply {question.id} "…"`, '
+            f'or next time give each one under "about" in {MANIFEST}.',
+            err=True,
+        )
 
 
 def create_review_app(
@@ -1175,10 +1198,37 @@ def create_review_app(
             "names deletions"
         ),
         why: str = typer.Option(
-            ..., "--why", help="What the whole change is for, in a paragraph"
+            ...,
+            "--why",
+            help="A short paragraph for the operator: what the whole change "
+            "does, in plain words, then why (see above)",
         ),
     ) -> None:
-        """Park one review for a batch of edits written under scratch, approved as one."""
+        """Park one review for a batch of edits written under scratch, approved as one.
+
+        The operator reads your --why and notes before deciding, so write them
+        the way you would tell a colleague at their desk. Lead with what
+        changes, in ordinary words, then why. Name the file, function or
+        command. Say what behaves differently, or say "no behaviour change".
+
+        --why is a short paragraph on the whole change. With more than one
+        file, give each one or two short sentences in .proposal.json, by its
+        path in the checkout, and list any files the change deletes:
+
+          {"about": {"src/app/host.py": "…"}, "delete": ["docs/old.md"]}
+
+        A plain note:
+          "host.py: patched_documents now reads all the files first and only
+          then writes them, replacing a 3-way if/elif. Same behaviour."
+
+        Not this:
+          "the patch copy reads every file before writing one, and the fold's
+          directory list says why it is state"
+
+        Avoid terse house style, sentences where the code does the talking
+        ("X says why", "Y is recorded as Z reads it"), and abstract words
+        standing in for the thing you mean.
+        """
         if hooks is None:
             typer.echo(
                 "this composition declares no hook set, so nothing can judge a "
@@ -1191,7 +1241,11 @@ def create_review_app(
     @app.command("reply")
     def reply_cmd(
         review: str = typer.Argument(help="The review id"),
-        text: str = typer.Argument(help="What to tell the operator"),
+        text: str = typer.Argument(
+            help="What to tell the operator, in plain words, as you would at "
+            "their desk: name the file, function or command, and say what you "
+            "changed or will change and why"
+        ),
     ) -> None:
         """Answer the operator's note on a review this session asked, in its thread."""
         reply(root, review, text)

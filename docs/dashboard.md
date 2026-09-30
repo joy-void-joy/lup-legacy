@@ -90,7 +90,7 @@ Several edits the operator has to see, parked one call at a time, are
 answered one at a time — each against a file the next edit then moves. A
 session writes them under scratch instead, each at its path in the checkout
 (`tmp/cdx/<path>`), tests them there, and runs
-`uv run lup-devtools review propose tmp/cdx --why "<what it is for>"`, which
+`uv run lup-devtools review propose tmp/cdx --why "<what it changes and why>"`, which
 parks one review holding every file. Each file meets the edit gates a direct
 write of it would meet — protected paths, anti-patterns, markers, size — and
 the review carries each verdict; a file the gates refuse outright refuses the
@@ -100,9 +100,18 @@ directory's `.proposal.json` notes files and names deletions, which have no
 document to write:
 
 ```json
-{"about": {"packages/app/module.py": "the new entry point"},
+{"about": {"packages/app/host.py": "`patched_documents` now reads all the files first and only then writes them, replacing a 3-way if/elif. Same behaviour."},
  "delete": ["docs/retired.md"]}
 ```
+
+The `--why` and the notes are what the operator decides from, so they are
+written plainly, the way you would tell a colleague at their desk: what
+changes, in ordinary words, then why; the file, function or command by name;
+and what behaves differently, or "no behaviour change". One or two short
+sentences a file, a short paragraph for `--why`. `review propose --help`
+carries the rule with a plain note and an obtuse one side by side. A
+proposal of several files where one has no note parks all the same, with a
+warning naming it; `review show` prints each note under its file, whole.
 
 The page shows the proposal as one multi-file diff with the `--why` beside
 the policy's reason and each note on its file's header. An approval releases

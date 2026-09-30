@@ -4290,8 +4290,10 @@ def reviewed_decision(
         "a time. Where changes belong together, write each file as it should "
         "end up under one directory in tmp/, mirroring the checkout, and run "
         f"`{shlex.join([*prefix, 'propose'])} <directory> --why '<what they "
-        "are for>'`: the operator reads them as one review and answers all "
-        "of them at once."
+        "change and why>'`: the operator reads them as one review and answers "
+        "all of them at once. Write --why and each file's note in plain words, "
+        "as you would tell a colleague at their desk; `review propose --help` "
+        "shows how."
         if waiting_here >= 2
         else ""
     )
