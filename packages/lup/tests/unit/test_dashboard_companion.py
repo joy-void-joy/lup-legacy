@@ -17,7 +17,6 @@ import time
 from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from urllib.parse import urlsplit
 
 import httpx
 import pytest
@@ -500,8 +499,7 @@ def test_a_dashboard_killed_while_held_comes_back_at_its_address(
     assert reopened == opened
     assert said == "it was ended by SIGKILL"
     assert line == (
-        f"● :{urlsplit(status.url).port} · "
-        "restarted after it stopped: it was ended by SIGKILL"
+        f"● {status.url} · restarted after it stopped: it was ended by SIGKILL"
     )
     assert status.serving and status.restarts == 1
     assert status.exited is not None and status.exited.process == killed
@@ -595,8 +593,11 @@ def test_a_held_dashboard_the_operator_stops_stays_stopped_until_restart(
     assert idle.detail == (
         "Stopped by the operator; `uv run lup-devtools dashboard restart` starts it."
     )
-    assert line == "○ dashboard stopped by the operator; `dashboard restart` starts it"
-    assert named == f"lead · project │ {line}"
+    assert line == (
+        f"○ {idle.url} · dashboard stopped by the operator; "
+        "`dashboard restart` starts it"
+    )
+    assert named == f"project · lead │ {line}"
     assert restarted.exit_code == 0, restarted.output
     assert again.serving is not None and again.serving != before
     assert not again.stays_stopped and again.exited is None and again.restarts == 0

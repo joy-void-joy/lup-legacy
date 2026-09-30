@@ -234,10 +234,29 @@ def test_the_pulse_counts_what_waits_and_says_where(
     assert counted.url == URL and counted.pending == 1
     assert counted.sessions == 1 and counted.tabs == 2
     assert counted.repositories == [str(root / ".git")]
-    assert status_line(pulse.path).plain() == "● :8766"
+    assert counted.address == URL
+    assert status_line(pulse.path).plain() == f"● {URL}"
     watching.retired()
     assert pulse.read() is None
     assert status_line(pulse.path).plain() == "○ dashboard down · dashboard restart"
+
+
+def test_the_pulse_names_the_first_declared_origin_the_operator_opens_the_page_at(
+    registry: DashboardRegistry, desk: Desk, config: UserConfigFile, root: Path
+) -> None:
+    """The page keeps its capability per origin; the line links there, never with the capability."""
+    pulse = PulseFile.of(lent_directory(registry.directory))
+    watching = herald(registry, desk, config)
+    config.record(
+        {("dashboard", "origins"): ["https://their.proxy.name", "https://other.name"]}
+    )
+
+    watching.look()
+
+    assert published(pulse).address == "https://their.proxy.name"
+    assert published(pulse).url == URL
+    assert status_line(pulse.path).plain() == "● https://their.proxy.name"
+    assert CAPABILITY not in pulse.path.read_text(encoding="utf-8")
 
 
 def joined(root: Path, name: str, conversation: str = "") -> str:
@@ -291,10 +310,11 @@ def test_the_pulse_lists_each_session_with_the_reviews_it_parked(
     assert members["lead"].reviews == ["41cb73e1a2b3c4d5"]
     assert members["lead"].runtime == ["conversation-1"]
     assert members["lead"].worktree == str(root)
+    assert members["lead"].project == "project"
     assert members["other"].reviews == ["q-2"]
     asking = StatusInput(session_id="conversation-1")
     assert status_line(pulse.path, asking).plain() == (
-        f"lead · project │ ?3 reviews (1 here: 41cb73e1) │ ● {URL}"
+        f"project · lead │ ?3 reviews (1 here: 41cb73e1) │ ● {URL}"
     )
 
 
@@ -316,7 +336,7 @@ def test_a_review_a_subagent_parked_is_its_sessions(
     assert member.name == "lead" and member.reviews == ["q-1", "q-2"]
     asking = StatusInput(session_id="conversation-1")
     assert status_line(pulse.path, asking).plain() == (
-        f"lead · project │ ?2 reviews (2 here) │ ● {URL}"
+        f"project · lead │ ?2 reviews (2 here) │ ● {URL}"
     )
 
 
@@ -346,7 +366,7 @@ def test_a_call_silent_ten_minutes_is_quiet_unless_a_subagent_of_its_runs(
     stuck = published(pulse).quiet
 
     assert (early, quiet) == (0, 1)
-    assert line == "⚠ 1 quiet │ ● :8766"
+    assert line == f"⚠ 1 quiet │ ● {URL}"
     assert waiting == 0, "a session whose subagent runs waits on it"
     assert stuck == 1, "the subagent is the one gone quiet, not its session"
 

@@ -43,6 +43,7 @@ from lup.devtools.dashboard.pulse import (
     DashboardPulse,
     PulseFile,
     RunningCode,
+    repository_name,
 )
 from lup.harness.environment import inside_a_container
 from lup.harness.notice import Notice
@@ -208,9 +209,7 @@ class KnownRepository(BaseModel, frozen=True):
 
     def name(self) -> str:
         """What a reader calls it: the directory it is checked out as."""
-        if self.repository.name == ".git":
-            return self.repository.parent.name
-        return self.repository.name.removesuffix(".git")
+        return repository_name(self.repository)
 
 
 class LaunchRecord(BaseModel, frozen=True):
@@ -621,9 +620,10 @@ class Dashboard(SharedProcess, frozen=True):
 
         The pulse the stopped dashboard took down is replaced by one saying
         the operator stopped it and what starts it, which holds until a start
-        replaces it. It keeps the sessions and repositories the last pulse
-        listed, so each status line still says which session it is, and none
-        of the reviews: nothing counts them while it is stopped.
+        replaces it. It keeps the sessions, repositories and operator's
+        address the last pulse listed, so each status line still says which
+        session it is and where the page is opened, and none of the reviews:
+        nothing counts them while it is stopped.
         """
         slot = self.slot(root)
         pulse = PulseFile.of(lent_directory(slot.directory))
@@ -638,6 +638,7 @@ class Dashboard(SharedProcess, frozen=True):
                 pid=stop.process.pid,
                 beat=stop.at,
                 halted="dashboard stopped by the operator; `dashboard restart` starts it",
+                address=last.address if last is not None else "",
                 repositories=last.repositories if last is not None else [],
                 members=[
                     member.model_copy(update={"reviews": []})

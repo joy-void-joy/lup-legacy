@@ -51,6 +51,7 @@ from lup.devtools.dashboard.companion import (
     DashboardHealth,
     DashboardRegistry,
     DashboardToken,
+    DeclaredOrigins,
     KnownRepository,
     dashboard_revision,
     read_model,
@@ -276,7 +277,9 @@ class Herald:
     and counts the messages agents sent the operator, the agents gone quiet
     — a call outstanding with nothing new in the transcript for ``silent`` —
     and the paths two sessions hold, read from each roster and the
-    transcripts it names on a watch of the herald's own.
+    transcripts it names on a watch of the herald's own; and it names where
+    the operator opens the page: the first origin the person's lup config
+    declares, read again where the file moved, else ``url``.
     """
 
     def __init__(
@@ -311,6 +314,7 @@ class Herald:
         self.code = code
         self.restarts = restarts
         self.config = config if config is not None else UserConfigFile()
+        self.origins = DeclaredOrigins(self.config)
         self.notify = notify
         self.reopen = reopen
         self.quiet = quiet
@@ -474,6 +478,7 @@ class Herald:
         """Write the pulse where anything in it changed, or its last beat is old."""
         pulse = DashboardPulse(
             url=self.url,
+            address=next(iter(self.origins()), self.url),
             pid=os.getpid(),
             pending=pending,
             sessions=len(self.registry.launches()),

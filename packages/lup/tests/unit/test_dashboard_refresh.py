@@ -198,9 +198,9 @@ def test_the_status_line_says_the_dashboard_is_restarting() -> None:
         return LineFacts.of(each, StatusInput(), now).fitted(0).plain()
 
     assert shown(pulse) == f"?2 reviews │ ◐ {URL} restarting"
-    assert shown(pulse.model_copy(update={"pending": 0})) == "◐ dashboard restarting"
+    assert shown(pulse.model_copy(update={"pending": 0})) == f"◐ {URL} restarting"
     assert shown(failing.model_copy(update={"pending": 0})) == (
-        "◐ dashboard runs older code; its newer code does not start"
+        f"◐ {URL} runs older code; its newer code does not start"
     )
 
 
