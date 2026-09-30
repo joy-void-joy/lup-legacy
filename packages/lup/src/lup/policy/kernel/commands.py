@@ -1866,6 +1866,11 @@ class GhApiRoute(TypedDict):
     owner and name can be anybody's: the same line ``gh pr create --repo``
     draws. An ``ask`` holds wherever the route points, and is here for the
     reason it gives, which says more than the method does.
+
+    ``verb`` is the typed gh command reaching the same write -- ``["pr",
+    "create"]`` -- whose row the route's answer is taken from, so the two
+    spellings cannot be judged apart (:func:`gh_api_routes`). Empty where no
+    typed verb reaches it, and the route's own effect stands.
     """
 
     methods: list[str]
@@ -1873,6 +1878,7 @@ class GhApiRoute(TypedDict):
     act: str
     effect: DecisionEffect
     reason: str
+    verb: list[str]
 
 
 GH_API_ROUTES: tuple[GhApiRoute, ...] = (
@@ -1882,6 +1888,7 @@ GH_API_ROUTES: tuple[GhApiRoute, ...] = (
         act="opening a pull request",
         effect="allow",
         reason="gh api opening a pull request is `gh pr create` by another name",
+        verb=["pr", "create"],
     ),
     GhApiRoute(
         methods=["PATCH"],
@@ -1889,6 +1896,7 @@ GH_API_ROUTES: tuple[GhApiRoute, ...] = (
         act="editing a pull request",
         effect="allow",
         reason="gh api editing a pull request is `gh pr edit` by another name",
+        verb=["pr", "edit"],
     ),
     GhApiRoute(
         methods=["POST", "DELETE"],
@@ -1897,6 +1905,7 @@ GH_API_ROUTES: tuple[GhApiRoute, ...] = (
         effect="allow",
         reason="gh api changing a pull request's reviewers is `gh pr edit`"
         " by another name",
+        verb=["pr", "edit"],
     ),
     GhApiRoute(
         methods=["PUT"],
@@ -1904,6 +1913,7 @@ GH_API_ROUTES: tuple[GhApiRoute, ...] = (
         act="merging a pull request",
         effect="allow",
         reason="gh api merging a pull request is `gh pr merge` by another name",
+        verb=["pr", "merge"],
     ),
     GhApiRoute(
         methods=["POST"],
@@ -1911,6 +1921,7 @@ GH_API_ROUTES: tuple[GhApiRoute, ...] = (
         act="merging one branch into another",
         effect="allow",
         reason="gh api merging one branch into another is `git merge` on the forge",
+        verb=[],
     ),
     GhApiRoute(
         methods=["POST"],
@@ -1918,6 +1929,7 @@ GH_API_ROUTES: tuple[GhApiRoute, ...] = (
         act="filing an issue",
         effect="allow",
         reason="gh api filing an issue is `gh issue create` by another name",
+        verb=["issue", "create"],
     ),
     GhApiRoute(
         methods=["DELETE"],
@@ -1925,6 +1937,7 @@ GH_API_ROUTES: tuple[GhApiRoute, ...] = (
         act="deleting a remote branch",
         effect="ask",
         reason="deleting a remote branch loses work no later push restores",
+        verb=[],
     ),
 )
 """The routes a write through ``gh api`` is judged by, as ``gh`` judges them.
@@ -1932,15 +1945,69 @@ GH_API_ROUTES: tuple[GhApiRoute, ...] = (
 The pull-request, merge and issue routes allow because the typed verbs
 reaching them do: an endpoint is one more spelling of opening, editing or
 merging a request, or of filing an issue, and a verdict that changed with the
-spelling would be two policies. Deleting a branch asks for what it is, rather
-than for the method that happens to reach it. A project whose forge access
-differs passes its own routes.
+spelling would be two policies -- which is why each names that verb, and the
+row the vocabulary composed for it answers in the end (:func:`gh_api_routes`).
+Deleting a branch asks for what it is, rather than for the method that happens
+to reach it. A project whose forge access differs passes its own routes.
 """
-# lup: defer: `gh_rule(allow_authoring=False)` and `gh_rule(allow_filing=False)`
+# lup: solved: `gh_rule(allow_authoring=False)` and `gh_rule(allow_filing=False)`
 # make `gh pr create` and `gh issue create` ask, while these routes still allow
 # the same writes through `gh api`: `decide_gh_words` calls `decide_gh_api_words`
 # with the defaults, so no vocabulary's parameters reach them. Compile the
 # routes from the gh rule the vocabulary composed.
+
+
+def gh_api_routes(
+    rows: list[ShellRuleRow], routes: tuple[GhApiRoute, ...] = GH_API_ROUTES
+) -> tuple[GhApiRoute, ...]:
+    """The routes, each answering as the gh row for its typed verb answers.
+
+    A route whose verb the vocabulary allows keeps its allow and its reason.
+    One whose verb asks or refuses -- `gh issue create` under
+    `gh_rule(allow_filing=False)` -- asks or refuses here too, for the reason
+    that row gives. One whose verb no row classifies is dropped, so the write
+    meets `gh api`'s own question rather than a grant nothing stands behind.
+    """
+
+    def compiled(route: GhApiRoute) -> list[GhApiRoute]:
+        if not route["verb"]:
+            return [route]
+        row = next(
+            (
+                row
+                for row in rows
+                if row["command"] == "gh"
+                and [row["subcommand"], *row["operation_path"]] == route["verb"]
+            ),
+            None,
+        )
+        if row is None:
+            return []
+        stated = declared_verdict(
+            row["effects"],
+            row["refuses"],
+            unresolved_evidence(no_write_facts()),
+            "ambient",
+        )
+        typed = " ".join(route["verb"])
+        match stated:
+            case "allow":
+                return [route]
+            case "ask" | "deny":
+                return [
+                    GhApiRoute(
+                        methods=route["methods"],
+                        path=route["path"],
+                        act=route["act"],
+                        effect=stated,
+                        reason=f"gh api {route['act']} is `gh {typed}` by another"
+                        f" name: {row['refuses'] or row['reason']}",
+                        verb=route["verb"],
+                    )
+                ]
+        return []
+
+    return tuple(found for route in routes for found in compiled(route))
 
 
 def gh_api_route(
@@ -2143,7 +2210,7 @@ def decide_gh_words(
             " `gh pr merge 1 --repo owner/repo`, `gh api -X GET <endpoint>`.",
         )
     if subcommand == ["api"]:
-        return decide_gh_api_words(words)
+        return decide_gh_api_words(words, gh_api_routes(rows))
     return decide_command_rows(words, rows, facts)
 
 

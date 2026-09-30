@@ -674,3 +674,32 @@ def test_a_merge_printed_rather_than_written_is_a_read() -> None:
     )
     assert verdict("git merge-file --stdout a b c", rules).effect == "allow"
     assert verdict("git merge-file ours.py base.py theirs.py", rules).effect == "ask"
+
+
+def test_a_gh_api_write_answers_as_the_typed_verb_reaching_it() -> None:
+    """One write spelled two ways was answered two ways.
+
+    `gh_rule(allow_filing=False)` made `gh issue create` ask while `gh api
+    repos/{owner}/{repo}/issues -f title=x` still filed the same issue
+    unasked, because the routes were never handed the vocabulary's rows.
+    """
+    filing = [gh_rule()]
+    publishing = [gh_rule(allow_filing=False, allow_authoring=False)]
+    issue = "gh api repos/{owner}/{repo}/issues -f title=x"
+    pull = "gh api repos/{owner}/{repo}/pulls -f title=x -f head=b -f base=main"
+    edit = "gh api -X PATCH repos/{owner}/{repo}/pulls/3 -f title=x"
+
+    assert verdict(issue, filing).effect == "allow"
+    assert verdict(pull, filing).effect == "allow"
+    assert verdict(edit, filing).effect == "allow"
+    filed = verdict(issue, publishing)
+    assert filed.effect == "ask"
+    assert "`gh issue create` by another name" in filed.reason
+    assert verdict(pull, publishing).effect == "ask"
+    assert verdict(edit, publishing).effect == "ask"
+    # A route no typed verb reaches keeps its own answer either way.
+    merge = "gh api repos/{owner}/{repo}/merges -f base=main -f head=b"
+    assert verdict(merge, publishing).effect == "allow"
+    # A table that classifies no `gh issue create` grants no route to it.
+    unclassified = [gh_rule().model_copy(update={"subcommands": []})]
+    assert verdict(issue, unclassified).effect != "allow"
