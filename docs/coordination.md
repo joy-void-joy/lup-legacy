@@ -156,9 +156,11 @@ and a later rename of the roster reaches it the same way, once.
 conversation kept, is taken up by the roster in a session name's shape —
 lowercased, runs of anything else one hyphen, `Naming Review` answering as
 `naming-review` — while the runtime goes on showing it exactly as it was set,
-so nothing is handed back to overwrite it. A reopened Codex thread keeps its
-name the same way: its own name is read through its app-server after the
-resume and taken up likewise. Only a title that is
+so nothing is handed back to overwrite it. A resumed session keeps its name
+the same way: a launch reopening a Claude conversation leaves off `--name`, so
+the conversation keeps its title and the roster takes it up at the first
+prompt, and a reopened Codex thread's own name is read through its
+app-server after the resume and taken up likewise. Only a title that is
 still the worktree's own, or nothing, leaves the session to be asked for a
 name. What each runtime then shows, and what was measured, is on the
 platform page.
