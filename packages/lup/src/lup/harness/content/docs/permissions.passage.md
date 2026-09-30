@@ -1290,7 +1290,10 @@ one. A step whose result exists only once it runs -- a program's output
 redirected into a file, `sort -o`, a formatter, a script, a loop, a word
 the shell expands into other words -- is listed as that, with the files it
 leaves so, and never run to find out; a file that does not read as text is
-named rather than shown. Every file a step lands the text of, and every
+named rather than shown. A reader writes nothing only running would show: a
+command whose row only reads, printing to a stream -- `pyright` reporting
+what it found, `2>&1` beside it -- is no such step, unless it spells a flag
+its row guards, as `pyright --createstub` does. Every file a step lands the text of, and every
 file a row shows, contributes its preimage, so a change to any of them
 before the call is carried out makes it a fresh question.
 

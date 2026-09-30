@@ -759,6 +759,17 @@ def guarded_tool_rules() -> list[ShellCommandRule]:
     """
     return [
         ShellCommandRule(
+            # A type checker reads the tree and reports what it found. Two of
+            # its forms land files: `--createstub` writes a stub package where
+            # its configuration puts stubs, and `--writebaseline` records the
+            # diagnostics it found as the baseline later runs compare against.
+            name="pyright",
+            effects=[declare("reads_path", scope="project")],
+            ask_flags=["--createstub", "--writebaseline"],
+            flag_effects=[declare("writes_path", scope="unbounded")],
+            reason="a pyright flag that writes files requires approval",
+        ),
+        ShellCommandRule(
             # Not read-only, and not judged either. The verbs in the ask list
             # are destructive or content-bearing: they overwrite something, or
             # author a file that later holds code. An empty directory does

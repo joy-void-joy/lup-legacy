@@ -463,3 +463,37 @@ def test_a_record_from_a_newer_hook_is_named_so_and_never_called_changed(
     summary = ReviewDetail.of(root, newer, "operator").summary
     assert not summary.answerable
     assert summary.unanswerable.startswith("This dashboard runs older code")
+
+
+@pytest.mark.parametrize("runtime", ["claude", "codex"])
+def test_a_checker_that_only_reads_is_no_step_only_running_shows(
+    root: Path, runtime: Runtime
+) -> None:
+    """Its output goes to a stream, and a reader writes nothing only running would show."""
+    (root / "notes.md").write_text("notes\n")
+    checked = "uv run pyright tmp/restart/refresh.py 2>&1"
+    hooked(root, runtime, {"command": f"{checked} && cp notes.md .claude/notes.md"})
+
+    question = parked(root)
+    assert question.unpreviewed == []
+    assert [
+        (segment.command, segment.effect) for segment in question.segments or []
+    ] == [(checked, "allow"), ("cp notes.md .claude/notes.md", "ask")]
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "uv run ruff format src/app.py",
+        "uv run pyright --createstub requests",
+        "uv run pyright src > report.txt",
+    ],
+)
+def test_what_may_write_unforeseen_stays_a_step_only_running_shows(
+    root: Path, command: str
+) -> None:
+    (root / "notes.md").write_text("notes\n")
+    hooked(root, "claude", {"command": f"{command} && cp notes.md .claude/notes.md"})
+
+    question = parked(root)
+    assert [step.command for step in question.unpreviewed or []] == [command]
