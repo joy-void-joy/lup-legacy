@@ -1,9 +1,9 @@
 """What the session's network boundary must keep true.
 
-The container was already the filesystem boundary before any of this; what a
-test here protects is the half that was missing, where the mount table said
-one thing and the network said nothing at all. Each assertion below
-corresponds to a way that gap can silently come back: a session attached to
+The container is the filesystem boundary; what a test here protects is the
+network half, without which the mount table says one thing and the network
+says nothing at all. Each assertion below corresponds to a way that gap can
+silently open: a session attached to
 no network, a proxy the session cannot resolve, a component routed around the
 boundary because nobody told it the boundary was there.
 """
@@ -24,7 +24,7 @@ from lup_template.harness.content.image import agent_image
 
 
 def test_a_session_is_attached_to_the_internal_network_by_name() -> None:
-    """The gap this closes: run arguments that named no network at all.
+    """Run arguments always name a network, and the internal one by name.
 
     A container started without ``--network`` gets the engine's default
     bridge, which reaches the operator's LAN and every port on their
@@ -67,12 +67,12 @@ def test_the_widest_posture_is_the_one_a_loopback_flow_finishes_under() -> None:
 
 
 def test_this_repository_runs_its_sessions_on_the_host_network() -> None:
-    """The trade this repository made, pinned where the argv it produces is.
+    """The trade this repository makes, pinned where the argv it produces is.
 
-    The filter admitted every public destination already, so what it cost was
-    ssh and a sign-in that could not finish, and what it bought was a denial
-    of this machine's own network. Named in a test so that taking it back is
-    a decision somebody makes rather than a default that drifted home.
+    The filter admits every public destination anyway, so what it costs is
+    ssh and a sign-in that cannot finish, and what it buys is a denial of
+    this machine's own network. Named in a test so that reversing it is a
+    decision somebody makes rather than a default that drifted home.
     """
     assert agent_image().egress.mode == "host"
 
@@ -84,18 +84,18 @@ def test_the_session_is_pointed_at_the_proxy_it_is_the_only_way_out_through() ->
     a session cannot be attached to the internal network without also being
     told how to reach the proxy that is its only member with a way out.
 
-    By address rather than by name. Addressing it by a DNS alias put a
+    By address rather than by name. Addressing it by a DNS alias puts a
     resolver on the internal network, and an internal network's resolver
-    refuses every public name authoritatively — so it stood in front of the
-    one server the proxy could have resolved through, and nothing in the
-    session reached anything.
+    refuses every public name authoritatively — so it stands in front of the
+    one server the proxy could resolve through, and nothing in the session
+    reaches anything.
     """
     environment = SessionEgress().environment("10.89.0.29")
     assert environment["HTTPS_PROXY"] == "http://10.89.0.29:3128"
     assert environment["https_proxy"] == environment["HTTPS_PROXY"]
-    # Written rather than emptied: emptying kept the host's exemptions out
-    # and took the session's own loopback with them, so an agent that started
-    # a dev server and curled it was answered by the proxy.
+    # Written rather than emptied: emptying keeps the host's exemptions out
+    # and takes the session's own loopback with them, so an agent that starts
+    # a dev server and curls it is answered by the proxy.
     assert environment["NO_PROXY"] == "localhost,127.0.0.1,::1"
 
 
@@ -126,9 +126,8 @@ def test_the_proxy_reaches_the_outside_and_the_session_reaches_the_proxy() -> No
 
     No alias on the join. An alias is a DNS record, this network has no
     resolver, and podman records one on a network that cannot serve it — its
-    own manual says so, which is how the first launch connected without
-    complaint and the name never worked. A flag accepted and ignored is worse
-    than one refused.
+    own manual says so — so a launch connects without complaint and the name
+    never works. A flag accepted and ignored is worse than one refused.
     """
     egress = SessionEgress()
     started = egress.proxy_arguments("feat", Path("/repo/tmp/egress.conf"))
@@ -258,12 +257,12 @@ def test_the_egress_environment_is_not_baked_into_the_image() -> None:
 def test_a_running_proxy_off_the_network_is_repaired_rather_than_believed(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """The hole a launch fell into: running is not the same as reachable.
+    """Running is not the same as reachable.
 
-    An earlier `start_egress` returned as soon as the proxy was *running*, so
-    a proxy that had lost its place on the internal network — or never taken
-    one, the connect half having failed after the run half succeeded — was
-    found running and left exactly as it was, on that launch and every launch
+    A `start_egress` returning as soon as the proxy is *running* would find a
+    proxy that has lost its place on the internal network — or never taken
+    one, the connect half having failed after the run half succeeded —
+    running, and leave it exactly as it is, on that launch and every launch
     afterwards.
 
     What that costs is why it is worth a test rather than a comment. The
@@ -355,7 +354,7 @@ def test_a_dead_proxy_is_read_before_it_is_cleared(
 
     A launch that refused on the name collision would be reporting the corpse
     rather than the death, and one that removed it silently would leave the
-    next reader exactly where the last three were.
+    next reader with nothing to read.
     """
     issued: list[list[str]] = []
 
@@ -383,8 +382,8 @@ def test_the_state_asks_the_proxy_what_it_can_resolve(
 
     The two happen on different networks and only one of them is the
     session's. Measured: `egress proxy resolves: working` beside a CONNECT
-    answered `503`, which is squid saying it could not reach the origin —
-    a failure entirely downstream of the alias everything had been about.
+    answered `503`, which is squid saying it cannot reach the origin — a
+    failure entirely downstream of the alias the session resolves.
     """
 
     def spelled(binary: str):
@@ -443,12 +442,12 @@ def test_a_proxy_that_resolves_nothing_is_reported_as_such(
 
 
 def test_a_reachable_proxy_that_reaches_nothing_is_not_called_working() -> None:
-    """The verdict has to cover both legs, and writing two answers did not.
+    """The verdict has to cover both legs, which writing two answers does not.
 
     Reaching the proxy and the proxy reaching the world fail separately. A
-    headline that reported only the first said the boundary was fine while
-    the proxy resolved nothing — which is the exact shape of failure this
-    whole report was written to catch, reproduced inside it.
+    headline reporting only the first says the boundary is fine while the
+    proxy resolves nothing — the exact shape of failure this whole report
+    exists to catch, reproduced inside it.
     """
     standing = contained.EgressState(
         network="net",
@@ -482,17 +481,17 @@ def test_a_proxy_with_no_gateway_anywhere_is_told_so_plainly() -> None:
 
 
 def test_a_recorded_gateway_is_not_taken_for_a_route() -> None:
-    """The two came apart on the machine this was written for.
+    """A recorded gateway and a route come apart on a real machine.
 
-    Both of the proxy's legs recorded a gateway — the internal one reporting
-    its own `.1` address, which podman populates whether or not anything
-    routes through it — and the container reached nothing. Only one network
+    Both of the proxy's legs record a gateway — the internal one reporting its
+    own `.1` address, which podman populates whether or not anything routes
+    through it — while the container reaches nothing. Only one network
     provides a container's default route and netavark installs none for an
-    internal network, so membership said yes, metadata said yes, and every
-    packet failed instantly.
+    internal network, so membership says yes, metadata says yes, and every
+    packet fails instantly.
 
     So the verdict asks the routing table. A per-leg gateway stays in the
-    report because it is worth seeing; it is no longer what decides.
+    report because it is worth seeing; it is not what decides.
     """
     recorded = contained.EgressState(
         network="net",
@@ -704,7 +703,7 @@ def engine_answering(
     The label has to be the *current* digest rather than a fixture string,
     because what these cases are about is the launcher reusing a proxy it
     recognises — pinning a literal would make them pass while the comparison
-    was broken, which is the failure a declaration digest exists to catch.
+    is broken, which is the failure a declaration digest exists to catch.
 
     The host's resolv.conf is pinned for the same reason in reverse: it feeds
     the digest, so reading the real one would make the answer depend on the
@@ -736,13 +735,13 @@ def engine_answering(
 def test_a_proxy_from_an_older_declaration_is_replaced(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """The defect that made the resolver fix land nowhere.
+    """A proxy follows its declaration the way an image does.
 
-    An image is rebuilt when its declaration moves; the proxy was reused
-    whatever the declaration said. So a `--dns` flag was added, a launch was
-    run, and the proxy was found running and left exactly as it was — with
-    the launch reporting the boundary it was supposed to have. From outside,
-    a stale proxy and a current one are one running name.
+    An image is rebuilt when its declaration moves. A proxy reused whatever
+    its declaration says would leave a change to it — a `--dns` flag, say —
+    landing nowhere: the launch finds the proxy running and leaves it exactly
+    as it is, while reporting the boundary it was supposed to have. From
+    outside, a stale proxy and a current one are one running name.
     """
     issued = engine_answering(monkeypatch, networks="bridge lup-egress-net-feat ")
 
@@ -791,13 +790,12 @@ def test_the_declaration_moves_with_what_a_proxy_would_be_started_from() -> None
 def test_a_network_from_an_older_declaration_is_rebuilt(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """The third thing reused whatever the declaration said, and the widest.
+    """The third thing a launch could reuse whatever the declaration says, and the widest.
 
     A network is created once and outlives every launch, so the posture it
-    was created under is the posture it keeps. The flag that stops its
-    resolver shadowing the proxy's would never have reached a machine whose
-    network already existed — which would have swallowed the repair for both
-    of the other two.
+    was created under is the posture it keeps. A flag stopping its resolver
+    shadowing the proxy's would never reach a machine whose network already
+    exists — which would swallow the same change for the other two as well.
     """
     issued: list[list[str]] = []
     # Stateful, because the sequence under test is remove-then-create and a

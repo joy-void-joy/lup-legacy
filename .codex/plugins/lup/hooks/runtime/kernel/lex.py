@@ -24,7 +24,7 @@ from .bindings import (
 from .decision import KernelDecision, unjudged
 from .downloads import download_targets
 from .effects import EffectEvidence, declare, question_reach, verdict_for
-from .roles import git_state, spells_its_path
+from .roles import git_state, spells_its_path, writes_to_a_stream
 from .rows import (
     DisplacedTargetRow,
     PathRoleRow,
@@ -51,6 +51,7 @@ from .words import (
     PATH_VERBS,
     carried_setting,
     effective_command,
+    fills_a_stream,
     flag_write_targets,
     flag_write_words,
     git_apply_words,
@@ -673,46 +674,6 @@ def all_pipelines(script: Script) -> list[Pipeline]:
     return found
 
 
-STREAM_WRITE_TARGETS = (
-    "/dev/null",
-    "/dev/zero",
-    "/dev/full",
-    "/dev/stdout",
-    "/dev/stderr",
-    "/dev/fd/1",
-    "/dev/fd/2",
-    "/dev/tty",
-)
-"""Write targets that reach a stream or a sink rather than the filesystem.
-
-Named one by one rather than matched by their directory, because `/dev` is
-not a safe prefix and never was: `> /dev/sda` overwrites a disk, `>
-/dev/urandom` seeds the kernel's entropy pool, and `> /dev/mem` is worse than
-either. Every entry here either discards what it is given or hands it to a
-descriptor the process already holds.
-"""
-
-
-def writes_to_a_stream(
-    word: str, streams: tuple[str, ...] = STREAM_WRITE_TARGETS
-) -> bool:
-    """Whether a redirection into this target can destroy nothing.
-
-    Read before the rows that ask, because a stream has no prior contents to
-    lose and so raises no question for anybody to answer -- and without it
-    every one of these but `/dev/null` reaches the fallback and is retired by
-    the recovery row instead, which tells the reader that "the affected paths
-    are captured and restorable" about a terminal.
-
-    Only descriptors 1 and 2 are named, and `/dev/fd/<n>` is deliberately not
-    matched by shape. A higher descriptor is one the shell opened onto a file
-    -- `exec 3>notes.txt` makes `> /dev/fd/3` a write to `notes.txt` -- and
-    `/dev/stdin` is worse, since a command run with `< notes.txt` truncates it.
-    Those reach the filesystem and belong to the rows that ask about it.
-    """
-    return posixpath.normpath(word) in streams
-
-
 def redirection_writes(operator: str) -> bool:
     """Whether one redirection operator opens its target for writing.
 
@@ -1205,9 +1166,9 @@ def resolve_redirection(
     duplication and a read open nothing. Where it does, its target is judged
     by :func:`written_path_verdict`, which is the judgement a `tee` operand
     gets too, at the file it names from ``directory`` -- where the command
-    carrying it runs. Judged as spelled, `cd tests && ls > ../README.md` was
-    a create outside the checkout rather than an overwrite of a human-owned
-    file, while the host stat'd the file the command reaches. ``landing`` is
+    carrying it runs. Judged as spelled, `cd tests && ls > ../README.md`
+    would be a create outside the checkout rather than an overwrite of a
+    human-owned file, while the host stats the file the command reaches. ``landing`` is
     where the line's carried writes land, placed the same way.
     """
     operator = redirect["operator"]
@@ -1283,8 +1244,8 @@ def written_path_verdict(
 
     The shape of the writing command is deliberately not consulted. A heredoc
     body and an ``echo`` argument author identical content, and the create
-    case already admits both — so gating one of them on an existing path drew
-    the line where the cost was lowest rather than where the risk was. What
+    case already admits both — so gating one of them on an existing path
+    would draw the line where the cost is lowest rather than where the risk is. What
     the edit gate reads is content, and that gate is reached through Edit and
     Write, not by re-deriving a weaker copy of it here.
 
@@ -1462,7 +1423,8 @@ def shell_flag_write_targets(command: str, rows: list[ShellRuleRow]) -> list[str
     the placement directly reads the subcommand one word further along than
     the classifier does, and resolves an operand from the `cd` alone — so
     `git -C ../other <sub> -o out.txt` names `out.txt` where the verb reader
-    beside it names `../other/out.txt`.
+    beside it names `../other/out.txt`. A stream a flag names -- `curl -o
+    /dev/null` -- is no file, as a redirection into one is not.
     """
     return [
         placed
@@ -1480,6 +1442,7 @@ def shell_flag_write_targets(command: str, rows: list[ShellRuleRow]) -> list[str
             *flag_write_targets(segment["words"], declared),
             *download_targets(segment["words"]),
         ]
+        if not writes_to_a_stream(target)
         for placed in [placed_path(target, segment["directory"])]
         if placed is not None
     ]
@@ -1532,12 +1495,15 @@ def shell_path_verb_targets(command: str, rows: list[ShellRuleRow]) -> list[str]
     the classifier judges it with, and nothing where it only prints: neither
     its script, which is a program rather than a path, nor the file it reads,
     which is at the path unchanged afterwards. A command that does not parse
-    yields nothing and keeps its unjudged verdict.
+    yields nothing and keeps its unjudged verdict. A stream a `tee` or a copy
+    only writes into is not named either, as no redirection into one is: it
+    is a device every process holds, and the lease question answers it wrongly.
     """
     return [
         placed
         for segment in read_segments(command, rows)
         for operand in verb_path_words(segment["words"], rows)
+        if not fills_a_stream(segment["words"], operand["path"])
         for placed in [placed_path(operand["path"], segment["directory"])]
         if placed is not None
     ]
@@ -1556,9 +1522,9 @@ def command_directory(words: list[str], rows: list[ShellRuleRow]) -> str | None:
 
     A second way a command reaches a directory, beside the ``cd`` before it:
     ``git -C ../other restore src/mod.py`` restores a file in another
-    checkout, and read without this it named ``src/mod.py`` in *this* one --
-    so whether the loss was captured, and the roles the path is judged under,
-    were both answered about a file the command was never going to touch.
+    checkout, and read without this it would name ``src/mod.py`` in *this*
+    one -- so whether the loss is captured, and the roles the path is judged
+    under, would both be answered about a file the command never touches.
 
     Only the globals a rule declares as naming a directory, which is narrower
     than the globals that consume a word: ``--git-dir`` names a repository and
@@ -1658,13 +1624,13 @@ def command_words_read(words: list[str], rows: list[ShellRuleRow]) -> list[str]:
     """This command with the globals a rule declares as value-carrying removed.
 
     Every reader of a subcommand matches it where it is written -- ``git``,
-    then ``restore`` -- so one global in front of it made each of them answer
-    ``None`` about a command they do model. The row still matched, because
-    the matcher steps over these globals to find the subcommand; the readers
-    the row's verdict is then relaxed or tightened by did not, so ``git -C .
-    restore <protected path>`` reached neither the ownership gate nor the
-    index check, and was allowed where the same restore spelled without the
-    flag asked.
+    then ``restore`` -- so one global in front of it would make each of them
+    answer ``None`` about a command they do model. The row would still match,
+    because the matcher steps over these globals to find the subcommand; the
+    readers the row's verdict is then relaxed or tightened by would not, so
+    ``git -C . restore <protected path>`` would reach neither the ownership
+    gate nor the index check, and be allowed where the same restore spelled
+    without the flag asks.
 
     So they are consumed here, once, and every reader below sees the command
     as it would have been written without them. Only the value-carrying ones:
@@ -1938,6 +1904,7 @@ def shell_written_targets(command: str, rows: list[ShellRuleRow]) -> list[str]:
         placed
         for segment in read_segments(command, rows)
         for operand in written_verb_words(segment["words"], rows)
+        if not fills_a_stream(segment["words"], operand["path"])
         for placed in [placed_path(operand["path"], segment["directory"])]
         if placed is not None
     ]

@@ -12,7 +12,7 @@ from pathlib import Path
 import pytest
 
 from lup.harness.models import ResolveSpec, SkillInvocation
-from lup.harness.process import ExitStatus, LaunchRequest, ProcessLauncher
+from lup.execution.process import ExitStatus, LaunchRequest, ProcessLauncher
 from lup.resolver.join_tools import merge_problems
 from lup.resolver.models import (
     AcceptanceCriterion,
@@ -97,15 +97,15 @@ def test_a_declared_rewrite_settles_a_candidate() -> None:
 
 
 def test_a_disposition_keyed_by_the_abbreviation_the_merger_was_shown_settles() -> None:
-    """The merger is handed twelve characters and was keyed against forty.
+    """The merger is handed twelve characters, so twelve characters settle.
 
     `merge_turn` renders each candidate as `(from {parent[:12]})`, so echoing
-    the parent back is echoing an abbreviation — which never equalled the full
-    sha the check compared, while the refusal quoted those same twelve
-    characters at it. No revision could converge: one observed merger
-    dispositioned all three of its candidates with correct rationales, twice,
-    and the run failed on the second. The fixtures missed it because this
-    file's PARENT is itself twelve characters, so both spellings coincided.
+    the parent back is echoing an abbreviation — which never equals the full
+    sha, while a refusal quotes those same twelve characters at it. Compared
+    against forty, no revision could converge: a merger dispositioning all of
+    its candidates with correct rationales would fail every time. A fixture
+    whose PARENT is itself twelve characters cannot see this, since both
+    spellings coincide, so the sha here is full.
     """
     full = "76d6060e49d0c0c128417733547232db1445c1dc"
     shown = full[:12]

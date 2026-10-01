@@ -52,7 +52,7 @@ from contextlib import (
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Self
 
 import sh
 from pydantic import BaseModel, Field, StringConstraints, ValidationError
@@ -60,14 +60,24 @@ from pydantic import BaseModel, Field, StringConstraints, ValidationError
 from lup.channels.models import publish_atomic
 from lup.channels.wait import wait_until
 from lup.execution.locks import exclusive
+from lup.execution.shell import ShDone
+from lup.coordination.bare.runtime import (
+    ENDED_STATES,
+    EXIT_FIELD,
+    STARTED_FIELD,
+    Runtime,
+    process_scope,
+    runtime_alive,
+    runtime_of,
+    stat_fields,
+)
 from lup.harness.notice import Notice
 from lup.launch.declaration import Loopback, Mount
 from lup.launch.refusal import LaunchRefused
 from lup.launch.secrets import HostSecrets
 from lup.observability.audit import TraceJournal
-from lup.workspace.user_directories import UserDirectories
-from lup.sandbox.process import process_is_alive, process_start_token
 from lup.types import EnvVars, JsonObject
+from lup.workspace.user_directories import UserDirectories
 
 logger = logging.getLogger(__name__)
 
@@ -230,13 +240,6 @@ class HostCompanion(BaseModel, ABC, frozen=True, extra="forbid"):
         contributes is part of that command, and left once the session ends,
         however it ended.
         """
-
-
-def named_apart(companions: Sequence[HostCompanion]) -> None:
-    """Refuse two companions under one name, whose state and contributions would collide."""
-    names = [companion.name for companion in companions]
-    if len(names) != len(dict.fromkeys(names)):
-        raise ValueError(f"host companions must be named apart, got {names}")
 
 
 @contextmanager
@@ -455,67 +458,97 @@ class CompanionProcess(BaseModel, frozen=True):
         return {name: value for name, value in merged.items() if name not in self.unset}
 
 
-def stat_fields(pid: int) -> list[str]:
-    """The fields of ``pid``'s /proc stat from its state on; none where unreadable."""
-    try:
-        stat = Path(f"/proc/{pid}/stat").read_text(encoding="utf-8")
-    except OSError:
-        return []
-    # lup: ignore[string-split] — /proc stat's fields after the command's name
-    fields = stat.rpartition(")")[2].split()
-    return fields
-
-
-def zombie(pid: int) -> bool:
-    """Whether ``pid`` has exited and waits on a parent that has not collected it."""
-    fields = stat_fields(pid)
-    return bool(fields) and fields[0] == "Z"
-
-
-def exit_status(pid: int, started: str | None) -> int | None:
-    """How the process that started at ``started`` ended, while it waits to be collected.
+def exit_status(process: Runtime) -> int | None:
+    """How ``process`` ended, while it waits to be collected.
 
     Its exit code, or the negated signal that ended it, as
     ``os.waitstatus_to_exitcode`` spells it: a zombie's own stat carries its
-    wait status (field 52) until its parent collects it. Nothing where it
-    runs, was collected already, or the pid names another process now.
+    wait status until its parent collects it. Nothing where it runs, was
+    collected already, the pid names another process now, or it was
+    recorded where this process cannot ask about it.
     """
-    fields = stat_fields(pid)
-    if len(fields) < 50 or fields[0] != "Z":
+    if runtime_alive(process, process_scope()) is not False:
         return None
-    if started is not None and fields[19] != started:
+    fields = stat_fields(process.get("pid", 0))
+    if len(fields) <= EXIT_FIELD or fields[0] != "Z":
         return None
-    return os.waitstatus_to_exitcode(int(fields[49]))
+    if fields[STARTED_FIELD] != process.get("started"):
+        return None
+    return os.waitstatus_to_exitcode(int(fields[EXIT_FIELD]))
 
 
 class LiveProcess(BaseModel, frozen=True):
-    """A process by its id and when it started, so a reused id is not taken for it."""
+    """A process by its id, when it started, and the pid namespace the id is in.
+
+    A view over the bare :class:`~lup.coordination.bare.runtime.Runtime`
+    record the roster keeps for a session's runtime, so one process is
+    judged alive one way wherever lup asks. The id alone is reused, and it
+    means nothing outside the namespace that gave it: a reader elsewhere is
+    told it cannot ask, rather than signalling whatever that number names
+    where it stands.
+    """
 
     pid: int
-    started: str | None = None
+    started: str = ""
+    scope: str = ""
 
     @classmethod
-    def of(cls, pid: int) -> "LiveProcess":
-        """The process running under ``pid`` now."""
-        return cls(pid=pid, started=process_start_token(pid))
+    def of(cls, pid: int) -> Self:
+        """The process running under ``pid`` now, as this process reads it."""
+        return cls.model_validate(runtime_of(pid))
+
+    def runtime(self) -> Runtime:
+        """The bare record this is a view of."""
+        return Runtime(pid=self.pid, started=self.started, scope=self.scope)
+
+    def adopted(self) -> Self:
+        """This record with its scope, where it was kept before records carried one.
+
+        Such a record names a pid read in no namespace it says. Where that pid
+        runs here now and started at the tick the record holds, it is the
+        process the record was taken of — the operator's dashboard, started
+        before scopes were kept, is the case — so it is adopted as this
+        namespace's; anything else stays unknown, as the bare record reads it.
+        """
+        if self.scope or not self.started:
+            return self
+        fields = stat_fields(self.pid)
+        if (
+            len(fields) <= STARTED_FIELD
+            or fields[STARTED_FIELD] != self.started
+            or fields[0] in ENDED_STATES
+        ):
+            return self
+        return self.model_copy(update={"scope": process_scope()})
+
+    def alive(self) -> bool | None:
+        """Whether it still runs; ``None`` where this process cannot ask."""
+        return runtime_alive(self.runtime(), process_scope())
 
     def running(self) -> bool:
         """Whether this same process still runs, rather than waiting to be collected."""
-        return process_is_alive(self.pid, self.started) and not zombie(self.pid)
+        return self.alive() is True
 
     def missing(self) -> str:
         """Why this process is judged gone, as a log line says it; nothing while it runs."""
-        if self.running():
-            return ""
-        current = process_start_token(self.pid)
-        if current is None:
-            return f"no process has pid {self.pid}"
-        if self.started is not None and current != self.started:
-            return (
-                f"pid {self.pid} names another process now, started at tick "
-                f"{current} rather than {self.started}"
-            )
-        return f"pid {self.pid} exited and waits to be collected"
+        match self.alive():
+            case True:
+                return ""
+            case None:
+                return (
+                    f"pid {self.pid} was recorded in another pid namespace or "
+                    "boot, where this process cannot ask about it"
+                )
+            case False:
+                fields = stat_fields(self.pid)
+                if len(fields) <= STARTED_FIELD:
+                    return f"no process has pid {self.pid}"
+                if fields[STARTED_FIELD] != self.started:
+                    return (
+                        f"pid {self.pid} names another process now, started at "
+                        f"tick {fields[STARTED_FIELD]} rather than {self.started}"
+                    )
+                return f"pid {self.pid} exited and waits to be collected"
 
     def collected(self) -> int | None:
         """How it ended, where anything can still say: collected where it is ours, else read off its zombie.
@@ -524,7 +557,7 @@ class LiveProcess(BaseModel, frozen=True):
         parent already collected it — a launcher gone, which left it to init —
         leaves nothing to say it.
         """
-        waiting = exit_status(self.pid, self.started)
+        waiting = exit_status(self.runtime())
         try:
             collected, status = os.waitpid(self.pid, os.WNOHANG)
         except ChildProcessError:
@@ -536,10 +569,13 @@ class LiveProcess(BaseModel, frozen=True):
 
         It leads a process group of its own, so the group is signalled even
         where its leader has already gone. An id now belonging to another
-        process says the group it led has gone too.
+        process says the group it led has gone too, and an id recorded where
+        this process cannot ask is not signalled at all.
         """
-        current = process_start_token(self.pid)
-        if current is not None and self.started is not None and current != self.started:
+        if self.alive() is None:
+            return
+        fields = stat_fields(self.pid)
+        if len(fields) > STARTED_FIELD and fields[STARTED_FIELD] != self.started:
             return
         for sent in (signal.SIGTERM, signal.SIGKILL):
             try:
@@ -569,6 +605,67 @@ class LiveProcess(BaseModel, frozen=True):
         except PermissionError:
             return False
         return False
+
+
+class DetachedProcess(BaseModel, frozen=True):
+    """A program started apart from whoever started it, and whether it came up.
+
+    In a session of its own, so the signal that stops it reaches whatever it
+    started too; with nothing on its input, since whoever started it may end
+    long before it does; and its output appended to a log every run shares.
+    Stopping one that never answered is the caller's, which may have to say
+    why before it does.
+    """
+
+    process: LiveProcess
+    since: datetime
+    """When it was started."""
+
+    output: int
+    """Where its output begins in the log."""
+
+    answered: bool
+    """Whether ``ready`` said yes before the wait ran out."""
+
+    @classmethod
+    def start(
+        cls,
+        argv: list[str],
+        cwd: Path,
+        environment: EnvVars | None,
+        log: Path,
+        ready: Callable[[], bool],
+        within: float,
+        done: ShDone | None = None,
+    ) -> Self:
+        """Start ``argv`` in ``cwd`` and wait up to ``within`` seconds for ``ready``.
+
+        ``environment`` is the whole of what it runs with, ``None`` for this
+        process's own; ``done`` is called in this process when it ends. A
+        program that is not installed raises ``sh.CommandNotFound``.
+        """
+        program, *arguments = argv
+        log.parent.mkdir(parents=True, exist_ok=True)
+        begins = log.stat().st_size if log.exists() else 0
+        with log.open("ab") as output, Path(os.devnull).open("rb") as nothing:
+            running = sh.Command(program)(
+                *arguments,
+                _cwd=str(cwd),
+                _env=environment,
+                _bg=True,
+                _bg_exc=False,
+                _done=done,
+                _new_session=True,
+                _in=nothing,
+                _out=output,
+                _err_to_out=True,
+            )
+        return cls(
+            process=LiveProcess.of(running.pid),
+            since=datetime.now(UTC),
+            output=begins,
+            answered=answering(ready, within),
+        )
 
 
 class Lease(BaseModel, frozen=True):
@@ -724,6 +821,36 @@ class CompanionState(BaseModel, frozen=True):
             and stop.process == running.process
         )
 
+    def adopted(self) -> Self:
+        """This state with every process it names adopted, as :meth:`LiveProcess.adopted` says."""
+        running = self.running
+        stopped = self.stopped
+        exited = self.exited
+        return self.model_copy(
+            update={
+                "running": None
+                if running is None
+                else running.model_copy(
+                    update={
+                        "process": running.process.adopted(),
+                        "spawner": None
+                        if running.spawner is None
+                        else running.spawner.adopted(),
+                    }
+                ),
+                "leases": [
+                    lease.model_copy(update={"holder": lease.holder.adopted()})
+                    for lease in self.leases
+                ],
+                "stopped": None
+                if stopped is None
+                else stopped.model_copy(update={"process": stopped.process.adopted()}),
+                "exited": None
+                if exited is None
+                else exited.model_copy(update={"process": exited.process.adopted()}),
+            }
+        )
+
 
 class Started(BaseModel, frozen=True):
     """One start of a shared companion: the state it leaves, and whether what it started answered."""
@@ -806,13 +933,6 @@ class CompanionSlot(BaseModel, frozen=True):
         """Where the companion's output goes, outside the terminal the session takes over."""
         return self.directory / "output.log"
 
-    def logged(self) -> int:
-        """How much the log holds: where the next run's output begins."""
-        try:
-            return self.log().stat().st_size
-        except FileNotFoundError:
-            return 0
-
     def noted(self, said: str) -> None:
         """Write one line of lup's own into the log, among what the companion writes there.
 
@@ -842,12 +962,19 @@ class CompanionSlot(BaseModel, frozen=True):
             yield
 
     def read(self) -> CompanionState:
-        """What is kept of this companion; nothing, where nothing is or it does not parse."""
+        """What is kept of this companion; nothing, where nothing is or it does not parse.
+
+        A state kept before its processes carried a scope is read adopted
+        (:meth:`CompanionState.adopted`), and the first launch to hold the
+        companion writes it back that way under the slot's lock — so a
+        companion still running from then is joined rather than doubled, and
+        no reader outside the lock writes over a launch inside it.
+        """
         path = self.directory / "state.json"
         if not path.is_file():
             return CompanionState()
         try:
-            return CompanionState.model_validate_json(path.read_bytes())
+            return CompanionState.model_validate_json(path.read_bytes()).adopted()
         except ValidationError as error:
             logger.warning("host companion state %s starts over: %s", path, error)
             return CompanionState()
@@ -954,12 +1081,12 @@ def choosing_ports(home: Path) -> Iterator[None]:
         yield
 
 
-def kept_elsewhere(home: Path, slot: CompanionSlot) -> list[int]:
+def kept_elsewhere(home: Path, slot: CompanionSlot | None = None) -> list[int]:
     """Every port another companion keeps, where the checkout it serves still exists."""
     return [
         given.port
         for path in home.glob("*/*/state.json")
-        if path.parent != slot.directory
+        if slot is None or path.parent != slot.directory
         for state in [CompanionSlot(directory=path.parent).read()]
         if state.checkout is None or state.checkout.is_dir()
         for given in state.ports
@@ -1152,9 +1279,16 @@ class SharedProcess(HostCompanion, ABC, frozen=True):
             place = CompanionPlace(
                 state=slot.directory, ports={port.name: port.port for port in given}
             )
-            running = self.spawned(place, launch, slot)
+            detached = self.spawned(place, launch, slot)
+            running = Running(
+                process=detached.process,
+                declared=self.model_dump(mode="json"),
+                since=detached.since,
+                output=detached.output,
+                spawner=LiveProcess.of(os.getpid()),
+            )
             state = state.model_copy(update={"ports": given, "running": running})
-            if answering(lambda: self.answers(place), self.ready_within):
+            if detached.answered:
                 return Started(state=state, answered=True)
             stopped = self.halted(
                 slot,
@@ -1167,15 +1301,13 @@ class SharedProcess(HostCompanion, ABC, frozen=True):
 
     def spawned(
         self, place: CompanionPlace, launch: CompanionLaunch, slot: CompanionSlot
-    ) -> Running:
-        """Start it in a session of its own, without waiting for it: what runs, and where its output begins.
+    ) -> "DetachedProcess":
+        """Start it apart from this launch, with the host secrets it names, and wait until it serves.
 
-        A session of its own, so the signal that stops it reaches whatever it
-        started too, with nothing on its input, since the launch starting it
-        may end long before it does, and its output in a log beside its state.
+        Its output goes to the log beside its state, and the launch's ``sh``
+        records how it ended where every holder reads it.
         """
         command = self.process(place, launch.root)
-        program, *arguments = command.argv
         stored = HostSecrets.for_checkout(launch.root)
         held = stored.read()
         missing = [key for key in self.secrets if key not in held]
@@ -1185,39 +1317,24 @@ class SharedProcess(HostCompanion, ABC, frozen=True):
                 f"which {stored.path()} does not hold; set it there from a "
                 "terminal on the host"
             )
-        begins = slot.logged()
         try:
-            with (
-                slot.log().open("ab") as output,
-                Path(os.devnull).open("rb") as nothing,
-            ):
-                running = sh.Command(program)(
-                    *arguments,
-                    _cwd=str(command.cwd),
-                    _env={
-                        **command.started_from(launch.environment),
-                        **{key: held[key] for key in self.secrets},
-                    },
-                    _bg=True,
-                    _bg_exc=False,
-                    _done=slot.reaped,
-                    _new_session=True,
-                    _in=nothing,
-                    _out=output,
-                    _err_to_out=True,
-                )
+            return DetachedProcess.start(
+                command.argv,
+                command.cwd,
+                {
+                    **command.started_from(launch.environment),
+                    **{key: held[key] for key in self.secrets},
+                },
+                slot.log(),
+                lambda: self.answers(place),
+                self.ready_within,
+                done=slot.reaped,
+            )
         except sh.CommandNotFound as error:
             raise LaunchRefused(
-                f"host companion {self.name!r} runs {program!r}, which is not "
-                "installed here; install it, or drop the companion"
+                f"host companion {self.name!r} runs {command.argv[0]!r}, which is "
+                "not installed here; install it, or drop the companion"
             ) from error
-        return Running(
-            process=LiveProcess.of(running.pid),
-            declared=self.model_dump(mode="json"),
-            since=datetime.now(UTC),
-            output=begins,
-            spawner=LiveProcess.of(os.getpid()),
-        )
 
     def released(self, slot: CompanionSlot, lease: Lease) -> None:
         """Let go of one lease, stopping what runs once no live one is left, saying so first."""

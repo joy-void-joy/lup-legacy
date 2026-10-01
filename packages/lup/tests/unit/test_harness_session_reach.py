@@ -17,12 +17,12 @@ from lup.harness.image import Image
 def test_a_session_reaches_its_own_loopback_without_the_proxy() -> None:
     """An agent that starts a dev server and curls it is talking to itself.
 
-    Measured before this was written: with ``NO_PROXY`` emptied, ``curl -v
-    http://localhost:3000`` inside the container answered ``Uses proxy env
-    variable http_proxy`` and went to squid, which refused it as a denied
-    local name and again as a port outside 80 and 443. Nothing was protected
-    -- the container is on a network with no gateway and cannot reach the
-    host's loopback whatever the proxy says.
+    Measured: with ``NO_PROXY`` emptied, ``curl -v http://localhost:3000``
+    inside the container answers ``Uses proxy env variable http_proxy`` and
+    goes to squid, which refuses it as a denied local name and again as a
+    port outside 80 and 443. That protects nothing -- the container is on a
+    network with no gateway and cannot reach the host's loopback whatever the
+    proxy says.
     """
     environment = SessionEgress().environment("10.89.0.29")
 
@@ -31,12 +31,12 @@ def test_a_session_reaches_its_own_loopback_without_the_proxy() -> None:
 
 
 def test_the_exemption_is_written_rather_than_inherited() -> None:
-    """The original reason for emptying it survives the fix.
+    """The host's exemption list never reaches the session.
 
     A host exporting ``NO_PROXY=some.corp.host`` would otherwise hand the
     session an exemption for a destination the internal network has no route
     to, which is a hang rather than a refusal. Writing the value keeps that
-    out; it is only the *emptiness* that was wrong.
+    out without leaving the list empty.
     """
     assert "corp" not in SessionEgress().environment("10.89.0.29")["NO_PROXY"]
 

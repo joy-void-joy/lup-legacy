@@ -1,9 +1,8 @@
 """Every verb the installed Codex CLI lists is one the shell vocabulary judges.
 
 The ``codex`` rule reads an unrecognized word as the prompt of an interactive
-session, so a verb a new release adds — ``queue``, ``archive`` and ``delete``
-each arrived that way — is judged as opening an agent until somebody writes
-its row, whatever it actually does. Which verbs exist is a fact about the
+session, so a verb a release adds is judged as opening an agent until
+somebody writes its row, whatever it actually does. Which verbs exist is a fact about the
 installed binary, answered afresh by each release, so it is asked of the
 binary here rather than pinned in a fixture.
 """

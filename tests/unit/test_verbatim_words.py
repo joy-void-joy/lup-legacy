@@ -1,16 +1,16 @@
 """A `$` the shell's quoting holds is read as the character it is.
 
 Every rule reads a command's words as strings, and reads a `$` standing in
-one as an expansion nothing resolved. The grammar knew better and the string
-did not: `'a$'`, `'$HOME'` and `\\$x` reach the program as those characters,
-so a pattern, a sed address, a git setting or a path spelled with a dollar
-sign was read as a word that could become anything -- `rg '$x' src` was
-refused as an argument that "could expand into a guarded flag".
+one as an expansion nothing resolved. The grammar knows better than the
+string: `'a$'`, `'$HOME'` and `\\$x` reach the program as those characters,
+so read from the string alone, a pattern, a sed address, a git setting or a
+path spelled with a dollar sign is a word that could become anything --
+`rg '$x' src` refused as an argument that "could expand into a guarded flag".
 
-The fact now rides in the string the rules read, without changing a
-character of it, and every reader of an expansion asks it the same way. What
-the shell still rewrites -- a parameter, `$'…'`, a brace expansion, a tilde
--- keeps the reading it had.
+So the fact rides in the string the rules read, without changing a character
+of it, and every reader of an expansion asks it the same way. What the shell
+does rewrite -- a parameter, `$'…'`, a brace expansion, a tilde -- keeps its
+reading as an expansion.
 """
 
 import pytest

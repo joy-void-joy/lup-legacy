@@ -3,15 +3,15 @@
 One per project root, under ``environments`` in lup's cache, bound over the
 root's environment directory inside the container (see
 :func:`~lup.launch.container.held_environments`). A worktree lives
-for a feature and its environment outlived it: a venv per branch ever opened,
-each hundreds of megabytes, with nothing left to say which checkout it had
-been — the name carries the directory's last component and a digest of its
+for a feature and its environment outlives it: a venv per branch ever opened,
+each hundreds of megabytes, with nothing left to say which checkout it
+served — the name carries the directory's last component and a digest of its
 whole path, and a digest does not run backwards.
 
 So each environment is claimed when it is made: a file beside it naming the
 root it is for (``<name>.root``). An environment whose claimed root is gone
 is finished, whether the worktree went through ``git worktree remove``, a
-branch deletion, or a plain ``rm -r``. One made before claims existed is
+branch deletion, or a plain ``rm -r``. One carrying no claim is
 matched against the checkouts it could have been — each sibling of a
 repository's worktrees by the name it carries — and is finished only where
 the digest proves which path it was for and that path is gone.

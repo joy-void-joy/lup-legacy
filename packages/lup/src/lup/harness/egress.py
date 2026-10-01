@@ -11,8 +11,8 @@ So the session's network is ``internal`` -- Docker gives it no gateway, so
 there is no route out to decline rather than a route the container is asked
 not to take -- and one proxy is the only member of both it and the outside.
 :class:`~lup.sandbox.egress.EgressPolicy` is what that proxy enforces, and it
-is the same declaration the code-execution sandbox already used, pointed at
-the session container that replaced it.
+is the same declaration the code-execution sandbox uses, pointed at the
+session container.
 
 **Why the default names no domains.** An allowlist is a deployment fact with
 a different answer per adopter: this project reaches PyPI and GitHub, the next
@@ -54,9 +54,9 @@ PROXY_LABEL = "lup.egress"
 DEFAULT_PROXY_IMAGE = "ubuntu/squid:6.6-24.04_edge"
 """The image the filtered network is bridged through, pinned rather than latest.
 
-Same image the code-execution sandbox reached for, and pinned for the reason
-every other version in this harness is: a proxy that silently became a
-different build is a boundary that silently changed what it lets through.
+Same image the code-execution sandbox reaches for, and pinned for the reason
+every other version in this harness is: a proxy that silently turns into a
+different build is a boundary that silently changes what it lets through.
 """
 
 
@@ -226,18 +226,18 @@ class SessionEgress(BaseModel, frozen=True):
         default=False,
         description=(
             "Whether the session's internal network runs a resolver at all. "
-            "Off, and the reason is the whole of why the first contained "
-            "sessions could not reach anything.\n\n"
+            "Off, and the reason is the whole of whether a contained session "
+            "reaches anything.\n\n"
             "A resolver on an internal network correctly refuses every name "
             "outside it, and refuses *authoritatively*. The proxy is on that "
             "network too, glibc stops at the first authoritative answer, and "
-            "so the one server that could have resolved a public name was "
-            "never consulted -- measured, with the proxy holding a default "
-            "route, `192.168.0.1` third in its list, and answering `503` to "
-            "every CONNECT. Handing the proxy its own nameservers did not "
-            "settle it either, because joining the network rewrites the file "
-            "they were written into.\n\n"
-            "The resolver was only ever there to turn one name into one "
+            "so the one server that could resolve a public name is never "
+            "consulted -- measured, with the proxy holding a default route, "
+            "`192.168.0.1` third in its list, and answering `503` to every "
+            "CONNECT. Handing the proxy its own nameservers does not settle "
+            "it either, because joining the network rewrites the file they "
+            "are written into.\n\n"
+            "A resolver there would only turn one name into one "
             "address, so the shorter answer is to do that where the address "
             "is already known. Nothing else on that network has a name worth "
             "resolving, and a network with no resolver has nothing to shadow "
@@ -319,10 +319,10 @@ class SessionEgress(BaseModel, frozen=True):
 
         The counterpart to the image's own declaration label, and it exists
         for the same measured reason. An image is rebuilt when what it is
-        declared to be moves; a proxy was reused whatever the declaration
-        said, so every later edit -- the policy, the resolvers, the image --
-        landed in the repository and never in the container a session
-        actually reached. Nothing reported it, because from the outside a
+        declared to be moves; a proxy reused whatever the declaration says
+        leaves every later edit -- the policy, the resolvers, the image -- in
+        the repository and never in the container a session actually
+        reaches. Nothing reports it, because from the outside a
         stale proxy and a current one are one running name.
 
         The rendered policy rather than the path it is written to: the path
@@ -358,26 +358,26 @@ class SessionEgress(BaseModel, frozen=True):
         could not honour anyway.
 
         Written rather than emptied, which is the same argument carried one
-        step further. Emptying it took the host's exemptions away and the one
+        step further. Emptying it takes the host's exemptions away and the one
         exemption that is always right along with them: a client honours
-        these variables for ``localhost`` too, so a session that started its
-        own dev server and reached for it sent the request to the proxy --
+        these variables for ``localhost`` too, so a session that starts its
+        own dev server and reaches for it sends the request to the proxy --
         measured, ``curl -v http://localhost:3000`` answering ``Uses proxy
-        env variable http_proxy`` -- where squid refused it twice over, as a
-        denied local name and as a port outside 80 and 443. Nothing was
+        env variable http_proxy`` -- where squid refuses it twice over, as a
+        denied local name and as a port outside 80 and 443. Nothing is
         protected by that. The session container is on a network with no
         gateway, so it cannot reach the host's loopback whatever the proxy
-        says, and the denial only ever stopped it reaching *its own*
-        services by name.
+        says, and the denial only ever stops it reaching *its own* services
+        by name.
 
         ``address`` is where the proxy sits on the internal network, read
         back after it is connected and passed in. An address rather than a
-        name, and the earlier argument for a name -- that the address is not
-        known until the network exists -- was simply false: this environment
-        is assembled after the proxy has been started and joined, which is
-        the point at which the engine can be asked. Believing it cost a
-        resolver on the internal network, whose refusal of public names stood
-        in front of the one server that could answer them.
+        name, because the argument for a name -- that the address is not
+        known until the network exists -- does not hold: this environment is
+        assembled after the proxy has been started and joined, which is the
+        point at which the engine can be asked. A name needs a resolver on
+        the internal network, whose refusal of public names stands in front
+        of the one server that could answer them.
 
         An empty address returns nothing rather than a URL pointing nowhere.
         A session with no proxy variables fails at its first request in the
@@ -423,18 +423,17 @@ class SessionEgress(BaseModel, frozen=True):
         """The argv creating the internal network, for a caller to run.
 
         ``--disable-dns`` unless a project asked for names, and that flag is
-        the repair rather than a tuning. A resolver on this network is given
+        load-bearing rather than a tuning. A resolver on this network is given
         to every container on it, the proxy included, and an internal
         network's resolver refuses public names authoritatively -- so it
-        stood in front of the one server that could have answered.
+        stands in front of the one server that could answer.
 
         Labelled with the same declaration digest the proxy carries, because
         a network is reused across launches exactly as a proxy is and would
-        otherwise keep whatever posture it was first created under. That is
-        not hypothetical: this very flag would never have reached a machine
-        whose network already existed, which is the third time in this design
-        a fix has landed in the repository and not in the thing a session
-        reaches.
+        otherwise keep whatever posture it was first created under. Without
+        the label, this very flag never reaches a machine whose network
+        already exists: the change lands in the repository and not in the
+        thing a session reaches.
         """
         return [
             "network",

@@ -224,7 +224,7 @@ def test_the_dry_run_lists_everything_and_marks_what_nothing_points_at(
     assert "a launch removes it from 2026-10-08" in listed
     assert "4.0 KB  lup-cfg-gone-repo" in listed
     assert "held by an-old-session" in listed
-    assert "another repository's old config home" in listed
+    assert "another repository's unsplit config home" in listed
     assert "a cache this project declares" in listed
     assert "not lup's to judge" not in listed
     assert engine.done == []

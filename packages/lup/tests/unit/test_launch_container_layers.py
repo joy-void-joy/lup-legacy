@@ -38,7 +38,7 @@ def says(config: UserConfigFile, table: str) -> None:
     config.path().write_text(table, encoding="utf-8")
 
 
-def contained(root: Path, request: launch.LaunchRequest) -> OuterContainer:
+def contained(root: Path, request: launch.LaunchArguments) -> OuterContainer:
     """The container each runtime's declaration opens, asserted to be the same."""
     claude = launch.claude_declaration(composition(root, "claude"), request, profiles())
     codex = launch.codex_declaration(composition(root, "codex"), request, None)
@@ -47,8 +47,8 @@ def contained(root: Path, request: launch.LaunchRequest) -> OuterContainer:
     return claude.sandbox
 
 
-def outer(**named: object) -> launch.LaunchRequest:
-    return launch.LaunchRequest.model_validate(
+def outer(**named: object) -> launch.LaunchArguments:
+    return launch.LaunchArguments.model_validate(
         {"sandbox": LaunchSandbox.OUTER, **named}
     )
 
@@ -95,7 +95,7 @@ def test_a_host_session_says_what_its_flags_asked_of_a_container(
     root: Path, person: UserConfigFile, capsys: pytest.CaptureFixture[str]
 ) -> None:
     del person
-    request = launch.LaunchRequest(
+    request = launch.LaunchArguments(
         sandbox=LaunchSandbox.INNER, sudo=True, network="host"
     )
 

@@ -2,9 +2,9 @@
 
 The rule asking before a new devtools module names one by its parts --
 `src/<package>/devtools` -- wherever they sit, so a copy under `tmp/` that
-mirrors the path it will land at asked "new devtools module requires
-approval" as the module itself would. Scratch is scratch whatever path it
-mirrors, as it already was for the manifest rules named the same way.
+mirrors the path it will land at would ask "new devtools module requires
+approval" as the module itself does. Scratch is scratch whatever path it
+mirrors, as it is for the manifest rules named the same way.
 """
 
 from lup.harness.enforcement import declared_role_rows

@@ -19,6 +19,6 @@ and collects. Coordination is several agents that already exist finding each
 other: a roster somebody joins rather than is spawned into, mail that outlives
 the process that sent it, a lock one peer takes that another has to notice.
 Everything here folds shared state off disk instead of remembering it, which
-is what lets a peer answer to a process that did not create it — and that is
-the property spawning happened to need first, not a property of spawning.
+is what lets a peer answer to a process that did not create it — a property of
+coordination, which spawning is one user of rather than the owner of.
 """

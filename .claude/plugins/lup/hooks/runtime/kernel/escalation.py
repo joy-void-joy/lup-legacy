@@ -1,18 +1,18 @@
 """What the agent asked for when it wrote a marker on a call.
 
-Escalation is a *request*, never self-authority. Two different things were
-sharing one spelling: "put this to a human, because the rule that refused it
-does not know what I know" and "run this outside the containment boundary,
-because inside cannot answer it". They compose — a refused command that also
-has to reach the host is both — and they promote a verdict along different
-axes, so the marker names which it means.
+Escalation is a *request*, never self-authority. It asks one of two things:
+"put this to a human, because the rule that refused it does not know what I
+know" and "run this outside the containment boundary, because inside cannot
+answer it". They compose — a refused command that also has to reach the host
+is both — and they promote a verdict along different axes, so the marker
+names which it means.
 
 The accepted spellings are ``# lup: escalate[decision]:``,
 ``# lup: escalate[sandbox]:``, and ``# lup: escalate[decision,sandbox]:``,
-each followed by a nonempty reason. The bare ``# lup: escalate:`` that
-predates the distinction stays a working alias for decision escalation and
-says so, because the alternative is a session whose every marker stops
-working at once for having been written before the vocabulary grew.
+each followed by a nonempty reason. A marker naming no kind is refused with
+those spellings rather than read as one of them: guessed as a decision, it
+would leave the agent stuck inside the boundary never learning the sandbox
+half exists, and guessed as either it grants an axis nobody named.
 
 A reason is mandatory in every spelling. A marker with none would be the
 agent authorising itself: the whole content of the request is what it says
@@ -51,10 +51,10 @@ ESCALATE_RE = re.compile(
 )
 """The one marker grammar, whether or not it names its kinds.
 
-Optional rather than two patterns because the two spellings differ by a
-bracketed clause and nothing else, and a second pattern is a second place for
-the leading-comment rules — whitespace, the colon, the case-blindness — to
-drift.
+The bracketed clause is optional so a marker naming no kind is still read as
+a marker, and refused by name, rather than run as a command whose first line
+happens to be a comment. One pattern rather than two keeps the leading-comment
+rules — whitespace, the colon, the case-blindness — in one place.
 """
 
 # lup: ignore[constant-declaration] — refusal wording, declared with the
@@ -80,16 +80,18 @@ would grant decision escalation to a request that asked for the host, and the
 agent would spend a turn discovering the call still ran inside.
 """
 
-# lup: ignore[constant-declaration] — migration wording, declared with the alias it annotates
-LEGACY_NOTICE = (
-    "'# lup: escalate:' is read as escalate[decision]; write the kind"
-    " explicitly, and use escalate[sandbox] to ask for the host."
+# lup: ignore[constant-declaration] — refusal wording, declared with its verdict
+MISSING_KIND = (
+    "escalation names no kind: write '# lup: escalate[decision]: <why>' to put"
+    " this to a reviewer, or '# lup: escalate[sandbox]: <why>' to run it on the"
+    " host"
 )
-"""What the bare spelling adds to the verdict it produces.
+"""What a marker naming no kind is refused with.
 
-The alias keeps working and says it is an alias. Dropped silently it would
-read as the whole vocabulary, and the sandbox half — the one an agent stuck
-inside the boundary actually needs — would stay undiscovered.
+Refused rather than read as a decision, because the kind is the request: a
+marker that does not name one asks for nothing settlement can act on, and
+the sandbox half — the one an agent stuck inside the boundary needs — is
+learned from this refusal or not at all.
 """
 
 
@@ -98,37 +100,30 @@ class EscalationRequest:
 
     ``raw`` is exactly the text the agent wrote and ``normalized`` is the
     canonical spelling of what it meant, both retained because the audit has
-    to be able to say a legacy marker was read as decision escalation without
-    reconstructing that from the effect it produced.
+    to be able to say which axes a marker asked for without reconstructing
+    that from the effect it produced.
     """
 
     kinds: tuple[EscalationKind, ...]
     reason: str
     raw: str
     normalized: str
-    legacy: bool
 
     def __init__(
         self,
         kinds: tuple[EscalationKind, ...],
         reason: str,
         raw: str = "",
-        legacy: bool = False,
     ) -> None:
         self.kinds = kinds
         self.reason = reason
         self.raw = raw
-        self.legacy = legacy
         named = ",".join(kind for kind in ESCALATION_KINDS if kind in kinds)
         self.normalized = f"# lup: escalate[{named}]: {reason}" if kinds else ""
 
     def asks(self, kind: EscalationKind) -> bool:
         """Whether this request names one axis."""
         return kind in self.kinds
-
-    def notice(self) -> str:
-        """What this request tells the agent about its own spelling, or ``""``."""
-        return LEGACY_NOTICE if self.legacy else ""
 
 
 class MarkerReading:
@@ -161,9 +156,10 @@ def read_escalation(text: str) -> MarkerReading:
     every escalated command.
 
     An absent marker leaves the text whole and asks for nothing. A malformed
-    one — no reason, or a kind this vocabulary does not carry — is a refusal
-    stated here rather than a request passed on, because settlement can only
-    promote a verdict and has nowhere to put "the request itself was wrong".
+    one — no reason, no kind, or a kind this vocabulary does not carry — is a
+    refusal stated here rather than a request passed on, because settlement
+    can only promote a verdict and has nowhere to put "the request itself was
+    wrong".
     """
     marker = ESCALATE_RE.match(text)
     if marker is None:
@@ -174,11 +170,7 @@ def read_escalation(text: str) -> MarkerReading:
         return MarkerReading(None, MISSING_REASON, remainder)
     named = marker.group("kinds")
     if named is None:
-        return MarkerReading(
-            EscalationRequest(("decision",), reason, marker.group(0), legacy=True),
-            "",
-            remainder,
-        )
+        return MarkerReading(None, MISSING_KIND, remainder)
     # lup: ignore[string-split] — the marker's own comma-separated kind list,
     # a grammar this repository defines and nothing else parses
     named_kinds = [word.strip().lower() for word in named.split(",")]

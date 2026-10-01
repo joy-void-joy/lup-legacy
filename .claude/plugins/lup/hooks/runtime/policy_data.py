@@ -580,6 +580,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "as-unknown",
@@ -589,6 +590,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "any-annotation",
@@ -598,6 +600,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "any-assertion",
@@ -607,6 +610,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "ts-ignore",
@@ -616,6 +620,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "ts-expect-error",
@@ -625,6 +630,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "ts-nocheck",
@@ -634,6 +640,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "eslint-disable",
@@ -643,6 +650,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "eslint-disable-block",
@@ -652,6 +660,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "tslint-disable",
@@ -661,6 +670,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "non-null-assertion",
@@ -670,6 +680,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "var-declaration",
@@ -679,6 +690,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "",
             "strength": "strong",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "function-object-type",
@@ -688,6 +700,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "console-log",
@@ -697,6 +710,17 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
+        },
+        {
+            "id": "historical-voice",
+            "pattern": "(?i)\\bused to be\\b|\\bpreviously\\b|\\bformerly\\b|\\brenamed from\\b|\\bin the past\\b|\\bbefore this change\\b|\\ban earlier version\\b|\\bhistorically\\b|\\buntil now\\b|\\buntil this (?:\\w+ed|ran|was)\\b|\\b(?:it|this|that|they|we|which|one|there) used to\\b|\\bwe (?:changed|moved|switched|added|removed|dropped|renamed)\\b|\\bthis change fixes\\b|\\bnow (?:lives|sits) in\\b|\\bthe (?:bug|hole|gap|defect|forgery|asymmetry|regression) (?:this|it) (?:closes|closed|fixes|fixed)\\b|\\bthe old (?:rule|refusal|comparison|arrangement|fallback|behaviour|behavior|design|version|fold|stream|shape|spelling|layout|format|wording|implementation|approach|mechanism|scheme)\\b|\\bduring the \\w+ migration\\b|\\bfor compatibility (?:consumers|reasons)\\b|(?<![&\\w])#\\d{2,5}(?![0-9A-Fa-f;])",
+            "message": "Prose \u2014 a comment, a docstring, a page \u2014 says what the code is, not how it came to be: a phrase about a prior state, a fix told by the defect it removed, or an issue number standing in for the reason dates the moment it is read rather than the moment it was written. Say what holds and why; the change belongs in the commit message, and a decision worth keeping belongs where it is looked up. Another project's issue that is the reason a workaround exists is cited as `owner/repo#123`, and a phrase quoted as an example goes in backticks",
+            "context": "prose",
+            "matcher": "",
+            "strength": "soft",
+            "resolution": "",
+            "roles": ["production", "test"],
         },
     ],
     ".jsx": [
@@ -708,6 +732,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "as-unknown",
@@ -717,6 +742,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "any-annotation",
@@ -726,6 +752,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "any-assertion",
@@ -735,6 +762,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "ts-ignore",
@@ -744,6 +772,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "ts-expect-error",
@@ -753,6 +782,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "ts-nocheck",
@@ -762,6 +792,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "eslint-disable",
@@ -771,6 +802,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "eslint-disable-block",
@@ -780,6 +812,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "tslint-disable",
@@ -789,6 +822,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "non-null-assertion",
@@ -798,6 +832,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "var-declaration",
@@ -807,6 +842,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "",
             "strength": "strong",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "function-object-type",
@@ -816,6 +852,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "console-log",
@@ -825,6 +862,29 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
+        },
+        {
+            "id": "historical-voice",
+            "pattern": "(?i)\\bused to be\\b|\\bpreviously\\b|\\bformerly\\b|\\brenamed from\\b|\\bin the past\\b|\\bbefore this change\\b|\\ban earlier version\\b|\\bhistorically\\b|\\buntil now\\b|\\buntil this (?:\\w+ed|ran|was)\\b|\\b(?:it|this|that|they|we|which|one|there) used to\\b|\\bwe (?:changed|moved|switched|added|removed|dropped|renamed)\\b|\\bthis change fixes\\b|\\bnow (?:lives|sits) in\\b|\\bthe (?:bug|hole|gap|defect|forgery|asymmetry|regression) (?:this|it) (?:closes|closed|fixes|fixed)\\b|\\bthe old (?:rule|refusal|comparison|arrangement|fallback|behaviour|behavior|design|version|fold|stream|shape|spelling|layout|format|wording|implementation|approach|mechanism|scheme)\\b|\\bduring the \\w+ migration\\b|\\bfor compatibility (?:consumers|reasons)\\b|(?<![&\\w])#\\d{2,5}(?![0-9A-Fa-f;])",
+            "message": "Prose \u2014 a comment, a docstring, a page \u2014 says what the code is, not how it came to be: a phrase about a prior state, a fix told by the defect it removed, or an issue number standing in for the reason dates the moment it is read rather than the moment it was written. Say what holds and why; the change belongs in the commit message, and a decision worth keeping belongs where it is looked up. Another project's issue that is the reason a workaround exists is cited as `owner/repo#123`, and a phrase quoted as an example goes in backticks",
+            "context": "prose",
+            "matcher": "",
+            "strength": "soft",
+            "resolution": "",
+            "roles": ["production", "test"],
+        },
+    ],
+    ".md": [
+        {
+            "id": "historical-voice",
+            "pattern": "(?i)\\bused to be\\b|\\bpreviously\\b|\\bformerly\\b|\\brenamed from\\b|\\bin the past\\b|\\bbefore this change\\b|\\ban earlier version\\b|\\bhistorically\\b|\\buntil now\\b|\\buntil this (?:\\w+ed|ran|was)\\b|\\b(?:it|this|that|they|we|which|one|there) used to\\b|\\bwe (?:changed|moved|switched|added|removed|dropped|renamed)\\b|\\bthis change fixes\\b|\\bnow (?:lives|sits) in\\b|\\bthe (?:bug|hole|gap|defect|forgery|asymmetry|regression) (?:this|it) (?:closes|closed|fixes|fixed)\\b|\\bthe old (?:rule|refusal|comparison|arrangement|fallback|behaviour|behavior|design|version|fold|stream|shape|spelling|layout|format|wording|implementation|approach|mechanism|scheme)\\b|\\bduring the \\w+ migration\\b|\\bfor compatibility (?:consumers|reasons)\\b|(?<![&\\w])#\\d{2,5}(?![0-9A-Fa-f;])",
+            "message": "Prose \u2014 a comment, a docstring, a page \u2014 says what the code is, not how it came to be: a phrase about a prior state, a fix told by the defect it removed, or an issue number standing in for the reason dates the moment it is read rather than the moment it was written. Say what holds and why; the change belongs in the commit message, and a decision worth keeping belongs where it is looked up. Another project's issue that is the reason a workaround exists is cited as `owner/repo#123`, and a phrase quoted as an example goes in backticks",
+            "context": "prose",
+            "matcher": "",
+            "strength": "soft",
+            "resolution": "",
+            "roles": ["production", "test"],
         },
     ],
     ".py": [
@@ -836,6 +896,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "any_type_sites",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "type-ignore",
@@ -845,6 +906,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "type_ignore_sites",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "pyright-ignore",
@@ -854,6 +916,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "pyright_ignore_sites",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "noqa",
@@ -863,15 +926,17 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "noqa_sites",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "historical-voice",
-            "pattern": "\\bused to be\\b|\\bpreviously\\b|\\bformerly\\b|\\brenamed from\\b|\\bin the past\\b|\\bbefore this change\\b|\\b(?:it|this|that|they|we|which|one|there) used to\\b|\\bthe old (?:rule|refusal|comparison|arrangement|fallback|behaviour|behavior|design|version)\\b|\\bduring the \\w+ migration\\b|\\bfor compatibility (?:consumers|reasons)\\b|(?<!&)#\\d{2,5}(?![0-9A-Fa-f;])",
-            "message": "A comment or docstring says what the code is, not how it came to be: a phrase about a prior state, or an issue number standing in for the reason, dates the moment it is read rather than the moment it was written. Say what holds now; the change belongs in the commit message, and a decision worth keeping belongs where it is looked up. Where an external tracker's number is the reason a workaround exists, `# lup: ignore[historical-voice]` carries it",
+            "pattern": "(?i)\\bused to be\\b|\\bpreviously\\b|\\bformerly\\b|\\brenamed from\\b|\\bin the past\\b|\\bbefore this change\\b|\\ban earlier version\\b|\\bhistorically\\b|\\buntil now\\b|\\buntil this (?:\\w+ed|ran|was)\\b|\\b(?:it|this|that|they|we|which|one|there) used to\\b|\\bwe (?:changed|moved|switched|added|removed|dropped|renamed)\\b|\\bthis change fixes\\b|\\bnow (?:lives|sits) in\\b|\\bthe (?:bug|hole|gap|defect|forgery|asymmetry|regression) (?:this|it) (?:closes|closed|fixes|fixed)\\b|\\bthe old (?:rule|refusal|comparison|arrangement|fallback|behaviour|behavior|design|version|fold|stream|shape|spelling|layout|format|wording|implementation|approach|mechanism|scheme)\\b|\\bduring the \\w+ migration\\b|\\bfor compatibility (?:consumers|reasons)\\b|(?<![&\\w])#\\d{2,5}(?![0-9A-Fa-f;])",
+            "message": "Prose \u2014 a comment, a docstring, a page \u2014 says what the code is, not how it came to be: a phrase about a prior state, a fix told by the defect it removed, or an issue number standing in for the reason dates the moment it is read rather than the moment it was written. Say what holds and why; the change belongs in the commit message, and a decision worth keeping belongs where it is looked up. Another project's issue that is the reason a workaround exists is cited as `owner/repo#123`, and a phrase quoted as an example goes in backticks",
             "context": "prose",
             "matcher": "historical_voice_sites",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production", "test"],
         },
         {
             "id": "generic-base",
@@ -881,6 +946,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "generic_base_sites",
             "strength": "strong",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "typing-union",
@@ -890,6 +956,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "typing_union_sites",
             "strength": "strong",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "typing-generics",
@@ -899,6 +966,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "typing_generics_sites",
             "strength": "strong",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "all-export",
@@ -908,6 +976,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "all_export_sites",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "dict-str-object",
@@ -917,6 +986,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "dict_str_object_sites",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "dict-str-payload",
@@ -926,6 +996,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "dict_str_payload_sites",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "dict-get",
@@ -935,6 +1006,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "dict_get_sites",
             "strength": "soft",
             "resolution": "required",
+            "roles": ["production"],
         },
         {
             "id": "derived-interpolation",
@@ -944,6 +1016,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "derived_interpolation_sites",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "bare-object",
@@ -953,6 +1026,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "bare_object_sites",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "bare-basemodel",
@@ -962,6 +1036,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "bare_basemodel_sites",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "tuple-shape",
@@ -971,6 +1046,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "tuple_shape_sites",
             "strength": "strong",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "frozenset-shape",
@@ -980,6 +1056,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "frozenset_shape_sites",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "set-shape",
@@ -989,6 +1066,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "set_shape_sites",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "default-factory",
@@ -998,6 +1076,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "default_factory_sites",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "empty-collection",
@@ -1007,6 +1086,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "empty_collection_sites",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "cast",
@@ -1016,6 +1096,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "cast_sites",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "import-re",
@@ -1025,6 +1106,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "import_re_sites",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "re-call",
@@ -1034,6 +1116,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "re_call_sites",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "string-replace",
@@ -1043,6 +1126,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "string_replace_sites",
             "strength": "soft",
             "resolution": "required",
+            "roles": ["production"],
         },
         {
             "id": "string-split",
@@ -1052,6 +1136,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "string_split_sites",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "string-strip",
@@ -1061,6 +1146,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "string_strip_sites",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "silent-truncation",
@@ -1070,6 +1156,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "silent_truncation_sites",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "bare-except",
@@ -1079,6 +1166,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "bare_except_sites",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "except-baseexception",
@@ -1088,6 +1176,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "except_baseexception_sites",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "suppress",
@@ -1097,6 +1186,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "suppress_sites",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "suppress-import",
@@ -1106,6 +1196,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "suppress_import_sites",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "dataclass",
@@ -1115,6 +1206,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "dataclass_sites",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "namedtuple",
@@ -1124,6 +1216,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "namedtuple_sites",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "model-config",
@@ -1133,6 +1226,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "model_config_sites",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "subprocess",
@@ -1142,6 +1236,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "subprocess_sites",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "os-shell",
@@ -1151,6 +1246,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "os_shell_sites",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "argparse",
@@ -1160,6 +1256,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "argparse_sites",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "rich-progress",
@@ -1169,6 +1266,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "rich_progress_sites",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "os-path",
@@ -1178,6 +1276,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "os_path_sites",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "os-file-ops",
@@ -1187,6 +1286,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "os_file_ops_sites",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "os-environ",
@@ -1196,6 +1296,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "os_environ_sites",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "eval-exec",
@@ -1205,6 +1306,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "eval_exec_sites",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "utcnow",
@@ -1214,6 +1316,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "utcnow_sites",
             "strength": "strong",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "global-statement",
@@ -1223,6 +1326,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "global_statement_sites",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "private-function",
@@ -1232,6 +1336,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "private_function_sites",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "private-class",
@@ -1241,6 +1346,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "private_class_sites",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "private-variable",
@@ -1250,6 +1356,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "private_variable_sites",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "elif-chain",
@@ -1259,6 +1366,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "elif_chain_sites",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "wildcard-guard",
@@ -1268,6 +1376,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "wildcard_guard_sites",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "pdf-extraction",
@@ -1277,6 +1386,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "pdf_extraction_sites",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
     ],
     ".pyi": [
@@ -1288,6 +1398,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "any_type_sites",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "type-ignore",
@@ -1297,6 +1408,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "type_ignore_sites",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "pyright-ignore",
@@ -1306,6 +1418,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "pyright_ignore_sites",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "noqa",
@@ -1315,15 +1428,17 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "noqa_sites",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "historical-voice",
-            "pattern": "\\bused to be\\b|\\bpreviously\\b|\\bformerly\\b|\\brenamed from\\b|\\bin the past\\b|\\bbefore this change\\b|\\b(?:it|this|that|they|we|which|one|there) used to\\b|\\bthe old (?:rule|refusal|comparison|arrangement|fallback|behaviour|behavior|design|version)\\b|\\bduring the \\w+ migration\\b|\\bfor compatibility (?:consumers|reasons)\\b|(?<!&)#\\d{2,5}(?![0-9A-Fa-f;])",
-            "message": "A comment or docstring says what the code is, not how it came to be: a phrase about a prior state, or an issue number standing in for the reason, dates the moment it is read rather than the moment it was written. Say what holds now; the change belongs in the commit message, and a decision worth keeping belongs where it is looked up. Where an external tracker's number is the reason a workaround exists, `# lup: ignore[historical-voice]` carries it",
+            "pattern": "(?i)\\bused to be\\b|\\bpreviously\\b|\\bformerly\\b|\\brenamed from\\b|\\bin the past\\b|\\bbefore this change\\b|\\ban earlier version\\b|\\bhistorically\\b|\\buntil now\\b|\\buntil this (?:\\w+ed|ran|was)\\b|\\b(?:it|this|that|they|we|which|one|there) used to\\b|\\bwe (?:changed|moved|switched|added|removed|dropped|renamed)\\b|\\bthis change fixes\\b|\\bnow (?:lives|sits) in\\b|\\bthe (?:bug|hole|gap|defect|forgery|asymmetry|regression) (?:this|it) (?:closes|closed|fixes|fixed)\\b|\\bthe old (?:rule|refusal|comparison|arrangement|fallback|behaviour|behavior|design|version|fold|stream|shape|spelling|layout|format|wording|implementation|approach|mechanism|scheme)\\b|\\bduring the \\w+ migration\\b|\\bfor compatibility (?:consumers|reasons)\\b|(?<![&\\w])#\\d{2,5}(?![0-9A-Fa-f;])",
+            "message": "Prose \u2014 a comment, a docstring, a page \u2014 says what the code is, not how it came to be: a phrase about a prior state, a fix told by the defect it removed, or an issue number standing in for the reason dates the moment it is read rather than the moment it was written. Say what holds and why; the change belongs in the commit message, and a decision worth keeping belongs where it is looked up. Another project's issue that is the reason a workaround exists is cited as `owner/repo#123`, and a phrase quoted as an example goes in backticks",
             "context": "prose",
             "matcher": "historical_voice_sites",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production", "test"],
         },
         {
             "id": "generic-base",
@@ -1333,6 +1448,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "generic_base_sites",
             "strength": "strong",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "typing-union",
@@ -1342,6 +1458,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "typing_union_sites",
             "strength": "strong",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "typing-generics",
@@ -1351,6 +1468,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "typing_generics_sites",
             "strength": "strong",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "all-export",
@@ -1360,6 +1478,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "all_export_sites",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "dict-str-object",
@@ -1369,6 +1488,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "dict_str_object_sites",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "dict-str-payload",
@@ -1378,6 +1498,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "dict_str_payload_sites",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "dict-get",
@@ -1387,6 +1508,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "dict_get_sites",
             "strength": "soft",
             "resolution": "required",
+            "roles": ["production"],
         },
         {
             "id": "derived-interpolation",
@@ -1396,6 +1518,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "derived_interpolation_sites",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "bare-object",
@@ -1405,6 +1528,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "bare_object_sites",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "bare-basemodel",
@@ -1414,6 +1538,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "bare_basemodel_sites",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "tuple-shape",
@@ -1423,6 +1548,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "tuple_shape_sites",
             "strength": "strong",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "frozenset-shape",
@@ -1432,6 +1558,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "frozenset_shape_sites",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "set-shape",
@@ -1441,6 +1568,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "set_shape_sites",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "default-factory",
@@ -1450,6 +1578,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "default_factory_sites",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "empty-collection",
@@ -1459,6 +1588,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "empty_collection_sites",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "cast",
@@ -1468,6 +1598,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "cast_sites",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "import-re",
@@ -1477,6 +1608,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "import_re_sites",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "re-call",
@@ -1486,6 +1618,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "re_call_sites",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "string-replace",
@@ -1495,6 +1628,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "string_replace_sites",
             "strength": "soft",
             "resolution": "required",
+            "roles": ["production"],
         },
         {
             "id": "string-split",
@@ -1504,6 +1638,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "string_split_sites",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "string-strip",
@@ -1513,6 +1648,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "string_strip_sites",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "silent-truncation",
@@ -1522,6 +1658,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "silent_truncation_sites",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "bare-except",
@@ -1531,6 +1668,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "bare_except_sites",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "except-baseexception",
@@ -1540,6 +1678,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "except_baseexception_sites",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "suppress",
@@ -1549,6 +1688,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "suppress_sites",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "suppress-import",
@@ -1558,6 +1698,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "suppress_import_sites",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "dataclass",
@@ -1567,6 +1708,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "dataclass_sites",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "namedtuple",
@@ -1576,6 +1718,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "namedtuple_sites",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "model-config",
@@ -1585,6 +1728,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "model_config_sites",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "subprocess",
@@ -1594,6 +1738,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "subprocess_sites",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "os-shell",
@@ -1603,6 +1748,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "os_shell_sites",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "argparse",
@@ -1612,6 +1758,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "argparse_sites",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "rich-progress",
@@ -1621,6 +1768,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "rich_progress_sites",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "os-path",
@@ -1630,6 +1778,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "os_path_sites",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "os-file-ops",
@@ -1639,6 +1788,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "os_file_ops_sites",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "os-environ",
@@ -1648,6 +1798,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "os_environ_sites",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "eval-exec",
@@ -1657,6 +1808,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "eval_exec_sites",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "utcnow",
@@ -1666,6 +1818,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "utcnow_sites",
             "strength": "strong",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "global-statement",
@@ -1675,6 +1828,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "global_statement_sites",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "private-function",
@@ -1684,6 +1838,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "private_function_sites",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "private-class",
@@ -1693,6 +1848,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "private_class_sites",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "private-variable",
@@ -1702,6 +1858,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "private_variable_sites",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "elif-chain",
@@ -1711,6 +1868,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "elif_chain_sites",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "wildcard-guard",
@@ -1720,6 +1878,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "wildcard_guard_sites",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "pdf-extraction",
@@ -1729,6 +1888,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "pdf_extraction_sites",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
     ],
     ".svelte": [
@@ -1740,6 +1900,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "as-unknown",
@@ -1749,6 +1910,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "any-annotation",
@@ -1758,6 +1920,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "any-assertion",
@@ -1767,6 +1930,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "ts-ignore",
@@ -1776,6 +1940,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "ts-expect-error",
@@ -1785,6 +1950,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "ts-nocheck",
@@ -1794,6 +1960,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "eslint-disable",
@@ -1803,6 +1970,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "eslint-disable-block",
@@ -1812,6 +1980,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "tslint-disable",
@@ -1821,6 +1990,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "non-null-assertion",
@@ -1830,6 +2000,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "var-declaration",
@@ -1839,6 +2010,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "",
             "strength": "strong",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "function-object-type",
@@ -1848,6 +2020,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "console-log",
@@ -1857,6 +2030,17 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
+        },
+        {
+            "id": "historical-voice",
+            "pattern": "(?i)\\bused to be\\b|\\bpreviously\\b|\\bformerly\\b|\\brenamed from\\b|\\bin the past\\b|\\bbefore this change\\b|\\ban earlier version\\b|\\bhistorically\\b|\\buntil now\\b|\\buntil this (?:\\w+ed|ran|was)\\b|\\b(?:it|this|that|they|we|which|one|there) used to\\b|\\bwe (?:changed|moved|switched|added|removed|dropped|renamed)\\b|\\bthis change fixes\\b|\\bnow (?:lives|sits) in\\b|\\bthe (?:bug|hole|gap|defect|forgery|asymmetry|regression) (?:this|it) (?:closes|closed|fixes|fixed)\\b|\\bthe old (?:rule|refusal|comparison|arrangement|fallback|behaviour|behavior|design|version|fold|stream|shape|spelling|layout|format|wording|implementation|approach|mechanism|scheme)\\b|\\bduring the \\w+ migration\\b|\\bfor compatibility (?:consumers|reasons)\\b|(?<![&\\w])#\\d{2,5}(?![0-9A-Fa-f;])",
+            "message": "Prose \u2014 a comment, a docstring, a page \u2014 says what the code is, not how it came to be: a phrase about a prior state, a fix told by the defect it removed, or an issue number standing in for the reason dates the moment it is read rather than the moment it was written. Say what holds and why; the change belongs in the commit message, and a decision worth keeping belongs where it is looked up. Another project's issue that is the reason a workaround exists is cited as `owner/repo#123`, and a phrase quoted as an example goes in backticks",
+            "context": "prose",
+            "matcher": "",
+            "strength": "soft",
+            "resolution": "",
+            "roles": ["production", "test"],
         },
     ],
     ".ts": [
@@ -1868,6 +2052,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "as-unknown",
@@ -1877,6 +2062,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "any-annotation",
@@ -1886,6 +2072,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "any-assertion",
@@ -1895,6 +2082,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "ts-ignore",
@@ -1904,6 +2092,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "ts-expect-error",
@@ -1913,6 +2102,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "ts-nocheck",
@@ -1922,6 +2112,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "eslint-disable",
@@ -1931,6 +2122,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "eslint-disable-block",
@@ -1940,6 +2132,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "tslint-disable",
@@ -1949,6 +2142,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "non-null-assertion",
@@ -1958,6 +2152,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "var-declaration",
@@ -1967,6 +2162,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "",
             "strength": "strong",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "function-object-type",
@@ -1976,6 +2172,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "console-log",
@@ -1985,6 +2182,17 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
+        },
+        {
+            "id": "historical-voice",
+            "pattern": "(?i)\\bused to be\\b|\\bpreviously\\b|\\bformerly\\b|\\brenamed from\\b|\\bin the past\\b|\\bbefore this change\\b|\\ban earlier version\\b|\\bhistorically\\b|\\buntil now\\b|\\buntil this (?:\\w+ed|ran|was)\\b|\\b(?:it|this|that|they|we|which|one|there) used to\\b|\\bwe (?:changed|moved|switched|added|removed|dropped|renamed)\\b|\\bthis change fixes\\b|\\bnow (?:lives|sits) in\\b|\\bthe (?:bug|hole|gap|defect|forgery|asymmetry|regression) (?:this|it) (?:closes|closed|fixes|fixed)\\b|\\bthe old (?:rule|refusal|comparison|arrangement|fallback|behaviour|behavior|design|version|fold|stream|shape|spelling|layout|format|wording|implementation|approach|mechanism|scheme)\\b|\\bduring the \\w+ migration\\b|\\bfor compatibility (?:consumers|reasons)\\b|(?<![&\\w])#\\d{2,5}(?![0-9A-Fa-f;])",
+            "message": "Prose \u2014 a comment, a docstring, a page \u2014 says what the code is, not how it came to be: a phrase about a prior state, a fix told by the defect it removed, or an issue number standing in for the reason dates the moment it is read rather than the moment it was written. Say what holds and why; the change belongs in the commit message, and a decision worth keeping belongs where it is looked up. Another project's issue that is the reason a workaround exists is cited as `owner/repo#123`, and a phrase quoted as an example goes in backticks",
+            "context": "prose",
+            "matcher": "",
+            "strength": "soft",
+            "resolution": "",
+            "roles": ["production", "test"],
         },
     ],
     ".tsx": [
@@ -1996,6 +2204,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "as-unknown",
@@ -2005,6 +2214,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "any-annotation",
@@ -2014,6 +2224,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "any-assertion",
@@ -2023,6 +2234,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "ts-ignore",
@@ -2032,6 +2244,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "ts-expect-error",
@@ -2041,6 +2254,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "ts-nocheck",
@@ -2050,6 +2264,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "eslint-disable",
@@ -2059,6 +2274,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "eslint-disable-block",
@@ -2068,6 +2284,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "tslint-disable",
@@ -2077,6 +2294,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "non-null-assertion",
@@ -2086,6 +2304,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "var-declaration",
@@ -2095,6 +2314,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "",
             "strength": "strong",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "function-object-type",
@@ -2104,6 +2324,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "console-log",
@@ -2113,6 +2334,17 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
+        },
+        {
+            "id": "historical-voice",
+            "pattern": "(?i)\\bused to be\\b|\\bpreviously\\b|\\bformerly\\b|\\brenamed from\\b|\\bin the past\\b|\\bbefore this change\\b|\\ban earlier version\\b|\\bhistorically\\b|\\buntil now\\b|\\buntil this (?:\\w+ed|ran|was)\\b|\\b(?:it|this|that|they|we|which|one|there) used to\\b|\\bwe (?:changed|moved|switched|added|removed|dropped|renamed)\\b|\\bthis change fixes\\b|\\bnow (?:lives|sits) in\\b|\\bthe (?:bug|hole|gap|defect|forgery|asymmetry|regression) (?:this|it) (?:closes|closed|fixes|fixed)\\b|\\bthe old (?:rule|refusal|comparison|arrangement|fallback|behaviour|behavior|design|version|fold|stream|shape|spelling|layout|format|wording|implementation|approach|mechanism|scheme)\\b|\\bduring the \\w+ migration\\b|\\bfor compatibility (?:consumers|reasons)\\b|(?<![&\\w])#\\d{2,5}(?![0-9A-Fa-f;])",
+            "message": "Prose \u2014 a comment, a docstring, a page \u2014 says what the code is, not how it came to be: a phrase about a prior state, a fix told by the defect it removed, or an issue number standing in for the reason dates the moment it is read rather than the moment it was written. Say what holds and why; the change belongs in the commit message, and a decision worth keeping belongs where it is looked up. Another project's issue that is the reason a workaround exists is cited as `owner/repo#123`, and a phrase quoted as an example goes in backticks",
+            "context": "prose",
+            "matcher": "",
+            "strength": "soft",
+            "resolution": "",
+            "roles": ["production", "test"],
         },
     ],
     ".vue": [
@@ -2124,6 +2356,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "as-unknown",
@@ -2133,6 +2366,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "any-annotation",
@@ -2142,6 +2376,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "any-assertion",
@@ -2151,6 +2386,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "ts-ignore",
@@ -2160,6 +2396,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "ts-expect-error",
@@ -2169,6 +2406,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "ts-nocheck",
@@ -2178,6 +2416,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "eslint-disable",
@@ -2187,6 +2426,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "eslint-disable-block",
@@ -2196,6 +2436,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "tslint-disable",
@@ -2205,6 +2446,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "non-null-assertion",
@@ -2214,6 +2456,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "var-declaration",
@@ -2223,6 +2466,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "",
             "strength": "strong",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "function-object-type",
@@ -2232,6 +2476,7 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
         },
         {
             "id": "console-log",
@@ -2241,6 +2486,17 @@ ANTI_PATTERN_ROWS: dict[str, list[AntiPatternRow]] = {
             "matcher": "",
             "strength": "soft",
             "resolution": "",
+            "roles": ["production"],
+        },
+        {
+            "id": "historical-voice",
+            "pattern": "(?i)\\bused to be\\b|\\bpreviously\\b|\\bformerly\\b|\\brenamed from\\b|\\bin the past\\b|\\bbefore this change\\b|\\ban earlier version\\b|\\bhistorically\\b|\\buntil now\\b|\\buntil this (?:\\w+ed|ran|was)\\b|\\b(?:it|this|that|they|we|which|one|there) used to\\b|\\bwe (?:changed|moved|switched|added|removed|dropped|renamed)\\b|\\bthis change fixes\\b|\\bnow (?:lives|sits) in\\b|\\bthe (?:bug|hole|gap|defect|forgery|asymmetry|regression) (?:this|it) (?:closes|closed|fixes|fixed)\\b|\\bthe old (?:rule|refusal|comparison|arrangement|fallback|behaviour|behavior|design|version|fold|stream|shape|spelling|layout|format|wording|implementation|approach|mechanism|scheme)\\b|\\bduring the \\w+ migration\\b|\\bfor compatibility (?:consumers|reasons)\\b|(?<![&\\w])#\\d{2,5}(?![0-9A-Fa-f;])",
+            "message": "Prose \u2014 a comment, a docstring, a page \u2014 says what the code is, not how it came to be: a phrase about a prior state, a fix told by the defect it removed, or an issue number standing in for the reason dates the moment it is read rather than the moment it was written. Say what holds and why; the change belongs in the commit message, and a decision worth keeping belongs where it is looked up. Another project's issue that is the reason a workaround exists is cited as `owner/repo#123`, and a phrase quoted as an example goes in backticks",
+            "context": "prose",
+            "matcher": "",
+            "strength": "soft",
+            "resolution": "",
+            "roles": ["production", "test"],
         },
     ],
 }
@@ -2296,6 +2552,10 @@ PATH_ROLES: list[PathRoleRow] = [
     },
     {
         "root": "packages/lup/src/lup/migrations/pending",
+        "role": "data",
+    },
+    {
+        "root": "CHANGELOG.md",
         "role": "data",
     },
     {

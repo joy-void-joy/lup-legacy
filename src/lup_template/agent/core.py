@@ -378,16 +378,12 @@ def normalize_codex_approval(
 
     The asking policies are answerable because the adapter replies to the
     app-server's approval requests from a session's declared hooks, so they
-    are settings rather than refusals. Legacy configuration aliases normalize
-    here so the app-server wire receives only its current spellings.
+    are settings rather than refusals. The value is the app-server's own
+    spelling, and any other is refused with the four it accepts.
     """
     if value is None:
         return None
     match value:
-        case "unlessTrusted":
-            return "untrusted"
-        case "onRequest":
-            return "on-request"
         case "untrusted" | "on-request" | "granular" | "never":
             return value
     raise ValueError(

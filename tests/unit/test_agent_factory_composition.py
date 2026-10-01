@@ -1,24 +1,26 @@
-"""Regression tests for the provider-neutral application template."""
+"""What the template lays over a provider's agent, observed through a canned one.
+
+The submission gate is the reflection gate, typed; the main factory's
+decoration persists each turn, displays it and traces it; and a Codex
+composition refuses the options only Claude understands.
+"""
 
 from collections.abc import AsyncGenerator, AsyncIterator
-from datetime import datetime, timedelta
 from contextlib import AbstractAsyncContextManager, asynccontextmanager
+from datetime import timedelta
 from pathlib import Path
 from typing import Self, overload
 
 import pytest
 from pydantic import BaseModel
 
-from lup_template.agent import prompts
+from lup.observability.trace import TraceLogger
 from lup.orchestration.reflection import ReviewGate
-from lup_template.agent.config import aux_model, engine_for_settings, settings
-from lup_template.agent.core import reflection_submission_gate
 from lup.providers.claude import ClaudeSession
-from lup.sessions.layers import SessionLayers
 from lup.sessions.capabilities import (
     ConversationRecord,
-    ForkSession,
     EventStream,
+    ForkSession,
     Interrupt,
     SessionEngine,
     TurnEngine,
@@ -26,9 +28,9 @@ from lup.sessions.capabilities import (
 from lup.sessions.events import (
     SessionId,
     SessionSummary,
+    StartedTurn,
     TurnBlock,
     TurnEvent,
-    StartedTurn,
     TurnId,
     TurnIdentifiers,
     TurnInput,
@@ -37,151 +39,16 @@ from lup.sessions.events import (
     TurnResult,
     TurnTextBlock,
 )
-from lup.observability.trace import TraceLogger
+from lup.sessions.layers import SessionLayers
 from lup.types import Usage
 from lup.workspace.notes import NotesConfig
+from lup_template.agent.config import settings
 from lup_template.agent.core import (
     decorate_factory,
-    normalize_codex_approval,
     provider_factory,
+    reflection_submission_gate,
 )
 from lup_template.agent.models import AgentOutput
-from lup_template.agent.tool_policy import ToolPolicy
-
-
-def test_prompt_renders_with_literal_braces_in_section(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    json_section = '## Output\n```json\n{"probability": 0.5, "factors": []}\n```'
-    monkeypatch.setattr(prompts, "SECTIONS", ["Today is {date}.", json_section])
-
-    rendered = prompts.get_system_prompt()
-
-    assert '{"probability": 0.5, "factors": []}' in rendered
-    assert "{date}" not in rendered
-
-
-def test_prompt_substitutes_date_token(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(prompts, "SECTIONS", ["date={date}"])
-    assert "date=2030-01-02" in prompts.get_system_prompt(date=datetime(2030, 1, 2))
-
-
-def test_output_format_section_derives_from_model() -> None:
-    section = prompts.output_format()
-    for field_name in AgentOutput.model_fields:
-        assert field_name in section
-
-
-def test_allowed_tools_are_supplied_by_the_concrete_composition() -> None:
-    builtins = frozenset(  # lup: ignore[frozenset-shape] — immutable policy fixture
-        {"Read", "TodoWrite"}
-    )
-    allowed = ToolPolicy(settings).get_allowed_tools({}, builtin_tools=builtins)
-    assert allowed == ["Read", "TodoWrite"]
-
-
-def test_aux_model_explicit_override_wins(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(settings, "aux_model", "my-reviewer")
-    monkeypatch.setattr(settings, "agent_sdk", "codex")
-    assert aux_model() == "my-reviewer"
-
-
-def test_aux_model_claude_defaults_to_opus(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(settings, "aux_model", None)
-    monkeypatch.setattr(settings, "agent_sdk", "claude")
-    monkeypatch.setattr(settings, "openai_base_url", None)
-    monkeypatch.setattr(settings, "openrouter_api_key", None)
-    assert aux_model() is None  # The provider resolves its strongest alias.
-
-
-def test_aux_model_compat_endpoint_reuses_session_model(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(settings, "aux_model", None)
-    monkeypatch.setattr(settings, "agent_sdk", "claude")
-    monkeypatch.setattr(settings, "model", "anthropic/claude-opus-5")
-    monkeypatch.setattr(settings, "openai_base_url", None)
-    monkeypatch.setattr(settings, "openrouter_api_key", "or-key")
-    assert aux_model() == "anthropic/claude-opus-5"
-
-
-def test_engine_router_explicit_agent_sdk_wins(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(settings, "agent_sdk", "claude")
-    monkeypatch.setattr(settings, "model", "gpt-5.6-sol")
-    assert engine_for_settings() == "claude"
-
-
-def test_codex_approval_normalizes_current_and_legacy_spellings() -> None:
-    expected = {
-        "untrusted": "untrusted",
-        "on-request": "on-request",
-        "granular": "granular",
-        "never": "never",
-        "unlessTrusted": "untrusted",
-        "onRequest": "on-request",
-    }
-    assert {value: normalize_codex_approval(value) for value in expected} == expected
-    assert normalize_codex_approval(None) is None
-
-
-def test_codex_approval_rejects_unknown_spelling() -> None:
-    with pytest.raises(ValueError, match="app-server accepts"):
-        normalize_codex_approval("always")
-
-
-def test_engine_router_claude_prefix_runs_native_claude(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(settings, "agent_sdk", None)
-    monkeypatch.setattr(settings, "model", "claude-fable-5")
-    assert engine_for_settings() == "claude"
-
-
-def test_engine_router_openai_prefixes_run_codex(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(settings, "agent_sdk", None)
-    for model in ("gpt-5.6-sol", "o4-mini", "codex-mini-latest"):
-        monkeypatch.setattr(settings, "model", model)
-        assert engine_for_settings() == "codex"
-
-
-def test_engine_router_openrouter_fallback_runs_claude_compat(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(settings, "agent_sdk", None)
-    monkeypatch.setattr(settings, "model", "anthropic/claude-opus-5")
-    monkeypatch.setattr(settings, "openrouter_api_key", "or-key")
-    assert engine_for_settings() == "claude-compat"
-
-
-def test_engine_router_unknown_model_runs_openai_compat(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(settings, "agent_sdk", None)
-    monkeypatch.setattr(settings, "model", "llama-4-scout")
-    monkeypatch.setattr(settings, "openrouter_api_key", None)
-    assert engine_for_settings() == "openai-compat"
-
-
-def test_aux_model_follows_the_routed_engine(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(settings, "aux_model", None)
-    monkeypatch.setattr(settings, "agent_sdk", None)
-    monkeypatch.setattr(settings, "model", "gpt-5.6-sol")
-    assert aux_model() == "gpt-5.6-sol"
-
-
-def test_aux_model_codex_reuses_session_model(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(settings, "aux_model", None)
-    monkeypatch.setattr(settings, "agent_sdk", "codex")
-    monkeypatch.setattr(settings, "model", "gpt-5.5")
-    assert aux_model() == "gpt-5.5"
 
 
 @pytest.mark.asyncio

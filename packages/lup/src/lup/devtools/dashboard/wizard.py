@@ -8,11 +8,11 @@ creating something with it afterwards, streaming a browser to whoever is
 reading — is a ``setup_func``, and the page's whole answer to a ``setup_func``
 is to tell the reader to go and open a terminal.
 
-For some projects every flow that matters is a ``setup_func``, so the page has
-nothing to offer them and they write their own instead. That is the gap this
-closes. The missing piece was never a nicer page: it is a way for a bespoke
-flow to *declare its browser shape* — what it asks for, what it opens, how it
-proves itself, what undoing it means — so one renderer can draw it. The same
+For some projects every flow that matters is a ``setup_func``, so that page
+has nothing to offer them and they would write their own instead. What they
+need is not a nicer page: it is a way for a bespoke flow to *declare its
+browser shape* — what it asks for, what it opens, how it proves itself, what
+undoing it means — so one renderer can draw it. The same
 declaration-plus-renderer split the harness uses for prompts: a step says what
 is meant, the renderer says how a browser spells it.
 
@@ -20,8 +20,8 @@ Nothing here names a service, a domain, or a project. A domain supplies its own
 scope and its own steps, and the page draws them: the ``wizard`` surface Vite
 builds into ``lup.web``'s package data, typed against the models below, which
 knows no step by name. A test holds the package data to naming every built
-bundle, because the version of this dashboard that read an asset shipped
-without it.
+bundle, because an installed dashboard that reads an asset the package data
+leaves out serves a page with nothing behind it.
 
 Two guards live here rather than in any surface, because a page draws only what
 a step offers while a request is whatever arrived on the socket:

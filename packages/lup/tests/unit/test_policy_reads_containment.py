@@ -1,11 +1,11 @@
 """What a policy composed in this process believes about its own boundary.
 
 `dev policy` and `hooks classify` compose a policy here rather than running a
-generated dispatcher, and the container was the one session fact neither
-carried. Every rule annotated `container` therefore reported the question a
-bare host would ask, which is not what a contained session is told -- and the
-guidance sends a reader to `dev policy` *before* they spend a turn, so the
-whole gap fell on the one reader the command exists for.
+generated dispatcher, so the container is a session fact both have to carry.
+Without it every rule annotated `container` would report the question a bare
+host asks, which is not what a contained session is told -- and the guidance
+sends a reader to `dev policy` *before* they spend a turn, so the whole gap
+would fall on the one reader the command exists for.
 """
 
 import json

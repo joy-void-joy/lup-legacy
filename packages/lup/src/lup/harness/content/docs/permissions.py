@@ -22,9 +22,9 @@ def settlement_table(
     Every row is one rule's own summary line, in the order the pass reads
     them — so a row added, moved or dropped arrives here by being added,
     moved or dropped, and this page cannot come to describe a precedence the
-    kernel does not have. What stood here before was the same nine names and
-    the same nine claims, written a second time in a second file with nothing
-    holding the two together.
+    kernel does not have. Written out by hand, the same names and claims
+    would be a second copy in a second file with nothing holding the two
+    together.
 
     A rule carrying no docstring fails generation loudly rather than
     rendering an empty claim, for the reason the roster in ``library.py``
@@ -32,10 +32,9 @@ def settlement_table(
 
     The id is the first column because it is the half a reader arrives with.
     A settled verdict cites it — ``unleased-write``, ``contained-effects`` —
-    and every other rule id this policy states is indexed somewhere; these
-    were indexed nowhere, while a helper in the kernel returned them for
-    "the reference the docs render", which was this table, which did not
-    render them.
+    and every other rule id this policy states is indexed somewhere. This
+    table is where these are: the reference the docs render, which a helper
+    in the kernel names when it returns them.
     """
 
     def says(rule: SettlementRule) -> str:

@@ -25,6 +25,7 @@ import pytest
 import sh
 
 from lup.devtools import sync
+from lup.execution.git import Repository
 from lup.devtools.dev.policy_explain import verdict_for
 import lup.launch.session as launch_session
 from lup.launch.declaration import LaunchSandbox
@@ -201,8 +202,8 @@ def cut_with_policy(repository: Path, branch: str) -> Path:
     accepts.
     """
     checkout = repository / "tree" / branch
-    sync.git_in(
-        str(repository), "worktree", "add", "-q", "-b", branch, str(checkout), "main"
+    Repository(Path(str(repository))).answer(
+        "worktree", "add", "-q", "-b", branch, str(checkout), "main"
     )
     hooks = checkout / ".codex" / "plugins" / "lup" / "hooks"
     (hooks / "scripts").mkdir(parents=True)
@@ -254,7 +255,10 @@ def test_a_fresh_project_mounts_the_shipped_registration_read_write(
     assert [(root.path, root.writable) for root in roots] == [(clone, True)]
     assert (checkout / "refs" / "lup").resolve() == opened
     no_rewrites(monkeypatch)
-    assert sync.git_in(str(opened), "remote", "get-url", "origin") == SHIPPED_URL
+    assert (
+        Repository(Path(str(opened))).answer("remote", "get-url", "origin")
+        == SHIPPED_URL
+    )
     lease = fleet_lease(checkout, roots)
     assert [path for path in lease.writable if path.is_relative_to(cache)] == [clone]
     assert sorted(path for path in lease.read_only if path.is_relative_to(cache)) == [
@@ -405,7 +409,10 @@ def test_a_machine_pushing_over_ssh_repoints_the_clone_it_already_has(
     sync.set_remote("lup", ssh)
 
     clone = cache / "lup.git"
-    assert sync.git_in(str(clone), "config", "--get", "remote.origin.url") == ssh
+    assert (
+        Repository(Path(str(clone))).answer("config", "--get", "remote.origin.url")
+        == ssh
+    )
     assert sync.transport_url(sync.find_project("lup")) == ssh
 
 
@@ -430,11 +437,13 @@ def test_a_checkpoint_outlives_the_spelling_its_clone_was_read_over(
     sync.accessible_roots(lambda _said: None)
     no_rewrites(monkeypatch)
     clone = cache / "lup.git"
-    reviewed = sync.git_in(str(clone), "rev-parse", "refs/remotes/origin/main")
+    reviewed = Repository(Path(str(clone))).answer(
+        "rev-parse", "refs/remotes/origin/main"
+    )
     ssh = f"git@{address.host}:{address.repository}.git"
-    sync.git_in(str(clone), "remote", "set-url", "origin", ssh)
+    Repository(Path(str(clone))).answer("remote", "set-url", "origin", ssh)
     sync.mark_synced("lup", at=reviewed)
-    sync.git_in(str(clone), "remote", "set-url", "origin", SHIPPED_URL)
+    Repository(Path(str(clone))).answer("remote", "set-url", "origin", SHIPPED_URL)
 
     found = sync.existing_upstream(sync.find_project("lup"))
 

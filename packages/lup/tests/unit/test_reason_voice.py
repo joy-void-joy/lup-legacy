@@ -1,9 +1,9 @@
 """A reason is read by the person approving, and says nothing to the agent.
 
-The two audiences were sharing one string. What a runtime shows the approver is
-`reason` and nothing else, so a sentence that spent half its length telling the
-agent which tool to reach for instead spent it on somebody who cannot act on it
-— and the agent, on the one effect where it reads nothing at all, was handed a
+The two audiences must not share one string. What a runtime shows the approver
+is `reason` and nothing else, so a sentence spending half its length telling the
+agent which tool to reach for instead spends it on somebody who cannot act on it
+— and the agent, on the one effect where it reads nothing at all, is handed a
 prompt written for a reviewer.
 
 `recovery` is the other half, and this is the gate that keeps it there: an

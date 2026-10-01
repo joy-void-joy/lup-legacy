@@ -910,11 +910,11 @@ class VerbatimText(str):
     this carries that fact past :func:`word_text` into the string the rules
     read, without changing a character of it. A reader of the content -- a
     sed script the host runs, the bytes an `echo` writes -- sees exactly the
-    text it always saw.
+    text, a ``str`` like any other.
 
     Anything derived from one is a plain ``str`` again: a slice, a join, a
     normalized path. That is the safe direction, because a plain string is
-    read the way every string was read before this existed. A reader that
+    read with its `$` as an expansion, which claims the least. A reader that
     keeps a derived piece verbatim says so through :func:`verbatim_piece`.
     """
 

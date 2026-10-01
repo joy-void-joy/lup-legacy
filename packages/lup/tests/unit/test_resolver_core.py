@@ -11,7 +11,7 @@ from pydantic import BaseModel
 from lup.harness.contracts import SkillInvocationRenderer
 from lup.harness.models import ResolveSpec, SkillInvocation
 from lup.harness.ownership import GeneratedArtifacts, OwnedArtifact
-from lup.harness.process import (
+from lup.execution.process import (
     LaunchRequest,
     LocalProcessLauncher,
     ProcessLauncher,
@@ -149,7 +149,7 @@ def seed_offer(core: ResolverCore, question_id: str, value: str) -> None:
     """Answer through the same door a `--answer` flag uses.
 
     Offers may precede their questions, so a whole run's decisions can be
-    supplied before it starts — which is what replaces a test broker.
+    supplied before it starts — which is what stands in for a test broker.
     """
     core.mailbox.offer(
         AnswerOffer(
@@ -284,7 +284,7 @@ def test_a_question_cannot_offer_a_gate_its_concern_was_not_granted() -> None:
 
 
 def test_a_missing_approval_answer_is_a_named_invariant() -> None:
-    """Answers arrive per question now, so absence must read as itself."""
+    """Answers arrive per question, so absence must read as itself."""
     with pytest.raises(ResolverInvariantError, match="no persisted approval answer"):
         approval_decisions([concern("a")], AnswerBatch(run_id="run-1", answers=[]))
 
@@ -673,8 +673,8 @@ def merger_that_keeps_everything(
 ) -> JoinDriver:
     """A merger that lands every parent and accounts for whatever it is asked.
 
-    Written as a driver rather than a canned report because the merger now
-    owns its own sequence: a double that only answers with a report would
+    Written as a driver rather than a canned report because the merger owns
+    its own sequence: a double that only answers with a report would
     land nothing, and the checkpoint the run reads is written by the verbs,
     not by the answer. Dispositioning every candidate as kept is the
     simplest complete account — the point under test is that the gate is
@@ -1170,9 +1170,9 @@ def test_a_conflict_only_in_rendered_artifacts_is_settled_by_rendering(
     """The generator decides these, so a merger choosing between them cannot.
 
     Every lease touching a catalog re-renders both plugin trees, so nearly
-    every join disagrees about them — one measured join carried 852 changed
+    every join disagrees about them — a join can carry hundreds of changed
     lines of `policy_data.py`, twice over. Rendering again takes a second and
-    settles it exactly; putting it to a merger took minutes and asked for a
+    settles it exactly; putting it to a merger takes minutes and asks for a
     judgement about content that is nobody's to make.
     """
     launcher = ScriptedLauncher(
@@ -1249,11 +1249,11 @@ def test_containment_is_reported_from_merge_base(tmp_path: Path) -> None:
 def test_the_join_tally_counts_the_parents_that_will_be_merged() -> None:
     """A bar has to be able to reach its own end.
 
-    Counted from the outcomes, the total included every concern holding a
-    commit — each one that failed or retired still holding work, and each
-    that rides inside a sibling and is therefore never merged on its own.
-    On the run this was measured against it read 24 where 13 parents would
-    be joined, so it stood at 3/24 having done 3 of 13.
+    Counted from the outcomes, the total would include every concern holding
+    a commit — each one that failed or retired still holding work, and each
+    that rides inside a sibling and is therefore never merged on its own — so
+    it could read 24 where 13 parents will be joined, standing at 3/24 having
+    done 3 of 13.
     """
     state = integration_state(
         "tallied",
@@ -1277,10 +1277,10 @@ def test_a_parent_inside_another_is_carried_rather_than_merged(
 ) -> None:
     """Concerns cut from their dependencies' commits stack, so parents nest.
 
-    In one measured run 8 of 21 parents sat inside a sibling, and two of the
-    three joins it had spent were on such a parent — one of them contained in
-    five different siblings. Each cost a verification and could cost a merger
-    turn to conclude that git had nothing to do.
+    A run can hold many parents inside a sibling — one contained in five
+    different siblings — and each join spent on such a parent costs a
+    verification and can cost a merger turn to conclude that git has nothing
+    to do.
     """
     launcher = LocalProcessLauncher()
     workspace = failure_leg_workspace(tmp_path, launcher)
@@ -1502,7 +1502,7 @@ def test_a_lease_that_advanced_past_its_base_is_still_measured_from_it(
 def test_a_lease_that_lost_its_base_names_the_authority_that_changed(
     tmp_path: Path,
 ) -> None:
-    """A stale base and a rewritten history no longer share one verdict."""
+    """A stale base and a rewritten history each get a verdict of their own."""
     diff = validate_moved(
         moved_head_launcher(contains_base=False, clean_tree=True), tmp_path
     )
@@ -1853,9 +1853,9 @@ def test_a_retried_concern_adopts_the_base_its_own_clearance_advanced(
 
     `record_note_clearance` advances a recorded base by design, so a concern
     retried after an interruption offers the pre-clearance commit again.
-    Reading that as the base changing failed every concern that had a note to
+    Reading that as the base changing would fail every concern with a note to
     clear — which is every concern an inventory finds — so only admitted
-    concerns, whose clearance commits nothing, could survive a resume.
+    concerns, whose clearance commits nothing, would survive a resume.
     """
     run_id = "retried"
     derived = DependencyBase(
@@ -1982,10 +1982,10 @@ def test_releasing_a_run_keeps_the_decision_a_retired_concern_carries(
     """Retiring settles the decision; it does not hand back the worktree.
 
     So a retired concern still holds its lease when cleanup arrives, and
-    cleanup moving it on lands it in a status the transition table declares
-    unreachable, because retiring is a human's word and nothing overwrites
-    it. That crashes the run at its last step, with every concern integrated
-    and re-checked and 25 of 27 worktrees already removed.
+    cleanup moving it on would land it in a status the transition table
+    declares unreachable, because retiring is a human's word and nothing
+    overwrites it. That would crash the run at its last step, with every
+    concern integrated and re-checked and most worktrees already removed.
     """
     run_id = "acceptance"
     retired_lease = WritableRootLease(
@@ -2372,12 +2372,12 @@ async def test_resume_after_a_kill_past_workers_completes_without_backward_phase
 async def test_a_resume_with_nothing_left_to_lease_still_takes_the_landed_fix(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The base refresh was gated on needing a new lease, which is unrelated.
+    """The base refresh does not wait on needing a new lease, which is unrelated.
 
-    A run whose concerns are all leased took that branch never, so it read
-    its original commit for the rest of its life — and every worker resumed
-    into a tree predating the fix the run had parked for, asking the human
-    about a blocker the branch had already settled.
+    Gated on one, a run whose concerns are all leased would never refresh,
+    reading its original commit for the rest of its life — and every worker
+    would resume into a tree predating the fix the run parked for, asking the
+    human about a blocker the branch has already settled.
     """
     workspace = failure_leg_workspace(tmp_path, LocalProcessLauncher())
     launcher = LocalProcessLauncher()
@@ -2726,9 +2726,9 @@ def test_a_failed_concern_does_not_strand_the_leases_beside_it(
 
     A concern can only exhaust its rounds by committing work across several,
     so its tree legitimately sits ahead of the base while no commit was ever
-    accepted. Restoring read that as the branch having moved under the run
-    and raised before any other lease was reached, which left four verified
-    concerns and five newly eligible ones unreachable through every resume.
+    accepted. A restore reading that as the branch having moved under the run
+    and raising before any other lease is reached would leave every verified
+    and newly eligible concern beside it unreachable through every resume.
     """
     launcher = LocalProcessLauncher()
     workspace = failure_leg_workspace(tmp_path, launcher)
@@ -3340,9 +3340,9 @@ async def test_a_resumed_concern_still_knows_why_it_was_sent_back(
 ) -> None:
     """The review that produced the feedback was spent; losing it spends it twice.
 
-    An interrupted concern re-entered at round one with `feedback = ""` while
-    its branch still carried the rounds it had committed — so the worker met
-    its own work with no record of what the reviewer had asked for.
+    An interrupted concern re-entering at round one with `feedback = ""` while
+    its branch still carries the rounds it committed would have the worker
+    meet its own work with no record of what the reviewer asked for.
     """
     launcher = LocalProcessLauncher()
     workspace = failure_leg_workspace(tmp_path, launcher)
@@ -3678,13 +3678,12 @@ async def test_a_standing_recheck_costs_a_turn_only_when_it_is_asked_for(
 
 @pytest.mark.asyncio
 async def test_a_drain_stops_integration_between_two_parents(tmp_path: Path) -> None:
-    """The longest phase of a run held no boundary a drain could be seen at.
+    """The longest phase of a run holds a boundary a drain is seen at.
 
-    ``draining()`` was consulted at the top of a worker round and between
-    dependency batches, and integration begins after the last of those — so
-    from that moment neither could occur again. A drain issued during a
-    measured run was still merging eighteen minutes later, and ``kill`` was
-    the only lever, which costs the in-flight parent's merger work.
+    Integration begins after the last worker round and dependency batch, so
+    a ``draining()`` consulted only there would never be asked again. A drain
+    issued during integration would wait out the whole merge, leaving
+    ``kill`` the only lever, which costs the in-flight parent's merger work.
     """
     launcher = LocalProcessLauncher()
     workspace = failure_leg_workspace(tmp_path, launcher)
@@ -3777,8 +3776,7 @@ async def test_integration_opens_on_a_join_record_of_its_own(tmp_path: Path) -> 
     joins included, and those name a concern lease's tree. Carried into
     integration it is wrong twice over: a resume restores the integration
     lease to another lease's commit, and the completions have the dependency
-    joins timing the integration ones — measured at 24m19s an item against
-    the five minutes they took.
+    joins timing the integration ones at several times what each one takes.
     """
     launcher = LocalProcessLauncher()
     workspace = failure_leg_workspace(tmp_path, launcher)
@@ -5203,8 +5201,8 @@ def test_a_standing_ruling_settles_the_same_lost_set(tmp_path: Path) -> None:
 async def test_an_identical_standing_finding_is_recorded_not_reasked(
     tmp_path: Path,
 ) -> None:
-    """The conflict-toolchain miss asked five identical questions in one run;
-    a settled lost-set now lands in the journal instead of the mailbox."""
+    """A lost-set already settled is not asked again in the same run; it
+    lands in the journal, not the mailbox."""
     log: list[str] = []
 
     def reviewer_response(_root: Path, _output_name: str) -> JsonObject:
@@ -5236,10 +5234,10 @@ async def test_an_identical_standing_finding_is_recorded_not_reasked(
 async def test_completeness_guard_appends_and_names_the_gap(tmp_path: Path) -> None:
     """The human sends it back, and the exact unmatched ids ride with it.
 
-    The guard no longer decides this alone — the criteria are the human's
-    bar, so whether missing one still passes is theirs to say. Refusing to
-    carry the gap reaches the worker exactly as the automatic rejection
-    used to, which is what this pins.
+    The guard does not decide this alone — the criteria are the human's bar,
+    so whether missing one still passes is theirs to say. Refusing to carry
+    the gap reaches the worker exactly as an automatic rejection would, which
+    is what this pins.
     """
     launcher = LocalProcessLauncher()
     workspace = failure_leg_workspace(tmp_path, launcher)
@@ -5317,18 +5315,16 @@ async def test_completeness_guard_appends_and_names_the_gap(tmp_path: Path) -> N
 async def test_a_carried_residual_takes_the_acceptance_the_reviewer_wrote(
     tmp_path: Path,
 ) -> None:
-    """The reported run: an accept the guard turned back on the worker.
+    """An accept the guard would turn back on the worker stays an accept.
 
-    `headless-consent-route` was reviewed twice. Both times the reviewer
-    wrote an accept — the second under a heading reading "WHY THIS IS AN
-    ACCEPT RATHER THAN A REJECT" — and honestly declined to claim one
-    criterion whose text asked for verification on a real session, which no
-    round inside the lease could supply. The guard flipped both to
-    rejections and spent the revision budget sending the worker back for a
-    gap the reviewer had already said no round would close.
+    A reviewer can write an accept while honestly declining to claim one
+    criterion whose text asks for verification on a real session, which no
+    round inside the lease can supply. A guard flipping that to a rejection
+    spends the revision budget sending the worker back for a gap the
+    reviewer has already said no round will close.
 
     So the human rules, and carrying the gap keeps the verdict its author
-    wrote. One round, not three, and no worker turn spent on it.
+    wrote. One round, and no worker turn spent on it.
     """
     launcher = LocalProcessLauncher()
     workspace = failure_leg_workspace(tmp_path, launcher)
@@ -5443,10 +5439,10 @@ async def test_a_revision_carries_its_assignment_and_names_its_round(
 ) -> None:
     """A revising worker is not guaranteed to be the session that was reviewed.
 
-    A resumed run opens a fresh one, and the short prompt handed it only
-    "did not pass" — no concern, no criteria, no skill invocation. Two
-    workers reported spending a whole turn working out whether they had
-    been rejected or merely re-leased.
+    A resumed run opens a fresh one, and a short prompt handing it only "did
+    not pass" — no concern, no criteria, no skill invocation — leaves a
+    worker spending a whole turn working out whether it was rejected or
+    merely re-leased.
     """
     launcher = LocalProcessLauncher()
     workspace = failure_leg_workspace(tmp_path, launcher)
@@ -5521,8 +5517,8 @@ async def test_an_answered_question_credited_as_met_is_corrected_not_charged(
 
     The reviewer reads its criteria beside the answered questions, so
     crediting a question id is the slip that shape invites. Charging a
-    revision round for it sent a run's whole budget on re-deriving an
-    acceptance every reviewer had already given.
+    revision round for it would spend a run's whole budget re-deriving an
+    acceptance every reviewer has already given.
     """
     launcher = LocalProcessLauncher()
     workspace = failure_leg_workspace(tmp_path, launcher)
@@ -5745,8 +5741,8 @@ async def test_review_prompt_names_the_range_and_the_rulings(tmp_path: Path) -> 
 
 @pytest.mark.asyncio
 async def test_plan_prompt_states_the_marker_stripping_rule(tmp_path: Path) -> None:
-    """The planner is told notes leave the lease first, so it can no longer
-    mint note-resolved criteria the pipeline makes unsatisfiable-as-read."""
+    """The planner is told notes leave the lease first, so it cannot mint
+    note-resolved criteria the pipeline makes unsatisfiable-as-read."""
     log: list[str] = []
 
     def planner_response(_root: Path, _output_name: str) -> JsonObject:
@@ -5814,9 +5810,9 @@ def test_a_worktree_already_gone_is_freed_rather_than_reported_as_dirty(
 ) -> None:
     """`git worktree remove` refuses a dirty tree and a missing one alike.
 
-    Reading that one refusal as uncommitted work told a human three
-    worktrees held work they had to remove by hand, and the directory it
-    named was not there. What is on disk decides, and git's own refusal is
+    Reading that one refusal as uncommitted work would tell a human that
+    worktrees hold work they have to remove by hand, naming a directory that
+    is not there. What is on disk decides, and git's own refusal is
     what a genuinely retained worktree reports.
     """
     launcher = LocalProcessLauncher()
@@ -5880,7 +5876,7 @@ def shadowed_admin(tmp_path: Path, shadow: bool) -> ScriptedLauncher:
     return ScriptedLauncher(
         {
             "worktree add": out(code=128, stderr="fatal: config.lock: File exists"),
-            "rev-parse --git-dir": out(stdout=f"{admin}\n{admin}\n"),
+            "rev-parse --path-format=absolute": out(stdout=f"{admin}\n{admin}\n"),
         }
     )
 
@@ -6134,7 +6130,7 @@ async def test_a_settled_answer_stops_a_concern_reporting_that_it_waits(
 
     ``waiting_for_answers`` is written where a concern raises to park and
     overwritten only where that concern executes again, so a run holding a
-    settled answer for every question it named still reported itself
+    settled answer for every question it named would still report itself
     blocked on them — and the status view is what a human reads to decide
     whether the run is unblocked.
     """
@@ -6239,10 +6235,10 @@ async def test_a_park_report_names_a_broken_promoter(tmp_path: Path) -> None:
 def test_a_revision_that_only_changed_its_report_keeps_the_work_it_describes(
     tmp_path: Path,
 ) -> None:
-    # `composition-seam-abc`: the rejection named a finding outside the lease,
-    # so the honest revision answered it and left the tree alone. Read as an
-    # empty diff, that spent a round to say the worker had done nothing — and
-    # the concern failed with its criteria never evaluated.
+    # A rejection naming a finding outside the lease is honestly answered by a
+    # revision that leaves the tree alone. Read as an empty diff, that would
+    # spend a round to say the worker did nothing — and fail the concern with
+    # its criteria never evaluated.
     orchestrator = WorktreeOrchestrator(recording_launcher(), tmp_path)
 
     diff = orchestrator.settled_round(
@@ -6527,12 +6523,12 @@ async def test_the_final_recheck_reads_the_tree_from_a_checkout_of_its_own(
     # Nothing left behind: the pool discards what it made.
     assert not [path for path in read_from if path.exists()]
 
-    # Resumed against the same tree, the re-check spends nothing: every other
-    # phase skips work it has already done, and this was the one that did not.
-    # One measured run spent 47 reviewer turns on 21 concerns because each
-    # interruption re-examined all of them — and re-running a reviewer can
-    # return a different verdict for an unchanged tree, which then wedges the
-    # run on a question already asked another way.
+    # Resumed against the same tree, the re-check spends nothing: like every
+    # other phase it skips work it has already done. Re-examining every
+    # concern on each interruption spends reviewer turns several times over —
+    # and re-running a reviewer can return a different verdict for an
+    # unchanged tree, which then wedges the run on a question already asked
+    # another way.
     read_from.clear()
 
     again = await core.joiner.recheck_criteria(state, integration)
@@ -6556,12 +6552,12 @@ async def test_a_capped_wave_holds_the_cap_and_resumes_what_it_never_started(
 ) -> None:
     """The cap is what a cut wave costs, so what it queues has to survive one.
 
-    Uncapped, a batch opened a session per runnable concern — eleven within
-    the same second in a measured run — which spends the host's allowance at
-    the width of the batch and races the credential file every session
-    shares. Capping is the instrument, and it introduces a state that did
-    not exist before: a concern leased but never started, because the cap
-    was full when the run died.
+    Uncapped, a batch opens a session per runnable concern — eleven within
+    the same second, measured — which spends the host's allowance at the
+    width of the batch and races the credential file every session shares.
+    Capping is the instrument, and it introduces a state of its own: a
+    concern leased but never started, because the cap was full when the run
+    died.
 
     Such a concern has recorded nothing, so the next batch selects it again
     exactly as the lease phase left it. That is the property here — the run

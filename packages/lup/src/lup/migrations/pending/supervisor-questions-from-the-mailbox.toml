@@ -1,0 +1,12 @@
+subjects = ["folded_views"]
+reason = """
+the supervisor projects a resolver run's questions from its mailbox alone, \
+so a run whose questions sit only in its `state.json` shows none there"""
+
+[[steps]]
+instruction = """
+Call question_views(mailbox) from lup.devtools.supervisor.projection where \
+question_views(state, mailbox) was called; drop calls to folded_views. A \
+stopped run whose questions sit only in its `state.json` brings them into \
+its mailbox through `resolve recover-integration`, which imports them under \
+the run's locks; read a finished one's from its `state.json`."""

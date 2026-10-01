@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from lup.harness.process import LocalProcessLauncher
+from lup.execution.process import LocalProcessLauncher
 from lup.resolver.models import (
     ConcernRetirement,
     ConcernStatus,

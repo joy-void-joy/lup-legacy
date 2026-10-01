@@ -53,12 +53,13 @@ from importlib.metadata import version as installed_version
 from packaging.requirements import Requirement
 from packaging.version import InvalidVersion, Version
 
+from lup.execution.git import Repository
 from lup.workspace.paths import manifest_table, project_root
 from lup.execution.shell import git
 from lup.formats.toml import edited_manifest
 from lup.devtools.sync import load_projects
 from lup.harness.codescan.common import LIBRARY_PACKAGE_ROOT
-from lup.harness.credential import parse_remote, remote_url, resolved_host
+from lup.harness.credential import parse_remote, resolved_host
 from lup.devtools.project import Tracker
 from lup.types import JsonObject, JsonValue
 from lup.devtools.utils import decode_stderr, slug_from_remote
@@ -295,7 +296,8 @@ def configured_repository(root: Path, project: str = REGISTRATION) -> str:
     if reach := registered.get("remote"):
         return reach
     if path := registered.get("path"):
-        return remote_url((root / Path(path).expanduser()).resolve(), "origin")
+        checkout = (root / Path(path).expanduser()).resolve()
+        return Repository(checkout).remote_url("origin") or ""
     return ""
 
 

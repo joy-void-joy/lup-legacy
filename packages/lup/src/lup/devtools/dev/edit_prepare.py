@@ -31,6 +31,7 @@ from lup.harness.enforcement import declared_path_rules, declared_role_rows
 from lup.harness.models import HookSet
 from lup.policy.edit_rules import erase_edit_rules
 from lup.policy.kernel.edit import (
+    MARKDOWN_SUFFIXES,
     covering_suppression_line,
     decide_edit,
     ignore_rule_ids,
@@ -161,14 +162,26 @@ def audit_candidate(
     root = batch.cwd or Path.cwd()
     changed = {change.path.relative_to(root): change for change in batch.changes}
     staged = [item for item in existing if item.path not in changed]
-    staged.extend(
-        ScannedFile(
-            rel=path.as_posix(), path=path, text=change.after, patterns=patterns
+
+    def reached(path: Path, after: str) -> ScannedFile:
+        """One staged document, carrying the rules that reach its role."""
+        role = path_role(path.as_posix(), project.path_roles)
+        table = rules.for_suffix(path.suffix.lower()) or []
+        return ScannedFile(
+            rel=path.as_posix(),
+            path=path,
+            text=after,
+            role=role,
+            patterns=[rule for rule in table if role in rule.roles],
+            graded=None
+            if role == "production"
+            else [rule.id for rule in table if role in rule.roles],
         )
+
+    staged.extend(
+        item
         for path, change in changed.items()
-        if change.after is not None
-        and path_role(path.as_posix(), project.path_roles) == "production"
-        and (patterns := rules.for_suffix(path.suffix.lower())) is not None
+        if change.after is not None and (item := reached(path, change.after)).patterns
     )
     sources = [
         PythonSource(
@@ -177,7 +190,7 @@ def audit_candidate(
             text=item.text,
         )
         for item in staged
-        if item.path.suffix.lower() in {".py", ".pyi"}
+        if item.path.suffix.lower() in {".py", ".pyi"} and item.role == "production"
     ]
     candidates = [source for source in sources if source.path in changed]
     resolution_sources = [
@@ -245,6 +258,8 @@ def audit_candidate(
             item.patterns,
             refutations[item.rel] if item.rel in refutations else [],
             typescript=item.path.suffix.lower() in TYPESCRIPT_SUFFIXES,
+            markdown=item.path.suffix.lower() in MARKDOWN_SUFFIXES,
+            graded=item.graded,
         )
         if not (
             finding.kind == "spurious"

@@ -1,0 +1,13 @@
+subjects = ["normalize_codex_approval"]
+reason = """
+`CODEX_APPROVAL_POLICY` takes the app-server's own spellings alone — \
+`untrusted`, `on-request`, `granular`, `never` — so `unlessTrusted` and \
+`onRequest` are refused at composition rather than translated"""
+
+[[steps]]
+instruction = """
+Where `.env`, `.env.local` or a launch environment sets \
+`CODEX_APPROVAL_POLICY=unlessTrusted`, set it to `untrusted`; where it sets \
+`onRequest`, set it to `on-request`. A project calling \
+normalize_codex_approval from the template's agent core with either spelling \
+passes the same replacement."""

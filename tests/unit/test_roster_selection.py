@@ -177,9 +177,9 @@ def test_a_declared_skill_replaces_the_library_one_of_its_id_in_place() -> None:
 def test_the_older_retire_then_re_add_idiom_still_ships_the_projects_own() -> None:
     """``retired`` names the library's declarations, never the project's own.
 
-    Before overrides existed, replacing a skill meant retiring the id and
-    adding a whole declaration back — and a project that wrote it that way
-    should get the same roster afterwards, not an empty seat. So the two
+    Replacing a skill can also be spelled as retiring the id and adding a
+    whole declaration back — and a project that writes it that way gets the
+    roster an override would give, not an empty seat. So the two
     halves read in one direction: the retirement takes the library's out, the
     declaration puts the project's in, and a project that no longer wants the
     id at all deletes its own declaration rather than retiring around it.

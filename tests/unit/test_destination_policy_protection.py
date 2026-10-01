@@ -100,9 +100,9 @@ def test_code_that_runs_later_outside_the_session_is_protected(path: str) -> Non
 def test_which_rules_apply_is_protected_as_the_policy_is(path: str) -> None:
     """Retiring a scan rule or re-judging a command widens what a session may do.
 
-    The policy package and the catalog were protected while the selection
-    they compile from was not, so a rule was retired, or a verb re-judged,
-    by an edit nobody was asked about and the next `harness generate all`.
+    Protecting the policy package and the catalog while the selection they
+    compile from stays open would let a rule be retired, or a verb re-judged,
+    by an edit nobody is asked about and the next `harness generate all`.
     """
     policy = EditPolicy(declared_path_rules(declared_hook_set()))
 

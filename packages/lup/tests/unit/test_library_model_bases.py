@@ -1,10 +1,10 @@
 """A project built on this library resolves its bases through the library's classes.
 
 A rule that indexes the project's own files alone sees a library class as a
-name resolving to nothing. Measured downstream: a ledger kind declared over
-``LedgerNode`` was reported as a capability inheriting reusable behaviour,
-because the one base that made it a variant union was outside the index, and
-a walk over the library's own parts was reported nowhere. The library's
+name resolving to nothing: a ledger kind declared over ``LedgerNode`` would be
+reported as a capability inheriting reusable behaviour, because the one base
+that makes it a variant union is outside the index, and a walk over the
+library's own parts would be reported nowhere. The library's
 sources say what its classes are, so the index reads them beside the
 project's -- for resolution, and never for a finding about the library.
 """
@@ -22,7 +22,7 @@ def source(text: str, name: str = "downstream") -> PythonSource:
 
 
 def test_a_kind_over_a_library_model_is_a_variant_union_not_a_capability() -> None:
-    """The reported shape, cleared: the base is a model, so the class is a union."""
+    """A kind over a library model, cleared: the base is a model, so the class is a union."""
     findings = audit_capabilities(
         [
             source(

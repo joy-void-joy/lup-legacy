@@ -38,7 +38,10 @@ from lup.devtools.review.app import (
     ReviewSuppression,
     relay,
 )
-from lup.devtools.dashboard.companion import SessionMarkers
+from lup.coordination.identity import MEMBER_ENV
+from lup.launch.preflight import NONCE_VARIABLE
+from lup.policy.identity import AGENT_IDENTITY_ENV
+from lup.workspace.context import SESSION_DIR_ENV, SESSION_ID_ENV
 from lup.devtools.review.notifications import (
     ReviewNotification,
     ReviewNotifications,
@@ -61,9 +64,14 @@ ANSWER_HEADERS: Final = {**AUTHORIZATION, "Origin": BASE_URL}
 @pytest.fixture(autouse=True)
 def isolated_bundle(monkeypatch: pytest.MonkeyPatch) -> None:
     """Exercise the real Host guard without making API tests build JavaScript."""
-    for field in SessionMarkers.model_fields.values():
-        if isinstance(field.validation_alias, str):
-            monkeypatch.delenv(field.validation_alias, raising=False)
+    for name in (
+        NONCE_VARIABLE,
+        MEMBER_ENV,
+        AGENT_IDENTITY_ENV,
+        SESSION_DIR_ENV,
+        SESSION_ID_ENV,
+    ):
+        monkeypatch.delenv(name, raising=False)
 
     def build(
         title: str,

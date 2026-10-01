@@ -16,6 +16,7 @@ import sh
 import typer
 
 from lup.devtools import sync
+from lup.execution.git import Repository
 from tests.unit.repos import commit_file, git_in, initialized_repo
 
 
@@ -238,9 +239,13 @@ def test_a_materialized_clone_carries_the_whole_history_and_every_branch(
     materialize()
     bare = str(cache / "up.git")
 
-    assert sync.git_in(bare, "rev-list", "--count", "main") == "3"
-    assert sync.git_in(bare, "rev-parse", "--is-shallow-repository") == "false"
-    assert sync.git_in(bare, "branch", "--format=%(refname:short)").split() == [
+    assert Repository(Path(bare)).answer("rev-list", "--count", "main") == "3"
+    assert (
+        Repository(Path(bare)).answer("rev-parse", "--is-shallow-repository") == "false"
+    )
+    assert Repository(Path(bare)).answer(
+        "branch", "--format=%(refname:short)"
+    ).split() == [
         "main",
         "sidecar",
     ]
@@ -281,20 +286,20 @@ def test_a_bare_path_registration_is_read_at_the_branch_it_registered(
 ) -> None:
     """A bare repository's HEAD is nobody's checkout, so it is not the tip.
 
-    Measured on a registration naming a bare clone with a worktree attached:
-    the branch it named was 335 commits on and `status` said 0 behind, because
-    HEAD still pointed at the branch the clone was made with and nothing that
-    happens in an attached worktree moves it.
+    Read off HEAD, a registration naming a bare clone with a worktree attached
+    reports 0 behind a branch 335 commits on, because HEAD points at the branch
+    the clone was made with and nothing that happens in an attached worktree
+    moves it.
     """
     registered(registry_root, {"name": "up", "url": str(remote)})
     materialize()
     bare = cache / "up.git"
     sidecar = bare / "tree" / "sidecar"
-    sync.git_in(str(bare), "worktree", "add", str(sidecar), "sidecar")
+    Repository(Path(str(bare))).answer("worktree", "add", str(sidecar), "sidecar")
     commit_file(
         git_in(sidecar, tmp_path / "hooks"), sidecar, "side.txt", "on\n", "sidecar work"
     )
-    main = sync.git_in(str(bare), "rev-parse", "main")
+    main = Repository(Path(str(bare))).answer("rev-parse", "main")
     registered(
         registry_root,
         {
@@ -373,27 +378,6 @@ def test_a_clone_registered_under_one_name_at_two_urls_is_refused(
     assert "elsewhere" in "\n".join(said)
 
 
-def test_a_clone_at_the_old_location_is_used_where_it_stands(
-    registry_root: Path, cache: Path, remote: Path
-) -> None:
-    """Moving the cache must not abandon what a clone at the other path holds.
-
-    A clone under the project root is writable with the checkout, so a
-    session can commit in one — and re-cloning beside it leaves that work
-    where nothing looks again.
-    """
-    legacy = registry_root / ".cache" / "sync" / "up"
-    legacy.parent.mkdir(parents=True)
-    sh.Command("git")("clone", str(remote), str(legacy), _tty_out=False)
-    registered(registry_root, {"name": "up", "url": str(remote)})
-
-    found = materialize()
-
-    assert found.checkout == legacy
-    assert found.tip == "refs/remotes/origin/main"
-    assert not (cache / "up.git").exists()
-
-
 def test_a_mount_registration_spells_the_reopening_launch(
     registry_root: Path,
     tmp_path: Path,
@@ -455,13 +439,13 @@ def cloned_with_origin(remote: Path, repository: Path, origin: str) -> None:
     """
     repository.parent.mkdir(parents=True, exist_ok=True)
     sh.Command("git")("clone", "--bare", str(remote), str(repository), _tty_out=False)
-    sync.git_in(str(repository), "remote", "set-url", "origin", origin)
+    Repository(Path(str(repository))).answer("remote", "set-url", "origin", origin)
 
 
 def test_a_tracked_requirement_nobody_answered_is_reported_with_its_command(
     registry_root: Path, cache: Path, remote: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """The gap a fresh checkout used to discover at the point of use.
+    """Refused up front, rather than found by a fresh checkout at the point of use.
 
     A tracked entry saying the project cannot work without that repository is
     the one thing that makes its absence a result: status names it, says what

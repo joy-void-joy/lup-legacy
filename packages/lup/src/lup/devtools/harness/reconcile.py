@@ -9,9 +9,9 @@ still match the patch and the canonical source base.
 import hashlib
 from pathlib import Path
 
-import sh
 import typer
 
+from lup.execution.git import GitError, Repository
 from lup.harness.proposals import ReconciliationMetadata, ReconciliationProposalWriter
 from lup.workspace.checkout_state import CheckoutState
 from lup.harness.reconciliation import source_patch_base_digest
@@ -66,10 +66,11 @@ def apply_proposal(
     typer.echo(content)
     if not typer.confirm("Apply this canonical source patch and regenerate?"):
         raise typer.Abort()
+    repository = Repository(project_root())
     try:
-        sh.Command("git")("apply", "--check", str(patch), _cwd=str(project_root()))
-        sh.Command("git")("apply", str(patch), _cwd=str(project_root()))
-    except sh.ErrorReturnCode as error:
+        repository.answer("apply", "--check", str(patch))
+        repository.answer("apply", str(patch))
+    except GitError as error:
         raise typer.BadParameter("reconciliation patch no longer applies") from error
     for composition in compositions:
         generate_with_report(composition)

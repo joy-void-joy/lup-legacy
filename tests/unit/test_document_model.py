@@ -39,9 +39,9 @@ def mapping(pairs: dict[str, str]) -> YamlDocument:
 def test_a_value_that_would_end_its_mapping_is_written_as_a_value() -> None:
     """The hazard, one value at a time: each reads back as what it was.
 
-    Each of these ended the mapping it was interpolated into, and the two
-    that did not — `yes` and `on` — changed type instead, which is worse for
-    being invisible: a description reading `yes` became the boolean True.
+    Interpolated as written, each of these ends the mapping it lands in, and
+    the two that do not — `yes` and `on` — change type instead, which is worse
+    for being invisible: a description reading `yes` becomes the boolean True.
     """
     hazards = {
         "colon": "a: b",

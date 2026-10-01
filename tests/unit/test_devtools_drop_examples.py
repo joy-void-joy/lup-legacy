@@ -98,11 +98,11 @@ def test_a_file_inside_what_is_going_is_not_reported(checkout: Path) -> None:
 def test_what_the_ignore_rules_keep_out_is_never_read(checkout: Path) -> None:
     """An environment and a dependency tree name the directory, and are nobody's.
 
-    The two trees an adopter's report was buried under: the contained
-    session's virtual environment, whose installed packages say `examples/`
-    in their own docstrings, and the frontend's dependencies. Neither is a
-    line anybody repairs, and both went unlisted in a skip list that could
-    only ever name the trees somebody had already thought of.
+    The two trees that bury an adopter's report: the contained session's
+    virtual environment, whose installed packages say `examples/` in their
+    own docstrings, and the frontend's dependencies. Neither is a line
+    anybody repairs, and a skip list can only ever name the trees somebody
+    has already thought of.
     """
     for tree in [
         ".venv-contained/lib/python3.14/site-packages/pydantic",

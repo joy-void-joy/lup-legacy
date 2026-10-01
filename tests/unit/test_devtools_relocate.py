@@ -445,10 +445,9 @@ def test_surviving_mentions_name_a_moved_module_the_rewrite_declined(
 def test_relocate_refuses_a_destination_another_module_holds(tmp_path: Path) -> None:
     """Nothing moves and nothing is repointed when the new name is taken.
 
-    The command used to carry nothing, since overwriting a module is not a
-    relocation, and then repoint every importer at the module standing
-    there -- a tree reported as relocated whose imports resolved against the
-    wrong file.
+    Carrying nothing, since overwriting a module is not a relocation, and
+    then repointing every importer at the module standing there would leave a
+    tree reported as relocated whose imports resolve against the wrong file.
     """
     package = tmp_path / "pkg"
     package.mkdir()

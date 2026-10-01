@@ -56,7 +56,7 @@ part of probing.
   Codex selects the highest cached version rather than pinning the configured
   marketplace version. Lup allocates increasing native cache revisions while
   retaining the authored package version in its source and cache evidence.
-  Native regression tests cover descending content digests, legacy version ties,
+  Native tests cover descending content digests, a cached entry tying the version,
   repeated installation and switching back to earlier content without deleting
   any prior revision. Dominating local overrides are refused with clean-home
   recovery guidance.
@@ -135,8 +135,8 @@ part of probing.
   wherever an application is the one asking. The fail-closed denial is
   therefore correct rather than a workaround. And `review` is Codex's
   review surface rather than its fallback, which is what makes that surface's
-  diff rendering load-bearing instead of a convenience. Issue #180 is this gap
-  met from a real session; queue settlement requires an independent operator.
+  diff rendering load-bearing instead of a convenience. A real session meets
+  this gap as a dead end: queue settlement requires an independent operator.
 
   **Queue delivery is measured without a model or credentials** by
   `tests/integration/test_codex_review_delivery.py`: an inert loopback Responses
@@ -196,8 +196,9 @@ part of probing.
   `argv[0]`. Its two siblings in the same function *are* gated on git
   (`ZLa=/^git(?:\.exe|\.real|-[a-z][\w-]*)?$/i` guards both the
   `xargs`/`parallel` refusal and the `find -execdir/-okdir` one); this third
-  check is not. The refusal is byte-identical with a leading `# lup: escalate:`
-  line, so no marker reaches it. It arms on the relocation tool, not on the
+  check is not. The refusal is byte-identical with a leading
+  `# lup: escalate[decision]:` line, so no marker reaches it. It arms on the
+  relocation tool, not on the
   working directory: a session launched already rooted in a worktree is not
   isolated, which is what the workflow in `docs/contributing.md` relies on.
   Where it switches is bounded too, and observed rather than read: a path

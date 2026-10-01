@@ -3,12 +3,12 @@
 from hashlib import sha256
 from pathlib import Path
 
-import sh
 from pydantic import BaseModel
 
 from lup.channels.models import publish_atomic
 from lup.workspace.checkout_state import CheckoutState
 from lup.devtools.dev.records import shared_directory_of
+from lup.execution.git import GitError
 
 
 class ReviewSource(BaseModel, frozen=True):
@@ -29,7 +29,7 @@ def location(root: Path, name: str) -> Path:
     """Use the common Git directory; unpacked source trees keep local state."""
     try:
         common = shared_directory_of(root)
-    except sh.ErrorReturnCode:
+    except GitError:
         if (root / ".git").exists() or (root / "HEAD").is_file():
             raise
         common = CheckoutState(root=root).directory()

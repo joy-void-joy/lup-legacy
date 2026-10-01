@@ -1,0 +1,12 @@
+subjects = ["named_apart", "uniquely_named"]
+reason = """
+the companions' `named_apart` and the tool servers' `uniquely_named` were one \
+check written twice, so both are `lup.launch.declaration.distinct_names`"""
+
+[[steps]]
+instruction = """
+Call `distinct_names(companions, "host companions")` where you called \
+`named_apart(companions)` (`lup.launch.companions`), and \
+`distinct_names(servers, "tool servers")` where you called \
+`uniquely_named(servers)` (`lup.mcp`), importing it from \
+`lup.launch.declaration`; its refusal reads "... must each be named apart"."""

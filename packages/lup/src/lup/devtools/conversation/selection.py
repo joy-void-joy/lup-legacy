@@ -26,13 +26,8 @@ class RetentionRequest(BaseModel, frozen=True):
 
 
 class RetentionAttempt(BaseModel, frozen=True):
-    """What one requested retention produced, or why it produced nothing.
+    """What one requested retention produced, or why it produced nothing."""
 
-    ``position`` is the request's place on the command line, which survives
-    the reordering that trying one browser state after another imposes.
-    """
-
-    position: int
     request: RetentionRequest
     destination: Path | None = None
     error: str = ""

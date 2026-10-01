@@ -7,6 +7,8 @@ three: every commit appears, the English is the project's own, and the test
 plan is derived from the diff or absent.
 """
 
+from pathlib import Path
+
 import pytest
 
 from lup.devtools.dev import branches
@@ -92,3 +94,74 @@ def test_a_path_is_read_for_the_conventions_a_test_is_named_by() -> None:
     assert branches.names_a_test("web/components/Button.test.tsx")
     assert not branches.names_a_test("packages/lup/src/lup/devtools/dev/pr.py")
     assert not branches.names_a_test("src/greatest.py")
+
+
+class TestPrCreate:
+    def test_create_does_not_call_gh_with_json(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        import lup.devtools.dev.pr as pr
+
+        calls: list[tuple[str, ...]] = []
+
+        class FakeGh:
+            def out(self, *args: str) -> str:
+                calls.append(tuple(str(a) for a in args))
+                return "https://github.com/org/repo/pull/42"
+
+        monkeypatch.setattr(pr, "gh", FakeGh())
+        monkeypatch.setattr(pr, "check_forge_api", lambda: True)
+
+        results: list[pr.CreateResult] = []
+        monkeypatch.setattr(pr, "output_result", lambda r, _as_json: results.append(r))
+
+        pr.create(base="dev", title="feat: x", body="body", as_json=False)
+
+        assert len(calls) == 1, "URL parsing must not need a second gh call"
+        assert "--json" not in calls[0]
+        assert results[0].number == 42
+        assert results[0].url == "https://github.com/org/repo/pull/42"
+
+    def test_parse_pr_url_picks_url_line(self) -> None:
+        from lup.devtools.dev.pr import parse_pr_url
+
+        stdout = "Warning: 1 uncommitted change\nhttps://github.com/org/repo/pull/7\n"
+        assert parse_pr_url(stdout) == "https://github.com/org/repo/pull/7"
+
+    def test_body_file_read_verbatim(self, tmp_path: Path) -> None:
+        from lup.devtools.dev.pr import resolve_body
+
+        # The quoting a shell argument would have made the caller escape.
+        written = "## It's here\n\nA `--body` with 'quotes' and \"doubles\".\n"
+        source = tmp_path / "body.md"
+        source.write_text(written, encoding="utf-8")
+
+        assert resolve_body(None, source) == written
+
+    def test_body_and_body_file_together_refused(self, tmp_path: Path) -> None:
+        import typer
+
+        from lup.devtools.dev.pr import resolve_body
+
+        source = tmp_path / "body.md"
+        source.write_text("from the file", encoding="utf-8")
+
+        with pytest.raises(typer.BadParameter):
+            resolve_body("inline", source)
+
+    def test_neither_body_refused(self) -> None:
+        import typer
+
+        from lup.devtools.dev.pr import resolve_body
+
+        with pytest.raises(typer.BadParameter):
+            resolve_body(None, None)
+
+    def test_unreadable_body_file_names_the_path(self, tmp_path: Path) -> None:
+        import typer
+
+        from lup.devtools.dev.pr import resolve_body
+
+        missing = tmp_path / "absent.md"
+        with pytest.raises(typer.BadParameter, match="absent.md"):
+            resolve_body(None, missing)

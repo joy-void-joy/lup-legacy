@@ -5,9 +5,9 @@ persisted :class:`ResolveState` and its question mailbox. Nothing here needs
 a resolver attached to this process, which is what lets one page render a
 moving run, a parked run, and a finished one through the same code.
 
-The mailbox is authoritative for anything pending. ``state.json``'s question
-and answer copies are a fold of it — correct once the run finishes, and the
-only source for a run recorded before the mailbox existed.
+The mailbox is authoritative for every question a run asks, pending or
+settled. ``state.json``'s question and answer copies are a fold of it, and a
+projection reads the mailbox rather than the fold.
 """
 
 import time
@@ -300,32 +300,9 @@ def concern_views(state: ResolveState) -> list[ConcernView]:
     return views
 
 
-def folded_views(state: ResolveState) -> list[PendingQuestionView]:
-    """Project questions from the state file alone, for a pre-mailbox run."""
-    values = {
-        answer.question_id: answer.value
-        for answer in (state.answers.answers if state.answers is not None else [])
-    }
-    return [
-        PendingQuestionView(
-            question=question,
-            asked_by=question.concern_id,
-            answered=values[question.id] if question.id in values else None,
-        )
-        for question in (
-            state.questions.questions if state.questions is not None else []
-        )
-        if question.id not in state.retired_questions
-    ]
-
-
-def question_views(
-    state: ResolveState, mailbox: QuestionMailbox
-) -> list[PendingQuestionView]:
-    """Project every question this run has asked, mailbox first."""
+def question_views(mailbox: QuestionMailbox) -> list[PendingQuestionView]:
+    """Project every question this run has asked, from its mailbox."""
     asked = mailbox.questions()
-    if not asked:
-        return folded_views(state)
     answered = {
         record.answer.question_id: record.answer.value for record in mailbox.answers()
     }
@@ -417,7 +394,7 @@ def supervisor_state(
     now: float | None = None,
 ) -> SupervisorState:
     """Project one run on disk into a complete page render."""
-    views = question_views(state, mailbox)
+    views = question_views(mailbox)
     activity = last_activity(mailbox.root)
     live = run_is_live(state, activity, time.time() if now is None else now)
     review = (

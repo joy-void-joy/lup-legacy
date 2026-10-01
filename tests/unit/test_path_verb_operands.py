@@ -1,9 +1,9 @@
 """Which of a path verb's operands it writes, read by the verb's own grammar.
 
-`install -m 644 README.md tmp/x` asked "README.md is human-authored": `-m`
-takes a value, the reader did not know it, and a flag it does not know makes
-every operand a target -- so the file `install` only reads was judged as one
-it writes.
+`-m` in `install -m 644 README.md tmp/x` takes a value, and to a reader that
+does not know so, a flag it does not know makes every operand a target -- so
+the file `install` only reads would be judged as one it writes, asking
+"README.md is human-authored".
 """
 
 import pytest

@@ -1,6 +1,6 @@
 """Git and forge collaboration, answered alike by every surface that judges it.
 
-What a session may do to a shared repository was settled per spelling rather
+What a session may do to a shared repository is settled per spelling rather
 than per verb: pushing, merging, and opening, editing or merging a pull
 request allow, however they are reached, and so does filing an issue on this
 repository; a force allows only under a lease onto a named feature branch;

@@ -4,9 +4,9 @@ Every emitted module puts its plugin's `hooks/runtime` directory first on the
 search path and imports what that directory holds -- the kernel, the policy
 data, the coordination store -- as top-level modules. One process caches those
 names for whichever module imported them first: a Codex dispatcher imported
-after the Claude one ran on Claude's policy data, so the resolver worker's
-namespaced name, which only Claude answers to, was allowed on any worker that
-had run a Claude dispatcher test first. Loading drops what the runtime provides
+after the Claude one would run on Claude's policy data, allowing the resolver
+worker's namespaced name, which only Claude answers to, on any worker that has
+run a Claude dispatcher test first. Loading drops what the runtime provides
 before each import, so every emitted module reads its own.
 """
 

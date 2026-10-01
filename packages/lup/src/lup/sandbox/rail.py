@@ -6,24 +6,24 @@ any of them `git -C ../other commit` writes to another's branch and
 this table does not try to: it hands a session the repository it works in,
 every checkout of it writable.
 
-**Why it does not separate them.** Holding siblings read-only was meant to
+**Why it does not separate them.** Holding siblings read-only would aim to
 keep one session out of another's uncommitted work, which is the one thing
-the reflog cannot restore. It did not protect that set. The table is
+the reflog cannot restore, and it cannot protect that set. A table is
 computed once, when a container starts, so it covers exactly the checkouts
-that existed at that instant: one cut a minute later is outside it and
+that exist at that instant: one cut a minute later is outside it and
 writable by everything in the session. Every worktree a resolver run leases
-is cut after its operator started, so none of the checkouts with several
-sessions touching them were ever covered -- while the branches an operator
-is landing all predate it, and were. The protection reached the sessions
-working alone and missed the ones working at once, which is the reverse of
-what it was for, and a boundary that holds by an accident of timing teaches
-a reader a rule that is not there.
+is cut after its operator started, so none of the checkouts several
+sessions touch would be covered -- while the branches an operator is
+landing all predate it, and would be. Such a protection reaches the sessions
+working alone and misses the ones working at once, the reverse of what it
+is for, and a boundary that holds by an accident of timing teaches a reader
+a rule that is not there.
 
 So confining two workers from each other is a lease per worker, taken when
 that worker starts against the tree it was given. What is left here is the
 other question -- what one session may reach across its own repository --
-and answering both from one table is what tied a worker's confinement to
-whether its checkout predated somebody else's container.
+and answering both from one table would tie a worker's confinement to
+whether its checkout predates somebody else's container.
 
 **Where a boundary is wanted it stays a mount fact, not a judgement.** The
 policy would have to decide, from a command's text, where it will act: that
@@ -59,7 +59,7 @@ Binding `config` read-only as a *file* over a writable share does not hold.
 Git rewrites `config` by renaming `config.lock` over it, and the kernel
 detaches a mount whose dentry is renamed over from another namespace: after
 the operator's next `git push -u`, `branch -d` or `remote` change on the host,
-every running container found `config` writable and replaceable. Pointing
+every running container finds `config` writable and replaceable. Pointing
 `config` at a read-only directory through a symlink does not hold either --
 the symlink sits in the writable share, and replacing it takes one `rm`.
 Both were measured in a user and mount namespace standing in for the
@@ -116,6 +116,7 @@ from pathlib import Path, PurePosixPath
 import sh
 from pydantic import BaseModel, Field, field_validator
 
+from lup.execution.git import GitError, Repository
 from lup.execution.shell import git
 
 
@@ -299,9 +300,9 @@ def rooted(lease: Lease) -> Lease:
 
     A read-only mount refuses writes to what it covers. It does not stop the
     directory *holding* it from being renamed, and a directory with mounts
-    beneath it can be: measured, ``mv .lup .lup2`` succeeded with
-    ``.lup/preflight`` held inside, and nothing then stopped a new
-    ``.lup/preflight`` being written where the host reads it. So every
+    beneath it can be: ``mv .lup .lup2`` succeeds with ``.lup/preflight``
+    held inside, and nothing then stops a fresh ``.lup/preflight`` being
+    written where the host reads it. So every
     directory between a hold and the writable mount enclosing it is bound
     writable over itself -- a mount point cannot be renamed or removed from
     inside -- and each hold is then reachable only by the path the host
@@ -421,10 +422,9 @@ def same_path(roots: list[Path]) -> dict[Path, str]:
 
 def repository_layout(worktree: Path) -> RepositoryLayout:
     """Where this checkout keeps its own admin directory and the shared one."""
-    asked = ["rev-parse", "--path-format=absolute"]
+    repository = Repository(worktree)
     return RepositoryLayout(
-        common=Path(git.out("-C", str(worktree), *asked, "--git-common-dir").strip()),
-        private=Path(git.out("-C", str(worktree), *asked, "--git-dir").strip()),
+        common=repository.common_dir(), private=repository.git_dir()
     )
 
 
@@ -476,13 +476,11 @@ def sibling_worktrees(worktree: Path) -> list[Path]:
     sibling checkouts live is a repository's own arrangement, and a scan
     would sweep in whatever else happens to sit beside them.
     """
-    listed = git.lines("-C", str(worktree), "worktree", "list", "--porcelain")
-    found = [
-        Path(line.removeprefix("worktree "))
-        for line in listed
-        if line.startswith("worktree ")
+    return [
+        listed.path
+        for listed in Repository(worktree).worktrees()
+        if listed.path != worktree and listed.path.is_dir()
     ]
-    return [path for path in found if path != worktree and path.is_dir()]
 
 
 def siblings_of(worktree: Path, layout: RepositoryLayout) -> list[Path]:
@@ -598,7 +596,7 @@ def worker_lease(worktree: Path) -> Lease:
         # punched read-only again, so every one stays present and unwritable,
         # which is what keeps `worktree prune` from removing it. Each entry
         # rather than `worktrees/` itself, because a read-only directory
-        # refuses two different acts and only one of them was the subject:
+        # refuses two different acts and only one of them is the subject:
         # rewriting an entry that is already there endangers a sibling, and
         # creating a new one beside them endangers nobody. That nesting is
         # the whole arrangement, and `Sandbox.declared_mounts` is what holds
@@ -630,7 +628,7 @@ def in_repository(path: Path) -> bool:
     """
     try:
         repository_layout(path)
-    except sh.ErrorReturnCode:
+    except GitError:
         return False
     return True
 

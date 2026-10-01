@@ -67,9 +67,9 @@ CLOUD_METADATA_HOSTS: tuple[str, ...] = (
 #   ERROR: '.localhost' is a subdomain of 'localhost'
 #   FATAL: Bungled /etc/squid/squid.conf line 6
 #
-# Measured, as the whole reason the first contained sessions had no way out:
-# squid exited on this line, the proxy container removed itself, and every
-# reader downstream saw a proxy name that would not resolve.
+# Squid exits on that line, the proxy container removes itself, and every
+# reader downstream sees a proxy name that does not resolve: a contained
+# session with no way out.
 #
 # Squid's own advice there is to remove `.localhost`, and following it would
 # be wrong -- that drops subdomain coverage and keeps only the apex, which is

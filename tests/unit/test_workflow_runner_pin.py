@@ -5,7 +5,7 @@ from it. A workflow written by hand spells the image itself, and a moving
 label there fails on GitHub's schedule rather than on a commit somebody wrote
 — the failure the pin exists to prevent, arriving through the one file the
 pin does not reach. This is the sweep that holds every workflow to it, so an
-unpinned job is a red gate now instead of a red lane on the repoint date.
+unpinned job is a red gate rather than a red lane on the repoint date.
 """
 
 from pydantic import BaseModel, Field

@@ -24,6 +24,7 @@ import sh
 import typer
 from tomlkit import TOMLDocument
 
+from lup.execution.git import GitError, Repository
 from lup.formats.toml import edited_manifest
 from lup.workspace.history import parse_semver
 from lup.workspace.paths import agent_version
@@ -120,8 +121,8 @@ def show(
 
     def count_commits(rev_range: str) -> int:
         try:
-            return int(git.out("rev-list", "--count", rev_range))
-        except sh.ErrorReturnCode:
+            return Repository(Path.cwd()).count(rev_range)
+        except GitError:
             return 0
 
     if latest_tag:
@@ -238,7 +239,7 @@ def release_note(version: str, summary: str, details: list[str]) -> ReleaseNote:
 
     Separate from writing it so a dry run shows the entry itself rather than
     a description of one — the summary and its bullets are what a reader is
-    deciding about, and the rendering is where they have been damaged before.
+    deciding about, and the rendering is where they can be damaged.
     """
     return ReleaseNote(
         version=version, date=dt.date.today(), summary=summary, details=details

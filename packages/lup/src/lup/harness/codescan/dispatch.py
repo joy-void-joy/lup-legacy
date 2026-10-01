@@ -24,8 +24,8 @@ under one project base, or a union it is written into beside another model. A
 model with neither is one type, and a `case Capability(built=False)` arm over
 it is a value test the class happens to be the subject of — the shape the
 conventions prefer to an `if` chain — with no union base for the remedy to
-move the operation onto. Measured in a project built on this one, where the
-rule refused exactly that arm and offered a fix that could not be carried out.
+move the operation onto, so refusing that arm would offer a fix nobody can
+carry out.
 """
 
 import ast
@@ -147,8 +147,8 @@ def dispatched_models(
     narrows to the whole family, which a new member joins rather than escapes.
     """
     # Each declared class's children, counted in one pass over the index:
-    # asking every class about every other was quadratic in a tree of
-    # thousands, and the slowest thing the rule did.
+    # asking every class about every other would be quadratic in a tree of
+    # thousands, and the slowest thing the rule does.
     children = Counter(
         base
         for symbol in symbols.values()

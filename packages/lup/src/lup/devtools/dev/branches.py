@@ -17,9 +17,10 @@ import sh
 import typer
 from pydantic import BaseModel, Field
 
+from lup.execution.git import GitError, Repository
 from lup.harness.environment import non_interactive_environment
 from lup.workspace.checkout_state import CheckoutState
-from lup.harness.process import LaunchRequest, ProcessLauncher
+from lup.execution.process import ProcessLauncher
 import lup.devtools.dev.records as records
 import lup.devtools.dev.traces as traces
 from lup.devtools.dev.remote_auth import (
@@ -272,7 +273,7 @@ class IntegrationStanding(BaseModel):
 def integration_standing(integration: str) -> IntegrationStanding:
     """Count the local integration branch against origin's copy, both ways."""
     remote = f"origin/{integration}"
-    if not resolvable(remote):
+    if Repository(Path.cwd()).resolves(remote) is None:
         return IntegrationStanding(branch=integration)
     return IntegrationStanding(
         branch=integration,
@@ -414,20 +415,13 @@ def parse_branches() -> list[ParsedBranch]:
 def parse_worktrees() -> dict[str, str]:  # lup: ignore[dict-str-payload]
     """Map branch name -> worktree path from ``git worktree list --porcelain``.
 
-    Open, data-driven keys (whatever branches have worktrees), folded from
-    porcelain records that span multiple lines — the one stateful walk here.
+    Open, data-driven keys: whatever branches have worktrees.
     """
-    mapping: dict[str, str] = {}  # lup: ignore[dict-str-payload, empty-collection]
-    current_path = ""
-
-    for line in git.lines("worktree", "list", "--porcelain"):
-        match line.split(maxsplit=1):
-            case ["worktree", path]:
-                current_path = path
-            case ["branch", ref] if ref.startswith("refs/heads/"):
-                mapping[ref.removeprefix("refs/heads/")] = current_path
-
-    return mapping
+    return {
+        listed.branch: str(listed.path)
+        for listed in Repository(Path.cwd()).worktrees()
+        if listed.branch
+    }
 
 
 class ParsedRemoteBranch(TypedDict):
@@ -492,19 +486,15 @@ def parse_remote_branches() -> list[ParsedRemoteBranch]:
 
 def build_containment(branch_names: list[str]) -> dict[str, list[str]]:
     """For each branch, find which other branches contain it."""
-    containment: dict[str, list[str]] = {b: [] for b in branch_names}
-
-    for branch in branch_names:
-        for target in branch_names:
-            if branch == target:
-                continue
-            try:
-                git("merge-base", "--is-ancestor", branch, target)
-                containment[branch].append(target)
-            except sh.ErrorReturnCode:
-                pass
-
-    return containment
+    repository = Repository(Path.cwd())
+    return {
+        branch: [
+            target
+            for target in branch_names
+            if target != branch and repository.is_ancestor(branch, target)
+        ]
+        for branch in branch_names
+    }
 
 
 def fetch_pr_status(branch_names: list[str]) -> dict[str, PRStatus]:
@@ -533,17 +523,10 @@ def fetch_pr_status(branch_names: list[str]) -> dict[str, PRStatus]:
 def count_unique_commits(branch: str, integration: str) -> int:
     """Count commits on branch not cherry-picked into integration (-1: unknown)."""
     try:
-        return int(
-            git.out(
-                "rev-list",
-                "--count",
-                "--cherry-pick",
-                "--left-only",
-                f"{branch}...{integration}",
-                _ok_code=[0],
-            )
+        return Repository(Path.cwd()).count(
+            "--cherry-pick", "--left-only", f"{branch}...{integration}"
         )
-    except (sh.ErrorReturnCode, ValueError):
+    except GitError:
         return -1
 
 
@@ -563,10 +546,8 @@ def count_commits_behind(branch: str, integration: str) -> int:
     on being reserved for a session that is not coming.
     """
     try:
-        return int(
-            git.out("rev-list", "--count", f"{branch}..{integration}", _ok_code=[0])
-        )
-    except (sh.ErrorReturnCode, ValueError):
+        return Repository(Path.cwd()).count(f"{branch}..{integration}")
+    except GitError:
         return -1
 
 
@@ -606,15 +587,6 @@ def get_integration_branch() -> str:
     if branch_exists("dev"):
         return "dev"
     return "main"
-
-
-def is_ancestor(ancestor: str, descendant: str) -> bool:
-    """Check if ancestor is an ancestor of descendant."""
-    try:
-        git("merge-base", "--is-ancestor", ancestor, descendant)
-        return True
-    except sh.ErrorReturnCode:
-        return False
 
 
 def shares_history(branch: str, integration: str) -> bool:
@@ -663,9 +635,9 @@ def still_at_reservation(branch: str) -> bool:
     merge.
 
     A branch with no record is not a workspace. Reserving one writes the
-    record, so its absence is either a branch made another way or one made
-    before the record existed — and neither is somebody's held session, while
-    a spent branch read as reserved is one nothing offers to clear again.
+    record, so its absence is a branch made another way — never somebody's
+    held session, while a spent branch read as reserved is one nothing offers
+    to clear again.
     """
     reserved_at = records.recorded_reservation(branch)
     try:
@@ -911,7 +883,7 @@ def classify_branch(
         )
         return {"branch": branch, "status": guard.status, "reason": guard.reason}
 
-    merged_into_integration = is_ancestor(branch, integration)
+    merged_into_integration = Repository(Path.cwd()).is_ancestor(branch, integration)
     worktree = get_branch_worktree(branch)
     pr = get_pr_info(branch) if has_remote else None
     pr_number: str | int = pr.number if pr else ""
@@ -985,13 +957,13 @@ def unlanded_siblings(
     """
     integration = get_integration_branch()
     worktrees = parse_worktrees()
-    current = git.out("branch", "--show-current")
+    current = Repository(Path.cwd()).branch()
     leased = live_lease_branches(CheckoutState(root=project_root()).resolve())
 
     def measure(name: str) -> UnlandedBranch | None:
         if name == current or name in protected or name in leased:
             return None
-        if is_ancestor(name, integration):
+        if Repository(Path.cwd()).is_ancestor(name, integration):
             return None
         unique = count_unique_commits(name, integration)
         if unique <= 0:
@@ -1019,10 +991,13 @@ def unlanded_siblings(
         carriers = [
             other
             for other in measured
-            if other.name != branch.name and is_ancestor(branch.name, other.name)
+            if other.name != branch.name
+            and Repository(Path.cwd()).is_ancestor(branch.name, other.name)
         ]
         strict = [
-            other for other in carriers if not is_ancestor(other.name, branch.name)
+            other
+            for other in carriers
+            if not Repository(Path.cwd()).is_ancestor(other.name, branch.name)
         ]
         if strict:
             return max(strict, key=attrgetter("unique_commits")).name
@@ -1186,7 +1161,7 @@ def detect_base_branch(branch: str | None = None) -> BaseCandidate:
     and a base nobody recorded are indistinguishable downstream, and the
     reader meets the difference as a refusal several commands later.
     """
-    effective = branch or git.out("branch", "--show-current")
+    effective = branch or Repository(Path.cwd()).branch()
 
     local_branches = [
         b for b in git.lines("branch", "--format=%(refname:short)") if b != effective
@@ -1199,14 +1174,14 @@ def detect_base_branch(branch: str | None = None) -> BaseCandidate:
     def measure(candidate: str) -> BaseCandidate | None:
         try:
             merge_base = git.out("merge-base", effective, candidate, _ok_code=[0])
-            distance = int(git.out("rev-list", "--count", f"{merge_base}..{effective}"))
-        except sh.ErrorReturnCode:
+            distance = Repository(Path.cwd()).count(f"{merge_base}..{effective}")
+        except (sh.ErrorReturnCode, GitError):
             return None
         return BaseCandidate(
             name=candidate,
             distance=distance,
             merge_base=merge_base,
-            is_ancestor=is_ancestor(candidate, effective),
+            is_ancestor=Repository(Path.cwd()).is_ancestor(candidate, effective),
         )
 
     recorded = recorded_base(effective)
@@ -1241,9 +1216,9 @@ def detect_base_branch(branch: str | None = None) -> BaseCandidate:
     # feature branch whose `dev` has taken one commit since the cut has no
     # ancestor in `dev` at all, so filtering on ancestry drops `dev` and hands
     # the answer to whichever stale sibling happens to sit in the branch's
-    # history, however far away. Measured against a branch whose real base was
-    # 0 symbols off: the sibling that won sat 747 commits away, and the gate
-    # reported 137 capabilities gone that nothing had touched.
+    # history, however far away: a branch whose real base is no distance off
+    # can be handed a sibling hundreds of commits away, and the gate then
+    # reports capabilities gone that nothing touched.
     #
     # Distance is the merge-base distance, which needs no ancestry to be
     # meaningful and is what makes a moved-on integration branch comparable
@@ -1368,7 +1343,7 @@ class BaseFreshness(BaseModel, frozen=True):
     have says nothing about which one a reader wants. Asking only the first
     ref that resolves answers "am I behind my own push" wherever a branch has
     been pushed and "has my base moved" wherever it has not — so the same
-    gate called a base three commits gone current, and offered a base
+    gate would call a base three commits gone current, and offer a base
     forty-one commits gone a pull that cannot run there.
     """
 
@@ -1431,26 +1406,17 @@ class BaseFreshness(BaseModel, frozen=True):
         )
 
 
-def git_line(launcher: ProcessLauncher, root: Path, arguments: list[str]) -> str:
-    """One git probe's single line of output, empty when it had nothing to say.
+def probing(launcher: ProcessLauncher, root: Path) -> Repository:
+    """The checkout as the freshness probe asks it: through the launcher, never prompting.
 
-    The freshness probe runs through the launcher seam rather than this
-    module's own bound git, because one of its steps reaches the network: a
-    launcher merges the non-interactive environment every agent spawn point
-    uses over the console's, so a credential nobody can supply fails fast
-    instead of waiting on a terminal prompt. Each of these probes answers a
-    question that has a blank answer — no upstream, no recorded base, no
-    branch — so a failure and empty output mean the same thing here.
+    Through the launcher seam rather than this module's own bound git,
+    because one of its steps reaches the network: the non-interactive
+    environment every agent spawn point uses is laid over the console's, so
+    a credential nobody can supply fails fast instead of waiting on a
+    terminal prompt. Most of what it asks has a blank answer — no upstream,
+    no recorded base, no branch — so a failure reads as that blank.
     """
-    status = launcher.launch(
-        LaunchRequest(
-            arguments=["git", *arguments],
-            cwd=root,
-            environment=non_interactive_environment({}),
-        )
-    )
-    lines = status.stdout.splitlines()
-    return lines[0].strip() if status.code == 0 and lines else ""
+    return Repository(root, launcher, non_interactive_environment({}))
 
 
 def upstream_of(launcher: ProcessLauncher, root: Path, branch: str) -> str:
@@ -1460,11 +1426,10 @@ def upstream_of(launcher: ProcessLauncher, root: Path, branch: str) -> str:
     detached HEAD answers nothing at all rather than answering for the commit
     it happens to sit on.
     """
-    return git_line(
-        launcher,
-        root,
-        ["rev-parse", "--abbrev-ref", "--symbolic-full-name", f"{branch}@{{upstream}}"],
+    status = probing(launcher, root).run(
+        "rev-parse", "--abbrev-ref", "--symbolic-full-name", f"{branch}@{{upstream}}"
     )
+    return status.stdout.strip() if status.code == 0 else ""
 
 
 class TrackedRemotes(BaseModel, frozen=True):
@@ -1495,11 +1460,13 @@ class TrackedRemotes(BaseModel, frozen=True):
         re-read the counts without paying for the network a second time.
         """
 
+        repository = probing(launcher, root)
+
         def behind(tracked: str) -> int | None:
-            answer = git_line(
-                launcher, root, ["rev-list", "--count", f"HEAD..{tracked}"]
-            )
-            return int(answer) if answer.isdigit() else None
+            try:
+                return repository.count(f"HEAD..{tracked}")
+            except GitError:
+                return None
 
         own = behind(self.upstream) if self.upstream else 0
         cut = behind(self.base) if self.base else 0
@@ -1531,7 +1498,10 @@ def remote_of(launcher: ProcessLauncher, root: Path, branch: str) -> str:
 
 def tracked_remotes(launcher: ProcessLauncher, root: Path) -> TrackedRemotes:
     """Ask git and lup's own records which remotes this checkout answers to."""
-    branch = git_line(launcher, root, ["branch", "--show-current"])
+    try:
+        branch = probing(launcher, root).branch()
+    except GitError:
+        branch = ""
     recorded = records.recorded_base(branch, root) if branch else ""
     return TrackedRemotes(
         upstream=remote_of(launcher, root, branch) if branch else "",
@@ -1560,51 +1530,19 @@ def probe_base_freshness(launcher: ProcessLauncher, root: Path) -> BaseFreshness
     remotes = tracked_remotes(launcher, root)
     if not remotes.named():
         return BaseFreshness()
-    fetched = launcher.launch(
-        LaunchRequest(
-            arguments=["git", "fetch", "--quiet"],
-            cwd=root,
-            environment=non_interactive_environment({}),
-            stream=True,
-        )
-    )
+    repository = probing(launcher, root)
+    fetched = repository.run("fetch", "--quiet", stream=True)
     if fetched.code != 0:
-        # `ls-remote --get-url` expands `url.<base>.insteadOf` and contacts
+        # `remote get-url` expands `url.<base>.insteadOf` and contacts
         # nothing, so what is probed is the URL the fetch above actually
         # reached rather than the one written in the config beside it.
-        origin = git_line(launcher, root, ["ls-remote", "--get-url", "origin"])
+        origin = repository.remote_url("origin") or ""
         return BaseFreshness(
             unreachable=remote_auth_refusal(origin).diagnoses()
             or fetched.stderr.strip()
             or f"`git fetch` exited {fetched.code}",
         )
     return remotes.counted(launcher, root)
-
-
-def git_ran(launcher: ProcessLauncher, root: Path, arguments: list[str]) -> str:
-    """Run one git command through the same seam, answering with its complaint.
-
-    Empty means it worked. The probes beside this one ask questions with a
-    blank answer, where a failure and no output mean the same thing; a
-    command run for its effect has to say which of the two happened.
-
-    Shown as it runs, because these are the ones with a network or a hook at
-    the other end: working through a slow transfer and having stopped look
-    identical from a terminal that is told nothing until the exit. What comes
-    back is that exit rather than the stderr already on screen, so a caller
-    framing this answer in a line of its own does not print it twice.
-    """
-    status = launcher.launch(
-        LaunchRequest(
-            arguments=["git", *arguments],
-            cwd=root,
-            environment=non_interactive_environment({}),
-            stream=True,
-        )
-    )
-    if not status.code:
-        return ""
-    return f"`git {' '.join(arguments)}` exited {status.code}"
 
 
 def sync_upstream(
@@ -1627,28 +1565,39 @@ def sync_upstream(
     instead and can push it itself. A diverged branch stops after the failed
     pull either way, rather than pushing on top of the divergence it just
     failed to close.
+
+    The pull and the push are shown as they run, because they have a network
+    or a hook at the other end: working through a slow transfer and having
+    stopped look identical from a terminal told nothing until the exit. What
+    is said of a failure is that exit rather than the stderr already on
+    screen, so it is not printed twice.
     """
-    if git_line(launcher, root, ["status", "--porcelain"]):
+    repository = probing(launcher, root)
+    if repository.run("status", "--porcelain").stdout.strip():
         yield f"not synced with {measure.tracked}: the working tree has changes"
         return
     if measure.behind:
-        complaint = git_ran(launcher, root, ["pull", "--ff-only"])
-        if complaint:
-            yield f"not synced with {measure.tracked}: {complaint}"
+        pulled = repository.run("pull", "--ff-only", stream=True)
+        if pulled.code:
+            yield (
+                f"not synced with {measure.tracked}: "
+                f"`git pull --ff-only` exited {pulled.code}"
+            )
             return
         yield f"pulled {measure.behind} commit(s) from {measure.tracked}"
-    ahead = git_line(
-        launcher, root, ["rev-list", "--count", f"{measure.tracked}..HEAD"]
-    )
-    if not ahead.isdigit() or not int(ahead):
+    try:
+        ahead = repository.count(f"{measure.tracked}..HEAD")
+    except GitError:
+        return
+    if not ahead:
         return
     if not publish:
         yield f"{ahead} commit(s) {measure.tracked} does not have; `git push` sends them"
         return
-    complaint = git_ran(launcher, root, ["push"])
+    pushed = repository.run("push", stream=True)
     yield (
-        f"not pushed to {measure.tracked}: {complaint}"
-        if complaint
+        f"not pushed to {measure.tracked}: `git push` exited {pushed.code}"
+        if pushed.code
         else f"pushed {ahead} commit(s) to {measure.tracked}"
     )
 
@@ -1756,7 +1705,7 @@ def branch_status(branch: str | None, as_json: bool) -> None:
     has_remote = check_remote_auth()
 
     integration = get_integration_branch()
-    current = git.out("branch", "--show-current")
+    current = Repository(Path.cwd()).branch()
 
     branch_list = (
         [branch] if branch else git.lines("branch", "--format=%(refname:short)")
@@ -1802,7 +1751,7 @@ def branch_status(branch: str | None, as_json: bool) -> None:
 def base_branch(branch: str | None, as_json: bool) -> None:
     """Detect the base branch for the current (or specified) branch."""
     base = detect_base_branch(branch)
-    effective = branch or git.out("branch", "--show-current")
+    effective = branch or Repository(Path.cwd()).branch()
 
     if as_json:
         output_json(
@@ -1949,7 +1898,7 @@ def survey(as_json: bool, scaffold: str = "") -> None:
             logger.warning("Failed to fetch: %s", complaint)
 
     integration = get_integration_branch()
-    cur = git.out("branch", "--show-current")
+    cur = Repository(Path.cwd()).branch()
 
     raw_branches = parse_branches()
     worktrees = parse_worktrees()
@@ -2041,7 +1990,7 @@ def survey(as_json: bool, scaffold: str = "") -> None:
         name = row["name"]
         ref = f"{row['remote']}/{name}"
         related = shares_history(ref, integration)
-        contained = related and is_ancestor(ref, integration)
+        contained = related and Repository(Path.cwd()).is_ancestor(ref, integration)
         unique = (
             0 if contained or not related else count_unique_commits(ref, integration)
         )
@@ -2265,43 +2214,14 @@ def locked_worktrees() -> dict[str, str]:  # lup: ignore[dict-str-payload]
     committed looks exactly like an abandoned one, and removing it takes the
     directory out from under a process still writing there.
 
-    The reason is whatever the locker passed, empty when they passed none.
-    Read NUL-separated, because that is the form git prints it in unquoted: a
-    reason carrying a quote comes back C-quoted otherwise, and the hold a
-    session's `git worktree create` writes is JSON.
+    The reason is whatever the locker passed, empty when they passed none, and
+    whole: the hold a session's `git worktree create` writes is JSON.
     """
-    locked: dict[str, str] = {}  # lup: ignore[dict-str-payload, empty-collection]
-    current_path = ""
-
-    listed = git.out("worktree", "list", "--porcelain", "-z")
-    for line in listed.split("\x00"):  # lup: ignore[string-split] — NUL records
-        match line.split(maxsplit=1):
-            case ["worktree", path]:
-                current_path = path
-            case ["locked"]:
-                locked[current_path] = ""
-            case ["locked", reason]:
-                locked[current_path] = reason.strip()
-
-    return locked
-
-
-def remote_branch_exists(name: str) -> bool:
-    """Report whether ``origin`` still carries the branch."""
-    try:
-        git("rev-parse", "--verify", f"refs/remotes/origin/{name}")
-        return True
-    except sh.ErrorReturnCode:
-        return False
-
-
-def resolvable(ref: str) -> bool:
-    """Whether this checkout still carries the ref, as a commit."""
-    try:
-        git("rev-parse", "--verify", "--quiet", f"{ref}^{{commit}}")
-        return True
-    except sh.ErrorReturnCode:
-        return False
+    return {
+        str(listed.path): listed.lock_reason
+        for listed in Repository(Path.cwd()).worktrees()
+        if listed.locked
+    }
 
 
 def upstream_ref(name: str) -> str | None:
@@ -2325,7 +2245,9 @@ def upstream_ref(name: str) -> str | None:
     except sh.ErrorReturnCode:
         tracked = ""
     recorded = records.recorded_upstream(name)
-    return tracked or (recorded if recorded and resolvable(recorded) else None)
+    return tracked or (
+        recorded if recorded and Repository(Path.cwd()).resolves(recorded) else None
+    )
 
 
 def holding_copy(ref: str, integration: str, by_content: bool = False) -> str:
@@ -2346,9 +2268,9 @@ def holding_copy(ref: str, integration: str, by_content: bool = False) -> str:
         (
             copy
             for copy in (integration, f"origin/{integration}")
-            if resolvable(copy)
+            if Repository(Path.cwd()).resolves(copy) is not None
             and (
-                is_ancestor(ref, copy)
+                Repository(Path.cwd()).is_ancestor(ref, copy)
                 or (by_content and count_unique_commits(ref, copy) == 0)
             )
         ),
@@ -2367,7 +2289,9 @@ def outgrew_upstream(name: str) -> bool:
     copy is simply behind.
     """
     upstream = upstream_ref(name)
-    return upstream is not None and not is_ancestor(name, upstream)
+    return upstream is not None and not Repository(Path.cwd()).is_ancestor(
+        name, upstream
+    )
 
 
 def plan_worktree_step(path: str, stranded: bool, force: bool) -> PlannedAction:
@@ -2664,7 +2588,9 @@ def plan_deletion(
             ],
         )
 
-    has_remote = remote_branch_exists(name)
+    has_remote = (
+        Repository(Path.cwd()).resolves(f"refs/remotes/origin/{name}") is not None
+    )
     if not branch_exists(name):
         return plan_remote_only_deletion(
             name, force=force, has_remote=has_remote, remote=remote
@@ -2738,9 +2664,9 @@ def worktree_left_as_mount_point(path: str) -> bool:
     `git worktree remove` clears the checkout and unregisters it before the
     final rmdir, and a directory that is a mount point in this session's
     namespace -- every checkout a launch bind-mounted is one -- refuses that
-    last step alone, after everything before it succeeded. Measured on a land
-    sweep of twenty-eight branches: each first removal failed there, the entry
-    was gone and the directory empty, and the report said nothing had
+    last step alone, after everything before it succeeded. On a land sweep
+    every first removal fails there with the entry gone and the directory
+    empty, and a report read off the failure would say nothing had
     completed. The mount is not a failure of the deletion; it is the host's
     directory to drop once the container is gone, so the deletion carries on
     to the branch and says what it left.
@@ -2753,8 +2679,8 @@ def worktree_left_as_mount_point(path: str) -> bool:
     The mount half goes through :func:`~lup.sandbox.observed.is_mount_point`
     rather than :meth:`pathlib.Path.is_mount`, which answers by device number
     and so cannot see the same-filesystem bind every launch makes. Under that
-    probe this returned false for the very sweep the paragraph above measured,
-    and the branch it guards was never taken.
+    probe this would answer false for every checkout a launch bind-mounted,
+    and the branch it guards would never be taken.
     """
     return is_mount_point(Path(path)) and path not in parse_worktrees().values()
 
@@ -2868,7 +2794,7 @@ def delete_branch(
     ``git survey`` reports under its own heading and hands a disposition, and
     this is the verb that disposition names.
     """
-    cur = git.out("branch", "--show-current")
+    cur = Repository(Path.cwd()).branch()
     if name == cur:
         typer.echo(f"Error: cannot delete the current branch ({name})", err=True)
         raise typer.Exit(1)
@@ -3141,7 +3067,7 @@ def retire_branch(
     :func:`delete_branch` is told it.
     """
     target = integration if integration is not None else get_integration_branch()
-    if name == git.out("branch", "--show-current"):
+    if name == Repository(Path.cwd()).branch():
         typer.echo(f"Error: cannot retire the current branch ({name})", err=True)
         raise typer.Exit(1)
 

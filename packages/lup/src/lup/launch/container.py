@@ -488,8 +488,8 @@ def proxy_log(name: str, engine: ContainerEngine, lines: int = 400) -> str:
     They are separated again on the way out, and that is not cosmetic. A busy
     proxy writes one access line per request and a handful of error lines
     across its whole life, so a plain tail is twenty rows of traffic and none
-    of the diagnosis -- measured, five hundred bytes of `TCP_TUNNEL/503`
-    repeating while the line saying *why* sat above the window.
+    of the diagnosis -- five hundred bytes of `TCP_TUNNEL/503` repeating
+    while the line saying *why* sits above the window.
     """
     try:
         spoken = sh.Command(engine.binary)(
@@ -509,11 +509,11 @@ def departed(
 ) -> list[Notice]:
     """Account for a proxy this launch is about to replace, then take it away.
 
-    Two things arrive here. One died -- and the evidence step this design was
-    missing is reading why: the proxy ran with ``--rm``, so a squid that
-    exited on its configuration removed itself on the way out and left a
-    launch reporting a boundary that was not there, which was then read for
-    three passes as a name that would not resolve. The other is running and
+    Two things arrive here. One died, and the evidence is reading why: a
+    proxy run with ``--rm`` that exits on its configuration removes itself on
+    the way out, leaving a launch reporting a boundary that is not there and
+    a session reading the absence as a name that does not resolve. The
+    other is running and
     was started from a declaration that has since moved, which is the
     counterpart to rebuilding a stale image and is a replacement rather than
     a failure.
@@ -570,10 +570,9 @@ def proxy_matches(name: str, declaration: str, engine: ContainerEngine) -> bool:
     proxy because a change to the declaration reaches one no better. A proxy
     is started once and the declaration goes on moving -- the policy, the
     resolvers, the pinned image -- so every later edit lands in the
-    repository and never in the container a session reaches. Measured: a
-    ``--dns`` flag added, a launch run, and the proxy found running and left
-    exactly as it was, with the launch reporting the boundary it was supposed
-    to have.
+    repository and never in the container a session reaches. Unasked, a
+    ``--dns`` flag added and a launch run leave the proxy running exactly as
+    it was, with the launch reporting the boundary it was supposed to have.
 
     A proxy carrying no label says nothing about what started it and is
     treated as stale, for the reason an unlabelled image is: replacing it
@@ -760,8 +759,8 @@ def settled(
     """Confirm the proxy is still up a moment after being told to start.
 
     ``run --detach`` answers whether the container was *created*, which is a
-    different question from whether the program in it is still running --
-    measured, and the difference is the whole of this bug. Squid reads its
+    different question from whether the program in it is still running, and
+    the difference is the whole of the hazard. Squid reads its
     configuration at startup and exits on a line it will not accept, and by
     then the launcher has its zero exit code and has moved on to say the
     boundary is up.
@@ -1025,11 +1024,11 @@ class NetworkLeg(BaseModel, frozen=True):
 class EgressState(BaseModel, frozen=True):
     """What this project's egress infrastructure is actually doing, asked.
 
-    The gap this fills is the one the whole boundary fell into. A launch
-    printed what the *declaration* said -- filtered, through this proxy, these
-    denials -- and nothing anywhere asked the engine whether any of it was so.
-    Measured: a session opening behind a proxy whose name it could not
-    resolve, reporting every request as the operator's internet being down.
+    What the *declaration* says -- filtered, through this proxy, these
+    denials -- is not evidence that any of it is so, and only the engine can
+    say whether it is. A session opening behind a proxy whose name it cannot
+    resolve reports every request as the operator's internet being down, and
+    a launch printing the declaration alone gives nobody a way to tell.
 
     Held as a model rather than printed as it is gathered so the verdict can
     be computed from the whole picture. Which of these facts is wrong decides
@@ -1093,11 +1092,10 @@ class EgressState(BaseModel, frozen=True):
             "The command the engine records this container as having been "
             "created with, read back rather than reconstructed. What a "
             "launcher *asked* for and what a container *has* are two things, "
-            "and three round trips went on the difference: a flag added to "
-            "the arguments and never applied because a running proxy was "
-            "reused, and then applied and apparently undone by a later "
-            "`network connect`. Printing the intent would have shown the "
-            "intent both times"
+            "and they part in ordinary ways: a flag added to the arguments is "
+            "never applied when a running proxy is reused, and one that is "
+            "applied can be undone by a later `network connect`. Printing the "
+            "intent shows the intent in both cases"
         ),
     )
     resolver: str = Field(
@@ -1274,12 +1272,12 @@ class EgressState(BaseModel, frozen=True):
         """Whether the proxy holds a default route the kernel would use.
 
         Asked of the routing table rather than of the networks, because those
-        two answers came apart on the machine this was written for: both legs
-        recorded a gateway and the container reached nothing. Only one of a
-        container's networks provides the default route, netavark installs
-        none for an internal one, and ``podman inspect`` reports a network's
-        ``.1`` address as its gateway either way. Membership said yes,
-        metadata said yes, and every packet failed instantly.
+        two answers can part: both legs can record a gateway while the
+        container reaches nothing. Only one of a container's networks provides
+        the default route, netavark installs none for an internal one, and
+        ``podman inspect`` reports a network's ``.1`` address as its gateway
+        either way. Membership says yes, metadata says yes, and every packet
+        fails instantly.
         """
         return bool(self.route)
 
@@ -1545,9 +1543,9 @@ def report_egress(egress: SessionEgress, root: Path, down: bool) -> None:
 def network_matches(name: str, declaration: str, engine: ContainerEngine) -> bool:
     """Whether this network was created under the declaration in force now.
 
-    The third thing in this design a launch would reuse whatever the
-    declaration said, and the one that would swallow the repair for the other
-    two. A network is created once and outlives every launch, so the posture it
+    The third thing a launch would otherwise reuse whatever the declaration
+    says, and the one that would swallow the check on the other two. A
+    network is created once and outlives every launch, so the posture it
     was first created under is the posture it keeps -- and the flag that
     stops its resolver shadowing the proxy's never reaches a machine whose
     network already exists.
@@ -1756,10 +1754,10 @@ def held_environments(
 
     The mount *point* is made here too, at ``name`` inside each root, and that
     is the half worth stating. An engine asked to bind onto a path that is not
-    there creates it under its own mapping: measured on rootless podman 6.1.0
-    with ``--userns=keep-id``, the directory left in the checkout afterwards
-    belonged to uid 100000 -- `nobody` to the operator, who could then neither
-    write it nor sync into it, and whose own `uv` failed on `Permission
+    there creates it under its own mapping: on rootless podman 6.1.0 with
+    ``--userns=keep-id``, the directory left in the checkout afterwards
+    belongs to uid 100000 -- `nobody` to the operator, who can then neither
+    write it nor sync into it, and whose own `uv` fails on `Permission
     denied` for a path in their own tree. Made by the launcher first, it
     belongs to the operator and stays writable. It outlives the container
     either way; this decides whose it is.
@@ -1852,10 +1850,10 @@ def contained_argv(
     that is the distinction the parameter exists to hold. Under ``--profile``
     the launch's home is the profile's, `profiles/<name>/claude-config` in the
     person's lup config home, derived from a name no editor has ever heard of,
-    so bridging it bound a directory nothing writes into: the editor
-    connection never happened and nothing said why. Measured on a `--profile
-    test` session, whose container had the profile's empty `ide` directory
-    mounted at its configuration home.
+    so bridging it would bind a directory nothing writes into: a `--profile`
+    session's container would hold the profile's empty `ide` directory at its
+    configuration home, and the editor connection would never happen with
+    nothing saying why.
     The lockfile is a rendezvous point rather than profile state -- a port and
     a token for one editor window, holding no account and no credential -- so
     which account a session runs under and which editor it talks to are
@@ -2078,10 +2076,9 @@ def contained_argv(
     # no disk, and is hashed into the ownership digest.
     if editor_rendezvous is not None:
         editor_rendezvous.mkdir(parents=True, exist_ok=True)
-        # Said rather than left implicit, which is the second half of the
-        # repair: a session that could reach an editor said nothing about it,
-        # so a bridge pointed at a directory nothing writes into looked
-        # exactly like a bridge that worked.
+        # Said rather than left implicit: a session that reaches an editor
+        # in silence makes a bridge pointed at a directory nothing writes
+        # into look exactly like a bridge that works.
         said.add(
             [
                 Notice(
@@ -2305,12 +2302,11 @@ def worker_cli(
     what this adds. :mod:`lup.sandbox.rail` argues that confinement has to be
     a mount fact rather than a judgement, because deciding from a command's
     text where it will act is undecidable and ``cd ../other && git commit``
-    walks past any policy that tries. That argument is right and was being
-    applied to the wrong population: a table computed when a *session* starts
-    covers the checkouts existing at that instant, which is every branch an
-    operator is landing and no worktree a run leases, since those are cut
-    afterwards. The concurrency the rail was built for is between actors, and
-    this is where their boundary is taken.
+    walks past any policy that tries. A table computed when a *session*
+    starts covers only the checkouts existing at that instant, which is every
+    branch an operator is landing and no worktree a run leases, since those
+    are cut afterwards. The concurrency the rail is for is between actors, so
+    an actor's boundary is taken here, when its own lease exists.
 
     ``lease_root`` is both the tree this actor was given and the checkout its
     container opens on, which is not two decisions that happen to agree: every

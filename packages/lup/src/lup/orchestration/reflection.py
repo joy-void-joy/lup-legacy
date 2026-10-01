@@ -222,7 +222,7 @@ def create_reflection_gate(
         If you also need to rewrite the gated tool's input (e.g., unwrap
         a ``{"parameter": {...}}`` wrapper), combine both checks in a
         single hook to avoid the CLI bug where multiple PreToolUse hooks
-        overwrite each other's ``updatedInput`` (SDK issue #15897).
+        overwrite each other's ``updatedInput`` (the SDK's issue 15897).
         Register this gate as the **last** PreToolUse hook.
 
     Args:

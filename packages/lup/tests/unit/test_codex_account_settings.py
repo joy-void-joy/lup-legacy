@@ -192,7 +192,7 @@ def test_a_launch_carries_the_accounts_settings_into_a_container_alone(
 
     launch.launch_codex(
         composition(root, "codex"),
-        launch.LaunchRequest(sandbox=sandbox),
+        launch.LaunchArguments(sandbox=sandbox),
         source,
         False,
         False,

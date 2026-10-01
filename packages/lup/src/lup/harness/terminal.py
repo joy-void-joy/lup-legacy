@@ -17,7 +17,7 @@ same for every adopter, and it is hashed into the ownership digest. What they
 *contain* is a fact about the machine in front of you -- ``TERM`` is that
 operator's terminal emulator and ``EDITOR`` is that operator's habit. Folding
 the second into the first is the trap :func:`~lup.harness.toolchain.for_host`
-was written for, measured moving a generated tree's digest between two
+exists for: folded in, the values move a generated tree's digest between two
 checkouts of one commit. So this module holds names, and
 :meth:`TerminalHandoff.for_host` is where a machine answers them.
 
@@ -63,10 +63,9 @@ def host_timezone() -> str:
     Read here rather than taken from the environment, because on the machines
     this launches from the environment does not hold it: a Linux host keeps
     its zone in ``/etc/localtime`` and exports ``TZ`` for nobody, so a handoff
-    that only forwarded the variable forwarded an absence. That is the whole
-    gap -- ``TZ`` was declared as crossing, the operator's shell had never set
-    it, and every contained session ran in UTC with the declaration looking
-    satisfied.
+    that only forwards the variable forwards an absence: ``TZ`` declared as
+    crossing, the operator's shell never setting it, and every contained
+    session running in UTC with the declaration looking satisfied.
 
     Delegated to ``tzlocal``, which reads the source each platform actually
     keeps it in -- ``/etc/localtime`` on Linux, the registry on Windows,
@@ -208,23 +207,23 @@ class TerminalHandoff(BaseModel, frozen=True):
             "and ``COLORTERM`` are the pair that decides colour depth: an "
             "engine sets ``TERM`` to a placeholder of its own and leaves "
             "``COLORTERM`` unset, which is exactly the state a truecolour "
-            "terminal is indistinguishable from -- measured, a session "
-            "losing 24-bit colour on entering the container with nothing "
-            "saying why. ``CLAUDE_CODE_TMUX_TRUECOLOR`` is the operator "
+            "terminal is indistinguishable from -- a session loses 24-bit "
+            "colour on entering the container with nothing saying why. "
+            "``CLAUDE_CODE_TMUX_TRUECOLOR`` is the operator "
             "overruling a runtime that caps colour at 256 whenever it finds "
             "``TMUX`` set, on the assumption that a multiplexer may not "
             "forward 24-bit -- an assumption their tmux answers, and their "
             "having set the variable is them saying so. Carried for the "
             "parity this whole model is for: the same terminal, capped in "
-            "both places or in neither. Left behind while ``TMUX`` crossed, "
-            "it was measured as a session dropping to 256 colour on entering "
-            "a container it had rendered 24-bit in the week before. ``TMUX``, ``STY`` "
+            "both places or in neither. Left behind while ``TMUX`` crosses, "
+            "a session that renders 24-bit on the host drops to 256 colour "
+            "on entering the container. ``TMUX``, ``STY`` "
             "and ``ZELLIJ`` say which multiplexer sits between what the "
             "session prints and the screen, which is what decides whether a "
             "runtime wraps an escape sequence in the passthrough that "
-            "survives one -- measured, a clipboard sequence emitted bare "
-            "into a tmux pane and swallowed there, while the operator's own "
-            "shift-selection worked and nothing said why. ``TERM_PROGRAM``, "
+            "survives one -- a clipboard sequence emitted bare into a tmux "
+            "pane is swallowed there, while the operator's own "
+            "shift-selection works and nothing says why. ``TERM_PROGRAM``, "
             "``LC_TERMINAL`` and ``VTE_VERSION`` name the emulator itself, "
             "which is what a runtime reads to tell the operator which "
             "modifier to hold and which sequences it may spell. A "
@@ -543,8 +542,8 @@ class TerminalHandoff(BaseModel, frozen=True):
 
         Each spelling is resolved on its own and only where the host set it,
         which is what keeps the operator's own precedence between them intact.
-        Filling the whole group in from whichever member answered first was
-        tried and is wrong in both directions: it flattens a host that
+        Filling the whole group in from whichever member answers first is
+        wrong in both directions: it flattens a host that
         deliberately points ``VISUAL`` and ``EDITOR`` at different programs
         onto one of them, and it writes ``LC_ALL`` for a host that left it
         unset on purpose -- which is not a handoff but an override, silencing

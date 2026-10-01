@@ -1,11 +1,11 @@
 """The library page's package roster is read from the package it describes.
 
-An authored roster promising "every remaining top-level entry" omits six of
-them — `actors` among them, four commits after it is added — because a prose
-table is a claim about the tree that nothing reads the tree to check. Walking
-the tree settles the *names*; anything said about them that stays authored, in
-a second file, drifts anyway: a hand-written `channels` row names six consumers
-where the import graph counts eleven.
+An authored roster promising "every remaining top-level entry" omits whatever
+lands after it is written, because a prose table is a claim about the tree
+that nothing reads the tree to check. Walking the tree settles the *names*;
+anything said about them that stays authored, in a second file, drifts anyway:
+a hand-written row counts the consumers it counted when written, not the ones
+the import graph holds.
 
 So the prose lives in each entry's own docstring and the row is derived from it.
 One description of one subject, beside the thing it describes. What that leaves
@@ -71,9 +71,9 @@ def test_an_entry_added_to_the_tree_appears_without_being_declared(
 ) -> None:
     """The property the derivation is for.
 
-    Under the authored roster this raised until somebody wrote a row — which
-    is how `client` announced itself. Now the entry describes itself, and the
-    page follows the tree by construction.
+    An authored roster would raise here until somebody wrote a row. Derived,
+    the entry describes itself, and the page follows the tree by
+    construction.
     """
     roster = Roster(source=library_at(tmp_path, "arrived"))
 
@@ -84,7 +84,7 @@ def test_an_entry_added_to_the_tree_appears_without_being_declared(
 
 
 def test_an_entry_with_no_docstring_fails_generation(tmp_path: Path) -> None:
-    """Loudly, for the reason the authored roster failed loudly.
+    """Loudly, for the reason an authored roster would fail loudly.
 
     A page that quietly drops a package reads exactly like a complete one, so
     an entry with nothing to say has to stop the build rather than shorten the
@@ -115,8 +115,8 @@ def test_a_dotted_directory_is_owed_no_row(tmp_path: Path) -> None:
     The roster walks the filesystem rather than git, so anything left beside
     the library is visible to it — and a checkout that has run an agent
     carries `.claude` there, gitignored and untracked. Python cannot import a
-    dotted name, so no roster could ever owe it a row; generation failing to
-    ask what an editor's scratch directory solves is the bug this pins.
+    dotted name, so no roster could ever owe it a row, and generation never
+    asks what an editor's scratch directory solves.
     """
     source = library_at(tmp_path, "ordinary")
     (source / ".claude" / ".cc-writes").mkdir(parents=True)
@@ -131,10 +131,10 @@ def test_a_directory_whose_package_was_deleted_is_owed_no_row(tmp_path: Path) ->
     """A husk left by a deletion is not a package either.
 
     Git tracks no directories, so removing a package's files leaves the
-    directory standing wherever gitignored bytecode still sits inside it. The
-    roster asked that directory what it solved and opened an `__init__.py` the
-    deletion had taken, so generation ended on a traceback naming a path
-    instead of a diagnostic naming the husk.
+    directory standing wherever gitignored bytecode still sits inside it.
+    Asked what it solves, that directory sends the roster to open an
+    `__init__.py` the deletion took, ending generation on a traceback naming
+    a path instead of a diagnostic naming the husk.
     """
     source = library_at(tmp_path, "ordinary")
     (source / "emptied" / "__pycache__").mkdir(parents=True)

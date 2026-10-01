@@ -1678,8 +1678,8 @@ def create_dev_app(
 
         # The version and the record are sources a generated artifact
         # compiles from, so writing them leaves the trees that embed them
-        # behind — and the commit guard refuses exactly that, which is how a
-        # release came to be the one commit this repository could not make.
+        # behind — and the commit guard refuses exactly that, so a release
+        # that did not regenerate would be the one commit nobody could make.
         # Regenerating is what the guard is asking for, and everything it
         # writes belongs in the same commit as the release that caused it.
         try:

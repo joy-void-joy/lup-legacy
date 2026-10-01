@@ -1,9 +1,9 @@
 """One configuration-home volume per repository and runtime, and the move into them.
 
-The old shared volume held both CLIs' files, so a split that guessed would
+An unsplit shared volume holds both CLIs' files, so a split that guessed would
 hand one runtime the other's login or history, and a split that ran twice
 could overwrite what a session wrote since. These pin the ownership table,
-which old volumes a repository answers for, the move itself against an
+which unsplit volumes a repository answers for, the move itself against an
 engine kept in memory — its idempotence, its refusal to touch a volume an
 open session holds, and what it says about entries nobody declares.
 """
@@ -22,8 +22,8 @@ from lup.launch.config_volume import (
     swept_superseded_notice,
     HomeHelper,
     HomeSplit,
-    LegacyVolumes,
     RuntimeVolume,
+    UnsplitVolumes,
     split_config_volumes,
 )
 from lup.harness.image import Podman
@@ -123,7 +123,7 @@ def test_each_entry_goes_to_the_runtimes_that_declare_it() -> None:
 def test_a_repository_answers_for_its_shared_digest_and_worktree_volumes(
     repository: Path,
 ) -> None:
-    legacy = LegacyVolumes.found(
+    found = UnsplitVolumes.found(
         repository,
         [
             "lup-cfg-lup",
@@ -137,10 +137,10 @@ def test_a_repository_answers_for_its_shared_digest_and_worktree_volumes(
         ["dev", "feat-x"],
     )
 
-    assert legacy.shared == "lup-cfg-lup"
-    assert legacy.scoped == {"claude": [], "codex": ["lup-cfg-lup-codex-abc"]}
-    assert legacy.branches == ["lup-cfg-dev", "lup-cfg-feat-x"]
-    assert "lup-cfg-other" not in legacy.every()
+    assert found.shared == "lup-cfg-lup"
+    assert found.scoped == {"claude": [], "codex": ["lup-cfg-lup-codex-abc"]}
+    assert found.branches == ["lup-cfg-dev", "lup-cfg-feat-x"]
+    assert "lup-cfg-other" not in found.every()
 
 
 def test_the_helper_runs_as_the_session_without_its_entrypoint_or_network() -> None:
@@ -192,7 +192,7 @@ def moved(
     return "\n".join(notice.text for notice in said)
 
 
-def test_the_split_copies_each_runtimes_files_and_keeps_the_old_volumes(
+def test_the_split_copies_each_runtimes_files_and_keeps_the_unsplit_volumes(
     repository: Path, monkeypatch: pytest.MonkeyPatch, record: SupersededFile
 ) -> None:
     engine = MemoryEngine(
@@ -290,7 +290,7 @@ def test_a_volume_an_open_session_holds_postpones_the_whole_split(
 def superseded_after_a_split(
     repository: Path, monkeypatch: pytest.MonkeyPatch, record: SupersededFile
 ) -> MemoryEngine:
-    """An engine whose old shared volume a split superseded at :data:`NOW`."""
+    """An engine whose unsplit shared volume a split superseded at :data:`NOW`."""
     engine = MemoryEngine({"lup-cfg-lup": {"auth.json": "codex login"}})
     moved(repository, engine, monkeypatch, record)
     return engine

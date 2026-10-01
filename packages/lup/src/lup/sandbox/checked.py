@@ -15,7 +15,7 @@ that opened it.
 
 from pathlib import Path
 
-from lup.harness.process import ExitStatus, LaunchRequest, ProcessLauncher
+from lup.execution.process import ExitStatus, LaunchRequest, ProcessLauncher
 from lup.sandbox.known import known_repositories
 from lup.sandbox.pointers import refusal, verdict, vouched_from
 

@@ -95,7 +95,7 @@ def setup_notes(
     :class:`~lup.observability.sessions.Session` pointing at the directory
     and the trace log, under ``runtime`` as the client that opened it, and
     hands the node back on the config for the closer to amend. Handed none
-    it records nothing and works as before. The scaffold's
+    it records nothing and opens the directory all the same. The scaffold's
     ``build_session_factory`` wires the recorder from the project's declared
     kinds; a refusing ledger is logged there and the session goes on.
 

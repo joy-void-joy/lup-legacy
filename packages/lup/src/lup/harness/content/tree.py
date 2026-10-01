@@ -1,17 +1,16 @@
 """A directory tree rendered from the tree, and captioned by the tree.
 
 A hand-written layout diagram is a claim about the filesystem that nothing
-checks, and it decays the way every uncheckable claim does: the template's own
-diagram goes on describing `devtools/claude/`, `py/`, `feedback/`, `trace/`
-and `sync.py` under the application package for as long as it takes somebody
-to notice, while the library/template split has moved all of them and added
-`harness/` and `subapps.py` it never mentions. Every name in it exists
-somewhere, so even a basename check passes.
+checks, and it decays the way every uncheckable claim does: it goes on
+describing directories under the application package for as long as it takes
+somebody to notice that a split moved them into the library and added others
+it never mentions. Every name in it exists somewhere, so even a basename
+check passes.
 
 Nothing here is declared. The structure is walked, and each caption is the
 module's own docstring — a package's from its ``__init__.py``, a module's from
 itself. A separate table of descriptions would be one more copy to fall behind
-the code, which is the defect being fixed rather than a smaller version of it;
+the code, which is the defect a walk avoids rather than a smaller version of it;
 this way a module that is renamed, moved, or re-described changes the diagram
 by being edited, and one that is deleted leaves it by being deleted.
 

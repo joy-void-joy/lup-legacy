@@ -3,8 +3,8 @@
 A provider truncates an MCP tool result past a few hundred thousand
 characters and writes the overflow to a file. An agent reads that file, which
 is also too large, and is handed the same redirect again — the loop costs a
-context window and produces nothing. The fix is to never let the oversized
-value reach the wire: :func:`spill_oversized_result` writes each large string
+context window and produces nothing. So the oversized value never reaches
+the wire: :func:`spill_oversized_result` writes each large string
 field to disk and leaves a pointer in its place, so what the agent receives is
 a path and a preview it can page through.
 

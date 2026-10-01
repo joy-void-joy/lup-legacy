@@ -20,10 +20,9 @@ Three properties are load-bearing and easy to lose:
 program installed against a socket nobody is serving, for a client redirected
 by an environment variable to a path that does not exist, and for a session
 whose supplementary groups were fixed before its account joined the group it
-needs. All three were diagnosed by hand once already. The check runs the
-smallest real operation instead -- evaluate an expression, ask the daemon what
-it is, render one page -- because every one of those failures survives a
-presence test.
+needs. The check runs the smallest real operation instead -- evaluate an
+expression, ask the daemon what it is, render one page -- because every one
+of those failures survives a presence test.
 
 **Where decides who is asked.** Some capabilities belong to the host and must
 never reach the image: a container runtime is the clearest, since a container
@@ -71,24 +70,23 @@ reaching for it is usually reaching past a package that exists. What the digest
 changes is the case where none does: a toolchain a distribution has never
 packaged is obtainable exactly one way, and an adopter pinning its release and
 its checksum has done the verifying the other three managers do for them. That
-is a different thing from `curl | sh`, and the declaration can now tell them
-apart.
+is a different thing from `curl | sh`, and the declaration tells them apart.
 """
 
 
 class Package(BaseModel, frozen=True):
     """One installable, and the ecosystem that obtains it.
 
-    A bare name cannot install anything, and a flat list of names hid that for
-    as long as nothing consumed the list. What the list was silently promising
-    was one ``apt-get install`` line, and measured against a Debian base every
-    entry in it was false: ``gh`` is not in the stable archive, ``bun`` ships
-    only as an install script, and ``typescript`` is a registry package. A
-    declaration that can only be rendered one way, into a line that does not
-    work, is worse than no declaration.
+    A bare name cannot install anything, and a flat list of names hides that
+    for as long as nothing consumes the list. What such a list silently
+    promises is one ``apt-get install`` line, and measured against a Debian
+    base every entry in it is false: ``gh`` is not in the stable archive,
+    ``bun`` ships only as an install script, and ``typescript`` is a registry
+    package. A declaration that can only be rendered one way, into a line
+    that does not work, is worse than no declaration.
 
     So the manager is part of the declaration rather than an assumption the
-    renderer makes -- and the base was chosen to make the honest answer the
+    renderer makes -- and the base is chosen to make the honest answer the
     short one. A bare string parses as a distribution package because, on the
     distribution this harness builds from, that is the right answer for every
     package in the toolchain.
@@ -236,7 +234,7 @@ class MisleadingAbsence(BaseModel, frozen=True):
     """Absence does not read as absence: something answers, and answers wrongly.
 
     The grade between :class:`LostCapability` and :class:`RefusedLaunch`, and
-    the one whose omission was measured. A capability lost is a session that
+    the one a session cannot see for itself. A capability lost is a session that
     knows what it cannot do, because reaching for it raises something a
     caller can see. This is the case where reaching for it does not: a
     missing program exits 127, and a shell spends its exit codes on *meaning*
@@ -478,10 +476,10 @@ class Run(BaseModel, frozen=True):
 
         How an image-side requirement stops being a claim. The command an
         image requirement declares -- ``bun --version``, ``claude -p`` -- is
-        the right command; what was missing was anywhere to run it, so the
-        declaration sat unexercised while its docstring described what it
-        proved. Prefixing the argv a session opens with is the whole of the
-        answer, and it matters that it is *that* argv rather than a fresh
+        the right command, and what it needs is somewhere to run: without
+        that, the declaration sits unexercised while its docstring describes
+        what it proves. Prefixing the argv a session opens with is the whole
+        of the answer, and it matters that it is *that* argv rather than a fresh
         ``run``: a probe assembled separately verifies a container no session
         opens, which is how a boundary passes its own preflight and then
         fails the first session behind it.
@@ -618,9 +616,9 @@ class HostFacts(BaseModel, frozen=True):
 
     The counterpart to every "no fact about a machine belongs in a hashed
     declaration" argument in this module, gathered into one object so the
-    resolution is one call rather than one per fact. Every field here was
-    measured moving a generated tree's ownership digest between two checkouts
-    of the same commit: the container client, because ``DOCKER_HOST`` decides
+    resolution is one call rather than one per fact. Every field here, hashed,
+    is measured moving a generated tree's ownership digest between two
+    checkouts of the same commit: the container client, because ``DOCKER_HOST`` decides
     it; and the checkout path, because a worktree is where somebody put it.
 
     The sentinels join them for the same reason and one stronger: they are
@@ -754,14 +752,14 @@ class MountProbe(BaseModel, frozen=True):
     here is only what is the same everywhere: the throwaway image, and the
     name of a file the checkout is known to contain.
 
-    Spelled out, this requirement put an absolute path into a declaration the
-    ownership digest hashes, and the digest then moved between two worktrees
-    of one commit -- so every checkout but the one that last generated read
-    its own committed tree as stale, for a fact about where somebody had put
-    it.
+    Spelled out, this requirement would put an absolute path into a
+    declaration the ownership digest hashes, and the digest would then move
+    between two worktrees of one commit -- so every checkout but the one that
+    last generated would read its own committed tree as stale, for a fact
+    about where somebody put it.
 
     Why a *read* rather than a presence check: asking ``test -d`` about the
-    mounted directory answered false on rootless podman for every worktree
+    mounted directory answers false on rootless podman for every worktree
     this rail leases, which reads exactly like an absent mount and is not
     one. And a container creates an empty directory at any mount target it is
     given, so the check can pass with no mount having happened at all.
@@ -920,9 +918,9 @@ class SentinelProbe(BaseModel, frozen=True):
         comparison. The witness is read in the same shell so a mount that is
         not there fails the exercise instead of being reported beside it, and
         discarded once read: what proves the mount is the exit status, where
-        the bytes are a whole file that becomes this finding's detail. Every
-        contained launch printed its ``pyproject.toml`` into the opening
-        block that way, under the sentinel it was there to report.
+        the bytes are a whole file that would otherwise become this finding's
+        detail, printing ``pyproject.toml`` into every contained launch's
+        opening block under the sentinel it is there to report.
         """
         read = (
             f" && cat {facts.checkout / self.witness} >/dev/null"
@@ -986,14 +984,14 @@ class VocabularyProbe(BaseModel, frozen=True):
     """Ask an environment for every program a permission policy promised it.
 
     The one requirement whose subject is a *list* rather than a capability,
-    and it is here because the two halves it joins were each correct alone
+    and it is here because the two halves it joins are each correct alone
     and wrong together. A shell vocabulary declares which commands an agent
-    may run unattended; an image declares which packages it installs. Nothing
-    compared them, so a word could be declared safe and never carried, and
-    what that produced was not a refusal an agent could read -- ``diff`` and
-    ``cmp`` were both declared and both absent, and the ordinary comparison
-    idiom answered ``DIFFERS`` for two byte-identical files, because the
-    ``||`` arm cannot tell "they differ" from "that program was never here".
+    may run unattended; an image declares which packages it installs. Left
+    uncompared, a word can be declared safe and never carried, and what that
+    produces is not a refusal an agent can read -- with ``diff`` and ``cmp``
+    declared and absent, the ordinary comparison idiom answers ``DIFFERS``
+    for two byte-identical files, because the ``||`` arm cannot tell "they
+    differ" from "that program was never here".
 
     Asked as one probe over the whole list rather than one requirement per
     word, because the finding a reader wants is the *set*: eight absences
@@ -1126,9 +1124,9 @@ class Requirement(BaseModel, frozen=True):
             "``checked`` is about an exercise's cost and the same exercise "
             "costs differently on each side: ``uv --version`` is free on the "
             "host and a container start inside, so one field marking it "
-            "cheap was read as cheap in both places -- measured, a launch "
-            "roster that grew to six container starts including a "
-            "``bunx tsc`` and a ``gh auth status``. False by default, so "
+            "cheap reads as cheap in both places -- and a launch roster "
+            "read that way grows to six container starts, a ``bunx tsc`` "
+            "and a ``gh auth status`` among them. False by default, so "
             "nothing costs a launch anything unless it says so, and what "
             "says so is the boundary: the part whose failure is invisible "
             "from outside and leaves the session unable to do anything"
@@ -1368,13 +1366,12 @@ class Manifest(BaseModel, frozen=True):
     def inside_the_image(self, setting_up: bool = True) -> list[Requirement]:
         """The requirements the container is expected to satisfy, not this machine.
 
-        The other half of :meth:`on_the_host`, and for a long time the half
-        with nowhere to run. An image-side entry was excluded from the host
-        roster -- correctly, since a laptop without ``bun`` is not a laptop
-        with a problem -- and excluded is where it stopped: declared,
-        rendered into a package list, and never once exercised. What that
-        bought was a manifest whose image half was a claim, with each entry's
-        docstring describing a proof nothing had performed.
+        The other half of :meth:`on_the_host`. An image-side entry is excluded
+        from the host roster -- correctly, since a laptop without ``bun`` is
+        not a laptop with a problem -- and excluded alone it would stop
+        there: declared, rendered into a package list, and never once
+        exercised, leaving a manifest whose image half is a claim, with each
+        entry's docstring describing a proof nothing performed.
 
         *setting_up* is off for a launch, which narrows this to the entries
         that asked to be verified there. Every entry in this roster costs a
@@ -1461,16 +1458,16 @@ class Manifest(BaseModel, frozen=True):
         what keeps a rebuild from invalidating the layer for no reason.
 
         For an image, and not for a CI runner, which is a distinct audience
-        however alike the two lists look. Feeding this straight into a
-        workflow's system packages was tried and generated
-        ``apt-get install -y uv``, which no Ubuntu runner can satisfy and
-        which that workflow already solves with a setup action -- and it
-        would have installed a container runtime the image must never carry.
+        however alike the two lists look. Fed straight into a workflow's
+        system packages, this generates ``apt-get install -y uv``, which no
+        Ubuntu runner can satisfy and which that workflow already solves with
+        a setup action -- and it installs a container runtime the image must
+        never carry.
         A requirement is one thing; where each place gets it is another.
 
         Each entry carries the manager that obtains it, because the three
         this repository declares need three different ones and a list of
-        bare names could only ever have been rendered as one.
+        bare names can only ever be rendered as one.
         """
         return list(
             dict.fromkeys(

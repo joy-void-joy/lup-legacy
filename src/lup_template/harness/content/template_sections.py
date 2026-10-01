@@ -1,6 +1,6 @@
 # lup: ignore[constant-declaration]
-# The scaffold section ids are this repository's own vocabulary; the prose that
-# named a hook event now lives in the passages beside this module.
+# The scaffold section ids are this repository's own vocabulary; the prose
+# naming a hook event lives in the passages beside this module.
 # Every constant here is one block of that scaffold's prose: a project wanting
 # different words composes different blocks, which is an override the
 # mechanical half of the constant rule cannot see.

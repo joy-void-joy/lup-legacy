@@ -33,6 +33,7 @@ from secrets import token_hex
 
 from pydantic import BaseModel, Field
 
+from lup.execution.git import Repository
 from lup.execution.shell import git
 from lup.harness.requirements import SENTINEL_VARIABLE
 from lup.policy.boundary import BoundaryPreflight
@@ -207,14 +208,13 @@ def reopened(
 def retire_mount_table(root: Path) -> None:
     """Take away a mount table that describes a boundary this launch is not behind.
 
-    ``record_boundary`` writes the table on every *contained* launch and
-    nothing ever removed it, so an uncontained launch in the same checkout
-    read whatever the last contained one left. What that buys is the reader's
-    worst case: a refusal attributed to a read-only mount that is not there,
-    which teaches an agent to reach for the host when the bug was its own.
-    Its own docstring already names staleness as the hazard and per-launch
-    rewriting as the answer -- this is the half of that answer the posture
-    with no table to write was missing.
+    ``record_boundary`` writes the table on every *contained* launch, so
+    without this an uncontained launch in the same checkout reads whatever
+    the last contained one left. That is the reader's worst case: a refusal
+    attributed to a read-only mount that is not there, which teaches an
+    agent to reach for the host when the bug is its own. Its docstring names
+    staleness as the hazard and per-launch rewriting as the answer, and this
+    is that answer for the posture with no table to write.
 
     Emptied where it stands rather than removed, since a contained session
     in this checkout holds the file read-only by its inode, and a file
@@ -302,10 +302,7 @@ def exclude_sandbox_placeholders(root: Path) -> list[str]:
     ]
     if not placeholders:
         return []
-    common = git.out(
-        "-C", str(root), "rev-parse", "--path-format=absolute", "--git-common-dir"
-    ).strip()
-    exclude = Path(common) / "info" / "exclude"
+    exclude = Repository(root).common_dir() / "info" / "exclude"
     exclude.parent.mkdir(parents=True, exist_ok=True)
     held_lines = (
         exclude.read_text(encoding="utf-8").splitlines() if exclude.exists() else []

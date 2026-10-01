@@ -500,13 +500,6 @@ def hosted_servers(
     return {server.name: built(server) for server in servers}
 
 
-def uniquely_named(servers: Sequence[ToolServer]) -> None:
-    """Refuse two servers under one name, which would address one tool twice."""
-    names = [server.name for server in servers]
-    if len(names) != len(dict.fromkeys(names)):
-        raise ValueError(f"tool servers must be named uniquely, got {names}")
-
-
 def server_grants(name: str, servers: Sequence[ToolServer]) -> bool:
     """Whether ``name`` is a tool one of these servers serves, as declared.
 

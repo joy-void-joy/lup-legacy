@@ -59,8 +59,9 @@ def test_flags_are_not_patches() -> None:
 def test_a_git_global_before_apply_still_hands_over_the_patch() -> None:
     """A global moves `apply` along, and the patch is read from past it.
 
-    Read where `apply` was written second, `git --no-pager apply fix.patch`
-    named no patch, so nothing it rewrote was put to the gates afterwards.
+    Read as though `apply` were the second word, `git --no-pager apply
+    fix.patch` would name no patch, and nothing it rewrites would be put to
+    the gates afterwards.
     """
     for command in (
         "git --no-pager apply fix.patch",

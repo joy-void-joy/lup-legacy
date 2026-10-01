@@ -8,12 +8,12 @@ path leaves it, because the capture it names is a snapshot of the checkout --
 and a variable is a path that may leave it, since only the run says where it
 lands.
 
-Measured before this, with a snapshot taken: `rm /etc/hosts` was *allowed*,
-and the reason it gave was "the affected paths are captured and restorable" —
-said of a file no snapshot of this checkout has ever held. The settlement row
-that discharges a covered loss had been handed a claim nothing backed, which
-is the same defect `write_checkpoint` closed for a redirection, still open on
-the other spelling of a write.
+Read off the row, with a snapshot taken, `rm /etc/hosts` would be *allowed*,
+with the reason "the affected paths are captured and restorable" — said of a
+file no snapshot of this checkout has ever held. The settlement row that
+discharges a covered loss would be handed a claim nothing backs, the same
+defect `write_checkpoint` keeps out of a redirection, on the other spelling
+of a write.
 """
 
 from pathlib import Path
@@ -36,7 +36,7 @@ def recovered(command: str, root: Path) -> Decision:
 def test_a_capture_of_this_checkout_does_not_discharge_a_loss_beyond_it(
     tmp_path: Path,
 ) -> None:
-    """The hole, stated against the claim the settlement row was making."""
+    """No capture of this checkout is claimed for a file beyond it."""
     verdict = recovered("rm /etc/hosts", tmp_path)
 
     assert verdict.effect == "ask"
@@ -59,7 +59,7 @@ def test_one_operand_outside_the_checkout_answers_for_the_line(
 def test_only_the_operands_the_verb_writes_are_read(tmp_path: Path) -> None:
     """A source `cp` merely reads is an ordinary read, however far out it sits.
 
-    Reading every operand would have been the conservative mistake: it keeps a
+    Reading every operand would be the conservative mistake: it keeps a
     question, and it keeps it for a command that destroys nothing at all.
     """
     scratch = tmp_path / "tmp"
@@ -72,14 +72,14 @@ def test_only_the_operands_the_verb_writes_are_read(tmp_path: Path) -> None:
 def test_an_archive_verb_is_read_the_same_way_its_targets_already_were(
     tmp_path: Path,
 ) -> None:
-    """The verbs that named their targets and still answered from the row.
+    """Verbs that name their targets answer from those targets, not the row.
 
     `archive_lands_on_nothing` reads exactly these paths to grant an
-    extraction that replaces nothing, so the targets were there to be had —
-    and where the grant did not apply, the row's own `boundary_wide` stood
-    and the settlement row discharged it. Measured before this, with a
-    snapshot taken: `gzip /etc/hosts` and `tar -xf a.tgz -C /etc` were both
-    allowed as "captured and restorable".
+    extraction that replaces nothing, so the targets are there to be had —
+    and where the grant does not apply, answering from the row's own
+    `boundary_wide` would let the settlement row discharge it, allowing
+    `gzip /etc/hosts` and `tar -xf a.tgz -C /etc` as "captured and
+    restorable" whenever a snapshot is taken.
     """
     assert recovered("gzip /etc/hosts", tmp_path).effect == "ask"
     assert recovered("gunzip /etc/hosts.gz", tmp_path).effect == "ask"
@@ -87,7 +87,7 @@ def test_an_archive_verb_is_read_the_same_way_its_targets_already_were(
 
 
 def test_work_inside_the_checkout_keeps_the_answer_it_had(tmp_path: Path) -> None:
-    """The everyday case, which the row was already right about.
+    """The everyday case, which the row is right about.
 
     Scratch is disposable by declaration and the object store holds the rest,
     so nothing here changes: this reads the targets to find the losses a
@@ -109,9 +109,9 @@ def test_a_target_only_the_run_resolves_is_not_settled_by_a_capture(
 ) -> None:
     """A write whose path carries an expansion lands wherever the run says.
 
-    Measured before this, with a snapshot taken, every one of these was
+    Read off the row with a snapshot taken, every one of these would be
     allowed as "captured and restorable" -- `> ~/.bashrc` and `> $HOME/x`
-    included, and `sort -o a$X` and `cp f a$X` were granted as the create of a
+    included, and `sort -o a$X` and `cp f a$X` granted as the create of a
     file literally named `a$X`. The snapshot holds this checkout, and nothing
     says `$X` does not climb out of it. A glob is read where it stands, and a
     scratch root reached through its own variable keeps its grant.
@@ -142,10 +142,10 @@ def test_a_patch_sent_outside_the_checkout_is_not_settled_by_its_capture(
     """`--unsafe-paths` is the flag that lets a patch leave the working area.
 
     The row's `boundary_wide` is right for the ordinary apply, which lands in
-    the checkout, and was read for the flagged one too: measured before this,
-    with a snapshot taken, `git apply --unsafe-paths x.patch` was allowed as
-    "captured and restorable". The flag's own effect now says where the write
-    goes, and no capture of this checkout holds it. Reset and switch keep the
+    the checkout, and read for the flagged one too it would allow
+    `git apply --unsafe-paths x.patch` as "captured and restorable" whenever a
+    snapshot is taken. The flag's own effect says where the write goes, and
+    no capture of this checkout holds it. Reset and switch keep the
     targeted loss their flags declare.
     """
     for command in (
@@ -165,9 +165,9 @@ def test_operands_piped_to_xargs_are_not_settled_by_a_capture(
 ) -> None:
     """What xargs appends is on stdin, so no capture was taken of it by name.
 
-    Measured before this, with a snapshot taken: `echo README.md | xargs rm`
-    was allowed as "captured and restorable", judged as a bare `rm` whose
-    missing operands no human-owned rule could match. A reader of the piped
+    Judged as a bare `rm` whose missing operands no human-owned rule can
+    match, `echo README.md | xargs rm` would be allowed as "captured and
+    restorable" whenever a snapshot is taken. A reader of the piped
     names keeps its verdict.
     """
     for command in (

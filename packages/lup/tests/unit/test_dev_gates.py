@@ -258,10 +258,10 @@ def test_a_clone_with_no_local_branch_still_judges_what_landed(
     """The other CI shape: every ref is there, and none of them is local.
 
     A pull request's checkout stands on a detached head and holds each branch
-    as a remote-tracking ref alone. The subject was already read through
-    ``origin/``; the branch it is judged against was not, so
-    `merge-base --is-ancestor` was handed a name resolving to nothing and
-    failed on its second argument. Every landing then read as "has not
+    as a remote-tracking ref alone. Both the subject and the branch it is
+    judged against are read through ``origin/``: read locally, the second
+    hands `merge-base --is-ancestor` a name resolving to nothing, which fails
+    on its second argument. Every landing would then read as "has not
     reached" -- including the integration branch's own, one ref declining to
     have reached itself -- so the gate could never fire on a clone.
     """
@@ -324,10 +324,10 @@ def test_a_note_on_another_ref_reaches_the_branch_it_names(
     """The half that makes any of this arrive in time.
 
     Planted in a repository this test builds, rather than read off whichever
-    deferral happens to be in the tree. An earlier version named a live one
-    and went red the day somebody resolved it — a gate test failing because
-    the gate worked, which teaches the wrong lesson twice: the note had been
-    answered, and the mechanism under test was fine.
+    deferral happens to be in the tree. A test naming a live one goes red the
+    day somebody resolves it — a gate test failing because the gate worked,
+    which teaches the wrong lesson twice: the note is answered, and the
+    mechanism under test is fine.
     """
     root = tmp_path / "planted"
     planted_deferral(root, "elsewhere")
@@ -429,8 +429,8 @@ def test_a_note_the_working_tree_answered_as_solved_stays_answered(
     Resolving a woken deferral is rewriting it as `solved:` with its words
     unchanged. The branch it names does that in its own tree, while the
     integration branch keeps the deferral until the branch lands — so a gate
-    reading only the integration copy stayed red on the one branch that had
-    done what the note asked, with no way to clear it from there.
+    reading only the integration copy would stay red on the one branch that
+    has done what the note asked, with no way to clear it from there.
     """
     root = tmp_path / "planted"
     planted_deferral(root, "elsewhere")

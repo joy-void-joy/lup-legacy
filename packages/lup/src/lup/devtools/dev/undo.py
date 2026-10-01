@@ -31,7 +31,7 @@ the whole of why this module exists: `git stash create` captures only tracked
 files that were modified, so the file you wrote thirty seconds ago and have
 not added yet -- precisely what `rm -rf src/` destroys, and precisely when you
 reach for undo -- is not in it. Measured rather than assumed: against a tree
-holding one new file and two modified ones, `stash create` produced a commit
+holding one new file and two modified ones, `stash create` produces a commit
 containing the two. `git stash create -u` does not help; `create` takes an
 optional *message*, so the `-u` is swallowed as one and the commit comes back
 titled `-u` with the untracked file still absent.
@@ -39,8 +39,8 @@ titled `-u` with the untracked file still absent.
 **What is not captured.** Ignored files. `.gitignore` is honoured, so caches,
 virtual environments and build output stay out -- and so do `.env.local` and
 the resolver's state, which are ignored without being disposable. That is a
-real limit, stated rather than papered over: on the checkout this was built
-in, ignored-but-precious content came to 592 MB against a 21 MB object store,
+real limit, stated rather than papered over: on this repository's own
+checkout, ignored-but-precious content comes to 592 MB against a 21 MB store,
 so capturing it would write twenty-eight times the repository's whole history
 before every mutating command. `git clean -fdx` therefore keeps asking,
 because it is the one command whose whole purpose is destroying what this
@@ -49,8 +49,8 @@ cannot restore. A secret belongs outside the checkout instead.
 **What it costs**, measured on that same checkout: about 7 ms per snapshot
 once the index is warm, and nothing at all in the object store when nothing
 changed, because git addresses content rather than time. Six worktrees
-snapshotting at once took 38 ms in total and added zero bytes; two of them
-produced the identical tree object between them. A snapshot of a tree with one
+snapshotting at once take 38 ms in total and add zero bytes; two of them
+produce the identical tree object between them. A snapshot of a tree with one
 line edited costs about 10 KB, which is why they expire.
 """
 
@@ -60,6 +60,7 @@ from uuid import uuid4
 
 from pydantic import BaseModel, Field
 
+from lup.execution.git import Repository
 from lup.execution.shell import git
 from lup.policy.assets.host import (
     undo_expire,
@@ -210,11 +211,7 @@ def empty_undo_ref(path: Path) -> bool:
 
 def damaged_refs(root: Path) -> list[DamagedUndoRef]:
     """Find the broken loose refs Git omits from its ordinary undo listing."""
-    common = Path(
-        git.out(
-            "-C", str(root), "rev-parse", "--path-format=absolute", "--git-common-dir"
-        )
-    )
+    common = Repository(root).common_dir()
     return [
         DamagedUndoRef(ref=path.relative_to(common).as_posix(), path=path)
         for path in (common / UNDO_NAMESPACE).rglob("*")

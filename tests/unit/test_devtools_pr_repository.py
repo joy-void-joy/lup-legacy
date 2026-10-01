@@ -3,14 +3,15 @@
 `gh` infers its repository from the origin remote, and an SSH alias — a host
 a checkout writes as `alias:owner/name.git` and only the caller's ssh config
 can expand — is not a URL it can parse. :mod:`lup.devtools.dev.branches`
-threads :func:`repository_arguments` through for exactly that reason;
-:mod:`lup.devtools.dev.pr` did not, so `dev pr create` failed with "none of
-the git remotes configured for this repository point to a known GitHub host"
-against a checkout where `dev retire` worked. Both are swept here, because
-which of the two a query lives in is not what decides whether it needs one.
+threads :func:`repository_arguments` through for exactly that reason, and
+:mod:`lup.devtools.dev.pr` has to as well, or `dev pr create` fails with "none
+of the git remotes configured for this repository point to a known GitHub
+host" against a checkout where `dev retire` works. Both are swept here,
+because which of the two a query lives in is not what decides whether it
+needs one.
 
 Naming the repository is half of it. Once `--repo` is given, `gh pr create`
-no longer takes the checkout as saying which branch the request comes from,
+does not take the checkout as saying which branch the request comes from,
 so the head has to be named too — which is why both are pinned together.
 """
 
@@ -143,3 +144,34 @@ def test_every_query_the_pr_commands_make_names_their_repository(
     assert calls, f"no gh calls found in {module} — the sweep found nothing to pin"
     unnamed = [call.lineno for call in calls if not names_repository(call)]
     assert not unnamed, f"gh calls inferring their repository at {module}:{unnamed}"
+
+
+class TestWorktreePullsAreFastForwardOnly:
+    """A bare ``git pull`` obeys ``pull.rebase`` and can rewrite history.
+
+    Under ``pull.rebase=true`` against a stale base, it replays the whole
+    branch onto the remote default and strands the worktree mid-rebase
+    while the caller only logs a warning and reports success. ``--ff-only``
+    fails clean with the working tree untouched, so every pull carries it.
+    """
+
+    def test_every_pull_call_site_passes_ff_only(self) -> None:
+        from lup.devtools.dev import pr
+
+        tree = ast.parse(Path(pr.__file__).read_text(encoding="utf-8"))
+        pulls = [
+            call
+            for call in ast.walk(tree)
+            if isinstance(call, ast.Call)
+            if any(
+                isinstance(arg, ast.Constant) and arg.value == "pull"
+                for arg in call.args
+            )
+        ]
+
+        assert pulls, "no pull call site found in dev.pr"
+        for call in pulls:
+            flags = [arg.value for arg in call.args if isinstance(arg, ast.Constant)]
+            assert "--ff-only" in flags, (
+                f"dev/pr.py:{call.lineno} pulls without --ff-only"
+            )

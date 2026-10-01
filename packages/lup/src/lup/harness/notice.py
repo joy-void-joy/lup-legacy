@@ -11,7 +11,7 @@ between a warning read and a warning scrolled past.
 So urgency travels with the sentence rather than being chosen where it is
 printed. A caller says what kind of thing it is saying; this decides what
 that looks like, once, for every runtime and every surface. The alternative
-was `typer.secho` at fifty call sites, which puts the judgement in fifty
+is `typer.secho` at fifty call sites, which puts the judgement in fifty
 places and makes it unreadable by anything that is not a terminal.
 
 Colour is the terminal's business alone: :func:`typer.echo` strips styling

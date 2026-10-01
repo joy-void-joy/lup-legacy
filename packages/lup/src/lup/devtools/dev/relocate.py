@@ -51,6 +51,7 @@ from typing import Self
 import sh
 from pydantic import BaseModel
 
+from lup.execution.git import Repository
 from lup.execution.shell import git
 
 SOURCE_SUFFIXES = (".py", ".pyi")
@@ -760,8 +761,8 @@ def carry_module(roots: list[Path], move: Relocation) -> MovedModule | None:
         # operands spelled from the caller's directory reads each of them
         # twice — `packages/lup/src/packages/lup/src/...`, which git
         # reports as a bad source rather than as a path it built.
-        top = git.out("-C", str(plan.old.parent), "rev-parse", "--show-toplevel")
-        git.out("-C", top, "mv", str(plan.old.resolve()), str(plan.new.resolve()))
+        top = Repository(plan.old.parent).top()
+        git.out("-C", str(top), "mv", str(plan.old.resolve()), str(plan.new.resolve()))
     else:
         plan.old.rename(plan.new)
     return plan

@@ -190,7 +190,7 @@ def test_a_misspelt_built_in_is_a_type_error_where_it_is_written(
 
 
 def test_two_servers_under_one_name_are_refused() -> None:
-    with pytest.raises(ValidationError, match="named uniquely"):
+    with pytest.raises(ValidationError, match="named apart"):
         ClaudeTools(mcp=[Coordination(), Coordination()])
 
 

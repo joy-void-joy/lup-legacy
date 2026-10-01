@@ -134,7 +134,7 @@ def test_an_address_nobody_spawned_reaches_nobody(tmp_path: Path) -> None:
 def test_an_address_nobody_answers_to_reaches_nobody(tmp_path: Path) -> None:
     """A spelling no member holds resolves to none, rather than to the first.
 
-    There is no token meaning every agent any more. A caller that means all of
+    No token means every agent. A caller that means all of
     them says so with a verb — `notify` for a fact that stays true, and
     `redirect_all` for a stop — and the population is asked at the send rather
     than matched at each read.
@@ -246,9 +246,9 @@ def test_a_process_that_spawned_nothing_reaches_what_another_one_did(
 ) -> None:
     """The door steering a spawn is usually not the process that made it.
 
-    An in-memory registry answered only for its own process, so a console in
-    another terminal — and a run resumed after a park — saw an empty cohort
-    and reported every address as unknown.
+    An in-memory registry answers only for its own process, so a console in
+    another terminal — and a run resumed after a park — would see an empty
+    cohort and report every address as unknown.
     """
     spawning = ActorCohort(tmp_path)
     actor = spawning.actor("refuter")
@@ -312,10 +312,10 @@ def test_a_redirect_stops_whoever_is_working_and_nobody_else(
 ) -> None:
     """A redirect denies a tool call, so a member with no call has none to deny.
 
-    One spawned afterwards was spawned *knowing* about the stop, and refusing
-    its first call with somebody else's reason is the bug the fan-out at send
-    closes. Where the point is a standing fact rather than a stop, that is a
-    notice.
+    One spawned afterwards is spawned *knowing* about the stop, and the
+    fan-out at send keeps its first call from being refused with somebody
+    else's reason. Where the point is a standing fact rather than a stop, that
+    is a notice.
     """
     cohort = ActorCohort(tmp_path)
     early = cohort.actor("analyst")
@@ -622,10 +622,10 @@ async def test_a_suspension_out_of_a_turn_leaves_its_agent_standing(
 
     A suspension is raised in both places a raise can happen. A drain checked
     between rounds comes out of the work, and a host fault comes out of the
-    turn itself — and the turn's own failure path ran first, finishing the
-    agent before anything else was consulted. So of the three suspensions a
-    consumer names, the one that arrives through a turn was the one that did
-    not stand, and the retry it exists for opened a fresh conversation.
+    turn itself — and a turn whose own failure path runs first finishes the
+    agent before anything else is consulted. Then of the three suspensions a
+    consumer names, the one that arrives through a turn would not stand, and
+    the retry it exists for would open a fresh conversation.
     """
 
     class Faulted(Exception):

@@ -6,9 +6,10 @@ them are declarations in the adopting project's own catalog and need no
 mechanism here at all. The ones shaped like a table do, and this is theirs:
 three reach a project as a starting point rather than a fixture — the
 anti-patterns it holds its code to, the shell vocabulary it runs, the edit
-gates it judges its own changes by — and in all three the only way to disagree
-with one entry was to restate the table around it, where a restatement fallen
-behind the library looks exactly like a decision. A project names what it drops
+gates it judges its own changes by — and in all three, without a seam, the only
+way to disagree with one entry is to restate the table around it, where a
+restatement fallen behind the library looks exactly like a decision. A project
+names what it drops
 and adds what the library lacks, keyed on the same id a directive, a denial and
 the generated reference already use, so an override replaces its namesake in
 place rather than sitting beside it.
@@ -49,8 +50,8 @@ from pydantic import BaseModel
 class SelectableRule(BaseModel, ABC, frozen=True):
     """A rule a project may retire or replace by name.
 
-    The id is a method rather than a field because the three tables already
-    name their rules and had no reason to agree on the spelling: an
+    The id is a method rather than a field because the three tables each
+    name their rules and have no reason to agree on the spelling: an
     anti-pattern carries an ``id``, a shell command and an edit rule carry a
     ``name``. Asking each what its id *is* leaves those spellings alone, and
     naming ``ABC`` among the bases says outright that a rule which never
@@ -72,8 +73,7 @@ class Selection[RuleT: SelectableRule](BaseModel, frozen=True):
     """Which of a library table's rules a project holds itself to, plus its own.
 
     An empty selection is the library's table unchanged, which is what a
-    project that has not yet formed an opinion should get and what every
-    project got before this existed.
+    project that has not yet formed an opinion should get.
     """
 
     retired: list[str] = []

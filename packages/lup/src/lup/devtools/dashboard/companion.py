@@ -32,11 +32,10 @@ from typing import Literal
 from urllib.parse import urlsplit
 
 import httpx
-import sh
 from pydantic import BaseModel, Field, ValidationError
-from pydantic_settings import BaseSettings
 
 from lup.channels.models import publish_atomic
+from lup.execution.git import GitError
 from lup.coordination.identity import MEMBER_ENV, NAME_ENV
 from lup.devtools.dashboard.address import AdvertisedDashboard
 from lup.devtools.dashboard.pulse import (
@@ -46,7 +45,7 @@ from lup.devtools.dashboard.pulse import (
     RunningCode,
     repository_name,
 )
-from lup.harness.environment import inside_a_container
+from lup.harness.environment import Placement
 from lup.harness.notice import Notice
 from lup.harness.requirements import SENTINEL_VARIABLE
 from lup.launch.companions import (
@@ -73,7 +72,6 @@ from lup.launch.refusal import LaunchRefused
 from lup.policy.identity import AGENT_IDENTITY_ENV, DASHBOARD_URL_ENV
 from lup.providers.user_config import UserConfigFile
 from lup.sandbox.rail import repository_layout, sibling_worktrees
-from lup.types import EnvVars
 from lup.workspace.context import SESSION_DIR_ENV, SESSION_ID_ENV
 
 logger = logging.getLogger(__name__)
@@ -101,43 +99,13 @@ def session_markers() -> list[str]:
     ]
 
 
-class SessionMarkers(BaseSettings):
-    """The markers a launched session carries, read where only the operator may act."""
-
-    boundary: str = Field(default="", validation_alias=NONCE_VARIABLE)
-    member: str = Field(default="", validation_alias=MEMBER_ENV)
-    agent: str = Field(default="", validation_alias=AGENT_IDENTITY_ENV)
-    session_dir: str = Field(default="", validation_alias=SESSION_DIR_ENV)
-    session_id: str = Field(default="", validation_alias=SESSION_ID_ENV)
-
-    def inside_a_session(self) -> bool:
-        """Whether this process runs within a launched agent session."""
-        return any(
-            (self.boundary, self.member, self.agent, self.session_dir, self.session_id)
-        )
-
-
-def launched_by_an_operator(environment: EnvVars) -> bool:
-    """Whether a launch was opened from a terminal of the operator's, not from a session."""
-    return not any(
-        name in environment and environment[name]
-        for name in (
-            NONCE_VARIABLE,
-            MEMBER_ENV,
-            AGENT_IDENTITY_ENV,
-            SESSION_DIR_ENV,
-            SESSION_ID_ENV,
-        )
-    )
-
-
 def refuse_inside_a_session(command: str) -> None:
     """Refuse a command that is the operator's alone when run from inside a session.
 
     The policy refuses the command before it runs; this is the same answer
     given by the command itself, for a caller the policy never saw.
     """
-    if SessionMarkers().inside_a_session():
+    if Placement.here().in_session:
         raise PermissionError(
             f"`{command}` is the operator's: run it from a terminal "
             "outside the agent session"
@@ -246,7 +214,7 @@ class DashboardRegistry(BaseModel, frozen=True):
         """Record one launch in ``checkout`` for as long as it holds the dashboard."""
         try:
             repository = repository_layout(checkout).common.resolve()
-        except (sh.ErrorReturnCode, OSError):
+        except (GitError, OSError):
             repository = checkout.resolve()
         known = KnownRepository(repository=repository, checkout=checkout.resolve())
         record = LaunchRecord(
@@ -272,7 +240,7 @@ class DashboardRegistry(BaseModel, frozen=True):
                 return known
             try:
                 siblings = sibling_worktrees(known.repository)
-            except (sh.ErrorReturnCode, OSError, ValueError):
+            except (GitError, OSError, ValueError):
                 return None
             present = [path for path in siblings if (path / ".git").exists()]
             return (
@@ -287,13 +255,24 @@ class DashboardRegistry(BaseModel, frozen=True):
         return [known for known in found if known is not None]
 
     def launches(self) -> list[LaunchRecord]:
-        """Every launch still running that holds the dashboard, sweeping the rest."""
+        """Every launch still running that holds the dashboard, sweeping the rest.
+
+        A record kept before its holder carried a scope is adopted where that
+        holder still runs here, and written back so, once.
+        """
 
         def running(path: Path) -> LaunchRecord | None:
-            record = read_model(path, LaunchRecord)
+            kept = read_model(path, LaunchRecord)
+            record = (
+                None
+                if kept is None
+                else kept.model_copy(update={"holder": kept.holder.adopted()})
+            )
             if record is None or not record.holder.running():
                 path.unlink(missing_ok=True)
                 return None
+            if record != kept:
+                publish_atomic(path, record)
             return record
 
         found = [
@@ -538,7 +517,7 @@ class Dashboard(SharedProcess, frozen=True):
 
     @contextmanager
     def held(self, launch: CompanionLaunch) -> Iterator[Contribution]:
-        if inside_a_container(launch.environment):
+        if Placement.of(launch.environment).contained:
             # A session launched from inside a container launches there too,
             # where a dashboard would serve nobody: the one the host holds
             # already reads this checkout's reviews, at the address handed in,
@@ -581,7 +560,7 @@ class Dashboard(SharedProcess, frozen=True):
             registry.registered(launch.root),
             super().held(launch) as contribution,
         ):
-            operator = launched_by_an_operator(launch.environment)
+            operator = not Placement.of(launch.environment).in_session
             addresses = launch_urls(
                 contribution.environment[DASHBOARD_URL_ENV],
                 capability.value,
@@ -797,7 +776,7 @@ def unserved_detail(standing: CompanionStanding) -> str:
 def dashboard_status(dashboard: Dashboard, root: Path) -> DashboardStatus:
     """The dashboard as whoever asks may read it: a session, from its pulse alone."""
     now = datetime.now(UTC)
-    if SessionMarkers().inside_a_session():
+    if Placement.here().in_session:
         return published_status(AdvertisedDashboard(), now)
     standing = dashboard.standing(root)
     registry = DashboardRegistry(directory=standing.place.state)
@@ -875,8 +854,8 @@ def restarted(dashboard: Dashboard, root: Path) -> str:
     Asked of the dashboard itself, behind its capability and from its own
     origin, as the page asks: it restarts in place once no write is in
     flight. Where none serves while sessions hold it, one is started for
-    them from this checkout's code. One that predates restarting itself
-    answers the ask with nothing to take it, and is replaced instead —
+    them from this checkout's code. One whose code has no restart answers
+    the ask with nothing to take it, and is replaced instead —
     stopped, and started from this checkout's code for the sessions holding
     it; with none holding it, stopping is all there is to do.
     """
@@ -918,18 +897,18 @@ def restarted(dashboard: Dashboard, root: Path) -> str:
         case 404 | 405:
             dashboard.stopped(
                 root,
-                why="the operator's restart replaces a dashboard that predates "
-                "restarting itself",
+                why="the operator's restart replaces a dashboard whose code has "
+                "no restart",
                 stays=False,
             )
             if not standing.leases:
                 return (
-                    "The dashboard predated restarting itself and no session held it, "
+                    "The dashboard's code has no restart and no session held it, "
                     "so it was stopped; the next launch starts it."
                 )
             started_for_holders(dashboard, root)
             return (
-                "The dashboard predated restarting itself, so it was replaced: "
+                "The dashboard's code has no restart, so it was replaced: "
                 f"stopped, and started from {root}'s code for the sessions holding it."
             )
         case status:

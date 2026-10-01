@@ -185,11 +185,10 @@ def container_requirement(
     """A reachable container daemon, exercised by asking it its own version.
 
     Asking the daemon rather than asking PATH for a client. The two answers
-    came apart for an entire evening once: a profile exported a socket
-    variable pointing at a runtime that was not installed, so every client
-    redirected to a path that could not exist and reported that it could not
-    reach the daemon -- which reads as a stopped service and sends the reader
-    to restart the wrong thing.
+    come apart where a profile exports a socket variable pointing at a
+    runtime that is not installed: every client redirects to a path that
+    cannot exist and reports that it cannot reach the daemon -- which reads
+    as a stopped service and sends the reader to restart the wrong thing.
 
     ``where`` defaults to the host and ``install`` to nothing, and both
     defaults are load-bearing rather than merely conservative: a container
@@ -363,15 +362,14 @@ def git_requirement(
     where: Side = "host",
     install: list[Package] = [Package(name="git")],
 ) -> Requirement:
-    """Git itself, which every other capability here assumes and none declared.
+    """Git itself, which every other capability here assumes.
 
-    The one external program nothing works without was the one with no
-    declaration: `uv`, the container runtime, `gh` and the clipboard were all
-    exercised, while the program that answers where the checkout is, which
-    worktree holds the lease, and who is committing was simply assumed. What
-    that bought is a machine missing git failing at whichever git call ran
-    first, in that call's own vocabulary, several steps from the one thing to
-    install.
+    The one external program nothing works without is declared like the
+    rest: `uv`, the container runtime, `gh` and the clipboard are all
+    exercised, and the program that answers where the checkout is, which
+    worktree holds the lease, and who is committing is not left assumed.
+    Assumed, a machine missing git fails at whichever git call runs first, in
+    that call's own vocabulary, several steps from the one thing to install.
 
     Exercised inside a repository rather than by ``--version``, for the reason
     `gh` is exercised as authenticated: a git that runs while standing outside
@@ -456,10 +454,10 @@ def socat_requirement(
 
     ``-V`` rather than ``--version``, which socat does not have: asked the
     long way it prints ``E unknown option "--version"`` and exits 1. A prober
-    that spelled one flag for every program it checked read that as a broken
-    socat on every host in the world, and the OS boundary was reported
-    unavailable on machines where it was installed and working -- which is
-    the whole argument for a probe travelling with the program it probes
+    spelling one flag for every program it checks reads that as a broken
+    socat on every host in the world, and reports the OS boundary unavailable
+    on machines where it is installed and working -- which is the whole
+    argument for a probe travelling with the program it probes
     rather than with the code that calls for it.
     """
     return Requirement(
@@ -530,10 +528,9 @@ def clipboard_requirement(
     The spellings come off :func:`~lup.devtools.clipboard.clipboard_probes`
     rather than being listed here, because which one a machine has is a fact
     about its desktop rather than about any project -- and because a list
-    written twice comes apart. It already had: this named four backends
-    including Wayland while the code that reached for a clipboard tried four
-    that did not, so a Wayland machine was told it had a clipboard and then
-    silently failed to use it.
+    written twice comes apart: one naming four backends including Wayland,
+    beside code that reaches for four that do not, tells a Wayland machine it
+    has a clipboard and then silently fails to use it.
 
     Each probe is a *read*. A write would destroy whatever the operator had
     on their clipboard to establish something they never asked about, and a
@@ -603,14 +600,13 @@ def agent_session_requirement(
     ``arguments`` is what the launch says on the command line and this must
     say too, held by the caller because the words are one runtime's own and
     this module stays provider-neutral. It exists because the sentence above
-    was still not true without it: an exercise carrying the mounts, the
-    config home and the network, and *not* carrying the flag that stands the
-    runtime's own sandbox down, opened a session with its settings still
-    saying the sandbox was on -- so it refused for a confinement that cannot
-    start in an unprivileged container and that no launch has ever asked
-    for. A probe answering about a session nobody opens is the one failure
-    this declaration exists to prevent, and it had found a third way to do
-    it.
+    is not true without it: an exercise carrying the mounts, the config home
+    and the network, and *not* carrying the flag that stands the runtime's
+    own sandbox down, opens a session whose settings still say the sandbox
+    is on -- so it refuses for a confinement that cannot start in an
+    unprivileged container and that no launch asks for. A probe answering
+    about a session nobody opens is the one failure this declaration exists
+    to prevent.
     """
     return Requirement(
         capability="contained agent session",
@@ -702,7 +698,7 @@ def proxy_tunnels_requirement(
     ``-x``, deliberately. Those variables are what every other client in the
     session reads, so a probe that bypassed them would prove the proxy works
     while saying nothing about whether anything is pointed at it -- which is
-    exactly the half that was broken.
+    exactly the half that breaks.
 
     The destination is the API the session exists to reach. A generic
     connectivity host would answer a question nobody has: an allowlist that
@@ -874,7 +870,7 @@ def terminal_handoff_requirement(
     together: they are the same handoff, and splitting them would start three
     containers to answer one question.
 
-    Each of the three was measured absent on the first contained session.
+    Each of the three is measured absent from a container nothing hands over.
     ``COLORTERM`` unset is 24-bit colour collapsing to sixteen, with the
     engine's own placeholder ``TERM`` making a truecolour terminal
     indistinguishable from a teletype. An ``EDITOR`` naming nothing runnable
@@ -994,9 +990,9 @@ def codex_envelope_requirement(
 ) -> Requirement:
     """Whether the workspace-write envelope actually refuses a write outside it.
 
-    The counterpart to exercising ``bwrap`` before vouching for it, and it was
-    missing: the Claude path probes its confinement tools and the Codex path
-    asserted the same flag with nothing run at all. A flag set on an envelope
+    The counterpart to exercising ``bwrap`` before vouching for it: the
+    Claude path probes its confinement tools, and without this the Codex path
+    would assert the same flag with nothing run at all. A flag set on an envelope
     nobody tested tells every dispatcher downstream to relax into a boundary
     that may not be there.
 
@@ -1053,8 +1049,8 @@ def inside_placement_requirement(
 ) -> Requirement:
     """Whether a command run for this session lands inside this session's boundary.
 
-    The claim every placement in the policy is read against, and until this
-    ran, the only claim nothing checked. A profile that asks for containment
+    The claim every placement in the policy is read against, held here to
+    what the launch measured. A profile that asks for containment
     and a runtime whose containment did not start read identically from the
     configuration; what separates them is a value only this launch's opening
     argv carries, observed by a command the launch actually ran.
@@ -1301,7 +1297,7 @@ def default_manifest() -> Manifest:
     says true things; one that has an opinion replaces the entries it differs
     on rather than this call. Deliberately carries no JavaScript toolchain:
     most projects on lup have none, and a manifest that invents a
-    prerequisite refuses machines that were fine.
+    prerequisite refuses machines that are fine.
     """
     return Manifest(
         requirements=[

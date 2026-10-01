@@ -1,10 +1,10 @@
 """One answer domain per gate, published and read from the same place.
 
-The defect this shape exists to prevent had already happened: the allowance
-gate offered its answers as suggestions while its only reader tested for a
-literal, so a human's prose grant promoted cleanly and then meant refusal,
-with nothing anomalous to report anywhere. What closes it is not a rule about
-keeping two lists in step — it is that there is one list.
+The defect this shape prevents: a gate offering its answers as suggestions
+while its only reader tests for a literal lets a human's prose grant promote
+cleanly and then mean refusal, with nothing anomalous to report anywhere.
+What prevents it is not a rule about keeping two lists in step — it is that
+there is one list.
 """
 
 from lup.resolver.core import approval_question, assembly_question

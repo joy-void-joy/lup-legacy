@@ -22,7 +22,7 @@ import pytest
 from lup.coordination.identity import mint_member_id
 from lup.coordination.wake import WakePath, wake
 from lup.harness.image import Image
-from lup.harness.messaging import WakeSockets
+from lup.harness.wake_sockets import WakeSockets
 
 # The four directories Claude Code will scan for peers, as its own binary
 # spells them. Written out rather than imported because they are the runtime's
@@ -199,8 +199,8 @@ def test_the_default_is_not_a_directory_the_runtime_scans_for_peers() -> None:
     A directory the runtime scans makes every session in it natively
     reachable by every other, through files that `lup.policy.kernel.peers`
     cannot see because it guards tool calls. Measured the other way round too:
-    a session launched into this directory left the runtime's own holding only
-    the launcher's socket.
+    a session launched into this directory leaves the runtime's own holding
+    only the launcher's socket.
     """
     directory = WakeSockets().directory
 

@@ -3,7 +3,7 @@
 One absolute ``UV_PROJECT_ENVIRONMENT`` and two mounted projects is a single
 directory `uv` makes match whichever project was synced last -- measured on uv
 0.12.7, an exact sync uninstalls the other project and its dependencies. These
-hold the arrangement that replaces it: the value is relative, and each root a
+hold the arrangement that avoids it: the value is relative, and each root a
 session may sync into has a container-private directory bound at that name.
 """
 
@@ -100,9 +100,9 @@ def test_the_mount_point_is_made_here_rather_than_by_the_engine(tmp_path: Path) 
     """Whoever creates it owns it, and the engine's answer is unusable.
 
     Measured on rootless podman 6.1.0 with ``--userns=keep-id``: a mount point
-    the engine had to create was left owned by uid 100000, so the operator's
-    own `uv` failed with `Permission denied` on a path inside their checkout,
-    and nothing in that message names a mount. Made here, it is theirs.
+    the engine has to create is owned by uid 100000, so the operator's own
+    `uv` fails with `Permission denied` on a path inside their checkout, and
+    nothing in that message names a mount. Made here, it is theirs.
     """
     own = checkout(tmp_path / "repo")
     held_environments(own, [], NAME, tmp_path / "c")
@@ -115,8 +115,8 @@ def test_two_worktrees_named_alike_do_not_share_one_directory(tmp_path: Path) ->
 
     Two repositories each holding a `dev` is the ordinary case, not a corner
     one, and a readable name alone puts them in the same directory -- where
-    each sync would uninstall the other, which is the bug this change fixes
-    reappearing inside its own fix.
+    each sync would uninstall the other, the very sharing the per-root
+    directory exists to prevent.
     """
     cache = tmp_path / "cache"
     first = environment_directory(tmp_path / "one" / "dev", cache)

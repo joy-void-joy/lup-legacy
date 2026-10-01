@@ -1,8 +1,8 @@
 """Reading and writing what a project settled about itself.
 
-A default nobody was shown is not a decision, and the seams shipped as
-defaults nobody was shown: an initialization walked the customization markers
-and never reached the declarations behind them. What is pinned here is the
+A default nobody was shown is not a decision, and an initialization walking
+the customization markers alone never reaches the declarations behind them,
+so it would ship the seams as exactly that. What is pinned here is the
 half that makes putting them to a person possible — that a seam can be read
 where it lives, and that an answer lands in the declaration at the depth the
 declaration is written at rather than as a stranger spliced into the file.
