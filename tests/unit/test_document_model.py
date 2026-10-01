@@ -16,6 +16,7 @@ from pathlib import Path
 import yaml
 from tomlkit import TOMLDocument
 
+from lup.formats import digest
 from lup.formats.markdown import MarkdownDocument, Prose
 from lup.formats.toml import edited_manifest
 from lup.formats.yaml import (
@@ -340,3 +341,32 @@ def test_an_edited_manifest_is_left_alone_on_a_dry_run(tmp_path: Path) -> None:
     edited_manifest(manifest, moved, write=False)
 
     assert manifest.read_text(encoding="utf-8") == AUTHORED
+
+
+def test_a_file_that_is_not_there_has_no_digest(tmp_path: Path) -> None:
+    """Missing, a directory, or under a file: one answer for all three."""
+    (tmp_path / "held").write_text("bytes", encoding="utf-8")
+
+    assert digest.file(tmp_path / "held") == digest.text("bytes")
+    assert digest.file(tmp_path / "gone") is None
+    assert digest.file(tmp_path) is None
+    assert digest.file(tmp_path / "held" / "inside") is None
+
+
+def test_parts_cannot_forge_a_neighbour_by_carrying_the_separator() -> None:
+    assert digest.parts(["a\0", "b"]) != digest.parts(["a", "\0b"])
+    assert digest.parts(["ab"]) != digest.parts(["a", "b"])
+
+
+def test_a_tree_digest_frames_each_path_and_mode(tmp_path: Path) -> None:
+    """Moving bytes from one file's name into its content changes the digest."""
+    (tmp_path / "a").write_text("bc", encoding="utf-8")
+    first = digest.tree([tmp_path / "a"], tmp_path)
+    (tmp_path / "a").unlink()
+    (tmp_path / "ab").write_text("c", encoding="utf-8")
+
+    assert digest.tree([tmp_path / "ab"], tmp_path) != first
+    (tmp_path / "ab").chmod(0o755)
+    assert digest.tree([tmp_path / "ab"], tmp_path, modes=True) != digest.tree(
+        [tmp_path / "ab"], tmp_path
+    )

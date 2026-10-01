@@ -19,7 +19,6 @@ cannot be gets a refusal naming what was missing, and the operator decides.
 """
 
 from collections.abc import Callable, Iterator, Mapping, Sequence
-import hashlib
 import json
 import os
 import shlex
@@ -53,6 +52,7 @@ from lup.harness.devices import (
     lease_devices,
     registered_devices,
 )
+from lup.formats import digest
 from lup.harness.egress import PROXY_LABEL, SessionEgress
 from lup.harness.image import (
     ContainerEngine,
@@ -137,7 +137,7 @@ def image_tag(dockerfile: str) -> str:
     name a commit: this is a handle for a thing already in the store, not a
     security claim, and the full digest is on the image's own label.
     """
-    return f"lup-agent:{declaration_digest(dockerfile)[:12]}"
+    return f"lup-agent:{digest.text(dockerfile)[:12]}"
 
 
 def checkout_tag(root: Path) -> str:
@@ -191,11 +191,6 @@ DECLARATION_LABEL = "lup.declaration"
 """The label carrying the digest of the Dockerfile an image was built from."""
 
 
-def declaration_digest(dockerfile: str) -> str:
-    """What this declaration hashes to, for comparing an image against it."""
-    return hashlib.sha256(dockerfile.encode("utf-8")).hexdigest()
-
-
 def image_matches(tag: str, dockerfile: str, engine: ContainerEngine) -> bool:
     """Whether this tag exists *and* was built from this declaration.
 
@@ -221,7 +216,7 @@ def image_matches(tag: str, dockerfile: str, engine: ContainerEngine) -> bool:
         )
     except (sh.CommandNotFound, sh.ErrorReturnCode):
         return False
-    return str(labelled).strip() == declaration_digest(dockerfile)
+    return str(labelled).strip() == digest.text(dockerfile)
 
 
 # lup: ignore[constant-declaration] — an identity this repository defines, not a
@@ -594,7 +589,7 @@ def proxy_matches(name: str, declaration: str, engine: ContainerEngine) -> bool:
         )
     except (sh.CommandNotFound, sh.ErrorReturnCode):
         return False
-    return str(labelled).strip() == declaration_digest(declaration)
+    return str(labelled).strip() == digest.text(declaration)
 
 
 def attached(name: str, network: str, engine: ContainerEngine) -> bool:
@@ -702,7 +697,7 @@ def start_egress(
             # reports an error naming exactly the absence this wanted.
             client(*argv, _ok_code=list(range(256)))
     if not network_present(network, engine):
-        client(*egress.network_arguments(project, declaration_digest(declaration)))
+        client(*egress.network_arguments(project, digest.text(declaration)))
     if running(egress.proxy_name(project), engine) and proxy_matches(
         egress.proxy_name(project), declaration, engine
     ):
@@ -739,7 +734,7 @@ def start_egress(
     try:
         client(
             *egress.proxy_arguments(
-                project, configuration, resolvers, declaration_digest(declaration)
+                project, configuration, resolvers, digest.text(declaration)
             )
         )
         client(*egress.connect_arguments(project))
@@ -1570,7 +1565,7 @@ def network_matches(name: str, declaration: str, engine: ContainerEngine) -> boo
         )
     except (sh.CommandNotFound, sh.ErrorReturnCode):
         return False
-    return str(labelled).strip() == declaration_digest(declaration)
+    return str(labelled).strip() == digest.text(declaration)
 
 
 def network_present(name: str, engine: ContainerEngine) -> bool:
@@ -1620,7 +1615,7 @@ def build_image(
         "-t",
         tag,
         "--label",
-        f"{DECLARATION_LABEL}={declaration_digest(rendered)}",
+        f"{DECLARATION_LABEL}={digest.text(rendered)}",
         "-f",
         str(dockerfile),
         "--build-arg",

@@ -1,6 +1,5 @@
 """Codex CLI evidence, cache verification, and explicit plugin installation."""
 
-import hashlib
 import json
 import shutil
 from collections.abc import Callable, Iterator
@@ -15,6 +14,7 @@ from pydantic import BaseModel, Field
 
 from lup.channels.models import write_atomic
 from lup.execution.locks import exclusive
+from lup.formats import digest
 from lup.providers.codex.login import CODEX_LOGIN
 from lup.providers.codex.app_server import native_command
 from lup.harness.environment import inherited
@@ -118,7 +118,6 @@ def digest_directory(root: Path, read_content: Callable[[Path], bytes]) -> str |
     """Hash deployable relative paths and modes with caller-normalized bytes."""
     if not root.is_dir():
         return None
-    digest = hashlib.sha256()
     files = sorted(
         path
         for path in root.rglob("*")
@@ -126,15 +125,7 @@ def digest_directory(root: Path, read_content: Callable[[Path], bytes]) -> str |
         and "__pycache__" not in path.relative_to(root).parts
         and path.suffix not in {".pyc", ".pyo"}
     )
-    for path in files:
-        relative = path.relative_to(root).as_posix()
-        digest.update(relative.encode("utf-8"))
-        digest.update(b"\0")
-        digest.update(b"x" if path.stat().st_mode & 0o111 else b"-")
-        digest.update(b"\0")
-        digest.update(read_content(path))
-        digest.update(b"\0")
-    return digest.hexdigest()
+    return digest.tree(files, root, modes=True, read=read_content)
 
 
 def plugin_content_digest(root: Path) -> str | None:
@@ -267,21 +258,21 @@ def revision_snapshot(source_root: Path, revision: str, parent: Path) -> Path:
     renamed into place, so an interrupted write is never mounted and a
     session reading an older snapshot never has it rewritten under it.
     """
-    digest = plugin_content_digest(source_root)
-    if digest is None:
+    content = plugin_content_digest(source_root)
+    if content is None:
         raise FileNotFoundError(f"Codex plugin source does not exist: {source_root}")
     if Path(revision).name != revision or Version.parse(revision).build != (
-        f"codex.{digest}"
+        f"codex.{content}"
     ):
         raise ValueError(
             f"Codex revision {revision!r} does not name the plugin content at "
             f"{source_root}. The source changed while the launch prepared it; "
             "launch again."
         )
-    named = hashlib.sha256(f"{revision}\n{digest}".encode()).hexdigest()
+    named = digest.text(f"{revision}\n{content}")
     target = parent / named[:16]
     if target.is_dir():
-        if plugin_content_digest(target / revision) != digest:
+        if plugin_content_digest(target / revision) != content:
             raise ValueError(
                 f"The held Codex revision at {target} no longer holds the content "
                 "it was written with. Remove it on the host and launch again."

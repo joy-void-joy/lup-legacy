@@ -14,6 +14,7 @@ import pytest
 import sh
 
 import lup.launch.container as contained
+from lup.formats import digest
 from lup.launch.refusal import LaunchRefused
 from lup.harness.egress import AllowedHost, PROXY_LABEL, SessionEgress, Unproxied
 from lup.harness.image import Docker, Image
@@ -710,7 +711,7 @@ def engine_answering(
     machine running the test.
     """
     monkeypatch.setattr(contained, "host_resolv_conf", lambda *_: resolv)
-    current = contained.declaration_digest(
+    current = digest.text(
         SessionEgress().declaration(SessionEgress().resolvers_for(resolv))
     )
     issued: list[list[str]] = []
@@ -842,7 +843,7 @@ def test_a_network_carrying_the_current_declaration_is_left_alone(
     """Rebuilding one every launch would take the proxy with it every time."""
     resolv = "nameserver 192.168.0.1\n"
     monkeypatch.setattr(contained, "host_resolv_conf", lambda *_: resolv)
-    current = contained.declaration_digest(
+    current = digest.text(
         SessionEgress().declaration(SessionEgress().resolvers_for(resolv))
     )
     issued: list[list[str]] = []

@@ -6,7 +6,6 @@ flow through the ``Materializer`` seam; its ``MaterializationResult`` is
 defined here because materializers are the only producers.
 """
 
-import hashlib
 import os
 from collections.abc import Callable, Iterable
 from pathlib import Path
@@ -14,6 +13,7 @@ from pathlib import Path
 from pydantic import BaseModel
 
 from lup.channels.models import write_atomic
+from lup.formats import digest
 from lup.harness.contracts import Materializer
 from lup.harness.models import Artifact
 from lup.harness.reconciliation import ReconciliationProposal
@@ -82,13 +82,6 @@ def refused_write(error: OSError) -> MaterializationRefusedError:
     )
 
 
-def file_digest(path: Path) -> str | None:
-    """Hash a file if it currently exists."""
-    if not path.exists():
-        return None
-    return hashlib.sha256(path.read_bytes()).hexdigest()
-
-
 def safe_target(root: Path, relative: Path) -> Path:
     """Resolve a managed path while rejecting a symlink escape from its root."""
     resolved_root = root.resolve()
@@ -148,7 +141,7 @@ class AtomicMaterializer(Materializer):
             )
         for write in proposal.writes:
             path = safe_target(proposal.root, write.artifact.path)
-            actual = file_digest(path)
+            actual = digest.file(path)
             if actual != write.previous_sha256:
                 raise MaterializationConflictError(
                     f"stale base for {write.artifact.path}: expected "
@@ -162,7 +155,7 @@ class AtomicMaterializer(Materializer):
                     )
         for deletion in proposal.deletes:
             path = safe_target(proposal.root, deletion.path)
-            actual = file_digest(path)
+            actual = digest.file(path)
             if actual != deletion.prior_ownership_sha256:
                 raise MaterializationConflictError(
                     f"ownership proof changed for {deletion.path}"

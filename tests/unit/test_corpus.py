@@ -14,7 +14,7 @@ from lup.coordination.refs import ActorRef
 from lup.ledger.journal import LedgerRefusal, LedgerStore
 from lup.ledger.models import LedgerNode
 from lup.ledger.cite import cites_in, read_cites
-from lup.ledger.files import digest_of
+from lup.formats import digest
 from lup_template.corpus import (
     Artifact,
     Claim,
@@ -41,7 +41,9 @@ def backed(root: Path, store: LedgerStore, scope: Path) -> tuple[Claim, Artifact
     validation = Validation(
         schema_id="pytest",
         subject_digest="abc",
-        scope=[Scoped(path=str(scope.relative_to(root)), digest=digest_of(scope))],
+        scope=[
+            Scoped(path=str(scope.relative_to(root)), digest=digest.file(scope) or "")
+        ],
     )
     artifact = store.record(
         Artifact, "run.log", attachments=[b"ok"], validation=validation.model_dump()

@@ -9,7 +9,7 @@ failure these hold still.
 
 from pathlib import Path
 
-from lup.launch.container import declaration_digest
+from lup.formats import digest
 from lup.harness.egress import SessionEgress
 from lup.harness.image import Image
 
@@ -69,8 +69,8 @@ def test_an_image_built_from_a_different_declaration_is_stale() -> None:
     actually ran in, because from the outside a stale image and a current one
     are the same tag.
     """
-    assert declaration_digest("FROM a") != declaration_digest("FROM b")
-    assert declaration_digest("FROM a") == declaration_digest("FROM a")
+    assert digest.text("FROM a") != digest.text("FROM b")
+    assert digest.text("FROM a") == digest.text("FROM a")
 
 
 def test_a_session_with_no_proxy_address_is_handed_no_variables() -> None:

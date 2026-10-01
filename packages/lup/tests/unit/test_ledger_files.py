@@ -4,7 +4,8 @@ the tree still holds those bytes."""
 from pathlib import Path
 
 from lup.coordination.refs import ActorRef
-from lup.ledger.files import File, digest_of
+from lup.formats import digest
+from lup.ledger.files import File
 from lup.ledger.journal import LedgerStore
 from lup.ledger.models import Surroundings
 
@@ -21,7 +22,7 @@ def test_a_file_is_pinned_when_recorded_and_stands_while_its_bytes_do(
 
     node = store.record(File, "", path="src/parser.py")
 
-    assert node.title == "src/parser.py" and node.digest == digest_of(target)
+    assert node.title == "src/parser.py" and node.digest == digest.file(target)
     assert store.standing(node).label == "fresh"
     target.write_text("two", encoding="utf-8")
     stale = store.standing(node)

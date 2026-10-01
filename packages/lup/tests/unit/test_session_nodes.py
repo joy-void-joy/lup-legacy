@@ -23,7 +23,7 @@ import lup.sessions.capabilities as capabilities
 from lup.channels.models import utc_now
 from lup.coordination.refs import ActorRef
 import lup.launch.session as launch_session
-from lup.ledger.files import digest_of
+from lup.formats import digest
 from lup.ledger.journal import LedgerStore
 from lup.ledger.models import Surroundings
 from lup.ledger.tools import NoInput, RecordInput, create_ledger_tools
@@ -99,7 +99,7 @@ async def test_opening_and_closing_a_session_records_then_amends_one_node(
     [closed] = store.read(Session)
     assert closed.id == opened.id and closed.ended is not None
     assert closed.outcome == "completed" and closed.finished()
-    assert closed.journal_digest == digest_of(notes.trace_log)
+    assert closed.journal_digest == digest.file(notes.trace_log)
     # One record and one amendment: nothing was rewritten, the log grew.
     assert len(store.lines()) == 2
 
@@ -188,7 +188,7 @@ def test_an_output_records_a_node_pointing_at_its_session(
     [output] = store.read(Output)
     assert output.path == written.relative_to(tmp_lup_project).as_posix()
     assert output.title == output.path and output.checkout == str(tmp_lup_project)
-    assert output.session == notes.record.id and output.digest == digest_of(written)
+    assert output.session == notes.record.id and output.digest == digest.file(written)
     assert store.standing(output).label == "fresh"
     [edge] = store.edges()
     assert (edge.kind, edge.source, edge.target) == (
@@ -294,7 +294,7 @@ def test_a_harness_launch_records_its_transcript_directory(launched: Path) -> No
 
     [closed] = store.read(Session)
     assert closed.outcome == "completed"
-    assert closed.journal_digest == digest_of(launched / closed.journal)
+    assert closed.journal_digest == digest.file(launched / closed.journal)
     assert store.standing(closed).label == "fresh"
 
 
@@ -389,7 +389,7 @@ def test_a_swept_session_pins_the_journal_as_the_tree_holds_it(
 
     assert closed.directory == spelled_under(directory, tmp_lup_project)
     assert closed.journal.startswith("notes/traces/1.2.3/logs/clean/")
-    assert closed.journal_digest == digest_of(closed.journal_path())
+    assert closed.journal_digest == digest.file(closed.journal_path())
     assert store.standing(closed).label == "fresh"
     closed.journal_path().write_text("one more line\n", encoding="utf-8")
     assert store.standing(closed).label == "stale"
@@ -418,7 +418,9 @@ def test_index_notes_records_one_output_per_result_about_its_session(
     [session] = swept.sessions()
     [output] = swept.outputs()
     assert output.path.startswith("notes/traces/1.2.3/sessions/clean/")
-    assert output.session == session.id and output.digest == digest_of(output.held_at())
+    assert output.session == session.id and output.digest == digest.file(
+        output.held_at()
+    )
     assert store.standing(output).label == "fresh"
     [edge] = store.edges()
     assert (edge.kind, edge.source, edge.target) == (
@@ -449,7 +451,7 @@ def test_index_notes_reads_a_launchs_outcome_off_its_observable_journal(
     # record says nothing rather than taking the version running the sweep.
     assert closed.agent_version == ""
     assert closed.journal == f"notes/harness/claude/{done.name}/observable.jsonl"
-    assert closed.journal_digest == digest_of(closed.journal_path())
+    assert closed.journal_digest == digest.file(closed.journal_path())
     assert closed.started == parse_timestamp(done.name).astimezone()
     assert store.standing(closed).label == "fresh"
     assert swept.outputs() == []
