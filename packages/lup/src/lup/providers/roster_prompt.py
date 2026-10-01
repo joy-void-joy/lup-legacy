@@ -144,6 +144,41 @@ main()
 '''
 
 
+def answering_entry_body(module: str) -> str:
+    """The script a guard runs for a host half that only decides one event.
+
+    A hook of that kind reads one JSON event on stdin and answers with one
+    JSON envelope on stdout or with nothing, and every one of them fails
+    open: an event it cannot read or decide is let through as it came. So
+    the read, the answer and the silence are written here once, and the host
+    half exposes ``decided(payload)`` and nothing else — the caller hook's
+    and the subagent cleanup fold's halves, on both runtimes. The search path
+    is named as :func:`entry_body` names it, for the same reason.
+    """
+    return f'''"""Entry point for {module}, run as a bare script."""
+
+import json
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).parent))
+from {module} import decided
+
+
+def main() -> None:
+    """Answer the event on stdin, or say nothing and let it through as it came."""
+    try:
+        answer = decided(json.load(sys.stdin))
+    except Exception:
+        return
+    if answer is not None:
+        print(json.dumps(answer))
+
+
+main()
+'''
+
+
 def guard_body(
     event: str, entry: str, home_env: str = "", events: tuple[str, ...] = ()
 ) -> str:

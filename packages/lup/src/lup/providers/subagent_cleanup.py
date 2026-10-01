@@ -4,10 +4,12 @@
 # them differently is a caller free to ship a guard that reaches nothing.
 """What a plugin ships so a subagent's report waits for its background work.
 
-Two things travel, registered only where the hook set declares the cleanup:
-a shell guard that exits without starting an interpreter where none is
-found, and the runtime's host half of the fold, shipped verbatim beside the
-kernel it imports. The guard is registered under the subagent events that
+Three things travel, registered only where the hook set declares the
+cleanup: a shell guard that exits without starting an interpreter where none
+is found, a generated entry that names the runtime directory as a search
+path, reads each event, asks the host half and prints its answer, and the
+runtime's host half of the fold, shipped verbatim beside the kernel it
+imports. The guard is registered under the subagent events that
 runtime answers to — its start, where the fold adds the one sentence saying
 what the subagent arms is its own to stop, and its stop, where the fold
 refuses the report once while any of that work is still listed. A runtime
@@ -24,15 +26,16 @@ from pathlib import Path
 
 from lup.formats.banner import REGENERATE_COMMAND, VERBATIM_COPY, GeneratedBanner
 from lup.harness.models import Artifact, HookSet
-from lup.providers.roster_prompt import PromptHook, hook_entry
+from lup.providers.roster_prompt import PromptHook, answering_entry_body, hook_entry
 
 GUARD_SCRIPT = "subagent_cleanup.sh"
 RUNTIME_ENTRY = "subagent_cleanup.py"
-"""What the plugin carries: the guard, and the host half the guard runs."""
+HOST_MODULE = "cleanup_payload"
+"""What the plugin carries: the guard, the entry it runs, and the host half."""
 
 
 def guard_body(entry: str) -> str:
-    """A guard that hands over to the host half, and exits zero otherwise.
+    """A guard that hands over to the entry, and exits zero otherwise.
 
     Every failure exits zero. A subagent's report is not something a broken
     fold may stop: the cost of being wrong that way is one leaked task, which
@@ -90,8 +93,14 @@ def cleanup_hooks(
                 banner=GeneratedBanner(source=__name__, command=REGENERATE_COMMAND),
                 executable=True,
             ),
-            Artifact(
+            Artifact.generated(
                 path=plugin_root / "hooks" / "runtime" / RUNTIME_ENTRY,
+                body=answering_entry_body(HOST_MODULE),
+                semantic_id=source.id,
+                banner=GeneratedBanner(source=__name__, command=REGENERATE_COMMAND),
+            ),
+            Artifact(
+                path=plugin_root / "hooks" / "runtime" / f"{HOST_MODULE}.py",
                 content=host,
                 semantic_id=source.id,
                 banner=VERBATIM_COPY.compiled_from(host_origin),
