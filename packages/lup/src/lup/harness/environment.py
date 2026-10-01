@@ -12,7 +12,7 @@ the child project must select its own environment from its working directory.
 """
 
 from collections.abc import Mapping
-from typing import Literal, Self
+from typing import Self
 
 from pydantic import BaseModel, Field
 from pydantic_settings import BaseSettings, PydanticBaseSettingsSource
@@ -62,8 +62,6 @@ class PlacementEnv(BaseSettings, extra="ignore"):
     agent: str = Field(default="", validation_alias=AGENT_IDENTITY_ENV)
     session_dir: str = Field(default="", validation_alias=SESSION_DIR_ENV)
     session_id: str = Field(default="", validation_alias=SESSION_ID_ENV)
-    claude_home: str | None = Field(default=None, validation_alias="CLAUDE_CONFIG_DIR")
-    codex_home: str | None = Field(default=None, validation_alias="CODEX_HOME")
 
 
 class GivenPlacementEnv(PlacementEnv):
@@ -94,8 +92,16 @@ class Placement(BaseModel, frozen=True):
     boundary: a shell that exported one on the host costs that process what
     the hint withholds there and nothing else. What the launch *measured*
     is the boundary ledger's, which the policy host reads.
+
+    Which runtime's session a process is in is not among them: it is read
+    off the configuration-home variable each launcher exports, which only
+    the providers may spell, by :func:`~lup.providers.runtime_homes.selected_runtime`.
     """
 
+    # lup: defer: carry `runtime` here once this module holds the sanctioned
+    # whole-environment reader (`inherited`, on refactor-lib-files-state):
+    # `here()` then asks selected_runtime of that environment rather than
+    # devtools/harness/launch.py reading os.environ for it
     contained: bool = False
     """Inside a session's container: the image bakes ``LUP_CONTAINED=1``."""
 
@@ -106,9 +112,6 @@ class Placement(BaseModel, frozen=True):
     """Inside an agent session: a launch hands each one its boundary nonce, a
     roster identity, an agent identity or a session directory, and a command
     the operator runs from a terminal carries none of them."""
-
-    runtime: Literal["claude", "codex"] | None = None
-    """Which runtime's session, by the configuration home its launcher selected."""
 
     @classmethod
     def of(cls, environment: EnvVars) -> Self:
@@ -134,13 +137,6 @@ class Placement(BaseModel, frozen=True):
                     variables.session_dir,
                     variables.session_id,
                 )
-            ),
-            runtime=(
-                "claude"
-                if variables.claude_home is not None
-                else "codex"
-                if variables.codex_home is not None
-                else None
             ),
         )
 

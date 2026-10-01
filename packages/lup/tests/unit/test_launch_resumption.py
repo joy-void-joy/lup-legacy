@@ -84,7 +84,9 @@ def test_a_contradicted_request_never_reaches_a_runtime(
 
     root = checkout(tmp_path)
     caught = stub_host(monkeypatch, root)
-    contradicted = launch.LaunchArguments(resume=Resumption(pick=True, session="abc123"))
+    contradicted = launch.LaunchArguments(
+        resume=Resumption(pick=True, session="abc123")
+    )
 
     with pytest.raises(typer.BadParameter):
         launch.launch_claude(

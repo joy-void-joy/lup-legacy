@@ -13,6 +13,7 @@ from lup.harness.environment import Placement, PlacementEnv
 from lup.launch.preflight import NONCE_VARIABLE
 from lup.policy.assets.host import sandbox_active
 from lup.policy.identity import AGENT_IDENTITY_ENV
+from lup.providers.runtime_homes import selected_runtime
 from lup.workspace.context import SESSION_DIR_ENV, SESSION_ID_ENV
 
 
@@ -21,7 +22,6 @@ def test_nothing_set_is_the_operators_terminal() -> None:
 
     assert placement.host
     assert not placement.in_session
-    assert placement.runtime is None
 
 
 def test_a_sandboxed_session_on_the_host_is_neither_contained_nor_the_host() -> None:
@@ -65,19 +65,20 @@ def test_an_empty_marker_names_no_session() -> None:
     [
         ({"CLAUDE_CONFIG_DIR": "/home/someone/.claude"}, "claude"),
         ({"CODEX_HOME": "/home/someone/.codex"}, "codex"),
+        ({}, None),
     ],
 )
 def test_the_runtime_is_the_configuration_home_its_launcher_selected(
-    environment: dict[str, str], runtime: str
+    environment: dict[str, str], runtime: str | None
 ) -> None:
-    assert Placement.of(environment).runtime == runtime
+    assert selected_runtime(environment) == runtime
 
 
 def test_a_launchs_environment_is_read_without_this_processs(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("LUP_CONTAINED", "1")
-    monkeypatch.setenv("CODEX_HOME", "/home/someone/.codex")
+    monkeypatch.setenv("LUP_SANDBOX_ACTIVE", "1")
 
     assert Placement.of({}) == Placement()
     assert Placement.here().contained
