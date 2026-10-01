@@ -2,6 +2,40 @@
 
 ## Unreleased
 
+### The dashboard supervises agents, and the person is a peer among them
+
+- The dashboard's stream says, for every agent, the runtime it runs in, the
+  session that spawned it, its runtime process and whether the dashboard
+  could stop it, and its latest twelve calls with what became of each. The
+  person's own row in each repository rides it as a `user` event, and the
+  whole state names the supervision this server serves.
+- An agent's transcript reads a page at a time from its end
+  (`GET …/sessions/<member>/transcript`), and one a tab follows
+  (`POST /api/transcripts/follow`) streams in `transcript` frames.
+- The message route takes `in_reply_to`, `redirect` and `priority: "now"`.
+  `now` stops the agent's turn for the message. On Claude Code 2.1.285,
+  measured, a generating turn ends at once and a running tool call finishes
+  first. On Codex 0.159.2, measured, the turn is stopped through its home's
+  app-server (`turn/interrupt`), even mid-command, and its queue takes the
+  message as the next turn (`lup.providers.codex.interrupt`).
+- New routes, each behind the page's capability and origin check: wake an
+  agent, rename it, stop its runtime (only in the dashboard's own pid
+  namespace, with its pid and start time checked), broadcast to a
+  repository, post and withdraw notices, say what you are on, hold and give
+  back paths, mark your inbox read, and post into a discussion to everyone
+  in it. A `DELETE` is held to the origin check a `POST` is.
+- Every message names its post and its thread. `coordination_send` takes
+  `thread` and `in_reply_to`, so an agent answers a discussion to everyone in
+  it; its output is `{post, thread, reached, refused}`, where it was
+  `{address, delivery, outstanding}`. What an agent is handed names the post,
+  and a discussion's messages are headed `[discussion «…» · with … · thread …]`.
+- The person's holds count: an agent writing under one is asked, told `held
+  by user — the operator locked this path`, and `coordination_peers` lists
+  the person's row last.
+- A redirect a wake carried still refuses the agent's next tool call. A wake
+  that reached used to hand the redirect over with everything else, so the
+  delivery hook never saw it and the next call went through.
+
 ### What a session's tools did, and whether its transcript holds, have readers
 
 - `uv run lup-devtools tools metrics` shows each tool's calls, errors, error
