@@ -488,9 +488,8 @@ def test_a_starters_record_written_after_the_look_is_waited_for(
     """The race a holder lost: the starter had collected its child and not yet written how."""
     slot = CompanionSlot(directory=tmp_path)
     landing = threading.Timer(0.3, slot.keep, args=(ended_as(-signal.SIGKILL),))
-    landing.start()
-
     began = time.monotonic()
+    landing.start()
     status = slot.ended(gone(LiveProcess.of(os.getpid())), within=5.0, every=0.01)
     took = time.monotonic() - began
     landing.join()
