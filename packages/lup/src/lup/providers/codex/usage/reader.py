@@ -9,7 +9,7 @@ and simply has no legend to draw.
 
 import asyncio
 import os
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import sh
@@ -161,7 +161,7 @@ class CodexUsageReader(UsageReader):
         )
         if not detail:
             return report
-        anchor = windows[0].resets_at if windows else datetime.now(timezone.utc)
+        anchor = windows[0].resets_at if windows else datetime.now(UTC)
         return report.model_copy(update={"daily": days_from(usage, anchor)})
 
 

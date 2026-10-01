@@ -17,11 +17,12 @@ import asyncio
 import logging
 from collections.abc import AsyncGenerator, Awaitable, Callable
 from contextlib import AbstractAsyncContextManager, asynccontextmanager
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from lup.channels.models import utc_now
 from lup.sessions.capabilities import SessionEngine, SessionWrapper, TurnEngine
 from lup.sessions.errors import QuotaExceededError
 from lup.sessions.events import (
@@ -56,11 +57,6 @@ class QuotaWaitEvent(BaseModel, frozen=True):
 type QuotaWaitSink = Callable[[QuotaWaitEvent], Awaitable[None]]
 type QuotaSleeper = Callable[[float], Awaitable[None]]
 type NowProvider = Callable[[], datetime]
-
-
-def utc_now() -> datetime:
-    """The aware wall clock allowance resets are measured against."""
-    return datetime.now(UTC)
 
 
 class QuotaWaitingTurn[T: BaseModel | None](TurnEngine[T]):

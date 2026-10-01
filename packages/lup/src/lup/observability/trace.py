@@ -27,12 +27,12 @@ import json
 import logging
 import re
 from collections.abc import Sequence
-from datetime import datetime
 from pathlib import Path
 from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from lup.channels.models import utc_now
 from lup.observability.blocks import extract_block_info, truncate_str
 from lup.types import LupContentBlock, normalize_content
 
@@ -174,7 +174,7 @@ class TraceLogger(BaseModel, arbitrary_types_allowed=True):
         """Initialize the trace with header."""
         if not self.entries:
             self.append_entry(f"# Trace: {self.title}\n")
-            self.append_entry(f"*Generated: {datetime.now().isoformat()}*\n\n")
+            self.append_entry(f"*Generated: {utc_now().isoformat()}*\n\n")
 
     @property
     def events_path(self) -> Path:
@@ -186,7 +186,7 @@ class TraceLogger(BaseModel, arbitrary_types_allowed=True):
         self.entries.append(
             TraceEntry(
                 index=len(self.entries),
-                timestamp=datetime.now().isoformat(),
+                timestamp=utc_now().isoformat(),
                 content=content,
             )
         )
@@ -218,7 +218,7 @@ class TraceLogger(BaseModel, arbitrary_types_allowed=True):
         block emits the ``tool_call`` event with name + ok/error + brief.
         Assistant text that voices a capability request emits one too.
         """
-        now = datetime.now().isoformat()
+        now = utc_now().isoformat()
         opened, invoked = block.opens_pairing, block.tool_call_name
         if opened is not None and invoked is not None:
             self.tool_names[opened] = invoked
@@ -258,7 +258,7 @@ class TraceLogger(BaseModel, arbitrary_types_allowed=True):
             self.emit_event(
                 TraceEvent(
                     kind="capability_request",
-                    timestamp=datetime.now().isoformat(),
+                    timestamp=utc_now().isoformat(),
                     brief=request,
                 )
             )

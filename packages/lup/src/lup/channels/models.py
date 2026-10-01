@@ -145,7 +145,24 @@ def publish_atomic(
 
 
 def utc_now() -> datetime:
+    """Now, as every stamp this library records it: aware, in UTC.
+
+    One clock for everything that is written down and later compared, so a
+    stamp from one process and a stamp from another — or from a session, a
+    trace and a ledger — order by the moment they name rather than by the
+    zone each writer happened to run in.
+    """
     return datetime.now(UTC)
+
+
+def aware(moment: datetime) -> datetime:
+    """A moment that compares with any other: a naive one read as this machine's local time.
+
+    What a stamp written before every writer recorded UTC, or a bound a
+    person typed without a zone, means — the time on the clock in front of
+    them — so it is pinned to that zone rather than refused or read as UTC.
+    """
+    return moment if moment.tzinfo is not None else moment.astimezone()
 
 
 LOCAL_STAMP_FORMAT = "%a %H:%M %Z"

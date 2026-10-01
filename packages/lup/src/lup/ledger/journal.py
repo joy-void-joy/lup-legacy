@@ -49,7 +49,7 @@ from uuid import uuid4
 
 from pydantic import BaseModel, TypeAdapter, ValidationError
 
-from lup.channels.models import utc_now
+from lup.channels.models import aware, utc_now
 from lup.coordination.refs import ActorRef
 from lup.ledger.blobs import BlobStores
 from lup.ledger.kinds import kind_of
@@ -86,7 +86,7 @@ def moment(line: JsonObject) -> datetime:
         at = datetime.fromisoformat(str(line["at"]))
     except ValueError:
         return datetime.min.replace(tzinfo=UTC)
-    return at if at.tzinfo is not None else at.astimezone()
+    return aware(at)
 
 
 class Stored(BaseModel, frozen=True):
@@ -434,8 +434,9 @@ class LedgerStore:
         moment is read as local time, which is what a reader pasting a clock
         reading means by it.
         """
-        marker = since if since.tzinfo is not None else since.astimezone()
-        moved = dict.fromkeys(touch.id for touch in self.touches() if touch.at > marker)
+        moved = dict.fromkeys(
+            touch.id for touch in self.touches() if touch.at > aware(since)
+        )
         if ids is None:
             return list(moved)
         return [node_id for node_id in ids if node_id in moved]
