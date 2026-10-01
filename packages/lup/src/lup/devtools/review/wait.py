@@ -53,6 +53,7 @@ import typer
 from pydantic import BaseModel, ValidationError
 
 from lup.coordination.identity import session_member_id
+from lup.workspace.checkout_state import CheckoutState
 from lup.coordination.repository import RepositoryPeers
 from lup.coordination.wake import WakePath, wake
 from lup.devtools.review.preimages import PreimageWatch, moved
@@ -179,7 +180,7 @@ class ReviewWaiters(BaseModel, frozen=True):
     root: Path
 
     def path(self, review: str) -> Path:
-        return self.root / ".lup" / "review-waiters" / review
+        return CheckoutState(root=self.root).review_waiters() / review
 
     def report(self, review: str, at: datetime) -> None:
         """Record that the operator's words given *at* reached the session through this waiter."""
@@ -340,7 +341,7 @@ def claimed(root: Path, question: QuestionRecord) -> bool:
     The claim the hook takes for a retry, under the same name, so exactly
     one of them ever carries the approved call out.
     """
-    claim = root / ".lup/review-claims" / question.id
+    claim = CheckoutState(root=root).review_claims() / question.id
     claim.parent.mkdir(parents=True, exist_ok=True)
     try:
         with claim.open("x", encoding="utf-8") as handle:
@@ -717,7 +718,7 @@ def wait_on(
     ``timeout`` it was handed passed, or its runtime stopped it -- saying
     last which, and the command that waits on them again.
     """
-    store = QuestionRelay(root / ".lup/questions.jsonl")
+    store = QuestionRelay(CheckoutState(root=root).questions())
     asker = Asker.here(root)
     try:
         waiting = chosen(store, asker, reviews)

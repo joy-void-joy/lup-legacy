@@ -30,6 +30,7 @@ from rich.console import Console
 from rich.syntax import Syntax
 
 from lup.coordination.bare import store as roster
+from lup.workspace.checkout_state import CheckoutState
 from lup.coordination.identity import session_member_id
 from lup.coordination.repository import RepositoryPeers
 from lup.devtools.dashboard.companion import refuse_inside_a_session
@@ -898,7 +899,9 @@ class QuestionView(BaseModel, frozen=True):
         )
 
 
-def relay(root: Path, log: Path = Path(".lup/questions.jsonl")) -> QuestionRelay:
+def relay(
+    root: Path, log: Path = CheckoutState(root=Path()).questions()
+) -> QuestionRelay:
     """The relay for one checkout, at the path that checkout keeps it in.
 
     Under ``.lup`` by default because a parked question is managed

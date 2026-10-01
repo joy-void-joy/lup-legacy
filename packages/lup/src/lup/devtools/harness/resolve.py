@@ -18,6 +18,7 @@ import typer
 from pydantic import BaseModel
 
 from lup.harness.codescan.markers import find_feedback
+from lup.workspace.checkout_state import CheckoutState
 from lup.harness.enforcement import semantic_policy_for
 from lup.harness.models import HookSet
 from lup.policy.hooks import LupHooksConfig
@@ -948,7 +949,7 @@ def refresh_run(
     which is exactly when a parked run is waiting for the fix to land.
     """
     root = project_root()
-    state_root = root / ".lup" / "resolve"
+    state_root = CheckoutState(root=root).resolve()
     repository = ResolverStateRepository(state_root, run_id)
     if not repository.exists():
         raise typer.BadParameter(f"no resolver run {run_id!r} under {state_root}")
@@ -1139,7 +1140,7 @@ def detach_resolve(detached: DetachedRun) -> None:
     # naming nothing actionable or an issue number naming nothing open, and
     # it meets it after this command has already reported a run started.
     admission_request(detached.admitted)
-    repository = ResolverStateRepository(root / ".lup/resolve", resolved)
+    repository = ResolverStateRepository(CheckoutState(root=root).resolve(), resolved)
     if repository.held():
         raise typer.BadParameter(f"resolver run {resolved!r} is already active")
     log = detached_log(root, resolved)
@@ -1167,7 +1168,7 @@ def detach_resolve(detached: DetachedRun) -> None:
 
 def detached_log(root: Path, run_id: str) -> Path:
     """Where a detached run's console output is kept, beside its own record."""
-    directory = root / ".lup" / "resolve" / run_id
+    directory = CheckoutState(root=root).resolve() / run_id
     directory.mkdir(parents=True, exist_ok=True)
     return directory / "detached.log"
 
@@ -1208,7 +1209,7 @@ def queue_existing_admission(
     if not flags.named_anything() or (start_new and run_id is None):
         return False
     root = project_root()
-    state_root = root / ".lup" / "resolve"
+    state_root = CheckoutState(root=root).resolve()
     selected = run_id or chosen_run(
         state_root,
         "resolve-"
@@ -1250,7 +1251,9 @@ def list_admissions(
     ),
 ) -> None:
     """Inspect accepted evidence and its pending, applied, or rejected result."""
-    repository = ResolverStateRepository(project_root() / ".lup" / "resolve", run_id)
+    repository = ResolverStateRepository(
+        CheckoutState(root=project_root()).resolve(), run_id
+    )
     if not repository.exists():
         raise typer.BadParameter(f"no resolver run {run_id!r}")
     receipts = AdmissionMailbox(repository.root).receipts()
@@ -1527,7 +1530,7 @@ def run_resolve(
     plugin = harness.plugins[0]
     root = project_root()
     launcher = PointerCheckedLauncher(LocalProcessLauncher(), root)
-    state_root = root / ".lup" / "resolve"
+    state_root = CheckoutState(root=root).resolve()
     resolved_run_id = run_id or chosen_run(
         state_root,
         "resolve-" + resolver_git(launcher, root, ["rev-parse", "--short=12", "HEAD"]),

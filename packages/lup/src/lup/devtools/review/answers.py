@@ -13,6 +13,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 
 from lup.harness.environment import inside_a_container
+from lup.workspace.checkout_state import CheckoutState
 from lup.launch.companions import (
     CompanionLaunch,
     CompanionName,
@@ -56,7 +57,9 @@ class ReviewAnswers(HostCompanion, frozen=True):
             )
             return
         home = answers_directory()
-        repository = review_answers(launch.root / ".lup/questions.jsonl", home).parent
+        repository = review_answers(
+            CheckoutState(root=launch.root).questions(), home
+        ).parent
         for directory in (home, repository):
             directory.mkdir(mode=0o700, parents=True, exist_ok=True)
             directory.chmod(0o700)

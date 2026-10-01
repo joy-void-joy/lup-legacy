@@ -13,6 +13,7 @@ import sh
 import typer
 
 from lup.harness.proposals import ReconciliationMetadata, ReconciliationProposalWriter
+from lup.workspace.checkout_state import CheckoutState
 from lup.harness.reconciliation import source_patch_base_digest
 from lup.workspace.paths import project_root
 from lup.devtools.harness.drift import generate_with_report, report_drift
@@ -39,7 +40,7 @@ def apply_proposal(
     proposal_id: str, compositions: list[NativeHarnessComposition]
 ) -> None:
     """Apply a stale-base-checked source patch, then regenerate both targets."""
-    directory = project_root() / ".lup" / "reconcile" / proposal_id
+    directory = CheckoutState(root=project_root()).reconcile() / proposal_id
     metadata = directory / "metadata.json"
     patch = directory / "source.patch"
     if not metadata.is_file() or not patch.is_file():

@@ -12,10 +12,15 @@ launch named. Everything here is a case where the honest answer is "no boundary
 was measured", which every caller reads as the fail-closed one.
 """
 
+import ast
 import json
 from pathlib import Path
+from types import FunctionType
 
 import pytest
+
+from lup.devtools.hooks.corpus import DEFAULT_CORPUS
+from lup.workspace.checkout_state import CheckoutState
 
 import lup.policy.assets.host as policy_host
 from lup.policy.assets.host import (
@@ -309,3 +314,37 @@ def test_a_ledger_read_through_its_hold_is_believed(
     )
 
     assert contained(measured_boundary(tmp_path))
+
+
+def declared_state() -> set[str]:
+    """Every path ``CheckoutState`` declares, spelled relative to a checkout."""
+    anywhere = CheckoutState(root=Path())
+    return {
+        getattr(anywhere, name)().as_posix()
+        for name, member in vars(CheckoutState).items()
+        if isinstance(member, FunctionType) and not name.startswith("_")
+    }
+
+
+def test_every_lup_path_the_bare_host_half_spells_is_one_checkout_state_declares() -> (
+    None
+):
+    """The dispatcher's host half runs with no ``lup`` to import, so it spells its own.
+
+    Each spelling is held to the declaration here instead: a path moved in
+    ``CheckoutState`` and not in the host half is a hook reading a file the
+    library no longer writes, and the reverse a hook writing one nothing reads.
+    """
+    tree = ast.parse(Path(policy_host.__file__).read_text(encoding="utf-8"))
+    spelled = {
+        node.value
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Constant)
+        and isinstance(node.value, str)
+        and node.value.startswith(".lup/")
+    }
+
+    assert spelled
+    assert spelled <= declared_state()
+    assert set(CheckoutState.hook_state()) <= declared_state()
+    assert DEFAULT_CORPUS in declared_state()

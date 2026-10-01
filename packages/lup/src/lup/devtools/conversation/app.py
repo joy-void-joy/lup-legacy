@@ -8,6 +8,7 @@ from pathlib import Path
 import typer
 from pydantic import BaseModel
 
+from lup.workspace.checkout_state import CheckoutState
 from lup.devtools.conversation.browser import (
     browser_context,
     cookie_header,
@@ -53,7 +54,7 @@ def browser_directory(
             raise typer.BadParameter(str(error), param_hint="--profile") from error
         if selected is not None:
             return selected
-    return root / ".lup" / "conversations" / f"{provider}-web"
+    return CheckoutState(root=root).conversations() / f"{provider}-web"
 
 
 def browser_directories(
@@ -64,8 +65,8 @@ def browser_directories(
 ) -> BrowserDirectories:
     """Resolve selected state plus persisted unprofiled compatibility state."""
     primary = browser_directory(root, provider, profiles, profile)
-    unprofiled = root / ".lup" / "conversations" / f"{provider}-web"
-    legacy = root / ".lup" / "conversations" / f"{provider}-browser"
+    unprofiled = CheckoutState(root=root).conversations() / f"{provider}-web"
+    legacy = CheckoutState(root=root).conversations() / f"{provider}-browser"
     fallbacks = (legacy,) if primary == unprofiled and legacy.exists() else ()
     return BrowserDirectories(primary=primary, fallbacks=fallbacks)
 

@@ -7,6 +7,7 @@ import sh
 from pydantic import BaseModel
 
 from lup.channels.models import publish_atomic
+from lup.workspace.checkout_state import CheckoutState
 from lup.devtools.dev.records import shared_directory_of
 
 
@@ -31,7 +32,7 @@ def location(root: Path, name: str) -> Path:
     except sh.ErrorReturnCode:
         if (root / ".git").exists() or (root / "HEAD").is_file():
             raise
-        common = root / ".lup"
+        common = CheckoutState(root=root).directory()
     return common / "lup" / "sync" / f"{sha256(name.encode()).hexdigest()}.json"
 
 

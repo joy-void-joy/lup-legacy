@@ -13,6 +13,7 @@ from pathlib import Path
 from pydantic import BaseModel
 
 from lup.channels.models import write_atomic
+from lup.workspace.checkout_state import CheckoutState
 from lup.harness.reconciliation import source_patch_base_digest
 
 
@@ -35,7 +36,7 @@ class ReconciliationProposalWriter:
             base_digest=source_patch_base_digest(root, source_patch),
             source_patch_sha256=patch_sha256,
         )
-        directory = root / ".lup" / "reconcile" / proposal_id
+        directory = CheckoutState(root=root).reconcile() / proposal_id
         directory.mkdir(parents=True, exist_ok=True)
         if not directory.resolve().is_relative_to(root.resolve()):
             raise ValueError("reconciliation proposal directory escapes its root")

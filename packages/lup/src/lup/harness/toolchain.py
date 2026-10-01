@@ -22,6 +22,7 @@ from pathlib import Path
 
 from lup.devtools.clipboard import clipboard_probes
 from lup.harness.devices import Device
+from lup.workspace.checkout_state import CheckoutState
 from lup.harness.image import ContainerEngine, Docker, detected_client
 from lup.harness.requirements import (
     Advisory,
@@ -1152,7 +1153,7 @@ def host_placement_requirement(
 def question_relay_requirement(
     where: Side = "host",
     install: list[Package] = [],
-    directory: str = ".lup",
+    directory: str = CheckoutState(root=Path()).directory().as_posix(),
 ) -> Requirement:
     """Whether the durable record every final ask is written to accepts a write.
 
