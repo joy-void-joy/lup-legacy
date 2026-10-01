@@ -2,6 +2,37 @@
 
 ## Unreleased
 
+### One way to ask git, one liveness record, one placement
+
+- `lup.execution.git.Repository(root, runner)` asks a repository each of
+  the questions the library kept asking it — the top, the git and shared
+  directories (always absolute), the branch, whether a ref resolves,
+  ancestry, a commit count, the conflicted paths, a merge in progress, a
+  remote's URL, and the worktrees, read once from `--porcelain -z` — with
+  one failure answer per question. It runs git through a `ProcessLauncher`,
+  so the resolver, the base-freshness probe and every devtools command ask
+  it the same way, and `git_line`, `git_ran`, `git_in`, `resolver_git` and
+  `lup.harness.credential.remote_url` are gone. The launcher seam itself
+  moved from `lup.harness.process` to `lup.execution.process`.
+- The resolver no longer takes a worktree whose path holds a space for a
+  leftover directory: it read `git worktree list` by its first word, and
+  removed the checkout it could not match.
+- A host companion and the dashboard's setup panes start through one
+  `DetachedProcess.start`; the panes now choose their ports under the lock
+  companions choose under, so neither is given the other's port.
+- `LiveProcess` is a view of the roster's bare `Runtime` record, which
+  knows a pid means nothing outside the namespace that numbered it: a
+  process recorded elsewhere is not signalled, and a sandbox's owner is
+  judged the same way. A shared companion started before this reads as gone
+  once and is started again; stop the earlier process by its recorded pid.
+- `lup.harness.environment.Placement` answers where a process runs —
+  contained, under the runtime's sandbox, inside a session, which runtime —
+  replacing four predicates that were not each other's negation.
+- The template's environment CLI commits through the library's shared
+  `git`; the CLI's `LaunchRequest` is `LaunchArguments`; `named_apart` and
+  `uniquely_named` are one `distinct_names`; `lup.harness.messaging` is
+  `lup.harness.wake_sockets`.
+
 ### Containers starting at once on one config home no longer tear or drop what the others wrote
 
 Several contained sessions of one repository start on its config volume at
