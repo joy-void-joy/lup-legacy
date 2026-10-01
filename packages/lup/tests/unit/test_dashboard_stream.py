@@ -27,7 +27,8 @@ from lup.coordination.peers import USER_ADDRESS
 from lup.coordination.repository import RepositoryPeers
 from lup.coordination.wake import WakePath, Woken
 from lup.devtools.dashboard.companion import KnownRepository
-from lup.devtools.dashboard.live import MessagePage, ReplyOutcome
+from lup.devtools.dashboard.live import MessagePage
+from lup.devtools.dashboard.supervision import ReplyOutcome
 from lup.devtools.dashboard.reviews import ReviewStore, dashboard_app
 from lup.devtools.dashboard.stream import (
     FollowedFrom,
@@ -550,8 +551,8 @@ async def test_the_whole_state_carries_the_person_s_row_and_what_is_served(
         lambda: [known(tmp_path)],
         ReviewStore(roots=(tmp_path,)),
         interval=0.02,
-        served=("transcript",),
     )
+    source.serves(("transcript",))
 
     def described_again(received: list[StreamFrame]) -> None:
         if len(received) == 1:

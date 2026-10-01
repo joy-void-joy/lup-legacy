@@ -14,7 +14,8 @@ from lup.devtools.dashboard.reviews import (
     ReviewRemarkRequest,
     ReviewSnapshot,
 )
-from lup.devtools.dashboard.live import MessagePage, ReplyOutcome, ReplyRequest
+from lup.devtools.dashboard.live import MessagePage
+from lup.devtools.dashboard.supervision import supervision_models
 from lup.devtools.dashboard.panes import SetupPane
 from lup.devtools.dashboard.serve import RowRequest, ScopeRequest, StepReply
 from lup.devtools.dashboard.stream import StreamFrame
@@ -68,14 +69,14 @@ DASHBOARD = Surface(
         ReviewAnswer,
         ReviewDecision,
         ReviewRemarkRequest,
-        ReplyRequest,
-        ReplyOutcome,
         MessagePage,
         SetupPane,
+        *supervision_models(),
     ],
 )
 """The operator's dashboard: the live stream, parked reviews, captured changes, exact
-decisions, a reply to a session, an older page of a repository's messages, setup panes."""
+decisions, an older page of a repository's messages, setup panes, and every write and
+read the operator supervises agents with."""
 
 
 # lup: ignore[library-default] — the surfaces this library authors, so the

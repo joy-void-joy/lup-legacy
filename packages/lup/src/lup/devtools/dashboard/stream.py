@@ -32,7 +32,6 @@ from pydantic import BaseModel, Field, ValidationError
 
 from lup.devtools.dashboard.companion import KnownRepository
 from lup.devtools.dashboard.live import (
-    SERVED,
     Feature,
     LiveMessage,
     LiveRepository,
@@ -355,7 +354,7 @@ class LiveState:
     state it hands a tab says.
     """
 
-    def __init__(self, served: tuple[Feature, ...] = SERVED) -> None:
+    def __init__(self, served: tuple[Feature, ...] = ()) -> None:
         self.served = served
         self.users: dict[str, UserRow] = {}
         self.repositories: dict[str, LiveRepository] = {}
@@ -485,9 +484,9 @@ class LiveFeed:
     mail record — and every ``review_every`` looks at the review queues,
     expiring those no session waits on every ``sweep_every``. What differs is
     numbered and kept for replay; the last ``kept`` of them are replayable.
-    ``code`` says which code the dashboard runs, where it knows, and
-    ``served`` what supervision it serves. A transcript a tab follows is read
-    on every look for as long as some tab renews it within ``lease`` seconds.
+    ``code`` says which code the dashboard runs, where it knows. A
+    transcript a tab follows is read on every look for as long as some tab
+    renews it within ``lease`` seconds.
     """
 
     def __init__(
@@ -500,7 +499,6 @@ class LiveFeed:
         kept: int = KEPT_FRAMES,
         heartbeat: float = HEARTBEAT_SECONDS,
         code: Callable[[], RunningCode] = RunningCode,
-        served: tuple[Feature, ...] = SERVED,
         lease: float = FOLLOW_SECONDS,
     ) -> None:
         self.repositories = repositories
@@ -514,7 +512,7 @@ class LiveFeed:
         self.epoch = uuid4().hex[:12]
         self.seq = 0
         self.sent: deque[Sent] = deque(maxlen=kept)
-        self.state = LiveState(served)
+        self.state = LiveState()
         self.followed: dict[str, FollowedTranscript] = {}
         self.following = threading.Lock()
         self.watches: dict[str, RepositoryWatch] = {}
@@ -528,6 +526,14 @@ class LiveFeed:
     def served(self) -> list[KnownRepository]:
         """Every repository this dashboard serves now, once each."""
         return list({each.key(): each for each in self.repositories()}.values())
+
+    def serves(self, features: tuple[Feature, ...]) -> None:
+        """Say on every whole state a tab is handed that this dashboard serves *features*.
+
+        Called by what registers the routes serving them, so a page is told
+        of a piece of supervision exactly where a route answers for it.
+        """
+        self.state.served = features
 
     def cursor(self) -> str:
         """Where this dashboard's numbering stands now, spelled for a tab to send back."""

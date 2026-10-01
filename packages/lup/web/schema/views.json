@@ -307,6 +307,29 @@
       "title": "BlockStartedEvent",
       "type": "object"
     },
+    "Broadcast": {
+      "additionalProperties": false,
+      "description": "One message to every working member of a repository, one post between them.",
+      "properties": {
+        "outcomes": {
+          "items": {
+            "$ref": "#/$defs/ReplyOutcome"
+          },
+          "title": "Outcomes",
+          "type": "array"
+        },
+        "post": {
+          "title": "Post",
+          "type": "string"
+        }
+      },
+      "required": [
+        "post",
+        "outcomes"
+      ],
+      "title": "Broadcast",
+      "type": "object"
+    },
     "CallState": {
       "enum": [
         "ok",
@@ -333,6 +356,43 @@
         "inside"
       ],
       "title": "CarriedParent",
+      "type": "object"
+    },
+    "ClaimRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "minLength": 1,
+          "title": "Path",
+          "type": "string"
+        }
+      },
+      "required": [
+        "path"
+      ],
+      "title": "ClaimRequest",
+      "type": "object"
+    },
+    "Claimed": {
+      "additionalProperties": false,
+      "properties": {
+        "holders": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Holders",
+          "type": "array"
+        },
+        "path": {
+          "title": "Path",
+          "type": "string"
+        }
+      },
+      "required": [
+        "path",
+        "holders"
+      ],
+      "title": "Claimed",
       "type": "object"
     },
     "CommandSegment": {
@@ -651,6 +711,39 @@
       ],
       "type": "string"
     },
+    "Described": {
+      "additionalProperties": false,
+      "description": "Every repository whose roster now says what the person is on.",
+      "properties": {
+        "repositories": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Repositories",
+          "type": "array"
+        }
+      },
+      "required": [
+        "repositories"
+      ],
+      "title": "Described",
+      "type": "object"
+    },
+    "DescriptionRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "text": {
+          "default": "",
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "text"
+      ],
+      "title": "DescriptionRequest",
+      "type": "object"
+    },
     "EdgeCount": {
       "additionalProperties": false,
       "description": "How many edges of one kind point at a node \u2014 its weight in the log.",
@@ -793,6 +886,103 @@
       ],
       "type": "string"
     },
+    "FollowOutcome": {
+      "additionalProperties": false,
+      "description": "What a tab now follows, by session key, and for how long without renewing.",
+      "properties": {
+        "refused": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/FollowRefused"
+          },
+          "title": "Refused",
+          "type": "array"
+        },
+        "seconds": {
+          "title": "Seconds",
+          "type": "number"
+        },
+        "sessions": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Sessions",
+          "type": "array"
+        }
+      },
+      "required": [
+        "sessions",
+        "refused",
+        "seconds"
+      ],
+      "title": "FollowOutcome",
+      "type": "object"
+    },
+    "FollowRefused": {
+      "additionalProperties": false,
+      "description": "One transcript a tab asked to follow that nothing here could follow, and why.",
+      "properties": {
+        "reason": {
+          "title": "Reason",
+          "type": "string"
+        },
+        "session": {
+          "title": "Session",
+          "type": "string"
+        }
+      },
+      "required": [
+        "session",
+        "reason"
+      ],
+      "title": "FollowRefused",
+      "type": "object"
+    },
+    "FollowRequest": {
+      "additionalProperties": false,
+      "description": "Every transcript one tab follows now; one it leaves out lapses with its lease.",
+      "properties": {
+        "sessions": {
+          "items": {
+            "$ref": "#/$defs/FollowedFrom"
+          },
+          "title": "Sessions",
+          "type": "array"
+        }
+      },
+      "required": [
+        "sessions"
+      ],
+      "title": "FollowRequest",
+      "type": "object"
+    },
+    "FollowedFrom": {
+      "additionalProperties": false,
+      "description": "One transcript a tab follows: whose, and the byte it has read to.",
+      "properties": {
+        "after": {
+          "default": 0,
+          "minimum": 0,
+          "title": "After",
+          "type": "integer"
+        },
+        "member": {
+          "title": "Member",
+          "type": "string"
+        },
+        "repository": {
+          "title": "Repository",
+          "type": "string"
+        }
+      },
+      "required": [
+        "repository",
+        "member",
+        "after"
+      ],
+      "title": "FollowedFrom",
+      "type": "object"
+    },
     "ForeignCriteriaEvent": {
       "additionalProperties": false,
       "description": "An accepted review credited ids the concern never declared.\n\nRecorded rather than acted on. Every declared criterion was accounted\nfor, so nothing passed unchecked and the verdict stands; the stray label\nis the reviewer's bookkeeping, and turning an acceptance back over it\nspent a revision round re-deriving the same verdict until the budget\nran out. Journalled so a reviewer that keeps miscrediting is still\nvisible to whoever reads the run.",
@@ -868,6 +1058,41 @@
         "standings"
       ],
       "title": "GraphView",
+      "type": "object"
+    },
+    "InboxRead": {
+      "additionalProperties": false,
+      "properties": {
+        "read": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Read",
+          "type": "array"
+        }
+      },
+      "required": [
+        "read"
+      ],
+      "title": "InboxRead",
+      "type": "object"
+    },
+    "InboxReadRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "ids": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Ids",
+          "type": "array"
+        }
+      },
+      "required": [
+        "ids"
+      ],
+      "title": "InboxReadRequest",
       "type": "object"
     },
     "IntegrationRecoveredEvent": {
@@ -1916,6 +2141,39 @@
       "title": "MessagePostedEvent",
       "type": "object"
     },
+    "MessageRequest": {
+      "additionalProperties": false,
+      "description": "What the operator writes to one agent, and how it reaches it.",
+      "properties": {
+        "in_reply_to": {
+          "default": "",
+          "title": "In Reply To",
+          "type": "string"
+        },
+        "priority": {
+          "$ref": "#/$defs/WakePriority",
+          "default": "next"
+        },
+        "redirect": {
+          "default": false,
+          "title": "Redirect",
+          "type": "boolean"
+        },
+        "text": {
+          "minLength": 1,
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "text",
+        "in_reply_to",
+        "redirect",
+        "priority"
+      ],
+      "title": "MessageRequest",
+      "type": "object"
+    },
     "MessageSubmission": {
       "additionalProperties": false,
       "description": "Something a door is telling an actor. This decides nothing.",
@@ -2071,6 +2329,21 @@
       "title": "MutationFootprint",
       "type": "object"
     },
+    "NameRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "title": "NameRequest",
+      "type": "object"
+    },
     "NetworkPlan": {
       "additionalProperties": false,
       "description": "Where an operation reaches, recorded as evidence rather than policed.\n\nLup builds no egress proxy, chases no redirects, and polices no DNS: the\nboundary's own network posture stands, and this is what the classifier\ncould see. An operation whose only unusual fact is an unfamiliar\ndestination settles like any other operation \u2014 contained it runs inside,\nambient it follows the profile's declaration.",
@@ -2217,6 +2490,26 @@
       "title": "NodeView",
       "type": "object"
     },
+    "NotReached": {
+      "additionalProperties": false,
+      "description": "One member a post was meant for and did not reach, and why.",
+      "properties": {
+        "address": {
+          "title": "Address",
+          "type": "string"
+        },
+        "reason": {
+          "title": "Reason",
+          "type": "string"
+        }
+      },
+      "required": [
+        "address",
+        "reason"
+      ],
+      "title": "NotReached",
+      "type": "object"
+    },
     "NoteKind": {
       "description": "The closed vocabulary of review-note flavors.\n\nAn ordinary actionable note, parked work \u2014 behind a stated gate or simply\nparked \u2014 a claim that a note has been addressed and is waiting to be\nchecked, or a customization point the scaffold leaves to the domain\nadopting it. A `StrEnum` rather than a `Literal` so the same declaration\nis both the type every consumer dispatches on and the choice list\n`dev comments --kind` offers, which is one fewer place for the vocabulary\nto drift out of agreement with itself.",
       "enum": [
@@ -2227,6 +2520,13 @@
       ],
       "title": "NoteKind",
       "type": "string"
+    },
+    "Nothing": {
+      "additionalProperties": false,
+      "description": "A write that carries nothing beyond whom it acts on.",
+      "properties": {},
+      "title": "Nothing",
+      "type": "object"
     },
     "Operation": {
       "additionalProperties": false,
@@ -2448,6 +2748,74 @@
         "phase"
       ],
       "title": "PhaseChangedEvent",
+      "type": "object"
+    },
+    "PostOutcome": {
+      "additionalProperties": false,
+      "description": "One post into a discussion: the id every copy shares, and what became of each.",
+      "properties": {
+        "deliveries": {
+          "items": {
+            "$ref": "#/$defs/ReplyOutcome"
+          },
+          "title": "Deliveries",
+          "type": "array"
+        },
+        "post": {
+          "title": "Post",
+          "type": "string"
+        },
+        "refused": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/NotReached"
+          },
+          "title": "Refused",
+          "type": "array"
+        },
+        "thread": {
+          "title": "Thread",
+          "type": "string"
+        }
+      },
+      "required": [
+        "post",
+        "thread",
+        "deliveries",
+        "refused"
+      ],
+      "title": "PostOutcome",
+      "type": "object"
+    },
+    "PostRequest": {
+      "additionalProperties": false,
+      "description": "One post into a discussion, to everyone in it.",
+      "properties": {
+        "in_reply_to": {
+          "default": "",
+          "title": "In Reply To",
+          "type": "string"
+        },
+        "text": {
+          "minLength": 1,
+          "title": "Text",
+          "type": "string"
+        },
+        "to": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "To",
+          "type": "array"
+        }
+      },
+      "required": [
+        "text",
+        "in_reply_to",
+        "to"
+      ],
+      "title": "PostRequest",
       "type": "object"
     },
     "QuestionAnswer": {
@@ -3078,12 +3446,63 @@
       "title": "RecordedQuestion",
       "type": "object"
     },
+    "Released": {
+      "additionalProperties": false,
+      "properties": {
+        "holders": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Holders",
+          "type": "array"
+        },
+        "path": {
+          "title": "Path",
+          "type": "string"
+        }
+      },
+      "required": [
+        "path",
+        "holders"
+      ],
+      "title": "Released",
+      "type": "object"
+    },
+    "Renamed": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "session": {
+          "title": "Session",
+          "type": "string"
+        }
+      },
+      "required": [
+        "session",
+        "name"
+      ],
+      "title": "Renamed",
+      "type": "object"
+    },
     "ReplyOutcome": {
       "additionalProperties": false,
-      "description": "What became of the operator's message: queued in the mailbox, and whether a wake landed.",
+      "description": "What became of one message the operator wrote: queued, and whether a wake landed.",
       "properties": {
         "detail": {
           "title": "Detail",
+          "type": "string"
+        },
+        "interrupted": {
+          "default": false,
+          "title": "Interrupted",
+          "type": "boolean"
+        },
+        "post": {
+          "default": "",
+          "title": "Post",
           "type": "string"
         },
         "queued": {
@@ -3092,6 +3511,11 @@
         },
         "session": {
           "title": "Session",
+          "type": "string"
+        },
+        "thread": {
+          "default": "",
+          "title": "Thread",
           "type": "string"
         },
         "woken": {
@@ -3103,25 +3527,12 @@
         "session",
         "queued",
         "woken",
+        "interrupted",
+        "post",
+        "thread",
         "detail"
       ],
       "title": "ReplyOutcome",
-      "type": "object"
-    },
-    "ReplyRequest": {
-      "additionalProperties": false,
-      "description": "What the operator wrote to one session.",
-      "properties": {
-        "text": {
-          "minLength": 1,
-          "title": "Text",
-          "type": "string"
-        }
-      },
-      "required": [
-        "text"
-      ],
-      "title": "ReplyRequest",
       "type": "object"
     },
     "RepositoryEvent": {
@@ -5091,6 +5502,30 @@
       "title": "StepView",
       "type": "object"
     },
+    "Stopped": {
+      "additionalProperties": false,
+      "properties": {
+        "detail": {
+          "title": "Detail",
+          "type": "string"
+        },
+        "pid": {
+          "title": "Pid",
+          "type": "integer"
+        },
+        "session": {
+          "title": "Session",
+          "type": "string"
+        }
+      },
+      "required": [
+        "session",
+        "pid",
+        "detail"
+      ],
+      "title": "Stopped",
+      "type": "object"
+    },
     "StoredDocument": {
       "additionalProperties": false,
       "description": "A document the relay keeps once, in the store beside its log, named by the SHA-256 of its UTF-8 text.",
@@ -5218,6 +5653,21 @@
         "last_activity"
       ],
       "title": "SupervisorState",
+      "type": "object"
+    },
+    "TextRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "text": {
+          "minLength": 1,
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "text"
+      ],
+      "title": "TextRequest",
       "type": "object"
     },
     "ThreadEntry": {
@@ -5385,6 +5835,39 @@
         "end"
       ],
       "title": "TranscriptEvent",
+      "type": "object"
+    },
+    "TranscriptPage": {
+      "additionalProperties": false,
+      "description": "One run of a transcript's entries, oldest first, and where it sits in the file.",
+      "properties": {
+        "earlier": {
+          "title": "Earlier",
+          "type": "integer"
+        },
+        "end": {
+          "title": "End",
+          "type": "integer"
+        },
+        "entries": {
+          "items": {
+            "$ref": "#/$defs/TranscriptEntry"
+          },
+          "title": "Entries",
+          "type": "array"
+        },
+        "session": {
+          "title": "Session",
+          "type": "string"
+        }
+      },
+      "required": [
+        "session",
+        "entries",
+        "earlier",
+        "end"
+      ],
+      "title": "TranscriptPage",
       "type": "object"
     },
     "TurnCompletedEvent": {
@@ -5901,6 +6384,32 @@
         "output"
       ],
       "title": "VerificationRecord",
+      "type": "object"
+    },
+    "WakePriority": {
+      "enum": [
+        "next",
+        "now"
+      ],
+      "type": "string"
+    },
+    "Withdrawn": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "withdrawn": {
+          "title": "Withdrawn",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "id",
+        "withdrawn"
+      ],
+      "title": "Withdrawn",
       "type": "object"
     },
     "WizardView": {

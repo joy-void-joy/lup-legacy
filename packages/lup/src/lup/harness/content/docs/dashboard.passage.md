@@ -484,21 +484,105 @@ messages or a repository's, reads the hundred before the earliest the page
 holds (`GET /api/repositories/<key>/messages?before=<byte>`), back to the
 record's start.
 
-## Writing to a session
+Every agent's row also says which runtime it runs in (a subagent its
+session's), the session whose shell spawned it where one did, and its runtime
+process — pid and start time, whether the dashboard shares its pid namespace,
+and whether the dashboard could stop it or why not. Its latest twelve calls
+ride with what it is doing now, each answered, failed or still waiting, summed
+up by its own description, command or path. The person's own row in each
+repository rides the stream too, as a `user` event: what they say they are on,
+what they hold, the notices standing there, and how many messages to them wait.
+A message carries its `post` and `thread`, which is how the page groups a
+discussion. The whole state the stream hands a fresh tab says which pieces of
+supervision this server serves (`served`), by the names the page gives them.
 
-A running session has a box beneath its messages. What the operator writes goes
-the way a session's own `coordination_send` to a peer goes: into the session's
+An agent's whole transcript is read a page at a time from its end
+(`GET /api/repositories/<key>/sessions/<member-id>/transcript?before=<byte>&limit=<n>`):
+each entry is something said, a call made with its arguments, or what a call
+returned, whole, placed by the byte its line starts at. A tab showing one
+follows it by asking for it with the byte its page ends at
+(`POST /api/transcripts/follow`), renewed while it shows it: the stream then
+carries `transcript` frames with what that transcript recorded since, for as
+long as some tab renews within a minute.
+
+## Writing to an agent
+
+A running agent has a box beneath its messages. What the operator writes goes
+the way a session's own `coordination_send` to a peer goes: into the agent's
 mailbox, signed `user`, where its hook hands it over before its next tool call
-as `[message from user by page] …`, then through its wake path so an idle
-session takes a turn — its wake socket for Claude Code, `codex queue` for
-Codex — carrying everything waiting for it. The page says which happened: the
-runtime accepted the wake, the message waits for the next tool call (a
-subagent's only route), or why no wake was attempted. The session answers the
+as `[message from user by page · post <post>] …`, then through its wake path so
+an idle session takes a turn — its wake socket for Claude Code, `codex queue`
+for Codex — carrying everything waiting for it. The page says which happened:
+the runtime accepted the wake, the message waits for the next tool call (a
+subagent's only route), or why no wake was attempted. The agent answers the
 operator by sending to `user`. The box writes through the page's capability and
-origin check, addressed by the repository's key and the session's member id —
+origin check, addressed by the repository's key and the agent's member id —
 the id every verb accepts and no rename changes
-(`POST /api/repositories/<key>/sessions/<member-id>/messages`). A session that
+(`POST /api/repositories/<key>/sessions/<member-id>/messages`). An agent that
 stopped has no box: a message to it would wait for nobody.
+
+A message can answer one the operator was sent (`in_reply_to`, a post id),
+which puts it in that post's thread. It can be a **redirect**, which refuses
+the agent's next tool call with the operator's words: a wake shows it to the
+agent and leaves it for the hook, which refuses that call. With priority `now`
+it stops the agent's turn for it. A Claude session is asked through its wake
+socket: a turn that is generating ends at once, and a tool call already
+running finishes first — measured on Claude Code 2.1.285. A Codex session's
+running turn is stopped through the app-server its configuration home runs —
+at once, even mid-command, though the command's own process runs on — and its
+queue takes the message as the next turn, measured on Codex 0.159.2; only a
+dashboard in the execution scope its row recorded can reach that app-server. A subagent has no wake of its own, so its
+message waits for its next call and its session is interrupted with a copy
+naming it. `now` is refused, saying why, for an agent nothing can reach.
+
+## Acting on an agent
+
+Every write below holds to the page's capability, its own origin and JSON, a
+`DELETE` as much as a `POST`, and answers what it could not do with why: 404
+where nothing answers to what was named, 409 where something does and the verb
+cannot be done to it.
+
+- **Wake** (`POST …/sessions/<member-id>/wake`): makes a session look, carrying
+  what waits for it, or, where nothing does, a line saying the person asked it
+  to look. A subagent has no wake of its own.
+- **Rename** (`POST …/sessions/<member-id>/name`, `{name}`): what the agent is
+  called from now on; a name another live agent answers to is refused, and the
+  old name reaches it until another takes it.
+- **Stop** (`POST …/sessions/<member-id>/stop`): sends SIGTERM to the runtime
+  process its row recorded, only where the dashboard shares that process's pid
+  namespace and the process with that id still started when the row recorded
+  it. A contained session's runtime is its launcher's to stop, and a subagent
+  ends with its session; both are refused saying so.
+- **Broadcast** (`POST /api/repositories/<key>/broadcast`, `{text}`): one post
+  to every working agent of a repository, each woken as a message is.
+
+## Discussions
+
+A thread is posted into whole (`POST
+/api/repositories/<key>/threads/<thread>/posts`, `{text, in_reply_to, to}`): one
+copy to everyone who wrote in it or was written to, sharing one post id,
+answering the thread's latest post unless `in_reply_to` names another, and
+bringing in any member `to` names. Each copy is headed by the discussion —
+`[discussion «<first line>» · with <everyone else> · thread <thread>]` — so its
+reader can answer everyone with `coordination_send`'s `thread`, and each is
+woken as a message is. The answer says what became of each copy.
+
+## You as a peer
+
+The person is a full peer in every repository the dashboard serves:
+
+- **What you are on** (`POST /api/user/description`, `{text}`): said on your
+  row in every repository served, which `coordination_peers` lists last.
+- **Holds** (`POST` and `DELETE /api/repositories/<key>/claims`, `{path}`): you
+  hold an absolute, existing path the way a session's `coordination_lock` does,
+  and an agent about to write under it is asked first, told `held by user — the
+  operator locked this path`. Only what you hold can be given back; giving back
+  another's hold is refused, naming them.
+- **Notices** (`POST /api/repositories/<key>/notices`, `{text}`; `DELETE
+  …/notices/<id>`): a fact every session reads at the head of each prompt, until
+  it is withdrawn; the working ones are told at once as well.
+- **Your inbox** (`POST /api/repositories/<key>/inbox/read`, `{ids}`): takes
+  exactly those messages out of your mailbox, as read.
 
 ## Reviews
 

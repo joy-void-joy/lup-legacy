@@ -1,4 +1,4 @@
-import type { MessagePage, ReplyOutcome, ReplyRequest, ReviewAnswer, ReviewDecision, ReviewDetail, ReviewHistory, ReviewRemarkRequest, ReviewSnapshot, SetupPane, StreamFrame } from "../generated/views";
+import type { MessagePage, MessageRequest, ReplyOutcome, ReviewAnswer, ReviewDecision, ReviewDetail, ReviewHistory, ReviewRemarkRequest, ReviewSnapshot, SetupPane, StreamFrame } from "../generated/views";
 
 /** Where this origin keeps the operator's capability, and the key a storage event names. */
 export const TOKEN_KEY = "lup-dashboard-token";
@@ -101,7 +101,7 @@ export async function remarkReview(key: string, remark: ReviewRemarkRequest, tok
 
 /** The operator's message to one session or subagent, addressed by its repository's key and its member id. */
 export async function sendReply(repository: string, member: string, text: string, token: string): Promise<ReplyOutcome> {
-  const request: ReplyRequest = { text };
+  const request: MessageRequest = { text, in_reply_to: "", redirect: false, priority: "next" };
   return (await accepted(await fetch(`api/repositories/${encodeURIComponent(repository)}/sessions/${encodeURIComponent(member)}/messages`, {
     method: "POST",
     headers: { ...authorization(token), "Content-Type": "application/json" },

@@ -11,9 +11,7 @@ read to, the mail record from its cursor. The mail record is kept whole, so
 it is read from its end: its latest page first, and an older page only when
 the page asks for one.
 
-A reply from the operator goes the way a session's own message to a peer
-goes — into the recipient's mailbox, then a wake through its wake socket or
-`codex queue` — signed `user`, which is the address the session answers.
+What the operator does to them is :mod:`lup.devtools.dashboard.supervision`'s.
 """
 
 import os
@@ -23,9 +21,8 @@ from datetime import datetime, timedelta
 from typing import Literal
 from pathlib import Path, PurePath
 
-from pydantic import BaseModel, Field, TypeAdapter, ValidationError
+from pydantic import BaseModel, TypeAdapter, ValidationError
 
-from lup.channels.models import Door
 from lup.coordination.bare import mail as bare_mail
 from lup.coordination.bare import store
 from lup.coordination.bare.runtime import Runtime, process_scope, runtime_alive
@@ -38,9 +35,8 @@ from lup.coordination.mail import (
     backward,
 )
 from lup.coordination.peers import USER_ADDRESS, user_peer
-from lup.coordination.repository import PeerDepartedError, PeerView, RepositoryPeers
-from lup.coordination.roster import Delivery, RosterMember
-from lup.coordination.watch import roused
+from lup.coordination.repository import PeerView, RepositoryPeers
+from lup.coordination.roster import RosterMember
 from lup.devtools.dashboard.companion import KnownRepository
 from lup.devtools.dashboard.pulse import PulseSession
 from lup.policy.relay import QuestionRecord
@@ -101,9 +97,6 @@ type Feature = Literal[
     "thread-post",
 ]
 """A piece of supervision the page can ask this server for, as the page names it."""
-
-SERVED: tuple[Feature, ...] = ()
-"""What of that this server serves, which the stream tells the page."""
 
 
 class SeenCall(BaseModel, frozen=True):
@@ -1127,60 +1120,3 @@ class RepositoryWatch:
             *[message.model_copy(update={"waiting": False}) for message in taken],
             *arrived,
         ]
-
-
-class ReplyRequest(BaseModel, frozen=True, extra="forbid"):
-    """What the operator wrote to one session."""
-
-    text: str = Field(min_length=1)
-
-
-class ReplyOutcome(BaseModel, frozen=True):
-    """What became of the operator's message: queued in the mailbox, and whether a wake landed."""
-
-    session: str
-    queued: bool
-    woken: bool
-    detail: str
-
-
-def reply(known: KnownRepository, member_id: str, text: str) -> ReplyOutcome:
-    """Send the operator's message to one session or subagent, by its member id, and wake it.
-
-    The path a session's own `coordination_send` to a peer takes — the
-    recipient's mailbox, where its hook hands it over at its next tool call —
-    then its wake path, carrying everything waiting for it, so an idle
-    session takes a turn; what a wake its runtime accepted carried is handed
-    over with it, so the hook does not hand it over again. Refused for an id
-    nothing here answers to, and for a session that has stopped.
-    """
-    peers = RepositoryPeers(known.checkout)
-    row = peers.row(member_id)
-    if row is None:
-        raise LookupError(f"no session of {known.name()} has the id {member_id!r}")
-    if not row.running:
-        raise PeerDepartedError(row, peers.called(member_id))
-    peers.send(member_id, text, door=Door.PAGE, sender=USER_ADDRESS)
-    waiting = peers.waiting(member_id).messages
-    woken = roused(peers, row, waiting, Path(row.worktree) if row.worktree else None)
-    session = f"{known.key()}/{member_id}"
-    if woken.reached:
-        return ReplyOutcome(
-            session=session,
-            queued=True,
-            woken=True,
-            detail="Handed over with the wake its runtime accepted.",
-        )
-    if row.delivery == Delivery.HOOK:
-        return ReplyOutcome(
-            session=session,
-            queued=True,
-            woken=False,
-            detail="Queued in its mailbox; it is handed over before its next tool call.",
-        )
-    return ReplyOutcome(
-        session=session,
-        queued=True,
-        woken=False,
-        detail=f"Queued in its mailbox. {woken.reason}",
-    )

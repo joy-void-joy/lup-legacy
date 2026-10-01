@@ -167,6 +167,7 @@ def probe_imports(
         "fastapi",
         "lup.devtools.dashboard.reviews",
         "lup.devtools.dashboard.stream",
+        "lup.devtools.dashboard.supervision",
     ),
 ) -> None:
     """Import what serving imports beyond this module, and nothing more."""
