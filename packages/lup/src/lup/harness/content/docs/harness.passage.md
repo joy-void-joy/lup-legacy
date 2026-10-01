@@ -839,12 +839,12 @@ it kept.
 A contained session's config home is a volume per repository and runtime,
 `lup-claude-<repo>` and `lup-codex-<repo>`: every worktree of one repository
 shares its login, trust and transcripts, and neither runtime reads the
-other's. The first launch that finds the older shared `lup-cfg-<repo>` splits
+other's. The first launch that finds an unsplit shared `lup-cfg-<repo>` splits
 it by what each runtime declares it keeps — an entry neither declares goes to
 both, said aloud — and copies Codex's per-settings-digest volumes into its
-own; a volume an open session still holds postpones the split. The old
-volumes, and the per-worktree `lup-cfg-<worktree>` ones that came before,
-are kept rather than removed: each is recorded as superseded in
+own; a volume an open session still holds postpones the split. The unsplit
+volumes, the per-worktree `lup-cfg-<worktree>` ones among them, are kept
+rather than removed: each is recorded as superseded in
 `$XDG_STATE_HOME/lup` (`~/.local/state/lup`), the launch says where its
 history went and the day it goes, and any launch or `harness clean`
 removes it once `[cleanup] superseded_volumes_after_days` (14 unless this
