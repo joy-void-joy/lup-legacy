@@ -182,18 +182,16 @@ def test_provider_commands_are_nested_under_conversation(
     async def retain(
         requests: Sequence[selection.RetentionRequest],
         root: Path,
-        directories: conversation.BrowserDirectories,
+        state_directory: Path,
         output: Path,
     ) -> list[selection.RetentionAttempt]:
         attempts: list[selection.RetentionAttempt] = []
-        for position, request in enumerate(requests):
+        for request in requests:
             reference = claude_conversation.ConversationReference(value=request.url)
             destination = output / "claude" / reference.identifier()
             destination.mkdir(parents=True)
             attempts.append(
-                selection.RetentionAttempt(
-                    position=position, request=request, destination=destination
-                )
+                selection.RetentionAttempt(request=request, destination=destination)
             )
         return attempts
 

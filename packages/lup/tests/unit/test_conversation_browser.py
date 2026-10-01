@@ -144,16 +144,14 @@ def test_chatgpt_command_reuses_the_active_codex_profile_container(
     async def retain(
         requests: Sequence[selection.RetentionRequest],
         _root: Path,
-        directories: conversation_app.BrowserDirectories,
+        state_directory: Path,
         output: Path,
     ) -> list[selection.RetentionAttempt]:
-        opened.append(directories.primary)
+        opened.append(state_directory)
         destination = output / "chatgpt" / "conversation-1"
         destination.mkdir(parents=True)
         return [
-            selection.RetentionAttempt(
-                position=0, request=requests[0], destination=destination
-            )
+            selection.RetentionAttempt(request=requests[0], destination=destination)
         ]
 
     monkeypatch.setattr(conversation_app, "project_root", lambda: tmp_path)
@@ -190,13 +188,11 @@ def one_conversation() -> list[selection.RetentionRequest]:
 
 
 @pytest.mark.asyncio
-async def test_download_exhausts_persisted_state_without_opening_login(
+async def test_download_reads_the_selected_state_without_opening_login(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    current = tmp_path / ".lup" / "conversations" / "chatgpt-web"
-    legacy = tmp_path / ".lup" / "conversations" / "chatgpt-browser"
-    current.mkdir(parents=True)
-    legacy.mkdir()
+    selected = tmp_path / ".lup" / "conversations" / "chatgpt-web"
+    selected.mkdir(parents=True)
     opened: list[Path] = []
     recording_browser(monkeypatch, opened)
 
@@ -208,20 +204,18 @@ async def test_download_exhausts_persisted_state_without_opening_login(
         output: Path,
         artifact: str = "",
     ) -> Path:
-        if opened[-1] == current:
-            raise chatgpt.ChatGPTAuthenticationRequired("missing")
         return output / "chatgpt" / "conversation-1"
 
     interactive_login = AsyncMock()
     monkeypatch.setattr(chatgpt, "download_chatgpt", download)
     monkeypatch.setattr(conversation_app, "login", interactive_login)
-    directories = conversation_app.browser_directories(tmp_path, "chatgpt", None, None)
+    state = conversation_app.browser_directory(tmp_path, "chatgpt", None, None)
 
     attempts = await conversation_app.retain_chatgpt(
-        one_conversation(), tmp_path, directories, tmp_path / "retained"
+        one_conversation(), tmp_path, state, tmp_path / "retained"
     )
 
-    assert opened == [current, legacy]
+    assert opened == [selected]
     assert [attempt.destination for attempt in attempts] == [
         tmp_path / "retained" / "chatgpt" / "conversation-1"
     ]
@@ -247,10 +241,10 @@ async def test_download_refuses_with_the_explicit_setup_command(
     interactive_login = AsyncMock()
     monkeypatch.setattr(chatgpt, "download_chatgpt", missing)
     monkeypatch.setattr(conversation_app, "login", interactive_login)
-    directories = conversation_app.browser_directories(tmp_path, "chatgpt", None, None)
+    state = conversation_app.browser_directory(tmp_path, "chatgpt", None, None)
 
     attempts = await conversation_app.retain_chatgpt(
-        one_conversation(), tmp_path, directories, tmp_path / "retained"
+        one_conversation(), tmp_path, state, tmp_path / "retained"
     )
 
     assert attempts[0].destination is None
