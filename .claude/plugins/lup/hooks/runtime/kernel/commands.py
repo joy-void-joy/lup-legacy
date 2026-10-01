@@ -1358,6 +1358,34 @@ def strictest_reading(
     )
 
 
+def objection_or_floor(
+    floor: KernelDecision, readings: tuple[KernelDecision, ...]
+) -> KernelDecision:
+    """What a command earns when a word it acts on could not be read.
+
+    ``floor`` is what the word earns on its own -- a variable the line bound
+    to something nobody can read, a substitution's output, a path named from
+    a directory a `cd` left unknown -- and ``readings`` what the command earns
+    with that word left standing as it is spelled. The word could be any
+    path at all, a protected one among them, and the command writing a
+    protected path asks; so a reading that asks or refuses is the answer, as
+    it is for a name the line never assigned (`sed -i 1d $F`), marked as
+    standing for a word nobody could read so that no capture retires it. A
+    floor standing over it instead is one a boundary settles, and a boundary
+    confining the call does not confine the checkout the call writes in.
+
+    A floor that refuses on its own stays the answer wherever nothing is
+    stricter, and where no reading objects the floor stands, carrying them.
+    """
+    objecting = [part for part in (floor, *readings) if part.effect in ("ask", "deny")]
+    if not objecting:
+        return carrying_readings(floor, readings)
+    strictest = max(objecting, key=lambda part: STRENGTH.index(part.effect))
+    if strictest is floor:
+        return floor
+    return strictest.revised(reach=objecting_reach((floor, *readings)), unread=True)
+
+
 def unread_programs(words: list[str], rows: list[ShellRuleRow]) -> list[str]:
     """The programs a command word nobody can read could be, by the verbs after it.
 
