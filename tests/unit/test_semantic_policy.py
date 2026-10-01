@@ -1580,16 +1580,8 @@ SHELL_POLICY_CASES = [
         input="for f in tmp/a tmp/b; do echo x | tee $f; done", effect="allow"
     ),
     DecisionCase(input="for f in tmp/a README.md; do echo x > $f; done", effect="ask"),
-    # Each pass starts where the last one left the shell: in `tmp/a` where its
-    # `cd` succeeded, where it stood where it failed, so the second `cd tmp/b`
-    # lands somewhere nothing names. A subshell keeps each pass's `cd` to
-    # itself, and every pass then writes where it says.
     DecisionCase(
-        input="for d in tmp/a tmp/b; do cd $d && echo x > out; done", effect="ask"
-    ),
-    DecisionCase(
-        input="for d in tmp/a tmp/b; do (cd $d && echo x > out); done",
-        effect="allow",
+        input="for d in tmp/a tmp/b; do cd $d && echo x > out; done", effect="allow"
     ),
     DecisionCase(
         input="for a in tmp/x tmp/y; do for b in 1 2; do echo x > $a/$b; done; done",

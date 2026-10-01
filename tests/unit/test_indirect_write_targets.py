@@ -61,6 +61,10 @@ RESOLVED = [
     pytest.param(
         "command cd packages && rm lup/src/lup/policy/kernel/shell.py", id="command-cd"
     ),
+    pytest.param(
+        "cd packages && true; rm lup/src/lup/policy/kernel/shell.py",
+        id="past-the-chain",
+    ),
     pytest.param("read F <<< x; git status $F; rm {protected}", id="after-a-gate"),
     pytest.param("(( 1 )); rm {protected}", id="after-arithmetic"),
     pytest.param(
@@ -90,11 +94,8 @@ UNRESOLVED = [
         "find packages -name '*.py' -exec sed -i 1d {{}} +", id="find-exec-sed"
     ),
     pytest.param(
-        "cd packages; rm lup/src/lup/policy/kernel/shell.py", id="cd-may-fail"
-    ),
-    pytest.param(
-        "cd packages && true; rm lup/src/lup/policy/kernel/shell.py",
-        id="past-the-chain",
+        "cd packages && true || rm lup/src/lup/policy/kernel/shell.py",
+        id="either-side-of-the-cd",
     ),
     pytest.param("cd tmp && cd - && rm {protected}", id="cd-back"),
     pytest.param("function f {{ rm {protected}; }}; f", id="function-body"),

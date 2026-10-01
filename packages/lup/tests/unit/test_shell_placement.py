@@ -103,7 +103,7 @@ def test_a_cd_nothing_here_can_read_leaves_the_words_after_it_unjudged() -> None
 def test_a_subshell_move_reaches_nothing_after_it() -> None:
     """`(cd a && …)` stands for the rest of the subshell and no further."""
     assert rewritten("(cd src && sed -i 's/a/b/' mod.py)") == [["src/mod.py"]]
-    assert shell_write_targets("(cd tmp && printf 'x' > a) ; printf 'y' > b") == [
+    assert shell_write_targets("(cd tmp; printf 'x' > a) ; printf 'y' > b") == [
         "tmp/a",
         "b",
     ]
@@ -138,17 +138,28 @@ def test_a_cd_that_failed_left_the_shell_where_it_stood() -> None:
     assert shell_path_verb_targets("if ! cd src; then rm a; fi", VOCABULARY) == ["a"]
 
 
-def test_a_cd_that_may_have_failed_leaves_the_directory_unknown() -> None:
-    """Past a `cd` that may or may not have happened, no directory is named.
+def test_a_cd_the_line_passes_unconditionally_is_taken_to_have_succeeded() -> None:
+    """Past a `;`, a `cd` naming its directory is where the shell stands.
 
-    `cd a; rm x` removes `a/x`, or `x` where the `cd` failed, and a chain
-    after its `cd` may have stopped at either; a loop's second pass starts
-    where its first left the shell. Each path after one is a path only the
-    run can name, and a write to it asks.
+    Its failure is followed only where the line routes on it; the
+    `# lup: defer:` note in `placed_andor` says what that leaves open.
+    """
+    assert shell_path_verb_targets("cd src; rm a", VOCABULARY) == ["src/a"]
+    assert shell_path_verb_targets("cd src && true; rm a", VOCABULARY) == ["src/a"]
+    assert shell_path_verb_targets("true && cd src; rm a", VOCABULARY) == []
+
+
+def test_a_move_that_may_or_may_not_have_happened_leaves_the_directory_unknown() -> (
+    None
+):
+    """Where the line itself may have skipped or undone a move, no directory is named.
+
+    A chain whose later command failed after its `cd` ran routes `||` to
+    either place, `time` may run the `cd` in a child, and a loop's second
+    pass starts where its first left the shell. Each path after one is a
+    path only the run can name, and a write to it asks.
     """
     for command in (
-        "cd src; rm a",
-        "cd src && true; rm a",
         "cd src && true || rm a",
         "time cd src && rm a",
         "while true; do cd src; rm a; done",
