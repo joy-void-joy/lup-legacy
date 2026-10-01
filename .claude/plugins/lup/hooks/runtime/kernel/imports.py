@@ -145,6 +145,7 @@ def resolved_import_rules(
                 id=rule_id,
                 pattern=r"(?!)",
                 message=message,
+                remedy="",
                 context="code",
                 matcher="",
                 strength="soft",

@@ -845,6 +845,7 @@ def antipattern_row(rule: AntiPattern) -> AntiPatternRow:
         id=rule.id,
         pattern=rule.pattern.pattern,
         message=rule.message,
+        remedy=rule.remedy,
         context=rule.context,
         matcher="" if rule.matcher is None else rule.matcher.select.__name__,
         strength=rule.strength,

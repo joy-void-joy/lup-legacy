@@ -3179,7 +3179,7 @@ def anti_pattern_denial(number: int, row: AntiPatternRow) -> KernelDecision:
     )
     return KernelDecision(
         "deny",
-        f"{row['message']} (rule {row['id']})",
+        f"{row['remedy'] or row['message']} (rule {row['id']})",
         recovery=(placement,),
         subject=f"line {number}",
         see="docs/rules.md",
@@ -3198,7 +3198,8 @@ def withdrawn_suppression_denial(number: int, row: AntiPatternRow) -> KernelDeci
     return KernelDecision(
         "deny",
         f"this edit removes the `# lup: ignore[{row['id']}]` covering it, and the"
-        f" line still trips the rule: {row['message']} (rule {row['id']})",
+        f" line still trips the rule: {row['remedy'] or row['message']}"
+        f" (rule {row['id']})",
         recovery=(step("restore the directive, or clear what it was silencing"),),
         subject=f"line {number}",
         see="docs/rules.md",

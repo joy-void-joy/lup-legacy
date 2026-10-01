@@ -426,6 +426,7 @@ def test_the_hook_row_declares_that_its_verdict_needs_a_declaration() -> None:
             id="dict-get",
             pattern=r"\.get\s*\(",
             message=rows[0]["message"],
+            remedy="model the payload as a BaseModel or TypedDict and read the field",
             context="code",
             matcher="dict_get_sites",
             strength="soft",

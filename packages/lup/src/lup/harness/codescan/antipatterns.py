@@ -275,6 +275,7 @@ PORTABLE_PYTHON_ANTI_PATTERNS: list[AntiPattern] = [
     ),
     AntiPattern(
         id="historical-voice",
+        remedy="say what the code is; how it came to be belongs in the commit message",
         pattern=HISTORICAL_VOICE_RE,
         matcher=Matcher(select=historical_voice_sites),
         examples=[
@@ -390,6 +391,7 @@ PORTABLE_PYTHON_ANTI_PATTERNS: list[AntiPattern] = [
     ),
     AntiPattern(
         id="dict-str-object",
+        remedy="use a TypedDict or BaseModel, `JsonObject` for data, or `Namespace` for live objects, from `lup.types`",
         pattern=re.compile(r"\b(?:dict|Mapping)\[\s*str\s*,\s*object\s*\]"),
         matcher=Matcher(select=dict_str_object_sites),
         examples=[
@@ -416,6 +418,7 @@ PORTABLE_PYTHON_ANTI_PATTERNS: list[AntiPattern] = [
         # scalar value (config-shaped) — that wants a BaseModel or
         # dict[Literal[...], V]; JsonValue stays the escape for arbitrary JSON.
         id="dict-str-payload",
+        remedy="name the keys: a BaseModel, `dict[Literal[...], V]`, an id model as the key, or `StringMap` or `EnvVars` from `lup.types`",
         pattern=re.compile(
             r"\b(?:dict|Mapping|MutableMapping)\[\s*str\s*,"
             r"\s*(?:str|int|float|bool|bytes|complex)\b"
@@ -463,6 +466,7 @@ PORTABLE_PYTHON_ANTI_PATTERNS: list[AntiPattern] = [
         # does not carry. A key computed at runtime is a lookup into a map
         # whose keys are data, never a hidden schema, and takes no directive.
         id="dict-get",
+        remedy="model the payload as a BaseModel or TypedDict and read the field",
         pattern=re.compile(r"\.get\s*\("),
         matcher=Matcher(select=dict_get_sites),
         family=MAPPING_FAMILY,
@@ -524,6 +528,7 @@ PORTABLE_PYTHON_ANTI_PATTERNS: list[AntiPattern] = [
         # repository generates. The per-format constructors take a document
         # instead, which is emitted and parsed back before the file exists.
         id="derived-interpolation",
+        remedy="build the body as a document and hand it to `Artifact.in_yaml`, `in_markdown`, `in_toml` or `in_json`",
         pattern=re.compile(
             r"\b(?:body|content)\s*=\s*"
             r"(?:f[\"']|[\"'][^\"']*[\"']\s*\.\s*(?:format|join)\b)"
@@ -616,6 +621,7 @@ PORTABLE_PYTHON_ANTI_PATTERNS: list[AntiPattern] = [
     ),
     AntiPattern(
         id="tuple-shape",
+        remedy="name the positions with a BaseModel, or a TypedDict where no model can go",
         strength="strong",
         pattern=re.compile(r"\btuple\["),
         matcher=Matcher(select=tuple_shape_sites),
@@ -640,6 +646,7 @@ PORTABLE_PYTHON_ANTI_PATTERNS: list[AntiPattern] = [
         # purpose-built structure; an immutable-default-argument use is the one
         # legitimate site — `# lup: ignore[frozenset-shape]` marks it.
         id="frozenset-shape",
+        remedy="use a dict, or a purpose-built structure",
         pattern=re.compile(r"\bfrozenset\b"),
         matcher=Matcher(select=frozenset_shape_sites),
         examples=[
@@ -664,6 +671,7 @@ PORTABLE_PYTHON_ANTI_PATTERNS: list[AntiPattern] = [
         # `frozenset` is caught by frozenset-shape and never trips this, since
         # its "set" is not a standalone word.
         id="set-shape",
+        remedy="use a dict where the members key something, or a `list[BaseModel]`",
         pattern=re.compile(r"(?<!\.)\bset[\[(]|(?::|->)\s*set\b"),
         matcher=Matcher(select=set_shape_sites),
         examples=[
@@ -692,6 +700,7 @@ PORTABLE_PYTHON_ANTI_PATTERNS: list[AntiPattern] = [
         # which `empty_collection_exempt_lines` clears, so no line trips both:
         # this rule owns the factory spelling and that one owns the seed.
         id="default-factory",
+        remedy="write the default as a literal, `items: list[B] = []`",
         pattern=re.compile(r"\bdefault_factory\s*="),
         matcher=Matcher(select=default_factory_sites),
         examples=[
@@ -722,6 +731,7 @@ PORTABLE_PYTHON_ANTI_PATTERNS: list[AntiPattern] = [
         # declaration among those is a pydantic field, whose factory spelling
         # default-factory owns. The lookbehind keeps `==`/`!=`/`<=`/`>=` out.
         id="empty-collection",
+        remedy="build the collection with a comprehension, or yield the items from a nested function",
         pattern=re.compile(r"(?<![=!<>])=\s*(?:\{\}|\[\]|set\(\))"),
         matcher=Matcher(select=empty_collection_sites),
         examples=[
@@ -760,6 +770,7 @@ PORTABLE_PYTHON_ANTI_PATTERNS: list[AntiPattern] = [
     ),
     AntiPattern(
         id="import-re",
+        remedy="parse with the format's own API: `json`, `pathlib`, `urllib.parse`, `xml.etree`, `datetime`",
         pattern=re.compile(r"\bimport\s+re\b|\bfrom\s+re\s+import\b"),
         matcher=Matcher(select=import_re_sites),
         examples=[
@@ -879,6 +890,7 @@ PORTABLE_PYTHON_ANTI_PATTERNS: list[AntiPattern] = [
         # chose for content, which is the shape this names — the matcher clears
         # the digests, splits, and sniffs that also wear it.
         id="silent-truncation",
+        remedy="emit the whole value; where a hard limit forces a cut, save the full copy and point at it",
         pattern=re.compile(r"\[\s*:\s*(?:\d[\d_]*\d|[A-Z][A-Z0-9_]{2,})\s*\]"),
         matcher=Matcher(select=silent_truncation_sites),
         examples=[
@@ -999,6 +1011,7 @@ PORTABLE_PYTHON_ANTI_PATTERNS: list[AntiPattern] = [
         # at all: a "code" rule reads token-masked source, so the identifier
         # inside a docstring or comment is already blank by the time it matches.
         id="model-config",
+        remedy="declare the configuration as class keywords: `class A(BaseModel, frozen=True)`",
         pattern=re.compile(r"^\s*model_config\s*[:=]"),
         matcher=Matcher(select=model_config_sites),
         examples=[
@@ -1197,6 +1210,7 @@ PORTABLE_PYTHON_ANTI_PATTERNS: list[AntiPattern] = [
     ),
     AntiPattern(
         id="elif-chain",
+        remedy="write it as a `match` on the subject the arms decide on",
         pattern=re.compile(r"^\s*elif\b"),
         matcher=Matcher(select=elif_chain_sites),
         examples=[
@@ -1240,6 +1254,7 @@ PORTABLE_PYTHON_ANTI_PATTERNS: list[AntiPattern] = [
     ),
     AntiPattern(
         id="wildcard-guard",
+        remedy="bind what the guard reads in the pattern, or write guard clauses that return",
         pattern=re.compile(r"^\s*case\s+(?:_|[A-Za-z_]\w*)\s+if\b"),
         matcher=Matcher(select=wildcard_guard_sites),
         examples=[
@@ -1327,6 +1342,7 @@ def pdf_extraction_rule(document_reader: Spelling) -> AntiPattern:
     """
     return AntiPattern(
         id="pdf-extraction",
+        remedy="read the document whole instead of extracting its text",
         pattern=re.compile(
             r"\b(?:import|from)\s+"
             r"(?:fitz|pymupdf|pypdf|PyPDF2|PyPDF4|pdfplumber|pdfminer|pypdfium2)\b"

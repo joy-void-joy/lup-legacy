@@ -23,6 +23,7 @@ and ``git restore``, so ``checkout`` denies and names them instead of asking.
 """
 
 from lup.policy.everyday import CommandFamily, everyday_commands
+from lup.policy.kernel.diagnostic import devtools, step
 from lup.policy.kernel.effects import declare
 from lup.policy.shell_rules import (
     RunnerTargetRule,
@@ -76,11 +77,11 @@ def lup_devtools_rule() -> ShellCommandRule:
     policies.
     """
     reach_through_uv = (
-        "reach this toolchain through `uv run lup-devtools`, which guarantees"
-        " the environment it runs in — only the conflict workflow, whose"
-        " commands must start while the manifest does not parse, is documented"
-        " without it"
+        "runs without `uv run`, which checks the project's environment before it starts"
     )
+    through_uv = [
+        step("run the same words through uv", devtools("<the same words>")),
+    ]
     # What it does is run this project's own toolchain, and that is the same
     # whichever spelling reached it -- so the refusal is stated as one rather
     # than as an effect. `uv run lup-devtools dev check` and `lup-devtools dev
@@ -95,6 +96,7 @@ def lup_devtools_rule() -> ShellCommandRule:
         judged.model_copy(
             update={
                 "reason": reach_through_uv,
+                "recovery": through_uv,
                 "operations": [
                     operation
                     for operation in judged.operations
@@ -119,9 +121,11 @@ def lup_devtools_rule() -> ShellCommandRule:
                     ShellOperationRule(name="conflict", refuses="")
                 ],
                 reason=reach_through_uv,
+                recovery=through_uv,
             ),
         ],
         reason=reach_through_uv,
+        recovery=through_uv,
     )
 
 

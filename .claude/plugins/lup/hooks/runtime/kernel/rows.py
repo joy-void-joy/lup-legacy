@@ -290,6 +290,8 @@ class AntiPatternRow(TypedDict):
     id: str
     pattern: str
     message: str
+    remedy: str
+    """The one clause a denial quotes in place of ``message``, or ``""``."""
     context: str
     matcher: str
     """The AST selector this rule declares, or ``""`` where it declares none.

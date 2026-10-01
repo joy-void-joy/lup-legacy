@@ -23,8 +23,9 @@ sys.path.insert(0, str(Path(__file__).parents[1] / "runtime"))
 from codex_patch import patched_files, patched_paths
 from kernel.rows import PostToolReport
 from kernel.review import Said
-from kernel.decision import UNJUDGED_RECOVERY, KernelDecision
-from kernel.diagnostic import step
+from kernel.decision import KernelDecision
+from kernel.decision import UNJUDGED_RECOVERY
+from kernel.diagnostic import Step, devtools, spelled, stated, step
 from kernel.review import literal_input
 from kernel.shell import auto_escape_matches
 from caller_payload import caller_of, spoken, transcript_of
@@ -45,8 +46,6 @@ from collections.abc import Callable, Iterator
 from typing import BinaryIO, Literal
 from urllib.parse import urlsplit
 import policy_data as identity_policy
-from kernel.decision import KernelDecision
-from kernel.diagnostic import Step, devtools, spelled, stated, step
 from kernel.decision import FileReviewRow, captured_edit_decision
 from kernel.documents import (
     FollowedDocument,
@@ -6134,10 +6133,10 @@ def waiting(command, payload):
     return (
         step(
             "carry on with other work, or end your turn: the operator's answer is"
-            " queued into this thread, which starts a turn, and this then"
-            " carries the call out at once; don't start a waiter before",
-            command,
+            " queued into this thread, which starts a turn, so don't start a"
+            " waiter"
         ),
+        step("once it wakes you, carry the call out at once", command),
     )
 
 
