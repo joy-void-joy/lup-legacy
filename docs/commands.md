@@ -330,6 +330,8 @@ Run any of them with `uv run lup-devtools <command>`, and add `--help` for its a
 | `trace list` | List available traces. |
 | `trace errors` | Show sessions with errors found in trace files. |
 | `trace capabilities` | Extract capability requests from traces. |
+| `trace verify` | Check that each launch transcript&#x27;s hash chain holds, and say where it breaks. |
+| `trace events` | Read a launched session&#x27;s transcript, record by record, its chain checked first. |
 | `trace archive` | Copy a worktree&#x27;s session records into the archive beside the repository. |
 
 ## `version`
