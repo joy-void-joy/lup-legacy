@@ -8,8 +8,8 @@
   rate and average, fastest and slowest call, per server, over the sessions
   launched in this checkout — or one session opened in process with
   `--session`, one launched session with `--member <roster id>`, the
-  processes still writing after a moment with `--since`, the report whole
-  with `--json`.
+  processes that recorded a call after a moment with `--since`, the report
+  whole with `--json`.
 - Every tool-server process writes those metrics to a snapshot of its own
   under its session directory's `metrics/`. The one `metrics.json` every
   process used to overwrite held whichever of a session's servers wrote

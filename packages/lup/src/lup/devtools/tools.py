@@ -128,7 +128,8 @@ def metrics_command(
     since: Annotated[
         str,
         typer.Option(
-            "--since", help="Only processes still writing after this ISO 8601 moment"
+            "--since",
+            help="Only processes that recorded a call after this ISO 8601 moment",
         ),
     ] = "",
     as_json: JSON_OPT = False,
@@ -142,8 +143,9 @@ def metrics_command(
     `--session`, one session this project opened in process. `--member`
     narrows to one launched session's servers by its roster id.
 
-    A process is counted whole when it was still writing after `--since`,
-    because a snapshot is cumulative from the moment its process started.
+    A process is counted whole when its last recorded call came after
+    `--since`, because a snapshot is cumulative from the moment its process
+    started and says nothing of when within its life each call was made.
     The directory keeps 30 days and at most 1000 snapshots, pruned as each
     process starts.
     """

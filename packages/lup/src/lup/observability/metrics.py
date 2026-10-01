@@ -449,7 +449,7 @@ def read_metrics_snapshots(
 ) -> list[MetricsSnapshot]:
     """Every snapshot a session's tool-serving processes wrote, oldest first.
 
-    ``since`` keeps the processes still writing at or after that moment. Each
+    ``since`` keeps the processes whose last call came at or after it. Each
     is counted whole, from its own start, because a snapshot is cumulative
     and says nothing of when within its life a call was made. A snapshot
     that will not read is logged and passed over: one bad file must not cost
