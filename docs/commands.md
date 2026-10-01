@@ -319,6 +319,7 @@ Run any of them with `uv run lup-devtools <command>`, and add `--help` for its a
 | Command | What it does |
 | --- | --- |
 | `tools serve` | Serve one hosted tool server over MCP stdio, for the session it names. |
+| `tools metrics` | Show each tool&#x27;s calls, errors and latency, from the servers sessions here started. |
 
 ## `trace`
 

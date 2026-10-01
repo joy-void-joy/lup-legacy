@@ -21,10 +21,11 @@ command a composed CLI mounts.
 """
 
 import os
+from pathlib import Path
 from typing import Annotated
 
 import typer
-from pydantic import ImportString, TypeAdapter
+from pydantic import BaseModel, ImportString, TypeAdapter
 
 from lup.coordination.bare.runtime import Runtime, runtime_of, stdin_runtime
 from lup.coordination.identity import MemberEnv, session_cli_name
@@ -38,10 +39,39 @@ from lup.mcp import NeedsHook, ServedServer
 from lup.tools.toolsets import SessionNeeds
 from lup.types import JsonObject
 from lup.workspace.context import SessionContext, read_session_context
+from lup.workspace.history import iter_session_dirs
 from lup.workspace.paths import project_root
 
 
-def harness_session_context(name: str) -> SessionContext:
+class ServedSessions(BaseModel, frozen=True):
+    """Where a natively launched tool server opens the session it serves.
+
+    One value read twice: by the server, which opens its session there, and
+    by whoever reads back what the servers of hand-driven sessions wrote —
+    so the two cannot name different directories.
+    """
+
+    kind: str = "harness"
+    """The directory under each agent version's sessions they are opened in."""
+
+    def directories(self) -> list[Path]:
+        """Every session a natively launched server opened in this checkout.
+
+        Oldest agent version first. Every server of every session launched
+        in one checkout is started under the session name its launch
+        declares, so this is usually one directory per version, shared.
+        """
+        return [
+            directory
+            for parent in iter_session_dirs(session_id=self.kind)
+            for directory in sorted(parent.iterdir())
+            if directory.is_dir()
+        ]
+
+
+def harness_session_context(
+    name: str, served: ServedSessions = ServedSessions()
+) -> SessionContext:
     """Open the session a natively launched tool server serves.
 
     An adapter-launched server is handed a session that already exists; a
@@ -53,7 +83,7 @@ def harness_session_context(name: str) -> SessionContext:
     """
     from lup.workspace.notes import session_gate_flag, setup_notes
 
-    notes = setup_notes(session_id=name, task_id=name, type="harness")
+    notes = setup_notes(session_id=name, task_id=name, type=served.kind)
     return SessionContext(
         session_dir=notes.session,
         outputs_dir=notes.output.parent,

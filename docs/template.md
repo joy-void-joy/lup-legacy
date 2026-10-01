@@ -187,7 +187,7 @@ display around the readers it names.
 - `run` — Follow work that outlives its tool call
 - `setup` — Interactive setup wizard, and its page
 - `sync` — Stay in step with upstream: tracked repos, and what they owe
-- `tools` — Serve the MCP servers a launched session declares
+- `tools` — Serve the MCP servers a launched session declares, and read what their tools did
 - `trace` — What a session left behind: its trace and its records
 - `version` — Agent version, changelog, and bump
 
