@@ -50,6 +50,7 @@ from lup.workspace.history import (
     iter_run_dirs,
     iter_session_dirs,
     iter_trace_log_files,
+    run_transcript,
     session_backend,
     version_dirs,
 )
@@ -217,7 +218,7 @@ def harness_launches() -> Iterator[Found]:
     so the record says nothing either.
     """
     for directory in iter_run_dirs():
-        written = directory / "observable.jsonl"
+        written = run_transcript(directory)
         journal = written if written.is_file() else None
         yield Found(
             runtime=directory.parent.name,

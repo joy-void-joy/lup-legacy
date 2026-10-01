@@ -71,6 +71,7 @@ from lup.observability.native import NativeTranscripts, NativeTranscriptWatcher
 from lup.observability.sessions import Session, SessionRecorder
 from lup.sessions.recursion import MAX_RECURSIVE_AGENT_ENV
 from lup.types import EnvVars, JsonObject, JsonValue
+from lup.workspace.history import run_transcript
 from lup.workspace.paths import agent_version, harness_runs_path
 from lup.harness.clipboard import ClipboardTransport
 from lup.harness.generate import RuntimeReadiness
@@ -261,7 +262,7 @@ def start_harness_transcript(
         f"{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}_{provider}_{uuid4().hex[:8]}"
     )
     runs = root / record_root if record_root is not None else harness_runs_path()
-    trace_path = runs / provider / run_id / "observable.jsonl"
+    trace_path = run_transcript(runs / provider / run_id)
     journal = TraceJournal(
         trace_path,
         TraceContext.root(
