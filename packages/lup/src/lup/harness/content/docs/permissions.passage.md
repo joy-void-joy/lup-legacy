@@ -858,6 +858,17 @@ A deliberate send to a peer is not walled off. The `# lup: escalate:` marker in
 any of the call's own inputs turns the refusal into the approval question the
 sender asked for, carrying their stated reason — the valve every refusal has.
 
+A write under a path somebody else holds — a session that locked it or last
+changed it — is a question rather than a refusal, naming every holder:
+`<path> is held by <holders> — another live session has changed or locked
+this path`. The person watching holds a path too, from the dashboard, and an
+agent writing under it is asked with `held by user — the operator locked this
+path`; where a session holds it as well, both are said. Their hold stands until
+they give it back, since the person never stops. The kernel's
+`decide_foreign_claim` words it from the declared row's `operator` and
+`operator_reason`, so the compiled dispatcher and the in-process session say
+the same thing.
+
 <!-- passage: forge-credentials -->
 ## Forge credentials
 

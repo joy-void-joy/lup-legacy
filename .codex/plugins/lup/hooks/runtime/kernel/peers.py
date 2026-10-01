@@ -118,15 +118,24 @@ def decide_foreign_claim(
     nothing could attribute, and a reader deciding whom to ask has to see that
     it is a question rather than an answer.
 
+    The person watching holds a path the way a session does, and an approver
+    meeting their hold is told it is theirs rather than another session's;
+    where a session holds it too, both are said.
+
     ``None`` where nothing is held, which is not the same as an allow: this
     family has no positive authority to grant, and returning one would let a
     quiet path weaken a verdict the edit gates reached on their own.
     """
     if row is None or not holders:
         return None
+    sessions = [holder for holder in holders if holder != row["operator"]]
+    reasons = [
+        *([row["operator_reason"]] if row["operator"] in holders else []),
+        *([row["claim_reason"]] if sessions else []),
+    ]
     return KernelDecision(
         "ask",
-        f"{path} is held by {', '.join(holders)} — {row['claim_reason']}",
+        f"{path} is held by {', '.join(holders)} — {'; '.join(reasons)}",
         recovery=row["claim_recovery"],
     )
 
