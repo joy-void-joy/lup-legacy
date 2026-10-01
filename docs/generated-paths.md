@@ -60,7 +60,7 @@ The repository-wide artifacts written outside every runtime tree — the rule an
 | `.claude/plugins/lup/commands/verify-solved.md` | lup.harness.content.skills.verify_solved |
 | `.claude/plugins/lup/hooks/hooks.json` | hooks.lup-policy |
 | `.claude/plugins/lup/hooks/runtime/caller_payload.py` | lup.providers.claude.assets.caller_payload |
-| `.claude/plugins/lup/hooks/runtime/carrier_drift.py` | lup.devtools.dev.drift_fold |
+| `.claude/plugins/lup/hooks/runtime/carrier_drift.py` | lup.providers.assets.drift_fold |
 | `.claude/plugins/lup/hooks/runtime/coordination/__init__.py` | lup.coordination.bare.__init__ |
 | `.claude/plugins/lup/hooks/runtime/coordination/arrival.py` | lup.coordination.bare.arrival |
 | `.claude/plugins/lup/hooks/runtime/coordination/changes.py` | lup.coordination.bare.changes |
@@ -160,7 +160,7 @@ The repository-wide artifacts written outside every runtime tree — the rule an
 | `.codex/plugins/lup/TEMPLATE_AGENTS.md` | lup_template.harness.content.template_codex |
 | `.codex/plugins/lup/hooks/hooks.json` | hooks.lup-policy |
 | `.codex/plugins/lup/hooks/runtime/caller_payload.py` | lup.providers.codex.assets.caller_payload |
-| `.codex/plugins/lup/hooks/runtime/carrier_drift.py` | lup.devtools.dev.drift_fold |
+| `.codex/plugins/lup/hooks/runtime/carrier_drift.py` | lup.providers.assets.drift_fold |
 | `.codex/plugins/lup/hooks/runtime/codex_patch.py` | lup.providers.codex.patch |
 | `.codex/plugins/lup/hooks/runtime/coordination/__init__.py` | lup.coordination.bare.__init__ |
 | `.codex/plugins/lup/hooks/runtime/coordination/arrival.py` | lup.coordination.bare.arrival |

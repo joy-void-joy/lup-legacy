@@ -13,7 +13,7 @@ call that cannot work. Both runtimes fire an event when a prompt is submitted
 and read context back from it, so both plugins carry the same two artifacts: a
 shell guard that exits without starting an interpreter where this project has
 no scaffold branch at all, and the fold from
-:mod:`lup.devtools.dev.drift_fold`, shipped verbatim beside it.
+``providers/assets/drift_fold.py``, shipped verbatim beside it.
 
 Rendered once here rather than once per adapter, for the reason the roster's
 pair is: what the adapters own is two words — the event's name and the
@@ -35,14 +35,16 @@ from lup.providers.roster_prompt import PromptHook, hook_entry
 
 RUNTIME_MODULE = "carrier_drift.py"
 GUARD_SCRIPT = "carrier_drift.sh"
-RUNTIME_ORIGIN = "lup.devtools.dev.drift_fold"
+RUNTIME_ORIGIN = "lup.providers.assets.drift_fold"
 RUNTIME_SOURCE = "drift_fold.py"
 """The two files a plugin carries for the carriers, and the fold's own home."""
 
 
 def runtime_source(module: str) -> str:
     """A shipped runtime, read from the module that owns it rather than restated."""
-    return resources.files("lup.devtools.dev").joinpath(module).read_text("utf-8")
+    return (
+        resources.files("lup.providers").joinpath("assets", module).read_text("utf-8")
+    )
 
 
 def guard_body(event: str, runtime_module: str, branch: str, distribution: str) -> str:
