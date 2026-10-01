@@ -24,7 +24,7 @@ function sent(event: object): string {
 /** The whole state as one frame, over the fixture's reviews and whatever sessions and messages it holds. */
 function framed(reviews: unknown): string {
   const code = { source: "fixture", root: "/project/packages/lup/src/lup", since: null, older: false, failing: "", restarted: "" };
-  return sent({ type: "snapshot", repositories: liveRepositories, sessions: liveSessions, messages: liveMessages, extents: liveExtents, reviews, code });
+  return sent({ type: "snapshot", repositories: liveRepositories, sessions: liveSessions, messages: liveMessages, extents: liveExtents, reviews, code, users: [], served: [] });
 }
 /** How the fake server says the requester heard of an answer. */
 const DELIVERED = { queued: true, woken: false, waited: false, copied: false, detail: "No `review wait` holds it: in lead's mailbox, not woken: asleep." };

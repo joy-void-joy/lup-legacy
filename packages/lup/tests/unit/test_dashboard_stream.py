@@ -19,15 +19,18 @@ from starlette.types import Message, Scope
 from lup.channels.models import Door
 from lup.coordination import watch as watching
 from lup.coordination.bare import mail as bare_mail
+from lup.coordination.bare.changes import changes
 from lup.coordination.bare.store import MAIL_RECORD, session_actor
 from lup.coordination.identity import mint_member_id
 from lup.coordination.mail import MAIL_PAGE
+from lup.coordination.peers import USER_ADDRESS
 from lup.coordination.repository import RepositoryPeers
 from lup.coordination.wake import WakePath, Woken
 from lup.devtools.dashboard.companion import KnownRepository
 from lup.devtools.dashboard.live import MessagePage, ReplyOutcome
 from lup.devtools.dashboard.reviews import ReviewStore, dashboard_app
 from lup.devtools.dashboard.stream import (
+    FollowedFrom,
     LiveFeed,
     MessageEvent,
     Observation,
@@ -35,6 +38,7 @@ from lup.devtools.dashboard.stream import (
     SessionEvent,
     SnapshotEvent,
     StreamFrame,
+    UserEvent,
 )
 from lup.devtools.review.app import relay
 from lup.policy.operations import Operation
@@ -533,3 +537,83 @@ async def test_a_producer_that_ended_is_let_go_and_the_next_tab_starts_another(
     received = await frames(source, "", lambda received: len(received) >= 1)
 
     assert isinstance(received[0].event, SnapshotEvent)
+
+
+async def test_the_whole_state_carries_the_person_s_row_and_what_is_served(
+    tmp_path: Path,
+) -> None:
+    session(tmp_path, "lead")
+    peers = RepositoryPeers(tmp_path)
+    peers.describe(USER_ADDRESS, "watching the relay land")
+    source = LiveFeed(
+        lambda: [known(tmp_path)],
+        ReviewStore(roots=(tmp_path,)),
+        interval=0.02,
+        served=("transcript",),
+    )
+
+    def described_again(received: list[StreamFrame]) -> None:
+        if len(received) == 1:
+            peers.describe(USER_ADDRESS, "landing it")
+
+    received = await frames(
+        source,
+        "",
+        lambda received: any(isinstance(frame.event, UserEvent) for frame in received),
+        described_again,
+    )
+
+    first = received[0].event
+    assert isinstance(first, SnapshotEvent)
+    assert [row.description for row in first.users] == ["watching the relay land"]
+    assert first.served == ["transcript"]
+    changed = received[-1].event
+    assert isinstance(changed, UserEvent)
+    assert changed.user.description == "landing it"
+
+
+def transcript_line(text: str) -> str:
+    return json.dumps(
+        {
+            "type": "assistant",
+            "uuid": text,
+            "timestamp": "2026-09-29T10:00:00Z",
+            "message": {
+                "role": "assistant",
+                "content": [{"type": "text", "text": text}],
+            },
+        }
+    )
+
+
+def test_a_followed_transcript_is_read_on_while_its_lease_holds(
+    tmp_path: Path,
+) -> None:
+    lead = session(tmp_path, "lead")
+    transcript = tmp_path / "home" / "lead.jsonl"
+    transcript.parent.mkdir()
+    transcript.write_text(transcript_line("already read") + "\n", encoding="utf-8")
+    changes(RepositoryPeers(tmp_path).root, lead, tmp_path, str(transcript))
+    source = feed(tmp_path)
+    key = known(tmp_path).key()
+
+    following = source.follow_transcripts(
+        [
+            FollowedFrom(repository=key, member=lead, after=transcript.stat().st_size),
+            FollowedFrom(repository=key, member="nobody"),
+        ],
+        now=0.0,
+    )
+    with transcript.open("a", encoding="utf-8") as written:
+        written.write(transcript_line("said since") + "\n")
+    read = source.transcribed(1.0)
+    lapsed = source.transcribed(1.0 + source.lease)
+
+    assert following.sessions == [f"{key}/{lead}"]
+    assert [refusal.session for refusal in following.refused] == [f"{key}/nobody"]
+    [event] = read
+    assert event.session == f"{key}/{lead}"
+    assert [entry.text for entry in event.entries] == ["said since"]
+    assert event.end == transcript.stat().st_size
+    assert lapsed == []
+    assert source.followed == {}

@@ -307,6 +307,14 @@
       "title": "BlockStartedEvent",
       "type": "object"
     },
+    "CallState": {
+      "enum": [
+        "ok",
+        "error",
+        "pending"
+      ],
+      "type": "string"
+    },
     "CarriedParent": {
       "additionalProperties": false,
       "description": "One parent whose commits another parent already contains.",
@@ -589,7 +597,9 @@
           "service": "#/$defs/ServiceEvent",
           "session": "#/$defs/SessionEvent",
           "session_gone": "#/$defs/SessionGoneEvent",
-          "snapshot": "#/$defs/SnapshotEvent"
+          "snapshot": "#/$defs/SnapshotEvent",
+          "transcript": "#/$defs/TranscriptEvent",
+          "user": "#/$defs/UserEvent"
         },
         "propertyName": "type"
       },
@@ -623,6 +633,12 @@
         },
         {
           "$ref": "#/$defs/ServiceEvent"
+        },
+        {
+          "$ref": "#/$defs/UserEvent"
+        },
+        {
+          "$ref": "#/$defs/TranscriptEvent"
         }
       ]
     },
@@ -692,6 +708,14 @@
       ],
       "type": "string"
     },
+    "EntryKind": {
+      "enum": [
+        "text",
+        "call",
+        "result"
+      ],
+      "type": "string"
+    },
     "ExportView": {
       "additionalProperties": false,
       "description": "Everything a standalone page needs, so it opens with no server behind it.\n\nThe graph, every node's detail and the declared kinds, because a page\nopened from a file cannot ask for more later \u2014 the worked example this\ncame from was an 18 MB single file for exactly this reason, and a memo\nattachment that needed a server would not be one. Stamped with the moment\nit was taken, since what it shows is the log as it was then.",
@@ -751,6 +775,23 @@
       ],
       "title": "ExternalEffectPlan",
       "type": "object"
+    },
+    "Feature": {
+      "enum": [
+        "reply-thread",
+        "redirect",
+        "interrupt",
+        "bare-wake",
+        "rename",
+        "stop",
+        "transcript",
+        "notices",
+        "describe",
+        "claims",
+        "inbox-read",
+        "thread-post"
+      ],
+      "type": "string"
     },
     "ForeignCriteriaEvent": {
       "additionalProperties": false,
@@ -1312,6 +1353,11 @@
           "title": "Key",
           "type": "string"
         },
+        "post": {
+          "default": "",
+          "title": "Post",
+          "type": "string"
+        },
         "recipient": {
           "title": "Recipient",
           "type": "string"
@@ -1341,6 +1387,11 @@
           "title": "Text",
           "type": "string"
         },
+        "thread": {
+          "default": "",
+          "title": "Thread",
+          "type": "string"
+        },
         "waiting": {
           "title": "Waiting",
           "type": "boolean"
@@ -1358,10 +1409,49 @@
         "door",
         "redirect",
         "in_reply_to",
+        "post",
+        "thread",
         "sent_at",
         "waiting"
       ],
       "title": "LiveMessage",
+      "type": "object"
+    },
+    "LiveNotice": {
+      "additionalProperties": false,
+      "description": "One fact standing over a repository's sessions, read at the head of every prompt.",
+      "properties": {
+        "by": {
+          "default": "",
+          "title": "By",
+          "type": "string"
+        },
+        "door": {
+          "title": "Door",
+          "type": "string"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "posted_at": {
+          "format": "date-time",
+          "title": "Posted At",
+          "type": "string"
+        },
+        "text": {
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "text",
+        "by",
+        "door",
+        "posted_at"
+      ],
+      "title": "LiveNotice",
       "type": "object"
     },
     "LiveRepository": {
@@ -1404,6 +1494,7 @@
             "arguments": {},
             "at": null,
             "calling": "",
+            "recent": [],
             "said": "",
             "transcript": ""
           }
@@ -1487,6 +1578,17 @@
           "title": "Parent",
           "type": "string"
         },
+        "process": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SessionProcess"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
         "repository": {
           "title": "Repository",
           "type": "string"
@@ -1494,6 +1596,16 @@
         "running": {
           "title": "Running",
           "type": "boolean"
+        },
+        "runtime": {
+          "default": "",
+          "title": "Runtime",
+          "type": "string"
+        },
+        "spawned_by": {
+          "default": "",
+          "title": "Spawned By",
+          "type": "string"
         },
         "summary": {
           "default": "",
@@ -1536,6 +1648,9 @@
         "contested",
         "delivery",
         "wake",
+        "runtime",
+        "spawned_by",
+        "process",
         "arrived",
         "heard",
         "summary",
@@ -4418,6 +4533,51 @@
       "title": "ScopeRequest",
       "type": "object"
     },
+    "SeenCall": {
+      "additionalProperties": false,
+      "description": "One call a conversation made, and whether it has been answered.",
+      "properties": {
+        "at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "At"
+        },
+        "call": {
+          "title": "Call",
+          "type": "string"
+        },
+        "state": {
+          "$ref": "#/$defs/CallState",
+          "default": "pending"
+        },
+        "summary": {
+          "default": "",
+          "title": "Summary",
+          "type": "string"
+        },
+        "tool": {
+          "title": "Tool",
+          "type": "string"
+        }
+      },
+      "required": [
+        "call",
+        "tool",
+        "summary",
+        "at",
+        "state"
+      ],
+      "title": "SeenCall",
+      "type": "object"
+    },
     "ServiceEvent": {
       "additionalProperties": false,
       "description": "Which code the dashboard runs, changed: older than its checkout, or moved onto it.",
@@ -4465,6 +4625,14 @@
           "title": "Calling",
           "type": "string"
         },
+        "recent": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/SeenCall"
+          },
+          "title": "Recent",
+          "type": "array"
+        },
         "said": {
           "default": "",
           "title": "Said",
@@ -4481,7 +4649,8 @@
         "calling",
         "arguments",
         "at",
-        "transcript"
+        "transcript",
+        "recent"
       ],
       "title": "SessionActivity",
       "type": "object"
@@ -4542,6 +4711,42 @@
         "value"
       ],
       "title": "SessionId",
+      "type": "object"
+    },
+    "SessionProcess": {
+      "additionalProperties": false,
+      "description": "The runtime process one row answers for, and whether this dashboard could stop it.",
+      "properties": {
+        "here": {
+          "title": "Here",
+          "type": "boolean"
+        },
+        "pid": {
+          "title": "Pid",
+          "type": "integer"
+        },
+        "started": {
+          "title": "Started",
+          "type": "string"
+        },
+        "stoppable": {
+          "title": "Stoppable",
+          "type": "boolean"
+        },
+        "why": {
+          "default": "",
+          "title": "Why",
+          "type": "string"
+        }
+      },
+      "required": [
+        "pid",
+        "started",
+        "here",
+        "stoppable",
+        "why"
+      ],
+      "title": "SessionProcess",
       "type": "object"
     },
     "SetupPane": {
@@ -4614,6 +4819,14 @@
         "reviews": {
           "$ref": "#/$defs/ReviewSnapshot"
         },
+        "served": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/Feature"
+          },
+          "title": "Served",
+          "type": "array"
+        },
         "sessions": {
           "items": {
             "$ref": "#/$defs/LiveSession"
@@ -4626,6 +4839,14 @@
           "default": "snapshot",
           "title": "Type",
           "type": "string"
+        },
+        "users": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/UserRow"
+          },
+          "title": "Users",
+          "type": "array"
         }
       },
       "required": [
@@ -4635,7 +4856,9 @@
         "messages",
         "extents",
         "reviews",
-        "code"
+        "code",
+        "users",
+        "served"
       ],
       "title": "SnapshotEvent",
       "type": "object"
@@ -5056,6 +5279,114 @@
       "title": "ThreadEntry",
       "type": "object"
     },
+    "TranscriptEntry": {
+      "additionalProperties": false,
+      "description": "One thing a transcript recorded: words said, a call made, or what a call returned.\n\nPlaced by the byte its line starts at and its place among that line's\nblocks, which nothing later moves, so a reader holding entries from one\nread and from a frame after it keeps each once.",
+      "properties": {
+        "arguments": {
+          "$ref": "#/$defs/JsonObject",
+          "default": {}
+        },
+        "at": {
+          "title": "At",
+          "type": "integer"
+        },
+        "block": {
+          "default": 0,
+          "title": "Block",
+          "type": "integer"
+        },
+        "call": {
+          "default": "",
+          "title": "Call",
+          "type": "string"
+        },
+        "error": {
+          "default": false,
+          "title": "Error",
+          "type": "boolean"
+        },
+        "kind": {
+          "$ref": "#/$defs/EntryKind"
+        },
+        "role": {
+          "title": "Role",
+          "type": "string"
+        },
+        "text": {
+          "default": "",
+          "title": "Text",
+          "type": "string"
+        },
+        "time": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Time"
+        },
+        "tool": {
+          "default": "",
+          "title": "Tool",
+          "type": "string"
+        }
+      },
+      "required": [
+        "at",
+        "block",
+        "time",
+        "role",
+        "kind",
+        "text",
+        "tool",
+        "arguments",
+        "call",
+        "error"
+      ],
+      "title": "TranscriptEntry",
+      "type": "object"
+    },
+    "TranscriptEvent": {
+      "additionalProperties": false,
+      "description": "What one followed transcript recorded since, while a tab follows it.\n\nNot state: a tab handed the whole state again reads the transcript's\npage anew, and these carry on from where that page ends.",
+      "properties": {
+        "end": {
+          "title": "End",
+          "type": "integer"
+        },
+        "entries": {
+          "items": {
+            "$ref": "#/$defs/TranscriptEntry"
+          },
+          "title": "Entries",
+          "type": "array"
+        },
+        "session": {
+          "title": "Session",
+          "type": "string"
+        },
+        "type": {
+          "const": "transcript",
+          "default": "transcript",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "type",
+        "session",
+        "entries",
+        "end"
+      ],
+      "title": "TranscriptEvent",
+      "type": "object"
+    },
     "TurnCompletedEvent": {
       "additionalProperties": false,
       "description": "A native turn reached a terminal state.",
@@ -5410,6 +5741,86 @@
         "cause"
       ],
       "title": "UnpreviewedStep",
+      "type": "object"
+    },
+    "UserEvent": {
+      "additionalProperties": false,
+      "description": "The person's own row in one repository, first seen or changed.",
+      "properties": {
+        "type": {
+          "const": "user",
+          "default": "user",
+          "title": "Type",
+          "type": "string"
+        },
+        "user": {
+          "$ref": "#/$defs/UserRow"
+        }
+      },
+      "required": [
+        "type",
+        "user"
+      ],
+      "title": "UserEvent",
+      "type": "object"
+    },
+    "UserRow": {
+      "additionalProperties": false,
+      "description": "The person's own row in one repository, as every agent there reads it.",
+      "properties": {
+        "contested": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Contested",
+          "type": "array"
+        },
+        "description": {
+          "default": "",
+          "title": "Description",
+          "type": "string"
+        },
+        "holding": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Holding",
+          "type": "array"
+        },
+        "key": {
+          "title": "Key",
+          "type": "string"
+        },
+        "notices": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/LiveNotice"
+          },
+          "title": "Notices",
+          "type": "array"
+        },
+        "repository": {
+          "title": "Repository",
+          "type": "string"
+        },
+        "unread": {
+          "default": 0,
+          "title": "Unread",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "key",
+        "repository",
+        "description",
+        "holding",
+        "contested",
+        "notices",
+        "unread"
+      ],
+      "title": "UserRow",
       "type": "object"
     },
     "VerificationFailedEvent": {
