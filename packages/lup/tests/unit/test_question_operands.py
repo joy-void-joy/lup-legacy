@@ -2,13 +2,13 @@
 
 Whoever approves reads the reason and nothing else, and answers yes or no.
 What they weigh is the operand: which packages a `--with` installs, which path
-a write lands on, which file a rule protects. A reason that named the category
-and left the operand out -- "external code", "a protected path" -- put the
-one word that decided the question somewhere the approver could not read it.
+a write lands on, which file a rule protects. A reason that names the category
+and leaves the operand out -- "external code", "a protected path" -- puts the
+one word that decides the question somewhere the approver cannot read it.
 
-These pin the shape at the three seams that were measured saying the least,
-so a rewrite that reaches for the category again fails here rather than in
-somebody's approval prompt.
+These pin the shape at the three seams most prone to say the least, so a
+rewrite that reaches for the category fails here rather than in somebody's
+approval prompt.
 """
 
 from lup.policy.kernel.decision import KernelDecision

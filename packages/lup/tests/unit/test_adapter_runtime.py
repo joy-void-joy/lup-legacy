@@ -143,11 +143,11 @@ def test_a_named_plugin_directory_reaches_the_session(tmp_path: Path) -> None:
     """A session names the tree it is judged by, the way a launch does.
 
     An interactive launch passes `--plugin-dir`. A session opened through the
-    SDK named nothing, so it resolved plugins through the settings at its
-    working directory — and those register a marketplace under a name shared
-    by every checkout declaring it. The plugin a worktree actually loaded was
-    therefore whichever tree registered that name last, which is how a worker
-    came to be refused an edit its own tree's policy kernel allows.
+    SDK naming nothing resolves plugins through the settings at its working
+    directory — and those register a marketplace under a name shared by every
+    checkout declaring it. The plugin a worktree loads is then whichever tree
+    registered that name last, and a worker is refused an edit its own tree's
+    policy kernel allows.
     """
     lease = tmp_path / "lease" / ".claude" / "plugins" / "lup"
     options = build_claude_options(
@@ -738,9 +738,8 @@ async def test_the_durable_view_is_the_live_one_without_its_deltas(
     durable = [event async for event in accepted.events.events()]
     completed = await accepted.complete()
 
-    # A tool call and its result both reach the durable record. The old
-    # stream carried the call and never the result, which is what made it
-    # unusable as a trace.
+    # A tool call and its result both reach the durable record: a stream
+    # carrying the call without its result is unusable as a trace.
     assert [event.type for event in durable] == [
         "turn_started",
         "block_completed",

@@ -1,9 +1,9 @@
 """A rewrite nothing could produce says which of the reasons stopped it.
 
-One sentence stood for five: the path names no file, it names something a
-rewrite cannot replace, sed would not run the script, what came back is not
-text, and nothing looked at all. A writer who mistyped a path and one who
-aimed `-i` at a directory were told the same thing, and handed the one
+One sentence cannot stand for five: the path names no file, it names something
+a rewrite cannot replace, sed would not run the script, what came back is not
+text, and nothing looked at all. Told the same thing, a writer who mistyped a
+path and one who aimed `-i` at a directory would both be handed the one
 recovery that fits neither — make the change as an edit instead, which
 answers only the case where the document exists and could not be judged.
 """

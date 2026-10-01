@@ -134,10 +134,10 @@ def test_a_named_spawn_is_left_to_the_runtime() -> None:
 
 
 def test_a_hyphen_is_normalized_rather_than_refused() -> None:
-    """Measured on Codex 0.155.1: a hyphenated name produced no PostToolUse at all.
+    """Measured on Codex 0.155.1: a hyphenated name produces no PostToolUse at all.
 
-    The model retried with underscores unprompted, having learned the shape
-    by guessing. Sending it out in that shape is the guess made for it.
+    The model retries with underscores unprompted, learning the shape by
+    guessing. Sending it out in that shape is the guess made for it.
     """
     decision = decide(spawn("Leak-Probe"))
 

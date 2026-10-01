@@ -60,15 +60,15 @@ def test_recorded_base_resolves_what_topology_cannot(
 def test_an_integration_branch_that_moved_on_still_wins_over_a_stale_ancestor(
     repo: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The failure that made a stale sibling the baseline for a whole branch.
+    """A stale sibling never becomes the baseline for a whole branch.
 
     `stale-sibling` sits at a commit older than the fork point, so its tip is
     inside `topic`'s history and it counts as an ancestor. `main` has taken a
     commit since the cut, so it is not one — which is the ordinary state of an
-    integration branch, not a disqualification. While ancestry filtered rather
-    than ranked, `main` was dropped before distance was consulted and the far
-    ancestor won: measured on a real branch as a base 747 commits off, against
-    which the gate reported 137 capabilities gone that nothing had touched.
+    integration branch, not a disqualification. Ancestry used as a filter
+    rather than a rank drops `main` before distance is consulted and lets the
+    far ancestor win: on a real branch that is a base 747 commits off, against
+    which the gate reports 137 capabilities gone that nothing touched.
 
     Distance decides instead, and it is merge-base distance, which needs no
     ancestry to mean anything. The merge base is asserted too, because that is

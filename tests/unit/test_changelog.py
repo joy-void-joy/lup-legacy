@@ -1,16 +1,15 @@
 """A changelog read and written as releases rather than as text.
 
-The regression these are built around is real and is in a published file. A
-bump took its details as one comma-separated string, so a single sentence
-whose prose contained commas was published as four bullets:
+Details taken as one comma-separated string split a single sentence whose
+prose contains commas into bullets, and that sentence publishes as four:
 
     - agent: the Claude-only settings — the bash sandbox
     - the roots read outside cwd
     - the transport ceiling — ride a ConfigTransform stacked after rendering
     - so the portable request stays one both runtimes accept
 
-That is one sentence with three em-dash clauses. Nothing failed, nothing
-warned, and the damage is only visible to somebody reading the rendered file
+That is one sentence with three em-dash clauses. Nothing fails, nothing
+warns, and the damage is only visible to somebody reading the rendered file
 afterwards — which is the shape of failure worth pinning tests around.
 """
 
@@ -39,14 +38,14 @@ def bullets(rendered: str) -> list[str]:
 
 
 def test_a_detail_containing_commas_stays_one_bullet() -> None:
-    """The published regression: prose punctuation decided the bullet count."""
+    """Prose punctuation never decides the bullet count."""
     prose = "the settings — the sandbox, the roots, the ceiling — ride a transform"
 
     assert bullets(note(details=[prose]).render()) == [f"- {prose}"]
 
 
 def test_every_detail_survives_rather_than_the_last() -> None:
-    """A scalar option kept only the final `-d`; a list keeps them all."""
+    """A scalar option keeps only the final `-d`; a list keeps them all."""
     rendered = note(details=["first", "second", "third"]).render()
 
     assert bullets(rendered) == ["- first", "- second", "- third"]

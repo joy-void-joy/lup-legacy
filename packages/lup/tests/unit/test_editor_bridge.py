@@ -1,12 +1,12 @@
 """Which directory the editor bridge binds, and why it is never the profile's.
 
 The bridge mounts one directory so an editor on the host and a CLI in a
-container can find each other through a lockfile. It was bound to the home the
-*launch* chose, which under ``--profile`` is derived from a name no editor has
-heard of -- so the container got an empty directory, the editor connection
-never happened, and nothing said why. These pin the repair: the source is
-resolved from the variable the editor itself reads, a runtime that offers no
-rendezvous gets no mount, and the bind lands at the same name inside.
+container can find each other through a lockfile. The home the *launch*
+chooses is, under ``--profile``, derived from a name no editor has heard of --
+bound there, the container gets an empty directory, the editor never connects,
+and nothing says why. So the source is resolved from the variable the editor
+itself reads, a runtime that offers no rendezvous gets no mount, and the bind
+lands at the same name inside.
 """
 
 from pathlib import Path

@@ -1,4 +1,4 @@
-"""Stopped recovery imports historical decisions without inventing authority."""
+"""Stopped recovery imports a run's recorded decisions without inventing authority."""
 
 from pathlib import Path
 
@@ -37,13 +37,13 @@ recovery = recovery_fixture
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("legacy", [False, True])
+@pytest.mark.parametrize("unpinned", [False, True])
 @pytest.mark.parametrize("answered", [False, True])
 async def test_adoption_imports_state_only_decisions_and_retires_only_old_recheck(
     recovery: RecoveryFixture,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
-    legacy: bool,
+    unpinned: bool,
     answered: bool,
 ) -> None:
     core = failure_leg_core(
@@ -56,11 +56,11 @@ async def test_adoption_imports_state_only_decisions_and_retires_only_old_rechec
     )
     core.repository.adopt(core.config, resolver_config_digest(core.config))
     finding = MaterialQuestion(
-        id="a-superseded-integrated" if legacy else "old-recheck",
+        id="a-superseded-integrated" if unpinned else "old-recheck",
         concern_id="a",
         prompt="The old integration lost a criterion.",
         criteria=["criterion"],
-        recheck_commit=None if legacy else recovery.base,
+        recheck_commit=None if unpinned else recovery.base,
     )
     design = MaterialQuestion(id="design", concern_id="a", prompt="Keep the interface?")
     answer = QuestionAnswer(question_id="design", value="yes")

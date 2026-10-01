@@ -236,8 +236,8 @@ def test_absolute_paths_resolve_against_their_worktree_not_the_launch_directory(
 
     Every repo-relative rule matches on the relativized path, so anchoring it
     on the working directory decides policy by where the runtime happened to
-    start: from a sibling directory nothing matched, which left the role
-    relaxations off and — far worse — let a protected path through.
+    start: from a sibling directory nothing matches, which leaves the role
+    relaxations off and — far worse — lets a protected path through.
 
     The reason is what carries the proof on the second path. `x = {}` trips
     the empty-collection rule in production and is refused; under a test
@@ -336,13 +336,14 @@ def test_another_repositorys_file_is_not_judged_by_this_projects_conventions(
     other_repository: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The defect #206 and #188 describe, at the dispatcher a session runs.
+    """Another repository's file is not judged by this one's rules.
 
-    `Any` is a production denial here. Applied to a checkout that never
-    adopted these conventions it produced dozens of refusals naming lup rules,
-    and the only ways through were to restyle somebody else's code inside an
-    unrelated diff or to write a suppression directive into a repository with
-    no rule checker to read it.
+    Pinned at the dispatcher a session runs. `Any` is a production denial
+    here. Applied to a checkout that never adopted these conventions it would
+    produce dozens of refusals naming lup rules, and the only ways through
+    would be to restyle somebody else's code inside an unrelated diff or to
+    write a suppression directive into a repository with no rule checker to
+    read it.
     """
     effect, reason = foreign_verdict(
         other_repository / "src" / "theirs.py",
@@ -622,9 +623,9 @@ def test_removing_a_directory_asks_where_no_capture_covers_it(
 ) -> None:
     """Nothing in the command bounds what a directory holds, however clean.
 
-    A question rather than a wall, and worded as one. The earlier text said
-    the operation "is never granted" and offered approval in the same
-    sentence, which reads as a refusal and was worked around as one — so the
+    A question rather than a wall, and worded as one. A reason saying the
+    operation "is never granted" while offering approval in the same sentence
+    reads as a refusal and is worked around as one — so the
     assertion is that the reason states what is being asked rather than
     announcing an outcome nobody can reach.
 
@@ -731,11 +732,11 @@ def test_an_unreadable_target_asks_instead_of_letting_the_edit_through() -> None
 
 
 def test_a_remote_read_runs_where_the_boundary_already_grants_it() -> None:
-    """What the retired placement on this command was actually asking for.
+    """What a placement on this command would actually be asking for.
 
     A remote read needs a route to the remote, which the boundary declares
     and a launch measures — not the launcher's host, which is what a
-    placement would now be requesting and what a reviewer would then have
+    placement would be requesting and what a reviewer would then have
     to answer for every ordinary fetch. So the verdict is an ordinary
     ambient allow and nothing is rewritten.
     """
@@ -896,7 +897,7 @@ def test_one_leases_grant_cannot_release_a_siblings_gate(tmp_path: Path) -> None
 def test_a_stale_environment_cannot_grant_what_the_document_does_not(
     tmp_path: Path,
 ) -> None:
-    """The retired variable is inert, so there is one answer and not two.
+    """An allowance in the environment is inert, so there is one answer and not two.
 
     An allowance carried as a value in the environment outlives whatever
     decided it. Left readable it would be a second source for a fact that has
@@ -1249,10 +1250,9 @@ def test_a_contained_session_settles_unjudged_work_inside(
     Every fact behind this is measured by the launch and read here, and the
     dispatcher is the only thing a session runs — so a kernel that joins both
     terms correctly still asks on every real call if the deployed script
-    hands it only one of them. That is exactly what happened: `contained`
-    travelled and the placement measurement beside it did not, which left
-    `bounded()` collapsed onto the native sandbox and a contained session
-    judged as an exposed one.
+    hands it only one of them. Where `contained` travels and the placement
+    measurement beside it does not, `bounded()` collapses onto the native
+    sandbox and a contained session is judged as an exposed one.
     """
     assert unjudged_effect_under(CONTAINED_LEDGER, tmp_path, monkeypatch) == "allow"
 
@@ -1328,12 +1328,12 @@ def test_an_approved_crossing_inside_a_container_is_described_as_staying(
 ) -> None:
     """The same rewrite under a contained launch, and a different sentence.
 
-    Measured under this boundary: an escalated `git merge --ff-only` failed
+    Measured under this boundary: an escalated `git merge --ff-only` fails
     with `unable to unlink old 'README.md': Device or resource busy`, exactly
     as it fails unmarked, because the per-call flag the rewrite sets is never
     armed in a container and lifts no mount. The question the approver reads
-    says so. The rewrite itself is the same as on a host -- the sentence was
-    what had to change, never the placement.
+    says so. The rewrite itself is the same as on a host -- the sentence is
+    what differs, never the placement.
     """
     effect, reason, rewritten = escalated_reason_under(
         CONTAINED_LEDGER, tmp_path, monkeypatch
@@ -1354,7 +1354,7 @@ def test_a_write_announces_what_its_own_prompt_will_not_show() -> None:
 
     Measured: a `Write` ask renders as that dialog's own path, preview and two
     answers, and the reason handed alongside it is dropped — where the same
-    field is shown for a shell command. So a verdict that enumerated something
+    field is shown for a shell command. So a verdict that enumerates something
     the approver cannot otherwise see says it through the one field this
     runtime displays to a person from every hook.
     """

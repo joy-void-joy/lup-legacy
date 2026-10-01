@@ -121,8 +121,8 @@ def test_a_launch_with_nothing_wrong_says_nothing_in_the_warning_colour() -> Non
     Filtered and deliberately unrestricted networks, a bridged browser, and a
     session reaching its forge on a token while signing nothing are declared
     security postures working as configured. None is an action item.
-    Painting them orange taught a reader that the opening block is
-    orange whatever happened -- which is the same as having no warning
+    Painting them orange teaches a reader that the opening block is
+    orange whatever happens -- which is the same as having no warning
     colour, paid for at the one launch where something is actually wrong.
     """
     healthy = [

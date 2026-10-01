@@ -3,8 +3,8 @@
 A branch every commit of which a sibling already carries reads, by the
 figures alone, as a second branch of the same size: two lines, one backlog.
 A fix branch merged into the feature branch that continues it is the common
-shape, and a report listing both with identical counts told a reader there
-was twice as much unlanded as there was.
+shape, and a report listing both with identical counts would tell a reader
+there is twice as much unlanded as there is.
 """
 
 from pathlib import Path

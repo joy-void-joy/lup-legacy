@@ -1,12 +1,11 @@
 """A nested uv project, declared once, and checked by every gate by construction.
 
-The fixture is the shape adlib met: a root project on Python 3.14 holding
-`studio/`, its own uv project on 3.13 with its own environment, its own suite,
-and scratch scripts run with `uv run --project studio`. Before the
-declaration existed, every studio import failed Pyright until somebody
-hand-edited `[tool.pyright]`, the gate ran no studio test, the rule scan named
-studio's modules `studio.src.studio.*`, and the studio's tests were judged as
-production source.
+The fixture is a downstream project's shape: a root project on Python 3.14
+holding `studio/`, its own uv project on 3.13 with its own environment, its
+own suite, and scratch scripts run with `uv run --project studio`. Undeclared,
+every studio import fails Pyright until somebody hand-edits `[tool.pyright]`,
+the gate runs no studio test, the rule scan names studio's modules
+`studio.src.studio.*`, and the studio's tests are judged as production source.
 
 Each test reads what the declaration compiled to — the rewritten
 `pyproject.toml`, the real Pyright and Ruff run over the fixture, the suite's
@@ -212,10 +211,10 @@ def test_pyright_resolves_the_sub_project_in_its_own_environment_and_nowhere_els
 def test_a_scratch_script_for_the_sub_project_is_checked_in_its_environment(
     repository: Path,
 ) -> None:
-    """adlib's GPU check under `tmp/`, run with `uv run --project studio`.
+    """A GPU check under `tmp/`, run with `uv run --project studio`.
 
-    Checked against the root it reported seven blocking errors for a script
-    that ran fine. Under `tmp/studio/` it is checked where it runs.
+    Checked against the root it would report blocking errors for a script
+    that runs fine. Under `tmp/studio/` it is checked where it runs.
     """
     script = "import torchish\nfrom studio.eyes.grade import CPU_USED\n"
     written(repository / "tmp/studio/gpu_check.py", script)
@@ -267,7 +266,7 @@ def test_the_gate_never_reads_the_sub_project_environment(
     """Pyright walks an explicitly excluded tree's hidden directories too.
 
     The gate hands Pyright its own `exclude`, which switches off Pyright's
-    default of skipping dot-directories — so the studio's environment, now
+    default of skipping dot-directories — so the studio's environment,
     inside the checked tree, would be analysed package by package. Its
     directory names are declared scratch wherever they sit, and the gate
     excludes scratch.

@@ -448,9 +448,10 @@ def test_a_devtools_guard_runs_inside_the_runner_the_hook_started(
 ) -> None:
     """One devtools process per moment: the guard is a call into it, not another.
 
-    Every devtools command a guard names used to be a process of its own,
-    each loading the whole application again; the commit that cost is the
-    one the hook now runs through the one start its trampoline paid for.
+    A devtools command a guard names runs inside the runner the trampoline
+    started, rather than as a process of its own loading the whole
+    application again, so a commit pays for one start however many guards
+    its moment declares.
     """
     guards = [GitGuard(command="uv run lup-devtools refuse 4", refusal="Settle it.")]
     work, git = armed_repository(tmp_path, guards, guards)

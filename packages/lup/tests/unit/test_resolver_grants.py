@@ -213,8 +213,8 @@ def test_a_grant_answered_mid_lease_reaches_the_judge_that_is_already_running(
 ) -> None:
     """The session is not rebuilt between the two verdicts — only the answer is.
 
-    Rendered into the environment the grant had nowhere to land: the only
-    channel for it belonged to a process that had already started. Here the
+    Rendered into the environment the grant would have nowhere to land: the
+    only channel for it belongs to a process that has already started. Here the
     judge, the reader, and the lease are the ones the worker was launched
     with, and the human's answer alone changes the verdict.
     """

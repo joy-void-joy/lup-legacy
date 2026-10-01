@@ -2,11 +2,12 @@
 
 `gh pr merge --delete-branch` runs a plain `git branch -d`, which refuses while
 any worktree holds the branch. In a tree of worktrees that is every branch, so
-each merge reported a cleanup failure and left both the branch and its checkout
-behind for the caller to clear by hand. These pin that the merge now cleans up
-through the deletion path that removes the worktree first, and that a cleanup
-which cannot finish is still reported rather than raised — the merge already
-happened, and re-running it would fail against a PR GitHub already closed.
+each merge would report a cleanup failure and leave both the branch and its
+checkout behind for the caller to clear by hand. These pin that the merge
+cleans up through the deletion path that removes the worktree first, and that a
+cleanup which cannot finish is still reported rather than raised — the merge
+already happened, and re-running it would fail against a PR GitHub already
+closed.
 """
 
 from pathlib import Path
@@ -61,7 +62,7 @@ def test_a_merged_branch_goes_even_though_a_worktree_holds_it(
 def test_the_plain_delete_gh_runs_would_have_refused(
     merged: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The precondition the fix exists for, so the test above cannot pass idly."""
+    """The precondition the cleanup path is for, so the test above cannot pass idly."""
     monkeypatch.chdir(merged)
 
     with pytest.raises(sh.ErrorReturnCode):

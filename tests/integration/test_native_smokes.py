@@ -3,7 +3,7 @@
 # picking the text ones out of that mixture is how this smoke observes the
 # real result. It reads the union from outside on purpose: a helper inside the
 # path being smoked could agree with itself while the boundary was broken.
-"""Live smokes for the four historically fragile native boundaries.
+"""Live smokes for the four native boundaries most prone to breaking.
 
 These tests execute installed provider CLIs and incur real model calls. The
 scheduled native lane supplies credentials and deliberately cheap models.

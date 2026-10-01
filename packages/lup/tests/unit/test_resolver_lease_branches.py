@@ -286,7 +286,7 @@ def test_dirt_does_not_move_a_branch_that_already_landed() -> None:
 
     A merged branch whose worktree is dirty is still spent: the delete
     refuses until forced rather than becoming a different verb, so reading
-    the dirt must not reach past the one guard it was added for.
+    the dirt must not reach past the one guard it exists for.
     """
     verdict = disposition_for(
         "feat-landed",

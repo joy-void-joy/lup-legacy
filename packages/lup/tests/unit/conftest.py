@@ -49,9 +49,9 @@ def codex_home(
     Opening a session with no home named selects the user's: it is created,
     the project's policy is installed into it, and the model catalog is
     written beside it. A test that did that would change a real home on the
-    machine that ran it, and fail outright where that home is read-only —
-    which is how ten session tests were found, failing in a session whose
-    sandbox kept its home read-only and passing everywhere else.
+    machine that ran it, and fail outright where that home is read-only: in
+    a session whose sandbox keeps its home read-only, while passing
+    everywhere else.
 
     Autouse for the reason the model catalog above is: no test can be asked
     to notice. Outside the test's own ``tmp_path``, which tests inspect and

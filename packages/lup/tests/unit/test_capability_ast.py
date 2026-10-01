@@ -287,9 +287,8 @@ def test_a_model_declaring_an_abstract_member_has_to_name_abc() -> None:
     """The shape this rule exists for: abstract by metaclass, silent in prose.
 
     Pydantic's metaclass is an `ABCMeta`, so the member binds and the class
-    turns uninstantiable while the base list says nothing about it — which is
-    how thirteen unions in this library came to be abstract without anywhere
-    saying so.
+    turns uninstantiable while the base list says nothing about it, so a union
+    turns abstract without anything saying so.
     """
     findings = audit_abstract_declarations(
         [

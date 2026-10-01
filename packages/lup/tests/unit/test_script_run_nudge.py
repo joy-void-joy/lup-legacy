@@ -27,7 +27,7 @@ def runs(root: Path, script: str, times: int, after: int, every: int) -> list[st
 
 
 def test_a_one_off_is_left_alone(tmp_path: Path) -> None:
-    """The case the rung was written for must cost nothing to use."""
+    """The case the rung exists for must cost nothing to use."""
     assert runs(tmp_path, "tmp/probe.py", 4, after=5, every=10) == []
 
 

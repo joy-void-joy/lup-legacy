@@ -1,7 +1,7 @@
 """The one index reader every sweep walks, held to one entry per file.
 
-An index mid-merge names a conflicted path once per stage, and every sweep
-that read it directly reported one file's findings three times. The reader
+An index mid-merge names a conflicted path once per stage, and a sweep reading
+it directly would report one file's findings three times. The reader
 is the place that stops, so it is pinned here on a real merge rather than on
 a listing a test wrote by hand.
 """

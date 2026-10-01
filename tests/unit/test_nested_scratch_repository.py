@@ -371,15 +371,15 @@ def test_a_redirect_and_a_tee_into_one_file_get_one_verdict(
 ) -> None:
     """`> f` and `| tee f` land the same bytes at the same path.
 
-    Measured before this, from a session in one checkout writing into a
-    sibling worktree's scratch: the redirection was allowed inside the
-    sandbox and `tee` asked in both placements, and `tee` into this
-    checkout's own scratch spelled absolutely asked where the redirection
-    allowed. The tee's row asked about every tee and was relaxed only by
-    grants that read a relative spelling. The redirection, for its part, was
-    judged as spelled after a `cd`: `cd "$D" && date > run.log` created a
-    file at the top of the checkout, wherever `$D` was. Both are now judged
-    by one reading of one path.
+    Judged apart they disagree. From a session in one checkout writing into
+    a sibling worktree's scratch, a redirection reads as allowed inside the
+    sandbox while `tee` asks in both placements, and `tee` into this
+    checkout's own scratch spelled absolutely asks where the redirection
+    allows -- a tee row asking about every tee, relaxed only by grants that
+    read a relative spelling. A redirection judged as spelled after a `cd`
+    misplaces its file: `cd "$D" && date > run.log` writes at the top of the
+    checkout, wherever `$D` is. So both are judged by one reading of one
+    path.
 
     Two effects are not pinned here. This layout sits wherever the test
     runner makes its temporary directory, and under the machine's temporary
@@ -470,7 +470,7 @@ def test_a_rewrite_judged_from_its_row_alone_reads_the_same(
     holds the file, and how this checkout spells it — or the verdict would
     turn on which of the two answered. A target spelled relative to the
     session is anchored there before its repository is asked for: read bare,
-    it named none, and a rewrite of another repository's file was judged by
+    it names none, and a rewrite of another repository's file is judged by
     this one's conventions instead of meeting the referral.
     """
     hooks = declared_hook_set()

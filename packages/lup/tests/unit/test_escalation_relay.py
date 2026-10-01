@@ -42,8 +42,8 @@ def test_a_marker_still_asks_where_a_human_can_answer() -> None:
 def test_a_marker_denied_without_a_human_keeps_the_reason_it_stated() -> None:
     """The stated intent outlives the refusal, which is what a relay carries.
 
-    Denied with the reason dropped, the escalation summoned nobody and the
-    agent was the only party that knew it was stuck.
+    Denied with the reason dropped, the escalation would summon nobody and
+    the agent would be the only party that knew it was stuck.
     """
     decision = classified("# lup: escalate: it is my own scratch\nrm junk.txt", False)
 

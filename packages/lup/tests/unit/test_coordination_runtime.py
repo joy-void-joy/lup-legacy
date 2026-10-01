@@ -1,9 +1,9 @@
 """A session is its runtime's process, which a reader that can see it asks directly.
 
-Written against #503: a stopped session read as running because the only thing
-answering for it was a beat, and a beat comes from whichever process carries
-the session's id — a tool server under the runtime, or a runtime started from
-the session's own shell, which inherited it. What is asserted is the process
+A beat alone would read a stopped session as running, because a beat comes
+from whichever process carries the session's id — a tool server under the
+runtime, or a runtime started from the session's own shell, which inherited
+it. What is asserted is the process
 itself: one recorded by its id and start time, alive exactly while that same
 process runs, and unknown rather than guessed where the reader is in another
 process namespace; and that a stdio server finds its runtime as the process

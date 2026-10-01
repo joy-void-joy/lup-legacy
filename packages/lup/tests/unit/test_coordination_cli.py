@@ -1,8 +1,8 @@
 """The console's sweep: what a person runs for a roster no server is up on.
 
-Written against the roster this started from — every session that ever
-joined reading as running — where nothing but a person's command could put
-the record right, since the servers that would have swept it were gone.
+A roster where every session that ever joined reads as running is one only a
+person's command can put right, because the servers that would sweep it are
+gone.
 """
 
 import os

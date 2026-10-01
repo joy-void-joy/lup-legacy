@@ -5,10 +5,10 @@ followed. Resolving a scaffold conflict is where a project decides what of
 upstream it wants, so the resolution is free to widen that set — and the
 scaffold commit under the standing merge was compiled from the declaration
 that resolution has just replaced, so the widened path is in neither side of
-it. An update that asked for the merge to be committed first deadlocked
+it. An update asking for the merge to be committed first would deadlock
 exactly there: the commit guard regenerates, generation reads the modules the
 resolution un-declined, their bodies arrive only from a later compile, and
-that compile could not start until the commit it was blocking had landed.
+that compile cannot start until the commit it is blocking has landed.
 
 Two repositories are built here rather than mocked, because what is being
 tested is what git does with a merge somebody resolved. What is stubbed is the

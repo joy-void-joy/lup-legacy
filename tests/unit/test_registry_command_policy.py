@@ -2,10 +2,10 @@
 
 `sync.json` and `sync.json.local` are protected edit roots: a registration
 there decides what a session may mount, at which mode, and cloned from which
-repository. The commands writing those keys were allowed without a question,
-so `sync setup … --mount rw` widened the boundary unasked while an edit of the
-same line asked. Each writer that can add or move a mount, change the
-repository a registration names, or grant a device asks now, and so does a
+repository. A command writing those keys without a question would let
+`sync setup … --mount rw` widen the boundary unasked while an edit of the
+same line asks. So each writer that can add or move a mount, change the
+repository a registration names, or grant a device asks, and so does a
 launcher's flag lending the one session it opens a folder or a device. What
 only reads, keeps books, narrows, or dry-runs stays allowed.
 

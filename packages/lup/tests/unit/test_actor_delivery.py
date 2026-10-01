@@ -1,11 +1,11 @@
 """Delivering what a door said to an actor, exactly once and never never.
 
-The defect these are written against reported success and delivered
-nothing: every reader of the message stream started at whatever its head
-was when the reader was constructed, so a message posted while a turn was
-in flight was already behind the window the next turn opened. It was not
-delivered late. It was delivered to nobody, in any round, while the console
-printed `redirected worker:research-corpus-retrieval#1`.
+The defect these hold against reports success and delivers nothing: a reader
+of the message stream starting at whatever its head is when the reader is
+constructed leaves a message posted while a turn is in flight already behind
+the window the next turn opens. It is not delivered late. It is delivered to
+nobody, in any round, while the console prints that the worker was
+redirected.
 """
 
 from pathlib import Path
@@ -42,7 +42,7 @@ def post(tmp_path: Path, to: ActorRef, text: str, redirect: bool = False) -> Non
 def test_a_message_posted_before_a_reader_exists_is_still_delivered(
     tmp_path: Path,
 ) -> None:
-    """The bug exactly: a reader built after the message must still see it."""
+    """A reader built after the message still sees it."""
     post(tmp_path, worker(), "stop, that design was rejected")
 
     taken = mailbox_for(tmp_path, worker()).take()
@@ -63,8 +63,10 @@ def test_a_new_reader_resumes_where_the_last_one_was_delivered_to(
     assert [message.text for message in resumed] == ["second"]
 
 
-def test_the_reported_run_replayed_end_to_end(tmp_path: Path) -> None:
-    """The whole sequence from the report, in the order it happened.
+def test_redirects_across_an_interrupted_run_reach_the_worker_in_order(
+    tmp_path: Path,
+) -> None:
+    """An interrupted run's redirects, end to end and in order.
 
     A redirect issued mid-turn against a live worker, the run interrupted by
     a spend limit before that turn ended, a second redirect issued after the

@@ -73,7 +73,7 @@ STRONG_RULE_IDS = {
 Most are successor spellings, where the replacement is the same type written
 the modern way. ``tuple-shape`` is the one that changes the type rather than
 its spelling: a `TypedDict` names what each position meant. It is strong only
-because its pattern was narrowed to fixed arity first — `tuple[X, ...]` is an
+because its pattern reaches fixed arity alone — `tuple[X, ...]` is an
 immutable sequence with no field names to give, and a rule that demanded them
 would be demanding something that does not exist.
 
@@ -198,12 +198,11 @@ def test_a_violation_no_directive_covers_outranks_the_suppression_beside_it() ->
 def test_a_directive_heading_a_two_line_reason_guards_what_follows_it() -> None:
     """The placement a reason too long for the column budget has to take.
 
-    The gate reads coverage in both directions and they disagreed: the
-    forward check walks the whole comment block, while the check that decides
-    whether a directive guards anything offered it a fixed pair of lines and
-    so could not see a violation two below. The edit was admitted here and
-    refused by `dev check` — a marker reported spurious while the violation it
-    covers was reported missing.
+    The gate reads coverage in both directions, and both walk the whole
+    comment block. A check offered a fixed pair of lines cannot see a
+    violation two below, and an edit it admits is refused by `dev check` — a
+    marker reported spurious while the violation it covers is reported
+    missing.
 
     Asks rather than allows, because the suppression is newly declared and
     that is a judgement. What matters is that it is not denied as guarding
@@ -256,7 +255,7 @@ def test_taking_a_directive_away_is_denied_while_its_violation_stands() -> None:
 
     Removing a directive adds no line, so the line it was covering is
     byte-identical across the edit and every scan keyed on added lines misses
-    it. The write landed clean and `dev check` then reported the rule missing
+    it. The write would land clean and `dev check` then report the rule missing
     — the gate and the audit disagreeing about the same file, which is the one
     outcome this pair exists to rule out.
     """
@@ -470,7 +469,7 @@ def test_comment_context_covers_exactly_the_directive_rules() -> None:
 
 def test_audit_ignores_identifiers_quoted_in_trailing_comments() -> None:
     # Prose in a trailing comment is comment text, not code: the token-masked
-    # code scan no longer false-positives on it as the raw line scan did.
+    # code scan never reads it, where a raw line scan would flag it.
     clean = (
         "x = compute()  # may return Any when unset\n"
         "entry = lookup(key)  # like registry.get(key)\n"
@@ -1126,7 +1125,7 @@ def test_audit_leaves_a_key_computed_at_runtime_alone() -> None:
 
 
 def test_a_directive_on_a_runtime_key_is_reported_spurious() -> None:
-    """The forty-nine the narrowing retired, each one now a dead directive."""
+    """A `.get` keyed at runtime trips nothing, so a directive over it is dead."""
     findings = audit_text(
         "held = sessions.get(actor)  # lup: ignore[dict-get]\n", PYTHON_ANTI_PATTERNS
     )
@@ -1486,9 +1485,9 @@ def typescript_verdict(text: str) -> str | None:
 def test_typescript_prose_is_never_a_type_position(line: str) -> None:
     """`: any`, `as any` and `<any>` inside a comment, a string or a regex trip nothing.
 
-    Issue #458: a JSDoc line reading `: any of its readable fields` was
-    refused as an annotation. Both gates read the family through one mask,
-    so the hook and the audit are asserted together.
+    A JSDoc line reading `: any of its readable fields` is prose, not an
+    annotation. Both gates read the family through one mask, so the hook and
+    the audit are asserted together.
     """
     assert typescript_verdict(line) is None
     assert audit_text(f"{line}\n", TS_ANTI_PATTERNS, typescript=True) == []
@@ -1509,7 +1508,7 @@ def test_the_audit_reads_a_typescript_directive_where_its_comment_opens() -> Non
 
     The audit asks the family's own comment map where a directive may stand,
     as it asks the Python tokenizer for `#` — a map answered from `#` columns
-    reported every TypeScript directive missing.
+    would report every TypeScript directive missing.
     """
     guarded = "const x: any = 1; // lup: ignore[any-annotation]\n"
     quoted = 'const x: any = "// lup: ignore[any-annotation]";\n'
@@ -1632,8 +1631,8 @@ def test_a_scoped_audit_says_what_the_whole_one_says_about_its_scope(
     """Judging one file reads the whole project and reports that file alone.
 
     The post-edit sweep asks about the file just written. Judging every
-    module and discarding all but one cost a median 18 seconds per edit, and
-    the slowest ran past the hook's deadline and reported nothing.
+    module and discarding all but one costs seconds per edit, and the slowest
+    edits would run past the hook's deadline and report nothing.
     """
     sources = example_project()
     whole = rule.audit(AuditedProject(sources=sources))

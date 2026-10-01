@@ -169,9 +169,9 @@ def test_a_name_reclaimed_while_a_member_was_quiet_still_reaches_it(
     the name it derives from that worktree, the newcomer finishes, and the
     first speaks again. It is live, every listing prints that name for it, and
     the newest claim on the string belongs to somebody who has left -- so a
-    reading that asked only who a name reaches now found nobody live and let
-    the send through with no record. Measured on this repository's own roster,
-    where one of five live members was in exactly that state.
+    reading that asks only who a name reaches finds nobody live and lets the
+    send through with no record. The state is common: on this repository's
+    own roster, one of five live members sat in exactly that state.
     """
     work = tmp_path / "work"
     peers = joined_repository(work, tmp_path / "hooks")

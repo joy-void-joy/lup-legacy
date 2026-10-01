@@ -263,8 +263,8 @@ def test_a_changed_file_the_rules_refuse_fails_the_narrowed_run(
     """The anti-pattern rules run over what changed, however it landed.
 
     A file copied in with `cp` or taken whole in a merge passes no edit gate
-    on the way in, and the narrowed run used to read it with ruff and pyright
-    alone -- so it passed the loop and was first refused by the whole gate.
+    on the way in, and a narrowed run reading it with ruff and pyright alone
+    would pass it in the loop, leaving the whole gate the first to refuse it.
     """
     (repo / "kept.py").write_text(
         "from typing import Any\n\n\ndef f(x: Any) -> None: ...\n", encoding="utf-8"

@@ -78,7 +78,7 @@ def test_a_landing_under_the_same_role_changed_nothing_this_table_can_see() -> N
 
 
 def test_a_production_spelling_claims_nothing_and_is_not_reported() -> None:
-    """No relaxation was granted, so there is none to take back.
+    """No relaxation is granted, so there is none to take back.
 
     Its write is judged where it reads either way — by the conventions, by
     the protected paths, by whether a capture holds what stands there.

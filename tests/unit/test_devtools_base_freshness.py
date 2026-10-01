@@ -153,7 +153,7 @@ def test_a_pushed_branch_is_still_measured_against_the_base_it_was_cut_from(
 
     Asking only the first ref that resolves answers a different question in a
     pushed worktree than in an unpushed one, so a base three commits gone
-    reported as current — the false negative that hid two stale worktrees.
+    reports as current — a false negative that hides a stale worktree.
     """
     clone = worktree_clone(origin, tmp_path / "clone")
     repo_git(clone)("push", "-u", "origin", "feature")

@@ -106,7 +106,7 @@ async def test_a_verified_concern_is_readable_from_disk_with_its_outcome(
 async def test_progress_never_claims_a_success_the_outcomes_cannot_support(
     tmp_path: Path,
 ) -> None:
-    """The skew #95 measured: 20 verified in progress, 16 outcomes on disk."""
+    """No skew: every concern progress calls verified has its outcome on disk."""
     run = seeded(tmp_path, [planned(name) for name in ("alpha", "beta", "gamma")])
 
     await run.settle_concern(verified("alpha"), ConcernStatus.VERIFIED)
@@ -135,7 +135,7 @@ async def test_re_executing_a_concern_overwrites_its_outcome(tmp_path: Path) -> 
 
 
 def test_a_skewed_state_cannot_be_persisted_at_all(tmp_path: Path) -> None:
-    """The guard that would have caught #95: the write itself is refused.
+    """A skewed state never reaches disk: the write itself is refused.
 
     Trusting the one call site that settles a concern leaves the next site
     added free to reintroduce the skew, so the invariant is checked where

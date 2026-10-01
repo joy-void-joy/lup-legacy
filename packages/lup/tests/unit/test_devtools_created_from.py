@@ -67,7 +67,7 @@ def test_a_branch_switched_into_being_names_what_it_was_cut_from(
 def test_a_branch_a_worktree_was_cut_for_names_it_too(
     repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The command from the report, which wrote no base record of its own.
+    """A branch made outside lup, which writes no base record of its own.
 
     `git worktree add -b` is how a branch is made without going through lup,
     and it logs the cut exactly as `git branch` and `git switch -c` do — which
@@ -187,8 +187,9 @@ def test_a_bare_clone_sync_makes_logs_the_cut_of_a_plain_git_branch(
 ) -> None:
     """The cache clone sync makes, then a branch cut against its git directory.
 
-    `git branch` run in the bare directory is exactly the command that logged
-    nothing before, and now answers through the reflog like any other.
+    `git branch` run in the bare directory is exactly the command a bare clone
+    left at git's default logs nothing for; the clone sync makes answers
+    through the reflog like any other.
     """
     clone = tmp_path / "cache" / "project.git"
     clone_bare(str(repo), clone, lambda _: None)

@@ -353,8 +353,8 @@ def test_containers_starting_at_once_neither_tear_nor_drop_the_trust_document(
     """Every container on a home records trust and applies the seed, several at once.
 
     Both programs read ``.claude.json``, merge into it and write it back. A
-    staging name they shared was measured publishing a document whose front
-    was NUL bytes, and a merge interleaved with the other's drops what that
+    staging name they shared would publish a document whose front is NUL
+    bytes, and a merge interleaved with the other's drops what that
     one added -- so each holds the lock the other takes, and stages through a
     file of its own. A runtime starting meanwhile reads whichever whole
     document was last renamed into place, never one being written.
