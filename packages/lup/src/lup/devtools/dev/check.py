@@ -2,7 +2,6 @@
 
 import json
 import os
-import tomllib
 from datetime import UTC, datetime, timedelta
 from hashlib import sha256
 from tempfile import gettempdir
@@ -40,7 +39,7 @@ from lup.harness.models import (
 from lup.devtools.hooks.classify import stopped_everyday
 from lup.policy.assets.host import project_environment
 from lup.policy.everyday import SESSION_SHAPES
-from lup.workspace.paths import is_template_scaffold, project_root
+from lup.workspace.paths import is_template_scaffold, manifest_table, project_root
 
 from lup.devtools.dev.admission import Admission, admitted
 from lup.devtools.launcher import project_python
@@ -270,11 +269,7 @@ def pyright_base_configuration(root: Path) -> Path | None:
     if json_config.is_file():
         return json_config
     pyproject = root / "pyproject.toml"
-    if not pyproject.is_file():
-        return None
-    with pyproject.open("rb") as stream:
-        settings = tomllib.load(stream)
-    match settings:
+    match manifest_table(pyproject):
         case {"tool": {"pyright": _}}:
             return pyproject
         case _:

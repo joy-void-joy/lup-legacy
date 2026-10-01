@@ -27,8 +27,9 @@ Leaving ``local`` also strips the workspace wiring that stops resolving once
 ``packages/lup`` is gone: the uv workspace, the pytest source path, and the
 pyright includes and execution environments rooted in the package.
 
-Reading is a ``tomllib`` parse matched structurally; writing goes through
-``tomlkit`` so comments and layout survive the edit.
+Reading is :func:`~lup.workspace.paths.manifest_table` matched structurally;
+writing goes through :func:`~lup.formats.toml.edited_manifest` so comments
+and layout survive the edit.
 
 Examples::
 
@@ -37,7 +38,6 @@ Examples::
     $ uv run lup-devtools dev library git --branch dev
 """
 
-import tomllib
 from enum import StrEnum
 from pathlib import Path
 from typing import Literal, TypedDict, get_args
@@ -55,6 +55,7 @@ from packaging.version import InvalidVersion, Version
 
 from lup.workspace.paths import manifest_table, project_root
 from lup.execution.shell import git
+from lup.formats.toml import edited_manifest
 from lup.devtools.sync import load_projects
 from lup.harness.codescan.common import LIBRARY_PACKAGE_ROOT
 from lup.harness.credential import parse_remote, remote_url, resolved_host
@@ -244,9 +245,7 @@ def declared_source(manifest: JsonObject | None) -> JsonValue:
 
 def read_mode(root: Path) -> LibraryMode:
     """Classify the acquisition mode ``pyproject.toml`` declares."""
-    with (root / "pyproject.toml").open("rb") as handle:
-        data = tomllib.load(handle)
-    match declared_source(data):
+    match declared_source(manifest_table(root / "pyproject.toml")):
         case {"workspace": True}:
             return LibraryMode.LOCAL
         case {"git": str()}:
@@ -538,21 +537,22 @@ def set_mode(
             "Resolve it from its repository instead — "
             "`dev library git --branch <branch>`."
         )
-    pyproject = root / "pyproject.toml"
-    document = tomlkit.parse(pyproject.read_text(encoding="utf-8"))
-    changes = [
-        *apply_dependency(document, version if mode is LibraryMode.PUBLISHED else None),
-        *apply_source(document, mode, git),
-        *apply_workspace(document, vendored),
-        *apply_search_path(
-            document, ["tool", "pytest", "ini_options"], "pythonpath", vendored
-        ),
-        *apply_search_path(document, ["tool", "pyright"], "include", vendored),
-        *apply_execution_environments(document, vendored),
-    ]
-    if changes and not dry_run:
-        pyproject.write_text(tomlkit.dumps(document), encoding="utf-8")
-    return changes
+
+    def resolved(document: tomlkit.TOMLDocument) -> list[str]:
+        return [
+            *apply_dependency(
+                document, version if mode is LibraryMode.PUBLISHED else None
+            ),
+            *apply_source(document, mode, git),
+            *apply_workspace(document, vendored),
+            *apply_search_path(
+                document, ["tool", "pytest", "ini_options"], "pythonpath", vendored
+            ),
+            *apply_search_path(document, ["tool", "pyright"], "include", vendored),
+            *apply_execution_environments(document, vendored),
+        ]
+
+    return edited_manifest(root / "pyproject.toml", resolved, write=not dry_run)
 
 
 def drop_vendored(root: Path, dry_run: bool) -> list[str]:
