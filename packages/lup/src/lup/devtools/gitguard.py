@@ -171,13 +171,13 @@ def repository_state(root: Path, namespace: str = "") -> dict[str, str]:
     Minus the two namespaces this repository's own tooling *writes by design*
     while a suite runs. The permission dispatcher takes an undo snapshot in
     front of every command an agent is allowed, so a suite an agent starts has
-    refs appearing under that namespace throughout — measured, twenty-four in
-    the ninety seconds around one `dev check`, and eight identical teardown
-    failures, one per xdist worker, naming refs no fixture had touched. And
+    refs appearing under that namespace throughout — measured, two dozen in
+    the ninety seconds around one `dev check`, each read as a teardown
+    failure by every xdist worker, naming refs no fixture touched. And
     `dev check` runs its harness rows beside the two test suites, one of which
     probes the checkpoint store by writing a ref under the preflight namespace
-    and deleting it again, which the worker running a test just then reported
-    as that test's doing.
+    and deleting it again, which the worker running a test just then would
+    report as that test's doing.
 
     Excluded rather than reported, on the strength of what the namespaces are.
     A ref moving in either carries no evidence either way: it is written from
@@ -459,8 +459,8 @@ class ForeignCheckouts(BaseModel, frozen=True):
         Read at both ends of a watch, because a worktree cut while the suite
         runs holds its branch at the end and not at the start: a map read
         only at the start reports that branch as appearing from nowhere,
-        which is how a sibling session's `worktree create` failed a check it
-        never touched. A worktree removed mid-run is the mirror case, and the
+        so a sibling session's `worktree create` would fail a check it never
+        touched. A worktree removed mid-run is the mirror case, and the
         map read at the start still holds what it held.
         """
         return ForeignCheckouts(holders=self.holders | other.holders)
@@ -535,7 +535,7 @@ class ForeignCheckouts(BaseModel, frozen=True):
         branch. Only the branch half carries a worktree in `git worktree
         list` though, because a remote-tracking ref is checked out by nobody
         -- so without this it reads as a ref that appeared from nowhere, and
-        the routine event fails the run exactly as before.
+        the routine event fails the run as a fixture's leak would.
 
         Which remote ref belongs to which branch is asked of git as
         `upstream` rather than assembled from the two names: a branch may

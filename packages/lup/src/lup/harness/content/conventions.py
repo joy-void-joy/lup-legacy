@@ -99,11 +99,11 @@ def design_principles(
 ) -> models.GuidanceSection:
     """What no rule fires on, plus the rule ids this project still enforces.
 
-    Everything mechanical was removed on the test that a denial would have
-    named it in time. What survived either has no executable rule at all, or
-    has one that arrives too late to change the shape being chosen — for
-    those, the id is a lookup key rather than the rule restated, and only
-    while the project still holds itself to it.
+    Nothing mechanical is listed: a denial names that in time. What the
+    section holds either has no executable rule at all, or has one that
+    arrives too late to change the shape being chosen — for those, the id is
+    a lookup key rather than the rule restated, and only while the project
+    holds itself to it.
 
     A builder rather than a constant, and the one section here that has to be:
     what it says depends on a declaration only the reading project holds. Its
@@ -136,8 +136,8 @@ SANCTIONED_EXCEPTIONS = models.GuidanceSection(
 )
 """The carve-outs a rule id cannot deliver.
 
-Dropping the enumerated conventions is safe exactly where the checker says
-the same thing at the moment it matters. The private-prefix diagnostics
+Leaving a convention unlisted is safe exactly where the checker says the
+same thing at the moment it matters. The private-prefix diagnostics
 carry their own exemptions — nest inside the caller, an unused parameter
 keeps its underscore — so those are left to them. These two are what the
 checker does *not* say: its diagnostic names the refused shape and stops, so
@@ -252,10 +252,10 @@ COMMIT_TYPES = models.GuidanceSection(
 """The commit vocabulary, held once because three documents state it.
 
 A skill telling an agent how to commit, the contributing page a human reads,
-and the guidance both compose from were each carrying their own copy of this
-table, worded differently — `refactor` was "code restructuring without
-behavior change" in one and "neither fixes a bug nor adds a feature" in the
-other, for a row that is supposed to say one thing. Rows rather than prose so
+and the guidance both compose from would each carry a copy of this table, and
+copies drift apart in wording — `refactor` as "code restructuring without
+behavior change" in one and "neither fixes a bug nor adds a feature" in
+another, for a row that is supposed to say one thing. Rows rather than prose so
 the escaping is the table's, and so a type added here reaches every reader at
 once.
 """

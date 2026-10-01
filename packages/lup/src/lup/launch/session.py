@@ -772,7 +772,7 @@ def settle_boundary(
         # No mounts, so no mount table -- and the one a contained launch left
         # behind describes a boundary this session is not behind. Attributing
         # a refusal to it teaches an agent to reach for the host when the bug
-        # was its own, which outlives the command it was wrong about.
+        # is its own, which outlives the command it was wrong about.
         retire_mount_table(root)
     environment.update(
         sentinels.within() if sandbox.contained() else sentinels.outside()
@@ -973,10 +973,9 @@ def session_argv(
     )
     # Verified on the way in, rather than asserted. This is §6's whole point
     # and the launch is where it has to happen: the boundary was built two
-    # lines ago and nothing had ever asked whether it carries traffic. What
-    # that cost, measured on the first contained session anybody opened, was
-    # a session that started cleanly, looked entirely healthy, and reported
-    # every request as the operator's own internet or DNS being down.
+    # lines ago and nothing else asks whether it carries traffic. Unasked, a
+    # session starts cleanly, looks entirely healthy, and reports every
+    # request as the operator's own internet or DNS being down.
     #
     # Not the whole image roster -- only the entries marked `always`, which
     # is the handful whose absence means the session can do nothing. A model
@@ -1038,7 +1037,7 @@ def say_opening(
 ) -> None:
     """Say everything this launch held, once, in the order a reader wants it.
 
-    The count is what replaces the roster. A reader who wants to know *which*
+    The count stands in for the roster. A reader who wants to know *which*
     checks passed is asking a question `harness requirements` answers on
     demand and a launch cannot answer usefully anyway -- the list is the same
     list as yesterday, every session, and the one time it differs is the one

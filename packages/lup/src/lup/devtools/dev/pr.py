@@ -68,9 +68,9 @@ class ChecksState(StrEnum):
     A check that has not finished is neither passing nor failing, and two
     names force it under one of them: filtering to the completed checks and
     asking ``all()`` answers "passing" for a PR whose only check is still
-    running, because nothing is left to disagree. That is how a run that
-    concluded as a failure was presented as the one clean branch of three.
-    The third name is what lets a reader wait rather than decide.
+    running, because nothing is left to disagree, and a run about to
+    conclude as a failure is presented as a clean branch. The third name is
+    what lets a reader wait rather than decide.
     """
 
     passing = "passing"

@@ -885,8 +885,8 @@ def restarted(dashboard: Dashboard, root: Path) -> str:
     Asked of the dashboard itself, behind its capability and from its own
     origin, as the page asks: it restarts in place once no write is in
     flight. Where none serves while sessions hold it, one is started for
-    them from this checkout's code. One that predates restarting itself
-    answers the ask with nothing to take it, and is replaced instead —
+    them from this checkout's code. One whose code has no restart answers
+    the ask with nothing to take it, and is replaced instead —
     stopped, and started from this checkout's code for the sessions holding
     it; with none holding it, stopping is all there is to do.
     """
@@ -928,18 +928,18 @@ def restarted(dashboard: Dashboard, root: Path) -> str:
         case 404 | 405:
             dashboard.stopped(
                 root,
-                why="the operator's restart replaces a dashboard that predates "
-                "restarting itself",
+                why="the operator's restart replaces a dashboard whose code has "
+                "no restart",
                 stays=False,
             )
             if not standing.leases:
                 return (
-                    "The dashboard predated restarting itself and no session held it, "
+                    "The dashboard's code has no restart and no session held it, "
                     "so it was stopped; the next launch starts it."
                 )
             started_for_holders(dashboard, root)
             return (
-                "The dashboard predated restarting itself, so it was replaced: "
+                "The dashboard's code has no restart, so it was replaced: "
                 f"stopped, and started from {root}'s code for the sessions holding it."
             )
         case status:

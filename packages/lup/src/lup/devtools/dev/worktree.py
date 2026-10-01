@@ -173,12 +173,12 @@ def report_a_blocked_registration(root: Path | None = None) -> bool:
 
     A clone that cannot -- the shared `config` is held read-only in every
     contained session, and the registration is a host's act -- is told so and
-    given the worktree anyway. Refusing it protected nothing: the driver
+    given the worktree anyway. Refusing it would protect nothing: the driver
     decides how a *merge* of the generated trees resolves, which a worktree
     cut without it meets no sooner than every worktree of this clone already
-    does, and what the refusal cost was the work itself, measured twice over
-    -- a documentation branch that fell back to plain `git worktree add`, and
-    a resolver run that could not lease its first concern inside the sandbox.
+    does, and what a refusal costs is the work itself -- a branch falling back
+    to plain `git worktree add`, or a resolver run unable to lease its first
+    concern inside the sandbox.
     Where the write would simply happen, nothing is said.
 
     Answers whether the registration is blocked, which the setup step reads
@@ -704,7 +704,7 @@ class WorktreeHold(BaseModel, frozen=True):
     creates: it was launched in another checkout and writes into the new one
     by absolute path, so the roster never names it as that checkout's user.
     Once its work is committed the checkout reads as clean and spent, and a
-    lander removed it while the session was still writing there.
+    lander would remove it while the session is still writing there.
 
     So creation locks the checkout with this as the reason. A lock is where
     every removal here already looks, and a plain `git worktree remove` meets

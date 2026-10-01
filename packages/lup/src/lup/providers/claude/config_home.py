@@ -278,8 +278,8 @@ def restorable_backups(directory: Path) -> list[Path]:
     """Every backup of one home's document that could actually restore it.
 
     Claude Code answers a document it cannot parse with a hint naming the
-    backup it just wrote, and the backup it wrote for a truncated document
-    was zero bytes — so following the hint replaces a since-healed
+    backup it just wrote, and the backup it writes for a truncated document
+    can be zero bytes — so following the hint replaces a since-healed
     configuration with an empty one. What makes a backup worth restoring is
     not that it exists but that it parses and still carries the project
     entries trust and permissions live in, which is what is answered here.

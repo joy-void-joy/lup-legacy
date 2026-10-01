@@ -237,7 +237,7 @@ def release_note(version: str, summary: str, details: list[str]) -> ReleaseNote:
 
     Separate from writing it so a dry run shows the entry itself rather than
     a description of one — the summary and its bullets are what a reader is
-    deciding about, and the rendering is where they have been damaged before.
+    deciding about, and the rendering is where they can be damaged.
     """
     return ReleaseNote(
         version=version, date=dt.date.today(), summary=summary, details=details

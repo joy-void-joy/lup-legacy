@@ -180,7 +180,7 @@ STALE_AFTER_SECONDS = 120.0
 A few beats wide rather than one, so a stalled scheduler or a slow disk is not
 read as a departure; short because the roster is read to decide whether a path
 is safe to write, and a dead session holding that decision open for an hour is
-the failure this closes.
+the failure this prevents.
 """
 
 DEPARTED_SECONDS = 18000.0
@@ -275,8 +275,8 @@ class Member(TypedDict, total=False):
     Everything down to ``left_at`` is written; ``running`` and ``heard`` are
     not in the file at all — they are read as presence, from the process the
     row names where a reader can ask it and the file's modification time where
-    it cannot. That is the whole of what replaces a departure record nobody
-    wrote: a member is here while its runtime runs.
+    it cannot. Presence is read rather than recorded, so no departure record
+    has to be written: a member is here while its runtime runs.
     """
 
     kind: str

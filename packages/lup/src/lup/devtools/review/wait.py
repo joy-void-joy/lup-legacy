@@ -456,7 +456,7 @@ def settled_now(
 
     Whatever it came to, the operator's note and line comments ride beneath
     it: an approval with instructions is as much the operator's word as a
-    decline, and was lost when only a decline printed it.
+    decline, and printing the note for a decline alone would lose it.
     """
     answer = question.answer
     words = (
@@ -655,7 +655,7 @@ def woken(asker: Asker, said: list[str], waited: list[RecordedQuestion]) -> None
     A Claude session is woken by its runtime when this background command
     ends; a Codex session's shell tool keeps the command running after the
     turn and starts no turn when it ends -- measured on 0.158.0, where
-    `codex queue` did start one in the idle thread -- so a waiter that
+    `codex queue` does start one in the idle thread -- so a waiter that
     waited queues what it reported, the line saying how to wait again
     included. One run once every answer was in reports in the call that ran
     it, and queuing that too would start a turn for nothing. A subagent's

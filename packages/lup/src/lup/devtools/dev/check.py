@@ -89,7 +89,7 @@ from lup.web.build import BUN, restore_dependencies
 # computes — its system time runs to roughly twice its user time — so it
 # parallelizes well, and goes on doing so past the point a worker's own
 # interpreter boot would be expected to cancel the return. Measured on a
-# 32-core host, the root suite alone ran in 673s serial, 102s under 8 workers,
+# 32-core host, the root suite alone runs in 673s serial, 102s under 8 workers,
 # 97s under 16, and 88s under 24: more workers is still winning at this cap.
 #
 # Capped regardless, because the gate is not one suite running alone. It puts
@@ -300,14 +300,13 @@ def sweep_pyright_scratch(root: Path, older_than: timedelta) -> list[Path]:
     base's relative ``include`` and each ``executionEnvironments`` root against
     the file that declares them, so one written elsewhere analyses a different
     tree. Measured rather than assumed: extending this repository's own base
-    from a temporary directory analysed 1092 files and reported 60 missing
+    from a temporary directory analyses 1092 files and reports 60 missing
     imports that are not missing.
 
     Living at the root means a run that is killed rather than returned from
     leaves its file behind — the `finally` that unlinks it never executes —
     and they accumulate as untracked junk that every later `git status` and
-    every drift check reports. This checkout held three, the oldest eleven
-    days.
+    every drift check reports.
 
     Swept by age because the alternative is worse. Several sessions check this
     repository at once, and a sweep of *every* such file would delete a
@@ -341,7 +340,7 @@ def pyright_check(
     reconstruct wrongly.
 
     Handed no ``--threads``, so it checks on one core. Measured over lup and
-    an adopter on a shared 32-core host, ``--threads 8`` mostly cut the wall
+    an adopter on a shared 32-core host, ``--threads 8`` mostly cuts the wall
     time by a third to three quarters, for two to five times the CPU and three
     times the memory: each thread is a forked process holding its own program,
     half a gigabyte to a gigabyte of it. In the full gate that buys nothing —
@@ -510,11 +509,11 @@ class TestRoot(BaseModel):
 
         Scheduled by work stealing rather than xdist's default, because a
         suite costs its busiest worker. The default hands each worker its
-        share up front, and a share holding a module of git-driving tests left
-        one worker running for a minute after the rest were idle — measured,
-        the library suite's busiest worker at 1.7 to 2.8 times the median,
-        where stealing held it to 1.1 to 1.3, and the template suite's from
-        1.2 to 1.05.
+        share up front, and a share holding a module of git-driving tests
+        leaves one worker running for a minute after the rest are idle —
+        measured, the library suite's busiest worker at 1.7 to 2.8 times the
+        median, where stealing holds it to 1.1 to 1.3, and the template
+        suite's from 1.2 to 1.05.
         """
         if workers < 2:
             return []
@@ -704,8 +703,8 @@ def absent_selections(selections: list[str]) -> list[str]:
     """The named tests nothing on disk answers, spelled as they were named.
 
     A node id names its test after the file holding it, so the file is what
-    is looked for. Handed a name nothing answers, pytest collected nothing,
-    and the run reported "no tests ran" and a failed suite without saying
+    is looked for. Handed a name nothing answers, pytest collects nothing,
+    and the run reports "no tests ran" and a failed suite without saying
     which name was wrong.
     """
     return [
@@ -1092,8 +1091,8 @@ def named_gate_base(named: str, option: str = "--base") -> str:
     The merge base rather than the tip. What a branch took away is judged from
     where it started, and a base that has moved on since carries changes this
     branch never made — read against the tip they come back as capabilities
-    this branch removed, which is how naming `dev` directly reported 504 gone
-    on a branch that had removed none. What a branch changed is the same
+    this branch removed, so naming `dev` directly would report hundreds gone
+    on a branch that removed none. What a branch changed is the same
     question asked of files, and ``option`` is the flag the ref came through,
     for the refusal to name.
 
@@ -1366,8 +1365,8 @@ def scan_reports(
         # tree is answerable for rather than reading every file and setting
         # most of the findings aside. A lease holds one concern's changes and
         # its gate answers "is this change good?" — a whole-repository read
-        # made every lease's verdict depend on state no worker controls, and
-        # cost the whole repository's resolve to reach it.
+        # would make every lease's verdict depend on state no worker controls,
+        # and cost the whole repository's resolve to reach it.
         yield antipattern_report(project, scope)
 
         # A document naming a node is held to what the node says now, so prose
@@ -1787,8 +1786,8 @@ def run_checks(
     A gate with no suite to run says so in a row of its own, where the suites
     would have reported. A tally counting only what ran reads the same
     whether the tests passed or nobody declared any, and a project whose code
-    all sits in a nested one met exactly that: every check passed while the
-    nested suite, run by nobody, had been failing. Advisory, because declaring
+    all sits in a nested one meets exactly that: every check passes while the
+    nested suite, run by nobody, fails. Advisory, because declaring
     none is a choice the gate reports rather than refuses.
     """
     started = perf_counter()

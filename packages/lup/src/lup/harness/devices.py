@@ -1,9 +1,10 @@
 """The devices a contained session is granted, resolved the way its mounts are.
 
 A container starts with none of the host's devices, and a GPU is the one a
-session has had to leave the boundary for: every accelerated run so far was
-launched on the host behind an escalation, outside containment and outside the
-provenance a contained launch records. What closes that is a grant the
+session would otherwise leave the boundary for: without a grant, an
+accelerated run launches on the host behind an escalation, outside
+containment and outside the provenance a contained launch records. What keeps
+it inside is a grant the
 launcher resolves rather than a flag somebody remembers -- a device granted on
 the machine, in its gitignored registry, reaches every session and worker
 opened there, and a device named on one command line is granted for that

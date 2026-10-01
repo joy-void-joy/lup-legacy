@@ -18,7 +18,7 @@ in the text never suffices on its own -- ``Read-only file system`` appears for
 a genuinely read-only disk too -- so a claim is made only when the topology or
 the log agrees, and everything else is reported as *unattributed*. That is not
 modesty. A wrong boundary claim is worse than none: it teaches an agent to
-reach for the host when the bug was in its own code, and that lesson outlives
+reach for the host when the bug is in its own code, and that lesson outlives
 the one command it was wrong about.
 """
 

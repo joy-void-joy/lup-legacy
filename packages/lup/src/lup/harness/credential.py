@@ -383,7 +383,7 @@ def parse_remote(url: str) -> RemoteAddress | None:
     as a path with no scheme at all -- so it cannot even be used to tell the
     two apart, let alone to take either one apart correctly.
 
-    The obvious PyPI parser was tried and refuted for this job. ``giturlparse``
+    The obvious PyPI parser does not do this job, measured. ``giturlparse``
     does handle scp-like syntax, but validates against a roster of known
     forges, so it answers ``valid: False`` for a URL spelled through an ssh
     config alias -- which is precisely the case this exists for.
@@ -1358,11 +1358,11 @@ class GitAccess(BaseModel, frozen=True):
     ) -> list[Notice]:
         """What the launch says about the forge, which is one line when all is well.
 
-        The selected credential names itself and stops. Everything that used
-        to travel beside it -- how many spellings were rewritten, that the
+        The selected credential names itself and stops. Everything else that
+        could travel beside it -- how many spellings are rewritten, that the
         agent can read the token, what a token should be scoped to, who
-        commits are authored as -- was true and was noise: five paragraphs in
-        which the one sentence that decides whether the session can work sat
+        commits are authored as -- is true and is noise: five paragraphs in
+        which the one sentence that decides whether the session can work sits
         indistinguishable from four that do not. The rationale is in this
         module and in ``docs/permissions.md``; the launch carries the verdict.
 

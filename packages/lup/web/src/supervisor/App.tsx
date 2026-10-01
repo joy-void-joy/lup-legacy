@@ -18,7 +18,7 @@ import type { Scope } from "./filters";
 // either way — this bounds the reader, not the run.
 const RETAINED_ENTRIES = 4000;
 
-// Applying the record directly is what removed the re-project-and-diff tick.
+// Each record is applied directly, so no re-project-and-diff tick runs.
 // A phase or concern move is folded in place because the event carries
 // exactly what changed; anything derived from the mailbox — offers, the
 // operator-facing status — is re-read, because the run does not author an

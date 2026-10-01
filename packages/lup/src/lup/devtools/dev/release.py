@@ -4,8 +4,8 @@ A release here is one transaction over the files it touches, and the argument
 for compiling it rather than writing it down is what prose costs. Carried in a
 skill — fold the pending migrations into the changelog, close the section,
 move the version, move the migrations into the release — the steps make a list
-that runs only as well as whoever is reading it that day. Measured in this
-repository, three of the four had never run at all.
+that runs only as well as whoever is reading it that day, and a step skipped
+leaves nothing behind to say it was.
 
 What stays a judgement stays outside: which level the release is, and what the
 entries under ``## Unreleased`` should say. Both are decided by somebody

@@ -81,9 +81,10 @@ def credential_read_denials(hooks: "HookSet | None") -> list[str]:
     Compiled from :attr:`~lup.harness.models.HookSet.refused_paths`, the one
     declaration the shell policy refuses a word by. Read, Grep and Glob run in
     the session's own process and never reach the policy hook, so a second
-    list declared for them named `~/.ssh` and `~/.aws/credentials` while the
-    shell withheld `~/.netrc`, `~/.git-credentials` and each runtime's own
-    login -- which the file tools went on reading. Claude Code merges these
+    list declared for them drifts from the shell's: one naming `~/.ssh` and
+    `~/.aws/credentials`, beside a shell withholding `~/.netrc`,
+    `~/.git-credentials` and each runtime's own login, leaves the file tools
+    reading those. Claude Code merges these
     same rules into its sandbox's read restrictions, so they are the OS
     layer's credential denial as well, and nothing else renders one.
 

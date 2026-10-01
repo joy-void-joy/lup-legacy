@@ -406,7 +406,8 @@ class ReviewStore(BaseModel, frozen=True):
 
         Asked of every waiting review on every look, and again when one is
         opened or answered, since a file moves without the queue changing --
-        which is how a review turned unapprovable in front of the operator.
+        and a review asked only when the queue changes turns unapprovable in
+        front of the operator.
         A stale review leaves the queue at once and its requester is told to
         ask again; what moved is read through a stat-keyed watch against the
         digest each preimage is recorded by, so a waiting review whose files
