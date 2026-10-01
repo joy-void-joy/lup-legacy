@@ -11,7 +11,6 @@ generates regenerated. What it reads only here, the registrations in
 `sync.json.local`, becomes the declaration's mounts and devices.
 """
 
-import os
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from pathlib import Path
@@ -32,6 +31,7 @@ from lup.devtools.harness.drift import (
 )
 from lup.devtools.sync import accessible_roots, granted_devices
 from lup.harness.devices import Device
+from lup.harness.environment import Placement
 from lup.harness.generate import NativeHarnessComposition
 from lup.harness.image import Image, MemoryLimit
 from lup.harness.models import Harness, NativeName, Plugin, Resumption
@@ -157,20 +157,21 @@ def relocation_hint(worktree_path: Path) -> RelocationHint:
     tool, and a workflow change having to find both to land. One of them
     being an adapter method makes that impossible.
     """
-    environ = os.environ  # lup: ignore[os-environ]
     move = f"cd /; cd {worktree_path}"
     here = "the path above"
-    if "CLAUDE_CONFIG_DIR" in environ:
-        return RelocationHint(
-            agent=ClaudeSpellings().relocate_session(here),
-            shell=f"{move}; claude",
-        )
-    if "CODEX_HOME" in environ:
-        return RelocationHint(
-            agent=CodexSpellings().relocate_session(here),
-            shell=f"{move}; codex",
-        )
-    return RelocationHint(agent="", shell=move)
+    match Placement.here().runtime:
+        case "claude":
+            return RelocationHint(
+                agent=ClaudeSpellings().relocate_session(here),
+                shell=f"{move}; claude",
+            )
+        case "codex":
+            return RelocationHint(
+                agent=CodexSpellings().relocate_session(here),
+                shell=f"{move}; codex",
+            )
+        case None:
+            return RelocationHint(agent="", shell=move)
 
 
 class LaunchMode(BaseModel, frozen=True, arbitrary_types_allowed=True):

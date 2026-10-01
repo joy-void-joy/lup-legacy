@@ -18,12 +18,12 @@ from pathlib import Path
 from pydantic import BaseModel
 
 from lup.coordination.repository import RepositoryPeers
+from lup.harness.environment import Placement
 from lup.launch.companions import lent_by_a_companion
 from lup.launch.environments import revisions_home
 from lup.providers.user_config import UserConfigHome
 from lup.sandbox.known import (
     answers_directory,
-    host_side,
     known_repositories,
     remember,
     store_directory,
@@ -185,7 +185,7 @@ def judged_roots(roots: Sequence[Path], operator: Path | None = None) -> Trust:
     )
     if refused:
         return Trust(refusal=refused)
-    if not host_side():
+    if not Placement.here().host:
         return Trust()
     sightings = [
         Sighting(verdict=judged, withheld=withheld_because(judged, trusted))

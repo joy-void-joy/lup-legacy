@@ -32,10 +32,10 @@ from lup.devtools.dashboard.companion import (
     DashboardToken,
     LaunchRecord,
     dashboard_status,
-    launched_by_an_operator,
     private_urls,
     written,
 )
+from lup.harness.environment import Placement
 from lup.devtools.dashboard.pulse import (
     DASHBOARD_PULSE_ENV,
     DashboardPulse,
@@ -213,7 +213,7 @@ def test_the_dashboard_leaves_the_starting_sessions_identity_behind(
         root, **{MEMBER_ENV: "a-session", NONCE_VARIABLE: "its-boundary"}
     )
 
-    assert not launched_by_an_operator(session.environment)
+    assert Placement.of(session.environment).in_session
     with held_companions([dashboard], session):
         serving = dashboard.standing(root).serving
         assert serving is not None
