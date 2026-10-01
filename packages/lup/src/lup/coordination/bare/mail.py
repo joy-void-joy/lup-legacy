@@ -79,6 +79,10 @@ class Message(TypedDict, total=False):
     participants: list[str]
     """Everyone else in that discussion, as its reader addresses each."""
 
+    carried: bool
+    """A wake has put this redirect in front of its reader already; it waits
+    only for the hook to refuse the reader's next tool call with it."""
+
 
 class Notice(TypedDict, total=False):
     """One standing fact about this population, true until it is retracted.
@@ -230,6 +234,23 @@ def consume(root: Path, mailbox: str, messages: list[Message]) -> None:
     """
     for message in messages:
         discarded(message_path(root, mailbox, text(message.get("id"))))
+
+
+def mark_carried(root: Path, mailbox: str, messages: list[Message]) -> None:
+    """Record that a wake carried these messages, leaving each in the mailbox.
+
+    What a redirect a wake carried needs: its reader has read it, and its
+    next tool call has still to be refused with it, which only the hook
+    handing it over can do. Each file is rewritten whole by rename, so the
+    hook reading it at that moment reads one or the other.
+    """
+    for message in messages:
+        path = message_path(root, mailbox, text(message.get("id")))
+        found = loaded(path, Message)
+        if found is not None:
+            carried = found.copy()
+            carried["carried"] = True
+            published(path, carried)
 
 
 def notice_path(root: Path, notice_id: str) -> Path:

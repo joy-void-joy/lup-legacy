@@ -72,7 +72,13 @@ class MailboxRelay(ServerCompanion, frozen=True):
             row = peers.row(self.member_id)
             if row is None or not row.running or not row.wake.receiver_local:
                 return None
-            waiting = peers.waiting(self.member_id).messages
+            # A redirect a wake carried waits only for the hook to refuse the
+            # next call with it; queueing it again would start a turn per tick.
+            waiting = [
+                message
+                for message in peers.waiting(self.member_id).messages
+                if not message.carried
+            ]
             if not waiting:
                 return None
             return roused(

@@ -79,6 +79,10 @@ class ActorMessage(BaseModel, frozen=True):
     participants: list[str] = []
     """Everyone else in that discussion, as its reader addresses each."""
 
+    carried: bool = False
+    """A wake has put this redirect in front of its reader already; it waits
+    only for the hook to refuse the reader's next tool call with it."""
+
     def heading(self) -> str:
         """What its reader is told before the text, as the delivery hook tells it."""
         return mail.heading(
@@ -227,6 +231,7 @@ def folded_message(message: mail.Message) -> ActorMessage:
             for each in (message.get("participants") or [])
             if isinstance(each, str)
         ],
+        carried=bool(message.get("carried")),
     )
 
 
@@ -469,6 +474,14 @@ class ActorMail:
         nothing between the read and the commit is consumed unseen.
         """
         mail.consume(
+            self.root,
+            actor.conversation(),
+            [mail.Message(id=message.id) for message in delivery.messages],
+        )
+
+    def carried(self, actor: ActorRef, delivery: ActorDelivery) -> None:
+        """Record that a wake carried these messages to this member, leaving them waiting."""
+        mail.mark_carried(
             self.root,
             actor.conversation(),
             [mail.Message(id=message.id) for message in delivery.messages],

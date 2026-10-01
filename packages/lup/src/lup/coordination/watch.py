@@ -159,10 +159,22 @@ def roused(
     what no wake carried. A wake that did not reach leaves every message
     waiting for it.
 
+    A redirect is read in the wake and stays waiting all the same, marked as
+    carried so no wake carries it again: what it asks is that the member's
+    next tool call be refused, and only the hook, handing it over at that
+    call, can refuse it.
+
     Accepted is the most a runtime says: a frame its wake socket took, or a
     queue that took the message. Neither proves the turn it starts has read
     it, which is the same promise the hook's own hand-over makes.
     """
+    fresh = [message for message in fresh if not message.carried]
+    if not fresh:
+        return Woken(
+            reached=False,
+            reason="what waits was carried by an earlier wake, and waits for the "
+            "member's hook",
+        )
     outcome = wake(
         member.wake,
         nudge_text(fresh),
@@ -170,7 +182,16 @@ def roused(
         queue_timeout_seconds=queue_timeout_seconds,
     )
     if outcome.reached:
-        peers.delivered(member.actor.id, ActorDelivery(messages=fresh))
+        peers.delivered(
+            member.actor.id,
+            ActorDelivery(
+                messages=[message for message in fresh if not message.redirect]
+            ),
+        )
+        peers.carried(
+            member.actor.id,
+            ActorDelivery(messages=[message for message in fresh if message.redirect]),
+        )
     return outcome
 
 

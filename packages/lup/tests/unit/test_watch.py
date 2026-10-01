@@ -16,7 +16,8 @@ import pytest
 from lup.coordination.identity import member_ref, mint_member_id
 from lup.coordination.repository import RepositoryPeers
 from lup.coordination.roster import Delivery
-from lup.coordination.wake import WakePath
+from lup.coordination import watch as watching
+from lup.coordination.wake import WakePath, Woken, injected
 from lup.coordination.watch import (
     Arrived,
     Departed,
@@ -25,6 +26,7 @@ from lup.coordination.watch import (
     Redescribed,
     Watcher,
     nudge_text,
+    roused,
 )
 from lup.coordination.watcher import watcher_pipeline
 from lup.runs.pipeline import RunRequest
@@ -230,3 +232,56 @@ def test_a_nudge_carries_every_fresh_message_rather_than_the_newest(
     assert "the first thing" in carried
     assert "the second thing" in carried
     assert "coordination_mailbox" in carried
+
+
+def test_a_wake_carries_a_redirect_and_leaves_it_for_the_hook(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """What a redirect asks — that the next call be refused — only the hook can do.
+
+    So a wake that reached puts it in front of the member and leaves it
+    waiting, marked so no wake carries it again, while an ordinary message
+    it carried is handed over.
+    """
+    peers = RepositoryPeers(tmp_path)
+    member = mint_member_id()
+    peers.join(
+        member,
+        tmp_path / "tree",
+        cli_name="reader",
+        wake=WakePath(runtime="claude", handle=str(tmp_path / "reader.sock")),
+    )
+    woken: list[str] = []
+
+    def accepted(
+        path: WakePath,
+        message: str,
+        cwd: Path | None = None,
+        *,
+        queue_timeout_seconds: float = 20.0,
+        priority: str = "next",
+    ) -> Woken:
+        del path, cwd, queue_timeout_seconds, priority
+        woken.append(message)
+        return Woken(reached=True)
+
+    monkeypatch.setattr(watching, "wake", accepted)
+    peers.send("reader", "the base moved")
+    peers.send("reader", "stop: that branch is closed", redirect=True)
+    row = peers.row(member)
+    assert row is not None
+
+    first = roused(peers, row, peers.waiting(member).messages)
+    again = roused(peers, row, peers.waiting(member).messages)
+
+    assert first.reached and not again.reached
+    assert len(woken) == 1
+    assert "stop: that branch is closed" in woken[0]
+    [left] = peers.waiting(member).messages
+    assert (left.text, left.redirect, left.carried) == (
+        "stop: that branch is closed",
+        True,
+        True,
+    )
+
+

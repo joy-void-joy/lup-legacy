@@ -826,6 +826,15 @@ class RepositoryPeers:
         """
         self.cohort.mailbox(self.actor(member_id)).commit(delivery)
 
+    def carried(self, member_id: str, delivery: ActorDelivery) -> None:
+        """Record that a wake carried these messages to this member, leaving them for its hook.
+
+        What a redirect a wake carried needs: the member has read it, and its
+        next tool call has still to be refused with it, which only its hook
+        handing it over does; a wake does not carry it again.
+        """
+        self.cohort.mail.carried(self.actor(member_id), delivery)
+
     def live_ids(self) -> list[str]:
         """Every member still working here, by id, which is what expires a claim.
 

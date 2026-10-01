@@ -380,7 +380,7 @@
     {
       "path": ".claude/plugins/lup/hooks/runtime/coordination/mail.py",
       "category": "generated",
-      "sha256": "ab484ec2aad1bb869529dcf007bb15272801c097946bc97b6d86a6b080543f1c",
+      "sha256": "03b7f88bc39a1c1fd7482eca8c01b62cf383643d6e38c47dbe9349fbba5c2e42",
       "semantic_id": "hooks.lup-policy",
       "executable": false
     },
