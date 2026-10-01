@@ -56,6 +56,7 @@ from lup.policy.kernel.rows import (
 )
 from lup.policy.edit_rules import EditRule, erase_edit_rules
 from lup.policy.imports import ImportBoundary
+from lup.policy.models import ProtectedRoot
 from lup.policy.peer_policy import PeerPolicy, erase_peer_policy
 from lup.policy.refused_paths import RefusedPaths
 from lup.policy.refused_tools import RefusedTool, erase_refused_tools
@@ -240,11 +241,14 @@ def runtime_url_scope(
 
 
 def runtime_path_rules(
-    protected_roots: list[str], human_owned_files: list[str]
+    protected_roots: list[ProtectedRoot], human_owned_files: list[str]
 ) -> list[PathRuleRow]:
     """Compile application roots plus invariant edit guardrails."""
     return [
-        *[path_rule_row(protected_root_rule(root)) for root in protected_roots],
+        *[
+            path_rule_row(protected_root_rule(root.path.as_posix(), root.description))
+            for root in protected_roots
+        ],
         *[path_rule_row(human_owned_path_rule(path)) for path in human_owned_files],
         *[path_rule_row(rule) for rule in invariant_path_rules()],
     ]
@@ -289,6 +293,7 @@ def path_rule_rows_literal(rows: list[PathRuleRow]) -> str:
                 f'"reason": {json.dumps(row["reason"])}',
                 f'"recovery": {json.dumps(row["recovery"])}',
                 f'"allow_autonomous": {row["allow_autonomous"]}',
+                f'"description": {python_literal(row["description"] if "description" in row else row["value"])}',
             ]
             for row in rows
         ]
@@ -675,7 +680,7 @@ def render_policy_data(
     *,
     allowed_fetch_scopes: list[UrlScopeRow],
     denied_fetch_scopes: list[UrlScopeRow],
-    protected_roots: list[str],
+    protected_roots: list[ProtectedRoot],
     human_owned_files: list[str],
     autonomous_agent_identities: list[str],
     path_roles: list[PathRoleRow],

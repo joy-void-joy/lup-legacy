@@ -13,7 +13,7 @@ from collections.abc import Callable, Iterator, Set as AbstractSet
 from functools import cache
 from typing import NotRequired, TypedDict
 
-from .decision import KernelDecision, handed_over
+from .decision import KernelDecision, ProtectedRow, handed_over
 from .imports import ResolvedImportRule, resolved_import_rules
 from .roles import (
     FOREIGN_REPOSITORY_RECOVERY,
@@ -4121,7 +4121,9 @@ def decide_edit(
     if protected is not None and not (autonomous and protected["allow_autonomous"]):
         # A protected path says a person owns this file, which is the whole
         # of the rule: routing it to a supervisor answers past exactly the
-        # person the declaration names.
+        # person the declaration names. Which rule it was travels with the
+        # verdict to the row a reviewer reads, whatever the gate's table made
+        # of the question.
         return judged(
             "protected-path",
             KernelDecision(
@@ -4130,6 +4132,14 @@ def decide_edit(
                 purpose="quality_review",
                 recovery=protected["recovery"],
             ),
+        ).revised(
+            protected=ProtectedRow(
+                kind=protected["kind"],
+                root=protected["value"],
+                description=protected["description"]
+                if "description" in protected
+                else protected["value"],
+            )
         )
     # Feedback is feedback wherever it is left, so this gate follows the file
     # rather than the conventions: a note on a test still names work somebody

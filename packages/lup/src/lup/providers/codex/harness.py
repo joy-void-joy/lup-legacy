@@ -1050,9 +1050,7 @@ class CodexHookRenderer(ArtifactRenderer[HookSet]):
                             )
                             for scope in source.denied_fetch
                         ],
-                        protected_roots=[
-                            path.as_posix() for path in source.protected_edit_roots
-                        ],
+                        protected_roots=source.protected_roots(),
                         human_owned_files=[
                             path.as_posix() for path in source.human_owned_files
                         ],

@@ -54,6 +54,19 @@ type UrlPathPrefix = Annotated[str, StringConstraints(pattern=r"^/")]
 """An absolute URL path prefix scoping a fetch rule beneath an origin."""
 
 
+class ProtectedRoot(BaseModel, frozen=True):
+    """One tree an edit needs approval into, and what it is in plain words.
+
+    ``description`` is what a reviewer reads beside a file that met the root
+    -- "the policy's own code" rather than a path they have to place -- and
+    the path stands in where it is empty. A hook set may declare a bare path
+    instead, which is a root with no description.
+    """
+
+    path: Path
+    description: str = ""
+
+
 class UrlScope(BaseModel, frozen=True):
     """One normalized scheme/host/port and path-prefix rule.
 

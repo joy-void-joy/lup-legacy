@@ -82,7 +82,11 @@ from lup.policy.assets.host import (
 )
 from lup.policy.identity import REVIEW_ANSWERS_ENV
 from lup.policy.kernel.decision import DecisionEffect
-from lup.policy.kernel.semantics import ReviewPurpose, ReviewerRequirement
+from lup.policy.kernel.semantics import (
+    PathRuleKind,
+    ReviewPurpose,
+    ReviewerRequirement,
+)
 from lup.policy.operations import Operation
 from lup.types import JsonObject, JsonValue
 
@@ -338,8 +342,28 @@ class StoredDocument(BaseModel, frozen=True):
     sha256: str
 
 
+class ProtectedMatch(BaseModel, frozen=True):
+    """The protected-path rule a file met, as a reviewer is shown it.
+
+    ``kind`` is how the rule matched -- ``subtree`` for a declared root or
+    lup's own state, ``name_prefix`` for an environment file, ``new_devtools``
+    for a devtools module not written yet, ``exact`` for a human-owned file,
+    ``contains_part`` for a manifest or lockfile wherever it sits. ``root`` is
+    the rule's value as declared, and ``description`` what that is in plain
+    words, the root itself where nothing was declared.
+    """
+
+    kind: PathRuleKind
+    root: str
+    description: str
+
+
 class FileVerdict(BaseModel, frozen=True):
-    """The original routed verdict on one file, bound by digest to the images it judged."""
+    """The original routed verdict on one file, bound by digest to the images it judged.
+
+    ``protected`` is the protected-path rule the file met; ``None`` where it
+    met none, and on a verdict recorded before the rule was kept.
+    """
 
     path: Path
     effect: DecisionEffect
@@ -348,6 +372,7 @@ class FileVerdict(BaseModel, frozen=True):
     rules: list[str]
     before_sha256: str | None
     after_sha256: str | None
+    protected: ProtectedMatch | None = None
 
 
 class CapturedFileReview(FileVerdict, frozen=True):

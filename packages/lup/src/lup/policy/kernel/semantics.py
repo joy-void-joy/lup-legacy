@@ -221,3 +221,19 @@ REACHES: list[Reach] = [
     "host_later",
 ]
 """Every reach, narrowest first, which is what makes a join a maximum."""
+
+type PathRuleKind = Literal[
+    "exact",
+    "subtree",
+    "name_prefix",
+    "new_subtree",
+    "contains_part",
+    "new_devtools",
+]
+"""How a protected-path rule matches a path.
+
+``exact`` names one file, ``subtree`` a root and everything under it,
+``new_subtree`` only what does not stand there yet, ``contains_part`` a
+directory or file by name wherever it sits, ``name_prefix`` a file name's
+opening (`.env`), and ``new_devtools`` a devtools module not written yet.
+"""

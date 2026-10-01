@@ -44,7 +44,10 @@ def declared_path_rules(hooks: HookSet) -> list[PathRule]:
     new devtools module are approvals regardless of what any adopter listed.
     """
     return [
-        *[protected_root_rule(root.as_posix()) for root in hooks.protected_edit_roots],
+        *[
+            protected_root_rule(root.path.as_posix(), root.description)
+            for root in hooks.protected_roots()
+        ],
         *[human_owned_path_rule(path.as_posix()) for path in hooks.human_owned_files],
         *invariant_path_rules(),
     ]
