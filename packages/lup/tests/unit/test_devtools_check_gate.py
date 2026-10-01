@@ -29,7 +29,7 @@ from lup.devtools.dev.check import (
     named_gate_base,
     spent,
 )
-from lup.harness.process import LaunchRequest, LocalProcessLauncher
+from lup.execution.process import LaunchRequest, LocalProcessLauncher
 
 
 def test_a_pending_move_names_the_command_and_counts_the_branches() -> None:

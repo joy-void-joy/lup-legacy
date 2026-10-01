@@ -54,6 +54,7 @@ from lup.providers.claude import Claude
 from lup.providers.codex import Codex
 from lup.providers.codex.home import CodexHomeSelection
 from lup.sessions.recursion import MAX_RECURSIVE_AGENT_ENV
+from lup.types import JsonValue
 
 MEMBER = LaunchedMember(member_id="member-1", cli_name="work")
 
@@ -255,6 +256,57 @@ def test_a_companion_leaves_what_it_unsets_and_is_stopped_from_outside(
         assert served.stopped(tmp_path)
         assert served.standing(tmp_path).serving is None
         assert not served.stopped(tmp_path)
+
+
+def unscoped(value: JsonValue) -> JsonValue:
+    """A kept record as it was written before its processes carried a scope.
+
+    Only a process's scope goes: a declaration has a ``scope`` of its own.
+    """
+    match value:
+        case dict():
+            return {
+                key: unscoped(item)
+                for key, item in value.items()
+                if not (key == "scope" and "pid" in value)
+            }
+        case list():
+            return [unscoped(item) for item in value]
+        case _:
+            return value
+
+
+def test_a_companion_kept_before_scopes_is_joined_rather_than_doubled(
+    state: Path, tmp_path: Path
+) -> None:
+    """The operator's dashboard, running when scopes arrived, is the case."""
+    served = Served(name="served", ports={"web": free_port()})
+    slot = served.slot(tmp_path)
+    kept = slot.directory / "state.json"
+
+    with served.held(launch_at(tmp_path)):
+        running = slot.read().running
+        assert running is not None and running.process.scope
+        kept.write_text(json.dumps(unscoped(json.loads(kept.read_text()))))
+        assert '"pid"' in kept.read_text() and '"scope": "checkout"' in kept.read_text()
+        assert running.process.scope not in kept.read_text()
+
+        with served.held(launch_at(tmp_path)):
+            assert slot.read().running == running
+
+        written = json.loads(kept.read_text())
+        assert written["running"]["process"]["scope"] == running.process.scope
+        assert running.process.running()
+
+    assert not running.process.running()
+
+
+def test_a_record_kept_before_scopes_is_adopted_only_for_the_process_it_names() -> None:
+    own = LiveProcess.of(os.getpid())
+
+    assert LiveProcess(pid=own.pid, started=own.started).adopted() == own
+    assert LiveProcess(pid=own.pid, started="0").adopted().scope == ""
+    assert LiveProcess(pid=2**22 + 7, started=own.started).adopted().scope == ""
 
 
 def test_a_lease_whose_launcher_died_is_swept(state: Path, tmp_path: Path) -> None:

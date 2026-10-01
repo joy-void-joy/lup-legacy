@@ -46,6 +46,44 @@ own sandbox into a protected path (#531); and a write through a hard link,
 or a link the same line makes, still lands on the file it links to unasked
 (#532).
 
+### One way to ask git, one liveness record, one placement
+
+- `lup.execution.git.Repository(root, runner)` asks a repository each of
+  the questions the library kept asking it — the top, the git and shared
+  directories (always absolute), the branch, whether a ref resolves,
+  ancestry, a commit count, the conflicted paths, a merge in progress, a
+  remote's URL, and the worktrees, read once from `--porcelain -z` — with
+  one failure answer per question. It runs git through a `ProcessLauncher`,
+  so the resolver, the base-freshness probe and every devtools command ask
+  it the same way, and `git_line`, `git_ran`, `git_in`, `resolver_git` and
+  `lup.harness.credential.remote_url` are gone. The launcher seam itself
+  moved from `lup.harness.process` to `lup.execution.process`.
+- The resolver no longer takes a worktree whose path holds a space for a
+  leftover directory: it read `git worktree list` by its first word, and
+  removed the checkout it could not match.
+- A host companion and the dashboard's setup panes start through one
+  `DetachedProcess.start`; the panes now choose their ports under the lock
+  companions choose under, so neither is given the other's port.
+- `LiveProcess` is a view of the roster's bare `Runtime` record, which
+  knows a pid means nothing outside the namespace that numbered it: a
+  process recorded elsewhere is not signalled, and a sandbox's owner is
+  judged the same way. A companion already running — the dashboard among
+  them — is joined as before: its kept record is adopted where its pid and
+  start time still name it, and written back with the scope.
+- `lup.harness.environment.Placement` answers where a process runs —
+  contained, under the runtime's sandbox, inside a session — replacing four
+  predicates that were not each other's negation; which runtime's session
+  it is, `lup.providers.runtime_homes.selected_runtime` answers.
+- The template's environment CLI commits through the library's shared
+  `git`; the CLI's `LaunchRequest` is `LaunchArguments`; `named_apart` and
+  `uniquely_named` are one `distinct_names`; `lup.harness.messaging` is
+  `lup.harness.wake_sockets`.
+- `lup.devtools.subapps.compose` installs the root callback that names the
+  launcher to use while `pyproject.toml` holds conflict markers, so a
+  project's composed CLI no longer carries its own copy of it: drop
+  `report_a_conflicted_manifest` and the `callback()` line wiring it from
+  your `devtools/main.py`.
+
 ### What a session's tools did, and whether its transcript holds, have readers
 
 - `uv run lup-devtools tools metrics` shows each tool's calls, errors, error

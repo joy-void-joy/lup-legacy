@@ -42,6 +42,7 @@ import typer
 from pydantic import BaseModel, Field, PrivateAttr
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_fixed
 
+from lup.execution.git import GitError
 from lup.coordination.repository import PeerDepartedError
 from lup.devtools.dashboard.address import AdvertisedDashboard
 from lup.devtools.dashboard.companion import (
@@ -869,7 +870,7 @@ def dashboard_app(
     def anchor(root: Path) -> Path:
         try:
             return repository_layout(root).common.resolve()
-        except (OSError, ValueError, sh.ErrorReturnCode):
+        except (OSError, ValueError, GitError):
             # Keep unavailable selections so scans report them and can recover.
             return root
 
@@ -1085,7 +1086,7 @@ def named_repositories(roots: tuple[Path, ...]) -> list[KnownRepository]:
     def known(root: Path) -> KnownRepository:
         try:
             repository = repository_layout(root).common.resolve()
-        except (OSError, ValueError, sh.ErrorReturnCode):
+        except (OSError, ValueError, GitError):
             repository = root
         return KnownRepository(repository=repository, checkout=root)
 

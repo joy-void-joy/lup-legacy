@@ -35,6 +35,7 @@ from urllib.parse import urlsplit
 import sh
 from pydantic import BaseModel
 
+from lup.execution.git import Repository
 from lup.devtools.dev.library import DISTRIBUTION
 from lup.devtools.utils import short_sha
 from lup.execution.shell import git
@@ -349,11 +350,6 @@ it through a clone, a fetch, and a merge.
 """
 
 
-def git_directory(root: Path) -> str:
-    """Where git keeps this checkout's administrative files."""
-    return git.out("-C", str(root), "rev-parse", "--absolute-git-dir")
-
-
 def written_tree(root: Path, contents: Path) -> str:
     """Record a directory as a git tree object, through an index of its own.
 
@@ -369,7 +365,7 @@ def written_tree(root: Path, contents: Path) -> str:
             # three names below are what redirect it away from the checkout
             **os.environ,
             "GIT_INDEX_FILE": str(Path(holding) / "index"),
-            "GIT_DIR": git_directory(root),
+            "GIT_DIR": str(Repository(root).git_dir()),
             "GIT_WORK_TREE": str(contents),
         }
         git("add", "--all", "--force", "--", ".", _cwd=str(contents), _env=environment)
@@ -400,15 +396,7 @@ def scaffold_message(
 
 def branch_head(root: Path, branch: str) -> str:
     """The commit a branch stands at, or nothing where there is no such branch."""
-    return git.out(
-        "-C",
-        str(root),
-        "rev-parse",
-        "--verify",
-        "--quiet",
-        f"refs/heads/{branch}",
-        _ok_code=[0, 1],
-    )
+    return Repository(root).resolves(f"refs/heads/{branch}") or ""
 
 
 def compiled_at(root: Path, commit: str) -> str:
@@ -648,7 +636,7 @@ def unresolved(root: Path) -> list[str]:
     a commit with: a file edited into shape and not added back is resolved to
     its reader and unmerged to git, and it is git that refuses the commit.
     """
-    return git.lines("-C", str(root), "diff", "--name-only", "--diff-filter=U")
+    return [str(path) for path in Repository(root).conflicted()]
 
 
 def merging(root: Path) -> str:
@@ -664,15 +652,7 @@ def merging(root: Path) -> str:
     way, and this is asked before anything has established that the root is a
     checkout at all.
     """
-    return git.out(
-        "-C",
-        str(root),
-        "rev-parse",
-        "--verify",
-        "--quiet",
-        "MERGE_HEAD",
-        _ok_code=[0, 1, 128],
-    )
+    return Repository(root).merging() or ""
 
 
 def concluded(root: Path) -> str:

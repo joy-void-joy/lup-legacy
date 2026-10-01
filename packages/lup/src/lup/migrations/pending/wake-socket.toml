@@ -20,7 +20,7 @@ wake socket and its directory moves from /tmp/lup-inbox to /tmp/lup-wake"""
 
 [[steps]]
 instruction = """
-Rename SessionInboxes to WakeSockets (lup.harness.messaging), Image.inboxes \
+Rename SessionInboxes to WakeSockets (lup.harness.wake_sockets), Image.inboxes \
 to Image.wake_sockets, Member.inboxes to Member.wake_sockets, placed_inbox to \
 placed_wake_socket (lup.launch.session), CLAUDE_INBOX_ENV to \
 CLAUDE_WAKE_SOCKET_ENV and ClaudeSessionEnv.inbox to \

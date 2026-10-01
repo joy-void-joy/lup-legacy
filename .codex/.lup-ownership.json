@@ -135,14 +135,14 @@
     {
       "path": ".codex/plugins/lup/hooks/runtime/coordination/runtime.py",
       "category": "generated",
-      "sha256": "8744c1fd7c479bb3ab0605023fb73269c3999059a96112cbc18f1230dab1e1b0",
+      "sha256": "5e7cfeedd4d8615b36df5a8bb0bf79d0dc39e4b45f7cd761dd4525b47c93da14",
       "semantic_id": "hooks.lup-policy",
       "executable": false
     },
     {
       "path": ".codex/plugins/lup/hooks/runtime/coordination/scope.py",
       "category": "generated",
-      "sha256": "1059abedb85e3bf4271464ec40aaa9ded15883e1760ba24c929c9e4a5579c611",
+      "sha256": "f10a8e5c9b3e664c5def54079840dd97e43d558e020d75ffdce25f7c98432c5c",
       "semantic_id": "hooks.lup-policy",
       "executable": false
     },

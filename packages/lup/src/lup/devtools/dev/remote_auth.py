@@ -28,12 +28,14 @@ did not already say better.
 
 import os
 import shlex
+from pathlib import Path
 from urllib.parse import urlparse
 
 import sh
 import typer
 from pydantic import BaseModel
 
+from lup.execution.git import Repository
 from lup.devtools.utils import decode_stderr, gh
 from lup.execution.shell import git
 from lup.harness.credential import GitAccess
@@ -244,6 +246,11 @@ def remote_auth_refusal(remote_url: str) -> RemoteRefusal:
             return RemoteRefusal()
 
 
+def origin_url() -> str:
+    """Where this checkout's origin fetches from, empty where it has none."""
+    return Repository(Path.cwd()).remote_url("origin") or ""
+
+
 def origin_auth_complaint() -> str:
     """Why the origin remote would refuse this checkout, empty when it answers.
 
@@ -251,7 +258,7 @@ def origin_auth_complaint() -> str:
     reason somewhere a message on stderr does not reach — a structured
     result whose reader is another command.
     """
-    return remote_auth_refusal(git.out("remote", "get-url", "origin")).complaint
+    return remote_auth_refusal(origin_url()).complaint
 
 
 def check_remote_auth() -> bool:
@@ -278,7 +285,7 @@ def check_forge_api() -> bool:
     the transport probe already covers the spelling, and what it cannot cover
     is the credential the API needs, which no remote URL mentions.
     """
-    refusal = gh_auth_refusal(git.out("remote", "get-url", "origin"))
+    refusal = gh_auth_refusal(origin_url())
     if refusal.complaint:
         typer.echo(refusal.complaint, err=True)
     return not refusal.complaint

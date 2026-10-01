@@ -24,6 +24,7 @@ import sh
 import tomlkit
 import typer
 
+from lup.execution.git import GitError, Repository
 from lup.workspace.history import parse_semver
 from lup.workspace.paths import agent_version
 
@@ -119,8 +120,8 @@ def show(
 
     def count_commits(rev_range: str) -> int:
         try:
-            return int(git.out("rev-list", "--count", rev_range))
-        except sh.ErrorReturnCode:
+            return Repository(Path.cwd()).count(rev_range)
+        except GitError:
             return 0
 
     if latest_tag:

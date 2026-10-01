@@ -19,7 +19,7 @@ from lup.devtools.dev.branches import (
     fetch_remote_tracking,
     parse_remote_branches,
 )
-from lup.harness.process import LaunchRequest, LocalProcessLauncher
+from lup.execution.process import LaunchRequest, LocalProcessLauncher
 
 # Identity per invocation, never `git config` — a persisted setting lands in
 # the shared config every worktree of a real repository inherits.

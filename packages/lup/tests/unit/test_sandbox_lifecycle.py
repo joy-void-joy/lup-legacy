@@ -37,7 +37,7 @@ from lup.sandbox.models import (
     SandboxNotInitializedError,
 )
 from lup.types import JsonObject
-from lup.sandbox.process import process_start_token
+from lup.coordination.bare.runtime import runtime_of
 from lup.sandbox.repl import REPL_SERVER_SCRIPT, ReplSession
 
 
@@ -490,7 +490,8 @@ class TestOrphanSweep:
             {
                 Sandbox.SANDBOX_LABEL: "1",
                 Sandbox.OWNER_PID_LABEL: str(os.getpid()),
-                Sandbox.OWNER_START_LABEL: process_start_token(os.getpid()) or "",
+                Sandbox.OWNER_START_LABEL: runtime_of(os.getpid()).get("started", ""),
+                Sandbox.OWNER_SCOPE_LABEL: runtime_of(os.getpid()).get("scope", ""),
             },
         )
         client.containers.listed = [live]

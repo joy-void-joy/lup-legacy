@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from lup.harness.process import LaunchRequest, LocalProcessLauncher
+from lup.execution.process import LaunchRequest, LocalProcessLauncher
 from lup.tools.mcp import LupMcpTool, ToolError
 from lup.policy.identity import ConcernAllowance
 from lup.coordination.mailbox import AnswerDoor, RecordedAnswer

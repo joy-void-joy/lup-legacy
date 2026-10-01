@@ -21,7 +21,7 @@ import lup.providers.claude.launch as claude_launch
 import lup.providers.profile_tree as profile_tree
 from lup.devtools.gitguard import TEST_IDENTITY, GuardVerdict, RepositoryWatch
 from lup.harness.environment import launcher_decided_names
-from lup.harness.messaging import WakeSockets
+from lup.harness.wake_sockets import WakeSockets
 from lup.providers.claude.config_home import ClaudeConfigHome, selected_config_home
 from lup.providers.claude.login import CLAUDE_CONFIG_DIR
 from lup.providers.identity import runtime_decided_names

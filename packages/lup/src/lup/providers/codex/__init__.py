@@ -46,8 +46,9 @@ from pydantic import AnyHttpUrl, BaseModel, Field, SecretStr, model_validator
 
 from lup.harness.models import Harness, HookSet
 from lup.harness.requirements import Finding, Manifest
-from lup.launch.companions import HostCompanion, named_apart
+from lup.launch.companions import HostCompanion
 from lup.launch.declaration import (
+    distinct_names,
     LaunchCommand,
     LaunchStep,
     Member,
@@ -67,7 +68,7 @@ from lup.providers.codex.model_choice import (
 )
 from lup.providers.codex.models import CodexEffort
 from lup.providers.codex.builtins import CodexBuiltins
-from lup.mcp import ServeLaunch, ToolServer, uniquely_named
+from lup.mcp import ServeLaunch, ToolServer
 from lup.tools.builtin import BuiltinPreset
 from lup.providers.codex.subagents import CodexModelTiers, CodexSubagentTools
 from lup.sessions.capabilities import ConversationRecord, ForkSession, SessionEngine
@@ -120,7 +121,7 @@ class CodexTools(BaseModel, frozen=True, extra="forbid", arbitrary_types_allowed
     @model_validator(mode="after")
     def servers_are_named_apart(self) -> Self:
         """Refuse two servers under one name, which would address one tool twice."""
-        uniquely_named(self.mcp)
+        distinct_names(self.mcp, "tool servers")
         return self
 
 
@@ -429,7 +430,7 @@ class Codex(
                 "excluded_commands, or judge those commands by the policy"
             )
         declared_policy(self.plugin, self.policy)
-        named_apart(self.companions)
+        distinct_names(self.companions, "host companions")
         for key in self.provider_config or {}:
             if key not in {"model_provider", "model_providers"}:
                 raise ValueError(

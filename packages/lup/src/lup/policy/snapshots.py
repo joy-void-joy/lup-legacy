@@ -7,6 +7,7 @@ from typing import Literal
 import sh
 from pydantic import BaseModel
 
+from lup.execution.git import GitError, Repository
 from lup.execution.shell import git
 from lup.policy.assets.host import policy_snapshot_digest, policy_snapshot_files
 from lup.sandbox.rail import AccessibleRoot, Lease, repository_layout, sibling_worktrees
@@ -128,7 +129,7 @@ def destination_authorities(
             if bare != "true":
                 return None
             layout = repository_layout(declared.path)
-        except sh.ErrorReturnCode:
+        except (sh.ErrorReturnCode, GitError):
             return None
         return RepositoryPolicyAuthority(
             repository=str(layout.common.resolve()),
@@ -159,11 +160,9 @@ def granted_checkouts(root: AccessibleRoot) -> list[GrantedCheckout]:
                 and repository_layout(checkout).common.resolve()
                 == layout.common.resolve()
             ]
-        checkout = Path(
-            git.out("-C", str(path), "rev-parse", "--show-toplevel").strip()
-        ).resolve()
+        checkout = Repository(path).top().resolve()
         return [GrantedCheckout(checkout=checkout, scope=path, writable=root.writable)]
-    except sh.ErrorReturnCode:
+    except (sh.ErrorReturnCode, GitError):
         return []
 
 

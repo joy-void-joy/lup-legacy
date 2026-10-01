@@ -17,7 +17,7 @@ from pathlib import Path
 from pydantic import BaseModel, Field
 from pydantic_settings import BaseSettings
 
-from lup.harness.process import LocalProcessLauncher, ProcessLauncher
+from lup.execution.process import LocalProcessLauncher, ProcessLauncher
 from lup.tools.mcp import LupMcpTool, ToolError, lup_tool
 from lup.policy.assets.host import recoverable_write_targets
 from lup.resolver.declaration import declaration_delta, inspect_changes
