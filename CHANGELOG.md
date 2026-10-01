@@ -2,6 +2,51 @@
 
 ## Unreleased
 
+### Files, locks and per-person state are each spelled once in the library
+
+The same file chores were hand-rolled at dozens of sites, each a little
+differently. Each now has one helper, and the hand-rolled copies are gone:
+
+- **Atomic writes.** `write_atomic` sets a file's mode before its first byte
+  (`mode=`), syncs the file and its directory (`durable=`), and replaces only
+  what the caller read (`expected=`, raising `ChannelConflictError`).
+  Companion state, replay journals, rejected-attempt history, the dashboard
+  registry, guidance, ledger blobs, materialized artifacts, the host secret
+  store, Codex configs and `harness policy-refresh` write through it, and so
+  no staging name is shared between two writers any more. The bare store's
+  writers share one helper of their own.
+- **Locks.** `lup.execution.locks` gives `exclusive(path)` and
+  `try_exclusive(path)`. Companions, the Codex home, the mailbox relay,
+  resolver state, review waiters and the review queue take theirs through it.
+- **Logs.** The trace's `.events.jsonl` sidecar (`trace_events(path)`), the
+  hook corpus and the ledger's journals are read and appended as
+  `lup.channels.stream.Stream`s, so a torn last line and a malformed line
+  are treated alike everywhere.
+- **Configuration homes.** `ProviderLogin.selected_home` is the one resolver:
+  an exported-but-empty `CLAUDE_CONFIG_DIR` or `CODEX_HOME` names no home,
+  the default sits in the environment's own `HOME`, and Codex's home is
+  resolved as Codex resolves it.
+- **Per-person directories.** `lup.workspace.user_directories.UserDirectories`
+  reads `XDG_STATE_HOME`, `XDG_CONFIG_HOME` and `XDG_CACHE_HOME`; lup's
+  caches (environments, plugin revisions, releases, sync clones, guidance,
+  gate state) now follow `XDG_CACHE_HOME` instead of always living in
+  `~/.cache/lup`.
+- **Checkout state.** `lup.workspace.checkout_state.CheckoutState` names every
+  path under a checkout's `.lup/`, and the policy's protected `.lup/` list is
+  read from it rather than repeated.
+- **Digests, clock, manifests, environment.** `lup.formats.digest` hashes
+  text, files, trees and part lists the way each copy did, so stored digests
+  stay valid. Every compared stamp is aware UTC (`utc_now`, with `aware()`
+  reading an older naive stamp as local time). `edited_manifest` changes a
+  `pyproject.toml` without disturbing its layout. `inherited(overlay)` is the
+  one reader of the whole process environment.
+- **Hooks.** The caller-hook and subagent-cleanup host halves expose only
+  `decided()`, and a generated entry reads the event, asks and prints. The
+  carrier-drift fold ships from `providers/assets/`.
+
+Removed and renamed names, each with what to call instead, are in
+`migrations/pending/`.
+
 ### A write reached through a variable, a substitution or a `cd` asks as the path it names would
 
 `cd w && F=<protected path> && sed -i … $F` rewrote a protected file with no
