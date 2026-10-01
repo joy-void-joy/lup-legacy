@@ -337,7 +337,9 @@ def create_hooks_app(declared: Callable[[], HookSet]) -> typer.Typer:
                     "roles": [
                         role.model_dump(mode="json") for role in hooks.path_roles
                     ],
-                    "protected": [str(root) for root in hooks.protected_edit_roots],
+                    "protected": [
+                        root.model_dump(mode="json") for root in hooks.protected_roots()
+                    ],
                     "human_owned": [str(path) for path in hooks.human_owned_files],
                     "rules": len(rules),
                 }
@@ -345,8 +347,9 @@ def create_hooks_app(declared: Callable[[], HookSet]) -> typer.Typer:
             return
         for role in hooks.path_roles:
             typer.echo(f"{role.role:>10}  {role.root}")
-        for root in hooks.protected_edit_roots:
-            typer.echo(f"{'protected':>10}  {root}")
+        for root in hooks.protected_roots():
+            about = f"  ({root.description})" if root.description else ""
+            typer.echo(f"{'protected':>10}  {root.path}{about}")
         for path in hooks.human_owned_files:
             typer.echo(f"{'human':>10}  {path}")
 

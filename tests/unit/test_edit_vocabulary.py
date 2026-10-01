@@ -358,6 +358,7 @@ def test_a_protected_path_is_the_owner_s_question_and_not_a_supervisor_s() -> No
                 reason="human-owned",
                 recovery="",
                 allow_autonomous=False,
+                description="docs/owned.md",
             )
         ],
         antipattern_rows=[],

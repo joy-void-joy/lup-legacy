@@ -13,7 +13,8 @@ somebody's approval prompt.
 
 from lup.policy.kernel.decision import KernelDecision
 from lup.policy.kernel.edit import protected_path_reason
-from lup.policy.kernel.rows import PathRuleKind, PathRuleRow, ShellRuleRow
+from lup.policy.kernel.rows import PathRuleRow, ShellRuleRow
+from lup.policy.kernel.semantics import PathRuleKind
 from lup.policy.kernel.shell import decide_shell
 from lup.policy.shell_rules import erase_shell_rules
 from lup.policy.vocabulary import default_vocabulary
@@ -30,7 +31,12 @@ def verdict(command: str) -> KernelDecision:
 
 def rule(kind: PathRuleKind, value: str, reason: str) -> PathRuleRow:
     return PathRuleRow(
-        kind=kind, value=value, reason=reason, recovery="", allow_autonomous=False
+        kind=kind,
+        value=value,
+        reason=reason,
+        recovery="",
+        allow_autonomous=False,
+        description=value,
     )
 
 

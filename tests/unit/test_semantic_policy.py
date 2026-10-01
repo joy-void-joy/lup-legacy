@@ -88,6 +88,7 @@ from lup.policy.shell_rules import (
 from lup.policy.kernel.lex import shell_write_targets
 from lup.policy.models import (
     Decision,
+    ProtectedRoot,
     EditBatch,
     EditChange,
     FetchUrl,
@@ -3082,7 +3083,10 @@ def assembled_edit_decision(
         before,
         after,
         path_exists=Path(path).exists(),
-        path_rules=runtime_path_rules(protected_roots, human_owned_files),
+        path_rules=runtime_path_rules(
+            [ProtectedRoot(path=Path(root)) for root in protected_roots],
+            human_owned_files,
+        ),
         antipattern_rows=rows,
         path_roles=FIXTURE_PATH_ROLES,
         autonomous=autonomous,
@@ -3131,9 +3135,7 @@ def test_assembled_kernel_runs_without_site_packages(tmp_path: Path) -> None:
             ],
             # The roots this repository declares, as the shell cases' own
             # table is, so one fixture list is judged against one table.
-            protected_roots=[
-                root.as_posix() for root in declared_hook_set().protected_edit_roots
-            ],
+            protected_roots=declared_hook_set().protected_roots(),
             human_owned_files=["README.md"],
             autonomous_agent_identities=["resolver-worker"],
             path_roles=FIXTURE_PATH_ROLES,
@@ -5706,7 +5708,7 @@ def test_a_composed_session_enforces_the_rules_the_generated_tree_does() -> None
     hooks = next(plugin.hooks for plugin in portable_harness().plugins if plugin.hooks)
     composed = [path_rule_row(rule) for rule in declared_path_rules(hooks)]
     generated = runtime_path_rules(
-        [root.as_posix() for root in hooks.protected_edit_roots],
+        hooks.protected_roots(),
         [path.as_posix() for path in hooks.human_owned_files],
     )
 
@@ -5796,8 +5798,7 @@ def test_manifests_lockfiles_and_ci_ask_every_identity(
         "b\n",
         path_exists=True,
         path_rules=runtime_path_rules(
-            [root.as_posix() for root in declared_hook_set().protected_edit_roots],
-            ["README.md"],
+            declared_hook_set().protected_roots(), ["README.md"]
         ),
         antipattern_rows=[],
         path_roles=FIXTURE_PATH_ROLES,

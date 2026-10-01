@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+### A file's verdict says which protected rule it met
+
+A question about a protected file said `edit:protected-path` whether the file
+was the policy's own code, a lockfile, an environment file or a human-owned
+README. Each file verdict (`lup.policy.relay.FileVerdict`, and the kernel's
+`FileReviewRow`) carries `protected`: the matched rule's `kind`, the `root`
+it names, and a `description` of that root in plain words. A hook set
+describes a root by declaring `ProtectedRoot(path=…, description=…)` in
+`protected_edit_roots`, where a bare `Path` still works and is described by
+itself; this project describes its own, such as "the policy's own code" for
+`packages/lup/src/lup/policy` and "the hook assets" for each runtime's
+dispatcher assets. `HookSet.protected_roots()` reads the list as roots either
+way, and `hooks roles` prints each description. A review recorded before
+carries no `protected`, and still reads.
+
 ### Containers starting at once on one config home no longer tear or drop what the others wrote
 
 Several contained sessions of one repository start on its config volume at

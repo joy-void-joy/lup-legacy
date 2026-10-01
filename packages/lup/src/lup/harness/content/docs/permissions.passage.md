@@ -1361,7 +1361,16 @@ preimage its digest names. The dashboard and `review show` read the record;
 nothing is re-derived or run where a review is read, so the diff is what was
 judged. A file the policy allows on its own -- scratch, a test, a data file
 -- carries `allow`, which leaves it out of the default view and in the full
-one. A step whose result exists only once it runs -- a program's output
+one. A file that met a protected-path rule says which rule: its `kind`
+(`subtree` for a declared root or lup's own state under `.lup/`,
+`name_prefix` for an environment file, `new_devtools` for a devtools module
+not written yet, `exact` for a human-owned file, `contains_part` for a
+manifest or lockfile wherever it sits), the `root` it names, and a
+`description` of that root in plain words. A hook set gives a root its
+description by declaring a `ProtectedRoot(path=…, description=…)` in
+`protected_edit_roots` beside the bare paths it already lists; a bare path
+is described by itself, and a review recorded before the field existed
+carries none. A step whose result exists only once it runs -- a program's output
 redirected into a file, `sort -o`, a formatter, a script, a loop, a word
 the shell expands into other words -- is listed as that, with the files it
 leaves so, and never run to find out; a file that does not read as text is
