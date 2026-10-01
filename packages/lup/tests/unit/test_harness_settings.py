@@ -12,6 +12,7 @@ from lup.devtools.harness.settings import (
     project_settings,
 )
 from lup.harness.models import HookSandbox, HookSet
+from lup.policy.kernel.diagnostic import step
 from lup.policy.refused_paths import RefusedPaths, credential_files
 
 
@@ -51,7 +52,7 @@ def test_every_withheld_path_is_denied_to_the_file_tools_too() -> None:
                 paths=["~/.ssh/**", "~/.netrc", "/proc/*/environ"],
                 also=["**/profile-home/auth.json"],
             ),
-            RefusedPaths(paths=["/tmp/lup-wake/**"], reason="a", recovery="b"),
+            RefusedPaths(paths=["/tmp/lup-wake/**"], reason="a", recovery=[step("b")]),
         ],
     )
 

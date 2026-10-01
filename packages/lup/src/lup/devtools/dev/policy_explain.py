@@ -35,6 +35,7 @@ from lup.policy.assets.host import (
     text_at,
 )
 from lup.policy.bundle import hook_deadline
+from lup.policy.kernel.diagnostic import Diagnostic, diagnostic, rendered
 from lup.policy.kernel.lex import shell_write_targets, shell_written_targets
 from lup.policy.kernel.semantics import UnjudgedAmbient
 from lup.policy.models import EditBatch, EditChange, FetchUrl, ShellCommand
@@ -116,11 +117,14 @@ def session_placement(cwd: Path) -> Placement:
 
 
 class PolicyReading(BaseModel, frozen=True):
-    """What one placement's answer is, and why."""
+    """What one placement's answer is, and why, as its readers get it."""
 
     placement: str
     effect: str
     reason: str
+    said: Diagnostic
+    """The verdict as the hook renders it: the line an approver reads, and the
+    ways through the agent reads beside it or under a refusal."""
 
 
 class PolicyVerdict(BaseModel, frozen=True):
@@ -254,12 +258,21 @@ def read_under(
         if not deadline_passed():
             raise
         return PolicyReading(
-            placement=placement.name, effect="deny", reason=str(overran)
+            placement=placement.name,
+            effect="deny",
+            reason=str(overran),
+            said=diagnostic("refused", str(overran)),
         )
     finally:
         closed_deadline(previous)
+    # Composed as the dispatcher composes it before it renders, so every
+    # reason and way through a compound command joined is shown, as it is sent.
+    placed = decision.as_kernel().placed(escapable=True)
     return PolicyReading(
-        placement=placement.name, effect=decision.effect, reason=decision.reason
+        placement=placement.name,
+        effect=decision.effect,
+        reason=decision.reason,
+        said=placed.diagnostic(),
     )
 
 
@@ -401,22 +414,18 @@ def explain(
             for reading in shown
         )
         typer.echo(f"{head}  {verdict.input}")
+        # The text the hook sends, line for line: the approver reads the
+        # first, and the agent the ways through after it.
         for reading in shown:
             label = "" if verdict.settled() else f"{reading.placement}: "
-            typer.echo(f"       {label}{reading.reason}")
+            for line in rendered(reading.said).splitlines():
+                typer.echo(f"       {label}{line}")
         for assumed in verdict.assumed:
             typer.echo(f"       assuming {assumed}")
         for unavailable in verdict.unavailable:
             typer.echo(f"       unavailable {unavailable}")
         for scope in verdict.declared:
             typer.echo(f"       scope {scope}")
-        # The declaration's answer, which a remembered approval overrides in
-        # a session: said only under a question, since it moves nothing else.
-        if any(reading.effect == "ask" for reading in shown):
-            typer.echo(
-                "       a matching approval may authorize an exact retry;"
-                " use the runtime's review channel"
-            )
     if not any(verdict.allows_anywhere() for verdict in verdicts):
         raise typer.Exit(1)
 

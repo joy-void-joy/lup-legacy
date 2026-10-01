@@ -332,7 +332,10 @@ def unjudged_reason(error: Exception, read: bool) -> str:
         )
     if not read:
         return f"the hook input is malformed, so the call is refused unjudged: {error}"
-    return f"Lup could not judge this call ({type(error).__name__}: {error})"
+    return (
+        "the policy failed on this call, so it is refused unjudged"
+        f" (`{type(error).__name__}: {error}`)"
+    )
 
 
 def hook_seconds_left(ceiling: float) -> float:
@@ -432,7 +435,7 @@ def routed_edit_response(
         return None
     row = json.loads(binding)
     request = {
-        "protocol": 1,
+        "protocol": 2,
         "path": path,
         "before": before,
         "after": after,

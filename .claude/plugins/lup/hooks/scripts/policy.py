@@ -21,7 +21,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parents[1] / "runtime"))
 from kernel.rows import PostToolReport
 from kernel.review import Said
-from kernel.decision import KernelDecision, sandbox_escaped
+from kernel.decision import UNJUDGED_RECOVERY, KernelDecision, sandbox_escaped
+from kernel.diagnostic import step
 from caller_payload import caller_of, spoken, transcript_of
 from policy_data import (
     AGENT_IDENTITY_ENV,
@@ -42,8 +43,9 @@ import subprocess
 from collections.abc import Callable, Iterator
 from typing import BinaryIO, Literal
 from urllib.parse import urlsplit
-import shlex
 import policy_data as identity_policy
+from kernel.decision import KernelDecision
+from kernel.diagnostic import Step, devtools, spelled, stated, step
 from kernel.decision import FileReviewRow, captured_edit_decision
 from kernel.documents import (
     FollowedDocument,
@@ -431,7 +433,10 @@ def unjudged_reason(error: Exception, read: bool) -> str:
         )
     if not read:
         return f"the hook input is malformed, so the call is refused unjudged: {error}"
-    return f"Lup could not judge this call ({type(error).__name__}: {error})"
+    return (
+        "the policy failed on this call, so it is refused unjudged"
+        f" (`{type(error).__name__}: {error}`)"
+    )
 
 
 def hook_seconds_left(ceiling: float) -> float:
@@ -531,7 +536,7 @@ def routed_edit_response(
         return None
     row = json.loads(binding)
     request = {
-        "protocol": 1,
+        "protocol": 2,
         "path": path,
         "before": before,
         "after": after,
@@ -4751,7 +4756,7 @@ def bash_decision(
         record_question(
             cwd,
             command,
-            verdict.reason,
+            stated(verdict.subject, verdict.reason),
             verdict.rule,
             verdict.purpose or "",
             verdict.reviewer,
@@ -4839,7 +4844,7 @@ def reviewed_decision(
     tool: str,
     arguments: dict,
     preconditions: dict[Path, str | None],
-    waiting: Callable[[str], str],
+    waiting: Callable[[list[str]], tuple[Step, ...]],
     execution_id: str = "",
     stage: str = "",
     predecessor: str = "",
@@ -4889,7 +4894,7 @@ def reviewed_decision(
             {str(path): before for path, before in bound.items()},
             sort_keys=True,
         ),
-        decision.reason,
+        stated(decision.subject, decision.reason),
         decision.rule,
         decision.purpose or "",
         decision.reviewer,
@@ -4923,18 +4928,23 @@ def reviewed_decision(
             "decision": decision.revised(
                 effect="deny",
                 recovery=(
-                    f"The operator declined review {identifier}{note}. Don't "
-                    "retry this call as it stands: change course, or ask the "
-                    "user."
+                    step(
+                        f"the operator declined review {identifier}{note}: don't"
+                        " retry this call as it stands"
+                    ),
+                    step("change course, or ask the user"),
                 ),
             ),
             "notice": f"Lup review {identifier} was declined; the agent is told.",
         }
     if not identifier:
-        unavailable = f"Review queue unavailable: {result['reason']}. Run this operation from an operator terminal."
+        unavailable = f"the review queue is unavailable: {result['reason']}"
         return {
-            "decision": decision.revised(effect="deny", recovery=unavailable),
-            "notice": unavailable,
+            "decision": decision.revised(
+                effect="deny",
+                recovery=(step(f"{unavailable}; run this from an operator terminal"),),
+            ),
+            "notice": f"Lup: {unavailable}. Run this operation from an operator terminal.",
         }
     project = declared_identity(POLICY_ROOT_ENV)
     prefix = [
@@ -4953,37 +4963,63 @@ def reviewed_decision(
         "lup-devtools",
         "review",
     ]
-    approve = shlex.join([*prefix, "approve", identifier, "--as", "operator"])
-    decline = shlex.join([*prefix, "decline", identifier, "--as", "operator"])
     dashboard = declared_identity(DASHBOARD_URL_ENV)
-    where = (
-        f"on the dashboard, {dashboard}"
+    answers = (
+        (step(f"the operator answers it on the dashboard, {dashboard}"),)
         if dashboard
-        else f"from a terminal outside the session: `{approve}` or `{decline}`"
+        else (
+            step(
+                "the operator answers it from a terminal outside the session",
+                [*prefix, "approve", identifier, "--as", "operator"],
+            ),
+            step(
+                "or declines it", [*prefix, "decline", identifier, "--as", "operator"]
+            ),
+        )
     )
     waiting_here = waiting_edits(cwd, session, agent)
     together = (
-        f" {waiting_here} of your edits now wait on the operator one review at "
-        "a time. Where changes belong together, write each file as it should "
-        "end up under one directory in the tmp/ of the checkout they change, "
-        "mirroring that checkout, and run "
-        f"`{shlex.join([*prefix, 'propose'])} <that directory, absolute> --why "
-        "'<what they change and why>'`: the operator reads them as one review "
-        "and answers all of them at once. Write --why and each file's note in "
-        "plain words, as you would tell a colleague at their desk; `review "
-        "propose --help` shows how."
+        (
+            step(
+                f"{waiting_here} of your edits now wait on the operator one review"
+                " at a time. Where changes belong together, write each file as it"
+                " should end up under one directory in the tmp/ of the checkout"
+                " they change, mirroring that checkout, and propose them as one"
+                " review, which the operator answers all at once",
+                [
+                    *prefix,
+                    "propose",
+                    "<that directory, absolute>",
+                    "--why",
+                    "<what they change and why>",
+                ],
+            ),
+            step(
+                "write --why and each file's note in plain words, as you would"
+                " tell a colleague at their desk",
+                [*prefix, "propose", "--help"],
+            ),
+        )
         if waiting_here >= 2
-        else ""
+        else ()
+    )
+    where = (
+        f"on the dashboard, {dashboard}"
+        if dashboard
+        else "from a terminal outside the session"
     )
     return {
         "decision": decision.revised(
             effect="deny",
+            queued=identifier,
             recovery=(
-                f"Queued for the operator as review {identifier} — not refused. "
-                "Don't change the command. "
-                + waiting(shlex.join([*prefix, "wait", identifier]))
-                + f" The operator answers it {where}."
-                + together
+                step(
+                    f"it waits on the operator as review {identifier}, not"
+                    " refused: don't change the command"
+                ),
+                *waiting([*prefix, "wait", identifier]),
+                *answers,
+                *together,
             ),
         ),
         "notice": f"Lup review {identifier} is waiting for you {where}.",
@@ -5723,11 +5759,11 @@ def repair_report(path: str, file: dict, cwd: Path | None) -> PostToolReport:
     return PostToolReport(
         blocking=[],
         context=[
-            f"{shown}: left as written. The sweep called its directives dead by "
-            "this checkout's rules, and the policy this session loaded still "
-            "needs one of them; the two agree again once `uv run lup-devtools "
-            "harness generate all` runs and the session restarts. What the "
-            "loaded policy said about the repair:",
+            f"{shown}: left as written. The sweep called its directives dead by"
+            " this checkout's rules, and the policy this session loaded still"
+            " needs one of them; the two agree again once"
+            f" `{spelled(devtools('harness', 'generate', 'all'))}` runs and the"
+            " session restarts. What the loaded policy said about the repair:",
             verdict.reason,
         ],
     )
@@ -5749,7 +5785,7 @@ def referred_once(
         return verdict
     repository = worktree_root(str((cwd / path_text).resolve())) or path_text
     if referral_noted(cwd, session, repository):
-        return verdict.revised(recovery="")
+        return verdict.revised(recovery=())
     return verdict
 
 
@@ -6046,23 +6082,35 @@ def waiting(command, payload):
     """
     if "agent_id" in payload:
         return (
-            f"Carry on with other work, and hold `{command} --timeout 7140` in the "
-            "background (run_in_background, with the longest timeout the tool "
-            "takes, 7200000 ms): nothing else wakes a subagent, and it wakes you "
-            "with the result. If it ends with the review still waiting, start it "
-            "again quietly, reporting that to nobody."
+            step(
+                "carry on with other work, and hold this in the background"
+                " (run_in_background, with the longest timeout the tool takes,"
+                " 7200000 ms): nothing else wakes a subagent, and it wakes you"
+                " with the result",
+                [*command, "--timeout", "7140"],
+            ),
+            step(
+                "if it ends with the review still waiting, start it again"
+                " quietly, reporting that to nobody"
+            ),
         )
     if declared_identity("CLAUDE_CODE_ENTRYPOINT") == "cli":
         return (
-            "Carry on with other work, or end your turn: the operator's answer "
-            f"wakes this session, and `{command}` then carries the call out at "
-            "once. Don't start a waiter."
+            step(
+                "carry on with other work, or end your turn: the operator's answer"
+                " wakes this session, and this then carries the call out at once;"
+                " don't start a waiter before",
+                command,
+            ),
         )
     return (
-        "Carry on with other work. This run ends with its last turn and nothing "
-        "wakes it after, so once nothing else is left, run "
-        f"`{command} --timeout 540` in the foreground (the longest timeout the "
-        "tool takes there, 600000 ms), again each time it ends still waiting."
+        step(
+            "carry on with other work; this run ends with its last turn and"
+            " nothing wakes it after, so once nothing else is left, run this in"
+            " the foreground (the longest timeout the tool takes there, 600000"
+            " ms), again each time it ends still waiting",
+            [*command, "--timeout", "540"],
+        ),
     )
 
 
@@ -6343,7 +6391,7 @@ def rendered(decision, payload, placed, attached):
     )
     # The prompt is the approver's, so a question's recovery rides beside it
     # as the agent's context; a refusal reaches only the agent and says both.
-    beside = settled.recovery if settled.effect == "ask" else ""
+    beside = settled.beside() if settled.effect == "ask" else ""
     context = "\n\n".join(text for text in (attached, beside) if text)
 
     def carried(result):
@@ -6382,13 +6430,13 @@ def rendered(decision, payload, placed, attached):
         "hookEventName": "PreToolUse",
         "permissionDecision": settled.effect,
         "permissionDecisionReason": (
-            settled.addressed() if settled.effect == "deny" else settled.reason
+            settled.addressed() if settled.effect == "deny" else settled.headline()
         ),
     }
 
     def surfaced(result):
         """The same verdict, with what this runtime will not show it said."""
-        message = announced(settled.effect, payload["tool_name"], settled.reason)
+        message = announced(settled.effect, payload["tool_name"], settled.headline())
         return carried({**result, "systemMessage": message} if message else result)
 
     if placed is not None and settled.effect != "deny":
@@ -6564,7 +6612,9 @@ def main():
     # interrupt still passes through as the BaseException it is.
     except Exception as error:
         failed = True
-        decision = KernelDecision("deny", unjudged_reason(error, read))
+        decision = KernelDecision(
+            "deny", unjudged_reason(error, read), recovery=UNJUDGED_RECOVERY
+        )
         record_hook_evidence(
             plugin_data_root(),
             payload if isinstance(payload, dict) else {},
@@ -6583,7 +6633,7 @@ def main():
                 "hookSpecificOutput": {
                     "hookEventName": "PreToolUse",
                     "permissionDecision": "deny",
-                    "permissionDecisionReason": decision.reason,
+                    "permissionDecisionReason": decision.addressed(),
                 }
             },
             sys.stdout,

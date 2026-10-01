@@ -29,7 +29,7 @@ def test_operator_refresh_cannot_be_called_by_a_requesting_session(prefix: str) 
 
     assert decision.effect == "deny"
     assert decision.hard
-    assert "operator" in decision.recovery.lower()
+    assert "operator" in decision.addressed().lower()
 
 
 @pytest.mark.parametrize(

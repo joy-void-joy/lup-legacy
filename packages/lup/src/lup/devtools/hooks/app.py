@@ -31,6 +31,7 @@ from lup.harness.enforcement import declared_path_rules, semantic_policy_for
 from lup.harness.models import HookSet
 from lup.policy.everyday import SESSION_SHAPES, SessionShape
 from lup.policy.foreign import foreign_warnings
+from lup.policy.kernel.diagnostic import rendered
 from lup.policy.models import Decision, FetchUrl
 from lup.workspace.paths import project_root
 from lup.devtools.utils import output_json
@@ -96,8 +97,10 @@ def report(
                 pass
             case placement:
                 typer.echo(f"       runs {placement} the sandbox")
-        if decision.reason:
-            typer.echo(f"       {decision.reason}")
+        for line in rendered(
+            decision.as_kernel().placed(escapable=True).diagnostic()
+        ).splitlines():
+            typer.echo(f"       {line}")
         for said in warnings or []:
             typer.echo(f"       warning: {said}")
     if decision.effect != "allow":

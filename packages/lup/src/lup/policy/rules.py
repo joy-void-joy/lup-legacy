@@ -19,6 +19,7 @@ from lup.harness.codescan.common import AntiPattern
 from lup.policy.contracts import DecisionPolicy
 from lup.policy.grants import LeaseGrants
 from lup.policy.identity import AGENT_IDENTITY_ENV
+from lup.policy.kernel.diagnostic import Step, step
 from lup.policy.kernel.decision import (
     FileReviewRow,
     KernelDecision,
@@ -692,7 +693,7 @@ class PathRule(BaseModel, frozen=True):
     kind: PathRuleKind
     value: str
     reason: str
-    recovery: str = ""
+    recovery: list[Step] = []
     """What the agent does instead of writing here, where there is such a route."""
     allow_autonomous: bool = False
 
@@ -719,8 +720,8 @@ def human_owned_path_rule(path: str) -> PathRule:
     return PathRule(
         kind="exact",
         value=path,
-        reason=f"{path} is human-authored",
-        recovery="Propose the exact change and let the user apply it.",
+        reason="is human-authored",
+        recovery=[step("propose the exact change, and let the user apply it")],
     )
 
 

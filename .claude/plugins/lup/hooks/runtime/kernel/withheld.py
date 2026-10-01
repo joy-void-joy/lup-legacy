@@ -26,6 +26,7 @@ from pathlib import PurePosixPath
 from typing import TypedDict
 
 from .decision import KernelDecision
+from .diagnostic import Step, step
 from .lex import placed_path, placed_redirects
 from .rows import RefusedPathRow, WithheldWalkRow
 from .syntax import Redirect, Script, Word, WordPart, word_text
@@ -173,7 +174,11 @@ def withheld_edit(path: str, rows: list[RefusedPathRow]) -> KernelDecision | Non
     if row is None:
         return None
     return KernelDecision(
-        "deny", f"{path}: {row['reason']}", cause="deliberate", recovery=row["recovery"]
+        "deny",
+        row["reason"],
+        cause="deliberate",
+        recovery=row["recovery"],
+        subject=path,
     )
 
 
@@ -198,9 +203,10 @@ def withheld_path(
         if row is not None:
             return KernelDecision(
                 "deny",
-                f"{word}: {row['reason']}",
+                row["reason"],
                 cause="deliberate",
                 recovery=row["recovery"],
+                subject=word,
             )
     return None
 
@@ -330,22 +336,23 @@ def withheld_walk(
     if row is None:
         return KernelDecision(
             "deny",
-            f"{reached['root']}: `{executable}` reads everything beneath it, and the"
-            f" walk stopped at {found} before this hook could show none of it is a"
-            " key or a login",
+            f"walks everything beneath `{reached['root']}`, and the walk stopped at"
+            f" `{found}` before this hook could show none of it is a key or a login",
             cause="deliberate",
             recovery=recovery,
+            subject=executable,
         )
     return KernelDecision(
         "deny",
-        f"{reached['root']}: `{executable}` reads everything beneath it, {found}"
-        f" among it, and {row['reason']}",
+        f"walks everything beneath `{reached['root']}`, `{found}` among it, which"
+        f" {row['reason']}",
         cause="deliberate",
         recovery=recovery,
+        subject=executable,
     )
 
 
-def walk_recovery(words: list[str], walk: WithheldWalkRow) -> str:
+def walk_recovery(words: list[str], walk: WithheldWalkRow) -> tuple[Step, ...]:
     """The searches that read the same tree without walking into what was found.
 
     Named in the command's own words, because the checkout a session works
@@ -358,14 +365,20 @@ def walk_recovery(words: list[str], walk: WithheldWalkRow) -> str:
     beneath = PurePosixPath(walk["found"]).parts[depth:]
     held = beneath[0] if beneath else walk["found"]
     if posixpath.basename(words[0]) not in ("grep", "egrep", "fgrep"):
-        return f"Name the directories below it that the work needs, leaving out {held}."
+        return (
+            step(
+                f"name the directories below it that the work needs, leaving out"
+                f" `{held}`"
+            ),
+        )
     leaving = f"--exclude-dir={held}" if len(beneath) > 1 else f"--exclude={held}"
     at = 2 if len(words) > 1 and words[1].startswith("-") else 1
-    searching = " ".join(["rg", *grep_split(words[1:])["operands"]])
-    excluding = " ".join([*words[:at], leaving, *words[at:]])
     return (
-        f"`{searching}` skips hidden and ignored paths, and `{excluding}` leaves"
-        f" out {held}."
+        step(
+            "search with rg, which skips hidden and ignored paths",
+            ["rg", *grep_split(words[1:])["operands"]],
+        ),
+        step(f"or leave `{held}` out", [*words[:at], leaving, *words[at:]]),
     )
 
 
@@ -472,9 +485,13 @@ def secret_refusal(name: str) -> KernelDecision:
     """The refusal for writing one secret variable's value into this transcript."""
     return KernelDecision(
         "deny",
-        f"${name} holds a secret, and printing it writes the secret into this"
-        " transcript",
+        "holds a secret, and printing it writes the secret into this transcript",
         cause="deliberate",
-        recovery="Let the tool that needs it read the variable itself; to learn"
-        f' whether it is set, test it: `[ -n "${name}" ] && echo set`.',
+        recovery=(
+            step("let the tool that needs it read the variable itself"),
+            step(
+                f'to learn whether it is set, test it: `[ -n "${name}" ] && echo set`'
+            ),
+        ),
+        subject=f"${name}",
     )

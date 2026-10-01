@@ -93,10 +93,11 @@ def policy_hook_output(
     decision = decision.placed(escapable, contained=contained)
     match decision.effect:
         case "allow":
-            return allow_hook(decision.sandbox, decision.reason)
+            return allow_hook(decision.sandbox, decision.as_kernel().headline())
         case "ask":
-            return ask_hook(decision.reason, decision.sandbox).model_copy(
-                update={"additional_context": decision.recovery}
+            kernel = decision.as_kernel()
+            return ask_hook(kernel.headline(), decision.sandbox).model_copy(
+                update={"additional_context": kernel.beside()}
             )
         case "deny" if decision.escalated and relay is not None:
             # The refusal stands — nothing here can approve what no human

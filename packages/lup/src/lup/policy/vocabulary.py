@@ -47,6 +47,7 @@ from functools import cache
 from pydantic import BaseModel
 
 from lup.policy.kernel.decision import CheckpointRequirement, SandboxPlacement
+from lup.policy.kernel.diagnostic import Step, devtools, step
 from lup.policy.kernel.effects import EffectRow, declare
 from lup.policy.kernel.rows import DestinationForm
 from lup.policy.kernel.words import UV_GLOBAL_VALUE_OPTIONS
@@ -64,7 +65,7 @@ class JudgedCommand(BaseModel, frozen=True):
 
     name: str
     reason: str
-    recovery: str = ""
+    recovery: list[Step] = []
     """What the agent can do instead, where the command has a better route."""
     effects: list[EffectRow] = []
     """What this command does, where the group cannot say it for every member.
@@ -267,7 +268,9 @@ def judged_ask_rules(
         JudgedCommand(
             name="tee",
             reason="writing files requires approval",
-            recovery="Prefer a file write, which the edit gates read.",
+            recovery=[
+                step("write the file with an edit instead, which the edit gates read")
+            ],
             checkpoint="boundary_wide",
         ),
         JudgedCommand(
@@ -312,8 +315,8 @@ def judged_ask_rules(
             # Reached only in the query shape: every other spelling runs the
             # program after it, which `effective_command` unwraps to instead.
             read_verbs=["-v", "-V"],
-            reason="'command' runs a program through a modified lookup",
-            recovery="Name the program directly.",
+            reason="runs a program through a modified lookup",
+            recovery=[step("name the program directly")],
         ),
         JudgedCommand(
             name="tar",
@@ -509,14 +512,26 @@ def redirected_rules(
     commands: Sequence[JudgedCommand] = (
         JudgedCommand(
             name="pip",
-            reason="pip changes packages outside this project's lockfile",
-            recovery="Use uv add / uv remove instead of pip.",
+            reason="changes packages outside this project's lockfile",
+            recovery=[
+                step(
+                    "add the package through uv, which keeps the lockfile",
+                    ["uv", "add", "<package>"],
+                ),
+                step("or remove one", ["uv", "remove", "<package>"]),
+            ],
             effects=[declare("installs_dependency", scope="python package")],
         ),
         JudgedCommand(
             name="pip3",
-            reason="pip changes packages outside this project's lockfile",
-            recovery="Use uv add / uv remove instead of pip.",
+            reason="changes packages outside this project's lockfile",
+            recovery=[
+                step(
+                    "add the package through uv, which keeps the lockfile",
+                    ["uv", "add", "<package>"],
+                ),
+                step("or remove one", ["uv", "remove", "<package>"]),
+            ],
             effects=[declare("installs_dependency", scope="python package")],
         ),
     ),
@@ -550,26 +565,26 @@ def reaching_builtin_rules(
     commands: Sequence[JudgedCommand] = (
         JudgedCommand(
             name="eval",
-            reason="eval runs text as code that nothing checked",
-            recovery="Write the command out.",
+            reason="runs text as code that nothing checked",
+            recovery=[step("write the command out")],
             effects=[declare("runs_undeclared_program", scope="unread code")],
         ),
         JudgedCommand(
             name="source",
-            reason="sourcing a script runs code in this shell that nothing checked",
-            recovery="Run the commands it holds.",
+            reason="runs a script's code in this shell, and nothing checked it",
+            recovery=[step("run the commands it holds")],
             effects=[declare("runs_undeclared_program", scope="unread code")],
         ),
         JudgedCommand(
             name=".",
-            reason="sourcing a script runs code in this shell that nothing checked",
-            recovery="Run the commands it holds.",
+            reason="runs a script's code in this shell, and nothing checked it",
+            recovery=[step("run the commands it holds")],
             effects=[declare("runs_undeclared_program", scope="unread code")],
         ),
         JudgedCommand(
             name="export",
             reason="an exported variable changes what later commands see",
-            recovery="Set it on the command that needs it.",
+            recovery=[step("set it on the command that needs it")],
             effects=[
                 declare(
                     "mutates_environment", scope="shell variable", reach="container"
@@ -579,7 +594,7 @@ def reaching_builtin_rules(
         JudgedCommand(
             name="declare",
             reason="a declared variable changes what later commands see",
-            recovery="Set it on the command that needs it.",
+            recovery=[step("set it on the command that needs it")],
             effects=[
                 declare(
                     "mutates_environment", scope="shell variable", reach="container"
@@ -589,7 +604,7 @@ def reaching_builtin_rules(
         JudgedCommand(
             name="unset",
             reason="unsetting a variable changes what later commands see",
-            recovery="Set it on the command that needs it.",
+            recovery=[step("set it on the command that needs it")],
             effects=[
                 declare(
                     "mutates_environment", scope="shell variable", reach="container"
@@ -701,8 +716,14 @@ def uv_rules(
                 ShellSubcommandRule(
                     name="pip",
                     effects=installs,
-                    reason="uv pip changes packages outside this project's lockfile",
-                    recovery="Use uv add / uv remove, which keep the lockfile.",
+                    reason="changes packages outside this project's lockfile",
+                    recovery=[
+                        step(
+                            "add the package with uv add, which keeps the lockfile",
+                            ["uv", "add", "<package>"],
+                        ),
+                        step("or remove one", ["uv", "remove", "<package>"]),
+                    ],
                     operations=[
                         ShellOperationRule(name=verb, effects=reads)
                         for verb in pip_reads
@@ -711,9 +732,12 @@ def uv_rules(
                 ShellSubcommandRule(
                     name="tool",
                     effects=[declare("installs_dependency", scope="python tool")],
-                    reason="uv tool fetches and runs a package that is not a"
-                    " declared dependency",
-                    recovery="Declare it with uv add and run it through uv run.",
+                    reason="fetches and runs a package that is not a declared"
+                    " dependency",
+                    recovery=[
+                        step("declare it", ["uv", "add", "<package>"]),
+                        step("then run it through uv", ["uv", "run", "<tool>"]),
+                    ],
                     operations=[
                         ShellOperationRule(name=verb, effects=reads)
                         for verb in tool_reads
@@ -724,10 +748,12 @@ def uv_rules(
                     effects=[
                         declare("installs_dependency", scope="python interpreter")
                     ],
-                    reason="uv python fetches an interpreter build, or pins which"
-                    " one runs this project",
-                    recovery="`uv python list` and `uv python find` show what is"
-                    " installed and which one runs.",
+                    reason="fetches an interpreter build, or pins which one runs"
+                    " this project",
+                    recovery=[
+                        step("see what is installed", ["uv", "python", "list"]),
+                        step("and which one runs", ["uv", "python", "find"]),
+                    ],
                     operations=[
                         ShellOperationRule(name=verb, effects=reads)
                         for verb in python_reads
@@ -736,15 +762,18 @@ def uv_rules(
                 ShellSubcommandRule(
                     name="publish",
                     effects=[declare("external_mutation", scope="package index")],
-                    reason="uv publish uploads a package where anyone can install it",
+                    reason="uploads a package where anyone can install it",
                 ),
             ],
         ),
         ShellCommandRule(
             name="uvx",
             effects=[declare("installs_dependency", scope="python tool")],
-            reason="uvx fetches and runs a package that is not a declared dependency",
-            recovery="Declare it with uv add and run it through uv run.",
+            reason="fetches and runs a package that is not a declared dependency",
+            recovery=[
+                step("declare it", ["uv", "add", "<package>"]),
+                step("then run it through uv", ["uv", "run", "<tool>"]),
+            ],
         ),
     ]
 
@@ -818,7 +847,7 @@ def guarded_tool_rules() -> list[ShellCommandRule]:
             refuses="credential-agent changes stay with the user",
             allow_flags=["-l", "-L"],
             reason="credential-agent changes stay with the user",
-            recovery="Ask the user to run it.",
+            recovery=[step("ask the user to run it")],
         ),
         ShellCommandRule(
             name="ssh-agent",
@@ -829,7 +858,7 @@ def guarded_tool_rules() -> list[ShellCommandRule]:
             ],
             refuses="credential-agent lifecycle stays with the user",
             reason="credential-agent lifecycle stays with the user",
-            recovery="Ask the user to run it.",
+            recovery=[step("ask the user to run it")],
         ),
         ShellCommandRule(
             name="sort",
@@ -988,11 +1017,14 @@ def devtools_rules() -> list[ShellSubcommandRule]:
     and every dry run, which writes nothing.
     """
     registry_write = declare("writes_path", scope="protected", write="overwrite")
-    registry_recovery = (
-        "A registration decides what every later launch reaches, so widening "
-        "one is the user's call: `sync status` shows what each reaches now, and "
-        "where nobody can approve this, report the command for the user to run."
-    )
+    registry_recovery = [
+        step(
+            "see what each registration reaches now; widening one is the user's"
+            " call, since every later launch reaches it",
+            devtools("sync", "status"),
+        ),
+        step("where nobody can approve this, report the command for the user to run"),
+    ]
     return [
         ShellSubcommandRule(
             name="review",
@@ -1001,10 +1033,12 @@ def devtools_rules() -> list[ShellSubcommandRule]:
                     name=action,
                     operator_only=True,
                     reason="a requesting agent cannot approve or decline a review",
-                    recovery=(
-                        "The operator answers on the dashboard or from a terminal "
-                        "outside the agent session."
-                    ),
+                    recovery=[
+                        step(
+                            "the operator answers on the dashboard, or from a"
+                            " terminal outside the agent session"
+                        ),
+                    ],
                 )
                 for action in ("approve", "decline")
             ],
@@ -1016,9 +1050,11 @@ def devtools_rules() -> list[ShellSubcommandRule]:
                     name="serve",
                     operator_only=True,
                     reason="a requesting agent cannot mint operator credentials for the dashboard",
-                    recovery=(
-                        "The operator serves it from a terminal outside the agent session."
-                    ),
+                    recovery=[
+                        step(
+                            "the operator serves it from a terminal outside the agent session"
+                        )
+                    ],
                 ),
                 # Opening reads the capability the page is opened with, and
                 # stopping takes the page away from every session's operator;
@@ -1027,19 +1063,25 @@ def devtools_rules() -> list[ShellSubcommandRule]:
                     name="open",
                     operator_only=True,
                     reason="a requesting agent cannot read the dashboard's operator credentials",
-                    recovery=(
-                        "`dashboard status` says where it is; the operator opens "
-                        "it from a terminal outside the agent session."
-                    ),
+                    recovery=[
+                        step("see where it is", devtools("dashboard", "status")),
+                        step(
+                            "the operator opens it from a terminal outside the agent session"
+                        ),
+                    ],
                 ),
                 ShellOperationRule(
                     name="stop",
                     operator_only=True,
                     reason="a requesting agent cannot stop the operator's dashboard",
-                    recovery=(
-                        "The operator stops it from a terminal outside the agent "
-                        "session; it stops by itself once the last session ends."
-                    ),
+                    recovery=[
+                        step(
+                            "the operator stops it from a terminal outside the agent session"
+                        ),
+                        step(
+                            "or leave it: it stops by itself once the last session ends"
+                        ),
+                    ],
                 ),
                 # Reopening is how a parked review reaches an operator with no
                 # page open; turning it off is theirs, as stopping is.
@@ -1047,10 +1089,13 @@ def devtools_rules() -> list[ShellSubcommandRule]:
                     name="reopen",
                     operator_only=True,
                     reason="a requesting agent cannot change how the dashboard reaches the operator",
-                    recovery=(
-                        "The operator turns it on or off from a terminal outside "
-                        "the agent session, or in their lup config's [dashboard]."
-                    ),
+                    recovery=[
+                        step(
+                            "the operator turns it on or off from a terminal outside"
+                            " the agent session, or in their lup config's"
+                            " `[dashboard]` table"
+                        ),
+                    ],
                 ),
                 # Restarting takes the page away from every session's operator
                 # while it comes back, as stopping does.
@@ -1058,10 +1103,15 @@ def devtools_rules() -> list[ShellSubcommandRule]:
                     name="restart",
                     operator_only=True,
                     reason="a requesting agent cannot restart the operator's dashboard",
-                    recovery=(
-                        "The operator restarts it from a terminal outside the agent "
-                        "session; it restarts by itself once its checkout's code moves."
-                    ),
+                    recovery=[
+                        step(
+                            "the operator restarts it from a terminal outside the agent session"
+                        ),
+                        step(
+                            "or leave it: it restarts by itself once its checkout's"
+                            " code moves"
+                        ),
+                    ],
                 ),
             ],
         ),
@@ -1083,13 +1133,21 @@ def devtools_rules() -> list[ShellSubcommandRule]:
                         "retiring a claimed-resolved note deletes what was asked, "
                         "and only a reader who checked the code can say it was met"
                     ),
-                    recovery=(
-                        "Read the claim against the code first — "
-                        "`uv run lup-devtools dev comments` prints each with its "
-                        "original words. Where it is not met, `--restore` reopens "
-                        "it with those words intact, and `--narrow` reopens the "
-                        "part still outstanding."
-                    ),
+                    recovery=[
+                        step(
+                            "read each claim, in its original words, against the"
+                            " code first",
+                            devtools("dev", "comments"),
+                        ),
+                        step(
+                            "where it is not met, reopen it with those words intact",
+                            devtools("dev", "comments", "--restore", "<file:line>"),
+                        ),
+                        step(
+                            "or reopen only the part still outstanding",
+                            devtools("dev", "comments", "--narrow", "<file:line>"),
+                        ),
+                    ],
                 ),
                 # The seams it widens are protected edit roots: which scan
                 # rules this project holds itself to, and which files are the
@@ -1107,11 +1165,16 @@ def devtools_rules() -> list[ShellSubcommandRule]:
                         "project holds itself to, and `--disown` hands a "
                         "human-owned file to the agent"
                     ),
-                    recovery=(
-                        "`dev seams` alone prints every seam and where it is "
-                        "written; where nobody can approve the change, report "
-                        "the command for the user to run."
-                    ),
+                    recovery=[
+                        step(
+                            "see every seam and where it is written",
+                            devtools("dev", "seams"),
+                        ),
+                        step(
+                            "where nobody can approve the change, report the"
+                            " command for the user to run"
+                        ),
+                    ],
                 ),
                 # Files a GitHub issue, or with `--issue N` corrects one: the
                 # acts `gh issue create` and `gh issue edit` allow on this
@@ -1128,13 +1191,22 @@ def devtools_rules() -> list[ShellSubcommandRule]:
                         "a friction report filed on a named tracker opens an"
                         " issue that repository's watchers are notified of"
                     ),
-                    recovery=(
-                        "Unnamed, the report is filed on this checkout's own "
-                        "repository. One that belongs on another tracker is this "
-                        "question; where nobody can approve it, report the "
-                        "command for the user to run. `--issue N` adds to a "
-                        "report already filed, and `dev issues` lists the open ones."
-                    ),
+                    recovery=[
+                        step(
+                            "file it on this checkout's own repository, which needs"
+                            " no approval",
+                            devtools("dev", "report-friction"),
+                        ),
+                        step(
+                            "or add to a report already filed",
+                            devtools("dev", "report-friction", "--issue", "<number>"),
+                        ),
+                        step("see the open ones", devtools("dev", "issues")),
+                        step(
+                            "where nobody can approve a report on another"
+                            " tracker, report the command for the user to run"
+                        ),
+                    ],
                 ),
                 # The scaffold's own initialization verb, whose body is
                 # `lup.devtools.dev.origin`: it writes the URL the forge says
@@ -1148,11 +1220,16 @@ def devtools_rules() -> list[ShellSubcommandRule]:
                         "rewrites the URL of the committed lup registration, the "
                         "repository every later launch clones and mounts under it"
                     ),
-                    recovery=(
-                        "`--dry-run` prints the URL it would write and writes "
-                        "nothing; where nobody can approve the write, report that "
-                        "URL for the user."
-                    ),
+                    recovery=[
+                        step(
+                            "print the URL it would write, writing nothing",
+                            devtools("dev", "init", "upstream", "--dry-run"),
+                        ),
+                        step(
+                            "where nobody can approve the write, report that URL"
+                            " for the user"
+                        ),
+                    ],
                 ),
                 # The library's registration takes its URL from the git pin
                 # wherever there is one (`lup.devtools.sync.completed`), so
@@ -1170,11 +1247,19 @@ def devtools_rules() -> list[ShellSubcommandRule]:
                         "the lup registration follows this pin, so `--url` names "
                         "the repository every later launch clones and mounts under it"
                     ),
-                    recovery=(
-                        "Without `--url` the pin keeps the repository it names and "
-                        "only the ref moves; `--dry-run` shows the change without "
-                        "writing it."
-                    ),
+                    recovery=[
+                        step(
+                            "leave out `--url`: the pin keeps the repository it"
+                            " names, and only the ref moves",
+                            devtools("dev", "library", "git"),
+                        ),
+                        step(
+                            "see the change without writing it",
+                            devtools(
+                                "dev", "library", "git", "--url", "<url>", "--dry-run"
+                            ),
+                        ),
+                    ],
                 ),
                 # Retiring the scaffold's Pyright environment pair rewrites the
                 # manifest, a protected root, the way an edit of it would.
@@ -1186,7 +1271,14 @@ def devtools_rules() -> list[ShellSubcommandRule]:
                     ],
                     probe_flags=["--dry-run"],
                     reason="retiring Pyright environment defaults rewrites protected pyproject.toml",
-                    recovery="Review the change with --dry-run before applying the migration.",
+                    recovery=[
+                        step(
+                            "see the change before applying the migration",
+                            devtools(
+                                "dev", "migrate", "pyright-environment", "--dry-run"
+                            ),
+                        ),
+                    ],
                 ),
             ],
         ),
@@ -1197,7 +1289,11 @@ def devtools_rules() -> list[ShellSubcommandRule]:
                     name="policy-refresh",
                     operator_only=True,
                     reason="a requesting agent cannot accept replacement destination policy",
-                    recovery="The operator must refresh from a terminal outside the agent session.",
+                    recovery=[
+                        step(
+                            "the operator refreshes it from a terminal outside the agent session"
+                        )
+                    ],
                 ),
                 # A launch from inside a session opens a session of its own, and
                 # these flags lend it what no registration names -- for that one
@@ -1228,12 +1324,17 @@ def devtools_rules() -> list[ShellSubcommandRule]:
                             "folder or device to the session this launches, and "
                             "`--sandbox none` opens it with no boundary"
                         ),
-                        recovery=(
-                            "`--generate-only` generates without launching. A "
-                            "session that needs another folder, a device or no "
-                            "boundary is the user's to open, from their own "
-                            "terminal."
-                        ),
+                        recovery=[
+                            step(
+                                "generate without launching",
+                                devtools("harness", launcher, "--generate-only"),
+                            ),
+                            step(
+                                "a session that needs another folder, a device or"
+                                " no boundary is the user's to open, from their own"
+                                " terminal"
+                            ),
+                        ],
                     )
                     for launcher in ("claude", "codex")
                 ],
@@ -1290,10 +1391,13 @@ def devtools_rules() -> list[ShellSubcommandRule]:
                         "`--remote` deletes origin's copy of the branch even where"
                         " it holds commits no other branch has"
                     ),
-                    recovery=(
-                        "Without `--remote`, origin's copy goes only once the"
-                        " integration branch holds its commits."
-                    ),
+                    recovery=[
+                        step(
+                            "leave out `--remote`: origin's copy then goes only"
+                            " once the integration branch holds its commits",
+                            devtools("git", "delete", "<branch>"),
+                        ),
+                    ],
                 ),
             ],
         ),
@@ -1973,9 +2077,16 @@ def git_rule(
                 else "checkout can discard working-tree changes"
             ),
             recovery=(
-                "Use git switch for branches or git restore for files."
+                [
+                    step(
+                        "switch branches with git switch", ["git", "switch", "<branch>"]
+                    ),
+                    step(
+                        "restore files with git restore", ["git", "restore", "<path>"]
+                    ),
+                ]
                 if redirect_checkout
-                else ""
+                else []
             ),
         ),
         ShellSubcommandRule(
@@ -2775,8 +2886,12 @@ def gh_rule(
                         " transcript",
                         reason="printing the token gh holds writes it into this"
                         " transcript",
-                        recovery="gh reads its own token: run the gh command that"
-                        " needs it.",
+                        recovery=[
+                            step(
+                                "run the gh command that needs the token: gh reads"
+                                " its own"
+                            )
+                        ],
                     ),
                 ],
             ),
@@ -2991,8 +3106,13 @@ def bun_rule() -> ShellCommandRule:
                 frozen_flags=["--frozen-lockfile"],
                 reason="an install free to rewrite the lockfile resolves what"
                 " this project depends on anew",
-                recovery="`--frozen-lockfile` restores what the lockfile already"
-                " pins, and runs without asking.",
+                recovery=[
+                    step(
+                        "restore what the lockfile already pins, which runs without"
+                        " asking",
+                        ["bun", "install", "--frozen-lockfile"],
+                    ),
+                ],
             ),
             *[
                 ShellSubcommandRule(
@@ -3178,7 +3298,10 @@ def codex_rule() -> ShellCommandRule:
             "a word codex does not recognize is taken as the prompt of an"
             " interactive session rather than refused"
         ),
-        recovery=("Name a verb `codex --help` lists, or say what the session is for."),
+        recovery=[
+            step("name a verb codex lists", ["codex", "--help"]),
+            step("or say what the session is for"),
+        ],
         subcommands=[
             *reading(["agents", "completion", "doctor", "features", "help"], "codex"),
             *opening(
@@ -3195,11 +3318,13 @@ def codex_rule() -> ShellCommandRule:
                     "queueing a message reaches another session leaving the"
                     " text only inside whichever process received it"
                 ),
-                recovery=(
-                    "Use coordination_send, which records what it carries; the"
-                    " roster's own watcher nudges an idle Codex session through"
-                    " this verb once the record exists."
-                ),
+                recovery=[
+                    step(
+                        "use `coordination_send`, which records what it carries;"
+                        " the roster's own watcher nudges an idle Codex session"
+                        " through this verb once the record exists"
+                    ),
+                ],
             ),
             ShellSubcommandRule(
                 name="debug",

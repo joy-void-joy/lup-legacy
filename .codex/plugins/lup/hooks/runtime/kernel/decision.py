@@ -1,7 +1,21 @@
 """The verdict vocabulary every kernel module returns."""
 
+from collections.abc import Sequence
 from typing import Literal, TypedDict, Unpack
 
+from .diagnostic import (
+    Diagnostic,
+    Step,
+    Verdict,
+    devtools,
+    diagnostic,
+    distinct,
+    headline,
+    rendered,
+    stated,
+    step,
+    way,
+)
 from .semantics import (
     AbstentionPurpose,
     Capability,
@@ -166,20 +180,26 @@ KERNEL_IMPORT_ALLOWLIST = (
     "typing",
     "urllib.parse",
 )
-# The five below are sentences and one sentinel the kernel's own decisions
-# carry: each is declared beside the verdict that returns it, so a caller
-# passing different words would be returning a different verdict.
-# lup: ignore[constant-declaration] — refusal wording, declared with its verdict
+# The ones below are reasons, ways through and one sentinel the kernel's own
+# decisions carry: each is declared beside the verdict that returns it, so a
+# caller passing different words would be returning a different verdict.
+# lup: ignore[library-default] — refusal wording, declared with its verdict
 ESCALATE_HINT = (
-    "Reshape the command into the allowed vocabulary, or resubmit it with a"
-    " leading '# lup: escalate[decision]: <why>' line to put it to a reviewer."
+    step("change the command to one the policy allows"),
+    step(
+        "or resubmit it with a first line `# lup: escalate[decision]: <why>`,"
+        " which puts it to a reviewer"
+    ),
 )
 # lup: ignore[constant-declaration] — refusal wording
-RESHAPE_HINT = "Reshape the command into the allowed vocabulary."
-# lup: ignore[constant-declaration] — refusal wording, declared with its verdict
+RESHAPE_HINT = (step("change the command to one the policy allows"),)
+# lup: ignore[library-default] — refusal wording, declared with its verdict
 RELAY_HINT = (
-    "Reshape the command into the allowed vocabulary, or ask for the gate with"
-    " `request_allowance`, which reaches whoever is watching this run."
+    step("change the command to one the policy allows"),
+    step(
+        "or ask for the gate with `request_allowance`, which reaches whoever is"
+        " watching this run"
+    ),
 )
 """What a reviewed worker is told, which is not what a headless run is told.
 
@@ -194,17 +214,41 @@ A genuinely headless run has no such channel and still gets
 :data:`RESHAPE_HINT`, because naming a route that is not there is the same
 failure pointed the other way.
 """
+# lup: ignore[library-default] — refusal wording, declared with its verdict
+UNJUDGED_RECOVERY = (
+    step(
+        "see what the policy says about the same call",
+        devtools("dev", "policy", "<the call>"),
+    ),
+    step("and report the failure", devtools("dev", "report-friction")),
+)
+"""What an agent can do about a call the hook failed to judge.
+
+The hook refuses it unjudged, which says nothing about whether the call was
+fine: reproducing it shows whether the failure is the call's or the hook's,
+and a report is how the hook's gets fixed.
+"""
+# lup: ignore[constant-declaration] — refusal wording, declared with its verdict
+SCRIPT_RECOVERY = (
+    step(
+        "write the code to a script file, which can be reviewed and run again,"
+        " and run that",
+        ["uv", "run", "python", "<script>"],
+    ),
+)
 # lup: ignore[constant-declaration] — refusal wording, declared with its verdict
 SUBSTITUTION_REASON = "command substitution hides a command inside another"
 # lup: ignore[constant-declaration] — refusal wording, declared with its verdict
 SUBSTITUTION_RECOVERY = (
-    "Run the inner command in its own call and splice its literal output, or"
-    " read it through <(...) or a pipe."
+    step(
+        "run the inner command in its own call and use its output as written,"
+        " or read it through `<(...)` or a pipe"
+    ),
 )
 # lup: ignore[constant-declaration] — refusal wording, declared with its verdict
 BACKTICK_REASON = "backtick substitution hides a command inside another"
 # lup: ignore[constant-declaration] — refusal wording, declared with its verdict
-BACKTICK_RECOVERY = "Use $(...) so the inner command can be read."
+BACKTICK_RECOVERY = (step("write it as `$(...)`, so the inner command can be read"),)
 # lup: ignore[constant-declaration] — a spelling chosen to sit outside identifier
 # space, which is the property the substitution proof below rests on
 SUBSTITUTION_SENTINEL = "$~sub~"
@@ -310,7 +354,10 @@ class Revision(TypedDict, total=False):
     findings: tuple["KernelDecision", ...]
     rule: str
     evaluator: str
-    recovery: str
+    recovery: tuple[Step, ...]
+    subject: str
+    see: str
+    queued: str
     reach: Reach | None
     unread: bool
     file_reviews: tuple[FileReviewRow, ...]
@@ -331,11 +378,19 @@ class KernelDecision:
 
     effect: DecisionEffect
     reason: str
-    """What stopped the call, as one sentence a person deciding about it reads.
+    """Why the call was stopped, as one clause a person deciding about it reads.
 
-    An approval prompt shows this and nothing else, so it names the subject
-    and the fact that tripped and stops there. What the agent should do
-    instead is not the approver's business and lives in ``recovery``.
+    An approval prompt shows this, after ``subject``, and nothing else. What
+    the agent should do instead is not the approver's business and lives in
+    ``recovery``.
+    """
+    subject: str
+    """The words of the call that decided this verdict, or ``""``.
+
+    A flag, a path, a package, the command and subcommand a row names:
+    ``--force``, ``docs/commands.md``, ``uv add``. Shown in backticks before
+    the reason, so a reader sees which part of a long command is at stake
+    without the whole command echoed back at them.
     """
     sandbox: SandboxPlacement
     escalated: str
@@ -434,13 +489,28 @@ class KernelDecision:
     vocabulary, the edit gate, the fetch scopes, the effect grammar. Two rules
     may share an evaluator and one rule never spans two.
     """
-    recovery: str
-    """What the agent can do instead, or ``""`` where nothing needs saying.
+    recovery: tuple[Step, ...]
+    """The ways through: what the agent can do instead, empty where nothing needs saying.
 
     Addressed to the agent and never to the approver: a refusal carries it to
     the agent with the reason, and a question carries it beside the prompt
     rather than inside it, so the person deciding reads what is at stake and
-    the agent learns its way round if the answer is no.
+    the agent learns its way round if the answer is no. A command a way
+    through names is held as the words that run it, never in its prose.
+    """
+    see: str
+    """The page that explains the rest, or ``""``: ``docs/rules.md`` for a rule.
+
+    Named rather than quoted, so a refusal stays short and the rationale, its
+    examples and its alternatives are said once, where they are looked up.
+    """
+    queued: str
+    """The review a refused call waits on, or ``""`` where it waits on none.
+
+    A call parked for the operator is refused to the runtime, which has no
+    word for "held", and is not refused to the agent: it must not be
+    reshaped, and the answer carries it out. Its diagnostic opens on
+    ``queued`` rather than ``refused`` for that reason.
     """
     reach: Reach | None
     """Where the harm this verdict guards against lands, or ``None`` if unstated.
@@ -508,12 +578,15 @@ class KernelDecision:
         findings: tuple["KernelDecision", ...] = (),
         rule: str = "",
         evaluator: str = "",
-        recovery: str = "",
+        recovery: Sequence[Step] = (),
         reach: Reach | None = None,
         unread: bool = False,
         file_reviews: tuple[FileReviewRow, ...] = (),
         unpreviewed: tuple[UnpreviewedRow, ...] = (),
         segments: tuple[SegmentRow, ...] = (),
+        subject: str = "",
+        see: str = "",
+        queued: str = "",
     ) -> None:
         if effect not in ("allow", "ask", "deny", "defer"):
             raise ValueError(f"invalid kernel decision effect {effect!r}")
@@ -536,12 +609,15 @@ class KernelDecision:
         self.findings = findings
         self.rule = rule
         self.evaluator = evaluator
-        self.recovery = recovery
+        self.recovery = tuple(recovery)
         self.reach = reach
         self.unread = unread
         self.file_reviews = file_reviews
         self.unpreviewed = unpreviewed
         self.segments = segments
+        self.subject = subject
+        self.see = see
+        self.queued = queued
         # Only a verdict this policy actually reached is placed: a refusal is
         # not softened by where the operation would have run, and a deferral
         # hands the whole question over, placement included.
@@ -584,6 +660,9 @@ class KernelDecision:
             changes["file_reviews"] if "file_reviews" in changes else self.file_reviews,
             changes["unpreviewed"] if "unpreviewed" in changes else self.unpreviewed,
             changes["segments"] if "segments" in changes else self.segments,
+            changes["subject"] if "subject" in changes else self.subject,
+            changes["see"] if "see" in changes else self.see,
+            changes["queued"] if "queued" in changes else self.queued,
         )
 
     def placed(self, escapable: bool, contained: bool = False) -> "KernelDecision":
@@ -644,7 +723,7 @@ class KernelDecision:
         operation.
         """
         peers = [
-            part.reason
+            stated(part.subject, part.reason)
             for part in self.findings
             if part.effect == self.effect
             and part.reason
@@ -653,52 +732,76 @@ class KernelDecision:
         if not peers:
             return self.reason
         distinct = dict.fromkeys(peers)
-        return "\n".join([self.reason, *(f"also: {reason}" for reason in distinct)])
+        return "\n".join([self.reason, *(f"also: {said}" for said in distinct)])
 
-    def recovered_whole(self) -> str:
-        """The recovery, joined with every contributing recovery it does not say.
+    def recovered_whole(self) -> tuple[Step, ...]:
+        """The ways through, joined with every contributing one they do not hold.
 
         The same parts :meth:`stated_whole` lists, for the same reason: a
         refusal over three segments leaves the agent three things to change.
-
-        Deduplicated a line at a time rather than whole, because a settlement
-        row has usually already added its own route to the carrier and the
-        finding beside it still holds the rule's: compared whole, the two
-        differ by that addition and the rule's sentence arrives twice.
+        A way through two parts share is said once.
         """
-        parts = [
-            line
+        return distinct(
+            through
             for part in (self, *self.findings)
-            if (part is self or part.effect == self.effect) and part.recovery
-            for line in part.recovery.splitlines()
-        ]
-        return "\n".join(dict.fromkeys(parts))
+            if part is self or part.effect == self.effect
+            for through in part.recovery
+        )
 
-    def advising(self, recovery: str) -> "KernelDecision":
-        """This verdict with one more thing the agent can do after its own.
+    def advising(self, recovery: tuple[Step, ...]) -> "KernelDecision":
+        """This verdict with more ways through after its own.
 
         A settlement row knows a route the rule that reached the verdict did
         not — a relay this run holds, an escalation marker this runtime reads —
         and adds it without overwriting what the rule already said.
         """
-        told = [
-            line
-            for text in (self.recovery, recovery)
-            if text
-            for line in text.splitlines()
-        ]
-        return self.revised(recovery="\n".join(dict.fromkeys(told)))
+        return self.revised(recovery=distinct((*self.recovery, *recovery)))
+
+    def diagnostic(self) -> Diagnostic:
+        """This verdict in the one message shape every reader meets."""
+        match self.effect:
+            case "allow":
+                verdict: Verdict = "allowed"
+            case "ask":
+                verdict = "asks"
+            case "deny" if self.queued:
+                verdict = "queued"
+            case "deny":
+                verdict = "refused"
+            case "defer":
+                verdict = "deferred"
+        return diagnostic(
+            verdict,
+            self.reason,
+            what=self.subject,
+            steps=self.recovery,
+            rule=self.rule,
+            see=self.see,
+        )
+
+    def headline(self) -> str:
+        """The first line: the verdict, its subject and why.
+
+        The whole of what an approver reads, since what the agent should do
+        instead is not theirs to weigh. Empty where the verdict says nothing,
+        as a permission with no reason does.
+        """
+        if not (self.reason or self.subject):
+            return ""
+        return headline(self.diagnostic())
+
+    def beside(self) -> str:
+        """The ways through as the agent reads them beside a question, one a line."""
+        return "\n".join(way(through) for through in self.recovery)
 
     def addressed(self) -> str:
-        """The reason with the recovery after it: the whole of what an agent reads.
+        """The verdict line with each way through after it: the whole of what an agent reads.
 
         For a channel that reaches the agent alone — a refusal, or a question
         a runtime cannot put to anybody and so turns back — where the approver's
-        sentence and the agent's way round arrive as one text.
+        line and the agent's ways through arrive as one text.
         """
-        if not self.recovery:
-            return self.reason
-        return f"{self.reason}\n{self.recovery}"
+        return rendered(self.diagnostic())
 
 
 def unjudged(reason: str) -> KernelDecision:

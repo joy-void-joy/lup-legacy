@@ -25,6 +25,8 @@ a rule id.
 import re
 from typing import Literal
 
+from .diagnostic import Step, step
+
 type EscalationKind = Literal["decision", "sandbox"]
 """Which axis a marker asks to move.
 
@@ -82,8 +84,11 @@ agent would spend a turn discovering the call still ran inside.
 
 # lup: ignore[constant-declaration] — migration wording, declared with the alias it annotates
 LEGACY_NOTICE = (
-    "'# lup: escalate:' is read as escalate[decision]; write the kind"
-    " explicitly, and use escalate[sandbox] to ask for the host."
+    step(
+        "write the kind out: `# lup: escalate:` alone is read as"
+        " `# lup: escalate[decision]:`, and `# lup: escalate[sandbox]:` asks for"
+        " the host"
+    ),
 )
 """What the bare spelling adds to the verdict it produces.
 
@@ -126,9 +131,9 @@ class EscalationRequest:
         """Whether this request names one axis."""
         return kind in self.kinds
 
-    def notice(self) -> str:
-        """What this request tells the agent about its own spelling, or ``""``."""
-        return LEGACY_NOTICE if self.legacy else ""
+    def notice(self) -> tuple[Step, ...]:
+        """What this request tells the agent about its own spelling, if anything."""
+        return LEGACY_NOTICE if self.legacy else ()
 
 
 class MarkerReading:

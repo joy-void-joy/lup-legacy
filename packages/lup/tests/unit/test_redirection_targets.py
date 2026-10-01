@@ -346,8 +346,8 @@ class TestAWriteNobodyCanRead:
         """A question an agent cannot act on becomes a retry."""
         answer = written("date +%s > src.py", tracked=["src.py"])
 
-        assert "scratch" in answer.recovery
-        assert "carry the content" in answer.recovery
+        assert "scratch" in answer.addressed()
+        assert "carry the content" in answer.addressed()
 
     def test_a_create_replaces_nothing_and_keeps_its_allow(self) -> None:
         """What the question is about is the reviewed version being replaced."""

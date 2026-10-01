@@ -21,6 +21,7 @@ from pathlib import PurePosixPath
 from typing import Literal
 
 from .decision import SUBSTITUTION_SENTINEL
+from .diagnostic import devtools, step
 from .rows import PathRoleKind, PathRoleName, PathRoleRow, DisplacedTargetRow
 from .syntax import VerbatimText, expands, verbatim_piece
 
@@ -28,28 +29,39 @@ from .syntax import VerbatimText, expands, verbatim_piece
 GENERATED_PLUGIN_ROOTS = (".claude/plugins", ".codex/plugins")
 # lup: ignore[constant-declaration] — refusal wording, declared with its verdict
 GENERATED_PLUGIN_REFUSAL = (
-    "this edits a generated plugin tree, which is compiled from source and"
-    " already loaded"
+    "is in a generated plugin tree, which is compiled from source and already loaded"
+)
+# lup: ignore[library-default] — refusal wording, declared with its verdict
+GENERATED_PLUGIN_RECOVERY = (
+    step("edit the source the file's first line names, not the file"),
+    step("then regenerate", devtools("harness", "generate", "all")),
+    step("then ask the user to restart the session, so the change takes effect"),
 )
 # lup: ignore[constant-declaration] — refusal wording, declared with its verdict
-GENERATED_PLUGIN_RECOVERY = (
-    "Edit the policy source, run `lup-devtools harness generate all`, then ask"
-    " the user to restart claude or codex so the change takes effect."
+GENERATED_ARTIFACT_REFUSAL = (
+    "is generated: the next generation overwrites a hand edit, and the drift"
+    " check refuses it"
+)
+# lup: ignore[library-default] — refusal wording, declared with its verdict
+GENERATED_ARTIFACT_RECOVERY = (
+    step("edit the source the file's first line names, not the file"),
+    step("then regenerate", devtools("harness", "generate", "all")),
 )
 
 
 # lup: ignore[constant-declaration] — the words this gate says, in a kernel
 # compiled hermetically into a bare dispatcher that takes no arguments
 FOREIGN_REPOSITORY_REFERRAL = (
-    "this file belongs to a different repository, which this project's rules"
-    " do not cover"
+    "belongs to a different repository, which this project's rules do not cover"
 )
 # lup: ignore[constant-declaration] — the words this gate says, in a kernel
 # compiled hermetically into a bare dispatcher that takes no arguments
 FOREIGN_REPOSITORY_RECOVERY = (
-    "That repository's conventions, size budget and gates are its own, and"
-    " this project's rule checker is not applying any of them. Edit it as that"
-    " repository would want it, not as this one would."
+    step(
+        "edit it as that repository would want it, not as this one would: its"
+        " conventions, size budget and gates are its own, and this project's"
+        " rule checker applies none of them"
+    ),
 )
 """What a foreign-repository edit is told, in place of a convention refusal.
 
@@ -121,16 +133,21 @@ def is_generated_plugin_target(word: str) -> bool:
 GIT_POINTER_NAMES = ("commondir", "gitdir", "config.worktree")
 # lup: ignore[constant-declaration] — refusal wording, declared with its verdict
 GIT_STATE_REFUSAL = (
-    "this rewrites a file git finds its own state through -- a worktree"
-    " pointer or a ref -- which host git follows to the repository, the commit"
-    " and the configuration it acts on"
+    "is a file git finds its own state through -- a worktree pointer or a ref"
+    " -- which host git follows to the repository, the commit and the"
+    " configuration it acts on"
 )
-# lup: ignore[constant-declaration] — refusal wording, declared with its verdict
+# lup: ignore[library-default] — refusal wording, declared with its verdict
 GIT_STATE_RECOVERY = (
-    "Let git write it: `git worktree add`, `move`, `remove` and `prune` keep"
-    " the pointers, and `git branch`, `git switch`, `git update-ref` and"
-    " `git symbolic-ref` keep the refs. A pointer that is already wrong is"
-    " repaired from an operator terminal with `git worktree repair`."
+    step(
+        "let git write it: `git worktree add`, `move`, `remove` and `prune` keep"
+        " the pointers, and `git branch`, `git switch`, `git update-ref` and"
+        " `git symbolic-ref` keep the refs"
+    ),
+    step(
+        "a pointer that is already wrong is repaired from an operator terminal",
+        ["git", "worktree", "repair"],
+    ),
 )
 
 type GitState = Literal["pointer", "ref"]

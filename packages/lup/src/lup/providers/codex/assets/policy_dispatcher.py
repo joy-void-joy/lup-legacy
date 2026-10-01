@@ -71,7 +71,8 @@ from host import (
 )
 from kernel.rows import PostToolReport
 from kernel.review import Said
-from kernel.decision import KernelDecision
+from kernel.decision import UNJUDGED_RECOVERY, KernelDecision
+from kernel.diagnostic import step
 from kernel.review import literal_input
 from kernel.shell import auto_escape_matches
 from caller_payload import caller_of, spoken, transcript_of
@@ -304,16 +305,24 @@ def waiting(command, payload):
     """
     if "agent_id" in payload:
         return (
-            f"Carry on with other work, and hold `{command}` in your shell tool, "
-            "reading its output before you report: once a subagent reports, "
-            "nothing wakes it, and a command it left running wakes nobody. If it "
-            "ends with the review still waiting, start it again quietly, "
-            "reporting that to nobody."
+            step(
+                "carry on with other work, and hold this in your shell tool,"
+                " reading its output before you report: once a subagent reports,"
+                " nothing wakes it, and a command it left running wakes nobody",
+                command,
+            ),
+            step(
+                "if it ends with the review still waiting, start it again"
+                " quietly, reporting that to nobody"
+            ),
         )
     return (
-        "Carry on with other work, or end your turn: the operator's answer is "
-        f"queued into this thread, which starts a turn, and `{command}` then "
-        "carries the call out at once. Don't start a waiter."
+        step(
+            "carry on with other work, or end your turn: the operator's answer is"
+            " queued into this thread, which starts a turn, and this then"
+            " carries the call out at once; don't start a waiter before",
+            command,
+        ),
     )
 
 
@@ -619,7 +628,9 @@ def main():
             "error",
             f"{type(error).__name__}: {error}",
         )
-        decision = KernelDecision("deny", unjudged_reason(error, read))
+        decision = KernelDecision(
+            "deny", unjudged_reason(error, read), recovery=UNJUDGED_RECOVERY
+        )
         if not permission_request:
             sys.stderr.write(decision.addressed())
             raise SystemExit(2) from error

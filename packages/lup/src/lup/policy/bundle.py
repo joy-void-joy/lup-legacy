@@ -34,6 +34,7 @@ from lup.policy.identity import (
 import lup.policy.kernel as kernel
 from lup.policy.kernel.imports import import_references
 from lup.policy.kernel.typescript import TYPESCRIPT_SUFFIXES
+from lup.policy.kernel.diagnostic import Step
 from lup.policy.kernel.effects import EffectRow, effect_row_values
 from lup.policy.kernel.semantics import UnjudgedAmbient
 from lup.policy.kernel.rows import (
@@ -287,7 +288,7 @@ def path_rule_rows_literal(rows: list[PathRuleRow]) -> str:
                 f'"kind": {json.dumps(row["kind"])}',
                 f'"value": {json.dumps(row["value"])}',
                 f'"reason": {json.dumps(row["reason"])}',
-                f'"recovery": {json.dumps(row["recovery"])}',
+                f'"recovery": {steps_literal(row["recovery"], "        ")}',
                 f'"allow_autonomous": {row["allow_autonomous"]}',
             ]
             for row in rows
@@ -319,6 +320,44 @@ def python_literal(value: JsonValue) -> str:
     # substitutions are the escaping itself rather than data being edited.
     inner = rendered[1:-1].replace('\\"', '"')  # lup: ignore[string-replace]
     return "'" + inner.replace("'", "\\'") + "'"  # lup: ignore[string-replace]
+
+
+def step_lines(through: Step, indent: str) -> list[str]:
+    """One way through as the lines of Python source it occupies.
+
+    ``indent`` is where its opening brace stands. The mapping and its command
+    each carry a trailing comma, which holds Ruff to the exploded shape at any
+    length: an inline one would be rewrapped the moment a step grew past the
+    line budget, and a generated file that reformats fails the drift check.
+    """
+    inner = indent + "    "
+    run = (
+        [
+            f'{inner}"run": [',
+            *(f"{inner}    {python_literal(word)}," for word in through["run"]),
+            f"{inner}],",
+        ]
+        if through["run"]
+        else [f'{inner}"run": [],']
+    )
+    return [
+        f"{indent}{{",
+        f'{inner}"says": {python_literal(through["says"])},',
+        *run,
+        f"{indent}}},",
+    ]
+
+
+def steps_literal(steps: list[Step], indent: str) -> str:
+    """Ways through as one Python list, its bracket closing at ``indent``."""
+    if not steps:
+        return "[]"
+    lines = [
+        "[",
+        *(line for through in steps for line in step_lines(through, indent + "    ")),
+        f"{indent}]",
+    ]
+    return "\n".join(lines)
 
 
 def antipattern_rows_literal(rows: dict[str, list[AntiPatternRow]]) -> str:
@@ -424,7 +463,7 @@ def spawn_names_literal(row: SpawnNameRow | None) -> str:
         return "None"
     entries = [
         f'"reason": {json.dumps(row["reason"])}',
-        f'"recovery": {json.dumps(row["recovery"])}',
+        f'"recovery": {steps_literal(row["recovery"], "    ")}',
         f'"punctuation": {json.dumps(row["punctuation"])}',
         f'"limit": {json.dumps(row["limit"])}',
     ]
@@ -446,10 +485,10 @@ def peer_policy_literal(redirect: PeerPolicyRow | None) -> str:
         f'"windows_dir": {json.dumps(redirect["windows_dir"])}',
         f'"member_env": {json.dumps(redirect["member_env"])}',
         f'"send_reason": {json.dumps(redirect["send_reason"])}',
-        f'"send_recovery": {json.dumps(redirect["send_recovery"])}',
+        f'"send_recovery": {steps_literal(redirect["send_recovery"], "    ")}',
         f'"listing_note": {json.dumps(redirect["listing_note"])}',
         f'"claim_reason": {json.dumps(redirect["claim_reason"])}',
-        f'"claim_recovery": {json.dumps(redirect["claim_recovery"])}',
+        f'"claim_recovery": {steps_literal(redirect["claim_recovery"], "    ")}',
     ]
     return "{\n" + "".join(f"    {entry},\n" for entry in entries) + "}"
 
@@ -462,7 +501,7 @@ def refused_tool_rows_literal(rows: list[RefusedToolRow]) -> str:
                 f'"tool": {json.dumps(row["tool"])}',
                 f'"specifier": {json.dumps(row["specifier"])}',
                 f'"reason": {json.dumps(row["reason"])}',
-                f'"recovery": {json.dumps(row["recovery"])}',
+                f'"recovery": {steps_literal(row["recovery"], "        ")}',
             ]
             for row in rows
         ]
@@ -518,7 +557,7 @@ def string_matrix_literal(rows: list[list[str]]) -> str:
     return "[\n" + "".join(f"    {json.dumps(row)},\n" for row in rows) + "]"
 
 
-def literal_element(item: str | EffectRow) -> list[str]:
+def literal_element(item: str | EffectRow | Step) -> list[str]:
     """One element of a rendered list, as the lines it occupies.
 
     A mapping is exploded with a trailing comma rather than inlined, because
@@ -536,15 +575,21 @@ def literal_element(item: str | EffectRow) -> list[str]:
     first boolean one as ``"False"``, which is a true value in the table the
     dispatcher reads.
     """
-    if isinstance(item, dict):
-        exploded = ["            {"]
-        exploded.extend(
-            f"                {json.dumps(name)}: {python_literal(field)},"
-            for name, field in effect_row_values(item).items()
-        )
-        exploded.append("            },")
-        return exploded
-    return [f"            {python_literal(item)},"]
+    match item:
+        case str():
+            return [f"            {python_literal(item)},"]
+        case {"says": str(), "run": list()}:
+            return step_lines(item, "            ")
+        case {"kind": str()}:
+            return [
+                "            {",
+                *(
+                    f"                {json.dumps(name)}: {python_literal(field)},"
+                    for name, field in effect_row_values(item).items()
+                ),
+                "            },",
+            ]
+    raise TypeError(f"no Python literal is written for {item!r}")
 
 
 class RenderedField(BaseModel, frozen=True):
@@ -558,7 +603,7 @@ class RenderedField(BaseModel, frozen=True):
     """
 
     name: str
-    value: str | bool | int | list[str] | list[EffectRow]
+    value: str | bool | int | list[str] | list[EffectRow] | list[Step]
 
 
 def mapping_rows_literal(rows: list[list[RenderedField]]) -> str:

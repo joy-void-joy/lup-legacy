@@ -250,322 +250,327 @@ PATH_RULES: list[PathRuleRow] = [
         "kind": "subtree",
         "value": ".claude",
         "reason": "protected path requires approval",
-        "recovery": "",
+        "recovery": [],
         "allow_autonomous": False,
     },
     {
         "kind": "subtree",
         "value": ".codex",
         "reason": "protected path requires approval",
-        "recovery": "",
+        "recovery": [],
         "allow_autonomous": False,
     },
     {
         "kind": "contains_part",
         "value": "pyproject.toml",
         "reason": "protected path requires approval",
-        "recovery": "",
+        "recovery": [],
         "allow_autonomous": False,
     },
     {
         "kind": "contains_part",
         "value": "package.json",
         "reason": "protected path requires approval",
-        "recovery": "",
+        "recovery": [],
         "allow_autonomous": False,
     },
     {
         "kind": "contains_part",
         "value": "uv.lock",
         "reason": "protected path requires approval",
-        "recovery": "",
+        "recovery": [],
         "allow_autonomous": False,
     },
     {
         "kind": "contains_part",
         "value": "poetry.lock",
         "reason": "protected path requires approval",
-        "recovery": "",
+        "recovery": [],
         "allow_autonomous": False,
     },
     {
         "kind": "contains_part",
         "value": "package-lock.json",
         "reason": "protected path requires approval",
-        "recovery": "",
+        "recovery": [],
         "allow_autonomous": False,
     },
     {
         "kind": "contains_part",
         "value": "bun.lock",
         "reason": "protected path requires approval",
-        "recovery": "",
+        "recovery": [],
         "allow_autonomous": False,
     },
     {
         "kind": "contains_part",
         "value": "bun.lockb",
         "reason": "protected path requires approval",
-        "recovery": "",
+        "recovery": [],
         "allow_autonomous": False,
     },
     {
         "kind": "contains_part",
         "value": "pnpm-lock.yaml",
         "reason": "protected path requires approval",
-        "recovery": "",
+        "recovery": [],
         "allow_autonomous": False,
     },
     {
         "kind": "contains_part",
         "value": "yarn.lock",
         "reason": "protected path requires approval",
-        "recovery": "",
+        "recovery": [],
         "allow_autonomous": False,
     },
     {
         "kind": "contains_part",
         "value": "Cargo.lock",
         "reason": "protected path requires approval",
-        "recovery": "",
+        "recovery": [],
         "allow_autonomous": False,
     },
     {
         "kind": "subtree",
         "value": ".github",
         "reason": "protected path requires approval",
-        "recovery": "",
+        "recovery": [],
         "allow_autonomous": False,
     },
     {
         "kind": "subtree",
         "value": ".vscode",
         "reason": "protected path requires approval",
-        "recovery": "",
+        "recovery": [],
         "allow_autonomous": False,
     },
     {
         "kind": "subtree",
         "value": ".devcontainer",
         "reason": "protected path requires approval",
-        "recovery": "",
+        "recovery": [],
         "allow_autonomous": False,
     },
     {
         "kind": "subtree",
         "value": ".pre-commit-config.yaml",
         "reason": "protected path requires approval",
-        "recovery": "",
+        "recovery": [],
         "allow_autonomous": False,
     },
     {
         "kind": "subtree",
         "value": "sync.json",
         "reason": "protected path requires approval",
-        "recovery": "",
+        "recovery": [],
         "allow_autonomous": False,
     },
     {
         "kind": "subtree",
         "value": "sync.json.local",
         "reason": "protected path requires approval",
-        "recovery": "",
+        "recovery": [],
         "allow_autonomous": False,
     },
     {
         "kind": "subtree",
         "value": "packages/lup/src/lup/policy",
         "reason": "protected path requires approval",
-        "recovery": "",
+        "recovery": [],
         "allow_autonomous": False,
     },
     {
         "kind": "subtree",
         "value": "src/lup_template/harness/catalog.py",
         "reason": "protected path requires approval",
-        "recovery": "",
+        "recovery": [],
         "allow_autonomous": False,
     },
     {
         "kind": "subtree",
         "value": "src/lup_template/harness/content/catalog.py",
         "reason": "protected path requires approval",
-        "recovery": "",
+        "recovery": [],
         "allow_autonomous": False,
     },
     {
         "kind": "subtree",
         "value": "src/lup_template/harness/content/shell_vocabulary.py",
         "reason": "protected path requires approval",
-        "recovery": "",
+        "recovery": [],
         "allow_autonomous": False,
     },
     {
         "kind": "subtree",
         "value": "packages/lup/src/lup/harness/codescan",
         "reason": "protected path requires approval",
-        "recovery": "",
+        "recovery": [],
         "allow_autonomous": False,
     },
     {
         "kind": "subtree",
         "value": "packages/lup/src/lup/providers/claude/harness.py",
         "reason": "protected path requires approval",
-        "recovery": "",
+        "recovery": [],
         "allow_autonomous": False,
     },
     {
         "kind": "subtree",
         "value": "packages/lup/src/lup/providers/codex/harness.py",
         "reason": "protected path requires approval",
-        "recovery": "",
+        "recovery": [],
         "allow_autonomous": False,
     },
     {
         "kind": "subtree",
         "value": "packages/lup/src/lup/harness/enforcement.py",
         "reason": "protected path requires approval",
-        "recovery": "",
+        "recovery": [],
         "allow_autonomous": False,
     },
     {
         "kind": "subtree",
         "value": "packages/lup/src/lup/harness/codescan/antipatterns.py",
         "reason": "protected path requires approval",
-        "recovery": "",
+        "recovery": [],
         "allow_autonomous": False,
     },
     {
         "kind": "subtree",
         "value": "packages/lup/src/lup/providers/roster_prompt.py",
         "reason": "protected path requires approval",
-        "recovery": "",
+        "recovery": [],
         "allow_autonomous": False,
     },
     {
         "kind": "subtree",
         "value": "packages/lup/src/lup/harness/models.py",
         "reason": "protected path requires approval",
-        "recovery": "",
+        "recovery": [],
         "allow_autonomous": False,
     },
     {
         "kind": "subtree",
         "value": "packages/lup/src/lup/harness/codescan/boundaries.py",
         "reason": "protected path requires approval",
-        "recovery": "",
+        "recovery": [],
         "allow_autonomous": False,
     },
     {
         "kind": "subtree",
         "value": "packages/lup/src/lup/harness/codescan/dispatch.py",
         "reason": "protected path requires approval",
-        "recovery": "",
+        "recovery": [],
         "allow_autonomous": False,
     },
     {
         "kind": "subtree",
         "value": "packages/lup/src/lup/harness/codescan/narrowing.py",
         "reason": "protected path requires approval",
-        "recovery": "",
+        "recovery": [],
         "allow_autonomous": False,
     },
     {
         "kind": "subtree",
         "value": "packages/lup/src/lup/harness/codescan/project.py",
         "reason": "protected path requires approval",
-        "recovery": "",
+        "recovery": [],
         "allow_autonomous": False,
     },
     {
         "kind": "subtree",
         "value": "packages/lup/src/lup/harness/codescan/common.py",
         "reason": "protected path requires approval",
-        "recovery": "",
+        "recovery": [],
         "allow_autonomous": False,
     },
     {
         "kind": "subtree",
         "value": "packages/lup/src/lup/devtools/launcher.py",
         "reason": "protected path requires approval",
-        "recovery": "",
+        "recovery": [],
         "allow_autonomous": False,
     },
     {
         "kind": "subtree",
         "value": "packages/lup/src/lup/providers/claude/assets",
         "reason": "protected path requires approval",
-        "recovery": "",
+        "recovery": [],
         "allow_autonomous": False,
     },
     {
         "kind": "subtree",
         "value": "packages/lup/src/lup/providers/codex/assets",
         "reason": "protected path requires approval",
-        "recovery": "",
+        "recovery": [],
         "allow_autonomous": False,
     },
     {
         "kind": "exact",
         "value": "README.md",
-        "reason": "README.md is human-authored",
-        "recovery": "Propose the exact change and let the user apply it.",
+        "reason": "is human-authored",
+        "recovery": [
+            {
+                "says": "propose the exact change, and let the user apply it",
+                "run": [],
+            },
+        ],
         "allow_autonomous": False,
     },
     {
         "kind": "subtree",
         "value": ".lup/preflight",
         "reason": "protected path requires approval",
-        "recovery": "",
+        "recovery": [],
         "allow_autonomous": False,
     },
     {
         "kind": "subtree",
         "value": ".lup/policy-snapshots",
         "reason": "protected path requires approval",
-        "recovery": "",
+        "recovery": [],
         "allow_autonomous": False,
     },
     {
         "kind": "subtree",
         "value": ".lup/questions.jsonl",
         "reason": "protected path requires approval",
-        "recovery": "",
+        "recovery": [],
         "allow_autonomous": False,
     },
     {
         "kind": "subtree",
         "value": ".lup/reviews",
         "reason": "protected path requires approval",
-        "recovery": "",
+        "recovery": [],
         "allow_autonomous": False,
     },
     {
         "kind": "subtree",
         "value": ".lup/review-claims",
         "reason": "protected path requires approval",
-        "recovery": "",
+        "recovery": [],
         "allow_autonomous": False,
     },
     {
         "kind": "subtree",
         "value": ".lup/review-stage-claims",
         "reason": "protected path requires approval",
-        "recovery": "",
+        "recovery": [],
         "allow_autonomous": False,
     },
     {
         "kind": "name_prefix",
         "value": ".env",
         "reason": "protected path requires approval",
-        "recovery": "",
+        "recovery": [],
         "allow_autonomous": False,
     },
     {
         "kind": "new_devtools",
         "value": "src",
         "reason": "new devtools module requires approval",
-        "recovery": "",
+        "recovery": [],
         "allow_autonomous": False,
     },
 ]
@@ -2295,6 +2300,14 @@ PATH_ROLES: list[PathRoleRow] = [
         "role": "scratch",
     },
     {
+        "root": "docs",
+        "role": "generated",
+    },
+    {
+        "root": "AGENTS.md",
+        "role": "generated",
+    },
+    {
         "root": "packages/lup/src/lup/migrations/pending",
         "role": "data",
     },
@@ -2376,7 +2389,12 @@ ACCEPTANCE_GUARD: AcceptanceGuardRow | None = None
 
 SPAWN_NAMES: SpawnNameRow | None = {
     "reason": "a subagent spawned without a name is listed, addressed and stopped by its type alone, which says nothing about what it is doing",
-    "recovery": "the task in two or three words, starting with a letter or digit and carrying only letters, digits and underscores, at most 64 characters \u2014 it is what the listing shows and what a message or a stop addresses",
+    "recovery": [
+        {
+            "says": "name the task in two or three words, starting with a letter or digit and carrying only letters, digits and underscores, at most 64 characters: it is what the listing shows and what a message or a stop addresses",
+            "run": [],
+        },
+    ],
     "punctuation": "_",
     "limit": 64,
 }
@@ -2436,7 +2454,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:cat",
@@ -2487,7 +2505,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:echo",
@@ -2538,7 +2556,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:printf",
@@ -2589,7 +2607,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:test",
@@ -2640,7 +2658,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:file",
@@ -2691,7 +2709,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:wc",
@@ -2742,7 +2760,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:head",
@@ -2793,7 +2811,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:tail",
@@ -2844,7 +2862,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:nl",
@@ -2895,7 +2913,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:tac",
@@ -2946,7 +2964,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:rev",
@@ -2997,7 +3015,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:fold",
@@ -3048,7 +3066,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:cut",
@@ -3099,7 +3117,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:tr",
@@ -3150,7 +3168,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:expr",
@@ -3201,7 +3219,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:numfmt",
@@ -3252,7 +3270,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:comm",
@@ -3303,7 +3321,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:join",
@@ -3354,7 +3372,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:paste",
@@ -3405,7 +3423,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:column",
@@ -3456,7 +3474,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:col",
@@ -3507,7 +3525,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:uniq",
@@ -3558,7 +3576,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:grep",
@@ -3609,7 +3627,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:egrep",
@@ -3660,7 +3678,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:fgrep",
@@ -3711,7 +3729,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:diff",
@@ -3762,7 +3780,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:cmp",
@@ -3813,7 +3831,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:jq",
@@ -3864,7 +3882,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:stat",
@@ -3915,7 +3933,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:basename",
@@ -3966,7 +3984,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:dirname",
@@ -4017,7 +4035,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:realpath",
@@ -4068,7 +4086,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:readlink",
@@ -4119,7 +4137,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:date",
@@ -4170,7 +4188,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:seq",
@@ -4221,7 +4239,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:du",
@@ -4272,7 +4290,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:df",
@@ -4323,7 +4341,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:cksum",
@@ -4374,7 +4392,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:md5sum",
@@ -4425,7 +4443,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:sha256sum",
@@ -4476,7 +4494,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:which",
@@ -4527,7 +4545,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:man",
@@ -4578,7 +4596,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:true",
@@ -4629,7 +4647,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:false",
@@ -4680,7 +4698,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:set",
@@ -4731,7 +4749,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:continue",
@@ -4782,7 +4800,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:break",
@@ -4833,7 +4851,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:shift",
@@ -4884,7 +4902,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:return",
@@ -4935,7 +4953,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:local",
@@ -4986,7 +5004,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:exit",
@@ -5037,7 +5055,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:sleep",
@@ -5088,7 +5106,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:pwd",
@@ -5139,7 +5157,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:id",
@@ -5190,7 +5208,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:whoami",
@@ -5241,7 +5259,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:hostname",
@@ -5292,7 +5310,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:uname",
@@ -5343,7 +5361,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:ps",
@@ -5394,7 +5412,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:pgrep",
@@ -5445,7 +5463,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:pidof",
@@ -5496,7 +5514,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:lsof",
@@ -5547,7 +5565,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:free",
@@ -5598,7 +5616,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:uptime",
@@ -5649,7 +5667,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:nproc",
@@ -5700,7 +5718,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:xxd",
@@ -5751,7 +5769,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:od",
@@ -5802,7 +5820,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:strings",
@@ -5853,7 +5871,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:getent",
@@ -5904,7 +5922,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:zcat",
@@ -5955,7 +5973,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:[",
@@ -6006,7 +6024,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:rm",
@@ -6057,7 +6075,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "deleting files requires approval",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:rmdir",
@@ -6108,7 +6126,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "deleting directories requires approval",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:mv",
@@ -6159,7 +6177,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "moving files requires approval",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:cp",
@@ -6210,7 +6228,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "copying over files requires approval",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:install",
@@ -6261,7 +6279,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "installing over files requires approval",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:chmod",
@@ -6312,7 +6330,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "changing permissions requires approval",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:chown",
@@ -6363,7 +6381,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "changing ownership requires approval",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:ln",
@@ -6414,7 +6432,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "creating links requires approval",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:tee",
@@ -6465,7 +6483,12 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "writing files requires approval",
-        "recovery": "Prefer a file write, which the edit gates read.",
+        "recovery": [
+            {
+                "says": "write the file with an edit instead, which the edit gates read",
+                "run": [],
+            },
+        ],
     },
     {
         "rule": "shell:dd",
@@ -6520,7 +6543,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "raw device or file writes require approval",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:mount",
@@ -6571,7 +6594,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "mounting a filesystem requires approval",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:truncate",
@@ -6622,7 +6645,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "truncating files requires approval",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:kill",
@@ -6673,7 +6696,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "terminating processes requires approval",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:pkill",
@@ -6724,7 +6747,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "terminating processes requires approval",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:command",
@@ -6777,8 +6800,13 @@ SHELL_RULES: list[ShellRuleRow] = [
         "bare_reads": False,
         "value_flags": [],
         "directory_flags": [],
-        "reason": "'command' runs a program through a modified lookup",
-        "recovery": "Name the program directly.",
+        "reason": "runs a program through a modified lookup",
+        "recovery": [
+            {
+                "says": "name the program directly",
+                "run": [],
+            },
+        ],
     },
     {
         "rule": "shell:tar",
@@ -6838,7 +6866,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "archive operations write files",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:unzip",
@@ -6894,7 +6922,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "archive extraction writes files",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:zip",
@@ -6948,7 +6976,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "archive creation writes files",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:gzip",
@@ -7004,7 +7032,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "compression rewrites files",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:gunzip",
@@ -7060,7 +7088,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "decompression rewrites files",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:sudo",
@@ -7111,7 +7139,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "privilege escalation requires approval",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:doas",
@@ -7162,7 +7190,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "privilege escalation requires approval",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:su",
@@ -7213,7 +7241,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "privilege escalation requires approval",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:runuser",
@@ -7264,7 +7292,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "privilege escalation requires approval",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:sudoedit",
@@ -7315,7 +7343,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "privilege escalation requires approval",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:pkexec",
@@ -7366,7 +7394,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "privilege escalation requires approval",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:run0",
@@ -7417,7 +7445,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "privilege escalation requires approval",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:gosu",
@@ -7468,7 +7496,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "privilege escalation requires approval",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:su-exec",
@@ -7519,7 +7547,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "privilege escalation requires approval",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:setuidgid",
@@ -7570,7 +7598,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "privilege escalation requires approval",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:sg",
@@ -7621,7 +7649,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "privilege escalation requires approval",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:newgrp",
@@ -7672,7 +7700,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "privilege escalation requires approval",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:setcap",
@@ -7723,7 +7751,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "privilege escalation requires approval",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:setpriv",
@@ -7777,7 +7805,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "privilege escalation requires approval",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:capsh",
@@ -7830,7 +7858,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "privilege escalation requires approval",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:unshare",
@@ -7881,7 +7909,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "entering or making a namespace is privilege escalation, which requires approval",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:nsenter",
@@ -7932,7 +7960,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "entering or making a namespace is privilege escalation, which requires approval",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:chroot",
@@ -7983,7 +8011,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "entering or making a namespace is privilege escalation, which requires approval",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:ssh",
@@ -8034,7 +8062,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "remote access requires approval",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:scp",
@@ -8085,7 +8113,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "remote copies require approval",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:rsync",
@@ -8136,7 +8164,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "remote sync requires approval",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:make",
@@ -8193,7 +8221,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "make runs whatever its recipes say",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:npm",
@@ -8251,7 +8279,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "package tools fetch and run code",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:pnpm",
@@ -8302,7 +8330,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "package tools fetch and run code",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:yarn",
@@ -8353,7 +8381,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "package tools fetch and run code",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:apt",
@@ -8404,7 +8432,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "system package changes require approval",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:apt-get",
@@ -8455,7 +8483,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "system package changes require approval",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:pacman",
@@ -8506,7 +8534,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "system package changes require approval",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:brew",
@@ -8557,7 +8585,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "system package changes require approval",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:systemctl",
@@ -8608,7 +8636,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "service management requires approval",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:crontab",
@@ -8659,7 +8687,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "schedule changes require approval",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:yay",
@@ -8710,7 +8738,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "an AUR helper builds and installs what a user-submitted recipe says",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:paru",
@@ -8761,7 +8789,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "an AUR helper builds and installs what a user-submitted recipe says",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:pikaur",
@@ -8812,7 +8840,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "an AUR helper builds and installs what a user-submitted recipe says",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:trizen",
@@ -8863,7 +8891,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "an AUR helper builds and installs what a user-submitted recipe says",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:aurman",
@@ -8914,7 +8942,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "an AUR helper builds and installs what a user-submitted recipe says",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:pakku",
@@ -8965,7 +8993,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "an AUR helper builds and installs what a user-submitted recipe says",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:makepkg",
@@ -9016,7 +9044,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "building a package runs its PKGBUILD and can install it",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:pip",
@@ -9041,7 +9069,7 @@ SHELL_RULES: list[ShellRuleRow] = [
             },
         ],
         "effects_source": "command",
-        "refuses": "pip changes packages outside this project's lockfile",
+        "refuses": "changes packages outside this project's lockfile",
         "ask_destinations": [],
         "ask_refspecs": [],
         "force_flags": [],
@@ -9066,8 +9094,25 @@ SHELL_RULES: list[ShellRuleRow] = [
         "bare_reads": False,
         "value_flags": [],
         "directory_flags": [],
-        "reason": "pip changes packages outside this project's lockfile",
-        "recovery": "Use uv add / uv remove instead of pip.",
+        "reason": "changes packages outside this project's lockfile",
+        "recovery": [
+            {
+                "says": "add the package through uv, which keeps the lockfile",
+                "run": [
+                    "uv",
+                    "add",
+                    "<package>",
+                ],
+            },
+            {
+                "says": "or remove one",
+                "run": [
+                    "uv",
+                    "remove",
+                    "<package>",
+                ],
+            },
+        ],
     },
     {
         "rule": "shell:pip3",
@@ -9092,7 +9137,7 @@ SHELL_RULES: list[ShellRuleRow] = [
             },
         ],
         "effects_source": "command",
-        "refuses": "pip changes packages outside this project's lockfile",
+        "refuses": "changes packages outside this project's lockfile",
         "ask_destinations": [],
         "ask_refspecs": [],
         "force_flags": [],
@@ -9117,8 +9162,25 @@ SHELL_RULES: list[ShellRuleRow] = [
         "bare_reads": False,
         "value_flags": [],
         "directory_flags": [],
-        "reason": "pip changes packages outside this project's lockfile",
-        "recovery": "Use uv add / uv remove instead of pip.",
+        "reason": "changes packages outside this project's lockfile",
+        "recovery": [
+            {
+                "says": "add the package through uv, which keeps the lockfile",
+                "run": [
+                    "uv",
+                    "add",
+                    "<package>",
+                ],
+            },
+            {
+                "says": "or remove one",
+                "run": [
+                    "uv",
+                    "remove",
+                    "<package>",
+                ],
+            },
+        ],
     },
     {
         "rule": "shell:eval",
@@ -9143,7 +9205,7 @@ SHELL_RULES: list[ShellRuleRow] = [
             },
         ],
         "effects_source": "command",
-        "refuses": "eval runs text as code that nothing checked",
+        "refuses": "runs text as code that nothing checked",
         "ask_destinations": [],
         "ask_refspecs": [],
         "force_flags": [],
@@ -9168,8 +9230,13 @@ SHELL_RULES: list[ShellRuleRow] = [
         "bare_reads": False,
         "value_flags": [],
         "directory_flags": [],
-        "reason": "eval runs text as code that nothing checked",
-        "recovery": "Write the command out.",
+        "reason": "runs text as code that nothing checked",
+        "recovery": [
+            {
+                "says": "write the command out",
+                "run": [],
+            },
+        ],
     },
     {
         "rule": "shell:source",
@@ -9194,7 +9261,7 @@ SHELL_RULES: list[ShellRuleRow] = [
             },
         ],
         "effects_source": "command",
-        "refuses": "sourcing a script runs code in this shell that nothing checked",
+        "refuses": "runs a script's code in this shell, and nothing checked it",
         "ask_destinations": [],
         "ask_refspecs": [],
         "force_flags": [],
@@ -9219,8 +9286,13 @@ SHELL_RULES: list[ShellRuleRow] = [
         "bare_reads": False,
         "value_flags": [],
         "directory_flags": [],
-        "reason": "sourcing a script runs code in this shell that nothing checked",
-        "recovery": "Run the commands it holds.",
+        "reason": "runs a script's code in this shell, and nothing checked it",
+        "recovery": [
+            {
+                "says": "run the commands it holds",
+                "run": [],
+            },
+        ],
     },
     {
         "rule": "shell:.",
@@ -9245,7 +9317,7 @@ SHELL_RULES: list[ShellRuleRow] = [
             },
         ],
         "effects_source": "command",
-        "refuses": "sourcing a script runs code in this shell that nothing checked",
+        "refuses": "runs a script's code in this shell, and nothing checked it",
         "ask_destinations": [],
         "ask_refspecs": [],
         "force_flags": [],
@@ -9270,8 +9342,13 @@ SHELL_RULES: list[ShellRuleRow] = [
         "bare_reads": False,
         "value_flags": [],
         "directory_flags": [],
-        "reason": "sourcing a script runs code in this shell that nothing checked",
-        "recovery": "Run the commands it holds.",
+        "reason": "runs a script's code in this shell, and nothing checked it",
+        "recovery": [
+            {
+                "says": "run the commands it holds",
+                "run": [],
+            },
+        ],
     },
     {
         "rule": "shell:export",
@@ -9322,7 +9399,12 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "an exported variable changes what later commands see",
-        "recovery": "Set it on the command that needs it.",
+        "recovery": [
+            {
+                "says": "set it on the command that needs it",
+                "run": [],
+            },
+        ],
     },
     {
         "rule": "shell:declare",
@@ -9373,7 +9455,12 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "a declared variable changes what later commands see",
-        "recovery": "Set it on the command that needs it.",
+        "recovery": [
+            {
+                "says": "set it on the command that needs it",
+                "run": [],
+            },
+        ],
     },
     {
         "rule": "shell:unset",
@@ -9424,7 +9511,12 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "unsetting a variable changes what later commands see",
-        "recovery": "Set it on the command that needs it.",
+        "recovery": [
+            {
+                "says": "set it on the command that needs it",
+                "run": [],
+            },
+        ],
     },
     {
         "rule": "shell:curl",
@@ -9475,7 +9567,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "a download writing that file requires approval",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:wget",
@@ -9526,7 +9618,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "a download writing that file requires approval",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:uv",
@@ -9586,7 +9678,7 @@ SHELL_RULES: list[ShellRuleRow] = [
             "--directory",
         ],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:uv.pip.list",
@@ -9639,7 +9731,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:uv.pip.show",
@@ -9692,7 +9784,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:uv.pip.freeze",
@@ -9745,7 +9837,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:uv.pip.check",
@@ -9798,7 +9890,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:uv.pip.tree",
@@ -9851,7 +9943,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:uv.pip",
@@ -9901,8 +9993,25 @@ SHELL_RULES: list[ShellRuleRow] = [
         "bare_reads": False,
         "value_flags": [],
         "directory_flags": [],
-        "reason": "uv pip changes packages outside this project's lockfile",
-        "recovery": "Use uv add / uv remove, which keep the lockfile.",
+        "reason": "changes packages outside this project's lockfile",
+        "recovery": [
+            {
+                "says": "add the package with uv add, which keeps the lockfile",
+                "run": [
+                    "uv",
+                    "add",
+                    "<package>",
+                ],
+            },
+            {
+                "says": "or remove one",
+                "run": [
+                    "uv",
+                    "remove",
+                    "<package>",
+                ],
+            },
+        ],
     },
     {
         "rule": "shell:uv.tool.list",
@@ -9955,7 +10064,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:uv.tool.dir",
@@ -10008,7 +10117,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:uv.tool",
@@ -10058,8 +10167,25 @@ SHELL_RULES: list[ShellRuleRow] = [
         "bare_reads": False,
         "value_flags": [],
         "directory_flags": [],
-        "reason": "uv tool fetches and runs a package that is not a declared dependency",
-        "recovery": "Declare it with uv add and run it through uv run.",
+        "reason": "fetches and runs a package that is not a declared dependency",
+        "recovery": [
+            {
+                "says": "declare it",
+                "run": [
+                    "uv",
+                    "add",
+                    "<package>",
+                ],
+            },
+            {
+                "says": "then run it through uv",
+                "run": [
+                    "uv",
+                    "run",
+                    "<tool>",
+                ],
+            },
+        ],
     },
     {
         "rule": "shell:uv.python.list",
@@ -10112,7 +10238,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:uv.python.find",
@@ -10165,7 +10291,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:uv.python.dir",
@@ -10218,7 +10344,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:uv.python",
@@ -10268,8 +10394,25 @@ SHELL_RULES: list[ShellRuleRow] = [
         "bare_reads": False,
         "value_flags": [],
         "directory_flags": [],
-        "reason": "uv python fetches an interpreter build, or pins which one runs this project",
-        "recovery": "`uv python list` and `uv python find` show what is installed and which one runs.",
+        "reason": "fetches an interpreter build, or pins which one runs this project",
+        "recovery": [
+            {
+                "says": "see what is installed",
+                "run": [
+                    "uv",
+                    "python",
+                    "list",
+                ],
+            },
+            {
+                "says": "and which one runs",
+                "run": [
+                    "uv",
+                    "python",
+                    "find",
+                ],
+            },
+        ],
     },
     {
         "rule": "shell:uv.publish",
@@ -10319,8 +10462,8 @@ SHELL_RULES: list[ShellRuleRow] = [
         "bare_reads": False,
         "value_flags": [],
         "directory_flags": [],
-        "reason": "uv publish uploads a package where anyone can install it",
-        "recovery": "",
+        "reason": "uploads a package where anyone can install it",
+        "recovery": [],
     },
     {
         "rule": "shell:uvx",
@@ -10370,8 +10513,25 @@ SHELL_RULES: list[ShellRuleRow] = [
         "bare_reads": False,
         "value_flags": [],
         "directory_flags": [],
-        "reason": "uvx fetches and runs a package that is not a declared dependency",
-        "recovery": "Declare it with uv add and run it through uv run.",
+        "reason": "fetches and runs a package that is not a declared dependency",
+        "recovery": [
+            {
+                "says": "declare it",
+                "run": [
+                    "uv",
+                    "add",
+                    "<package>",
+                ],
+            },
+            {
+                "says": "then run it through uv",
+                "run": [
+                    "uv",
+                    "run",
+                    "<tool>",
+                ],
+            },
+        ],
     },
     {
         "rule": "shell:pyright",
@@ -10434,7 +10594,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "a pyright flag that writes files requires approval",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:mkdir",
@@ -10485,7 +10645,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:touch",
@@ -10536,7 +10696,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:ssh-add",
@@ -10590,7 +10750,12 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "credential-agent changes stay with the user",
-        "recovery": "Ask the user to run it.",
+        "recovery": [
+            {
+                "says": "ask the user to run it",
+                "run": [],
+            },
+        ],
     },
     {
         "rule": "shell:ssh-agent",
@@ -10641,7 +10806,12 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "credential-agent lifecycle stays with the user",
-        "recovery": "Ask the user to run it.",
+        "recovery": [
+            {
+                "says": "ask the user to run it",
+                "run": [],
+            },
+        ],
     },
     {
         "rule": "shell:sort",
@@ -10706,7 +10876,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "a sort flag that writes a file or runs a program requires approval",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:tree",
@@ -10759,7 +10929,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "a tree flag that writes a file requires approval",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:rg",
@@ -10824,7 +10994,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "a ripgrep flag that runs another program requires approval",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:base64",
@@ -10878,7 +11048,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "a base64 flag that writes a file requires approval",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:yq",
@@ -10935,7 +11105,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "a yq flag that edits files in place or splits into files requires approval",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:xmllint",
@@ -11001,7 +11171,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "an xmllint flag that writes files or opens a shell requires approval",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:find",
@@ -11059,7 +11229,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "a mutating find action requires approval",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:ss",
@@ -11113,7 +11283,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "killing sockets requires approval",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:nc",
@@ -11170,7 +11340,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "netcat moves data unless -z pins it to a port scan",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:cd",
@@ -11221,7 +11391,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "directory navigation",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:gh",
@@ -11272,7 +11442,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "this gh command is not classified",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:gh.pr.list",
@@ -11325,7 +11495,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:gh.pr.view",
@@ -11378,7 +11548,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:gh.pr.diff",
@@ -11431,7 +11601,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:gh.pr.status",
@@ -11484,7 +11654,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:gh.pr.checks",
@@ -11537,7 +11707,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:gh.pr.checkout",
@@ -11606,7 +11776,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "checking out a pull request puts its author's code in this tree",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:gh.pr.comment",
@@ -11662,7 +11832,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "this operation against another repository requires approval",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:gh.pr.reopen",
@@ -11718,7 +11888,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "this operation against another repository requires approval",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:gh.pr.create",
@@ -11774,7 +11944,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "this operation against another repository requires approval",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:gh.pr.edit",
@@ -11830,7 +12000,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "this operation against another repository requires approval",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:gh.pr.ready",
@@ -11886,7 +12056,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "this operation against another repository requires approval",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:gh.pr.close",
@@ -11944,7 +12114,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "deleting the branch alongside the close removes work no reopen restores",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:gh.pr.review",
@@ -12004,7 +12174,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "approving or requesting changes attests in your name",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:gh.pr.merge",
@@ -12070,7 +12240,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "--admin merges past the reviews and checks the base branch requires, and --repo merges in another repository",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:gh.pr",
@@ -12121,7 +12291,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "this gh pr operation is not classified",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:gh.issue.list",
@@ -12174,7 +12344,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:gh.issue.view",
@@ -12227,7 +12397,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:gh.issue.status",
@@ -12280,7 +12450,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:gh.issue.edit",
@@ -12336,7 +12506,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "this operation against another repository requires approval",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:gh.issue.comment",
@@ -12392,7 +12562,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "this operation against another repository requires approval",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:gh.issue.close",
@@ -12448,7 +12618,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "this operation against another repository requires approval",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:gh.issue.reopen",
@@ -12504,7 +12674,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "this operation against another repository requires approval",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:gh.issue.pin",
@@ -12560,7 +12730,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "this operation against another repository requires approval",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:gh.issue.unpin",
@@ -12616,7 +12786,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "this operation against another repository requires approval",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:gh.issue.create",
@@ -12672,7 +12842,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "this operation against another repository requires approval",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:gh.issue.delete",
@@ -12725,7 +12895,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "removing an issue from this repository is not restored by a follow-up",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:gh.issue.transfer",
@@ -12778,7 +12948,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "removing an issue from this repository is not restored by a follow-up",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:gh.issue",
@@ -12829,7 +12999,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "this gh issue operation is not classified",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:gh.run.list",
@@ -12882,7 +13052,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:gh.run.view",
@@ -12935,7 +13105,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:gh.run.watch",
@@ -12988,7 +13158,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:gh.run.rerun",
@@ -13041,7 +13211,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "changing what a workflow run is doing requires approval",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:gh.run.cancel",
@@ -13094,7 +13264,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "changing what a workflow run is doing requires approval",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:gh.run.download",
@@ -13166,7 +13336,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "a workflow artifact is code from a build",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:gh.run",
@@ -13217,7 +13387,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "this gh run operation is not classified",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:gh.repo.view",
@@ -13270,7 +13440,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:gh.repo.list",
@@ -13323,7 +13493,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:gh.repo.clone",
@@ -13392,7 +13562,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "cloning brings a repository's code into this tree",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:gh.repo.create",
@@ -13445,7 +13615,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "changing what this repository is, or creating another, requires approval",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:gh.repo.fork",
@@ -13498,7 +13668,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "changing what this repository is, or creating another, requires approval",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:gh.repo.rename",
@@ -13551,7 +13721,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "changing what this repository is, or creating another, requires approval",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:gh.repo.archive",
@@ -13604,7 +13774,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "changing what this repository is, or creating another, requires approval",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:gh.repo.delete",
@@ -13657,7 +13827,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "changing what this repository is, or creating another, requires approval",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:gh.repo.edit",
@@ -13710,7 +13880,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "changing what this repository is, or creating another, requires approval",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:gh.repo",
@@ -13761,7 +13931,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "this gh repo operation is not classified",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:gh.release.list",
@@ -13814,7 +13984,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:gh.release.view",
@@ -13867,7 +14037,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:gh.release.download",
@@ -13941,7 +14111,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "a release asset is a published binary",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:gh.release.create",
@@ -13994,7 +14164,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "a release is published where people consume it",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:gh.release.upload",
@@ -14047,7 +14217,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "a release is published where people consume it",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:gh.release.edit",
@@ -14100,7 +14270,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "a release is published where people consume it",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:gh.release.delete",
@@ -14153,7 +14323,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "a release is published where people consume it",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:gh.release",
@@ -14204,7 +14374,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "this gh release operation is not classified",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:gh.secret.list",
@@ -14257,7 +14427,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:gh.secret.set",
@@ -14310,7 +14480,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "repository secrets decide what automation can reach",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:gh.secret.delete",
@@ -14363,7 +14533,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "repository secrets decide what automation can reach",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:gh.secret",
@@ -14414,7 +14584,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "this gh secret operation is not classified",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:gh.variable.list",
@@ -14467,7 +14637,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:gh.variable.get",
@@ -14520,7 +14690,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:gh.variable.set",
@@ -14573,7 +14743,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "repository variables configure automation",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:gh.variable.delete",
@@ -14626,7 +14796,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "repository variables configure automation",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:gh.variable",
@@ -14677,7 +14847,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "this gh variable operation is not classified",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:gh.ruleset.list",
@@ -14730,7 +14900,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:gh.ruleset.view",
@@ -14783,7 +14953,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:gh.ruleset.check",
@@ -14836,7 +15006,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:gh.ruleset.create",
@@ -14889,7 +15059,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "rulesets are this repository's own protection",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:gh.ruleset.edit",
@@ -14942,7 +15112,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "rulesets are this repository's own protection",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:gh.ruleset.delete",
@@ -14995,7 +15165,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "rulesets are this repository's own protection",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:gh.ruleset",
@@ -15046,7 +15216,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "this gh ruleset operation is not classified",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:gh.workflow.list",
@@ -15099,7 +15269,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:gh.workflow.view",
@@ -15152,7 +15322,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:gh.workflow.run",
@@ -15205,7 +15375,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "dispatching or gating a workflow runs something",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:gh.workflow.enable",
@@ -15258,7 +15428,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "dispatching or gating a workflow runs something",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:gh.workflow.disable",
@@ -15311,7 +15481,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "dispatching or gating a workflow runs something",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:gh.workflow",
@@ -15362,7 +15532,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "this gh workflow operation is not classified",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:gh.cache.list",
@@ -15415,7 +15585,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:gh.cache.delete",
@@ -15468,7 +15638,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "a deleted cache is not restored by a follow-up",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:gh.cache",
@@ -15519,7 +15689,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "this gh cache operation is not classified",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:gh.auth.status",
@@ -15575,7 +15745,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "showing the token gh holds writes it into this transcript",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:gh.auth.token",
@@ -15628,7 +15798,12 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "printing the token gh holds writes it into this transcript",
-        "recovery": "gh reads its own token: run the gh command that needs it.",
+        "recovery": [
+            {
+                "says": "run the gh command that needs the token: gh reads its own",
+                "run": [],
+            },
+        ],
     },
     {
         "rule": "shell:gh.auth",
@@ -15679,7 +15854,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "this gh auth operation is not classified",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:gh.search.repos",
@@ -15732,7 +15907,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:gh.search.issues",
@@ -15785,7 +15960,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:gh.search.prs",
@@ -15838,7 +16013,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:gh.search.code",
@@ -15891,7 +16066,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:gh.search.commits",
@@ -15944,7 +16119,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:gh.search",
@@ -15995,7 +16170,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "this gh search operation is not classified",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:gh.label.list",
@@ -16048,7 +16223,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:gh.label.create",
@@ -16104,7 +16279,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "this operation against another repository requires approval",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:gh.label.edit",
@@ -16160,7 +16335,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "this operation against another repository requires approval",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:gh.label.clone",
@@ -16216,7 +16391,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "this operation against another repository requires approval",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:gh.label.delete",
@@ -16269,7 +16444,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "deleting a label removes it from everything carrying it",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:gh.label",
@@ -16320,7 +16495,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "this gh label operation is not classified",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:gh.gist.list",
@@ -16373,7 +16548,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:gh.gist.view",
@@ -16426,7 +16601,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:gh.gist.clone",
@@ -16495,7 +16670,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "a gist is somebody's code, cloned into this tree",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:gh.gist.create",
@@ -16548,7 +16723,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "a gist is published outside this repository",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:gh.gist.edit",
@@ -16601,7 +16776,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "a gist is published outside this repository",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:gh.gist.delete",
@@ -16654,7 +16829,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "a gist is published outside this repository",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:gh.gist",
@@ -16705,7 +16880,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "this gh gist operation is not classified",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:gh.project.list",
@@ -16758,7 +16933,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:gh.project.view",
@@ -16811,7 +16986,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:gh.project.item-list",
@@ -16864,7 +17039,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:gh.project.field-list",
@@ -16917,7 +17092,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:gh.project.item-add",
@@ -16973,7 +17148,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "this operation against another repository requires approval",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:gh.project.edit",
@@ -17029,7 +17204,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "this operation against another repository requires approval",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:gh.project.close",
@@ -17085,7 +17260,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "this operation against another repository requires approval",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:gh.project.create",
@@ -17138,7 +17313,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "creating or removing project state is not restored by a follow-up",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:gh.project.delete",
@@ -17191,7 +17366,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "creating or removing project state is not restored by a follow-up",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:gh.project.item-delete",
@@ -17244,7 +17419,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "creating or removing project state is not restored by a follow-up",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:gh.project",
@@ -17295,7 +17470,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "this gh project operation is not classified",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:gh.config.get",
@@ -17348,7 +17523,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:gh.config.list",
@@ -17401,7 +17576,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:gh.config.set",
@@ -17457,7 +17632,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "this operation against another repository requires approval",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:gh.config",
@@ -17508,7 +17683,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "this gh config operation is not classified",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:gh.status",
@@ -17559,7 +17734,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:gh.browse",
@@ -17610,7 +17785,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:gh.api",
@@ -17669,7 +17844,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "gh api can mutate anything",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:docker",
@@ -17731,7 +17906,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         ],
         "directory_flags": [],
         "reason": "container operations require approval",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:docker.info",
@@ -17782,7 +17957,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:docker.version",
@@ -17833,7 +18008,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:docker.ps",
@@ -17884,7 +18059,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:docker.images",
@@ -17935,7 +18110,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:docker.inspect",
@@ -17986,7 +18161,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:docker.logs",
@@ -18037,7 +18212,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:docker.top",
@@ -18088,7 +18263,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:docker.port",
@@ -18139,7 +18314,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:docker.diff",
@@ -18190,7 +18365,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:docker.history",
@@ -18241,7 +18416,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:docker.stats",
@@ -18292,7 +18467,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:docker.events",
@@ -18343,7 +18518,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:docker.container.ls",
@@ -18396,7 +18571,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:docker.container.inspect",
@@ -18449,7 +18624,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:docker.container.logs",
@@ -18502,7 +18677,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:docker.container.top",
@@ -18555,7 +18730,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:docker.container.port",
@@ -18608,7 +18783,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:docker.container.diff",
@@ -18661,7 +18836,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:docker.container.stats",
@@ -18714,7 +18889,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:docker.container",
@@ -18765,7 +18940,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "container operations require approval",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:docker.image.ls",
@@ -18818,7 +18993,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:docker.image.inspect",
@@ -18871,7 +19046,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:docker.image.history",
@@ -18924,7 +19099,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:docker.image",
@@ -18975,7 +19150,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "container operations require approval",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:docker.volume.ls",
@@ -19028,7 +19203,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:docker.volume.inspect",
@@ -19081,7 +19256,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:docker.volume",
@@ -19132,7 +19307,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "container operations require approval",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:docker.network.ls",
@@ -19185,7 +19360,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:docker.network.inspect",
@@ -19238,7 +19413,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:docker.network",
@@ -19289,7 +19464,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "container operations require approval",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:docker.context.ls",
@@ -19342,7 +19517,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:docker.context.show",
@@ -19395,7 +19570,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:docker.context.inspect",
@@ -19448,7 +19623,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:docker.context",
@@ -19499,7 +19674,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "container operations require approval",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:docker.system.df",
@@ -19552,7 +19727,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:docker.system.info",
@@ -19605,7 +19780,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:docker.system.events",
@@ -19658,7 +19833,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:docker.system",
@@ -19709,7 +19884,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "container operations require approval",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:codex",
@@ -19786,7 +19961,19 @@ SHELL_RULES: list[ShellRuleRow] = [
         ],
         "directory_flags": [],
         "reason": "a word codex does not recognize is taken as the prompt of an interactive session rather than refused",
-        "recovery": "Name a verb `codex --help` lists, or say what the session is for.",
+        "recovery": [
+            {
+                "says": "name a verb codex lists",
+                "run": [
+                    "codex",
+                    "--help",
+                ],
+            },
+            {
+                "says": "or say what the session is for",
+                "run": [],
+            },
+        ],
     },
     {
         "rule": "shell:codex.agents",
@@ -19837,7 +20024,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:codex.completion",
@@ -19888,7 +20075,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:codex.doctor",
@@ -19939,7 +20126,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:codex.features",
@@ -19990,7 +20177,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:codex.help",
@@ -20041,7 +20228,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:codex.exec",
@@ -20092,7 +20279,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "`codex exec` opens an agent or a server of its own",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:codex.e",
@@ -20143,7 +20330,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "`codex e` opens an agent or a server of its own",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:codex.review",
@@ -20194,7 +20381,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "`codex review` opens an agent or a server of its own",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:codex.resume",
@@ -20245,7 +20432,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "`codex resume` opens an agent or a server of its own",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:codex.fork",
@@ -20296,7 +20483,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "`codex fork` opens an agent or a server of its own",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:codex.sandbox",
@@ -20347,7 +20534,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "`codex sandbox` opens an agent or a server of its own",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:codex.exec-server",
@@ -20398,7 +20585,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "`codex exec-server` opens an agent or a server of its own",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:codex.queue",
@@ -20449,7 +20636,12 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "queueing a message reaches another session leaving the text only inside whichever process received it",
-        "recovery": "Use coordination_send, which records what it carries; the roster's own watcher nudges an idle Codex session through this verb once the record exists.",
+        "recovery": [
+            {
+                "says": "use `coordination_send`, which records what it carries; the roster's own watcher nudges an idle Codex session through this verb once the record exists",
+                "run": [],
+            },
+        ],
     },
     {
         "rule": "shell:codex.debug.models",
@@ -20502,7 +20694,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:codex.debug.prompt-input",
@@ -20555,7 +20747,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:codex.debug",
@@ -20606,7 +20798,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "this codex debug tool is not one that only renders",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:codex.mcp.list",
@@ -20659,7 +20851,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:codex.mcp.get",
@@ -20712,7 +20904,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:codex.mcp",
@@ -20763,7 +20955,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "an MCP server changes what every later session can reach",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:codex.plugin.list",
@@ -20816,7 +21008,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:codex.plugin",
@@ -20867,7 +21059,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "a plugin arrives from a marketplace and runs in a session",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:codex.app-server.generate-ts",
@@ -20922,7 +21114,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "the generated schema lands wherever --out names",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:codex.app-server.generate-json-schema",
@@ -20977,7 +21169,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "the generated schema lands wherever --out names",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:codex.app-server",
@@ -21028,7 +21220,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "the app server is the process every Codex session runs in",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:codex.remote-control",
@@ -21079,7 +21271,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "remote control lets a process off this machine drive a session here",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:codex.login",
@@ -21130,7 +21322,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "stored Codex credentials are what every session runs as",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:codex.logout",
@@ -21181,7 +21373,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "stored Codex credentials are what every session runs as",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:codex.update",
@@ -21232,7 +21424,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "updating replaces the CLI every session here runs",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:codex.apply",
@@ -21283,7 +21475,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "applying a diff writes over whatever the tree holds now",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:codex.a",
@@ -21334,7 +21526,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "applying a diff writes over whatever the tree holds now",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:codex.delete",
@@ -21385,7 +21577,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "a saved session is not in the object store",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:codex.migrate-rollouts",
@@ -21436,7 +21628,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "a saved session is not in the object store",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:codex.archive",
@@ -21487,7 +21679,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "which saved sessions are listed is shared state",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:codex.unarchive",
@@ -21538,7 +21730,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "which saved sessions are listed is shared state",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:codex.cloud",
@@ -21589,7 +21781,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "cloud tasks arrive from off this machine and land here",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:lup-devtools",
@@ -21640,7 +21832,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "reach this toolchain through `uv run lup-devtools`, which guarantees the environment it runs in \u2014 only the conflict workflow, whose commands must start while the manifest does not parse, is documented without it",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:lup-devtools.review.approve",
@@ -21693,7 +21885,12 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "a requesting agent cannot approve or decline a review",
-        "recovery": "The operator answers on the dashboard or from a terminal outside the agent session.",
+        "recovery": [
+            {
+                "says": "the operator answers on the dashboard, or from a terminal outside the agent session",
+                "run": [],
+            },
+        ],
     },
     {
         "rule": "shell:lup-devtools.review.decline",
@@ -21746,7 +21943,12 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "a requesting agent cannot approve or decline a review",
-        "recovery": "The operator answers on the dashboard or from a terminal outside the agent session.",
+        "recovery": [
+            {
+                "says": "the operator answers on the dashboard, or from a terminal outside the agent session",
+                "run": [],
+            },
+        ],
     },
     {
         "rule": "shell:lup-devtools.review",
@@ -21797,7 +21999,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "reach this toolchain through `uv run lup-devtools`, which guarantees the environment it runs in \u2014 only the conflict workflow, whose commands must start while the manifest does not parse, is documented without it",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:lup-devtools.dashboard.serve",
@@ -21850,7 +22052,12 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "a requesting agent cannot mint operator credentials for the dashboard",
-        "recovery": "The operator serves it from a terminal outside the agent session.",
+        "recovery": [
+            {
+                "says": "the operator serves it from a terminal outside the agent session",
+                "run": [],
+            },
+        ],
     },
     {
         "rule": "shell:lup-devtools.dashboard.open",
@@ -21903,7 +22110,22 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "a requesting agent cannot read the dashboard's operator credentials",
-        "recovery": "`dashboard status` says where it is; the operator opens it from a terminal outside the agent session.",
+        "recovery": [
+            {
+                "says": "see where it is",
+                "run": [
+                    "uv",
+                    "run",
+                    "lup-devtools",
+                    "dashboard",
+                    "status",
+                ],
+            },
+            {
+                "says": "the operator opens it from a terminal outside the agent session",
+                "run": [],
+            },
+        ],
     },
     {
         "rule": "shell:lup-devtools.dashboard.stop",
@@ -21956,7 +22178,16 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "a requesting agent cannot stop the operator's dashboard",
-        "recovery": "The operator stops it from a terminal outside the agent session; it stops by itself once the last session ends.",
+        "recovery": [
+            {
+                "says": "the operator stops it from a terminal outside the agent session",
+                "run": [],
+            },
+            {
+                "says": "or leave it: it stops by itself once the last session ends",
+                "run": [],
+            },
+        ],
     },
     {
         "rule": "shell:lup-devtools.dashboard.reopen",
@@ -22009,7 +22240,12 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "a requesting agent cannot change how the dashboard reaches the operator",
-        "recovery": "The operator turns it on or off from a terminal outside the agent session, or in their lup config's [dashboard].",
+        "recovery": [
+            {
+                "says": "the operator turns it on or off from a terminal outside the agent session, or in their lup config's `[dashboard]` table",
+                "run": [],
+            },
+        ],
     },
     {
         "rule": "shell:lup-devtools.dashboard.restart",
@@ -22062,7 +22298,16 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "a requesting agent cannot restart the operator's dashboard",
-        "recovery": "The operator restarts it from a terminal outside the agent session; it restarts by itself once its checkout's code moves.",
+        "recovery": [
+            {
+                "says": "the operator restarts it from a terminal outside the agent session",
+                "run": [],
+            },
+            {
+                "says": "or leave it: it restarts by itself once its checkout's code moves",
+                "run": [],
+            },
+        ],
     },
     {
         "rule": "shell:lup-devtools.dashboard",
@@ -22113,7 +22358,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "reach this toolchain through `uv run lup-devtools`, which guarantees the environment it runs in \u2014 only the conflict workflow, whose commands must start while the manifest does not parse, is documented without it",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:lup-devtools.dev",
@@ -22164,7 +22409,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "reach this toolchain through `uv run lup-devtools`, which guarantees the environment it runs in \u2014 only the conflict workflow, whose commands must start while the manifest does not parse, is documented without it",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:lup-devtools.harness.policy-refresh",
@@ -22217,7 +22462,12 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "a requesting agent cannot accept replacement destination policy",
-        "recovery": "The operator must refresh from a terminal outside the agent session.",
+        "recovery": [
+            {
+                "says": "the operator refreshes it from a terminal outside the agent session",
+                "run": [],
+            },
+        ],
     },
     {
         "rule": "shell:lup-devtools.harness",
@@ -22268,7 +22518,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "reach this toolchain through `uv run lup-devtools`, which guarantees the environment it runs in \u2014 only the conflict workflow, whose commands must start while the manifest does not parse, is documented without it",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:lup-devtools.sync",
@@ -22319,7 +22569,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "reach this toolchain through `uv run lup-devtools`, which guarantees the environment it runs in \u2014 only the conflict workflow, whose commands must start while the manifest does not parse, is documented without it",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:lup-devtools.git.conflict",
@@ -22372,7 +22622,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:lup-devtools.git",
@@ -22423,7 +22673,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "reach this toolchain through `uv run lup-devtools`, which guarantees the environment it runs in \u2014 only the conflict workflow, whose commands must start while the manifest does not parse, is documented without it",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:git",
@@ -22528,7 +22778,7 @@ SHELL_RULES: list[ShellRuleRow] = [
             "-C",
         ],
         "reason": "this git subcommand is not classified as read-only or reversible",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:git.status",
@@ -22579,7 +22829,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:git.rev-parse",
@@ -22630,7 +22880,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:git.ls-files",
@@ -22681,7 +22931,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:git.ls-tree",
@@ -22732,7 +22982,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:git.ls-remote",
@@ -22783,7 +23033,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:git.cat-file",
@@ -22834,7 +23084,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:git.blame",
@@ -22885,7 +23135,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:git.annotate",
@@ -22936,7 +23186,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:git.describe",
@@ -22987,7 +23237,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:git.rev-list",
@@ -23038,7 +23288,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:git.name-rev",
@@ -23089,7 +23339,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:git.merge-base",
@@ -23140,7 +23390,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:git.show-ref",
@@ -23191,7 +23441,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:git.for-each-ref",
@@ -23242,7 +23492,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:git.count-objects",
@@ -23293,7 +23543,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:git.cherry",
@@ -23344,7 +23594,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:git.check-ignore",
@@ -23395,7 +23645,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:git.check-attr",
@@ -23446,7 +23696,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:git.check-mailmap",
@@ -23497,7 +23747,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:git.check-ref-format",
@@ -23548,7 +23798,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:git.column",
@@ -23599,7 +23849,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:git.fmt-merge-msg",
@@ -23650,7 +23900,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:git.show-branch",
@@ -23701,7 +23951,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:git.show-index",
@@ -23752,7 +24002,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:git.verify-commit",
@@ -23803,7 +24053,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:git.verify-tag",
@@ -23854,7 +24104,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:git.verify-pack",
@@ -23905,7 +24155,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:git.pack-redundant",
@@ -23956,7 +24206,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:git.fsck",
@@ -24007,7 +24257,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:git.patch-id",
@@ -24058,7 +24308,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:git.request-pull",
@@ -24109,7 +24359,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:git.stripspace",
@@ -24160,7 +24410,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:git.get-tar-commit-id",
@@ -24211,7 +24461,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:git.var",
@@ -24262,7 +24512,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:git.version",
@@ -24313,7 +24563,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:git.help",
@@ -24364,7 +24614,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:git.merge-tree",
@@ -24415,7 +24665,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:git.hash-object",
@@ -24466,7 +24716,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:git.commit-tree",
@@ -24517,7 +24767,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:git.mktree",
@@ -24568,7 +24818,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:git.mktag",
@@ -24619,7 +24869,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:git.write-tree",
@@ -24670,7 +24920,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:git.add",
@@ -24721,7 +24971,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:git.commit",
@@ -24772,7 +25022,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:git.mv",
@@ -24823,7 +25073,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:git.cherry-pick",
@@ -24874,7 +25124,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:git.revert",
@@ -24925,7 +25175,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:git.notes",
@@ -24976,7 +25226,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:git.stage",
@@ -25027,7 +25277,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:git.merge",
@@ -25078,7 +25328,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:git.log",
@@ -25131,7 +25381,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "writing command output to a file requires approval",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:git.diff",
@@ -25184,7 +25434,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "writing command output to a file requires approval",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:git.show",
@@ -25237,7 +25487,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "writing command output to a file requires approval",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:git.whatchanged",
@@ -25290,7 +25540,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "writing command output to a file requires approval",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:git.diff-tree",
@@ -25343,7 +25593,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "writing command output to a file requires approval",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:git.diff-index",
@@ -25396,7 +25646,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "writing command output to a file requires approval",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:git.diff-files",
@@ -25449,7 +25699,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "writing command output to a file requires approval",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:git.diff-pairs",
@@ -25502,7 +25752,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "writing command output to a file requires approval",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:git.range-diff",
@@ -25555,7 +25805,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "writing command output to a file requires approval",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:git.shortlog",
@@ -25608,7 +25858,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "writing command output to a file requires approval",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:git.grep",
@@ -25671,7 +25921,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "opening matches in an arbitrary program requires approval",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:git.archive",
@@ -25745,7 +25995,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "archiving another repository, or through a program a flag names, requires approval",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:git.rebase",
@@ -25808,7 +26058,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "replaying commits through a shell command requires approval",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:git.fetch",
@@ -25869,7 +26119,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "overriding the transport program requires approval",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:git.pull",
@@ -25930,7 +26180,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "overriding the transport program requires approval",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:git.push",
@@ -26012,7 +26262,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         ],
         "directory_flags": [],
         "reason": "deleting a remote branch loses work no later push restores, and --repo or --receive-pack redirects the push; each needs approval",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:git.clone",
@@ -26081,7 +26331,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "cloning fetches external code",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:git.apply",
@@ -26144,7 +26394,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "a patch that writes outside the working area requires approval",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:git.merge-file",
@@ -26198,7 +26448,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "merging into a file replaces what it holds",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:git.restore",
@@ -26249,7 +26499,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "restoring files discards working-tree changes",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:git.rm",
@@ -26303,7 +26553,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "removing tracked files requires approval",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:git.clean",
@@ -26357,7 +26607,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "deleting untracked files is destructive",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:git.config.get",
@@ -26414,7 +26664,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "reading a configuration file somebody named requires approval",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:git.config.list",
@@ -26471,7 +26721,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "reading a configuration file somebody named requires approval",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:git.config.edit",
@@ -26524,7 +26774,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "this git config write changes keys it does not name",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:git.config.rename-section",
@@ -26577,7 +26827,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "this git config write changes keys it does not name",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:git.config.remove-section",
@@ -26630,7 +26880,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "this git config write changes keys it does not name",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:git.config",
@@ -26739,7 +26989,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         ],
         "directory_flags": [],
         "reason": "this git config write can change what program git runs, which repository it talks to, or what a later push forces or deletes",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:git.checkout",
@@ -26790,7 +27040,24 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "this project checks out through git switch and git restore",
-        "recovery": "Use git switch for branches or git restore for files.",
+        "recovery": [
+            {
+                "says": "switch branches with git switch",
+                "run": [
+                    "git",
+                    "switch",
+                    "<branch>",
+                ],
+            },
+            {
+                "says": "restore files with git restore",
+                "run": [
+                    "git",
+                    "restore",
+                    "<path>",
+                ],
+            },
+        ],
     },
     {
         "rule": "shell:git.reflog.expire",
@@ -26843,7 +27110,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "expiring reflog entries is destructive",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:git.reflog.delete",
@@ -26896,7 +27163,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "deleting reflog entries is destructive",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:git.reflog",
@@ -26947,7 +27214,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:git.branch",
@@ -27005,7 +27272,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "deleting or moving a branch requires approval",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:git.bisect.log",
@@ -27058,7 +27325,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:git.bisect.view",
@@ -27113,7 +27380,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "writing command output to a file requires approval",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:git.bisect",
@@ -27164,7 +27431,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "a bisect step moves HEAD across commits",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:git.submodule.status",
@@ -27217,7 +27484,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:git.submodule.summary",
@@ -27270,7 +27537,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:git.submodule",
@@ -27329,7 +27596,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "submodule operations fetch and check out external code",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:git.tag",
@@ -27383,7 +27650,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "deleting a tag requires approval",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:git.symbolic-ref",
@@ -27434,7 +27701,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "pointing a symbolic ref somewhere else moves HEAD",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:git.reset",
@@ -27498,7 +27765,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "a working-tree-destroying reset requires approval",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:git.switch",
@@ -27562,7 +27829,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "a force switch can discard working-tree changes",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:git.worktree.list",
@@ -27615,7 +27882,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:git.worktree.add",
@@ -27676,7 +27943,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:git.worktree.move",
@@ -27729,7 +27996,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:git.worktree.repair",
@@ -27782,7 +28049,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:git.worktree.lock",
@@ -27835,7 +28102,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:git.worktree.unlock",
@@ -27888,7 +28155,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "unlocking a worktree releases a hold another session may own",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:git.worktree.remove",
@@ -27941,7 +28208,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "removing a worktree deletes it",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:git.worktree.prune",
@@ -27994,7 +28261,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "pruning worktrees is destructive",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:git.worktree",
@@ -28045,7 +28312,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "this worktree operation is not classified",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:git.stash.list",
@@ -28100,7 +28367,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "writing command output to a file requires approval",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:git.stash.show",
@@ -28155,7 +28422,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "writing command output to a file requires approval",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:git.stash.push",
@@ -28208,7 +28475,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:git.stash.save",
@@ -28261,7 +28528,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:git.stash.pop",
@@ -28314,7 +28581,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:git.stash.apply",
@@ -28367,7 +28634,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:git.stash.drop",
@@ -28420,7 +28687,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "dropping a stash is destructive",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:git.stash.clear",
@@ -28473,7 +28740,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "clearing stashes is destructive",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:git.stash",
@@ -28524,7 +28791,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:git.remote.remove",
@@ -28577,7 +28844,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "removing a remote requires approval",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:git.remote.rm",
@@ -28630,7 +28897,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "removing a remote requires approval",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:git.remote.add",
@@ -28683,7 +28950,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "adding a remote requires approval",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:git.remote.rename",
@@ -28736,7 +29003,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "renaming a remote requires approval",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:git.remote.set-url",
@@ -28789,7 +29056,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "changing a remote URL requires approval",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:git.remote.prune",
@@ -28842,7 +29109,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "pruning a remote is destructive",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:git.remote",
@@ -28893,7 +29160,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:bun",
@@ -28947,7 +29214,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "bare interpreters and inline code are not allowed",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:bun.install",
@@ -29000,7 +29267,16 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "an install free to rewrite the lockfile resolves what this project depends on anew",
-        "recovery": "`--frozen-lockfile` restores what the lockfile already pins, and runs without asking.",
+        "recovery": [
+            {
+                "says": "restore what the lockfile already pins, which runs without asking",
+                "run": [
+                    "bun",
+                    "install",
+                    "--frozen-lockfile",
+                ],
+            },
+        ],
     },
     {
         "rule": "shell:bun.run",
@@ -29051,7 +29327,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:bun.test",
@@ -29102,7 +29378,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:bun.build",
@@ -29153,7 +29429,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:bun.add",
@@ -29204,7 +29480,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "adding a dependency changes what this project needs",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:bun.remove",
@@ -29255,7 +29531,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "removing a dependency changes what this project needs",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:bun.x",
@@ -29306,7 +29582,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "running a package that is not a declared dependency",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:tsc",
@@ -29361,7 +29637,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "emitting compiler output writes files the command does not bound",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:bunx",
@@ -29412,7 +29688,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "the package runner fetches what is not already a dependency",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:bunx.tsc",
@@ -29466,7 +29742,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "emitting compiler output writes files the command does not bound",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:npx",
@@ -29517,7 +29793,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "the package runner fetches what is not already a dependency",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:npx.tsc",
@@ -29571,7 +29847,7 @@ SHELL_RULES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "emitting compiler output writes files the command does not bound",
-        "recovery": "",
+        "recovery": [],
     },
 ]
 
@@ -29695,19 +29971,66 @@ REFUSED_TOOLS: list[RefusedToolRow] = [
         "tool": "Artifact",
         "specifier": "",
         "reason": "publishing a page puts this work outside the repository",
-        "recovery": "Run `uv run lup-devtools dev report` for everything left to implement, or the report skill to write it whole to a file named for the work, under tmp/.",
+        "recovery": [
+            {
+                "says": "list everything left to implement",
+                "run": [
+                    "uv",
+                    "run",
+                    "lup-devtools",
+                    "dev",
+                    "report",
+                ],
+            },
+            {
+                "says": "or use the report skill to write it whole to a file under tmp/, named for the work",
+                "run": [],
+            },
+        ],
     },
     {
         "tool": "Skill",
         "specifier": "artifact-design",
         "reason": "publishing a page puts this work outside the repository",
-        "recovery": "Run `uv run lup-devtools dev report` for everything left to implement, or the report skill to write it whole to a file named for the work, under tmp/.",
+        "recovery": [
+            {
+                "says": "list everything left to implement",
+                "run": [
+                    "uv",
+                    "run",
+                    "lup-devtools",
+                    "dev",
+                    "report",
+                ],
+            },
+            {
+                "says": "or use the report skill to write it whole to a file under tmp/, named for the work",
+                "run": [],
+            },
+        ],
     },
     {
         "tool": "EnterWorktree",
         "specifier": "",
         "reason": "entering a worktree this way makes Claude Code refuse ordinary shell words such as hash, alias and let for the rest of the session",
-        "recovery": "The tool call arms worktree isolation wherever the session is, and it then refuses eval, source, fc, coproc, trap, enable, mapfile, readarray, hash, bind, complete, compgen, alias and let in any argv position, even in read-only commands, so `grep -c hash file.py` stops working. `git worktree create` already made the tree: launch a session rooted in it, or address its files by absolute path from here.",
+        "recovery": [
+            {
+                "says": "make the worktree without moving this session",
+                "run": [
+                    "uv",
+                    "run",
+                    "lup-devtools",
+                    "git",
+                    "worktree",
+                    "create",
+                    "<name>",
+                ],
+            },
+            {
+                "says": "then address its files by absolute path from here, or ask the user to launch a session rooted in it",
+                "run": [],
+            },
+        ],
     },
 ]
 
@@ -29738,8 +30061,17 @@ REFUSED_PATHS: list[RefusedPathRow] = [
             "~/.ssh/config",
             "~/.ssh/authorized_keys",
         ],
-        "reason": "this path holds a key or a login, and reading it writes the secret into this transcript",
-        "recovery": "Let the program that uses it read it -- ssh, git, gh and the cloud clients each do -- and ask the user for anything that needs its contents.",
+        "reason": "holds a key or a login, and reading it writes the secret into this transcript",
+        "recovery": [
+            {
+                "says": "let the program that uses it read it: ssh, git, gh and the cloud clients each do",
+                "run": [],
+            },
+            {
+                "says": "ask the user for anything that needs its contents",
+                "run": [],
+            },
+        ],
     },
     {
         "paths": [
@@ -29747,7 +30079,12 @@ REFUSED_PATHS: list[RefusedPathRow] = [
         ],
         "exempt": [],
         "reason": "a session's wake socket is its wake handle, and a frame written to it starts that session's turn with text no roster records",
-        "recovery": "Reach the peer with `coordination_send` instead: it records the message where every session in this clone can read it, and wakes the peer through this socket itself.",
+        "recovery": [
+            {
+                "says": "reach the peer with `coordination_send` instead: it records the message where every session in this clone can read it, and wakes the peer through this socket itself",
+                "run": [],
+            },
+        ],
     },
 ]
 
@@ -29771,10 +30108,24 @@ PEER_POLICY: PeerPolicyRow | None = {
     "windows_dir": "windows",
     "member_env": "LUP_COORDINATION_MEMBER",
     "send_reason": "a native send to a session on this repository's roster leaves no record any other worktree can read",
-    "send_recovery": "Say it with `coordination_send` instead: it reaches the same peer, records it where every session in this clone can read it, and reports whether the peer's hook will put it in front of that peer's next tool call or it waits until they next look.",
+    "send_recovery": [
+        {
+            "says": "say it with `coordination_send` instead: it reaches the same peer, records it where every session in this clone can read it, and reports whether the peer's hook puts it in front of that peer's next tool call or it waits until they next look",
+            "run": [],
+        },
+    ],
     "listing_note": "This repository's own roster, which is a different population from the listing above: these are the sessions working in this clone, in whatever worktree, and they include peers no account-scoped listing can see. Reach any of them with `coordination_send`, which records what it carries. The person watching is always at `user`.",
     "claim_reason": "another live session has changed or locked this path",
-    "claim_recovery": "Writing under a held path is how two sessions overwrite each other between merges. Ask the holder with `coordination_send` first, or go ahead if you already know what they are doing; a claim expires with the session holding it, so one still standing means that session has not stopped.",
+    "claim_recovery": [
+        {
+            "says": "ask the holder with `coordination_send` first: writing under a held path is how two sessions overwrite each other between merges",
+            "run": [],
+        },
+        {
+            "says": "or go ahead if you already know what they are doing; a claim expires with the session holding it, so one still standing means that session has not stopped",
+            "run": [],
+        },
+    ],
 }
 
 AUTONOMOUS_AGENT_IDENTITIES: list[str] = [
@@ -29817,7 +30168,7 @@ RUNNER_TARGETS: list[RunnerTargetRow] = [
         ],
         "refuses": "",
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "name": "pytest",
@@ -29834,7 +30185,7 @@ RUNNER_TARGETS: list[RunnerTargetRow] = [
         ],
         "refuses": "",
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "name": "ruff",
@@ -29851,7 +30202,7 @@ RUNNER_TARGETS: list[RunnerTargetRow] = [
         ],
         "refuses": "",
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "name": "lup-devtools",
@@ -29868,7 +30219,7 @@ RUNNER_TARGETS: list[RunnerTargetRow] = [
         ],
         "refuses": "",
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "name": "examples",
@@ -29885,7 +30236,7 @@ RUNNER_TARGETS: list[RunnerTargetRow] = [
         ],
         "refuses": "",
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
 ]
 
@@ -29939,7 +30290,7 @@ RUNNER_TARGET_TABLES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:lup-devtools.review.approve",
@@ -29992,7 +30343,12 @@ RUNNER_TARGET_TABLES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "a requesting agent cannot approve or decline a review",
-        "recovery": "The operator answers on the dashboard or from a terminal outside the agent session.",
+        "recovery": [
+            {
+                "says": "the operator answers on the dashboard, or from a terminal outside the agent session",
+                "run": [],
+            },
+        ],
     },
     {
         "rule": "shell:lup-devtools.review.decline",
@@ -30045,7 +30401,12 @@ RUNNER_TARGET_TABLES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "a requesting agent cannot approve or decline a review",
-        "recovery": "The operator answers on the dashboard or from a terminal outside the agent session.",
+        "recovery": [
+            {
+                "says": "the operator answers on the dashboard, or from a terminal outside the agent session",
+                "run": [],
+            },
+        ],
     },
     {
         "rule": "shell:lup-devtools.review",
@@ -30096,7 +30457,7 @@ RUNNER_TARGET_TABLES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:lup-devtools.dashboard.serve",
@@ -30149,7 +30510,12 @@ RUNNER_TARGET_TABLES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "a requesting agent cannot mint operator credentials for the dashboard",
-        "recovery": "The operator serves it from a terminal outside the agent session.",
+        "recovery": [
+            {
+                "says": "the operator serves it from a terminal outside the agent session",
+                "run": [],
+            },
+        ],
     },
     {
         "rule": "shell:lup-devtools.dashboard.open",
@@ -30202,7 +30568,22 @@ RUNNER_TARGET_TABLES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "a requesting agent cannot read the dashboard's operator credentials",
-        "recovery": "`dashboard status` says where it is; the operator opens it from a terminal outside the agent session.",
+        "recovery": [
+            {
+                "says": "see where it is",
+                "run": [
+                    "uv",
+                    "run",
+                    "lup-devtools",
+                    "dashboard",
+                    "status",
+                ],
+            },
+            {
+                "says": "the operator opens it from a terminal outside the agent session",
+                "run": [],
+            },
+        ],
     },
     {
         "rule": "shell:lup-devtools.dashboard.stop",
@@ -30255,7 +30636,16 @@ RUNNER_TARGET_TABLES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "a requesting agent cannot stop the operator's dashboard",
-        "recovery": "The operator stops it from a terminal outside the agent session; it stops by itself once the last session ends.",
+        "recovery": [
+            {
+                "says": "the operator stops it from a terminal outside the agent session",
+                "run": [],
+            },
+            {
+                "says": "or leave it: it stops by itself once the last session ends",
+                "run": [],
+            },
+        ],
     },
     {
         "rule": "shell:lup-devtools.dashboard.reopen",
@@ -30308,7 +30698,12 @@ RUNNER_TARGET_TABLES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "a requesting agent cannot change how the dashboard reaches the operator",
-        "recovery": "The operator turns it on or off from a terminal outside the agent session, or in their lup config's [dashboard].",
+        "recovery": [
+            {
+                "says": "the operator turns it on or off from a terminal outside the agent session, or in their lup config's `[dashboard]` table",
+                "run": [],
+            },
+        ],
     },
     {
         "rule": "shell:lup-devtools.dashboard.restart",
@@ -30361,7 +30756,16 @@ RUNNER_TARGET_TABLES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "a requesting agent cannot restart the operator's dashboard",
-        "recovery": "The operator restarts it from a terminal outside the agent session; it restarts by itself once its checkout's code moves.",
+        "recovery": [
+            {
+                "says": "the operator restarts it from a terminal outside the agent session",
+                "run": [],
+            },
+            {
+                "says": "or leave it: it restarts by itself once its checkout's code moves",
+                "run": [],
+            },
+        ],
     },
     {
         "rule": "shell:lup-devtools.dashboard",
@@ -30412,7 +30816,7 @@ RUNNER_TARGET_TABLES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:lup-devtools.dev.comments",
@@ -30467,7 +30871,42 @@ RUNNER_TARGET_TABLES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "retiring a claimed-resolved note deletes what was asked, and only a reader who checked the code can say it was met",
-        "recovery": "Read the claim against the code first \u2014 `uv run lup-devtools dev comments` prints each with its original words. Where it is not met, `--restore` reopens it with those words intact, and `--narrow` reopens the part still outstanding.",
+        "recovery": [
+            {
+                "says": "read each claim, in its original words, against the code first",
+                "run": [
+                    "uv",
+                    "run",
+                    "lup-devtools",
+                    "dev",
+                    "comments",
+                ],
+            },
+            {
+                "says": "where it is not met, reopen it with those words intact",
+                "run": [
+                    "uv",
+                    "run",
+                    "lup-devtools",
+                    "dev",
+                    "comments",
+                    "--restore",
+                    "<file:line>",
+                ],
+            },
+            {
+                "says": "or reopen only the part still outstanding",
+                "run": [
+                    "uv",
+                    "run",
+                    "lup-devtools",
+                    "dev",
+                    "comments",
+                    "--narrow",
+                    "<file:line>",
+                ],
+            },
+        ],
     },
     {
         "rule": "shell:lup-devtools.dev.seams",
@@ -30533,7 +30972,22 @@ RUNNER_TARGET_TABLES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "`--retire` and `--retire-all` stop the scan rules this project holds itself to, and `--disown` hands a human-owned file to the agent",
-        "recovery": "`dev seams` alone prints every seam and where it is written; where nobody can approve the change, report the command for the user to run.",
+        "recovery": [
+            {
+                "says": "see every seam and where it is written",
+                "run": [
+                    "uv",
+                    "run",
+                    "lup-devtools",
+                    "dev",
+                    "seams",
+                ],
+            },
+            {
+                "says": "where nobody can approve the change, report the command for the user to run",
+                "run": [],
+            },
+        ],
     },
     {
         "rule": "shell:lup-devtools.dev.report-friction",
@@ -30588,7 +31042,44 @@ RUNNER_TARGET_TABLES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "a friction report filed on a named tracker opens an issue that repository's watchers are notified of",
-        "recovery": "Unnamed, the report is filed on this checkout's own repository. One that belongs on another tracker is this question; where nobody can approve it, report the command for the user to run. `--issue N` adds to a report already filed, and `dev issues` lists the open ones.",
+        "recovery": [
+            {
+                "says": "file it on this checkout's own repository, which needs no approval",
+                "run": [
+                    "uv",
+                    "run",
+                    "lup-devtools",
+                    "dev",
+                    "report-friction",
+                ],
+            },
+            {
+                "says": "or add to a report already filed",
+                "run": [
+                    "uv",
+                    "run",
+                    "lup-devtools",
+                    "dev",
+                    "report-friction",
+                    "--issue",
+                    "<number>",
+                ],
+            },
+            {
+                "says": "see the open ones",
+                "run": [
+                    "uv",
+                    "run",
+                    "lup-devtools",
+                    "dev",
+                    "issues",
+                ],
+            },
+            {
+                "says": "where nobody can approve a report on another tracker, report the command for the user to run",
+                "run": [],
+            },
+        ],
     },
     {
         "rule": "shell:lup-devtools.dev.init.upstream",
@@ -30645,7 +31136,24 @@ RUNNER_TARGET_TABLES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "rewrites the URL of the committed lup registration, the repository every later launch clones and mounts under it",
-        "recovery": "`--dry-run` prints the URL it would write and writes nothing; where nobody can approve the write, report that URL for the user.",
+        "recovery": [
+            {
+                "says": "print the URL it would write, writing nothing",
+                "run": [
+                    "uv",
+                    "run",
+                    "lup-devtools",
+                    "dev",
+                    "init",
+                    "upstream",
+                    "--dry-run",
+                ],
+            },
+            {
+                "says": "where nobody can approve the write, report that URL for the user",
+                "run": [],
+            },
+        ],
     },
     {
         "rule": "shell:lup-devtools.dev.library.git",
@@ -30713,7 +31221,33 @@ RUNNER_TARGET_TABLES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "the lup registration follows this pin, so `--url` names the repository every later launch clones and mounts under it",
-        "recovery": "Without `--url` the pin keeps the repository it names and only the ref moves; `--dry-run` shows the change without writing it.",
+        "recovery": [
+            {
+                "says": "leave out `--url`: the pin keeps the repository it names, and only the ref moves",
+                "run": [
+                    "uv",
+                    "run",
+                    "lup-devtools",
+                    "dev",
+                    "library",
+                    "git",
+                ],
+            },
+            {
+                "says": "see the change without writing it",
+                "run": [
+                    "uv",
+                    "run",
+                    "lup-devtools",
+                    "dev",
+                    "library",
+                    "git",
+                    "--url",
+                    "<url>",
+                    "--dry-run",
+                ],
+            },
+        ],
     },
     {
         "rule": "shell:lup-devtools.dev.migrate.pyright-environment",
@@ -30769,7 +31303,20 @@ RUNNER_TARGET_TABLES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "retiring Pyright environment defaults rewrites protected pyproject.toml",
-        "recovery": "Review the change with --dry-run before applying the migration.",
+        "recovery": [
+            {
+                "says": "see the change before applying the migration",
+                "run": [
+                    "uv",
+                    "run",
+                    "lup-devtools",
+                    "dev",
+                    "migrate",
+                    "pyright-environment",
+                    "--dry-run",
+                ],
+            },
+        ],
     },
     {
         "rule": "shell:lup-devtools.dev",
@@ -30820,7 +31367,7 @@ RUNNER_TARGET_TABLES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:lup-devtools.harness.policy-refresh",
@@ -30873,7 +31420,12 @@ RUNNER_TARGET_TABLES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "a requesting agent cannot accept replacement destination policy",
-        "recovery": "The operator must refresh from a terminal outside the agent session.",
+        "recovery": [
+            {
+                "says": "the operator refreshes it from a terminal outside the agent session",
+                "run": [],
+            },
+        ],
     },
     {
         "rule": "shell:lup-devtools.harness.claude",
@@ -30954,7 +31506,23 @@ RUNNER_TARGET_TABLES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "`--mount`, `--mount-ro` and `--device` hand a host folder or device to the session this launches, and `--sandbox none` opens it with no boundary",
-        "recovery": "`--generate-only` generates without launching. A session that needs another folder, a device or no boundary is the user's to open, from their own terminal.",
+        "recovery": [
+            {
+                "says": "generate without launching",
+                "run": [
+                    "uv",
+                    "run",
+                    "lup-devtools",
+                    "harness",
+                    "claude",
+                    "--generate-only",
+                ],
+            },
+            {
+                "says": "a session that needs another folder, a device or no boundary is the user's to open, from their own terminal",
+                "run": [],
+            },
+        ],
     },
     {
         "rule": "shell:lup-devtools.harness.codex",
@@ -31035,7 +31603,23 @@ RUNNER_TARGET_TABLES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "`--mount`, `--mount-ro` and `--device` hand a host folder or device to the session this launches, and `--sandbox none` opens it with no boundary",
-        "recovery": "`--generate-only` generates without launching. A session that needs another folder, a device or no boundary is the user's to open, from their own terminal.",
+        "recovery": [
+            {
+                "says": "generate without launching",
+                "run": [
+                    "uv",
+                    "run",
+                    "lup-devtools",
+                    "harness",
+                    "codex",
+                    "--generate-only",
+                ],
+            },
+            {
+                "says": "a session that needs another folder, a device or no boundary is the user's to open, from their own terminal",
+                "run": [],
+            },
+        ],
     },
     {
         "rule": "shell:lup-devtools.harness",
@@ -31086,7 +31670,7 @@ RUNNER_TARGET_TABLES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:lup-devtools.sync.setup",
@@ -31139,7 +31723,22 @@ RUNNER_TARGET_TABLES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "the path a registration names is what its mount opens to every later launch, at the mode `--mount` gives or its declaration already carries",
-        "recovery": "A registration decides what every later launch reaches, so widening one is the user's call: `sync status` shows what each reaches now, and where nobody can approve this, report the command for the user to run.",
+        "recovery": [
+            {
+                "says": "see what each registration reaches now; widening one is the user's call, since every later launch reaches it",
+                "run": [
+                    "uv",
+                    "run",
+                    "lup-devtools",
+                    "sync",
+                    "status",
+                ],
+            },
+            {
+                "says": "where nobody can approve this, report the command for the user to run",
+                "run": [],
+            },
+        ],
     },
     {
         "rule": "shell:lup-devtools.sync.remote",
@@ -31192,7 +31791,22 @@ RUNNER_TARGET_TABLES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "a registration's remote is the repository every later launch clones and mounts under its name",
-        "recovery": "A registration decides what every later launch reaches, so widening one is the user's call: `sync status` shows what each reaches now, and where nobody can approve this, report the command for the user to run.",
+        "recovery": [
+            {
+                "says": "see what each registration reaches now; widening one is the user's call, since every later launch reaches it",
+                "run": [
+                    "uv",
+                    "run",
+                    "lup-devtools",
+                    "sync",
+                    "status",
+                ],
+            },
+            {
+                "says": "where nobody can approve this, report the command for the user to run",
+                "run": [],
+            },
+        ],
     },
     {
         "rule": "shell:lup-devtools.sync.grant",
@@ -31245,7 +31859,22 @@ RUNNER_TARGET_TABLES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "a device grant hands that host device to every session later launched on this machine",
-        "recovery": "A registration decides what every later launch reaches, so widening one is the user's call: `sync status` shows what each reaches now, and where nobody can approve this, report the command for the user to run.",
+        "recovery": [
+            {
+                "says": "see what each registration reaches now; widening one is the user's call, since every later launch reaches it",
+                "run": [
+                    "uv",
+                    "run",
+                    "lup-devtools",
+                    "sync",
+                    "status",
+                ],
+            },
+            {
+                "says": "where nobody can approve this, report the command for the user to run",
+                "run": [],
+            },
+        ],
     },
     {
         "rule": "shell:lup-devtools.sync",
@@ -31296,7 +31925,7 @@ RUNNER_TARGET_TABLES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
     {
         "rule": "shell:lup-devtools.git.delete",
@@ -31354,7 +31983,19 @@ RUNNER_TARGET_TABLES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "`--remote` deletes origin's copy of the branch even where it holds commits no other branch has",
-        "recovery": "Without `--remote`, origin's copy goes only once the integration branch holds its commits.",
+        "recovery": [
+            {
+                "says": "leave out `--remote`: origin's copy then goes only once the integration branch holds its commits",
+                "run": [
+                    "uv",
+                    "run",
+                    "lup-devtools",
+                    "git",
+                    "delete",
+                    "<branch>",
+                ],
+            },
+        ],
     },
     {
         "rule": "shell:lup-devtools.git",
@@ -31405,7 +32046,7 @@ RUNNER_TARGET_TABLES: list[ShellRuleRow] = [
         "value_flags": [],
         "directory_flags": [],
         "reason": "",
-        "recovery": "",
+        "recovery": [],
     },
 ]
 

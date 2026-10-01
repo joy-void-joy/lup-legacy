@@ -25,6 +25,7 @@ the call's arguments.
 """
 
 from .decision import KernelDecision
+from .diagnostic import step
 from .rows import SpawnNameRow
 from .tools import TOOL_ESCALATE_HINT, escalated_reason
 
@@ -120,9 +121,12 @@ def decide_spawn(
     if named:
         return KernelDecision("defer", f"the spawn goes out named {named!r}")
     recovery = (
-        f"pass the name as `{field}` in the same call, beside the agent type"
-        " — the runtime takes that key whether or not the tool schema it showed"
-        f" lists it: {row['recovery']}"
+        step(
+            f"pass the name as `{field}` in the same call, beside the agent type;"
+            " the runtime takes that key whether or not the tool schema it showed"
+            " lists it"
+        ),
+        *row["recovery"],
     )
     why = escalated_reason(values)
     if why:
@@ -130,5 +134,5 @@ def decide_spawn(
             "ask", f"escalated ({why}): {row['reason']}", recovery=recovery
         )
     return KernelDecision(
-        "deny", row["reason"], recovery=f"{recovery} {TOOL_ESCALATE_HINT}"
+        "deny", row["reason"], recovery=(*recovery, *TOOL_ESCALATE_HINT)
     )

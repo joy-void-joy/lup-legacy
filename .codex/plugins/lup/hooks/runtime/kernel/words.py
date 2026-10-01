@@ -17,7 +17,10 @@ from .decision import (
 )
 from .edit import path_rule_matches, protected_path_reason, yields_to_scratch
 from .programs import InterpreterGrammar, ReadOption, grammar, read_options
+from .diagnostic import step
 from .roles import (
+    GENERATED_ARTIFACT_RECOVERY,
+    GENERATED_ARTIFACT_REFUSAL,
     GENERATED_PLUGIN_RECOVERY,
     GENERATED_PLUGIN_REFUSAL,
     declared_scratch,
@@ -703,9 +706,14 @@ def unread_question(path: str) -> KernelDecision:
         checkpoint=write_checkpoint("production"),
         purpose="quality_review",
         recovery=(
-            "write into a scratch path and move the result in once it has been"
-            " read, or carry the content in the command so the edit gates read"
-            " it as they would an Edit"
+            step(
+                "write into a scratch path, and move the result in once it has"
+                " been read"
+            ),
+            step(
+                "or carry the content in the command, so the edit gates read it"
+                " as they would an edit"
+            ),
         ),
     )
 
@@ -725,8 +733,10 @@ def unlocated_write(named: str) -> KernelDecision:
         checkpoint=write_checkpoint("unbounded"),
         purpose="unrecovered_local_mutation",
         recovery=(
-            "bind the path to a literal value first, so the write is judged"
-            " where it lands"
+            step(
+                "bind the path to a literal value first, so the write is judged"
+                " where it lands"
+            ),
         ),
     )
 
@@ -1292,14 +1302,29 @@ def refuses_generated_plugin_target(
     spelling is then not where the bytes go. Without the roles nothing is
     scratch, and every plugin-shaped path is refused.
     """
+    relative = repository_relative(word, checkout_root)
+    if (
+        spells_its_path(relative)
+        and path_role(relative, path_roles or []) == "generated"
+    ):
+        return KernelDecision(
+            "deny",
+            GENERATED_ARTIFACT_REFUSAL,
+            cause="deliberate",
+            recovery=GENERATED_ARTIFACT_RECOVERY,
+            subject=word,
+        )
     if not is_generated_plugin_target(word):
         return None
-    if declared_scratch(
-        repository_relative(word, checkout_root), path_roles or []
-    ) and all(row["path"] != word for row in displaced or []):
+    if declared_scratch(relative, path_roles or []) and all(
+        row["path"] != word for row in displaced or []
+    ):
         return None
     return KernelDecision(
-        "deny", GENERATED_PLUGIN_REFUSAL, recovery=GENERATED_PLUGIN_RECOVERY
+        "deny",
+        GENERATED_PLUGIN_REFUSAL,
+        recovery=GENERATED_PLUGIN_RECOVERY,
+        subject=word,
     )
 
 
@@ -1453,6 +1478,7 @@ def protected_write_target(
                 "ask",
                 protected_path_reason(word, matched),
                 recovery=matched["recovery"],
+                subject=word,
             )
     return None
 
@@ -1673,9 +1699,11 @@ def protected_deletion(
         reason = (
             protected_path_reason(operand, matched)
             if path_rule_matches(spelled, True, matched)
-            else f"{operand} would delete {matched['value']}: {matched['reason']}"
+            else f"would delete `{matched['value']}`: {matched['reason']}"
         )
-        return KernelDecision("ask", reason, recovery=matched["recovery"])
+        return KernelDecision(
+            "ask", reason, recovery=matched["recovery"], subject=operand
+        )
     return None
 
 
@@ -1738,6 +1766,7 @@ def protected_placement(
                 "ask",
                 protected_path_reason(posixpath.normpath(word), matched),
                 recovery=matched["recovery"],
+                subject=posixpath.normpath(word),
             )
     lands = PATH_VERBS[executable]["lands"] if executable in PATH_VERBS else "each"
     operands = path_verb_operands(words)["operands"] if lands != "each" else []
@@ -1771,9 +1800,11 @@ def protected_placement(
         reason = (
             protected_path_reason(shown, matched)
             if path_rule_matches(spelled, True, matched)
-            else f"{shown} would {verb} {matched['value']}: {matched['reason']}"
+            else f"would {verb} `{matched['value']}`: {matched['reason']}"
         )
-        return KernelDecision("ask", reason, recovery=matched["recovery"])
+        return KernelDecision(
+            "ask", reason, recovery=matched["recovery"], subject=shown
+        )
     return None
 
 
@@ -2739,7 +2770,8 @@ def sed_invocation(words: list[str]) -> SedInvocation | KernelDecision:
                 return KernelDecision(
                     "deny",
                     "a sed script file is run without anything reading it",
-                    recovery="Inline the script.",
+                    recovery=(step("write the script into the command itself"),),
+                    subject="sed --file",
                 )
             if name == "--sandbox" and not separator:
                 sandbox = True
@@ -2768,7 +2800,8 @@ def sed_invocation(words: list[str]) -> SedInvocation | KernelDecision:
                 return KernelDecision(
                     "deny",
                     "a sed script file is run without anything reading it",
-                    recovery="Inline the script.",
+                    recovery=(step("write the script into the command itself"),),
+                    subject="sed -f",
                 )
             if flags.endswith("e"):
                 script_expected = True

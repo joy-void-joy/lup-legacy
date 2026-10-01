@@ -15,6 +15,7 @@ import sh
 from lup.devtools.dev.policy_explain import verdict_for
 import lup.policy.assets.host as policy_host
 from lup.policy.kernel.decision import KernelDecision
+from lup.policy.kernel.diagnostic import step
 from lup.policy.identity import AGENT_IDENTITY_ENV
 from lup.policy.models import EditBatch, EditChange
 from lup.policy.rules import EditPolicy
@@ -198,7 +199,7 @@ def test_unavailable_policy_never_executes_changed_code_or_falls_back(
         )
     effect, detail = native_edit(origin, owner / "value.txt", runtime)
     assert effect == "deny"
-    assert "Destination policy unavailable" in detail
+    assert "the destination's policy is unavailable" in detail
     assert not (owner / "executed").exists()
 
 
@@ -342,20 +343,22 @@ def test_protocol_preserves_all_semantic_fields_and_rejects_malformed_responses(
         hard=True,
         rule="owner:rule",
         evaluator="edit",
-        recovery="review",
+        recovery=(step("review", ["uv", "run", "lup-devtools", "dev", "check"]),),
+        subject="OWNED.md",
+        see="docs/permissions.md",
         findings=(KernelDecision("deny", "other file", hard=True),),
     )
     row = decision_wire(source)
-    restored = read_response(json.loads(json.dumps({"protocol": 1, "decision": row})))
+    restored = read_response(json.loads(json.dumps({"protocol": 2, "decision": row})))
     assert decision_wire(restored) == row
     # The caller's record of what the call does -- each file's document, the
     # steps no document shows, each command of its line with its own verdict
     # -- is bound where the call is, never carried by an owner.
     assert set(row) == set(vars(source)) - {"file_reviews", "unpreviewed", "segments"}
     for malformed in (
-        {"protocol": 2, "decision": row},
-        {"protocol": 1, "decision": {"effect": "allow"}},
-        {"protocol": 1, "decision": {**row, "reviewer": "requester"}},
+        {"protocol": 1, "decision": row},
+        {"protocol": 2, "decision": {"effect": "allow"}},
+        {"protocol": 2, "decision": {**row, "reviewer": "requester"}},
     ):
         with pytest.raises(ValueError):
             read_response(json.loads(json.dumps(malformed)))
@@ -505,7 +508,7 @@ def test_an_accepted_evaluator_failure_blocks_with_its_diagnostic(
     effect, detail = native_edit(origin, owner / "value.txt", runtime)
 
     assert effect == "deny"
-    assert "Destination policy unavailable" in detail
+    assert "the destination's policy is unavailable" in detail
     if failure == "failed":
         assert "destination failure" in detail
 

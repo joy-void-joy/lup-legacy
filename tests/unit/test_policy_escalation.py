@@ -49,7 +49,9 @@ def test_the_bare_spelling_stays_a_working_alias_and_says_so() -> None:
     assert reading.request is not None
     assert reading.request.kinds == ("decision",)
     assert reading.request.legacy is True
-    assert "escalate[sandbox]" in reading.request.notice()
+    assert any(
+        "escalate[sandbox]" in through["says"] for through in reading.request.notice()
+    )
 
 
 def test_a_marker_with_no_reason_is_refused_before_anything_reads_it() -> None:

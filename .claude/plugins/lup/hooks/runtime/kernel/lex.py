@@ -22,6 +22,7 @@ from .bindings import (
     rebuilt_lists,
 )
 from .decision import KernelDecision, unjudged
+from .diagnostic import step
 from .downloads import download_targets
 from .effects import EffectEvidence, declare, question_reach, verdict_for
 from .roles import git_state, spells_its_path
@@ -1012,7 +1013,9 @@ def resolve_redirection(
         return unjudged(
             f"the redirection target {spelled} is named from a directory a `cd`"
             " left unreadable"
-        ).advising("Spell the path in full, or run the command in its own call.")
+        ).advising(
+            (step("spell the path in full, or run the command in its own call"),)
+        )
     return written_path_verdict(
         placed,
         "the redirection",

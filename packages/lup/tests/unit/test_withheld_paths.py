@@ -12,6 +12,7 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
+from lup.policy.kernel.diagnostic import step
 from lup.policy.kernel.rows import RefusedPathRow
 from lup.policy.kernel.withheld import reaches, secret_name, withheld_path
 from lup.policy.refused_paths import (
@@ -24,7 +25,9 @@ from lup.providers.login import ProviderLogin
 ROWS: list[RefusedPathRow] = [
     credential_files().erased(),
     RefusedPaths(
-        paths=["/tmp/lup-wake/**"], reason="a wake socket", recovery="Use the tool."
+        paths=["/tmp/lup-wake/**"],
+        reason="a wake socket",
+        recovery=[step("use the tool")],
     ).erased(),
 ]
 
@@ -97,7 +100,7 @@ def test_a_word_is_placed_before_it_is_matched(
     assert (decision is not None) is refused
     if decision is not None:
         assert decision.effect == "deny"
-        assert decision.reason.startswith(word)
+        assert decision.subject == word
 
 
 @pytest.mark.parametrize(
@@ -124,11 +127,13 @@ def test_a_secret_is_named_by_the_declared_patterns(name: str, secret: bool) -> 
 def test_a_pattern_saying_nowhere_where_it_starts_is_refused() -> None:
     """A bare name would be read from wherever a command happened to stand."""
     with pytest.raises(ValidationError, match="spelled from the root"):
-        RefusedPaths(paths=[".ssh/id_rsa"], reason="keys", recovery="Ask.")
+        RefusedPaths(paths=[".ssh/id_rsa"], reason="keys", recovery=[step("ask")])
     with pytest.raises(ValidationError, match="spelled from the root"):
-        RefusedPaths(paths=["~/.ssh/**"], exempt=["x.pub"], reason="k", recovery="A.")
+        RefusedPaths(
+            paths=["~/.ssh/**"], exempt=["x.pub"], reason="k", recovery=[step("a")]
+        )
     with pytest.raises(ValidationError):
-        RefusedPaths(paths=[], reason="keys", recovery="Ask.")
+        RefusedPaths(paths=[], reason="keys", recovery=[step("ask")])
 
 
 def test_a_runtime_login_is_withheld_in_its_home_and_in_every_profile() -> None:

@@ -8,14 +8,17 @@ deny an agent can only guess its way out of is answered by guessing.
 """
 
 from .decision import KernelDecision
+from .diagnostic import step
 from .rows import RefusedToolRow
 from .shell import ESCALATE_RE
 
 # lup: ignore[constant-declaration] — it quotes the marker's own spelling, so
 # the words are fixed by what the kernel parses rather than by anyone's taste
 TOOL_ESCALATE_HINT = (
-    "Or resubmit with a leading '# lup: escalate: <why>' line in one of the"
-    " call's own inputs to put it to a reviewer."
+    step(
+        "or resubmit it with `# lup: escalate[decision]: <why>` as the first line"
+        " of one of the call's own inputs, which puts it to a reviewer"
+    ),
 )
 
 
@@ -83,7 +86,7 @@ def decide_tool(
                 "ask", f"escalated ({why}): {row['reason']}", recovery=row["recovery"]
             )
         return KernelDecision(
-            "deny", row["reason"], recovery=f"{row['recovery']} {TOOL_ESCALATE_HINT}"
+            "deny", row["reason"], recovery=(*row["recovery"], *TOOL_ESCALATE_HINT)
         )
     if any(row["tool"] == name for row in rows):
         return KernelDecision("defer", f"no refusal names this use of {name!r}")

@@ -30,6 +30,7 @@ from lup.harness.codescan.resolution import refute, resolved_sites
 from lup.harness.enforcement import declared_path_rules, declared_role_rows
 from lup.harness.models import HookSet
 from lup.policy.edit_rules import erase_edit_rules
+from lup.policy.kernel.diagnostic import Step
 from lup.policy.kernel.edit import (
     covering_suppression_line,
     decide_edit,
@@ -85,7 +86,8 @@ class EditReading(BaseModel, frozen=True):
     path: Path
     effect: Literal["allow", "ask", "deny", "defer"]
     reason: str
-    recovery: str
+    subject: str
+    recovery: tuple[Step, ...]
 
 
 class PreparedEdit(BaseModel, frozen=True):
@@ -414,6 +416,7 @@ def candidate_readings(
             path=path,
             effect=verdict.effect,
             reason=verdict.reason,
+            subject=verdict.subject,
             recovery=verdict.recovery,
         )
 
