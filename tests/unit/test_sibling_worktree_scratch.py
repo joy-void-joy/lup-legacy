@@ -117,7 +117,7 @@ def judged(command: str) -> KernelDecision:
 def test_a_repository_made_in_another_checkouts_scratch_is_a_scratch_write(
     command: str,
 ) -> None:
-    """Issue #528: the same `git init` this checkout's scratch allows."""
+    """A `git init` in another checkout's scratch is allowed as it is in this one's."""
     decided = judged(command)
 
     assert decided.effect == "allow", decided.reason
