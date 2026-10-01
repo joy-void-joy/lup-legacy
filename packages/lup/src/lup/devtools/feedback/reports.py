@@ -157,7 +157,7 @@ def costs(
 ) -> None:
     """Per-backend session cost/token rollup from session result JSONs.
 
-    The cross-backend counterpart of ``lup-devtools dev usageclaude`` (which is
+    The cross-backend counterpart of ``uv run lup-devtools dev usage claude`` (which is
     Anthropic-OAuth only): codex/openai sessions carry normalized token
     usage and rate-estimated cost in their session JSON, and this is
     where they aggregate.
