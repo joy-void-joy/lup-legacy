@@ -51,8 +51,9 @@ from lup.sessions.middleware import (
 from lup.mcp import External, ServeLaunch, ToolServer, Toolset
 from lup.tools.mcp import LupMcpServerConfig, McpServerEntry
 from lup.observability.metrics import (
-    get_metrics_summary,
+    MetricsSummary,
     log_metrics_summary,
+    read_metrics_summary,
     reset_metrics,
 )
 from lup.observability.sessions import (
@@ -812,6 +813,7 @@ def application_result(
     *,
     session_id: str,
     task_id: str | None,
+    tool_metrics: MetricsSummary,
 ) -> AgentSessionResult:
     """Project a strict typed turn result into the domain history model."""
     usage_cost = build_usage_cost()
@@ -828,7 +830,7 @@ def application_result(
         duration_seconds=result.duration.total_seconds(),
         cost_usd=usage_cost(result.usage) if usage_cost is not None else None,
         token_usage=result.usage,
-        tool_metrics=get_metrics_summary(),
+        tool_metrics=tool_metrics,
     )
 
 
@@ -850,6 +852,7 @@ async def run_agent(
         result,
         session_id=identifier,
         task_id=task_id,
+        tool_metrics=read_metrics_summary(build.notes.session),
     )
     save_session(
         projected,

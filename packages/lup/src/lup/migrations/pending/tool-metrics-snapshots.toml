@@ -1,0 +1,22 @@
+subjects = ["metrics_path", "METRICS_FILENAME", "METRICS_SUMMARY_ADAPTER"]
+reason = """
+a tool-serving process writes its metrics to a snapshot of its own under the \
+session directory's `metrics/`, where one shared `metrics.json` held only \
+whichever of a session's server processes wrote last; the directory is kept \
+to a retention window, and `read_metrics_summary` folds the snapshots with \
+the calling process's own collector"""
+
+[[steps]]
+instruction = """
+Where a tool-serving process called configure_metrics(metrics_path(session_dir)), \
+call configure_metrics(open_metrics_sink(session_dir, server_name, member)) \
+from lup.observability.metrics; configure_metrics(None) still stops writing."""
+
+[[steps]]
+instruction = """
+Read what a session's tool servers recorded with \
+read_metrics_snapshots(session_dir), one MetricsSnapshot per process, or \
+read_metrics_summary(session_dir) for this process's calls folded with theirs \
+since the collector was reset. It returns a MetricsSummary rather than None, \
+so drop any check for a missing file; merged_summary folds summaries you \
+already hold."""

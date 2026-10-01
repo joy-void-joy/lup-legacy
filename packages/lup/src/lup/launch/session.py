@@ -66,11 +66,14 @@ from lup.observability.audit import (
     TraceActor,
     TraceContext,
     TraceJournal,
+    chain_break,
+    read_observable_events,
 )
 from lup.observability.native import NativeTranscripts, NativeTranscriptWatcher
 from lup.observability.sessions import Session, SessionRecorder
 from lup.sessions.recursion import MAX_RECURSIVE_AGENT_ENV
 from lup.types import EnvVars, JsonObject, JsonValue
+from lup.workspace.history import run_transcript
 from lup.workspace.paths import agent_version, harness_runs_path
 from lup.harness.clipboard import ClipboardTransport
 from lup.harness.generate import RuntimeReadiness
@@ -158,10 +161,12 @@ class HarnessTranscript(BaseModel, arbitrary_types_allowed=True):
     recorder: SessionRecorder | None = None
 
     def close(self, *, succeeded: bool, interrupted: bool = False) -> None:
-        """Stop ingestion, record the outcome, and release the diagnostics log.
+        """Stop ingestion, record the outcome, release the diagnostics log, and verify.
 
-        The ledger's record of the launch is amended last, after the journal
-        holds its final record, so the digest pinned is the closed journal's.
+        The ledger's record of the launch is amended after the journal holds
+        its final record, so the digest pinned is the closed journal's. The
+        chain is checked last, over that same closed journal, so nothing it
+        finds can keep the launch from tidying up.
         """
         if self.watcher is not None:
             self.watcher.stop()
@@ -178,6 +183,34 @@ class HarnessTranscript(BaseModel, arbitrary_types_allowed=True):
                 if succeeded
                 else "failed",
             )
+        self.verified()
+
+    def verified(self) -> None:
+        """Say so, at the end of the session, where its transcript's chain does not hold.
+
+        The person who ran the session is still at the terminal, and a
+        transcript that does not verify is better learned of now than by
+        whoever later reads it as evidence. One that holds says nothing,
+        since a line on every launch is read on none.
+        """
+        run = self.journal.path.parent.name
+        try:
+            broken = chain_break(read_observable_events(self.journal.path))
+        except OSError as error:
+            Notice(
+                text=f"this session's transcript could not be read to verify it: {error}",
+                urgency="warning",
+            ).say()
+            return
+        if broken is None:
+            return
+        Notice(
+            text=(
+                f"this session's transcript does not verify: {broken.explained()}; "
+                f"`uv run lup-devtools trace events {run}` reads it, the break marked"
+            ),
+            urgency="warning",
+        ).say()
 
 
 def watcher_logger() -> logging.Logger:
@@ -261,7 +294,7 @@ def start_harness_transcript(
         f"{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}_{provider}_{uuid4().hex[:8]}"
     )
     runs = root / record_root if record_root is not None else harness_runs_path()
-    trace_path = runs / provider / run_id / "observable.jsonl"
+    trace_path = run_transcript(runs / provider / run_id)
     journal = TraceJournal(
         trace_path,
         TraceContext.root(

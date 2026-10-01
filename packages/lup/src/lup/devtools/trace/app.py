@@ -108,6 +108,46 @@ def create_trace_app() -> typer.Typer:
         """Extract capability requests from traces."""
         traces.capabilities(as_json)
 
+    @app.command("verify")
+    def verify_cmd(
+        runs: Annotated[
+            list[str] | None,
+            typer.Argument(
+                help="Run ids, run directories or transcripts; none checks every launch"
+            ),
+        ] = None,
+        as_json: JSON_OPT = False,
+    ) -> None:
+        """Check that each launch transcript's hash chain holds, and say where it breaks.
+
+        Every launched session writes a hash-chained journal of what its runtime
+        exposed. Each record carries its place and the digest of the one before
+        it, so an edit, a removal, an insertion or a reordering anywhere but the
+        very end breaks the chain at that record. Exits 1 when any breaks, so a
+        script can stop on it; a tail cut off cleanly is the ledger's pinned
+        digest to answer for, not the chain's.
+        """
+        traces.verify_transcripts(runs or [], as_json)
+
+    @app.command("events")
+    def events_cmd(
+        run: Annotated[
+            str, typer.Argument(help="A run id, run directory, or transcript")
+        ],
+        kinds: Annotated[
+            list[str] | None,
+            typer.Option("--kind", help="Only records of this kind; repeatable"),
+        ] = None,
+        as_json: JSON_OPT = False,
+    ) -> None:
+        """Read a launched session's transcript, record by record, its chain checked first.
+
+        The chain's standing comes before any record, and where it breaks a line
+        marks the record it breaks on: what precedes it is vouched for by the
+        chain, and what follows is not.
+        """
+        traces.transcript_events(run, kinds or [], as_json)
+
     @app.command("archive")
     def archive_cmd(
         name: Annotated[
