@@ -31,6 +31,7 @@ import sh
 import typer
 
 import lup.workspace.paths
+from lup.execution.shell import git
 from lup.observability.display import format_duration
 from lup.sessions.events import SessionId
 
@@ -119,7 +120,6 @@ def commit_results() -> None:
     data commits atomic and automatic; interactive domains (e.g. coaching)
     usually drop it.
     """
-    git = sh.Command("git").bake("--no-pager", "-c", "color.ui=never")
     status = str(git.status("--porcelain", "--", "notes/", _ok_code=[0]))
     if not status.strip():
         return
