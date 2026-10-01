@@ -80,6 +80,7 @@ from lup.policy.assets.host import (
     stored_form,
     stream_records,
 )
+from lup.execution.locks import exclusive
 from lup.policy.identity import REVIEW_ANSWERS_ENV
 from lup.policy.kernel.decision import DecisionEffect
 from lup.policy.kernel.semantics import ReviewPurpose, ReviewerRequirement
@@ -1031,16 +1032,12 @@ class QuestionRelay:
         """
         if not relay_current(self.path):
             migrate_relay(self.path)
-        lock = relay_lock(self.path)
-        lock.parent.mkdir(parents=True, exist_ok=True)
-        with lock.open("a", encoding="utf-8") as handle:
-            fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+        with exclusive(relay_lock(self.path)):
             self.holder = threading.get_ident()
             try:
                 yield
             finally:
                 self.holder = 0
-                fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
 
     def questions(self) -> list[RecordedQuestion]:
         """Every question, folded forward to its latest state, with the host's answer.
