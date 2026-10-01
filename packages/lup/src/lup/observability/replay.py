@@ -19,12 +19,11 @@ environment that cannot promise determinism with no durable record at all.
 
 import hashlib
 import logging
-from datetime import datetime
 from pathlib import Path
 
 from pydantic import BaseModel, Field, TypeAdapter, computed_field
 
-from lup.channels.models import publish_atomic
+from lup.channels.models import publish_atomic, utc_now
 
 logger = logging.getLogger(__name__)
 
@@ -38,11 +37,6 @@ class UnreadableJournalError(RuntimeError):
     record that could not be read is the one outcome this module exists to
     make impossible.
     """
-
-
-def timestamp_now() -> str:
-    """The wall clock a journal records itself as created at."""
-    return datetime.now().astimezone().isoformat()
 
 
 class JournalCell(BaseModel, frozen=True):
@@ -127,7 +121,7 @@ class ReplayJournal(BaseModel, frozen=True):
     parent: str | None = Field(
         default=None, description="Journal this one was forked from"
     )
-    created_at: str = Field(default_factory=timestamp_now)
+    created_at: str = Field(default_factory=lambda: utc_now().isoformat())
     cells: list[JournalCell] = []
     determinism_claimed: bool = Field(
         default=False,
