@@ -48,7 +48,7 @@ def repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     git("config", "user.email", "scope@example.com")
     git("config", "user.name", "scope")
     (work / "kept.py").write_text("kept = 1\n", encoding="utf-8")
-    (work / "prose.md").write_text("prose\n", encoding="utf-8")
+    (work / "notes.txt").write_text("prose\n", encoding="utf-8")
     git("add", "-A")
     git("commit", "-m", "base")
     monkeypatch.chdir(work)
@@ -88,9 +88,9 @@ def test_a_file_written_and_never_added_is_still_checked(repo: Path) -> None:
 
 def test_a_changed_file_that_is_not_python_is_named_as_unread(repo: Path) -> None:
     """Ruff and Pyright are asked about Python, and the rest is said, not dropped."""
-    (repo / "prose.md").write_text("changed prose\n", encoding="utf-8")
+    (repo / "notes.txt").write_text("changed prose\n", encoding="utf-8")
 
-    assert changed_scope("HEAD") == ChangedScope(checked=[], unread=["prose.md"])
+    assert changed_scope("HEAD") == ChangedScope(checked=[], unread=["notes.txt"])
 
 
 def test_a_deleted_file_is_not_named_to_a_checker(repo: Path) -> None:
@@ -171,7 +171,7 @@ def test_a_change_no_scoped_check_reads_says_so_and_names_every_gate_left(
     Reporting only what ran reads as a verdict on the change: the unread
     files are listed, and the suites are named as the gate runs them.
     """
-    (repo / "prose.md").write_text("changed prose\n", encoding="utf-8")
+    (repo / "notes.txt").write_text("changed prose\n", encoding="utf-8")
     roots = [
         check.TestRoot(name="pytest", directory=repo),
         check.TestRoot(name="pytest (lib)", directory=repo / "lib"),
@@ -186,7 +186,7 @@ def test_a_change_no_scoped_check_reads_says_so_and_names_every_gate_left(
     # What does read every changed file is the conflict row, and it says so.
     assert "conflict markers: ok" in printed
     assert "Unread: 1 changed file(s) no scoped check reads:" in printed
-    assert "  prose.md" in printed
+    assert "  notes.txt" in printed
     assert any(
         line.startswith("Not run: the test suites (pytest, pytest (lib)) and ")
         for line in printed
@@ -239,7 +239,7 @@ def test_a_migration_declaration_the_migrations_row_read_is_not_named_unread(
         '[[steps]]\ninstruction = "call kept instead"\n',
         encoding="utf-8",
     )
-    (repo / "prose.md").write_text("changed prose\n", encoding="utf-8")
+    (repo / "notes.txt").write_text("changed prose\n", encoding="utf-8")
     for tool in ("ruff_format_check", "ruff_lint_check", "pyright_check"):
         monkeypatch.setattr(check, tool, quiet(tool))
 

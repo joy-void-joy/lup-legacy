@@ -872,6 +872,12 @@ def portable_harness(
                 HookPathRole(
                     root=Path("packages/lup/src/lup/migrations/pending"), role="data"
                 ),
+                # The changelog is the record of how the code came to be, so
+                # history is its subject rather than a voice to refuse in it:
+                # data, which no convention about how source or prose reads
+                # reaches. The size and whole-file gates stop at production
+                # with the rest, since an entry is reviewed at the release.
+                HookPathRole(root=Path("CHANGELOG.md"), role="data"),
                 # What each suite the gate runs collects is a test by
                 # derivation rather than by a second table: a pytest suite's
                 # `testpaths` — `tests/` at both roots, and a sub-project's

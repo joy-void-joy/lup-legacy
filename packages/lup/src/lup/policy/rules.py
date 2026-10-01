@@ -285,9 +285,9 @@ class ShellPolicy(DecisionPolicy[ShellCommand]):
         second table to keep in step, and the one that fell behind would read
         as a decision.
 
-        ``None`` leaves a redirection judged by its path alone, which is what
-        every shell write was judged by before -- correct for output produced
-        by running, and a hole for output the command is holding.
+        ``None`` leaves a redirection judged by its path alone -- correct for
+        output produced by running, and a hole for output the command is
+        holding.
         """
         self.path_rules = [path_rule_row(rule) for rule in path_rules or []]
         self.path_roles = path_roles or []
@@ -851,6 +851,7 @@ def antipattern_row(rule: AntiPattern) -> AntiPatternRow:
         # verdicts turn on a resolution it may not have, and the rule that
         # names what it resolves against is the only thing that can say.
         resolution="required" if rule.family is not None else "",
+        roles=list(rule.roles),
     )
 
 

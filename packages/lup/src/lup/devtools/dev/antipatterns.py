@@ -56,15 +56,18 @@ from lup.harness.codescan.project import AuditedProject, retired_suppressions
 from lup.harness.codescan.registry import RULE_REFERENCE
 from lup.policy.kernel.edit import (
     IGNORE_RE,
+    MARKDOWN_SUFFIXES,
     SUPPRESSION_COLUMN_LIMIT,
     inline_suppression,
     relocated_suppressions,
     standalone_suppression,
 )
 from lup.policy.kernel.roles import path_role
-from lup.policy.kernel.rows import ResolutionRow
+from lup.policy.kernel.rows import PathRoleName, ResolutionRow
 from lup.devtools.dev.pyright_oracle import default_oracle
+from lup.devtools.dev.documented import generated_files
 from lup.devtools.dev.tracked import tracked_files
+from lup.formats.banner import GeneratedBanner
 from lup.devtools.project import DevProject
 from lup.devtools.utils import output_json
 
@@ -82,12 +85,20 @@ class FoundRefutation(Refutation, frozen=True):
 
 
 class ScannedFile(BaseModel, arbitrary_types_allowed=True):
-    """One tracked file the sweep reads once and audits against its table."""
+    """One tracked file the sweep reads once and audits against its table.
+
+    ``patterns`` is the table its suffix selects, less every rule that does
+    not reach its ``role``, so a test file carries the prose rule alone;
+    ``graded`` names the rules whose directives the audit judges there, every
+    one in production.
+    """
 
     rel: str
     path: Path
     patterns: list[AntiPattern]
     text: str
+    role: PathRoleName = "production"
+    graded: list[str] | None = None
 
 
 class AntiPatternScan(BaseModel):
@@ -199,19 +210,24 @@ def scanned_files(
     paths: Sequence[str] | None = None,
     mirrored: Mirrored | None = None,
 ) -> list[ScannedFile]:
-    """Every tracked production file the audits read, with its table and text.
+    """Every tracked file some rule reaches, with the rules reaching it and its text.
 
     ``paths`` narrows the walk to files under the given repository-relative
     prefixes; ``None`` is the whole repository, and an empty scope is a scope
     rather than an absent one, so a tree that changed nothing is read for
-    nothing. The declared path roles decide the rest: a rule the edit hook
-    never enforces in a test or scratch tree is not read there either.
+    nothing. The declared path roles decide the rest, read against each
+    rule's own roles: a rule the edit hook never enforces in a test or
+    scratch tree is not read there either, and a file no rule reaches is not
+    read at all. A page generation wrote is not read either: its prose is the
+    passage it was rendered from, which is read where it is written, and its
+    rule reference quotes every example a rule refuses.
     ``mirrored`` reads one file's text from its scratch copy instead, the
     file standing at the path it mirrors whether or not one stands there yet.
     """
     roles = project.path_roles
     declared = declared_rules(project)
     listed = tracked_files(others=True)
+    generated = generated_files(Path())
     landing = (
         [mirrored.judged_as]
         if mirrored is not None and mirrored.judged_as not in listed
@@ -221,8 +237,10 @@ def scanned_files(
     def found() -> Iterator[ScannedFile]:
         for rel in [*listed, *landing]:
             path = Path(rel)
-            patterns = patterns_for_suffix(path.suffix.lower(), declared)
-            if patterns is None or path_role(rel, roles) != "production":
+            role = path_role(rel, roles)
+            table = patterns_for_suffix(path.suffix.lower(), declared) or []
+            patterns = [rule for rule in table if role in rule.roles]
+            if not patterns:
                 continue
             if not within_scope(rel, paths):
                 continue
@@ -235,7 +253,18 @@ def scanned_files(
                 text = source.read_text(encoding="utf-8")
             except (OSError, UnicodeDecodeError):
                 continue
-            yield ScannedFile(rel=rel, path=path, patterns=patterns, text=text)
+            if path.suffix.lower() in MARKDOWN_SUFFIXES and (
+                rel in generated or GeneratedBanner.carried_by(text)
+            ):
+                continue
+            yield ScannedFile(
+                rel=rel,
+                path=path,
+                patterns=patterns,
+                text=text,
+                role=role,
+                graded=None if role == "production" else [rule.id for rule in patterns],
+            )
 
     return list(found())
 
@@ -279,18 +308,39 @@ def scan_antipatterns(
             text=item.text,
         )
         for item in all_scanned
-        if item.path.suffix.lower() in {".py", ".pyi"}
+        if item.path.suffix.lower() in {".py", ".pyi"} and item.role == "production"
     ]
     sources = [
         source
         for source in declaration_sources
         if within_scope(source.path.as_posix(), paths)
     ]
-    # A scope holding no production file has nothing any rule would judge, and
-    # the post-write review asks about every file a call wrote -- tests and
-    # scratch scripts among them -- so the project's context is not built.
-    if paths is not None and not scanned and not sources:
-        return AntiPatternScan(findings=[], refuted=[])
+    # Project rules and resolution read production Python alone. A scope
+    # holding none of it -- a page, a test, a script, which the post-write
+    # review asks about for every file a call wrote -- is read by its line
+    # rules without the project's context, which costs seconds to build.
+    if paths is not None and not sources:
+        return AntiPatternScan(
+            findings=[
+                FoundAntiPattern(
+                    file=mirrored.scratch.as_posix()
+                    if mirrored is not None and item.rel == mirrored.judged_as
+                    else item.rel,
+                    **finding.model_dump(),
+                )
+                for item in scanned
+                for finding in audit_text(
+                    item.text,
+                    item.patterns,
+                    None,
+                    typescript=item.path.suffix.lower() in TYPESCRIPT_SUFFIXES,
+                    markdown=item.path.suffix.lower() in MARKDOWN_SUFFIXES,
+                    graded=item.graded,
+                )
+                if project.rules.keeps(finding.rule_id)
+            ],
+            refuted=[],
+        )
     # A whole-repository sweep remembers what the checker said, because it
     # holds every module a refutation could resolve through and can therefore
     # key an answer by all of them. A scoped sweep holds only the files it was
@@ -351,6 +401,8 @@ def scan_antipatterns(
             item.patterns,
             refuted[item.path.as_posix()] if item.path.as_posix() in refuted else None,
             typescript=item.path.suffix.lower() in TYPESCRIPT_SUFFIXES,
+            markdown=item.path.suffix.lower() in MARKDOWN_SUFFIXES,
+            graded=item.graded,
         )
         if not (
             finding.kind == "spurious"

@@ -321,6 +321,15 @@ class AntiPatternRow(TypedDict):
     with no version of the file passing both. So the gate says what it knows:
     resolved, it decides; unresolved, it asks.
     """
+    roles: list[PathRoleName]
+    """The path roles whose files this rule judges.
+
+    Production for most: a convention about how code reads is about the code
+    other code reads. A rule about how prose is written also reaches a test,
+    whose docstring is read as the spec of what the test pins. Declared on
+    the row rather than decided by the gate, because which roles a rule is
+    about is a fact about the rule.
+    """
 
 
 class RefusedToolRow(TypedDict):

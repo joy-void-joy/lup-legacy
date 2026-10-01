@@ -13,6 +13,7 @@ import pytest
 from pydantic import ValidationError
 
 from lup.harness.codescan.antipatterns import (
+    MARKDOWN_ANTI_PATTERNS,
     PROJECT_RULES,
     PYTHON_ANTI_PATTERNS,
     TS_ANTI_PATTERNS,
@@ -58,6 +59,10 @@ def test_python_table_matches_generated_bundle() -> None:
 
 def test_ts_table_matches_generated_bundle() -> None:
     assert lib_rows(TS_ANTI_PATTERNS) == bundled_antipattern_rows()[".ts"]
+
+
+def test_markdown_table_matches_generated_bundle() -> None:
+    assert lib_rows(MARKDOWN_ANTI_PATTERNS) == bundled_antipattern_rows()[".md"]
 
 
 STRONG_RULE_IDS = {
@@ -315,7 +320,7 @@ def test_debt_the_edit_did_not_uncover_is_left_to_the_audit() -> None:
 
 def test_rule_ids_are_unique_kebab_case() -> None:
     """Every rule id is a distinct kebab-case token a typed ignore can target."""
-    for table in (PYTHON_ANTI_PATTERNS, TS_ANTI_PATTERNS):
+    for table in (PYTHON_ANTI_PATTERNS, TS_ANTI_PATTERNS, MARKDOWN_ANTI_PATTERNS):
         ids = [ap.id for ap in table]
         assert len(ids) == len(set(ids))
         for rule_id in ids:
@@ -1345,16 +1350,20 @@ EXAMPLE_CASES = [
     pytest.param(
         rule,
         example,
-        python,
-        id=f"{rule.id}-{index}-{example.verdict}",
+        language,
+        id=f"{rule.id}-{language}-{index}-{example.verdict}",
     )
-    for table, python in ((PYTHON_ANTI_PATTERNS, True), (TS_ANTI_PATTERNS, False))
+    for table, language in (
+        (PYTHON_ANTI_PATTERNS, "python"),
+        (TS_ANTI_PATTERNS, "typescript"),
+        (MARKDOWN_ANTI_PATTERNS, "markdown"),
+    )
     for rule in table
     for index, example in enumerate(rule.examples)
 ]
 
 
-def hook_denies(rule: AntiPattern, code: str, python: bool) -> bool:
+def hook_denies(rule: AntiPattern, code: str, language: str) -> bool:
     """Whether the edit hook refuses this snippet over this one rule.
 
     An empty resolution says a checker ran and took nothing back, which is
@@ -1366,25 +1375,31 @@ def hook_denies(rule: AntiPattern, code: str, python: bool) -> bool:
         None,
         f"{code}\n",
         [antipattern_row(rule)],
-        python,
+        language == "python",
         resolution={"refuted": {}, "unresolved": {}},
-        typescript_source=not python,
+        typescript_source=language == "typescript",
+        markdown_source=language == "markdown",
     )
     return decision is not None and decision.effect == "deny"
 
 
-def audit_reports(rule: AntiPattern, code: str, python: bool) -> list[str]:
+def audit_reports(rule: AntiPattern, code: str, language: str) -> list[str]:
     """The rule ids the whole-file audit reports as unguarded in this snippet."""
     return [
         finding.rule_id
-        for finding in audit_text(f"{code}\n", [rule], typescript=not python)
+        for finding in audit_text(
+            f"{code}\n",
+            [rule],
+            typescript=language == "typescript",
+            markdown=language == "markdown",
+        )
         if finding.kind == "missing"
     ]
 
 
-@pytest.mark.parametrize(("rule", "example", "python"), EXAMPLE_CASES)
+@pytest.mark.parametrize(("rule", "example", "language"), EXAMPLE_CASES)
 def test_each_rule_answers_its_own_examples(
-    rule: AntiPattern, example: RuleExample, python: bool
+    rule: AntiPattern, example: RuleExample, language: str
 ) -> None:
     """Both gates say about each snippet what its rule declared they would.
 
@@ -1397,8 +1412,8 @@ def test_each_rule_answers_its_own_examples(
     sees a spelling it cannot decide and the audit resolves the receiver — so
     the hook side is asserted here and `test_grammar` carries the resolution.
     """
-    denied = hook_denies(rule, example.code, python)
-    reported = audit_reports(rule, example.code, python)
+    denied = hook_denies(rule, example.code, language)
+    reported = audit_reports(rule, example.code, language)
 
     match example.verdict:
         case "flagged" | "refuted":

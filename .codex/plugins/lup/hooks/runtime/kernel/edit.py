@@ -44,7 +44,18 @@ from .typescript import (
     TYPESCRIPT_SUFFIXES,
     masked_typescript_lines,
     typescript_comment_columns,
+    typescript_comment_lines,
 )
+
+# lup: ignore[constant-declaration] — Markdown's own suffix, read alike by the
+# hook and the audit; the kernel carries no config
+MARKDOWN_SUFFIXES = (".md",)
+"""The files whose text is read as Markdown: prose throughout, code quoted.
+
+The one suffix the hook and the audit both read as a page rather than as
+source, so a rule about how prose is written reaches a passage the way it
+reaches a docstring, and a path both gates classify alike.
+"""
 
 MARKER_RE = re.compile(r"(#|//)\s*lup\s*:", re.IGNORECASE)
 # A review note is any marker whose keyword is not `ignore`, which is the
@@ -705,6 +716,38 @@ def python_prose_lines(source: str) -> list[str]:
     return kept
 
 
+QUOTED_CODE_RE = re.compile(r"(`+).*?\1|<code>.*?</code>")
+"""An inline code span, in backticks or in a ``<code>`` element.
+
+Quoted text — a name, a command, an example of the very phrase a rule
+refuses — rather than something the page asserts, so the prose projection
+blanks it. The run of backticks closing a span is the run that opened it,
+which is how a double-backtick span quotes a single backtick.
+"""
+
+
+def blank_quoted_code(line: str) -> str:
+    """One line with every inline code span blanked, its columns kept."""
+    return QUOTED_CODE_RE.sub(lambda quoted: " " * len(quoted.group(0)), line)
+
+
+def markdown_prose_lines(source: str) -> list[str]:
+    """Each Markdown line as the prose it reads as, with the code it quotes blanked.
+
+    A fenced block and an inline code span are quoted rather than asserted:
+    the page shows a command or an example there, so a rule about how its
+    sentences are written reads around them. A fence line and every line
+    inside one stand blank, and every other line keeps its columns.
+    """
+    fenced = False
+    kept: list[str] = []
+    for line in source.splitlines():
+        fence = line.lstrip().startswith(("```", "~~~"))
+        kept.append("" if fenced or fence else blank_quoted_code(line))
+        fenced = fenced != fence
+    return kept
+
+
 class MaskedSource(TypedDict):
     """One document's lines as each rule context reads them, and where comments open.
 
@@ -723,15 +766,20 @@ class MaskedSource(TypedDict):
 
 
 def masked_source(
-    source: str, python_source: bool, typescript_source: bool
+    source: str,
+    python_source: bool,
+    typescript_source: bool,
+    markdown_source: bool = False,
 ) -> MaskedSource:
     """Project a document into the surfaces its rules read, by its grammar.
 
     Python is read through its tokenizer, and where a fragment will not
     tokenize the raw lines stand in with no comment map. The TypeScript family
     is read through :func:`~lup.policy.kernel.typescript.typescript_spans`,
-    which has no failure case: what it cannot classify it leaves as code. Text
-    of neither family is its own projection, every rule reading the whole line.
+    which has no failure case: what it cannot classify it leaves as code.
+    Markdown is prose throughout, less the code it quotes, and holds no
+    comment a directive could open in. Text of none of these is its own
+    projection, every rule reading the whole line.
     """
     if python_source:
         return MaskedSource(
@@ -746,10 +794,17 @@ def masked_source(
             commented=commented,
             code=masked_typescript_lines(source, comments=True),
             # The family has no docstring, so its prose is its comments.
-            prose=commented,
+            prose=typescript_comment_lines(source),
             comment_columns=typescript_comment_columns(source),
         )
     lines = source.splitlines()
+    if markdown_source:
+        return MaskedSource(
+            commented=lines,
+            code=lines,
+            prose=markdown_prose_lines(source),
+            comment_columns={},
+        )
     return MaskedSource(commented=lines, code=lines, prose=lines, comment_columns=None)
 
 
@@ -1931,8 +1986,8 @@ def mapping_value_lines(source: str, values: AbstractSet[str]) -> set[int]:
 
     A union counts as its members: ``dict[str, str | None]`` is the same open
     map of scalars that ``dict[str, str]`` is, and the annotation reaching a
-    scalar through a union is what the pattern's word boundary happened to
-    catch and what reading the tree states outright.
+    scalar through a union is what the pattern's word boundary catches by
+    accident and what reading the tree states outright.
     """
     tree = python_tree(source)
     if tree is None:
@@ -2069,36 +2124,50 @@ PYRIGHT_IGNORE_DIRECTIVE_RE = re.compile(r"#\s*pyright:\s*ignore\b")
 NOQA_DIRECTIVE_RE = re.compile(r"#\s*noqa\b")
 
 HISTORICAL_VOICE_RE = re.compile(
-    r"\bused to be\b|\bpreviously\b|\bformerly\b|\brenamed from\b"
-    r"|\bin the past\b|\bbefore this change\b"
+    r"(?i)\bused to be\b|\bpreviously\b|\bformerly\b|\brenamed from\b"
+    r"|\bin the past\b|\bbefore this change\b|\ban earlier version\b"
+    r"|\bhistorically\b|\buntil now\b|\buntil this (?:\w+ed|ran|was)\b"
     r"|\b(?:it|this|that|they|we|which|one|there) used to\b"
-    r"|\bthe old (?:rule|refusal|comparison|arrangement|fallback"
-    r"|behaviour|behavior|design|version)\b"
+    r"|\bwe (?:changed|moved|switched|added|removed|dropped|renamed)\b"
+    r"|\bthis change fixes\b|\bnow (?:lives|sits) in\b"
+    r"|\bthe (?:bug|hole|gap|defect|forgery|asymmetry|regression) (?:this|it)"
+    r" (?:closes|closed|fixes|fixed)\b"
+    r"|\bthe old (?:rule|refusal|comparison|arrangement|fallback|behaviour"
+    r"|behavior|design|version|fold|stream|shape|spelling|layout|format|wording"
+    r"|implementation|approach|mechanism|scheme)\b"
     r"|\bduring the \w+ migration\b|\bfor compatibility (?:consumers|reasons)\b"
-    r"|(?<!&)#\d{2,5}(?![0-9A-Fa-f;])",
-    re.IGNORECASE,
+    r"|(?<![&\w])#\d{2,5}(?![0-9A-Fa-f;])"
 )
 """The spellings that record a change rather than state what is.
 
 Deliberately narrow, because a rule that cries wolf is read as noise and then
 as nothing. Bare `used to` is not here and neither is `no longer`: both are
-overwhelmingly present tense in this tree — a key *used to select* a home, a
-record that *no longer grants* authority — so flagging them would bury the
-handful of real ones under readings that were never about history at all.
+overwhelmingly present tense in this tree — a key `used to select` a home, a
+record that `no longer grants` authority — so flagging them would bury the
+handful of real ones under readings that are not about history at all. Bare
+`now`, `new` and `the old` stay out for the same reason: a value replaced at
+runtime is `the old value`, and a worktree made a moment ago is a `new` one.
 
 What decides it is the subject. `used to` after a pronoun can only be past
 habitual, because the present reading needs an auxiliary the pronoun form has
-nowhere to put: *it used to filter* is history and *a key used to select* is
-not, and no noun tells the two apart. So the pronouns are refused and the
+nowhere to put: a pronoun before `used to filter` is history, a noun before
+`used to select` is not, and no noun tells the two apart. So the pronouns are refused and the
 nouns are left, which loses a reading the rule cannot have without also
-losing the ones it is for.
+losing the ones it is for. `the old` is refused before a noun that names a
+design — a rule, a fold, a spelling, a layout — and left before one a
+running program replaces.
 
-The rest is unambiguous: a phrase that can only be about a prior state, a
-design named as the one before this one, a migration something is *during*,
-an audience described as needing compatibility, and a bare issue number,
-which narrates the change that produced the code instead of the code. An
-entity (`&#124;`) and a colour (`#264F78`) are excluded by shape rather than
-by hoping they stay out of prose.
+The rest is unambiguous: a phrase that can only be about a prior state or the
+moment a thing changed, a fix described by the defect it removed, a
+migration something is `during`, an audience described as needing
+compatibility, and a bare issue number, which narrates the change that
+produced the code instead of the code. An entity (`&#124;`) and a colour
+(`#264F78`) are excluded by shape, and so is a tracker reference written
+`owner/repo#N`: another project's issue standing for the reason a
+workaround exists is the reason, not the history of this code. A phrase
+inside a code span is quoted rather than said, and the prose projection
+blanks it before this is matched. Case-blindness is spelled inline, so the
+row the hermetic runtime matches from the pattern's text keeps it.
 """
 
 
@@ -2154,12 +2223,16 @@ def prose_spans(source: str) -> Iterator[ProseSpan]:
 
 
 def historical_voice_sites(source: str) -> list[MatchSite]:
-    """Prose recording how the code came to be rather than what it is."""
+    """Prose recording how the code came to be rather than what it is.
+
+    A phrase quoted in a code span is an example of the phrase, which is how
+    a docstring documents this rule without tripping it.
+    """
     return sites_at(
         {
             span["line"]
             for span in prose_spans(source)
-            if HISTORICAL_VOICE_RE.search(span["text"])
+            if HISTORICAL_VOICE_RE.search(blank_quoted_code(span["text"]))
         }
     )
 
@@ -3302,6 +3375,7 @@ def antipattern_decision(
     resolution: ResolutionRow | None = None,
     resolved: list[ResolvedImportRule] | None = None,
     typescript_source: bool = False,
+    markdown_source: bool = False,
 ) -> KernelDecision | None:
     """Reject newly added unsuppressed anti-patterns and ask on suppressions.
 
@@ -3349,7 +3423,7 @@ def antipattern_decision(
     suppression = "allow" if "antipattern-suppression" in (allowances or []) else "ask"
     added = added_line_numbers(before, after)
     original_lines = after.splitlines()
-    masked = masked_source(after, python_source, typescript_source)
+    masked = masked_source(after, python_source, typescript_source, markdown_source)
     scanned_lines = masked["commented"]
     prose_lines = masked["prose"]
     code_lines = masked["code"]
@@ -3374,9 +3448,9 @@ def antipattern_decision(
         (rule_id, line) for rule_id, lines in unresolved.items() for line in lines
     }
     comment_columns = masked["comment_columns"]
-    previous_columns = masked_source(before or "", python_source, typescript_source)[
-        "comment_columns"
-    ]
+    previous_columns = masked_source(
+        before or "", python_source, typescript_source, markdown_source
+    )["comment_columns"]
 
     def directive_at(number: int) -> re.Match[str] | None:
         return source_suppression(original_lines[number - 1], number, comment_columns)
@@ -4080,21 +4154,26 @@ def decide_edit(
                 purpose="quality_review"
             ),
         )
-    # The conventions describe how production code should read. A test's
-    # subject is production's behaviour, and scratch is disposable, so
-    # neither is judged against them.
-    if after is not None and role == "production":
+    # The conventions describe how production code should read, and each
+    # rule names the roles it reaches: most stop at production, because a
+    # test's subject is production's behaviour and scratch is disposable,
+    # while one about how prose is written reaches a test's docstring too,
+    # since that is read as the spec of what the test pins. The import
+    # boundaries are production's alone.
+    reaching = [row for row in antipattern_rows if role in row["roles"]]
+    if after is not None and (reaching or role == "production"):
         antipattern = antipattern_decision(
             before,
             after,
-            antipattern_rows,
+            reaching,
             python_source,
             granted,
             resolution,
             resolved_import_rules(path, after, import_boundaries or [])
-            if python_source and not outside_project
+            if python_source and not outside_project and role == "production"
             else None,
             typescript_source=suffix in TYPESCRIPT_SUFFIXES,
+            markdown_source=suffix in MARKDOWN_SUFFIXES,
         )
         # A granted suppression answers this gate and no other, so an allow
         # falls through to the rest of the lattice rather than ending it.

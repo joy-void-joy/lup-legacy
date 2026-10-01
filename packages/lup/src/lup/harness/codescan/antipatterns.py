@@ -96,6 +96,7 @@ from lup.harness.codescan.common import (
 from lup.harness.contracts import Spelling, Unsupported
 from lup.policy.kernel.edit import (
     HISTORICAL_VOICE_RE,
+    MARKDOWN_SUFFIXES,
     historical_voice_sites,
     namedtuple_sites,
     noqa_sites,
@@ -192,6 +193,39 @@ the rule's shape exactly and are not its subject, and only the receiver's own
 declaration says so.
 """
 
+
+def historical_voice(
+    examples: list[RuleExample], matcher: Matcher | None = None
+) -> AntiPattern:
+    """The prose rule, as each language's table carries it.
+
+    One rule read three ways: Python's comments and docstrings, the
+    TypeScript family's comments, a Markdown page's text. Built here once so
+    the phrases, the message and the roles cannot differ between the tables,
+    and each table supplies only what is its own — examples in its syntax, and
+    the tree selector Python alone has.
+    """
+    return AntiPattern(
+        id="historical-voice",
+        pattern=HISTORICAL_VOICE_RE,
+        matcher=matcher,
+        examples=examples,
+        message=(
+            "Prose — a comment, a docstring, a page — says what the code is, "
+            "not how it came to be: a phrase about a prior state, a fix told "
+            "by the defect it removed, or an issue number standing in for the "
+            "reason dates the moment it is read rather than the moment it was "
+            "written. Say what holds and why; the change belongs in the commit "
+            "message, and a decision worth keeping belongs where it is looked "
+            "up. Another project's issue that is the reason a workaround "
+            "exists is cited as `owner/repo#123`, and a phrase quoted as an "
+            "example goes in backticks"
+        ),
+        context="prose",
+        roles=["production", "test"],
+    )
+
+
 PORTABLE_PYTHON_ANTI_PATTERNS: list[AntiPattern] = [
     AntiPattern(
         id="any-type",
@@ -273,10 +307,7 @@ PORTABLE_PYTHON_ANTI_PATTERNS: list[AntiPattern] = [
         message="Never use # noqa — fix the lint issue properly",
         context="comment",
     ),
-    AntiPattern(
-        id="historical-voice",
-        pattern=HISTORICAL_VOICE_RE,
-        matcher=Matcher(select=historical_voice_sites),
+    historical_voice(
         examples=[
             RuleExample(
                 code="# the home a launch selects, previously read from the environment",
@@ -318,17 +349,16 @@ PORTABLE_PYTHON_ANTI_PATTERNS: list[AntiPattern] = [
                 code="# the key used to select a home",
                 verdict="cleared",
             ),
+            RuleExample(
+                code="# sent twice, since the vendor drops it (openai/codex#21639)",
+                verdict="cleared",
+            ),
+            RuleExample(
+                code="# a sentence saying `previously` is what this refuses",
+                verdict="cleared",
+            ),
         ],
-        message=(
-            "A comment or docstring says what the code is, not how it came to "
-            "be: a phrase about a prior state, or an issue number standing in "
-            "for the reason, dates the moment it is read rather than the "
-            "moment it was written. Say what holds now; the change belongs in "
-            "the commit message, and a decision worth keeping belongs where it "
-            "is looked up. Where an external tracker's number is the reason a "
-            "workaround exists, `# lup: ignore[historical-voice]` carries it"
-        ),
-        context="prose",
+        matcher=Matcher(select=historical_voice_sites),
     ),
     AntiPattern(
         id="generic-base",
@@ -1554,8 +1584,48 @@ TS_ANTI_PATTERNS: list[AntiPattern] = [
         ],
         message="console.log is a debug leftover — remove it or route through a logger",
     ),
+    historical_voice(
+        examples=[
+            RuleExample(
+                code="// the home a launch selects, previously read from the environment",
+                verdict="flagged",
+            ),
+            RuleExample(
+                code="/* the record this replaced is gone; see #436 for why */",
+                verdict="flagged",
+            ),
+            RuleExample(code="// the home a launch selects", verdict="cleared"),
+            RuleExample(code='const said = "previously";', verdict="cleared"),
+        ],
+    ),
 ]
 """Anti-patterns checked against added lines of TypeScript/JavaScript files."""
+
+MARKDOWN_ANTI_PATTERNS: list[AntiPattern] = [
+    historical_voice(
+        examples=[
+            RuleExample(
+                code="The home a launch selects, previously read from the environment.",
+                verdict="flagged",
+            ),
+            RuleExample(
+                code="Measured in #202: two workers blocked on one question.",
+                verdict="flagged",
+            ),
+            RuleExample(code="The home a launch selects.", verdict="cleared"),
+            RuleExample(
+                code="A sentence saying `previously` is what the rule refuses.",
+                verdict="cleared",
+            ),
+        ],
+    ),
+]
+"""The rules a Markdown page is held to: how its prose is written, and no more.
+
+A page is prose throughout, so a rule about code has nothing to read in one;
+the historical-voice rule is the one that does, and a passage is where most
+of the prose this repository renders is written.
+"""
 
 
 # lup: ignore[library-default] — Python's own source suffixes
@@ -1601,8 +1671,9 @@ is foreign here the moment it exists.
 class RuleSet(BaseModel, frozen=True, arbitrary_types_allowed=True):
     """Every rule a project checks, by the surface that decides it.
 
-    ``python`` and ``typescript`` are the line rules the hermetic kernel runs
-    on every edit and the sweep runs again over each file; ``project`` the
+    ``python``, ``typescript`` and ``markdown`` are the line rules the
+    hermetic kernel runs on every edit and the sweep runs again over each
+    file; ``project`` the
     rules only the sweep can run, over the whole tree at once; ``composition``
     the rules generation runs over the assembled harness. The rules a project
     holds itself to are its own conventions written down, so the tables this
@@ -1614,6 +1685,7 @@ class RuleSet(BaseModel, frozen=True, arbitrary_types_allowed=True):
 
     python: list[AntiPattern] = Field(default_factory=lambda: PYTHON_ANTI_PATTERNS)
     typescript: list[AntiPattern] = Field(default_factory=lambda: TS_ANTI_PATTERNS)
+    markdown: list[AntiPattern] = Field(default_factory=lambda: MARKDOWN_ANTI_PATTERNS)
     project: list[ProjectRule] = Field(default_factory=lambda: PROJECT_RULES)
     composition: list[CompositionRule] = Field(
         default_factory=lambda: COMPOSITION_RULES
@@ -1623,13 +1695,16 @@ class RuleSet(BaseModel, frozen=True, arbitrary_types_allowed=True):
         """The table that applies to a file suffix, or None to skip it.
 
         Mirrors the hook's split: Python files are checked against the Python
-        table, TS/JS-family files against the TS table, and any other suffix
-        is not scanned (the hook only gates those two families).
+        table, TS/JS-family files against the TS table, Markdown pages
+        against the Markdown table, and any other suffix is not scanned (the
+        hook gates those three families alone).
         """
         if suffix in PY_SUFFIXES:
             return self.python
         if suffix in TYPESCRIPT_SUFFIXES:
             return self.typescript
+        if suffix in MARKDOWN_SUFFIXES:
+            return self.markdown
         return None
 
     def selected(self, selection: RuleSelection) -> "RuleSet":
@@ -1643,6 +1718,7 @@ class RuleSet(BaseModel, frozen=True, arbitrary_types_allowed=True):
         return RuleSet(
             python=[rule for rule in self.python if selection.keeps(rule.id)],
             typescript=[rule for rule in self.typescript if selection.keeps(rule.id)],
+            markdown=[rule for rule in self.markdown if selection.keeps(rule.id)],
             project=[rule for rule in self.project if selection.keeps(rule.id)],
             composition=[rule for rule in self.composition if selection.keeps(rule.id)],
         )
@@ -1777,11 +1853,21 @@ def audit_text(
     patterns: list[AntiPattern],
     refutations: list[Refutation] | None = None,
     typescript: bool = False,
+    markdown: bool = False,
+    graded: list[str] | None = None,
 ) -> list[AntiPatternFinding]:
     """Audit one file's current text for per-rule ignore-marker health.
 
+    ``graded`` names the rules whose directives this audit judges in the file,
+    every one where it is ``None``. A test is held to the prose rule alone, so
+    a directive there for a rule about code, or for another check's own
+    marker, is not graded: the edit hook does not judge it either, and
+    whether it guards anything is a question about a rule the file is not
+    held to.
+
     ``typescript`` says the text is of that family, read through the
-    kernel's span scan rather than the Python tokenizer — the same split the
+    kernel's span scan rather than the Python tokenizer, and ``markdown``
+    that it is a page, prose less the code it quotes — the same split the
     hook makes from the file's suffix, so both gates mask one file one way.
 
     A bare file-level `# lup: ignore` opts the whole file out (matching the
@@ -1790,11 +1876,14 @@ def audit_text(
     the named rule file-wide — and when nothing in the file still needs an
     id (no line trips it that an inline directive would not already cover),
     that id reports "spurious" at the directive line, so rule evolution
-    cannot leave dead file-wide opt-outs behind. Docstring lines are skipped
-    entirely: prose is not code, and no inline directive could ever guard it —
-    a comment cannot open inside a string. (The hook skips them by the same
-    token masking wherever the text tokenizes, and falls back to scanning the
-    raw line only where it does not.) Then, per line and per rule:
+    cannot leave dead file-wide opt-outs behind. A docstring line is read by
+    a prose rule alone: a rule about code finds nothing of its subject in a
+    sentence, and a rule about how sentences are written has no reason to
+    care whether a comment or a docstring carried one. No directive can open
+    inside a string, so a hit in a docstring is rewritten, or opted out of
+    file-wide. (The hook reads the same projections wherever the text
+    tokenizes, and falls back to scanning the raw line only where it does
+    not.) Then, per line and per rule:
 
     - a tripped rule with no covering ignore -> "missing";
     - a typed `# lup: ignore[id]` naming a rule the line does not trip, or a
@@ -1844,6 +1933,8 @@ def audit_text(
     context = (
         PythonContext.parse_typescript(text)
         if typescript
+        else PythonContext.parse_markdown()
+        if markdown
         else PythonContext.parse(text)
     )
     refuted = {
@@ -1862,7 +1953,7 @@ def audit_text(
 
     file_ignore_line = file_ignore.line if file_ignore is not None else 0
     original_lines = text.splitlines()
-    projections = LineProjections.parse(text, typescript)
+    projections = LineProjections.parse(text, typescript, markdown)
     selected = selected_lines(text, patterns)
 
     def written_directive(line_no: int) -> re.Match[str] | None:
@@ -2028,7 +2119,11 @@ def audit_text(
                     message=f"`# lup: ignore[{rid}]` guards a line that does not trip `{rid}` — remove it",
                     rule_id=rid,
                 )
-                for rid in sorted(named - reached - FOREIGN_RULE_IDS)
+                for rid in sorted(
+                    (named if graded is None else named & set(graded))
+                    - reached
+                    - FOREIGN_RULE_IDS
+                )
             )
             continue
         covered = sorted(rid for rid in reached if rid not in file_disabled)
@@ -2055,7 +2150,11 @@ def audit_text(
 
     if file_ignore is not None:
         directive_text = text.splitlines()[file_ignore.line - 1].strip()
-        for rid in sorted(file_disabled - file_live - FOREIGN_RULE_IDS):
+        for rid in sorted(
+            (file_disabled if graded is None else file_disabled & set(graded))
+            - file_live
+            - FOREIGN_RULE_IDS
+        ):
             findings.append(
                 AntiPatternFinding(
                     kind="spurious",

@@ -33,6 +33,7 @@ from lup.policy.identity import (
 )
 import lup.policy.kernel as kernel
 from lup.policy.kernel.imports import import_references
+from lup.policy.kernel.edit import MARKDOWN_SUFFIXES
 from lup.policy.kernel.typescript import TYPESCRIPT_SUFFIXES
 from lup.policy.kernel.effects import EffectRow, effect_row_values
 from lup.policy.kernel.semantics import UnjudgedAmbient
@@ -210,10 +211,12 @@ def bundled_antipattern_rows(
     declared = rules or RuleSet()
     python_rows = [antipattern_row(rule) for rule in declared.python]
     typescript_rows = [antipattern_row(rule) for rule in declared.typescript]
+    markdown_rows = [antipattern_row(rule) for rule in declared.markdown]
     return {
         ".py": python_rows,
         ".pyi": python_rows,
         **{suffix: typescript_rows for suffix in TYPESCRIPT_SUFFIXES},
+        **{suffix: markdown_rows for suffix in MARKDOWN_SUFFIXES},
     }
 
 
@@ -331,13 +334,17 @@ def antipattern_rows_literal(rows: dict[str, list[AntiPatternRow]]) -> str:
         added to ``AntiPatternRow`` reaches the hermetic runtime by
         construction, instead of being dropped until someone notices. Reading
         a ``TypedDict`` that way widens every value to ``object``, so what one
-        actually holds is narrowed here — and a field that is not a primitive
-        fails generation rather than reaching the runtime as its ``repr``.
+        actually holds is narrowed here — and a field that is neither a
+        primitive nor a list of them fails generation rather than reaching
+        the runtime as its ``repr``.
         """
         for key, value in row.items():
             match value:
                 case str() | int() | float() | None:
                     yield f"            {python_literal(key)}: {python_literal(value)},"
+                case list() as items:
+                    listed = ", ".join(python_literal(str(item)) for item in items)
+                    yield f"            {python_literal(key)}: [{listed}],"
                 case _:
                     raise TypeError(
                         f"anti-pattern row field {key!r} holds a "

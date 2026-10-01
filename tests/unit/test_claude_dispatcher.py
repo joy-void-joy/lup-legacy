@@ -1401,12 +1401,11 @@ def test_a_shell_prompt_is_not_told_twice() -> None:
 def test_prose_narrating_a_change_is_refused_wherever_it_is_written(
     prose: str, refused: bool
 ) -> None:
-    """The gate reads a sentence wherever one is written.
+    """The gate reads a sentence wherever one is written, docstring or comment.
 
-    A docstring carries no inline directive, so the whole-file audit skips it
-    and this gate is the only surface that reads it. Covered here rather than
-    by the rule's own examples, which both surfaces have to answer and one of
-    them structurally cannot.
+    A docstring carries no inline directive, so a sentence there that tells
+    how the code came to be is rewritten rather than suppressed — and the
+    gate refuses it as surely as the same words in a comment.
     """
     anchor = "class ReflectionGate"
     target = "packages/lup/src/lup/orchestration/reflection.py"
