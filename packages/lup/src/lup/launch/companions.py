@@ -59,6 +59,7 @@ import sh
 from pydantic import BaseModel, Field, StringConstraints, ValidationError
 
 from lup.channels.wait import wait_until
+from lup.execution.shell import ShDone
 from lup.coordination.bare.runtime import (
     EXIT_FIELD,
     STARTED_FIELD,
@@ -584,6 +585,67 @@ class LiveProcess(BaseModel, frozen=True):
         return False
 
 
+class DetachedProcess(BaseModel, frozen=True):
+    """A program started apart from whoever started it, and whether it came up.
+
+    In a session of its own, so the signal that stops it reaches whatever it
+    started too; with nothing on its input, since whoever started it may end
+    long before it does; and its output appended to a log every run shares.
+    Stopping one that never answered is the caller's, which may have to say
+    why before it does.
+    """
+
+    process: LiveProcess
+    since: datetime
+    """When it was started."""
+
+    output: int
+    """Where its output begins in the log."""
+
+    answered: bool
+    """Whether ``ready`` said yes before the wait ran out."""
+
+    @classmethod
+    def start(
+        cls,
+        argv: list[str],
+        cwd: Path,
+        environment: EnvVars | None,
+        log: Path,
+        ready: Callable[[], bool],
+        within: float,
+        done: ShDone | None = None,
+    ) -> Self:
+        """Start ``argv`` in ``cwd`` and wait up to ``within`` seconds for ``ready``.
+
+        ``environment`` is the whole of what it runs with, ``None`` for this
+        process's own; ``done`` is called in this process when it ends. A
+        program that is not installed raises ``sh.CommandNotFound``.
+        """
+        program, *arguments = argv
+        log.parent.mkdir(parents=True, exist_ok=True)
+        begins = log.stat().st_size if log.exists() else 0
+        with log.open("ab") as output, Path(os.devnull).open("rb") as nothing:
+            running = sh.Command(program)(
+                *arguments,
+                _cwd=str(cwd),
+                _env=environment,
+                _bg=True,
+                _bg_exc=False,
+                _done=done,
+                _new_session=True,
+                _in=nothing,
+                _out=output,
+                _err_to_out=True,
+            )
+        return cls(
+            process=LiveProcess.of(running.pid),
+            since=datetime.now(UTC),
+            output=begins,
+            answered=answering(ready, within),
+        )
+
+
 class Lease(BaseModel, frozen=True):
     """One session's hold on a shared companion, kept while its launcher runs."""
 
@@ -821,13 +883,6 @@ class CompanionSlot(BaseModel, frozen=True):
         """Where the companion's output goes, outside the terminal the session takes over."""
         return self.directory / "output.log"
 
-    def logged(self) -> int:
-        """How much the log holds: where the next run's output begins."""
-        try:
-            return self.log().stat().st_size
-        except FileNotFoundError:
-            return 0
-
     def noted(self, said: str) -> None:
         """Write one line of lup's own into the log, among what the companion writes there.
 
@@ -982,12 +1037,12 @@ def choosing_ports(home: Path) -> Iterator[None]:
             fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
 
 
-def kept_elsewhere(home: Path, slot: CompanionSlot) -> list[int]:
+def kept_elsewhere(home: Path, slot: CompanionSlot | None = None) -> list[int]:
     """Every port another companion keeps, where the checkout it serves still exists."""
     return [
         given.port
         for path in home.glob("*/*/state.json")
-        if path.parent != slot.directory
+        if slot is None or path.parent != slot.directory
         for state in [CompanionSlot(directory=path.parent).read()]
         if state.checkout is None or state.checkout.is_dir()
         for given in state.ports
@@ -1180,9 +1235,16 @@ class SharedProcess(HostCompanion, ABC, frozen=True):
             place = CompanionPlace(
                 state=slot.directory, ports={port.name: port.port for port in given}
             )
-            running = self.spawned(place, launch, slot)
+            detached = self.spawned(place, launch, slot)
+            running = Running(
+                process=detached.process,
+                declared=self.model_dump(mode="json"),
+                since=detached.since,
+                output=detached.output,
+                spawner=LiveProcess.of(os.getpid()),
+            )
             state = state.model_copy(update={"ports": given, "running": running})
-            if answering(lambda: self.answers(place), self.ready_within):
+            if detached.answered:
                 return Started(state=state, answered=True)
             stopped = self.halted(
                 slot,
@@ -1195,15 +1257,13 @@ class SharedProcess(HostCompanion, ABC, frozen=True):
 
     def spawned(
         self, place: CompanionPlace, launch: CompanionLaunch, slot: CompanionSlot
-    ) -> Running:
-        """Start it in a session of its own, without waiting for it: what runs, and where its output begins.
+    ) -> "DetachedProcess":
+        """Start it apart from this launch, with the host secrets it names, and wait until it serves.
 
-        A session of its own, so the signal that stops it reaches whatever it
-        started too, with nothing on its input, since the launch starting it
-        may end long before it does, and its output in a log beside its state.
+        Its output goes to the log beside its state, and the launch's ``sh``
+        records how it ended where every holder reads it.
         """
         command = self.process(place, launch.root)
-        program, *arguments = command.argv
         stored = HostSecrets.for_checkout(launch.root)
         held = stored.read()
         missing = [key for key in self.secrets if key not in held]
@@ -1213,39 +1273,24 @@ class SharedProcess(HostCompanion, ABC, frozen=True):
                 f"which {stored.path()} does not hold; set it there from a "
                 "terminal on the host"
             )
-        begins = slot.logged()
         try:
-            with (
-                slot.log().open("ab") as output,
-                Path(os.devnull).open("rb") as nothing,
-            ):
-                running = sh.Command(program)(
-                    *arguments,
-                    _cwd=str(command.cwd),
-                    _env={
-                        **command.started_from(launch.environment),
-                        **{key: held[key] for key in self.secrets},
-                    },
-                    _bg=True,
-                    _bg_exc=False,
-                    _done=slot.reaped,
-                    _new_session=True,
-                    _in=nothing,
-                    _out=output,
-                    _err_to_out=True,
-                )
+            return DetachedProcess.start(
+                command.argv,
+                command.cwd,
+                {
+                    **command.started_from(launch.environment),
+                    **{key: held[key] for key in self.secrets},
+                },
+                slot.log(),
+                lambda: self.answers(place),
+                self.ready_within,
+                done=slot.reaped,
+            )
         except sh.CommandNotFound as error:
             raise LaunchRefused(
-                f"host companion {self.name!r} runs {program!r}, which is not "
-                "installed here; install it, or drop the companion"
+                f"host companion {self.name!r} runs {command.argv[0]!r}, which is "
+                "not installed here; install it, or drop the companion"
             ) from error
-        return Running(
-            process=LiveProcess.of(running.pid),
-            declared=self.model_dump(mode="json"),
-            since=datetime.now(UTC),
-            output=begins,
-            spawner=LiveProcess.of(os.getpid()),
-        )
 
     def released(self, slot: CompanionSlot, lease: Lease) -> None:
         """Let go of one lease, stopping what runs once no live one is left, saying so first."""
