@@ -34,7 +34,7 @@ from lup.channels.models import utc_now
 from lup.coordination.mail import ActorDelivery, ActorMessage
 from lup.coordination.repository import PeerView, RepositoryPeers
 from lup.coordination.roster import RosterMember
-from lup.coordination.wake import Woken, wake
+from lup.coordination.wake import WakePriority, Woken, wake
 
 
 class WatchEvent(BaseModel, frozen=True):
@@ -149,8 +149,12 @@ def roused(
     fresh: list[ActorMessage],
     cwd: Path | None = None,
     queue_timeout_seconds: float = 20.0,
+    priority: WakePriority = "next",
 ) -> Woken:
     """Make one member look at *fresh*, and hand over what the wake carried.
+
+    *priority* is when the member takes it: `now` interrupts a Claude turn
+    that is generating.
 
     The wake carries the mail whole — :func:`nudge_text` — so a wake the
     member's runtime accepted has put it in front of the member, and it is
@@ -180,6 +184,7 @@ def roused(
         nudge_text(fresh),
         cwd,
         queue_timeout_seconds=queue_timeout_seconds,
+        priority=priority,
     )
     if outcome.reached:
         peers.delivered(

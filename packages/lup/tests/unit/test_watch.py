@@ -285,3 +285,28 @@ def test_a_wake_carries_a_redirect_and_leaves_it_for_the_hook(
     )
 
 
+def test_a_now_wake_names_its_priority_on_the_frame(tmp_path: Path) -> None:
+    """`now` rides the frame; a frame naming none is taken as the runtime's `next`."""
+    address = tmp_path / "w.sock"
+    listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    listener.bind(str(address))
+    listener.listen(2)
+    listener.settimeout(5)
+    frames: list[str] = []
+
+    def read_one() -> None:
+        connection, _ = listener.accept()
+        with connection, connection.makefile("r", encoding="utf-8") as lines:
+            frames.extend(lines)
+
+    for priority in ("now", "next"):
+        reading = Thread(target=read_one)
+        reading.start()
+        assert injected(address, "look", "session-1", priority=priority).reached
+        reading.join(timeout=5)
+    listener.close()
+
+    now, then = [json.loads(frame) for frame in frames]
+    assert now["priority"] == "now"
+    assert now["session_id"] == "session-1"
+    assert "priority" not in then

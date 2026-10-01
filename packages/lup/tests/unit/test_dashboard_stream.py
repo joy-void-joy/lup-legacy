@@ -386,8 +386,9 @@ async def test_a_reply_goes_to_the_session_it_names_as_the_user(
         cwd: Path | None = None,
         *,
         queue_timeout_seconds: float = 20.0,
+        priority: str = "next",
     ) -> Woken:
-        del path, message, cwd, queue_timeout_seconds
+        del path, message, cwd, queue_timeout_seconds, priority
         return Woken(reached=False, reason="nothing is listening")
 
     monkeypatch.setattr(watching, "wake", nudged)

@@ -277,8 +277,9 @@ def waking(monkeypatch: pytest.MonkeyPatch, reached: bool) -> list[str]:
         cwd: Path | None = None,
         *,
         queue_timeout_seconds: float = 20.0,
+        priority: str = "next",
     ) -> Woken:
-        del path, cwd, queue_timeout_seconds
+        del path, cwd, queue_timeout_seconds, priority
         woken.append(message)
         return Woken(reached=reached, reason="" if reached else "nobody listening")
 
