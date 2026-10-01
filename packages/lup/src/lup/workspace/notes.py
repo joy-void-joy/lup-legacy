@@ -24,6 +24,7 @@ from pathlib import Path
 from pydantic import BaseModel, Field
 
 from lup.observability.sessions import Session, SessionRecorder
+from lup.workspace.user_directories import UserDirectories
 from lup.workspace.paths import (
     TIMESTAMP_FMT,
     agent_version,
@@ -147,4 +148,4 @@ def session_gate_flag(session_id: str) -> Path:
     processes (the tool server and the adapter) can write — a flag the
     sandboxed agent could create itself would make the gate forgeable.
     """
-    return Path.home() / ".cache" / "lup" / "gates" / f"{session_id}.reflection"
+    return UserDirectories().cache() / "gates" / f"{session_id}.reflection"

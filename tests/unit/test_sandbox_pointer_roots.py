@@ -21,7 +21,8 @@ from lup.launch.refusal import LaunchRefused
 from lup.execution.shell import git
 from lup.harness.process import ExitStatus, LaunchRequest, ProcessLauncher
 from lup.sandbox.checked import PointerCheckedLauncher, RedirectedPointer
-from lup.sandbox.known import known_repositories, remember, store_directory
+from lup.sandbox.known import known_repositories, remember
+from lup.workspace.user_directories import UserDirectories
 from lup.sandbox.pointers import pointer_drift, tree_checkouts, verdict
 from lup.sandbox.rail import Lease, fleet_lease
 
@@ -323,9 +324,9 @@ def test_a_directory_in_no_repository_passes(tmp_path: Path) -> None:
 def test_the_store_honours_xdg_state_home_and_ignores_a_relative_one(
     own_store: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    assert store_directory() == own_store
+    assert UserDirectories().state() == own_store
     monkeypatch.setenv("XDG_STATE_HOME", "relative/state")
-    assert store_directory() == Path.home() / ".local" / "state" / "lup"
+    assert UserDirectories().state() == Path.home() / ".local" / "state" / "lup"
 
 
 def test_a_lease_mounting_the_store_is_refused(own_store: Path) -> None:

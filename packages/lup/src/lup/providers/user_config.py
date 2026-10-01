@@ -37,7 +37,6 @@ from pydantic import (
     ValidationError,
     field_validator,
 )
-from pydantic_settings import BaseSettings
 from tomlkit.exceptions import TOMLKitError
 from tomlkit.items import Table
 
@@ -46,6 +45,7 @@ from lup.harness.models import NativeName
 from lup.launch.declaration import OuterContainer
 from lup.providers.claude.theme import ClaudeTheme
 from lup.types import JsonObject, JsonValue, ModelTier, SessionEffort
+from lup.workspace.user_directories import UserDirectories
 
 
 class UserTheme(BaseModel, frozen=True, extra="forbid"):
@@ -184,28 +184,11 @@ class UserConfig(BaseModel, frozen=True, extra="forbid"):
         return value
 
 
-class UserConfigHome(BaseSettings):
-    """Where the XDG base directory specification says a person's config lives.
-
-    Its one variable, read the specification's way: an absolute path moves
-    every program's configuration, and an empty or relative one is ignored in
-    favour of ``~/.config``.
-    """
-
-    xdg_config_home: str = ""
-
-    def directory(self) -> Path:
-        """lup's own directory under that base."""
-        named = Path(self.xdg_config_home)
-        base = named if named.is_absolute() else Path.home() / ".config"
-        return base / "lup"
-
-
 class UserConfigFile:
     """The directory holding one person's decisions and the accounts they name."""
 
     def __init__(self, home: Path | None = None) -> None:
-        self.home = home if home is not None else UserConfigHome().directory()
+        self.home = home if home is not None else UserDirectories().config()
 
     def path(self) -> Path:
         """The file :class:`UserConfig` is read from and written to."""

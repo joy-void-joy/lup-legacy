@@ -7,16 +7,17 @@ and mounted read-only over the committed file's path inside the container,
 so the next session on the host reads the tree exactly as it was.
 """
 
-import hashlib
 from pathlib import Path
 
 from lup.channels.models import write_atomic
+from lup.formats import digest
 from lup.launch.refusal import LaunchRefused
+from lup.workspace.user_directories import UserDirectories
 
 
 def guidance_home(cache: Path | None = None) -> Path:
     """Where guidance a container swaps in is kept: beside lup's other caches, outside every checkout."""
-    return cache or Path.home() / ".cache" / "lup" / "guidance"
+    return cache or UserDirectories().cache() / "guidance"
 
 
 def held_guidance(
@@ -36,8 +37,7 @@ def held_guidance(
             "not commit. Generate the project's guidance first, or drop the "
             "guidance from the container."
         )
-    digest = hashlib.sha256(content.encode("utf-8")).hexdigest()[:16]
-    written = guidance_home(cache) / digest / committed.name
+    written = guidance_home(cache) / digest.text(content)[:16] / committed.name
     if not written.is_file():
         write_atomic(written, content.encode("utf-8"))
     return {written: str(target)}

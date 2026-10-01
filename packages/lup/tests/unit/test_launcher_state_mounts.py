@@ -18,7 +18,7 @@ from lup.devtools.dashboard.companion import Dashboard
 from lup.launch.companions import CompanionPlace, companions_home
 from lup.launch.environments import revisions_home
 from lup.launch.pointer_trust import launcher_state_exposure
-from lup.sandbox.known import store_directory
+from lup.workspace.user_directories import UserDirectories
 from lup.sandbox.rail import Lease, same_path
 
 
@@ -95,7 +95,7 @@ def test_what_the_dashboard_lends_its_session_passes_read_only(homes: Path) -> N
     lent = [mount.path for mount in dashboard.contribution(place, homes).mounts]
 
     assert lent
-    assert all(path.is_relative_to(store_directory()) for path in lent)
+    assert all(path.is_relative_to(UserDirectories().state()) for path in lent)
     assert launcher_state_exposure(Lease(read_only=same_path(lent))) == ""
     assert "XDG_STATE_HOME" in launcher_state_exposure(Lease(writable=same_path(lent)))
 

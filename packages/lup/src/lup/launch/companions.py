@@ -65,7 +65,7 @@ from lup.launch.declaration import Loopback, Mount
 from lup.launch.refusal import LaunchRefused
 from lup.launch.secrets import HostSecrets
 from lup.observability.audit import TraceJournal
-from lup.sandbox.known import store_directory
+from lup.workspace.user_directories import UserDirectories
 from lup.sandbox.process import process_is_alive, process_start_token
 from lup.types import EnvVars, JsonObject
 
@@ -859,7 +859,7 @@ class CompanionSlot(BaseModel, frozen=True):
 
 def companions_home() -> Path:
     """Where every shared companion keeps its state: lup's own state, per person."""
-    return store_directory() / "companions"
+    return UserDirectories().state() / "companions"
 
 
 def lent_directory(state: Path) -> Path:

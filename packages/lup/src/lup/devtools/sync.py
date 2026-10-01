@@ -54,7 +54,7 @@ Review checkpoints live under the common Git directory and are shared by
 sibling worktrees. A legacy `last_synced_commit` remains a seed until a
 shared checkpoint is explicitly recorded with `mark-synced`.
 A project with a URL and no local path is materialized under
-``~/.cache/lup/sync/`` in the layout a registration naming a local path
+``sync/`` in lup's cache in the layout a registration naming a local path
 already points at -- a bare repository with a worktree attached to it -- so a
 session can branch, commit and push in either, and a launch mounts a clone it
 materialized whole (see :func:`mounted_root`). Nothing a review does moves a
@@ -121,6 +121,7 @@ from pydantic import (
 )
 
 from lup.workspace.paths import is_template_scaffold, project_root
+from lup.workspace.user_directories import UserDirectories
 from lup.devtools import sync_state, sync_usage
 from lup.devtools.dev.records import log_ref_updates
 from lup.harness.credential import remote_url, same_repository
@@ -357,7 +358,7 @@ def cache_dir() -> Path:
     symlinks ``worktree create`` copies into a new checkout point back into
     the cache of the one it was cut from.
     """
-    return Path.home() / ".cache" / "lup" / "sync"
+    return UserDirectories().cache() / "sync"
 
 
 def legacy_cache_dir() -> Path:

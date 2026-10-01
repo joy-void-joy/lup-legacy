@@ -33,6 +33,7 @@ from lup.channels.models import write_atomic
 from lup.harness.environment import inside_a_container
 from lup.types import EnvVars
 from lup.workspace.paths import read_project_name
+from lup.workspace.user_directories import UserDirectories
 
 
 class HostOnlyRefused(RuntimeError):
@@ -41,11 +42,7 @@ class HostOnlyRefused(RuntimeError):
 
 def secrets_directory() -> Path:
     """Where every project's host store lives: the person's lup config, beside their profiles."""
-    # Read where it is asked for: the person's config imports the agents,
-    # whose declarations hold the companions this store serves.
-    from lup.providers.user_config import UserConfigHome
-
-    return UserConfigHome().directory() / "secrets"
+    return UserDirectories().config() / "secrets"
 
 
 class HostSecrets(BaseModel, frozen=True):
