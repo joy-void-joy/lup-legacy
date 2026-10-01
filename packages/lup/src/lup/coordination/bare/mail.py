@@ -67,6 +67,17 @@ class Message(TypedDict, total=False):
     redirect: bool
     in_reply_to: str
     sent_at: str
+    post: str
+    """Shared by every copy one send left, one per recipient."""
+
+    thread: str
+    """The post its thread began with: its own where it began one."""
+
+    title: str
+    """The discussion it was posted into, empty where it is a message to one."""
+
+    participants: list[str]
+    """Everyone else in that discussion, as its reader addresses each."""
 
 
 class Notice(TypedDict, total=False):
@@ -110,6 +121,11 @@ def message_path(root: Path, mailbox: str, message_id: str) -> Path:
     return mailbox_path(root, mailbox) / f"{message_id}.json"
 
 
+def new_post_id() -> str:
+    """One post's id, short enough for a reader to copy into a reply."""
+    return uuid4().hex[:12]
+
+
 def new_message(
     sender: str,
     to: str,
@@ -117,13 +133,25 @@ def new_message(
     door: str,
     in_reply_to: str = "",
     redirect: bool = False,
+    post: str = "",
+    thread: str = "",
+    title: str = "",
+    participants: tuple[str, ...] = (),
 ) -> Message:
     """One message, stamped and identified, for a sender about to post it.
 
     The id is minted here rather than derived from the content, because two
     identical messages are two messages: a door repeating itself means it.
+    A *post* is minted too where the sender names none, and a message in no
+    *thread* begins its own; a sender leaving copies in several mailboxes
+    passes one post to all of them.
     """
+    posted = post or new_post_id()
     return Message(
+        post=posted,
+        thread=thread or posted,
+        title=title,
+        participants=list(participants),
         id=uuid4().hex,
         sender=sender,
         to=to,
@@ -248,22 +276,41 @@ def retract(root: Path, notice_id: str) -> bool:
     return discarded(notice_path(root, notice_id))
 
 
+def heading(message: Message) -> str:
+    """What a reader is told before one message's text: what it is, who sent it, through what.
+
+    Who sent it is named where the sender signed it — a peer's id, or `user`
+    for the person — which is the address a reply goes to, and its post is
+    what a reply names as the one it answers. A message posted into a
+    discussion is headed by the discussion first: its title, everyone else
+    in it, and the thread a reply posts into, so its reader can answer all of
+    them rather than whoever happened to write last.
+    """
+    kind = "redirected" if message.get("redirect") else "message"
+    sender = text(message.get("sender"))
+    signed = f" from {sender}" if sender else ""
+    post = text(message.get("post"))
+    marked = f" · post {post}" if post else ""
+    said = f"[{kind}{signed} by {text(message.get('door')) or 'peer'}{marked}]"
+    title = text(message.get("title"))
+    if not title:
+        return said
+    found = message.get("participants")
+    others = (
+        ", ".join(each for each in found if isinstance(each, str))
+        if isinstance(found, list)
+        else ""
+    )
+    return f"[discussion «{title}» · with {others} · thread {text(message.get('thread'))}] {said}"
+
+
 def spoken(messages: list[Message]) -> str:
     """What a member reads when its mail is put in front of it.
 
     One line per message, naming what carried each, because a redirect and an
     ordinary message ask different things of the reader and a rendering that
-    hid the difference hid it from the one party that needed it. Who sent it
-    is named where the sender signed it — a peer's id, or `user` for the
-    person — which is the address a reply goes to.
+    hid the difference hid it from the one party that needed it.
     """
-
-    def heading(message: Message) -> str:
-        kind = "redirected" if message.get("redirect") else "message"
-        sender = text(message.get("sender"))
-        signed = f" from {sender}" if sender else ""
-        return f"[{kind}{signed} by {text(message.get('door')) or 'peer'}]"
-
     return "\n".join(
         f"{heading(message)} {text(message.get('text'))}" for message in messages
     )

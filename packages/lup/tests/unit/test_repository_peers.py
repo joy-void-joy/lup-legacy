@@ -28,6 +28,7 @@ from lup.coordination.identity import (
     session_member_id,
 )
 from lup.coordination.peer_tools import create_peer_tools
+from lup.coordination.peers import USER_ADDRESS
 from lup.coordination.repository import (
     PeerDepartedError,
     RepositoryPeers,
@@ -571,8 +572,92 @@ async def test_a_send_reports_what_is_queued_for_its_recipient(
         {"address": "reviewer", "text": "two"}
     )
 
-    assert json.loads(response_text(first))["outstanding"] == 1
-    assert json.loads(response_text(second))["outstanding"] == 2
+    assert [
+        each["outstanding"] for each in json.loads(response_text(first))["reached"]
+    ] == [1]
+    assert [
+        each["outstanding"] for each in json.loads(response_text(second))["reached"]
+    ] == [2]
+
+
+async def test_an_answer_with_a_thread_reaches_everyone_in_the_discussion(
+    tmp_path: Path,
+) -> None:
+    """What the person posted into a discussion an agent answers into it, so all of it reads whole."""
+    peers, reviewer = joined(tmp_path, "reviewer")
+    tools = verbs(peers, "abc123", tmp_path / "dev")
+    await tools["coordination_describe"].handler({"description": "rewriting"})
+    peers.send("abc123", "Is the relay done?", sender=reviewer)
+    [asked] = peers.take("abc123").messages
+    told = peers.post_into(asked.thread, "Both of you: report.", sender=USER_ADDRESS)
+
+    answered = json.loads(
+        response_text(
+            await tools["coordination_send"].handler(
+                {"thread": asked.thread, "text": "Done, merging now."}
+            )
+        )
+    )
+
+    assert answered["thread"] == asked.thread
+    assert {each["address"] for each in answered["reached"]} == {
+        f"session:{reviewer}#1",
+        "user:user#1",
+    }
+    [to_reviewer] = [
+        message
+        for message in peers.waiting(reviewer).messages
+        if message.text == "Done, merging now."
+    ]
+    assert to_reviewer.in_reply_to == told.post
+    assert to_reviewer.post == answered["post"]
+
+
+async def test_a_reply_names_its_post_and_the_mailbox_shows_the_thread(
+    tmp_path: Path,
+) -> None:
+    peers, reviewer = joined(tmp_path, "reviewer")
+    tools = verbs(peers, "abc123", tmp_path / "dev")
+    await tools["coordination_describe"].handler({"description": "rewriting"})
+    peers.send("abc123", "Is the relay done?", sender=reviewer)
+    [asked] = peers.waiting("abc123").messages
+    peers.post_into(asked.thread, "Both of you: report.", sender=USER_ADDRESS)
+
+    read = json.loads(response_text(await tools["coordination_mailbox"].handler({})))
+
+    assert read["messages"][0] == (
+        f"[message from {reviewer} by agent · post {asked.post}] Is the relay done?"
+    )
+    assert read["messages"][1].startswith(
+        f"[discussion «Is the relay done?» · with reviewer, user · thread {asked.thread}]"
+    )
+
+    replied = json.loads(
+        response_text(
+            await tools["coordination_send"].handler(
+                {"address": "reviewer", "in_reply_to": asked.post, "text": "Yes."}
+            )
+        )
+    )
+    assert replied["thread"] == asked.thread
+    [answer] = [
+        message
+        for message in peers.waiting(reviewer).messages
+        if message.text == "Yes."
+    ]
+    assert (answer.in_reply_to, answer.thread) == (asked.post, asked.thread)
+
+
+async def test_a_send_with_neither_address_nor_thread_is_refused(
+    tmp_path: Path,
+) -> None:
+    peers = RepositoryPeers(tmp_path)
+    tools = verbs(peers, "abc123", tmp_path / "dev")
+    await tools["coordination_describe"].handler({"description": "rewriting"})
+
+    assert "`address`" in refusal(
+        await tools["coordination_send"].handler({"text": "hi"})
+    )
 
 
 async def test_a_send_to_ones_own_address_is_refused(tmp_path: Path) -> None:

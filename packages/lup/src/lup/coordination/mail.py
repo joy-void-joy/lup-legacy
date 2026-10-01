@@ -66,12 +66,50 @@ class ActorMessage(BaseModel, frozen=True):
 
     in_reply_to: str = ""
     redirect: bool = False
+    post: str = ""
+    """Shared by every copy one send left, one per recipient; empty on a record
+    carrying none, whose own id stands for it."""
+
+    thread: str = ""
+    """The post its thread began with: its own where it began one."""
+
+    title: str = ""
+    """The discussion it was posted into, empty where it is a message to one."""
+
+    participants: list[str] = []
+    """Everyone else in that discussion, as its reader addresses each."""
 
     def heading(self) -> str:
-        """What its reader is told before the text: what it is, who sent it, through what."""
-        kind = "redirected" if self.redirect else "message"
-        signed = f" from {self.sender}" if self.sender else ""
-        return f"[{kind}{signed} by {self.door}]"
+        """What its reader is told before the text, as the delivery hook tells it."""
+        return mail.heading(
+            mail.Message(
+                sender=self.sender,
+                door=str(self.door),
+                redirect=self.redirect,
+                post=self.post,
+                thread=self.thread,
+                title=self.title,
+                participants=self.participants,
+            )
+        )
+
+
+class Posting(BaseModel, frozen=True):
+    """Where one send sits among the posts, which every copy it leaves shares.
+
+    Empty everywhere is an ordinary message: a post of its own, beginning its
+    own thread. A reply names the thread it answers into; a discussion's post
+    also carries its title and who else is in it, which its reader is told.
+    """
+
+    post: str = ""
+    """The id every copy shares; empty mints one."""
+
+    thread: str = ""
+    """The post the thread began with; empty begins one at this post."""
+
+    title: str = ""
+    participants: list[str] = []
 
 
 class StandingNotice(BaseModel, frozen=True):
@@ -181,6 +219,14 @@ def folded_message(message: mail.Message) -> ActorMessage:
         sender=store.text(message.get("sender")),
         in_reply_to=store.text(message.get("in_reply_to")),
         redirect=bool(message.get("redirect")),
+        post=store.text(message.get("post")),
+        thread=store.text(message.get("thread")),
+        title=store.text(message.get("title")),
+        participants=[
+            each
+            for each in (message.get("participants") or [])
+            if isinstance(each, str)
+        ],
     )
 
 
@@ -226,6 +272,28 @@ class PostedMessage(BaseModel, frozen=True):
 
     recipient: ActorRef
     message: ActorMessage
+
+
+class Discussion(BaseModel, frozen=True):
+    """One thread as the record holds it: who is in it, what it is called, and where it stands."""
+
+    thread: str
+    """The post it began with."""
+
+    title: str
+    """Its first post's first line."""
+
+    participants: list[str]
+    """Everyone who wrote in it or was written to, by the address a reply
+    reaches — a member's id, or `user` — in the order each first appears."""
+
+    last: str
+    """Its latest post, which a post naming nothing else answers."""
+
+
+def first_line(said: str) -> str:
+    """The first line of what somebody said that says anything."""
+    return next((line.strip() for line in said.splitlines() if line.strip()), "")
 
 
 class RecordedLine(BaseModel, frozen=True):
@@ -360,6 +428,7 @@ class ActorMail:
         sender: str = "",
         in_reply_to: str = "",
         redirect: bool = False,
+        posting: Posting = Posting(),
     ) -> ActorMessage:
         """Put one message in one member's mailbox, and say what was put there."""
         message = mail.new_message(
@@ -369,6 +438,10 @@ class ActorMail:
             door=str(door),
             in_reply_to=in_reply_to,
             redirect=redirect,
+            post=posting.post,
+            thread=posting.thread,
+            title=posting.title,
+            participants=tuple(posting.participants),
         )
         mail.post(
             self.root, store.Actor(kind=to.kind, id=to.id, round=to.round), message
@@ -440,6 +513,77 @@ class ActorMail:
         with record:
             end = min(before, os.fstat(record.fileno()).st_size)
             return paged(record, end, 0, limit, block)
+
+    def latest_first(self, block: int = MAIL_BLOCK) -> Iterator[PostedMessage]:
+        """Every message on the record, latest first, read back a block at a time.
+
+        A caller that stops early has read only the blocks it stopped in, so
+        a reader looking for something recent never reads the record whole.
+        """
+        try:
+            record = (self.root / store.MAIL_RECORD).open("rb")
+        except OSError:
+            return
+        with record:
+            end = os.fstat(record.fileno()).st_size
+            for line in backward(record, end, 0, block):
+                if (posted := line.posted()) is not None:
+                    yield posted
+
+    def found(self, post: str) -> PostedMessage | None:
+        """The latest copy on the record of one post — by its post id, or a message's own id."""
+        if not post:
+            return None
+        return next(
+            (
+                posted
+                for posted in self.latest_first()
+                if post in (posted.message.post, posted.message.id)
+            ),
+            None,
+        )
+
+    def discussion(self, thread: str) -> "Discussion | None":
+        """Everyone in one thread, what it is called, and its latest post; nothing where no post began it.
+
+        Read back from the record's end to the post the thread began with,
+        which is the oldest of it, so a thread costs the record since it
+        began however long the record behind it: every copy of that first
+        post is read, one per mailbox it was put in, and nothing older.
+        """
+
+        def beginning(posted: PostedMessage) -> bool:
+            return thread in (posted.message.post, posted.message.id)
+
+        def back_to_its_start() -> Iterator[PostedMessage]:
+            reached = False
+            for posted in self.latest_first():
+                if reached and not beginning(posted):
+                    return
+                reached = reached or beginning(posted)
+                yield posted
+
+        held = [
+            posted
+            for posted in back_to_its_start()
+            if thread in (posted.message.thread, posted.message.post, posted.message.id)
+        ]
+        if not held or not beginning(held[-1]):
+            return None
+        oldest_first = held[::-1]
+        return Discussion(
+            thread=thread,
+            title=first_line(held[-1].message.text) or thread,
+            participants=list(
+                dict.fromkeys(
+                    each
+                    for posted in oldest_first
+                    for each in (posted.message.sender, posted.recipient.id)
+                    if each
+                )
+            ),
+            last=held[0].message.post or held[0].message.id,
+        )
 
     def standing(self) -> list[StandingNotice]:
         """Every fact standing over this population, oldest first."""

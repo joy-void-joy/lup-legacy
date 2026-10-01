@@ -51,7 +51,8 @@ from lup.coordination.identity import (
     mint_member_id,
     session_cli_name,
 )
-from lup.coordination.mail import ActorDelivery
+from lup.coordination.bare.mail import new_post_id
+from lup.coordination.mail import ActorDelivery, Posting
 from lup.coordination.meeting import coordination_root
 from lup.coordination.peers import USER_KIND, user_peer
 from lup.coordination.pulse import Pulse
@@ -140,6 +141,22 @@ class PeerDepartedError(LookupError):
         )
         self.member = member
         self.cli_name = cli_name
+
+
+class NotReached(BaseModel, frozen=True):
+    """One member a post was meant for and did not reach, and why."""
+
+    address: str
+    reason: str
+
+
+class ThreadPost(BaseModel, frozen=True):
+    """One post into a discussion: the id every copy shares, and whom it reached."""
+
+    post: str
+    thread: str
+    reached: list[ActorRef] = []
+    refused: list[NotReached] = []
 
 
 class PeerView(BaseModel, frozen=True):
@@ -642,7 +659,9 @@ class RepositoryPeers:
         tell the sender nothing while the message waits for nobody.
 
         *sender* signs it with the address a reply reaches: the sending
-        member's id, or `user` for the person.
+        member's id, or `user` for the person. A reply names the post it
+        answers in *in_reply_to*, and goes into that post's thread unless
+        *posting* names one.
         """
         member = self.address(to)
         if member is None:
@@ -657,6 +676,7 @@ class RepositoryPeers:
             door=door,
             in_reply_to=in_reply_to,
             sender=sender,
+        posting: Posting = Posting(),
         )
         return member
 
@@ -685,9 +705,90 @@ class RepositoryPeers:
         mailbox = self.cohort.mailbox(self.actor(member_id))
         delivery = mailbox.waiting()
         mailbox.commit(delivery)
+            posting=posting
+            if posting.thread or not in_reply_to
+            else posting.model_copy(update={"thread": self.thread_of(in_reply_to)}),
         return delivery
 
     def delivered(self, member_id: str, delivery: ActorDelivery) -> None:
+    def thread_of(self, post: str) -> str:
+        """The thread one post is in, which a reply to it goes into; the post itself where the record has no thread for it."""
+        found = self.cohort.mail.found(post)
+        if found is None:
+            return post
+        return found.message.thread or found.message.post or found.message.id
+
+    def post_into(
+        self,
+        thread: str,
+        text: str,
+        sender: str,
+        door: Door = Door.AGENT,
+        in_reply_to: str = "",
+        joining: tuple[str, ...] = (),
+    ) -> ThreadPost:
+        """Post once into a discussion: one copy to everyone in it but the sender, sharing a post.
+
+        Everyone is whoever wrote in the thread or was written to, and whoever
+        *joining* names, who is in it from then on. Each copy answers
+        *in_reply_to*, or the thread's latest post, and carries the thread's
+        title and everyone else in it, so its reader can answer them all.
+        A member that has stopped is left out and said so, rather than
+        failing the post for everyone still here.
+        """
+        found = self.cohort.mail.discussion(thread)
+        if found is None:
+            raise LookupError(
+                f"no post on this repository's record began a thread {thread!r}"
+            )
+        joined = [self.address(each) for each in joining]
+        missing = [
+            each for each, ref in zip(joining, joined, strict=True) if ref is None
+        ]
+        if missing:
+            raise LookupError(f"nobody here answers to {', '.join(missing)}")
+        everyone = list(
+            dict.fromkeys(
+                [
+                    *found.participants,
+                    sender,
+                    *(ref.id for ref in joined if ref is not None),
+                ]
+            )
+        )
+        named = {each: self.called(each) or each for each in everyone}
+        post = new_post_id()
+        reached: list[ActorRef] = []
+        refused: list[NotReached] = []
+        for reader in [each for each in everyone if each != sender]:
+            posting = Posting(
+                post=post,
+                thread=thread,
+                title=found.title,
+                participants=[named[each] for each in everyone if each != reader],
+            )
+            try:
+                landed = self.send(
+                    reader,
+                    text,
+                    door=door,
+                    in_reply_to=in_reply_to or found.last,
+                    sender=sender,
+                    posting=posting,
+                )
+            except PeerDepartedError as departed:
+                refused.append(NotReached(address=named[reader], reason=str(departed)))
+                continue
+            if landed is None:
+                refused.append(
+                    NotReached(
+                        address=named[reader], reason="nobody here answers to it"
+                    )
+                )
+            else:
+                reached.append(landed)
+        return ThreadPost(post=post, thread=thread, reached=reached, refused=refused)
+
         """Record exactly these messages as handed over to this member by something else.
 
         What a wake the member's runtime accepted does: it carried them whole,

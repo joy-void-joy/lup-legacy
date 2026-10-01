@@ -1,0 +1,25 @@
+subjects = [
+    "PeerSayOutput.address",
+    "PeerSayOutput.delivery",
+    "PeerSayOutput.outstanding",
+]
+reason = """
+a send can reach everyone in a discussion, not only one peer, so \
+coordination_send answers with the post every copy shares, the thread it went \
+into, and each peer it reached"""
+
+[[steps]]
+instruction = """
+Read what a coordination_send reached from PeerSayOutput.reached, one \
+PeerReached{address, delivery, outstanding} per peer, where it read \
+PeerSayOutput.address, .delivery and .outstanding; a send to one address \
+reaches one. PeerSayOutput.post is what a reply names in `in_reply_to`, and \
+PeerSayOutput.thread the thread it went into."""
+
+[[steps]]
+instruction = """
+Expect every message a member is handed to name its post — `[message from \
+<id> by agent · post <post>] …` — and one posted into a discussion to be \
+headed by it first: `[discussion «<title>» · with <everyone else> · thread \
+<thread>] [message …] …`. A reader matching `[message from <id> by agent] …` \
+matches up to the post."""
