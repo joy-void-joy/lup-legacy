@@ -448,9 +448,10 @@ def create_peer_tools(
         "read before writing. Anything in `contested` is held by more than one "
         "row already. A path under somebody's `holding` is not forbidden — say "
         "so with `coordination_send` first.\n\n"
-        "The person watching is not a row and needs no listing — they are "
-        "always reachable at `user`. Returns {peers: [{address, cli_name, "
-        "doing, holding, contested, member, subagents}]}.",
+        "The person watching is the last row, at `user`: what they say they "
+        "are on, and what they hold — a path they locked is theirs until they "
+        "release it, and writing under it asks them. Returns {peers: "
+        "[{address, cli_name, doing, holding, contested, member, subagents}]}.",
         name="coordination_peers",
     )
     async def coordination_peers(params: Called) -> PeerListOutput:
@@ -461,9 +462,14 @@ def create_peer_tools(
         peers.sweep(by=member_ref(member_id))
         standing = peers.row(member_id)
         return PeerListOutput(
-            peers=nested(
-                peers.listing(since=standing.arrived if standing is not None else None)
-            )
+            peers=[
+                *nested(
+                    peers.listing(
+                        since=standing.arrived if standing is not None else None
+                    )
+                ),
+                peers.person(),
+            ]
         )
 
     @lup_tool(
@@ -537,19 +543,6 @@ def create_peer_tools(
                 f"{params.address!r} is your own address; "
                 "`coordination_peers` lists the others"
             )
-        try:
-            found = peers.send(
-                params.address,
-                params.text,
-                door=door,
-                in_reply_to=params.in_reply_to,
-                sender=acting.id,
-                posting=Posting(post=post, thread=thread),
-            )
-        except PeerDepartedError as departed:
-            raise ToolError(
-                f"{departed}; `coordination_peers` lists who is here"
-            ) from departed
         if params.thread:
             try:
                 posted = peers.post_into(
@@ -575,6 +568,19 @@ def create_peer_tools(
             raise ToolError("name the `address` to reach, or a `thread` to post into")
         post = new_post_id()
         thread = peers.thread_of(params.in_reply_to) if params.in_reply_to else post
+        try:
+            found = peers.send(
+                params.address,
+                params.text,
+                door=door,
+                in_reply_to=params.in_reply_to,
+                sender=acting.id,
+                posting=Posting(post=post, thread=thread),
+            )
+        except PeerDepartedError as departed:
+            raise ToolError(
+                f"{departed}; `coordination_peers` lists who is here"
+            ) from departed
         if found is None:
             known = ", ".join(view.address for view in peers.listing()) or "none"
             raise ToolError(

@@ -660,6 +660,27 @@ async def test_a_send_with_neither_address_nor_thread_is_refused(
     )
 
 
+async def test_the_peers_listing_ends_with_the_person_and_what_they_hold(
+    tmp_path: Path,
+) -> None:
+    """The person is a full peer: what they say they are on, and what they lock."""
+    peers = RepositoryPeers(tmp_path)
+    tools = verbs(peers, "abc123", tmp_path / "dev")
+    await tools["coordination_describe"].handler({"description": "rewriting"})
+    held = tmp_path / "held"
+    held.mkdir()
+    peers.describe(USER_ADDRESS, "watching the relay land")
+    peers.lock(USER_ADDRESS, held)
+
+    listed = json.loads(response_text(await tools["coordination_peers"].handler({})))
+
+    person = listed["peers"][-1]
+    assert person["address"] == "user"
+    assert person["doing"] == "watching the relay land"
+    assert person["holding"] == [f"under {held}"]
+    assert [claim.path for claim in peers.holding(held / "inner.py")] == [str(held)]
+
+
 async def test_a_send_to_ones_own_address_is_refused(tmp_path: Path) -> None:
     """The name resolved, to the sender, which is the one peer it cannot mean."""
     peers = RepositoryPeers(tmp_path)

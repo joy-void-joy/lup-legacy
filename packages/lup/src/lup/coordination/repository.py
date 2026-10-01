@@ -54,7 +54,7 @@ from lup.coordination.identity import (
 from lup.coordination.bare.mail import new_post_id
 from lup.coordination.mail import ActorDelivery, Posting
 from lup.coordination.meeting import coordination_root
-from lup.coordination.peers import USER_KIND, user_peer
+from lup.coordination.peers import USER_ADDRESS, USER_KIND, USER_TASK, user_peer
 from lup.coordination.pulse import Pulse
 from lup.coordination.refs import ActorRef
 from lup.coordination.roster import (
@@ -391,8 +391,11 @@ class RepositoryPeers:
 
         Resolved rather than assumed, so every verb taking an id — a console's
         `--id`, a handoff's lock — reaches a subagent's row by the id the
-        roster prints for it.
+        roster prints for it. `user` is the person, whose row is the one no
+        session or subagent can be.
         """
+        if member_id == USER_ADDRESS:
+            return user_peer()
         found = store.actor_named(self.root, member_id)
         return ActorRef(kind=store.actor_kind(found), id=store.actor_id(found))
 
@@ -556,6 +559,31 @@ class RepositoryPeers:
 
         return [row(member) for member in self.present() if told(member)]
 
+    def person(self) -> PeerView:
+        """The person's own row: what they say they are on, and what they hold.
+
+        Read like any session's, from their own file, and addressed at `user`
+        in every repository. They hold a path the way a session does, and
+        never stop, so what they lock stands until they release it.
+        """
+        found = store.member_of(self.root, member_identity(user_peer()))
+        member = (
+            folded_member(found)
+            if found is not None
+            else RosterMember(actor=user_peer(), task=USER_TASK, running=True)
+        )
+        held = [
+            claim
+            for claim in self.held()
+            if any(holder.id == USER_ADDRESS for holder in claim.holders)
+        ]
+        return PeerView(
+            member=member,
+            cli_name=USER_ADDRESS,
+            holding=[claim.subject() for claim in held],
+            contested=[claim.subject() for claim in held if len(claim.holders) > 1],
+        )
+
     def recent(self, now: datetime | None = None) -> list[PeerView]:
         """The listing a reader with no arrival of its own gets: the retention window."""
         return self.listing(since=self.retention.since(now or utc_now()))
@@ -646,6 +674,7 @@ class RepositoryPeers:
         door: Door = Door.AGENT,
         in_reply_to: str = "",
         sender: str = "",
+        posting: Posting = Posting(),
     ) -> ActorRef | None:
         """Post one message to whatever a sender spelled, or say it reached nobody.
 
@@ -676,41 +705,12 @@ class RepositoryPeers:
             door=door,
             in_reply_to=in_reply_to,
             sender=sender,
-        posting: Posting = Posting(),
-        )
-        return member
-
-    def notify(self, text: str, door: Door = Door.AGENT, by: str = "") -> None:
-        """State something true for every session here, and for whoever starts next.
-
-        A notice is state rather than mail: it is read at the head of every
-        prompt for as long as it stands, so a session opened tomorrow reads it
-        at its first. Whoever is working is told now as well, because a fact
-        worth stating is worth hearing before the turn they are in ends.
-        """
-        self.cohort.notify(text, door=door, by=by)
-
-    def waiting(self, member_id: str) -> ActorDelivery:
-        """What is queued for this session, consuming none of it."""
-        return self.cohort.mail.waiting(self.actor(member_id))
-
-    def take(self, member_id: str) -> ActorDelivery:
-        """Take everything queued for this session, and record it as handed over.
-
-        The delivery is returned rather than the bare messages so a caller
-        holds what was consumed: the files it names have been deleted, so a
-        caller that dropped the result has lost the mail rather than deferred
-        it, and the type it gets back is the one it would have peeked at.
-        """
-        mailbox = self.cohort.mailbox(self.actor(member_id))
-        delivery = mailbox.waiting()
-        mailbox.commit(delivery)
             posting=posting
             if posting.thread or not in_reply_to
             else posting.model_copy(update={"thread": self.thread_of(in_reply_to)}),
-        return delivery
+        )
+        return member
 
-    def delivered(self, member_id: str, delivery: ActorDelivery) -> None:
     def thread_of(self, post: str) -> str:
         """The thread one post is in, which a reply to it goes into; the post itself where the record has no thread for it."""
         found = self.cohort.mail.found(post)
@@ -789,6 +789,34 @@ class RepositoryPeers:
                 reached.append(landed)
         return ThreadPost(post=post, thread=thread, reached=reached, refused=refused)
 
+    def notify(self, text: str, door: Door = Door.AGENT, by: str = "") -> None:
+        """State something true for every session here, and for whoever starts next.
+
+        A notice is state rather than mail: it is read at the head of every
+        prompt for as long as it stands, so a session opened tomorrow reads it
+        at its first. Whoever is working is told now as well, because a fact
+        worth stating is worth hearing before the turn they are in ends.
+        """
+        self.cohort.notify(text, door=door, by=by)
+
+    def waiting(self, member_id: str) -> ActorDelivery:
+        """What is queued for this session, consuming none of it."""
+        return self.cohort.mail.waiting(self.actor(member_id))
+
+    def take(self, member_id: str) -> ActorDelivery:
+        """Take everything queued for this session, and record it as handed over.
+
+        The delivery is returned rather than the bare messages so a caller
+        holds what was consumed: the files it names have been deleted, so a
+        caller that dropped the result has lost the mail rather than deferred
+        it, and the type it gets back is the one it would have peeked at.
+        """
+        mailbox = self.cohort.mailbox(self.actor(member_id))
+        delivery = mailbox.waiting()
+        mailbox.commit(delivery)
+        return delivery
+
+    def delivered(self, member_id: str, delivery: ActorDelivery) -> None:
         """Record exactly these messages as handed over to this member by something else.
 
         What a wake the member's runtime accepted does: it carried them whole,
@@ -801,14 +829,11 @@ class RepositoryPeers:
     def live_ids(self) -> list[str]:
         """Every member still working here, by id, which is what expires a claim.
 
-        The store's own reading, asked for the kinds this layer counts: the
-        person is on the roster, holds nothing, and would otherwise be live
-        for a claim check here and not for the addressing read the compiled
-        dispatcher takes through the same function.
+        The store's own reading, the person included: the person is never
+        finished, so what they lock stands until they release it, and the
+        compiled dispatcher asking who holds a path reads the same members.
         """
-        return store.live_ids(
-            self.root, window=self.pulse.stale_after_seconds, without=USER_KIND
-        )
+        return store.live_ids(self.root, window=self.pulse.stale_after_seconds)
 
     def held(self) -> list[HeldPath]:
         """Every claim a live session is holding, newest first."""
