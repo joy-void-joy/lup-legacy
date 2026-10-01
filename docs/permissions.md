@@ -512,14 +512,18 @@ not read that way, since a later reference is then some other value
 Where a `cd` leaves the shell is followed the way the shell follows it:
 through `&&`, `||` and `!`, and into the `if` branch its condition chose. A
 `cd` that fails leaves the shell where it stood, so `cd a || rm x` removes
-the `x` beside it. Past a `cd` that may or may not have happened — `cd a; rm
-x`, a chain after its `cd` that may have stopped early, a loop whose next
-pass starts wherever the last one left — no directory is named, and a
-relative path written there is a path only the run knows, which asks. A
-pipeline's commands and a backgrounded list run in processes of their own,
-so a `cd` among them moves nothing after them; `command cd` and `builtin
-cd` move the shell as `cd` does, and `time cd` may run in a child, so where
-it lands is not named.
+the `x` beside it. Past a `;` a `cd` naming its directory is taken to have
+succeeded — `cd /abs/wt && make; date > tmp/log` writes the log in that tree
+— which leaves one case open, recorded where the assumption is made: a `cd`
+into a directory that is not there runs what follows where the shell stood.
+Where the line itself may have skipped or undone a move — a `cd` after a
+command that may have failed, a chain routing `||` to either side of its
+`cd`, a loop whose next pass starts wherever the last one left — no
+directory is named, and a relative path written there is a path only the run
+knows, which asks. A pipeline's commands and a backgrounded list run in
+processes of their own, so a `cd` among them moves nothing after them;
+`command cd` and `builtin cd` move the shell as `cd` does, and `time cd` may
+run in a child, so where it lands is not named.
 `find -exec` payloads and wrappers (`env`, `time`,
 `timeout`, `nice`, `stdbuf`, `setsid`, `nohup`, `exec`, `command`) recurse;
 a payload is judged with each `{}` standing for a path only the run names,

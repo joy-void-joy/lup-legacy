@@ -24,25 +24,27 @@ writes in. The same floor answered many other spellings of one write.
   --force origin main` left the push unjudged.
 - A `cd` is followed the way the shell follows it: through `&&`, `||`, `!`
   and into the `if` branch its condition chose, so `cd a || rm x` and `if cd
-  packages; then rm lup/…; fi` are judged where they run. Past a `cd` that
-  may have failed — `cd a; rm x`, a chain that may have stopped after its
-  `cd` — and after a `cd` nothing can read, a relative path written is one
-  only the run can name, and asks instead of being carried by a boundary.
-  `command cd` and `builtin cd` move the shell as `cd` does.
+  packages; then rm lup/…; fi` are judged where they run. Where the line
+  may have skipped or undone a move, and after a `cd` nothing can read, a
+  relative path written is one only the run can name, and asks instead of
+  being carried by a boundary. `command cd` and `builtin cd` move the shell
+  as `cd` does.
 - `find -exec`'s `{}` is a path only the run names beneath each starting
   point: `find packages -exec rm {} +` asks where it was read as `rm ./x`.
 - A `select`, an arithmetic command and a construct nested past the depth
   the walk opens no longer hide the commands inside and after them.
 
-What changes for a session: write after a `cd` with `&&` rather than `;`
-(`cd a; echo x > f` asks now; `cd a && echo x > f` is judged at `a/f`), and a
-write through a glob loop, a `read`, a substitution or `find -exec` asks
-even into scratch — spell the paths, or run a script under `tmp/`. Where no
-boundary runs, those writes ask where they used to be refused. An
-unclassified command, or a write after an array or a function definition,
-is still carried by the runtime's own sandbox into a protected path (#531),
-and a write through a hard link, or a link the same line makes, still lands
-on the file it links to unasked (#532).
+What changes for a session: a write through a glob loop, a `read`, a
+substitution or `find -exec` asks even into scratch — spell the paths, or
+run a script under `tmp/`. Where no boundary runs, those writes ask where
+they used to be refused. Still open: a `cd` into a directory that is not
+there, followed by `;`, is taken to have succeeded, so what runs after it is
+judged in a directory the shell never entered (recorded in
+`lup.policy.kernel.lex.placed_andor`); an unclassified command, or a write
+after an array or a function definition, is still carried by the runtime's
+own sandbox into a protected path (#531); and a write through a hard link,
+or a link the same line makes, still lands on the file it links to unasked
+(#532).
 
 ### Containers starting at once on one config home no longer tear or drop what the others wrote
 
