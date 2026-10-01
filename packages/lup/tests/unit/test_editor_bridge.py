@@ -36,6 +36,34 @@ def test_an_empty_variable_is_absence_rather_than_a_home_at_the_root() -> None:
     assert CLAUDE_LOGIN.selected_home({"CLAUDE_CONFIG_DIR": ""}) == (
         CLAUDE_LOGIN.ambient_home
     )
+    assert CODEX_LOGIN.selected_home({"CODEX_HOME": ""}) == (
+        CODEX_LOGIN.ambient_home.resolve()
+    )
+
+
+def test_with_nothing_named_the_home_is_joined_onto_the_environment_s_home(
+    tmp_path: Path,
+) -> None:
+    """What the CLI itself does: its default sits in the effective user's ``HOME``."""
+    other = tmp_path / "other"
+
+    assert CLAUDE_LOGIN.selected_home({"HOME": str(other)}) == other / ".claude"
+    assert (
+        CODEX_LOGIN.selected_home({"HOME": str(other)}) == (other / ".codex").resolve()
+    )
+
+
+def test_a_runtime_that_canonicalises_its_home_is_answered_resolved(
+    tmp_path: Path,
+) -> None:
+    """Codex resolves the home it is pointed at; Claude Code takes the spelling."""
+    real = tmp_path / "real"
+    real.mkdir()
+    (tmp_path / "linked").symlink_to(real)
+    named = str(tmp_path / "linked")
+
+    assert CODEX_LOGIN.selected_home({"CODEX_HOME": named}) == real
+    assert CLAUDE_LOGIN.selected_home({"CLAUDE_CONFIG_DIR": named}) == Path(named)
 
 
 def test_a_runtime_declaring_no_rendezvous_is_bridged_nowhere() -> None:
