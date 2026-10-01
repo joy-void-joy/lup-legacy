@@ -207,8 +207,9 @@ part of probing.
   `argv[0]`. Its two siblings in the same function *are* gated on git
   (`ZLa=/^git(?:\.exe|\.real|-[a-z][\w-]*)?$/i` guards both the
   `xargs`/`parallel` refusal and the `find -execdir/-okdir` one); this third
-  check is not. The refusal is byte-identical with a leading `# lup: escalate:`
-  line, so no marker reaches it. It arms on the relocation tool, not on the
+  check is not. The refusal is byte-identical with a leading
+  `# lup: escalate[decision]:` line, so no marker reaches it. It arms on the
+  relocation tool, not on the
   working directory: a session launched already rooted in a worktree is not
   isolated, which is what the workflow in `docs/contributing.md` relies on.
   Where it switches is bounded too, and observed rather than read: a path

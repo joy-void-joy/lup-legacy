@@ -1802,8 +1802,8 @@ def decide_shell(
     """Classify one command, honoring an escalation marker and hinting denies.
 
     Two steps, and only the first is here. This reads the leading
-    ``# lup: escalate: <why>`` line off the command, refuses a marker that
-    states no reason, and hands the classified verdict to the settlement
+    ``# lup: escalate[<kind>]: <why>`` line off the command, refuses a marker
+    that states no reason or names no kind, and hands the classified verdict to the settlement
     order in ``settlement.py`` along with every session fact that bears on
     it: whether a boundary is running, whether this host can put one call
     outside it, and whether there is anybody to ask.

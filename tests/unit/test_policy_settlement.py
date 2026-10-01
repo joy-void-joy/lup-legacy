@@ -223,21 +223,17 @@ def test_decision_escalation_over_a_permission_says_it_was_unnecessary() -> None
     assert settled.visibility == "notice"
 
 
-def test_the_legacy_bare_marker_works_and_says_it_is_an_alias() -> None:
-    """Every marker written before the vocabulary grew keeps working.
-
-    The alternative is a session whose escalations all stop working at once,
-    which is a migration nobody can act on mid-run.
-    """
+def test_a_decision_escalation_asks_and_names_no_spelling_to_fix() -> None:
+    """A marker that named its kind is answered with the question it asked for."""
     settled = settle(
         facts(
             KernelDecision("deny", "no"),
-            escalation=EscalationRequest(("decision",), "why", legacy=True),
+            escalation=EscalationRequest(("decision",), "why"),
         )
     )
 
     assert settled.effect == "ask"
-    assert "escalate[decision]" in settled.recovery
+    assert "escalate[decision]" not in settled.recovery
 
 
 def test_sandbox_escalation_asks_before_an_allowed_operation_leaves() -> None:

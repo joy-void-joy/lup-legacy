@@ -213,7 +213,7 @@ def test_a_refusal_escalates_into_the_question_the_caller_asked_for(
     """The marker rides in the prompt, the one input a caller writes prose into."""
     payload = spawn(
         None,
-        prompt="# lup: escalate: measuring the hook\nReply ok.",
+        prompt="# lup: escalate[decision]: measuring the hook\nReply ok.",
         description="探针",
     )
     payload.update(

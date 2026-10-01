@@ -325,7 +325,7 @@ class SandboxEscalation(SettlementRule):
             escalated=facts.escalation.reason,
             purpose=decision.purpose or "policy_override",
             abstention=None,
-        ).advising(facts.escalation.notice())
+        )
 
 
 class DecisionEscalation(SettlementRule):
@@ -357,17 +357,16 @@ class DecisionEscalation(SettlementRule):
             return None
         assert facts.escalation is not None
         decision = facts.decision
-        notice = facts.escalation.notice()
         if decision.effect == "allow":
             return decision.revised(
                 reason=decision.reason + REDUNDANT_DECISION,
                 visibility="notice",
-            ).advising(notice)
+            )
         if decision.effect == "defer" and decision.abstention == "provider_native":
             return decision.revised(
                 reason=decision.reason + HANDED_OVER_DECISION,
                 visibility="notice",
-            ).advising(notice)
+            )
         prefix = ESCALATED_PREFIX.format(reason=facts.escalation.reason)
         return decision.revised(
             effect="ask",
@@ -376,7 +375,7 @@ class DecisionEscalation(SettlementRule):
             purpose=decision.purpose or "policy_override",
             cause=None,
             abstention=None,
-        ).advising(notice)
+        )
 
 
 class TrappedPlacement(SettlementRule):

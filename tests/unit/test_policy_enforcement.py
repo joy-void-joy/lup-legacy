@@ -344,7 +344,7 @@ async def test_a_worker_is_judged_by_the_composition_a_run_actually_builds() -> 
     for parked in (
         "find . -delete",
         "git push --delete origin feat",
-        "# lup: escalate: I would rather not be asked\nsudo rm -rf /var/tmp/x",
+        "# lup: escalate[decision]: I would rather not be asked\nsudo rm -rf /var/tmp/x",
     ):
         assert (await judged(parked)).decision == "ask", parked
     for refused in ('eval "$COMMAND"', "sh -c 'rm -rf /'"):

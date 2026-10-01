@@ -333,9 +333,9 @@ def create_git_inspection_hook() -> LupHooksConfig:
     #
     # A refusal here is recoverable rather than terminal. A worker that meets
     # a genuine need outside this list promotes its command with
-    # `# lup: escalate: <why>` exactly as the shell lattice allows, and the
-    # verdict becomes an ask carrying that reason — which is what a merge
-    # worker unable to stage its own resolutions had no route to.
+    # `# lup: escalate[decision]: <why>` exactly as the shell lattice allows,
+    # and the verdict becomes an ask carrying that reason — the route a merge
+    # worker needs when it cannot stage its own resolutions.
     inspection_commands = dict.fromkeys(
         [
             "status",

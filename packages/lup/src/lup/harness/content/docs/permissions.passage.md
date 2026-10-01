@@ -854,9 +854,10 @@ of a connection the kernel reads — a socat `UNIX-CONNECT`/`UNIX-CLIENT`/
 `UNIX-SENDTO`/`ABSTRACT-*` address, `nc -U`, `ncat -U`, `curl
 --unix-socket`, a redirection — is refused with `coordination_send` named.
 
-A deliberate send to a peer is not walled off. The `# lup: escalate:` marker in
-any of the call's own inputs turns the refusal into the approval question the
-sender asked for, carrying their stated reason — the valve every refusal has.
+A deliberate send to a peer is not walled off. The `# lup: escalate[decision]:`
+marker in any of the call's own inputs turns the refusal into the approval
+question the sender asked for, carrying their stated reason — the valve every
+refusal has.
 
 <!-- passage: forge-credentials -->
 ## Forge credentials
@@ -1436,9 +1437,9 @@ command is tried inside the boundary before it asks for the host.
   write the mount table refuses fails approved exactly as it fails unmarked
   — the exact command is then the user's to run from a host terminal.
 
-  The bare `lup: escalate: <why>` keeps working as decision escalation and
-  says it is an alias, because a migration that breaks every marker at once
-  is one nobody can act on mid-run.
+  A marker naming no kind, `lup: escalate: <why>`, is refused with the
+  spellings that name one: the kind is the request, and the refusal is
+  where an agent stuck inside the boundary learns the sandbox half exists.
 
   A reason is mandatory in every spelling: the whole content of the request
   is what it says to whoever answers, and a request that says nothing asks

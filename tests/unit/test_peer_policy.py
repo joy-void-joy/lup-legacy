@@ -244,7 +244,10 @@ def test_an_escalated_send_becomes_the_question_the_sender_asked_for() -> None:
     """A deliberate use is stopped once and reviewed, never walled off."""
     assert DECLARED is not None
     decision = decide_peer_send(
-        ["# lup: escalate: the peer is mid-turn and its hook is off", "feat-touches"],
+        [
+            "# lup: escalate[decision]: the peer is mid-turn and its hook is off",
+            "feat-touches",
+        ],
         ["feat-touches"],
         DECLARED,
     )

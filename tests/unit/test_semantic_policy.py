@@ -2150,11 +2150,17 @@ SHELL_POLICY_CASES = [
     DecisionCase(input="codex -m gpt-5 queue --thread t --message hi", effect="deny"),
     DecisionCase(input="ps aux", effect="allow"),
     DecisionCase(input="zcat f.gz", effect="allow"),
-    DecisionCase(input="# lup: escalate: build the crate\ncargo build", effect="ask"),
-    DecisionCase(input="# lup: escalate:\ncargo build", effect="deny"),
-    DecisionCase(input="# lup: escalate: routine\ngit status", effect="allow"),
     DecisionCase(
-        input="# lup: escalate: clear caches\necho x | xargs rm -rf", effect="ask"
+        input="# lup: escalate[decision]: build the crate\ncargo build", effect="ask"
+    ),
+    DecisionCase(input="# lup: escalate: build the crate\ncargo build", effect="deny"),
+    DecisionCase(input="# lup: escalate[decision]:\ncargo build", effect="deny"),
+    DecisionCase(
+        input="# lup: escalate[decision]: routine\ngit status", effect="allow"
+    ),
+    DecisionCase(
+        input="# lup: escalate[decision]: clear caches\necho x | xargs rm -rf",
+        effect="ask",
     ),
     # Structured constructs classify their embedded commands recursively:
     # conditionals, case arms, subshells, brace groups, negation, [[ ]],
@@ -2577,7 +2583,7 @@ SHELL_POLICY_CASES = [
     DecisionCase(input="git log $(cat names.txt)", effect="allow", sandboxed=True),
     DecisionCase(input="echo `id`", effect="deny", sandboxed=True),
     DecisionCase(
-        input="# lup: escalate: unknown tool\nfrobnicate",
+        input="# lup: escalate[decision]: unknown tool\nfrobnicate",
         effect="ask",
         sandboxed=True,
     ),
@@ -3318,7 +3324,11 @@ REFUSAL_CASES = [
     ("Skill", {"skill": "quux-design"}, "deny"),
     ("Skill", {"skill": "commit"}, "defer"),
     ("Novel", {"skill": "quux-design"}, "ask"),
-    ("Quuxify", {"body": "# lup: escalate: the user asked for a page\nbody"}, "ask"),
+    (
+        "Quuxify",
+        {"body": "# lup: escalate[decision]: the user asked for a page\nbody"},
+        "ask",
+    ),
     ("Quuxify", {"body": "# lup: escalate:\nbody"}, "deny"),
 ]
 """What a declared refusal answers, across every shape it has to tell apart.
@@ -3353,7 +3363,7 @@ def test_a_tool_refusal_names_what_to_reach_for_instead() -> None:
     decision = policy.decide(refused_tool_call("Quuxify", {"content": "a page"}))
 
     assert "quuxifying leaves the repository" in decision.reason
-    assert "lup: escalate:" in decision.recovery
+    assert "lup: escalate[decision]:" in decision.recovery
 
 
 def test_malformed_native_fetch_urls_become_conservative_unknown_tools() -> None:
