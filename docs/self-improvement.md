@@ -56,7 +56,8 @@ When the agent fails, the instinct is to patch the prompt. Resist it. Instead, t
 - **Sessions**: `notes/traces/<version>/sessions/<session_id>/`
 - **Outputs**: `notes/traces/<version>/outputs/<task_id>/`
 - **Traces**: `notes/traces/<version>/logs/<session_id>/`
-- **Metrics**: Tool calls, timing, errors via metrics tracking
+- **Metrics**: Tool calls, timing, errors via metrics tracking — on a session result for a session opened in process, and for launched sessions in the snapshot each tool server writes under `notes/traces/<version>/sessions/harness/<name>/metrics/`, read with `uv run lup-devtools tools metrics`
+- **Launch transcripts**: `notes/harness/<runtime>/<run>/observable.jsonl`, hash-chained; `uv run lup-devtools trace events <run>` reads one with its chain checked first, and `trace verify` checks every launch's
 
 ## Anti-Patterns
 

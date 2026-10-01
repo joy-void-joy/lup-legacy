@@ -21,6 +21,15 @@ uv run lup-devtools trace show <session_id> --tool-calls
 
 Also read the `SessionResult` JSON from `notes/traces/<version>/sessions/<session_id>/` for metadata (duration, cost, token usage, tool metrics, outcome).
 
+**Launch run** (a run directory's name under `notes/harness/<runtime>/`, left by a session launched through `lup-devtools harness`):
+
+```bash
+uv run lup-devtools trace events <run_id>
+uv run lup-devtools trace events <run_id> --kind tool_call --kind tool_result
+```
+
+Its first lines say whether the transcript's hash chain holds. Where it breaks, a line marks the record it breaks on: what follows is unverified text rather than evidence, so say so wherever a finding rests on it. `uv run lup-devtools trace verify` lists every launch with its chain, and `uv run lup-devtools tools metrics` gives the launched sessions' tool calls, errors and latency.
+
 **File path** (contains `/` or ends in `.md`/`.json`):
 - Read the file directly
 

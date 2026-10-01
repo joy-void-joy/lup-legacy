@@ -27,6 +27,7 @@ from lup.sessions.events import (
 )
 from lup.observability.audit import (
     ArgvRedaction,
+    ChainBreak,
     KeyRedaction,
     Redactions,
     TraceActor,
@@ -36,7 +37,7 @@ from lup.observability.audit import (
     JournalEventStream,
     TurnRecorder,
     read_observable_events,
-    verify_event_chain,
+    chain_break,
 )
 from lup.types import JsonObject
 from tests.unit.test_capability_runtime import RecordingBinder
@@ -134,10 +135,12 @@ def test_the_chain_verifies_and_a_tampered_payload_breaks_it(tmp_path: Path) -> 
 
     events = read_observable_events(path)
     assert [event.seq for event in events] == [0, 1]
-    assert verify_event_chain(events)
+    assert chain_break(events) is None
 
     tampered = events[1].model_copy(update={"payload": {"text": "goodbye"}})
-    assert not verify_event_chain([events[0], tampered])
+    assert chain_break([events[0], tampered]) == ChainBreak(
+        position=1, seq=1, fault="digest"
+    )
 
 
 def test_a_secret_never_reaches_the_file(tmp_path: Path) -> None:
@@ -155,7 +158,7 @@ def test_a_child_span_shares_the_chain_and_names_its_parent(tmp_path: Path) -> N
     child.emit("tool_call")
 
     events = read_observable_events(path)
-    assert verify_event_chain(events)
+    assert chain_break(events) is None
     assert events[1].parent_span_id == events[0].span_id
     assert events[1].tool_name == "search"
 
@@ -188,7 +191,7 @@ def test_a_delegated_span_is_written_as_it_streams(tmp_path: Path) -> None:
     recorder.record(TurnCompletedEvent(identifiers=IDENTIFIERS))
 
     events = read_observable_events(path)
-    assert verify_event_chain(events)
+    assert chain_break(events) is None
     assert [event.kind for event in events] == [
         "tool_call",
         "subagent_start",
@@ -287,7 +290,7 @@ async def test_a_delta_free_session_keeps_its_durable_journal_and_result(
         "turn_end",
         "turn_result",
     ]
-    assert verify_event_chain(recorded)
+    assert chain_break(recorded) is None
 
 
 class LiveSource(EventStream):

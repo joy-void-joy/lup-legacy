@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "generator_version": "0.2.0",
-  "source_digest": "ff5fbb0ee49f8e598c2754a1209e9c0f2a42b94ff7303cc159c7d3f9ae960db6",
+  "source_digest": "2f735a43355fc9cc4a04e5163b45bceac22575cd17ecaf1e54d3aa3873986a46",
   "target_requirements": [
     "codex-cli>=0.144"
   ],
@@ -219,14 +219,14 @@
     {
       "path": ".codex/plugins/lup/hooks/runtime/kernel/bindings.py",
       "category": "generated",
-      "sha256": "23b9565beb135221553eb43631b8f88ca37895546dae30214279a60377af7a5d",
+      "sha256": "c28ea1d7c4a201c02ac4bd39e4ca8fc02acd15ab8b918e1b73203cf791c57d9a",
       "semantic_id": "hooks.lup-policy",
       "executable": false
     },
     {
       "path": ".codex/plugins/lup/hooks/runtime/kernel/commands.py",
       "category": "generated",
-      "sha256": "b7e1429f94484c599863449dada2d6570232685f95163cd75ff9ac2aa8fd33b5",
+      "sha256": "1e4de963d047adf5018576702b70c521c57810bdaa85de60e51050b66df3f9b4",
       "semantic_id": "hooks.lup-policy",
       "executable": false
     },
@@ -296,7 +296,7 @@
     {
       "path": ".codex/plugins/lup/hooks/runtime/kernel/lex.py",
       "category": "generated",
-      "sha256": "1e32c27c58f691e1a1cdcd6075589eaa1e3f94be216d347d14558d6a7af1ca5f",
+      "sha256": "581ea2d689455e05f715c0aca9fd7c5f5502e99d5ed5f4e1944238f1a66aadab",
       "semantic_id": "hooks.lup-policy",
       "executable": false
     },
@@ -359,7 +359,7 @@
     {
       "path": ".codex/plugins/lup/hooks/runtime/kernel/shell.py",
       "category": "generated",
-      "sha256": "568250dccdd3e00e5a4f301abde3ee2758abc639d508849c580ce4fe2791ad0c",
+      "sha256": "d091449489a528ea976017741d288593f5ee2673c1020f8520c5d8c9922e8fde",
       "semantic_id": "hooks.lup-policy",
       "executable": false
     },
@@ -597,7 +597,7 @@
     {
       "path": ".codex/plugins/lup/skills/fb-analyze/SKILL.md",
       "category": "generated",
-      "sha256": "039d3f8da262f1492b6a0ae1310e9dd74694fc9d95d202ac5ff87c4b5c859236",
+      "sha256": "8f7dc77e6c8e917dc3a5819e738539820908a2761a8afc70f1f8076a3f01bf60",
       "semantic_id": "skill.fb-analyze",
       "executable": false
     },
@@ -674,7 +674,7 @@
     {
       "path": ".codex/plugins/lup/skills/install/SKILL.md",
       "category": "generated",
-      "sha256": "836bab2f4d9871812f84b58db333d88a9ed7bc7ca6984d6b6415bd7a90f494b1",
+      "sha256": "1db67e67019a8b732d8c8404b1c24910384e9c3c4e45e90123621b0c5bb0282e",
       "semantic_id": "skill.install",
       "executable": false
     },
@@ -765,7 +765,7 @@
     {
       "path": ".codex/plugins/lup/skills/review/SKILL.md",
       "category": "generated",
-      "sha256": "976397dc20c0ad97760c00c7a3c98fb0309bdc76fb5bc51ef3290e3bf08124af",
+      "sha256": "447cc3e2c51cb15b07e3b77486058611225c7714d8dfe60a00c48c38007e230f",
       "semantic_id": "skill.review",
       "executable": false
     },

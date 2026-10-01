@@ -21,6 +21,7 @@ from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
 from lup.mcp import HostedServer, ServeLaunch
+from lup.observability.metrics import read_metrics_snapshots
 from lup.workspace.context import (
     GATE_FLAG_ENV,
     OUTPUTS_DIR_ENV,
@@ -130,7 +131,9 @@ async def test_serve_tools_session_round_trip(tmp_path: Path) -> None:
             assert gate_flag.exists()
 
     assert (session_dir / "review.json").exists()
-    assert (session_dir / "metrics.json").exists()
+    [snapshot] = read_metrics_snapshots(session_dir)
+    assert snapshot.server == NOTES_GROUP
+    assert snapshot.summary["by_tool"]["review"]["call_count"] == 1
 
 
 def served_names(env: dict[str, str], server: HostedServer) -> set[str]:
