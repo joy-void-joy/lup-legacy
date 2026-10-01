@@ -282,7 +282,7 @@
     {
       "path": ".codex/plugins/lup/hooks/runtime/kernel/lex.py",
       "category": "generated",
-      "sha256": "94ac97c778841f904f1a342f7bdf0df7e608201e324c98c4ff38f211fe8c03f9",
+      "sha256": "581ea2d689455e05f715c0aca9fd7c5f5502e99d5ed5f4e1944238f1a66aadab",
       "semantic_id": "hooks.lup-policy",
       "executable": false
     },

@@ -553,6 +553,7 @@ def placed_path(word: str, directory: str | None) -> str | None:
     return posixpath.normpath(posixpath.join(directory, word))
 
 
+# lup: ignore[constant-declaration] — the shell's own name for where it stands, not a choice
 UNPLACED_ROOT = "$PWD"
 """How a path named from a directory nothing here can name is spelled.
 
