@@ -14,6 +14,7 @@ where nothing answers to what the page named, 409 where something does and
 the verb cannot be done to it.
 """
 
+import asyncio
 import os
 import signal
 from collections.abc import Callable
@@ -25,6 +26,7 @@ from pydantic import BaseModel, Field
 from lup.channels.models import Door
 from lup.coordination.bare.mail import new_post_id
 from lup.coordination.bare.runtime import process_scope
+from lup.coordination.bare.scope import execution_scope
 from lup.coordination.identity import NameTakenError
 from lup.coordination.mail import ActorDelivery, Posting
 from lup.coordination.peers import USER_ADDRESS, join_user
@@ -43,6 +45,7 @@ from lup.devtools.dashboard.live import (
     transcript_page,
 )
 from lup.devtools.dashboard.stream import FollowOutcome, FollowRequest, LiveFeed
+from lup.providers.interrupts import Interrupted, interrupted_turn
 
 # lup: ignore[constant-declaration] — what the routes below serve, as the page names each
 SUPERVISED: tuple[Feature, ...] = (
@@ -266,30 +269,60 @@ def handed(
 
 
 def interruptible(peers: RepositoryPeers, row: RosterMember) -> RosterMember:
-    """The row whose runtime a `now` wake reaches for *row*: its own, or its session's.
+    """The row whose runtime an interrupt reaches for *row*: its own, or its session's.
 
-    Refused where nothing can interrupt it: Codex takes queued messages for
-    its next turn only, and a row declaring no Claude wake socket has nothing
-    a frame could be written to.
+    A Claude session is interrupted through its wake socket. A Codex
+    session's turn is stopped through the app-server its configuration home
+    runs, which only a process in the execution scope its row recorded can
+    reach, as its queue can. Refused where nothing can interrupt it.
     """
     target = peers.row(row.parent) if row.parent else row
     if target is None or not target.running:
         raise Refused(
             "its session has stopped, so nothing runs that could be interrupted"
         )
-    match target.wake.runtime:
-        case "claude" if target.wake.handle:
+    wake_path = target.wake
+    match wake_path.runtime:
+        case "claude" if wake_path.handle:
+            return target
+        case "codex" if wake_path.handle and wake_path.home:
+            if wake_path.scope != execution_scope():
+                raise Refused(
+                    "its Codex app-server runs in another execution scope than "
+                    "the dashboard's, which cannot reach it"
+                )
             return target
         case "codex":
             raise Refused(
-                "Codex takes a queued message for its next turn: its app-server "
-                "offers `turn/interrupt`, which lup does not drive yet, so send "
-                "it without `now` and it is taken when its turn ends"
+                "nothing can interrupt it: its row records no Codex thread and "
+                "home to reach its app-server through"
             )
         case _:
-            raise Refused(
-                "nothing can interrupt it: its row declares no Claude wake socket"
-            )
+            raise Refused("nothing can interrupt it: its row declares no wake path")
+
+
+def codex_stopped(target: RosterMember) -> Interrupted:
+    """Stop the turn a Codex session's thread is running, where it is running one."""
+    return asyncio.run(
+        interrupted_turn("codex", Path(target.wake.home), target.wake.handle)
+    )
+
+
+def said_with(outcome: ReplyOutcome, stopped: Interrupted | None) -> ReplyOutcome:
+    """A message's outcome, saying what became of the Codex turn it interrupted, where it did."""
+    if stopped is None:
+        return outcome
+    said = (
+        "Its running Codex turn was stopped, and the message queued for the next."
+        if stopped.interrupted
+        else f"Nothing was stopped: {stopped.reason}."
+    )
+    return outcome.model_copy(
+        update={
+            "interrupted": stopped.interrupted,
+            "detail": f"{said} {outcome.detail}",
+        }
+    )
 
 
 def reply(known: KnownRepository, member_id: str, said: MessageRequest) -> ReplyOutcome:
@@ -298,14 +331,19 @@ def reply(known: KnownRepository, member_id: str, said: MessageRequest) -> Reply
     The path a session's own `coordination_send` takes — the recipient's
     mailbox, where its hook hands it over at its next tool call — then its
     wake. A reply goes into the thread of the post it answers. With `now`, a
-    session's turn is asked to stop for it; a subagent has no wake of its
-    own, so its message waits for its next call and its session is woken
-    with a copy naming it. Refused for an id nothing here answers to, for a
-    session that has stopped, and for `now` where nothing can interrupt.
+    session's turn is asked to stop for it: a Claude session's through the
+    wake's own priority, a Codex session's through its app-server before its
+    queue takes the message for the next turn. A subagent has no wake of its
+    own, so its message waits for its next call and its session is
+    interrupted with a copy naming it. Refused for an id nothing here answers
+    to, for a session that has stopped, and for `now` where nothing can
+    interrupt.
     """
     peers = RepositoryPeers(known.checkout)
     row = standing(peers, known, member_id)
     target = interruptible(peers, row) if said.priority == "now" else row
+    codex = said.priority == "now" and target.wake.runtime == "codex"
+    priority: WakePriority = "next" if codex else said.priority
     post = new_post_id()
     posting = Posting(
         post=post,
@@ -321,7 +359,8 @@ def reply(known: KnownRepository, member_id: str, said: MessageRequest) -> Reply
         posting=posting,
     )
     if target.actor.id == member_id:
-        return handed(known, peers, member_id, posting, said.priority)
+        stopped = codex_stopped(target) if codex else None
+        return said_with(handed(known, peers, member_id, posting, priority), stopped)
     named = peers.called(member_id) or member_id
     peers.send(
         target.actor.id,
@@ -330,7 +369,10 @@ def reply(known: KnownRepository, member_id: str, said: MessageRequest) -> Reply
         sender=USER_ADDRESS,
         posting=posting,
     )
-    session = handed(known, peers, target.actor.id, posting, "now")
+    stopped = codex_stopped(target) if codex else None
+    session = said_with(
+        handed(known, peers, target.actor.id, posting, priority), stopped
+    )
     return ReplyOutcome(
         session=f"{known.key()}/{member_id}",
         queued=True,

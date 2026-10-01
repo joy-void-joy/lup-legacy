@@ -19,6 +19,7 @@ from lup.coordination.bare import store
 from lup.coordination.bare.runtime import Runtime, runtime_of
 from lup.coordination.identity import mint_member_id
 from lup.coordination.mail import ActorMail, MailCursor
+from lup.coordination.bare.scope import execution_scope
 from lup.coordination.peers import USER_ADDRESS
 from lup.coordination.repository import PeerDepartedError, RepositoryPeers
 from lup.coordination.wake import WakePath, WakeRuntime, Woken
@@ -26,6 +27,7 @@ from lup.devtools.dashboard import supervision
 from lup.devtools.dashboard.companion import KnownRepository
 from lup.devtools.dashboard.reviews import ReviewStore, dashboard_app
 from lup.devtools.dashboard.stream import LiveFeed
+from lup.providers.interrupts import Interrupted
 from lup.devtools.dashboard.supervision import (
     BARE_WAKE,
     SUPERVISED,
@@ -175,15 +177,59 @@ def test_now_is_refused_where_nothing_can_interrupt_and_nothing_is_sent(
 ) -> None:
     peers = RepositoryPeers(tmp_path)
     codex = session(peers, tmp_path, "codex", runtime="codex")
+    elsewhere = mint_member_id()
+    peers.join(
+        elsewhere,
+        tmp_path / "elsewhere",
+        cli_name="elsewhere",
+        wake=WakePath(
+            runtime="codex", handle="thread-1", home=str(tmp_path), scope="another"
+        ),
+    )
     silent = session(peers, tmp_path, "silent", runtime="")
 
-    with pytest.raises(Refused, match="turn/interrupt"):
+    with pytest.raises(Refused, match="no Codex thread and home"):
         reply(known(tmp_path), codex, MessageRequest(text="stop", priority="now"))
-    with pytest.raises(Refused, match="no Claude wake socket"):
+    with pytest.raises(Refused, match="another execution scope"):
+        reply(known(tmp_path), elsewhere, MessageRequest(text="stop", priority="now"))
+    with pytest.raises(Refused, match="no wake path"):
         reply(known(tmp_path), silent, MessageRequest(text="stop", priority="now"))
 
     assert ActorMail(peers.root).posted(MailCursor()).messages == []
     assert woken.made == []
+
+
+def test_now_stops_a_codex_turn_and_queues_the_message_for_the_next(
+    tmp_path: Path, woken: Wakes, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    peers = RepositoryPeers(tmp_path)
+    lead = mint_member_id()
+    peers.join(
+        lead,
+        tmp_path / "lead",
+        cli_name="lead",
+        wake=WakePath(
+            runtime="codex",
+            handle="thread-1",
+            home=str(tmp_path / "home"),
+            scope=execution_scope(),
+        ),
+    )
+    stopping: list[tuple[Path, str]] = []
+
+    async def stopped(runtime: str, home: Path, thread: str) -> Interrupted:
+        assert runtime == "codex"
+        stopping.append((home, thread))
+        return Interrupted(interrupted=True, turn="turn-1")
+
+    monkeypatch.setattr(supervision, "interrupted_turn", stopped)
+
+    outcome = reply(known(tmp_path), lead, MessageRequest(text="stop", priority="now"))
+
+    assert stopping == [(tmp_path / "home", "thread-1")]
+    assert [priority for priority, _ in woken.made] == ["next"]
+    assert outcome.interrupted and outcome.woken
+    assert outcome.detail.startswith("Its running Codex turn was stopped")
 
 
 def test_now_to_a_subagent_queues_it_and_wakes_its_session_with_a_copy(
@@ -471,7 +517,7 @@ async def test_the_routes_answer_a_refusal_with_its_reason(tmp_path: Path) -> No
             headers={"Authorization": f"Bearer {TOKEN}"},
         )
 
-    assert refused.status_code == 409 and "turn/interrupt" in refused.json()["detail"]
+    assert refused.status_code == 409 and "no Codex thread" in refused.json()["detail"]
     assert missing.status_code == 404
     assert page.status_code == 404 and "no transcript" in page.json()["detail"]
 
