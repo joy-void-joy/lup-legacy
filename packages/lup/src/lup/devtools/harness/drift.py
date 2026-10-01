@@ -19,7 +19,8 @@ from pathlib import Path
 import typer
 from pydantic import BaseModel
 
-from lup.formats.banner import REGENERATE_COMMAND
+from lup.devtools.utils import refuse
+from lup.policy.kernel.diagnostic import diagnostic, devtools, rendered, step, way
 from lup.providers.profile_tree import profile_directory
 from lup.harness.generate import (
     DeclarationObstruction,
@@ -59,8 +60,10 @@ def refuse_generation(obstruction: DeclarationObstruction) -> NoReturn:
     """
     for line in obstruction.described():
         typer.echo(line, err=True)
-    typer.echo(f"Fix the declaration above, then run `{REGENERATE_COMMAND}`.", err=True)
-    raise typer.Exit(1)
+    refuse(
+        "the declaration above does not compile",
+        steps=[step("fix it, then regenerate", devtools("harness", "generate", "all"))],
+    )
 
 
 def report_generation(target: str, changed: list[Path], removed: list[Path]) -> None:
@@ -149,16 +152,19 @@ def generate_with_report(
     try:
         materialized = generate_target(recipe)
     except GeneratedTreesHeld as error:
-        typer.echo(str(error), err=True)
-        raise typer.Exit(1) from error
+        refuse(str(error))
     except HarnessGenerationConflict as error:
         typer.echo(str(error), err=True)
-        typer.echo(
-            "Existing unowned files were preserved. Reconcile them explicitly before "
-            "adopting generated ownership.",
-            err=True,
+        refuse(
+            "files nobody generated stand where generation would write, and were"
+            " left as they are",
+            steps=[
+                step(
+                    "reconcile them before generation takes them over",
+                    devtools("harness", "reconcile"),
+                )
+            ],
         )
-        raise typer.Exit(1) from error
     if not (quiet and not materialized.changed and not materialized.removed):
         report_generation(recipe.label, materialized.changed, materialized.removed)
     write_machine_overlay(composition)
@@ -247,25 +253,33 @@ class DriftVerdict(BaseModel, frozen=True):
         Counted over both halves because the verdict is: a stale artifact
         outside every native tree fails a run whose tree count is zero, and
         a row saying only that tells its reader nothing to act on. Each
-        repository message already carries the command that settles it, so
-        the row repeats none of them and quotes them whole.
+        repository message names the command that settles it and is quoted
+        whole; a stale tree closes the row on the regeneration, run on the
+        host where this session holds the tree read-only.
         """
         if self.clean:
             return ["harness drift: ok"]
-        return [
-            f"harness drift: FAIL ({len(self.stale_trees)} tree(s),"
-            f" {len(self.stale_repository)} repository artifact(s))",
+        trees = [f"`{report.target}`" for report in self.stale_trees]
+        stale = [
+            *([f"stale tree(s) {', '.join(trees)}"] if trees else []),
             *(
-                f"  stale tree: {report.target}"
-                + (
-                    " — read-only in this session; run "
-                    f"`{REGENERATE_COMMAND}` on the host"
-                    if report.held
-                    else ""
-                )
-                for report in self.stale_trees
+                [f"{len(self.stale_repository)} stale repository artifact(s)"]
+                if self.stale_repository
+                else []
             ),
+        ]
+        held = [report.target for report in self.stale_trees if report.held]
+        regenerate = step(
+            f"regenerate on the host, since {', '.join(held)} is read-only in this"
+            " session"
+            if held
+            else "regenerate",
+            devtools("harness", "generate", "all"),
+        )
+        return [
+            f"harness drift: FAIL — {'; '.join(stale)}",
             *(f"  {message}" for message in self.stale_repository),
+            *([f"  {way(regenerate)}"] if trees else []),
         ]
 
 
@@ -332,16 +346,20 @@ def report_stale(verdict: DriftVerdict) -> None:
     for message in verdict.stale_repository:
         typer.echo(f"  {message}", err=True)
     held = [report.target for report in verdict.stale_trees if report.held]
-    typer.echo(
-        f"generated artifacts are behind their source; run `{REGENERATE_COMMAND}` "
-        + (
-            f"on the host, since {', '.join(held)} is read-only in this session, "
-            if held
-            else ""
-        )
-        + "and include what it writes in this commit",
-        err=True,
+    regenerate = (
+        f"regenerate on the host, since {', '.join(held)} is read-only in this session"
+        if held
+        else "regenerate"
     )
+    said = diagnostic(
+        "error",
+        "generated artifacts are behind their source",
+        steps=[
+            step(regenerate, devtools("harness", "generate", "all")),
+            step("then include what it writes in this commit"),
+        ],
+    )
+    typer.echo(rendered(said), err=True)
 
 
 def check_targets(

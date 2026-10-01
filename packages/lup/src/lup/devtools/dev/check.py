@@ -81,7 +81,8 @@ from lup.devtools.harness.drift import (
     roster_gaps,
 )
 from lup.harness.generate import NativeHarnessComposition
-from lup.devtools.utils import decode_stderr, uv
+from lup.devtools.utils import decode_stderr, refuse, uv
+from lup.policy.kernel.diagnostic import devtools, step, way
 from lup.execution.shell import git
 from lup.web.build import BUN, restore_dependencies
 
@@ -736,8 +737,10 @@ def group_by_root(
         index = owning_index(test_roots, Path(selection))
         if index is None:
             declared = ", ".join(str(root.directory) for root in test_roots)
-            raise typer.BadParameter(
-                f"{selection} sits under no declared test root ({declared})"
+            refuse(
+                f"sits under no declared test root: {declared}",
+                what=selection,
+                code=2,
             )
         installed = test_roots[index].directory.resolve()
         owned[index].append(str(Path(selection).resolve().relative_to(installed)))
@@ -776,7 +779,7 @@ def run_selected(
     """
     absent = absent_selections(selections)
     if absent:
-        raise typer.BadParameter(f"nothing on disk answers {', '.join(absent)}")
+        refuse("nothing on disk answers it", what=", ".join(absent), code=2)
     groups = group_by_root(test_roots, selections)
     failed: list[str] = []
     with admitted(project_root(), workers, announce=Notice.say) as admission:
@@ -1002,8 +1005,13 @@ def branch_record_reports(pending: list[str]) -> list[CheckReport]:
                 f"branch records: {len(pending)} branch(es) still recorded in "
                 "the shared git config (advisory)",
                 "  every read falls back to those keys, so nothing is broken",
-                "  `lup-devtools git worktree adopt-records` moves them, "
-                "once per clone",
+                "  "
+                + way(
+                    step(
+                        "move them, once per clone",
+                        devtools("git", "worktree", "adopt-records"),
+                    )
+                ),
                 f"  it writes the shared git directory's `{destination}/`, "
                 "so it runs on the host",
             ],
@@ -1078,10 +1086,11 @@ def changed_paths(since: str) -> list[str]:
     try:
         named = git.lines("diff", "--name-only", since, _ok_code=[0])
     except sh.ErrorReturnCode as error:
-        raise typer.BadParameter(
-            f"--since {since!r} does not name a commit in this tree: "
-            f"{decode_stderr(error)}"
-        ) from error
+        refuse(
+            f"does not name a commit in this tree: {decode_stderr(error)}",
+            what=f"--since {since}",
+            code=2,
+        )
     return [line for line in named if line]
 
 
@@ -1103,10 +1112,12 @@ def named_gate_base(named: str, option: str = "--base") -> str:
     try:
         found = git.out("merge-base", named, "HEAD", _ok_code=[0])
     except sh.ErrorReturnCode as error:
-        raise typer.BadParameter(
-            f"{option} {named!r} shares no history with this checkout, so there "
-            f"is nothing to judge a change from: {decode_stderr(error)}"
-        ) from error
+        refuse(
+            "shares no history with this checkout, so there is nothing to judge a"
+            f" change from: {decode_stderr(error)}",
+            what=f"{option} {named}",
+            code=2,
+        )
     return found
 
 
@@ -1504,7 +1515,8 @@ def scan_reports(
                     if registered
                     else [
                         "  the generated trees text-merge and can conflict",
-                        "  register it with `lup-devtools git merge-driver`",
+                        "  "
+                        + way(step("register it", devtools("git", "merge-driver"))),
                     ]
                 ),
             ],

@@ -29,6 +29,8 @@ from lup.coordination.roster import Delivery
 from lup.coordination.touches import HeldPath
 from lup.coordination.watch import Watcher
 from lup.coordination.watcher import watcher_pipeline
+from lup.devtools.utils import refuse
+from lup.policy.kernel.diagnostic import devtools, step
 from lup.runs.pipeline import RunRequest
 from lup.workspace.paths import project_root
 
@@ -143,7 +145,15 @@ def create_coordination_app() -> typer.Typer:
         try:
             peers().join(chosen, tree, cli_name=name, delivery=Delivery.WAITING)
         except NameTakenError as taken:
-            raise typer.BadParameter(str(taken)) from taken
+            refuse(
+                str(taken),
+                steps=[
+                    step(
+                        "see which names are taken", devtools("coordination", "roster")
+                    )
+                ],
+                code=2,
+            )
         typer.echo(chosen)
 
     @app.command("describe")
@@ -167,7 +177,15 @@ def create_coordination_app() -> typer.Typer:
         try:
             peers().rename(member_id, name)
         except NameTakenError as taken:
-            raise typer.BadParameter(str(taken)) from taken
+            refuse(
+                str(taken),
+                steps=[
+                    step(
+                        "see which names are taken", devtools("coordination", "roster")
+                    )
+                ],
+                code=2,
+            )
 
     @app.command("leave")
     def leave_cmd(
@@ -229,13 +247,17 @@ def create_coordination_app() -> typer.Typer:
         try:
             found = peers().send(to, text, redirect=redirect, door=Door.CONSOLE)
         except PeerDepartedError as departed:
-            raise typer.BadParameter(
-                f"{departed}; `dev coordination roster` lists who is here"
-            ) from departed
+            refuse(
+                str(departed),
+                steps=[step("see who is here", devtools("coordination", "roster"))],
+                code=2,
+            )
         if found is None:
-            raise typer.BadParameter(
-                f"no session answers to {to!r}; "
-                "`dev coordination roster` lists who is here"
+            refuse(
+                "no session answers to it",
+                what=to,
+                steps=[step("see who is here", devtools("coordination", "roster"))],
+                code=2,
             )
         carries = peers().cohort.delivery(found)
         typer.echo(f"queued for {found.label()}, carried by {carries}")
@@ -289,9 +311,11 @@ def create_coordination_app() -> typer.Typer:
         were told, which is right — it held while they were told it.
         """
         if not peers().cohort.mail.retract(notice_id):
-            raise typer.BadParameter(
-                f"{notice_id!r} names nothing standing over this repository; "
-                "`dev coordination notices` lists what does"
+            refuse(
+                "names nothing standing over this repository",
+                what=notice_id,
+                steps=[step("see what does", devtools("coordination", "notices"))],
+                code=2,
             )
         typer.echo(f"retracted {notice_id}")
 
@@ -343,8 +367,10 @@ def create_coordination_app() -> typer.Typer:
         """Take everything beneath a prefix, before having touched any of it."""
         target = prefix.resolve()
         if not target.exists():
-            raise typer.BadParameter(
-                f"{target} does not exist; a lock covers what is there to write"
+            refuse(
+                "does not exist, and a lock covers only what is there to write",
+                what=str(target),
+                code=2,
             )
         peers().lock(member_id, target)
 
@@ -358,9 +384,13 @@ def create_coordination_app() -> typer.Typer:
         """Give a prefix back, refusing where this session does not hold it."""
         target = prefix.resolve()
         if not peers().release(member_id, target):
-            raise typer.BadParameter(
-                f"session {member_id} does not hold {target}; "
-                "`dev coordination holdings` lists who holds what"
+            refuse(
+                f"session {member_id} does not hold it",
+                what=str(target),
+                steps=[
+                    step("see who holds what", devtools("coordination", "holdings"))
+                ],
+                code=2,
             )
 
     @app.command("watch")

@@ -3,11 +3,11 @@
 from pathlib import Path
 
 import pytest
-import typer
 from pydantic import ValidationError
 
 import lup.devtools.dev.edit_prepare as preparing
 from lup.devtools.project import DevProject
+from lup.devtools.utils import Refusal
 from lup.harness.codescan.antipatterns import RuleSet
 from lup.harness.codescan.oracle import (
     ClassDeclaration,
@@ -335,14 +335,16 @@ def test_cli_writes_only_fresh_scratch_artifact(
     assert (checkout / "tmp/ready.patch").is_file()
     assert not (checkout / "sample.py").exists()
     assert not (checkout / ".lup/questions.jsonl").exists()
-    with pytest.raises(typer.BadParameter, match="already exists"):
+    with pytest.raises(Refusal) as fresh:
         preparing.run(
             Path("batch.json"), Path("tmp/ready.patch"), None, project, hooks, False
         )
-    with pytest.raises(typer.BadParameter, match="scratch"):
+    assert fresh.value.said["why"] == "already exists"
+    with pytest.raises(Refusal) as outside:
         preparing.run(
             Path("batch.json"), Path("source.patch"), None, project, hooks, False
         )
+    assert outside.value.said["why"] == "is not inside a declared scratch path"
 
 
 def test_output_cannot_write_a_proposed_target(
@@ -351,10 +353,11 @@ def test_output_cannot_write_a_proposed_target(
     (checkout / "batch.json").write_text(
         proposal("body\n", path="tmp/target.patch").model_dump_json()
     )
-    with pytest.raises(typer.BadParameter, match="edit target"):
+    with pytest.raises(Refusal) as refused:
         preparing.run(
             Path("batch.json"), Path("tmp/target.patch"), None, project, hooks, False
         )
+    assert refused.value.said["why"] == "is a proposed edit target or beneath one"
 
 
 def test_output_parent_cannot_create_a_proposed_target(
@@ -363,7 +366,7 @@ def test_output_parent_cannot_create_a_proposed_target(
     (checkout / "batch.json").write_text(
         proposal("body\n", path="tmp/new_target").model_dump_json()
     )
-    with pytest.raises(typer.BadParameter, match="beneath one"):
+    with pytest.raises(Refusal) as refused:
         preparing.run(
             Path("batch.json"),
             Path("tmp/new_target/proposal.patch"),
@@ -372,6 +375,7 @@ def test_output_parent_cannot_create_a_proposed_target(
             hooks,
             False,
         )
+    assert refused.value.said["why"] == "is a proposed edit target or beneath one"
     assert not (checkout / "tmp/new_target").exists()
 
 

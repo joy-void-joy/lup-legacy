@@ -20,7 +20,7 @@ from pathlib import Path
 from time import perf_counter
 
 import pytest
-import typer
+from lup.devtools.utils import Refusal
 
 from lup.devtools.dev.antipatterns import within_scope
 from lup.devtools.dev.check import (
@@ -39,7 +39,7 @@ def test_a_pending_move_names_the_command_and_counts_the_branches() -> None:
     printed = "\n".join(report.lines)
 
     assert "branch records: 2 branch(es)" in printed
-    assert "`lup-devtools git worktree adopt-records`" in printed
+    assert "`uv run lup-devtools git worktree adopt-records`" in printed
     assert "once per clone" in printed
     assert "on the host" in printed
 
@@ -212,5 +212,6 @@ def test_a_named_base_nothing_resolves_refuses_the_run(
     """
     monkeypatch.chdir(base_history(tmp_path))
 
-    with pytest.raises(typer.BadParameter, match="shares no history"):
+    with pytest.raises(Refusal) as refused:
         named_gate_base("no-such-branch")
+    assert refused.value.said["why"].startswith("shares no history")

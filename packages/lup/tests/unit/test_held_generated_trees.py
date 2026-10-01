@@ -273,6 +273,7 @@ def test_the_drift_line_says_a_held_tree_is_regenerated_on_the_host(
         stale_repository=[],
     )
 
-    (line,) = [line for line in verdict.summary if "stale tree" in line]
+    (line,) = [line for line in verdict.summary if "→" in line]
     assert "read-only in this session" in line
     assert "on the host" in line
+    assert "`uv run lup-devtools harness generate all`" in line

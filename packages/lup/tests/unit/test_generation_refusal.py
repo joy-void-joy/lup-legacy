@@ -116,7 +116,8 @@ def test_resolving_a_target_that_will_not_compile_refuses_with_what_stopped_it(
         "claude: nothing generated, the declaration was refused",
         "  No such file or directory",
         f"  declared in {MISSING_PASSAGE}",
-        f"Fix the declaration above, then run `{REGENERATE_COMMAND}`.",
+        "error: the declaration above does not compile",
+        f"→ fix it, then regenerate: `{REGENERATE_COMMAND}`",
     ]
 
 

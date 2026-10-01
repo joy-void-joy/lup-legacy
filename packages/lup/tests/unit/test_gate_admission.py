@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import NoReturn
 
 import pytest
-import typer
+from lup.devtools.utils import Refusal
 
 import lup.devtools.dev.check as check
 from lup.devtools.dev.admission import (
@@ -207,7 +207,7 @@ def test_a_path_under_no_suite_is_refused_before_a_slot_is_asked_for(
     suite = suite_in(tmp_path / "clone", monkeypatch)
     monkeypatch.setattr(check, "admitted", refuse)
 
-    with pytest.raises(typer.BadParameter):
+    with pytest.raises(Refusal):
         check.run_selected([suite], [str(tmp_path / "elsewhere")], [], workers=16)
 
 

@@ -19,7 +19,7 @@ from pathlib import Path
 import typer
 from pydantic import AnyHttpUrl, BaseModel
 
-from lup.devtools.utils import output_json
+from lup.devtools.utils import output_json, refuse
 from lup.harness.enforcement import semantic_policy_for
 from lup.harness.models import HookSet
 from lup.policy.kernel.fetch import scope_text
@@ -401,7 +401,7 @@ def explain(
             for subject in subjects
         ]
     except (OSError, ValueError) as error:
-        raise typer.BadParameter(str(error)) from error
+        refuse(str(error), code=2)
     if as_json:
         output_json([verdict.model_dump() for verdict in verdicts])
         if not any(verdict.allows_anywhere() for verdict in verdicts):
