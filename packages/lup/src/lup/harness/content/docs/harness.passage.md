@@ -930,11 +930,12 @@ already exists, symlink that subdirectory at it.
 
 `harness profile migrate` is optional. It moves a checkout's local profiles to
 global, for accounts that should be shared by every checkout, and the accounts
-of the old personal registry at `~/.lup/profiles.json`, which nothing reads any
-more: each profile and each home the registry made, a runtime's home at a
+of a personal registry at `~/.lup/profiles.json`, which no launch reads: each
+profile and each home the registry made, a runtime's home at a
 time; a home registered somewhere of the person's own is linked rather than
 moved; a name already present keeps what it holds and the source is left and
-reported; the old selection is carried where `config.toml` records none.
+reported; the selection either place holds is carried where `config.toml`
+records none.
 
 No profile may name Claude Code's default home, `~/.claude`, however it is
 spelled or reached — a symlinked directory profile included. A profile exports

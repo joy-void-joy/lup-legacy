@@ -1,0 +1,18 @@
+subjects = [
+    "LegacyAccount",
+    "LegacyAccount.config_dir",
+    "LegacyRegistry",
+    "LegacyRegistry.profiles",
+    "LegacyRegistry.active",
+    "legacy_home",
+]
+reason = """
+the personal registry `harness profile migrate` empties is named for what it \
+is, and the third parameter of migrate_profiles names the directory it sits in"""
+
+[[steps]]
+instruction = """
+Import RegistryAccount, PersonalRegistry and personal_registry_home from \
+lup.providers.profile_migration where LegacyAccount, LegacyRegistry and \
+legacy_home were imported, and pass migrate_profiles' third argument as \
+registry_home= where it was passed as old_home=."""
