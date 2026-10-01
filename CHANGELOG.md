@@ -23,8 +23,9 @@
 - `LiveProcess` is a view of the roster's bare `Runtime` record, which
   knows a pid means nothing outside the namespace that numbered it: a
   process recorded elsewhere is not signalled, and a sandbox's owner is
-  judged the same way. A shared companion started before this reads as gone
-  once and is started again; stop the earlier process by its recorded pid.
+  judged the same way. A companion already running — the dashboard among
+  them — is joined as before: its kept record is adopted where its pid and
+  start time still name it, and written back with the scope.
 - `lup.harness.environment.Placement` answers where a process runs —
   contained, under the runtime's sandbox, inside a session — replacing four
   predicates that were not each other's negation; which runtime's session
