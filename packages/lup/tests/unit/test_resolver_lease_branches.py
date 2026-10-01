@@ -11,6 +11,7 @@ from pathlib import Path
 
 import pytest
 
+from lup.devtools.dev import records
 from lup.devtools.dev.branches import (
     PRStatus,
     WorktreeChanges,
@@ -348,16 +349,11 @@ def build_history(root: Path, launcher: LocalProcessLauncher) -> Path:
         return status.stdout.strip()
 
     def reserve(branch: str) -> None:
-        """Cut a branch and record where it stood, in the config keys a clone
-        whose records were never adopted still carries.
-        """
+        """Cut a branch and record where it stood, in its branch record."""
         run(*git_in, "branch", branch)
-        run(*git_in, "config", f"branch.{branch}.lup-base", "dev")
-        run(
-            *git_in,
-            "config",
-            f"branch.{branch}.lup-base-commit",
-            run(*git_in, "rev-parse", branch),
+        reserved = run(*git_in, "rev-parse", branch)
+        records.remember(
+            branch, records.BranchRecord(base="dev", base_commit=reserved), work
         )
 
     run("git", "init", "-b", "dev", str(work))

@@ -116,13 +116,14 @@ def worktree_is_registered(path: Path) -> bool:
 def adopt_records() -> None:
     """Empty lup's own keys out of the shared config, saying what moved.
 
-    Reads answer from either place, so a clone that never runs this behaves
-    exactly as one that did. What it buys is a shared ``config`` holding
-    nothing lup wrote — which is what lets that file, whose keys name
-    programs git runs on the host, stop having to be writable by a worker.
+    Reads answer from the record alone, so a base still held in ``config``
+    counts for nothing until this moves it. The move also leaves a shared
+    ``config`` holding nothing lup wrote — which is what lets that file,
+    whose keys name programs git runs on the host, stop having to be
+    writable by a worker.
     """
     refuse_blocked_config_writes()
-    moved = list(records.adopt_legacy_records())
+    moved = list(records.adopt_config_records())
     for line in moved:
         typer.echo(line)
     typer.echo(f"Adopted {len(moved)} record(s) out of the shared config.")

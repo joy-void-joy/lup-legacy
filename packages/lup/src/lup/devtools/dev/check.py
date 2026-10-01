@@ -974,22 +974,22 @@ def scaffold_budget_report(
 
 
 def branch_record_reports(pending: list[str]) -> list[CheckReport]:
-    """What lup's branch bookkeeping earns while it still sits in two places.
+    """What lup's branch bookkeeping earns while some of it sits in the config.
 
-    Advisory rather than gating. Every read falls back to the shared config
-    per field, so a clone that never adopts its records answers exactly as
-    one that did: there is no defect here to refuse a branch over. The
-    command that finishes it writes the shared git directory, which is the
-    host's, so a gating row would be red in every worktree until somebody
-    stood somewhere no session reaches — and a gate whose resting colour is
-    red is a gate a reader stops reading.
+    Advisory rather than gating. Reads answer from the records alone, so a
+    branch whose base sits only in the shared config detects its base from
+    the topology instead — a weaker answer rather than a defect to refuse a
+    branch over. The command that finishes the move writes the shared git
+    directory, which is the host's, so a gating row would be red in every
+    worktree until somebody stood somewhere no session reaches — and a gate
+    whose resting colour is red is a gate a reader stops reading.
 
     Nothing at all once no branch is left, rather than a permanent ok, for
     the same reason: this is one move with an end, and a row that can only
     say ok from then on is a line everybody learns to skip. The gate prints
     the lines a check hands back, so handing back no check is how a row
     leaves — the shape the borrowed-environment and unlanded-sibling rows
-    already use.
+    use.
     """
     if not pending:
         return []
@@ -1001,7 +1001,8 @@ def branch_record_reports(pending: list[str]) -> list[CheckReport]:
             lines=[
                 f"branch records: {len(pending)} branch(es) still recorded in "
                 "the shared git config (advisory)",
-                "  every read falls back to those keys, so nothing is broken",
+                "  nothing reads them there: those branches detect their base "
+                "from the topology",
                 "  `lup-devtools git worktree adopt-records` moves them, "
                 "once per clone",
                 f"  it writes the shared git directory's `{destination}/`, "

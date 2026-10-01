@@ -14,6 +14,7 @@ import pytest
 import sh
 import typer
 
+from lup.devtools.dev import records
 from lup.devtools.dev.branches import (
     BaseFreshness,
     admit_an_unread_base,
@@ -69,7 +70,7 @@ def worktree_clone(origin: Path, into: Path, branch: str = "feature") -> Path:
     clone = clone_of(origin, into)
     git = repo_git(clone)
     git("switch", "-c", branch)
-    git("config", f"branch.{branch}.lup-base", "main")
+    records.remember(branch, records.BranchRecord(base="main"), clone)
     return clone
 
 

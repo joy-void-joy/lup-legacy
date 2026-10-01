@@ -20,6 +20,7 @@ import sh
 import typer
 
 import lup.devtools.dev.check as check
+from lup.devtools.dev import records
 from lup.devtools.dev.check import (
     ChangeBase,
     ChangedScope,
@@ -66,7 +67,7 @@ def moved_on(repo: Path) -> None:
     """`topic` records `main` as its base, and `main` takes a commit after the cut."""
     git = sh.Command("git").bake("-C", str(repo), _tty_out=False)
     git("switch", "-c", "topic")
-    git("config", "branch.topic.lup-base", "main")
+    records.remember("topic", records.BranchRecord(base="main"), repo)
     committed(repo, "mine.py", "mine = 1\n")
     git("switch", "main")
     committed(repo, "theirs.py", "theirs = 1\n")
@@ -209,7 +210,7 @@ def test_a_public_name_the_branch_removed_fails_the_narrowed_run(
     git("add", "-A")
     git("commit", "-m", "surface")
     git("switch", "-c", "topic")
-    git("config", "branch.topic.lup-base", "main")
+    records.remember("topic", records.BranchRecord(base="main"), repo)
     (repo / "src/app/mod.py").write_text("def kept() -> None: ...\n", encoding="utf-8")
     for tool in ("ruff_format_check", "ruff_lint_check", "pyright_check"):
         monkeypatch.setattr(check, tool, quiet(tool))

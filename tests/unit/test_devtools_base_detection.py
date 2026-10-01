@@ -1,10 +1,8 @@
 """Behavior tests for base-branch recording and detection.
 
 Worktree creation records its base in ``<common>/lup/branches/<name>.json``,
-and the ``branch.<name>.lup-base`` config key it was written under before
-still answers; detection prefers either over everything else. Both spellings
-are exercised here, because a clone whose records were never adopted has to
-keep behaving as it did. Topology alone cannot recover the creation point —
+and detection prefers that record over everything else. Topology alone
+cannot recover the creation point —
 once branches share tips or the parent merges on, every candidate looks alike
 and the nearest one wins regardless of where the branch was really cut.
 
@@ -50,7 +48,7 @@ def test_recorded_base_resolves_what_topology_cannot(
     git = repo_git(repo)
     git("branch", "feature")
     git("switch", "-c", "topic", "feature")
-    git("config", "branch.topic.lup-base", "feature")
+    records.remember("topic", records.BranchRecord(base="feature"), repo)
     commit_named_file(repo, "t1.txt")
 
     monkeypatch.chdir(repo)
@@ -158,7 +156,7 @@ def test_stale_record_falls_back_to_guessing(
     git("switch", "-c", "feature")
     commit_named_file(repo, "f1.txt")
     git("switch", "-c", "topic")
-    git("config", "branch.topic.lup-base", "gone")
+    records.remember("topic", records.BranchRecord(base="gone"), repo)
     commit_named_file(repo, "t1.txt")
 
     monkeypatch.chdir(repo)
