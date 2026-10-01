@@ -103,6 +103,7 @@ DISPATCHER_STDLIB = (
     "tempfile",
     "time",
     "signal",
+    "select",
     "collections.abc",
     "csv",
     "fcntl",
@@ -164,6 +165,15 @@ the one thing that interrupts any of them, so a hook still waiting past its
 deadline raises where it is and refuses, rather than answering nothing and
 leaving the runtime to let the call through.
 
+``select`` earns its place the same way. An alarm interrupts a wait only
+where the interpreter gets to run its handler, and a read the kernel will
+not interrupt, or native code that never returns to the interpreter, gives
+it no such moment -- while the runtime still lets the call through once its
+timeout passes. So the judgement runs in a child process, and the hook waits
+on that child, and on its input arriving, through ``select``: the one wait
+that ends at a given time however the thing waited on behaves, after which
+the hook stops the child and refuses in its stead.
+
 ``collections.abc`` earns its place the same way. The host walks what a
 recursive reader would, and which names under it are withheld is the
 kernel's reading, which this half may not import -- so the walk is handed that
@@ -193,7 +203,7 @@ same bare interpreter, and nothing already pinned here parses source.
 ROUTER = "dispatch"
 ROUTER_SUBJECT = "name"
 ENTRYPOINT = "main"
-"""The router, the tool name it branches on, and the process entry point."""
+"""The router, the tool name it branches on, and a compiled evaluator's entry point."""
 
 RELATIVIZER = "worktree_path"
 """How every dispatcher makes an absolute path repo-relative.
@@ -215,6 +225,37 @@ DISPATCHER_SCRIPT = PurePath("policy.py")
 
 GUARD_SCRIPT = PurePath("policy.sh")
 """The shell entry point that survives an unavailable Python dispatcher."""
+
+STARTED_ENV = "LUP_HOOK_STARTED"
+"""Where the guard stamps the moment the hook started, which every deadline counts from.
+
+The runtime's timeout runs from when it started the hook, and the
+interpreter, compiling the dispatcher and importing the kernel all come
+before the dispatcher's first line; only the guard runs early enough to
+see that moment. The host half reads it under this name, which the
+compiler proves rather than trusts.
+"""
+
+JUDGEMENT = "judged"
+WARDEN = "answered_in_time"
+UNANSWERED = "unanswered"
+ANSWER_LIMIT = "HOOK_ANSWER_SECONDS"
+"""What one hook input is judged by, what answers in time around it, the
+refusal written when the judgement does not answer, and when that is.
+
+The judgement holds the failure handler, and the refusal it writes is the
+one the warden writes, in the same shape."""
+
+DISPATCHER_INVOCATION = (
+    'if __name__ == "__main__":\n'
+    f"    {WARDEN}({ANSWER_LIMIT}, {JUDGEMENT}, {UNANSWERED})"
+)
+"""A dispatcher's entry point, which the compiler writes rather than a half.
+
+A runtime lets the call through once its hook overruns its timeout, so
+answering in time is part of every dispatcher's contract. Written here, no
+runtime half can judge a call outside the bound that answers it in time,
+and neither repeats the one line that hands it over."""
 
 REFUSAL_STATUS = 2
 """The one exit status either runtime reads as a refusal.
@@ -243,6 +284,11 @@ def hook_guard_artifact(plugin_root: Path, semantic_id: str) -> Artifact:
     the dispatcher reaches only the standard library and the runtime beside
     it, so the user's own site directory -- under a home the session writes
     -- has nothing it needs and is never read.
+
+    It is started under the stamp :data:`STARTED_ENV` names, the wall clock
+    in whole seconds as every ``date`` prints it, so the dispatcher's
+    deadlines count from when the runtime started the hook rather than from
+    when its own first line ran.
     """
     return Artifact.generated(
         path=plugin_root / "hooks" / "scripts" / GUARD_SCRIPT,
@@ -257,7 +303,7 @@ if ! command -v python3 >/dev/null 2>&1; then
     printf 'Lup hook cannot start: python3 is missing. Install Python 3 or fix PATH.\\n' >&2
     exit {REFUSAL_STATUS}
 fi
-python3 -s "$script"
+{STARTED_ENV}=$(date +%s) python3 -s "$script"
 lup_hook_status=$?
 case "$lup_hook_status" in
     0|{REFUSAL_STATUS}) exit "$lup_hook_status" ;;
@@ -671,22 +717,27 @@ def declaration_breaches(
 ) -> list[str]:
     """Axes the declaration promised that the runtime half does not keep."""
     constants = string_constants(runtime.tree)
-    entrypoint = runtime.function(ENTRYPOINT)
-    # Read from the failure handler rather than from the whole entrypoint.
+    judgement = runtime.function(JUDGEMENT)
+    unanswered = runtime.function(UNANSWERED)
+    # Read from the failure handler rather than from the whole judgement.
     # The axis is what a dispatcher does with input it cannot decide from,
     # and an exit anywhere else answers a different question — a watching
     # event reporting what it found has no decision channel to answer
     # through, and exiting is the only way it reaches the agent at all.
     handlers = (
-        [node for node in ast.walk(entrypoint) if isinstance(node, ast.ExceptHandler)]
-        if entrypoint is not None
+        [node for node in ast.walk(judgement) if isinstance(node, ast.ExceptHandler)]
+        if judgement is not None
         else []
     )
-    closes = any(
-        isinstance(node, ast.Name) and node.id == "SystemExit"
-        for handler in handlers
-        for node in ast.walk(handler)
-    )
+
+    def exits(nodes: list[ast.AST]) -> bool:
+        return any(
+            isinstance(node, ast.Name) and node.id == "SystemExit"
+            for root in nodes
+            for node in ast.walk(root)
+        )
+
+    closes = exits([*handlers])
     routed = runtime.routed_tools()
     declared = sorted(declaration.routed_tools)
     return [
@@ -698,9 +749,18 @@ def declaration_breaches(
         ],
         *[
             f"declares {name} but defines no such function"
-            for name in (ROUTER, ENTRYPOINT)
+            for name in (ROUTER, JUDGEMENT, UNANSWERED)
             if runtime.function(name) is None
         ],
+        *breach(
+            runtime.function(ENTRYPOINT) is not None,
+            f"defines {ENTRYPOINT}, where the compiler writes the entry point",
+        ),
+        *breach(
+            ANSWER_LIMIT
+            not in [name for item in runtime.imports() for name in item.names],
+            f"never imports {ANSWER_LIMIT}, which its entry point hands {WARDEN}",
+        ),
         *breach(
             RELATIVIZER
             not in [
@@ -722,6 +782,15 @@ def declaration_breaches(
         *breach(
             closes != (declaration.failure == "stderr_exit"),
             f"does not fail the declared {declaration.failure} way",
+        ),
+        *breach(
+            unanswered is not None
+            and exits([unanswered]) != (declaration.failure == "stderr_exit"),
+            f"{UNANSWERED} does not fail the declared {declaration.failure} way",
+        ),
+        *breach(
+            STARTED_ENV not in string_constants(shared.tree),
+            f"{SHARED_MEMBER} never reads {STARTED_ENV}, which the guard stamps",
         ),
     ]
 
@@ -833,7 +902,7 @@ def compile_dispatcher(declaration: DispatcherDeclaration) -> str:
         *[shared.source_of(node) for node in shared.functions()],
         *[decisions.source_of(node) for node in decisions.functions()],
         *[runtime.source_of(node) for node in runtime.functions()],
-        INVOCATION,
+        DISPATCHER_INVOCATION,
     ]
     script = "\n\n\n".join(blocks) + "\n"
     return dispatcher_banner(declaration).applied_to(DISPATCHER_SCRIPT, script)

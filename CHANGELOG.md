@@ -2,6 +2,49 @@
 
 ## Unreleased
 
+### A policy judgement that does not finish in time refuses the call
+
+Claude Code and Codex both run a call once its `PreToolUse` hook overruns
+its timeout: measured on Claude Code 2.1.285, a hook holding a `touch`
+past a 5 s timeout saw it run about 5 s in. The policy hook's deadline and
+alarm bounded every wait the interpreter could interrupt, but not one it
+could not — a read the kernel holds, native code that never returns to the
+interpreter, the verdict being written after the alarm was disarmed — nor
+the time before the dispatcher's first line. A copy of the generated Claude
+hook stuck that way, registered on Claude Code 2.1.285 at the plugin's
+30 s timeout, let its `touch` run 35 s into the run.
+
+- The dispatcher judges in a child process and waits on it only until two
+  seconds short of the declared timeout; then it stops the child and
+  refuses: "the policy could not judge this call in time, so it is refused
+  unjudged", with a step to retry the call once and one to report it with
+  `dev report-friction` if it is refused again. The same copy rebuilt from
+  this change refused on Claude Code 2.1.285 and the `touch` never ran;
+  driven as each runtime drives it, both dispatchers refuse at about 28 s,
+  at `PreToolUse` and at Codex's `PermissionRequest`, where a timed-out
+  hook would leave Codex's own approval flow to decide.
+- Every bound counts from when the runtime started the hook: the guard
+  stamps that moment as `LUP_HOOK_STARTED`, so starting the interpreter and
+  importing the kernel are no longer time the deadline does not see.
+- `HookSet.policy_timeout` stays the one declaration: the hooks file's
+  `timeout`, the deadline steps share, the alarm past it and the moment the
+  hook refuses all derive from it (`lup.policy.bundle.hook_answer_limit`
+  beside `hook_deadline`), and the compiler writes every dispatcher's entry
+  point, so no runtime half can judge a call outside that bound.
+- A session opened in process meets the same contract. Its policy hook
+  passes `policy_timeout` to the SDK as the callback's `timeout` and refuses
+  a judgement still running at the deadline; a `PreToolUse` callback that
+  raises is answered with the refusal, since Claude Code runs the tool past
+  a callback that raised (measured on 2.1.259 and 2.1.285). An in-process
+  Codex session declines an approval whose hook raised or ran past its
+  deadline, with the refusal delivered to the turn — the app-server waits on
+  an approval without limit and would decline an error reply as "approval
+  request failed" with nothing reaching the agent.
+
+What changes for a session: a call the policy cannot judge in time is
+refused, where the runtime used to run it. Retry it once; a refusal that
+repeats is the policy's defect to report.
+
 ### A write reached through a variable, a substitution or a `cd` asks as the path it names would
 
 `cd w && F=<protected path> && sed -i … $F` rewrote a protected file with no

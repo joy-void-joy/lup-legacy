@@ -1717,23 +1717,41 @@ so the native runtime does not echo them with every diagnostic.
 A runtime lets a call through once its policy hook runs past its timeout —
 Claude Code continues through its own permission flow, Codex records the
 hook as failed and runs the tool — so a hook still waiting then has answered
-nothing. `HookSet.policy_timeout` is declared once: the hooks file each
-runtime reads carries it, and the dispatcher opens one deadline five seconds
-short of it as it starts. The language server an anti-pattern rule consults,
-a destination's accepted evaluator, and every Git and `sed` call take what is
-left rather than a timeout of their own, and one cut short reads as the
-failure it already answers — no checker looked, so the gate asks; Git could
-not say, so no capture is claimed. What nothing can hand a timeout to — a
-review-queue lock another writer holds, a read that never returns, the
-classifier itself — is stopped by an alarm two seconds past the deadline,
-and the dispatcher refuses the call as one it could not judge. Every such
-refusal says which cause it was, since each has a different fix: the
-deadline reached, input that is not a hook payload at all, or a failure
-judging one that is (`host.unjudged_reason`, on both runtimes). A process the
-hook starts inherits the deadline and cannot extend it. `dev policy` opens
-the same deadline for each reading it takes, from the same declaration
+nothing. Answering in time is part of the hook's contract, and a judgement
+that does not finish in time refuses. `HookSet.policy_timeout` is declared
+once: the hooks file each runtime reads carries it, and every bound inside
+the hook is derived from it and counted from when the runtime started the
+hook — the guard stamps that moment as `LUP_HOOK_STARTED`, since starting
+the interpreter and importing the kernel are time the runtime counts. The
+dispatcher opens one deadline five seconds short of the timeout. The
+language server an anti-pattern rule consults, a destination's accepted
+evaluator, and every Git and `sed` call take what is left rather than a
+timeout of their own, and one cut short reads as the failure it already
+answers — no checker looked, so the gate asks; Git could not say, so no
+capture is claimed. What nothing can hand a timeout to — a review-queue
+lock another writer holds, a read that never returns, the classifier itself
+— is stopped by an alarm two seconds past the deadline, and the dispatcher
+refuses the call as one it could not judge. What no alarm reaches — a read
+the kernel will not interrupt, native code that never returns to the
+interpreter, the verdict still being written after its alarm was disarmed —
+is answered from outside the judgement: it runs in a child process, and the
+hook waits on that child only until two seconds short of the timeout, then
+stops it and refuses in its stead (`host.answered_in_time`,
+`lup.policy.bundle.hook_answer_limit`). Every such refusal says which cause
+it was, since each has a different fix: the policy could not judge the
+call in time — retry it once, and report it if it is refused again — input
+that is not a hook payload at all, or a failure judging one that is
+(`host.unjudged_reason` and `host.unjudged_recovery`, on both runtimes).
+A process the hook starts inherits the deadline and cannot extend it.
+`dev policy` opens the same deadline for each reading it takes, from the same declaration
 (`lup.policy.bundle.hook_deadline`), so a reading that would wait past it is
-refused as the hook it previews would be rather than holding the command.
+refused as the hook it previews would be rather than holding the command. A
+session opened in process is held to the same declaration: its policy hook
+gives the runtime `policy_timeout` as its timeout, refuses a judgement still
+running at the deadline in the same words, and refuses a call whose hook
+raised rather than handing the error to a runtime that would run the call
+anyway; [platform-differentiation.md](platform-differentiation.md) says
+what each runtime does on its own.
 
 Plugin hooks receive a writable data directory: `PLUGIN_DATA` under Codex and
 `CLAUDE_PLUGIN_DATA` under Claude Code. Each dispatcher appends
@@ -1754,7 +1772,9 @@ read from the parse rather than from the authority that would carry it.
 This journal distinguishes failures whose UI is otherwise identical. A
 `failed` record is a dispatcher failure; `completed` with `deny` is an
 intentional policy refusal; `started` without a terminal record is an
-interrupted dispatcher. If the native runtime reports a hook event but no
+interrupted dispatcher — a judgement the hook stopped at its answer limit,
+whose refusal says it could not judge the call in time, or one something
+else killed. If the native runtime reports a hook event but no
 correlated `started` record exists, the plugin command never began, so the
 investigation belongs at its trust, hook-definition, or process-launch
 boundary rather than in policy logic. An unwritable journal reports its own

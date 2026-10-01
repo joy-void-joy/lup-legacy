@@ -65,6 +65,7 @@ def semantic_hooks(
         ),
         semantics.also_refusing(policy.refused_tools),
         sandbox=posture,
+        timeout=policy.policy_timeout,
     )
 
 

@@ -191,7 +191,7 @@ def compilation_sources(
     )
 
 
-def hook_deadline(hook_timeout: int, verdict_reserve: float = 5.0) -> float:
+def hook_deadline(hook_timeout: float, verdict_reserve: float = 5.0) -> float:
     """How long a verdict may take, given what the runtime gives the hook.
 
     That timeout less ``verdict_reserve``, the time starting the interpreter
@@ -201,6 +201,19 @@ def hook_deadline(hook_timeout: int, verdict_reserve: float = 5.0) -> float:
     hook it previews is.
     """
     return hook_timeout - verdict_reserve
+
+
+def hook_answer_limit(hook_timeout: float, exit_reserve: float = 2.0) -> float:
+    """When the hook answers with whatever it has, given what the runtime gives it.
+
+    That timeout less ``exit_reserve``, the time stopping the judgement,
+    writing a refusal and ending the process take: a runtime reads nothing
+    the hook said until its process has ended, so a refusal written at the
+    timeout is never read and the call runs. Later than :func:`hook_deadline`
+    and the alarm past it, which still answer from inside the judgement
+    first wherever they can reach it.
+    """
+    return hook_timeout - exit_reserve
 
 
 def bundled_antipattern_rows(
@@ -711,8 +724,9 @@ def render_policy_data(
     which no compiled constant could know.
 
     ``hook_timeout`` is what the runtime gives the policy hook, the same value
-    its hooks file declares, and the hook's deadline is derived from it rather
-    than restated beside it, by :func:`hook_deadline`.
+    its hooks file declares, and the hook's deadline and the moment it answers
+    whatever it has are derived from it rather than restated beside it, by
+    :func:`hook_deadline` and :func:`hook_answer_limit`.
     """
     body = "\n\n".join(
         [
@@ -776,6 +790,7 @@ def render_policy_data(
             + string_rows_literal(resolution_command),
             "REPAIR_COMMAND: list[str] = " + string_rows_literal(repair_command),
             "HOOK_DEADLINE_SECONDS = " + json.dumps(hook_deadline(hook_timeout)),
+            "HOOK_ANSWER_SECONDS = " + json.dumps(hook_answer_limit(hook_timeout)),
         ]
     )
     return (

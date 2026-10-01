@@ -135,11 +135,13 @@ from lup.policy.bundle import policy_kernel_modules
 from lup.policy.dispatcher import (
     SHARED_MEMBER,
     DECISIONS_MEMBER,
+    RUNTIME_MEMBER,
     SPLICED_MEMBERS,
     SHARED_PACKAGE,
     DispatcherDeclaration,
     SourceHalf,
     compile_dispatcher,
+    declaration_breaches,
     resolvable,
     source_half,
     stranded_breaches,
@@ -2612,6 +2614,42 @@ def test_compilation_refuses_a_dispatcher_that_breaks_its_declaration() -> None:
         compile_dispatcher(misread)
     with pytest.raises(ValueError, match="not registered for"):
         compile_dispatcher(unregistered)
+
+
+@pytest.mark.parametrize("declaration", [CLAUDE_DISPATCHER, CODEX_DISPATCHER])
+def test_every_compiled_dispatcher_is_entered_through_its_warden(
+    declaration: DispatcherDeclaration,
+) -> None:
+    """A call judged where nothing answers in time is one a slow judgement lets through.
+
+    So the entry point is not a runtime half's to write: the compiler writes
+    it, handing the judgement and its refusal to the warden that answers
+    whatever the judgement is doing. A half that writes an entry point of its
+    own, or leaves out the refusal the warden needs, stops generation.
+    """
+    script = ast.parse(compile_dispatcher(declaration))
+    runtime = source_half(declaration.package, RUNTIME_MEMBER)
+
+    def breaches(text: str) -> list[str]:
+        return declaration_breaches(
+            declaration,
+            source_half(SHARED_PACKAGE, SHARED_MEMBER),
+            source_half(SHARED_PACKAGE, DECISIONS_MEMBER),
+            SourceHalf(module=runtime.module, text=text, tree=ast.parse(text)),
+        )
+
+    entered = runtime.text + "\n\ndef main():\n    judged(b'')\n"
+    unrefusing = runtime.text.replace("def unanswered(", "def refused(")
+
+    assert ast.unparse(script.body[-1]) == (
+        "if __name__ == '__main__':\n"
+        "    answered_in_time(HOOK_ANSWER_SECONDS, judged, unanswered)"
+    )
+    assert breaches(entered) == [
+        "defines main, where the compiler writes the entry point"
+    ]
+    assert unrefusing != runtime.text
+    assert breaches(unrefusing) == ["declares unanswered but defines no such function"]
 
 
 AUTONOMY_PROBE = "".join(f"VALUE_{index} = {index}\n" for index in range(8))

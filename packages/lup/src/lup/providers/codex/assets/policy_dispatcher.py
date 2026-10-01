@@ -67,6 +67,7 @@ from host import (
     record_hook_evidence,
     sandbox_active,
     unjudged_reason,
+    unjudged_recovery,
     words_before,
 )
 from kernel.rows import PostToolReport
@@ -78,6 +79,9 @@ from caller_payload import caller_of, spoken, transcript_of
 from policy_data import AUTO_ESCAPE_PREFIXES
 from policy_data import AGENT_IDENTITY_ENV, AUTONOMOUS_AGENT_IDENTITIES
 from policy_data import HOOK_DEADLINE_SECONDS
+
+# Read by the entry point the compiler writes, which hands it to the warden.
+from policy_data import HOOK_ANSWER_SECONDS
 
 
 def hook_environment():
@@ -541,18 +545,63 @@ def post_tool_answer(report):
         )
 
 
-def main():
-    # What each runtime gives this hook before it lets the call through,
-    # less what starting Python and writing the verdict take: every step a
-    # verdict waits on shares it, and anything still waiting past it is
-    # refused rather than left for the runtime to wave through.
+def unjudged_detail(event, error, read):
+    """What this hook says of a call nobody judged, on stderr or in a denial.
+
+    ``error`` is what failed, or None where the judgement was still running
+    when the hook had to answer. A post-tool check has nothing left to
+    refuse -- the patch has applied, and retrying it would apply it again --
+    so it says only that it did not finish.
+    """
+    if event == "PostToolUse":
+        failure = error if error is not None else "it did not finish in time"
+        return f"Lup post-tool check failed: {failure}"
+    return KernelDecision(
+        "deny", unjudged_reason(error, read), recovery=unjudged_recovery(error)
+    ).addressed()
+
+
+def unanswered(given, error):
+    """Refuse a call the judgement did not answer in time, as its event reads it.
+
+    A permission request is refused by the decision it carries back, as
+    every verdict this hook gives one is; every other event by the reason on
+    stderr and the exit status this boundary refuses with. ``error`` is
+    what failed, or None where the judgement was still running when the
+    hook had to answer.
+    """
+    try:
+        payload = json.loads(given)
+    except ValueError:
+        payload = {}
+    named = isinstance(payload, dict) and "hook_event_name" in payload
+    event = payload["hook_event_name"] if named else ""
+    detail = unjudged_detail(event, error, True)
+    if event == "PermissionRequest":
+        json.dump(
+            {
+                "hookSpecificOutput": {
+                    "hookEventName": "PermissionRequest",
+                    "decision": {"behavior": "deny", "message": detail},
+                }
+            },
+            sys.stdout,
+        )
+        return
+    sys.stderr.write(detail)
+    raise SystemExit(2)
+
+
+def judged(given):
+    """Judge one hook input and answer it, the whole of what this hook decides."""
     previous = opened_deadline(HOOK_DEADLINE_SECONDS)
     payload = {}
     permission_request = False
     review_notice = ""
+    event = ""
     read = False
     try:
-        payload = json.load(sys.stdin)
+        payload = json.loads(given)
         if not isinstance(payload, dict):
             raise ValueError("hook input must be an object")
         read = True
@@ -619,9 +668,11 @@ def main():
             "error",
             f"{type(error).__name__}: {error}",
         )
-        decision = KernelDecision("deny", unjudged_reason(error, read))
+        decision = KernelDecision(
+            "deny", unjudged_reason(error, read), recovery=unjudged_recovery(error)
+        )
         if not permission_request:
-            sys.stderr.write(decision.addressed())
+            sys.stderr.write(unjudged_detail(event, error, read))
             raise SystemExit(2) from error
     finally:
         closed_deadline(previous)

@@ -13,10 +13,14 @@ same policies, same verdicts, delivered through the hook seam a session
 already carries.
 """
 
+import asyncio
+import logging
 from collections.abc import Callable
 
 from pydantic import BaseModel, Field
 
+from lup.policy.assets.host import unjudged_reason, unjudged_recovery
+from lup.policy.bundle import hook_deadline
 from lup.policy.hooks import (
     LupHookInput,
     LupHookMatcher,
@@ -36,6 +40,8 @@ from lup.policy.models import (
     SemanticTool,
     ShellCommand,
 )
+
+logger = logging.getLogger(__name__)
 
 
 type EscalationRelay = Callable[[str, str], None]
@@ -111,6 +117,25 @@ def policy_hook_output(
             return deny_hook(decision.as_kernel().addressed())
         case "defer":
             return LupHookOutput(reason=decision.reason)
+
+
+def unjudged_output(error: BaseException | None) -> LupHookOutput:
+    """The refusal of a call nobody judged, as every runtime's hook gives it.
+
+    ``error`` is what failed, or None where the judgement was still running
+    when the hook had to answer. The same words the generated dispatchers
+    refuse with, so an in-process session is told what a launched one is.
+    A runtime proceeds past a callback that raised -- the Agent SDK runs the
+    tool, measured on Claude Code 2.1.259 and 2.1.285 -- so a gate that
+    failed has to answer with this rather than fail.
+    """
+    return policy_hook_output(
+        Decision(
+            effect="deny",
+            reason=unjudged_reason(error, True),
+            recovery=unjudged_recovery(error),
+        )
+    )
 
 
 class SemanticToolPolicy(DecisionPolicy[SemanticTool]):
@@ -258,6 +283,7 @@ def create_policy_hooks(
     sandbox: SandboxPosture = SandboxPosture(),
     tag: str = "semantic_policy",
     relay: EscalationRelay | None = None,
+    timeout: float | None = None,
 ) -> LupHooksConfig:
     """Create a PreToolUse hook that enforces *policy* on the tools it judges.
 
@@ -292,18 +318,41 @@ def create_policy_hooks(
             is the right answer for a session that declared no sandbox and
             the safe one for a session that declared one and forgot to say.
         tag: Matcher tag for adapter dispatch.
+        timeout: What the runtime gives this hook before it acts without
+            it, the declaration's ``policy_timeout``. The runtime is told it,
+            and the verdict is due by :func:`~lup.policy.bundle.hook_deadline`
+            of it: a judgement still running then is refused as the
+            generated dispatchers refuse it, rather than leaving the runtime
+            to decide what a hook that never answered meant. Unstated, the
+            judgement is unbounded and the runtime keeps its own timeout.
 
     Returns:
         SDK-agnostic hooks configuration; combine via ``merge_hooks``.
     """
+
+    deadline = None if timeout is None else hook_deadline(timeout)
 
     async def policy_hook(event: LupHookInput) -> LupHookOutput:
         # LupHookEvent adopts Claude's event names as the neutral seam's own
         # vocabulary, so this reads a lup spelling rather than a provider's.
         if event.event != "PreToolUse":  # lup: ignore[native-spelling]
             return LupHookOutput()
+        # Judged on a worker thread so the wait for it can end: the verdict is
+        # computed synchronously, and a wait on the session's own loop could not
+        # be cut short while it ran. A judgement abandoned at the deadline runs
+        # on to its end with nobody reading it.
+        judging = asyncio.to_thread(
+            policy.decide, semantics.decode(event).as_documents()
+        )
+        try:
+            decision = await asyncio.wait_for(judging, deadline)
+        except TimeoutError:
+            logger.warning(
+                "refusing %s: the policy did not judge it in time", event.tool_name
+            )
+            return unjudged_output(None)
         return policy_hook_output(
-            policy.decide(semantics.decode(event).as_documents()),
+            decision,
             semantics.escapes_from(sandbox),
             relay,
             contained=sandbox.contained,
@@ -315,6 +364,7 @@ def create_policy_hooks(
                 hook=policy_hook,
                 matcher="|".join(semantics.routed_tools),
                 tag=tag,
+                timeout=timeout,
             )
         ]
     )

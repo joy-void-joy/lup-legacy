@@ -176,6 +176,13 @@ class LupHookMatcher(BaseModel, arbitrary_types_allowed=True):
     matcher: str | None = None
     hook: LupHookFn
     tag: str | None = None
+    timeout: float | None = Field(
+        default=None,
+        description=(
+            "Seconds the runtime gives this hook before it acts without its "
+            "answer; unset leaves the runtime's own default"
+        ),
+    )
 
 
 class LupHooksConfig(BaseModel):

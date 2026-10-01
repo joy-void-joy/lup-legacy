@@ -8,9 +8,7 @@ not tell whether anything was asked of it; these pin the split, and the
 reviews that feed it.
 """
 
-import io
 import json
-import sys
 from pathlib import Path
 from types import ModuleType
 
@@ -87,7 +85,6 @@ def test_the_claude_hook_emits_the_split_it_was_handed(
 ) -> None:
     dispatcher = claude()
     payload = {"hook_event_name": "PostToolUse", "tool_name": "Edit", "tool_input": {}}
-    monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps(payload)))
     monkeypatch.setattr(
         dispatcher,
         "observe",
@@ -95,7 +92,7 @@ def test_the_claude_hook_emits_the_split_it_was_handed(
     )
     monkeypatch.setattr(dispatcher, "plugin_data_root", lambda: tmp_path)
 
-    dispatcher.main()
+    dispatcher.judged(json.dumps(payload).encode())
 
     assert json.loads(capsys.readouterr().out) == {
         "hookSpecificOutput": {

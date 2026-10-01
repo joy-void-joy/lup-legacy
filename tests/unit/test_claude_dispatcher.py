@@ -6,10 +6,8 @@ run the emitted script on a fresh interpreter with JSON on stdin, the way
 the harness invokes it.
 """
 
-import io
 import json
 import shlex
-import sys
 from pathlib import Path
 from types import ModuleType
 
@@ -964,13 +962,12 @@ def test_post_tool_findings_are_feedback_without_a_process_error(
 ) -> None:
     dispatcher = bundled_dispatcher()
     payload = {"hook_event_name": "PostToolUse", "tool_name": "Edit", "tool_input": {}}
-    monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps(payload)))
     monkeypatch.setattr(
         dispatcher, "observe", lambda _payload: {"blocking": findings, "context": []}
     )
     monkeypatch.setattr(dispatcher, "plugin_data_root", lambda: tmp_path)
 
-    dispatcher.main()
+    dispatcher.judged(json.dumps(payload).encode())
 
     output = capsys.readouterr()
     assert output.err == ""
@@ -994,11 +991,10 @@ def test_a_failed_post_tool_check_does_not_request_permission_for_the_edit(
 
     dispatcher = bundled_dispatcher()
     payload = {"hook_event_name": "PostToolUse", "tool_name": "Edit", "tool_input": {}}
-    monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps(payload)))
     monkeypatch.setattr(dispatcher, "observe", failed_check)
     monkeypatch.setattr(dispatcher, "plugin_data_root", lambda: tmp_path)
 
-    dispatcher.main()
+    dispatcher.judged(json.dumps(payload).encode())
 
     output = capsys.readouterr()
     assert output.err == ""

@@ -69,6 +69,7 @@ from host import (
     record_hook_evidence,
     sandbox_active,
     unjudged_reason,
+    unjudged_recovery,
     words_before,
 )
 from kernel.rows import PostToolReport
@@ -78,6 +79,8 @@ from caller_payload import caller_of, spoken, transcript_of
 from policy_data import (
     AGENT_IDENTITY_ENV,
     AUTONOMOUS_AGENT_IDENTITIES,
+    # Read by the entry point the compiler writes, which hands it to the warden.
+    HOOK_ANSWER_SECONDS,
     HOOK_DEADLINE_SECONDS,
 )
 
@@ -719,21 +722,53 @@ def post_tool_answer(report):
     }
 
 
-def main():
-    # What each runtime gives this hook before it lets the call through,
-    # less what starting Python and writing the verdict take: every step a
-    # verdict waits on shares it, and anything still waiting past it is
-    # refused rather than left for the runtime to wave through.
+def unjudged_answer(event, error, read):
+    """The answer to a call nobody judged, on the channel its event reads.
+
+    ``error`` is what failed, or None where the judgement was still running
+    when the hook had to answer. A refusal says what to do next, as every
+    refusal this runtime shows does; a post-tool check has nothing left to
+    refuse and says only that it did not finish.
+    """
+    if event == "PostToolUse":
+        failure = error if error is not None else "it did not finish in time"
+        return {"decision": "block", "reason": f"Lup post-tool check failed: {failure}"}
+    refusal = KernelDecision(
+        "deny", unjudged_reason(error, read), recovery=unjudged_recovery(error)
+    )
+    return {
+        "hookSpecificOutput": {
+            "hookEventName": "PreToolUse",
+            "permissionDecision": "deny",
+            "permissionDecisionReason": refusal.addressed(),
+        }
+    }
+
+
+def unanswered(given, error):
+    """Refuse a call the judgement did not answer in time, as its event reads it."""
+    try:
+        payload = json.loads(given)
+    except ValueError:
+        payload = {}
+    named = isinstance(payload, dict) and "hook_event_name" in payload
+    json.dump(
+        unjudged_answer(payload["hook_event_name"] if named else "", error, True),
+        sys.stdout,
+    )
+
+
+def judged(given):
+    """Judge one hook input and answer it, the whole of what this hook decides."""
     previous = opened_deadline(HOOK_DEADLINE_SECONDS)
     payload = {}
     event = ""
     placed = None
     attached = ""
     notice = ""
-    failed = False
     read = False
     try:
-        payload = json.load(sys.stdin)
+        payload = json.loads(given)
         if not isinstance(payload, dict):
             raise ValueError("hook input must be an object")
         read = True
@@ -786,8 +821,6 @@ def main():
     # Nothing is swallowed: the reason carries whatever went wrong, and an
     # interrupt still passes through as the BaseException it is.
     except Exception as error:
-        failed = True
-        decision = KernelDecision("deny", unjudged_reason(error, read))
         record_hook_evidence(
             plugin_data_root(),
             payload if isinstance(payload, dict) else {},
@@ -795,22 +828,7 @@ def main():
             "error",
             f"{type(error).__name__}: {error}",
         )
-        if event == "PostToolUse":
-            json.dump(
-                {"decision": "block", "reason": f"Lup post-tool check failed: {error}"},
-                sys.stdout,
-            )
-            return
-        json.dump(
-            {
-                "hookSpecificOutput": {
-                    "hookEventName": "PreToolUse",
-                    "permissionDecision": "deny",
-                    "permissionDecisionReason": decision.reason,
-                }
-            },
-            sys.stdout,
-        )
+        json.dump(unjudged_answer(event, error, read), sys.stdout)
         return
     finally:
         closed_deadline(previous)
@@ -818,12 +836,11 @@ def main():
     # The person is told a review is waiting on them in the one field this
     # runtime shows a person from every hook; the agent reads the reason.
     json.dump({**answer, "systemMessage": notice} if notice else answer, sys.stdout)
-    if not failed:
-        detail = (
-            decision.reason
-            if decision.effect == "deny" and payload["tool_name"] != "WebFetch"
-            else None
-        )
-        record_hook_evidence(
-            plugin_data_root(), payload, "completed", decision.effect, detail
-        )
+    detail = (
+        decision.reason
+        if decision.effect == "deny" and payload["tool_name"] != "WebFetch"
+        else None
+    )
+    record_hook_evidence(
+        plugin_data_root(), payload, "completed", decision.effect, detail
+    )

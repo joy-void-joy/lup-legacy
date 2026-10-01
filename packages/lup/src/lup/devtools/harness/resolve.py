@@ -1369,6 +1369,7 @@ def worker_policy_hooks(
         semantics.also_refusing(declared_hooks.refused_tools),
         sandbox=sandbox,
         relay=relay,
+        timeout=declared_hooks.policy_timeout,
     )
 
 

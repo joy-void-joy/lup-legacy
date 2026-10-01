@@ -1827,9 +1827,11 @@ class HookSet(BaseModel, frozen=True):
         description=(
             "Seconds each runtime gives the policy hook before it lets the call "
             "through unjudged: both runtimes treat a hook that overran as one "
-            "that said nothing. Declared once and read twice — by the hooks "
-            "file each runtime reads, and by the deadline every wait inside the "
-            "hook shares, which ends early enough to answer inside it"
+            "that said nothing. Declared once and read wherever that bound "
+            "matters — the hooks file each runtime reads and the timeout an "
+            "in-process session's callback is held to, the deadline every wait "
+            "inside the hook shares, and the moment the hook stops waiting and "
+            "refuses, each derived from this so it answers inside it"
         ),
     )
     sandbox: HookSandbox | None = None
