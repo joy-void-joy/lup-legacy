@@ -218,7 +218,7 @@ def launched(
 
     launch.launch_claude(
         composition(worktree, "claude"),
-        launch.LaunchRequest(words=extra, sandbox=LaunchSandbox.INNER, resume=resume),
+        launch.LaunchArguments(words=extra, sandbox=LaunchSandbox.INNER, resume=resume),
         profiles(),
         False,
     )

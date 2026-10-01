@@ -1,0 +1,12 @@
+subjects = ["LaunchRequest"]
+reason = """
+`lup.devtools.harness.launch.LaunchRequest` shared its name with the \
+launcher seam's `lup.execution.process.LaunchRequest` while meaning \
+something else, a `harness claude|codex` command line, so it takes the name \
+for what it holds"""
+
+[[steps]]
+instruction = """
+Name `lup.devtools.harness.launch.LaunchArguments` where you built a \
+`lup.devtools.harness.launch.LaunchRequest`; the launcher seam's \
+`LaunchRequest` is unchanged."""

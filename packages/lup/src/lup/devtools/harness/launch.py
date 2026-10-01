@@ -372,7 +372,7 @@ class StatedLaunch(TypedDict, total=False):
     record: Recording
 
 
-class LaunchRequest(BaseModel, frozen=True, arbitrary_types_allowed=True):
+class LaunchArguments(BaseModel, frozen=True, arbitrary_types_allowed=True):
     """What one `harness claude|codex` command line asked for, before it is a declaration."""
 
     words: list[str] = []
@@ -681,7 +681,7 @@ def held_services(harness: Harness) -> list[HostCompanion]:
 
 def claude_declaration(
     composition: NativeHarnessComposition,
-    request: LaunchRequest,
+    request: LaunchArguments,
     profiles: ProfileDirectory,
     settle: bool = True,
 ) -> Claude:
@@ -746,7 +746,7 @@ def claude_declaration(
 
 def codex_declaration(
     composition: NativeHarnessComposition,
-    request: LaunchRequest,
+    request: LaunchArguments,
     home: Path | None,
     settle: bool = True,
 ) -> Codex:
@@ -900,7 +900,7 @@ def exited(status: int) -> None:
 @usage_refusals()
 def launch_claude(
     composition: NativeHarnessComposition,
-    request: LaunchRequest,
+    request: LaunchArguments,
     profiles: ProfileDirectory,
     generate_only: bool,
     checkpoint: LaunchCheckpoint | None = None,
@@ -928,7 +928,7 @@ def launch_claude(
 @usage_refusals()
 def launch_codex(
     composition: NativeHarnessComposition,
-    request: LaunchRequest,
+    request: LaunchArguments,
     codex_home: Path | None,
     generate_only: bool,
     force_install: bool,

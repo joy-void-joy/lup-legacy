@@ -727,7 +727,7 @@ def create_harness_app(
             ] = None,
         ) -> None:
             selected = launch.selected_mode(modes, mode)
-            request = launch.LaunchRequest(
+            request = launch.LaunchArguments(
                 words=list(ctx.args),
                 model=model,
                 effort=effort,
@@ -1006,7 +1006,7 @@ def create_harness_app(
             ] = None,
         ) -> None:
             selected = launch.selected_mode(modes, mode)
-            request = launch.LaunchRequest(
+            request = launch.LaunchArguments(
                 words=list(ctx.args),
                 model=model,
                 effort=effort,
