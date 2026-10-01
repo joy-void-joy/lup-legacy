@@ -16,6 +16,7 @@ from lup.devtools.gitguard import TEST_IDENTITY
 from lup.execution.git import GitError, Repository
 from lup.execution.process import LocalProcessLauncher
 from lup.policy.assets import host
+from lup.resolver.orchestrator import WorktreeOrchestrator
 
 
 def git(where: Path, *arguments: str) -> str:
@@ -164,6 +165,21 @@ def test_an_environment_reaches_every_question(main: Path, tmp_path: Path) -> No
     private.answer("read-tree", "HEAD")
 
     assert index.is_file()
+
+
+def test_a_checkout_whose_path_has_a_space_is_not_taken_for_debris(
+    main: Path, tmp_path: Path
+) -> None:
+    """The resolver read `git worktree list` by its first word, which a space ends."""
+    stray = tmp_path / "a stray"
+    stray.mkdir()
+    orchestrator = WorktreeOrchestrator(LocalProcessLauncher(), main)
+
+    orchestrator.discard_unregistered((tmp_path / "a sibling").resolve())
+    orchestrator.discard_unregistered(stray)
+
+    assert (tmp_path / "a sibling").is_dir()
+    assert not stray.exists()
 
 
 def test_the_policy_hosts_bare_answers_agree(main: Path, tmp_path: Path) -> None:

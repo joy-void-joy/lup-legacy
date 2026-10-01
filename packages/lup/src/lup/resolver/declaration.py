@@ -16,7 +16,8 @@ from pathlib import Path
 
 from pydantic import BaseModel
 
-from lup.execution.process import LaunchRequest, ProcessLauncher
+from lup.execution.git import Repository
+from lup.execution.process import ProcessLauncher
 
 
 class InspectedChanges(BaseModel, frozen=True):
@@ -81,17 +82,10 @@ def inspect_changes(
     invisible to ``diff`` until its intent is recorded — and a worker's new
     files are most of what it must account for.
     """
-    intent = launcher.launch(
-        LaunchRequest(arguments=["git", "add", "-N", "."], cwd=root)
-    )
-    if intent.code != 0:
+    repository = Repository(root, launcher)
+    if repository.run("add", "-N", ".").code != 0:
         return InspectedChanges(failure="new paths could not be inspected")
-    named = launcher.launch(
-        LaunchRequest(
-            arguments=["git", "diff", "--name-only", base_commit],
-            cwd=root,
-        )
-    )
+    named = repository.run("diff", "--name-only", base_commit)
     if named.code != 0:
         return InspectedChanges(failure="changed paths could not be inspected")
     return InspectedChanges(
