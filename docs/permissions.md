@@ -1480,7 +1480,7 @@ approver, a command's error, a gate's finding — takes one shape, declared in
 `lup.policy.kernel.diagnostic`:
 
 ```
-refused: `pip install` — changes packages outside this project's lockfile
+refused: `pip` — changes packages outside this project's lockfile
 → add the package through uv, which keeps the lockfile: `uv add <package>`
 → or remove one: `uv remove <package>`
 ```

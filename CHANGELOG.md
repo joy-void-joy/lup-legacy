@@ -8,7 +8,7 @@ A hook's refusal, a question put to the person approving a call, a devtools
 command's error and a gate's finding now read alike:
 
 ```
-refused: `pip install` — changes packages outside this project's lockfile
+refused: `pip` — changes packages outside this project's lockfile
 → add the package through uv, which keeps the lockfile: `uv add <package>`
 → or remove one: `uv remove <package>`
 ```
