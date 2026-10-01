@@ -18,7 +18,7 @@ import typer
 from pydantic import BaseModel, Field
 
 from lup.harness.environment import non_interactive_environment
-from lup.harness.process import LaunchRequest, ProcessLauncher
+from lup.execution.process import LaunchRequest, ProcessLauncher
 import lup.devtools.dev.records as records
 import lup.devtools.dev.traces as traces
 from lup.devtools.dev.remote_auth import (

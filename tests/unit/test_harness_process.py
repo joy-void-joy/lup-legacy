@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from lup.harness.process import LaunchRequest, LocalProcessLauncher
+from lup.execution.process import LaunchRequest, LocalProcessLauncher
 from lup.devtools.harness.resolve import resolver_source_snapshot
 
 

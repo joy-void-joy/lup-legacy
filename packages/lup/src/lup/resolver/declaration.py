@@ -16,7 +16,7 @@ from pathlib import Path
 
 from pydantic import BaseModel
 
-from lup.harness.process import LaunchRequest, ProcessLauncher
+from lup.execution.process import LaunchRequest, ProcessLauncher
 
 
 class InspectedChanges(BaseModel, frozen=True):

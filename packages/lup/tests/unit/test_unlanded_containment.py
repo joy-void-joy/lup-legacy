@@ -13,7 +13,7 @@ import pytest
 
 import lup.devtools.dev.branches as branches
 from lup.devtools.dev.branches import unlanded_siblings
-from lup.harness.process import LaunchRequest, LocalProcessLauncher
+from lup.execution.process import LaunchRequest, LocalProcessLauncher
 
 
 def build_siblings(root: Path, launcher: LocalProcessLauncher, wider: bool) -> Path:

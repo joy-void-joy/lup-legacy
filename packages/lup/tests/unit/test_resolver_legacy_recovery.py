@@ -7,7 +7,7 @@ import pytest
 from lup.channels.models import Door, utc_now
 from lup.coordination.mailbox import RecordedAnswer
 from lup.coordination.questions import QuestionAnswer
-from lup.harness.process import LocalProcessLauncher
+from lup.execution.process import LocalProcessLauncher
 from lup.resolver.contracts import ResolverAwaitingAnswers
 from lup.resolver.core import resolver_config_digest
 from lup.resolver.mailbox import PendingQuestion, QuestionMailbox

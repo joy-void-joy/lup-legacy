@@ -33,7 +33,7 @@ from lup.devtools.dev.worktree import (
     descends_from,
     register_worktree,
 )
-from lup.harness.process import LaunchRequest, LocalProcessLauncher
+from lup.execution.process import LaunchRequest, LocalProcessLauncher
 
 
 def run_git(cwd: Path, *arguments: str) -> None:

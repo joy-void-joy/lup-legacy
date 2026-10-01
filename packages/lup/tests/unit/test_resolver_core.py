@@ -11,7 +11,7 @@ from pydantic import BaseModel
 from lup.harness.contracts import SkillInvocationRenderer
 from lup.harness.models import ResolveSpec, SkillInvocation
 from lup.harness.ownership import GeneratedArtifacts, OwnedArtifact
-from lup.harness.process import (
+from lup.execution.process import (
     LaunchRequest,
     LocalProcessLauncher,
     ProcessLauncher,

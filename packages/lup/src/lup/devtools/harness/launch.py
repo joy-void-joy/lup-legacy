@@ -36,7 +36,7 @@ from lup.harness.generate import NativeHarnessComposition
 from lup.harness.image import Image, MemoryLimit
 from lup.harness.models import Harness, NativeName, Plugin, Resumption
 from lup.harness.notice import Notice
-from lup.harness.process import LocalProcessLauncher
+from lup.execution.process import LocalProcessLauncher
 from lup.launch.companions import HostCompanion
 from lup.launch.declaration import (
     InnerSandbox,

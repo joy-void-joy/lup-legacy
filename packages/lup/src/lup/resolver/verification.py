@@ -9,7 +9,7 @@ asked it first.
 
 from pathlib import Path
 
-from lup.harness.process import LaunchRequest, ProcessLauncher
+from lup.execution.process import LaunchRequest, ProcessLauncher
 from lup.resolver.models import VerificationCommand, VerificationRecord
 
 

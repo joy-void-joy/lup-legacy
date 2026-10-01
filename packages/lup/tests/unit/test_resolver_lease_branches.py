@@ -20,7 +20,7 @@ from lup.devtools.dev.branches import (
 from lup.devtools.dev.worktree import RecordedBase
 from lup.devtools.report.build import lease_items
 from lup.harness.models import ResolveSpec, SkillInvocation
-from lup.harness.process import LaunchRequest, LocalProcessLauncher
+from lup.execution.process import LaunchRequest, LocalProcessLauncher
 from lup.resolver.models import (
     AcceptanceCriterion,
     Concern,

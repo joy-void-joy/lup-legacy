@@ -7,7 +7,7 @@ from pathlib import Path
 from lup.harness.codescan.symbols import DefinedSymbol, defined_symbols, symbols_lost
 from lup.execution.writability import admin_dirs, diagnose_git_admin
 from lup.harness.ownership import GeneratedArtifacts, generated_artifacts
-from lup.harness.process import ExitStatus, LaunchRequest, ProcessLauncher
+from lup.execution.process import ExitStatus, LaunchRequest, ProcessLauncher
 from lup.resolver.contracts import WorktreePreparer
 from lup.resolver.declaration import declaration_delta, inspect_changes
 from lup.resolver.notes import clear_concern_notes

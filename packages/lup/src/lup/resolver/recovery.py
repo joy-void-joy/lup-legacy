@@ -12,7 +12,7 @@ from pydantic import BaseModel
 from lup.channels.models import Door, publish_atomic, utc_now
 from lup.coordination.mailbox import RecordedAnswer
 from lup.execution.shell import git
-from lup.harness.process import LaunchRequest, LocalProcessLauncher
+from lup.execution.process import LaunchRequest, LocalProcessLauncher
 from lup.resolver.join_desk import JoinDesk
 from lup.resolver.record import IntegrationRecoveredEvent, Journal
 from lup.resolver.mailbox import PendingQuestion, QuestionMailbox

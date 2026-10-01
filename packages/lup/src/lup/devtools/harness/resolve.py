@@ -38,7 +38,7 @@ from lup.policy.grants import LeaseGrants, allowance_grants_environment
 from lup.policy.identity import agent_identity_environment
 from lup.harness.environment import non_interactive_environment
 from lup.harness.ownership import GeneratedArtifacts, generated_artifacts
-from lup.harness.process import LaunchRequest, LocalProcessLauncher, ProcessLauncher
+from lup.execution.process import LaunchRequest, LocalProcessLauncher, ProcessLauncher
 from lup.sandbox.checked import PointerCheckedLauncher
 from lup.resolver.contracts import (
     ResolverAssemblyDeferred,
