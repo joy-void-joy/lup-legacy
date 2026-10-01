@@ -1,0 +1,38 @@
+subjects = [
+    "process_start_token",
+    "process_is_alive",
+    "zombie",
+    "stat_fields",
+    "exit_status",
+    "LiveProcess.started",
+]
+reason = """
+a process was judged alive three ways — the sandbox's kill-and-start-token, \
+the companions' start-token-and-zombie, and the roster's bare `Runtime`, the \
+only one that knows a pid means nothing outside its namespace — so the bare \
+record is the one: `LiveProcess` is a view of it and a sandbox's owner is \
+labelled and judged by it"""
+
+[[steps]]
+instruction = """
+Record a process with `runtime_of(pid)` and ask \
+`runtime_alive(runtime, process_scope())` \
+(`lup.coordination.bare.runtime`) where you called `process_start_token` and \
+`process_is_alive` (`lup.sandbox.process`); `None` is its answer where the \
+pid was recorded in another pid namespace or boot, which it will not guess \
+about."""
+
+[[steps]]
+instruction = """
+Read `/proc` fields through `lup.coordination.bare.runtime.stat_fields`, and \
+ask `LiveProcess.alive()` or `running()` where you called \
+`lup.launch.companions.zombie(pid)`; `exit_status` takes the bare `Runtime` \
+record rather than a pid and a start token."""
+
+[[steps]]
+instruction = """
+`LiveProcess.started` is a string, empty where unknown, beside a `scope` \
+naming the pid namespace and boot it was read in. A shared companion started \
+before this change carries no scope, so the first launch after it reads it as \
+gone and starts another: stop the earlier one by the pid its state recorded \
+(`kill -TERM -<pid>`) or restart the dashboard."""

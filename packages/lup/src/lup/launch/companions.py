@@ -53,19 +53,27 @@ from contextlib import (
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Self
 
 import sh
 from pydantic import BaseModel, Field, StringConstraints, ValidationError
 
 from lup.channels.wait import wait_until
+from lup.coordination.bare.runtime import (
+    EXIT_FIELD,
+    STARTED_FIELD,
+    Runtime,
+    process_scope,
+    runtime_alive,
+    runtime_of,
+    stat_fields,
+)
 from lup.harness.notice import Notice
 from lup.launch.declaration import Loopback, Mount
 from lup.launch.refusal import LaunchRefused
 from lup.launch.secrets import HostSecrets
 from lup.observability.audit import TraceJournal
 from lup.sandbox.known import store_directory
-from lup.sandbox.process import process_is_alive, process_start_token
 from lup.types import EnvVars, JsonObject
 
 logger = logging.getLogger(__name__)
@@ -447,67 +455,77 @@ class CompanionProcess(BaseModel, frozen=True):
         return {name: value for name, value in merged.items() if name not in self.unset}
 
 
-def stat_fields(pid: int) -> list[str]:
-    """The fields of ``pid``'s /proc stat from its state on; none where unreadable."""
-    try:
-        stat = Path(f"/proc/{pid}/stat").read_text(encoding="utf-8")
-    except OSError:
-        return []
-    # lup: ignore[string-split] — /proc stat's fields after the command's name
-    fields = stat.rpartition(")")[2].split()
-    return fields
-
-
-def zombie(pid: int) -> bool:
-    """Whether ``pid`` has exited and waits on a parent that has not collected it."""
-    fields = stat_fields(pid)
-    return bool(fields) and fields[0] == "Z"
-
-
-def exit_status(pid: int, started: str | None) -> int | None:
-    """How the process that started at ``started`` ended, while it waits to be collected.
+def exit_status(process: Runtime) -> int | None:
+    """How ``process`` ended, while it waits to be collected.
 
     Its exit code, or the negated signal that ended it, as
     ``os.waitstatus_to_exitcode`` spells it: a zombie's own stat carries its
-    wait status (field 52) until its parent collects it. Nothing where it
-    runs, was collected already, or the pid names another process now.
+    wait status until its parent collects it. Nothing where it runs, was
+    collected already, the pid names another process now, or it was
+    recorded where this process cannot ask about it.
     """
-    fields = stat_fields(pid)
-    if len(fields) < 50 or fields[0] != "Z":
+    if runtime_alive(process, process_scope()) is not False:
         return None
-    if started is not None and fields[19] != started:
+    fields = stat_fields(process.get("pid", 0))
+    if len(fields) <= EXIT_FIELD or fields[0] != "Z":
         return None
-    return os.waitstatus_to_exitcode(int(fields[49]))
+    if fields[STARTED_FIELD] != process.get("started"):
+        return None
+    return os.waitstatus_to_exitcode(int(fields[EXIT_FIELD]))
 
 
 class LiveProcess(BaseModel, frozen=True):
-    """A process by its id and when it started, so a reused id is not taken for it."""
+    """A process by its id, when it started, and the pid namespace the id is in.
+
+    A view over the bare :class:`~lup.coordination.bare.runtime.Runtime`
+    record the roster keeps for a session's runtime, so one process is
+    judged alive one way wherever lup asks. The id alone is reused, and it
+    means nothing outside the namespace that gave it: a reader elsewhere is
+    told it cannot ask, rather than signalling whatever that number names
+    where it stands.
+    """
 
     pid: int
-    started: str | None = None
+    started: str = ""
+    scope: str = ""
 
     @classmethod
-    def of(cls, pid: int) -> "LiveProcess":
-        """The process running under ``pid`` now."""
-        return cls(pid=pid, started=process_start_token(pid))
+    def of(cls, pid: int) -> Self:
+        """The process running under ``pid`` now, as this process reads it."""
+        return cls.model_validate(runtime_of(pid))
+
+    def runtime(self) -> Runtime:
+        """The bare record this is a view of."""
+        return Runtime(pid=self.pid, started=self.started, scope=self.scope)
+
+    def alive(self) -> bool | None:
+        """Whether it still runs; ``None`` where this process cannot ask."""
+        return runtime_alive(self.runtime(), process_scope())
 
     def running(self) -> bool:
         """Whether this same process still runs, rather than waiting to be collected."""
-        return process_is_alive(self.pid, self.started) and not zombie(self.pid)
+        return self.alive() is True
 
     def missing(self) -> str:
         """Why this process is judged gone, as a log line says it; nothing while it runs."""
-        if self.running():
-            return ""
-        current = process_start_token(self.pid)
-        if current is None:
-            return f"no process has pid {self.pid}"
-        if self.started is not None and current != self.started:
-            return (
-                f"pid {self.pid} names another process now, started at tick "
-                f"{current} rather than {self.started}"
-            )
-        return f"pid {self.pid} exited and waits to be collected"
+        match self.alive():
+            case True:
+                return ""
+            case None:
+                return (
+                    f"pid {self.pid} was recorded in another pid namespace or "
+                    "boot, where this process cannot ask about it"
+                )
+            case False:
+                fields = stat_fields(self.pid)
+                if len(fields) <= STARTED_FIELD:
+                    return f"no process has pid {self.pid}"
+                if fields[STARTED_FIELD] != self.started:
+                    return (
+                        f"pid {self.pid} names another process now, started at "
+                        f"tick {fields[STARTED_FIELD]} rather than {self.started}"
+                    )
+                return f"pid {self.pid} exited and waits to be collected"
 
     def collected(self) -> int | None:
         """How it ended, where anything can still say: collected where it is ours, else read off its zombie.
@@ -516,7 +534,7 @@ class LiveProcess(BaseModel, frozen=True):
         parent already collected it — a launcher gone, which left it to init —
         leaves nothing to say it.
         """
-        waiting = exit_status(self.pid, self.started)
+        waiting = exit_status(self.runtime())
         try:
             collected, status = os.waitpid(self.pid, os.WNOHANG)
         except ChildProcessError:
@@ -528,10 +546,13 @@ class LiveProcess(BaseModel, frozen=True):
 
         It leads a process group of its own, so the group is signalled even
         where its leader has already gone. An id now belonging to another
-        process says the group it led has gone too.
+        process says the group it led has gone too, and an id recorded where
+        this process cannot ask is not signalled at all.
         """
-        current = process_start_token(self.pid)
-        if current is not None and self.started is not None and current != self.started:
+        if self.alive() is None:
+            return
+        fields = stat_fields(self.pid)
+        if len(fields) > STARTED_FIELD and fields[STARTED_FIELD] != self.started:
             return
         for sent in (signal.SIGTERM, signal.SIGKILL):
             try:
