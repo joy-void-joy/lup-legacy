@@ -12,16 +12,17 @@ written on, with other test suites running:
 - the first snapshot is 37 KB, where one carrying a row for every review is
   535 KB;
 - a fold of the whole log from a reader that has read none of it takes 0.07
-  to 0.19 s of this process's CPU time, and the first snapshot 0.10 to
+  to 0.19 s of the measuring thread's CPU time, and the first snapshot 0.10 to
   0.25 s.
 
 The two sizes are what tell the shapes apart: time alone does not at this
 scale, since the whole-copy log of these reviews still parses in about
 0.4 s, and a snapshot summarizing every review costs 0.5 to 0.7 s. So each
 size is bounded at three to four times what was measured, and each time at
-five to eight times the slowest measurement. The times are CPU time rather than
-elapsed, so a suite running beside others, or spread over processes, does
-not inflate them; only work growing faster than the log -- a question
+five to eight times the slowest measurement. The times are the measuring
+thread's CPU time, so neither a suite running beside others nor a thread an
+earlier test left running in this process inflates them; only work growing
+faster than the log -- a question
 reading the log again, or a review reading a file for each of the others --
 exceeds them.
 """
@@ -51,10 +52,10 @@ SNAPSHOT_SECONDS = 2.0
 
 
 def timed(action: Callable[[], object]) -> float:
-    """The CPU time this process spends on *action*, which other load does not inflate."""
-    started = time.process_time()
+    """The CPU time this thread spends on *action*, which other load does not inflate."""
+    started = time.thread_time()
     action()
-    return time.process_time() - started
+    return time.thread_time() - started
 
 
 def review(root: Path, index: int) -> PersistentQuestion:
