@@ -1,0 +1,12 @@
+subjects = ["read_trace_events"]
+reason = """
+a trace's `.events.jsonl` sidecar is read as the ordered log it is, through \
+`lup.channels.stream.Stream`, so it gets the same torn-tail and malformed-line \
+handling as every other log, and `.last()` answers how a run ended without \
+reading all of it"""
+
+[[steps]]
+instruction = """
+Call `trace_events(path).read_all()` from `lup.observability.trace` where you \
+called `read_trace_events(path)`, or `trace_events(path).last()` where you \
+only wanted the final event."""

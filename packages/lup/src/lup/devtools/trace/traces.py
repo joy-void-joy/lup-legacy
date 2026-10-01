@@ -38,7 +38,7 @@ from lup.observability.blocks import truncate_str
 from lup.observability.trace import (
     TraceEvent,
     capability_request_from_text,
-    read_trace_events,
+    trace_events,
     tool_result_ok,
 )
 from lup.workspace.history import (
@@ -112,7 +112,7 @@ def events_for_trace(trace_file: Path) -> list[TraceEvent]:
     """
     sidecar = trace_file.with_suffix(".events.jsonl")
     if sidecar.exists():
-        return read_trace_events(sidecar)
+        return trace_events(sidecar).read_all()
     return events_from_legacy_markdown(trace_file.read_text(encoding="utf-8"))
 
 
