@@ -1392,8 +1392,9 @@ SHELL_POLICY_CASES = [
     DecisionCase(input="echo x > tmp/refs/heads/main", effect="allow"),
     # A sibling worktree's scratch is scratch for every write and every
     # delete, as this checkout's is: one rule, whichever spelling reaches it.
-    # Its production stays another tree's, and a plugin tree under its scratch
-    # is still one this checkout's scratch does not hold.
+    # A repository made there is a scratch write, and a kit's own plugin tree
+    # there is the kit's. Its production stays another tree's, and its
+    # compiled plugin tree a build product.
     DecisionCase(input="echo x > /srv/tree/sibling/tmp/probe.txt", effect="allow"),
     DecisionCase(input="cp README.md /srv/tree/sibling/tmp/probe.txt", effect="allow"),
     DecisionCase(input="rm /srv/tree/sibling/tmp/probe.txt", effect="allow"),
@@ -1404,8 +1405,19 @@ SHELL_POLICY_CASES = [
     DecisionCase(input="rm /srv/tree/sibling/src/app.py", effect="ask"),
     DecisionCase(input="cp README.md /srv/tree/sibling/src/app.py", effect="ask"),
     DecisionCase(
-        input="mkdir -p /srv/tree/sibling/tmp/kit/.claude/plugins/lup", effect="deny"
+        input="mkdir -p /srv/tree/sibling/tmp/kit/.claude/plugins/lup", effect="allow"
     ),
+    DecisionCase(input="mkdir -p /srv/tree/sibling/.claude/plugins/lup", effect="deny"),
+    DecisionCase(input="git init -q /srv/tree/sibling/tmp/stage", effect="allow"),
+    DecisionCase(input="git -C /srv/tree/sibling init tmp/stage", effect="allow"),
+    DecisionCase(input="git init -q /srv/tree/sibling/src/stage", effect="deny"),
+    DecisionCase(input="git init -q /srv/tree/other/tmp/stage", effect="deny"),
+    # A stream keeps nothing written into it, by whichever spelling writes it.
+    DecisionCase(input="git grep -l x | tee /dev/null | wc -l", effect="allow"),
+    DecisionCase(input="sort -o /dev/null README.md", effect="allow"),
+    DecisionCase(input="git diff --output=/dev/null", effect="allow"),
+    DecisionCase(input="cp README.md /dev/null", effect="allow"),
+    DecisionCase(input="rm /dev/null", effect="ask"),
     # A generated plugin tree is a build product the running runtime already
     # loaded, so writing one by hand changes nothing it will honor and the
     # next generation reverts it. Every writing form refuses it and names the

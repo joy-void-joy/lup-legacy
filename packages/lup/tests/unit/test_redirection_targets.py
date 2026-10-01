@@ -368,3 +368,46 @@ class TestAWriteNobodyCanRead:
 
         assert answer.effect == "allow"
         assert "only running the command produces" not in answer.reason
+
+
+def test_a_tee_or_a_copy_into_a_stream_names_nothing_for_the_lease() -> None:
+    """`| tee /dev/null` writes into a device every process holds open.
+
+    Its operand was named among the paths the verb acts on, so the lease
+    resolved it, found no writable root holding `/dev/null`, and a read-only
+    `git grep | tee /dev/null | wc -l` was parked as a write the launch did not
+    mount. A copy into one is the same write spelled by `cp`. A device the
+    write would replace keeps its name, and so does a copy whose flag could
+    replace the device rather than write into it.
+    """
+    teed = "git grep -l x | tee /dev/null | wc -l"
+    assert shell_path_verb_targets(teed, VOCABULARY) == []
+    assert shell_path_verb_targets("ls | tee -a /dev/stderr out.txt", VOCABULARY) == [
+        "out.txt"
+    ]
+    assert shell_path_verb_targets("cp f.txt /dev/null", VOCABULARY) == ["f.txt"]
+    assert shell_path_verb_targets("tee /dev/sda", VOCABULARY) == ["/dev/sda"]
+    assert shell_path_verb_targets("tee /dev/fd/3", VOCABULARY) == ["/dev/fd/3"]
+    assert shell_path_verb_targets(
+        "cp --remove-destination f.txt /dev/null", VOCABULARY
+    ) == ["f.txt", "/dev/null"]
+    assert shell_path_verb_targets("rm /dev/null", VOCABULARY) == ["/dev/null"]
+
+
+def test_a_write_flag_naming_a_stream_writes_no_file() -> None:
+    """`curl -o /dev/null -w '%{http_code}'` lands its body nowhere.
+
+    The flag's value was judged as a file created outside the checkout, so
+    `sort -o /dev/null` and `git diff --output=/dev/null` asked as `sort -o
+    out.txt` beyond the tree does, and a copy into one asked as a copy over a
+    file. A descriptor the shell opened onto a file is still a file, and a
+    verb replacing the device itself keeps its question.
+    """
+    for command in (
+        "sort -o /dev/null f.txt",
+        "git diff --output=/dev/null",
+        "cp f.txt /dev/null",
+    ):
+        assert verdict(command).effect == "allow", command
+    for command in ("sort -o /dev/fd/3 f.txt", "rm /dev/null", "mv f.txt /dev/null"):
+        assert verdict(command).effect == "ask", command
