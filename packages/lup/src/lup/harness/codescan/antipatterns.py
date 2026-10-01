@@ -16,8 +16,8 @@ Each rule carries a stable kebab-case ``id``. A directive names rules
 pyright-style — `# lup: ignore[dict-get]` silences only ``dict-get`` on that
 line, `# lup: ignore[a, b]` a list — so one open site opts out of one rule
 without blinding the others. The bare `# lup: ignore` stays valid (it silences
-every rule) but the auditor surfaces it as "untyped" so the migration to typed
-directives is gradual.
+every rule) and the auditor surfaces it as "untyped", an advisory rather than a
+blocker, so each one is visible until it names the rules it means.
 
 The set is a syntax-aware linter pass, not a raw grep: every rule declares the
 syntactic ``context`` it inspects, and source is masked once (via
@@ -296,6 +296,14 @@ PORTABLE_PYTHON_ANTI_PATTERNS: list[AntiPattern] = [
             ),
             RuleExample(
                 code="# kept public during the capability migration",
+                verdict="flagged",
+            ),
+            RuleExample(
+                code="# until now nothing outside a session saw inside it",
+                verdict="flagged",
+            ),
+            RuleExample(
+                code="# the hole this closes: a write nothing read",
                 verdict="flagged",
             ),
             RuleExample(
@@ -1435,7 +1443,7 @@ TS_ANTI_PATTERNS: list[AntiPattern] = [
         examples=[
             RuleExample(code="// @ts-ignore", verdict="flagged"),
             RuleExample(
-                code="// the parameter was widened so the call checks",
+                code="// the parameter's type admits this call",
                 verdict="cleared",
             ),
         ],
@@ -1447,7 +1455,7 @@ TS_ANTI_PATTERNS: list[AntiPattern] = [
         pattern=re.compile(r"@ts-expect-error"),
         examples=[
             RuleExample(code="// @ts-expect-error", verdict="flagged"),
-            RuleExample(code="// the overload now covers this call", verdict="cleared"),
+            RuleExample(code="// the overload covers this call", verdict="cleared"),
         ],
         message="Never use @ts-expect-error — fix the type error properly",
         context="comment",
@@ -1496,7 +1504,7 @@ TS_ANTI_PATTERNS: list[AntiPattern] = [
         examples=[
             RuleExample(code="// tslint:disable:no-console", verdict="flagged"),
             RuleExample(
-                code="// migrated to eslint and the finding fixed", verdict="cleared"
+                code="// eslint reports this finding, not tslint", verdict="cleared"
             ),
         ],
         message="Never use tslint:disable — migrate to eslint and fix the issue",
@@ -1750,8 +1758,8 @@ class AntiPatternFinding(BaseModel):
     - "spurious": a `# lup: ignore[id]` (or a bare one) guards a rule the line
       does not trip — a dead directive to delete.
     - "untyped": a bare `# lup: ignore` validly silences the line but names no
-      rule; it stays valid, and is surfaced so migration to typed directives is
-      gradual (advisory, not a blocker).
+      rule; it stays valid, and is surfaced as an advisory rather than a
+      blocker until it names the rules it means.
 
     ``rule_id`` is the rule the finding concerns (empty for a bare marker that
     guards nothing). ``line`` is 1-based.
@@ -1907,15 +1915,15 @@ def audit_text(
     def guarded_lines(line_no: int) -> list[int]:
         """Every audited line the directive written on `line_no` reaches.
 
-        The mirror of :func:`guarding_directive`, and what keeps the reported
-        failure from recurring: a directive is judged against the lines it
-        actually covers, so one standing above its violation is read there
-        rather than reported as guarding nothing where it sits.
+        The mirror of :func:`guarding_directive`: a directive is judged
+        against the lines it actually covers, so one standing above its
+        violation is read there rather than reported as guarding nothing where
+        it sits.
 
         Asked of every audited line rather than the next one, so the two
-        directions agree. Where they disagreed, one marker was reported
-        spurious here and its violation reported missing there — the failure
-        this pair exists to prevent, produced by the pair itself.
+        directions agree. Were they to disagree, one marker would be reported
+        spurious here and its violation missing there — the failure this pair
+        exists to prevent, produced by the pair itself.
         """
         return [
             candidate
@@ -1929,11 +1937,11 @@ def audit_text(
             ap
             for ap in line_hits(projections, number, patterns, selected)
             if (ap.id, number) not in refuted
+            and (ap.context == "prose" or number not in context.docstring_lines)
         ]
         for number in range(1, len(original_lines) + 1)
-        # The file-level directive line is not itself audited, and docstring
-        # prose is not code — no comment can open inside a string to guard it.
-        if number != file_ignore_line and number not in context.docstring_lines
+        # The file-level directive line is not itself audited.
+        if number != file_ignore_line
     }
 
     def quoted(line_no: int) -> str:

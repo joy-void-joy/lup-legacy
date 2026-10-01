@@ -88,8 +88,8 @@ decision).
 
 ``ask`` is what makes a denial recoverable. Without it every refusal is
 terminal for an agent with no interactive human attached — a worker meeting
-a genuine need outside its allowlist has no route at all, which is how a
-merge worker once spent a whole run unable to stage its own resolutions.
+a genuine need outside its allowlist has no route at all, and a merge
+worker can spend a whole run unable to stage its own resolutions.
 
 ``None`` is the fifth answer and means the hook declines to decide, so the
 session's ambient permission flow applies untouched."""

@@ -347,8 +347,8 @@ class WritesPath(Effect):
     Declared rather than measured. Which gates a spelling passes through is
     fixed by the spelling, so it is known where the rule is written and not
     at the path -- and an axis only a code path could supply is one a
-    *declared* row could never state, which is what left `git apply` unable
-    to say that its result is read.
+    *declared* row could never state, and without it `git apply` could not
+    say that its result is read.
     """
 
     def default_reach(self, scope: str) -> Reach:
@@ -548,7 +548,7 @@ class ExternalMutation(Effect):
     Kept as one member with a scope rather than as five classes, because the
     verdict is the same for all of them and the difference is what to say. Five
     classes would be five places to change the day that stops being true, and
-    would read as five decisions when only one was ever made.
+    would read as five decisions when only one is made.
     """
 
     kind = "external_mutation"
@@ -946,10 +946,10 @@ def question_reach(
 def external_effects(effect_class: str) -> list[EffectRow]:
     """What a declared external class already says an operation does.
 
-    Derived rather than restated. The class column was written to say what an
-    operation does beyond this machine, and it was carried as metadata beside a
-    verdict that said the same thing in the other vocabulary -- so reading the
-    effects off it is one judgement read once instead of two kept in step.
+    Derived rather than restated. The class column says what an operation
+    does beyond this machine, which a verdict beside it would say again in the
+    other vocabulary -- so reading the effects off it is one judgement read
+    once instead of two kept in step.
 
     It is also what keeps a table of a hundred remote operations from being a
     hundred chances to transcribe one wrong. A rule that states its own effects

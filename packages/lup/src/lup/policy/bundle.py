@@ -298,12 +298,12 @@ def path_rule_rows_literal(rows: list[PathRuleRow]) -> str:
 def python_literal(value: JsonValue) -> str:
     """One primitive as Python source, quoted the way Ruff would quote it.
 
-    ``json.dumps`` alone was the obvious reach and is the wrong language: it
+    ``json.dumps`` alone is the obvious reach and the wrong language: it
     renders JSON, and what this writes is a Python module. The two agree on
-    every string with no quote in it, which is why it worked — until a rule
-    message contained a double quote, JSON escaped it, and Ruff wanted the
-    single-quoted form instead, failing the format check on a generated file
-    nobody had edited and nobody could have fixed.
+    every string with no quote in it and part at a rule message containing a
+    double quote: JSON escapes it, Ruff wants the single-quoted form instead,
+    and the format check fails on a generated file nobody edited and nobody
+    can fix.
 
     So the quote is chosen the way Ruff chooses it: the configured double,
     unless single strictly reduces the escaping. What sits between the quotes
@@ -527,14 +527,13 @@ def literal_element(item: str | EffectRow) -> list[str]:
     and a generated file that reformats is a drift failure on a file nobody
     edited.
 
-    Every element is rendered, and rendered as the type it is. The shape this
-    replaces filtered to strings, which read as a formatting choice and was a
-    data loss -- a list of mappings rendered as an empty pair of brackets, so a
-    column the rules declared never reached the compiled table at all. Coercing
-    each field with ``str`` was the same loss one level further down: it held
-    while every axis of a mapping happened to be a string, and rendered the
-    first boolean one as ``"False"``, which is a true value in the table the
-    dispatcher reads.
+    Every element is rendered, and rendered as the type it is. Filtering to
+    strings would read as a formatting choice and be a data loss -- a list of
+    mappings rendered as an empty pair of brackets, so a column the rules
+    declared never reaches the compiled table at all. Coercing each field with
+    ``str`` is the same loss one level further down: it holds while every axis
+    of a mapping is a string, and renders the first boolean one as
+    ``"False"``, which is a true value in the table the dispatcher reads.
     """
     if isinstance(item, dict):
         exploded = ["            {"]

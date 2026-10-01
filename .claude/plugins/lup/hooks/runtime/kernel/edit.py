@@ -81,10 +81,10 @@ IGNORE_RE = re.compile(
 # the leading anchor is what separates it from a trailing inline one. It may
 # carry a reason after the ids, introduced by a dash or a colon the way the
 # inline form and `defer[<condition>]:` already do — a suppression that cannot
-# say why it exists is the shape these rules were written to discourage. The
-# audit reads the same object: a kernel that stopped at `]` would deny every
-# added line in a file whose directive explains itself, while `dev check`
-# called that file exempt.
+# say why it exists is the shape these rules exist to discourage. The audit
+# reads the same object: a kernel stopping at `]` would deny every added line
+# in a file whose directive explains itself, while `dev check` calls that file
+# exempt.
 FILE_IGNORE_RE = re.compile(
     r"^\s*(#|//)\s*lup\s*:\s*ignore\b(?:\s*\[(?P<ids>[^\]]*)\])?"
     r"\s*(?:[-—–:]\s*(?P<reason>\S.*?))?\s*$",
@@ -123,10 +123,10 @@ def written_suppression(
     Every reading of a suppression goes through here, because a directive
     inside a backtick span is prose *about* the syntax and silences nothing:
     a changelog entry saying a rule is suppressed with `# lup: ignore[<rule>]`
-    declared a suppression of a rule named ``<rule>``, and the gate fired on
-    the sentence explaining itself. :func:`quoted_example` already answers
-    this for every prose rule and for the marker scanner; a suppression is
-    the one reader that was deciding it alone.
+    would otherwise declare a suppression of a rule named ``<rule>``, and the
+    gate would fire on the sentence explaining itself. :func:`quoted_example`
+    answers this for every prose rule and for the marker scanner, and a
+    suppression is read the same way rather than decided alone.
 
     Language-independent on purpose. A code span is how a reader tells an
     example from an instruction in Markdown, in a Python docstring and in a
@@ -381,9 +381,9 @@ def covering_suppression_line(
 def suppression_placement(violation_line: int) -> str:
     """Name the lines a refusal expected the directive it did not find on.
 
-    The reported failure this answers is a directive that went spurious while
-    the violation it meant to guard stayed missing, with nothing in either
-    message saying where the two were supposed to meet.
+    Without it, a directive written on the wrong line reads as spurious while
+    the violation it meant to guard reads as missing, and neither message says
+    where the two are supposed to meet.
     """
     if violation_line <= 1:
         return "line 1"
@@ -758,8 +758,8 @@ def quoted_example(line: str, position: int) -> bool:
 
     Prose that documents the marker syntax writes it in backticks, which is
     how a reader tells an example from an instruction. Counting those as
-    notes made documenting the convention indistinguishable from leaving
-    feedback — and made the gate fire on the very text explaining it. Odd
+    notes would make documenting the convention indistinguishable from
+    leaving feedback, and fire the gate on the very text explaining it. Odd
     single-backtick parity catches a marker mid-span; a run directly before
     the marker catches double-backtick quoting, whose even-length run defeats
     the parity check.
@@ -1785,7 +1785,7 @@ def model_config_sites(source: str) -> list[MatchSite]:
 
     The class body is what makes it pydantic's configuration rather than an
     ordinary name, and the tree says which statements are in one — where the
-    pattern had to settle for the name sitting at the start of a line.
+    pattern can only settle for the name sitting at the start of a line.
     """
     tree = python_tree(source)
     if tree is None:
@@ -2048,8 +2048,8 @@ def comment_directive_lines(source: str, directive: re.Pattern[str]) -> set[int]
     The pattern is anchored at the comment's own opening, which is what tells
     a suppression from prose about one. `# never write # noqa` is a sentence
     with the spelling in it and silences nothing; searching the whole line
-    reported it, and the only way past a denial like that was a directive
-    guarding a line that guarded nothing.
+    would report it, and the only way past a denial like that would be a
+    directive guarding a line that guards nothing.
     """
     tokens = python_tokens(source)
     if tokens is None:
@@ -2334,7 +2334,7 @@ def tuple_shape_sites(source: str) -> list[MatchSite]:
     """Return the lines carrying a fixed-arity ``tuple[...]`` annotation.
 
     Fixed arity is the whole of what the rule names: positions with no names
-    on them. ``tuple[X, ...]`` is an immutable sequence and was never the
+    on them. ``tuple[X, ...]`` is an immutable sequence and is not the
     subject, so it is not netted and then cleared — it simply is not selected.
 
     A line carrying both keeps its finding, which falls out of selecting the
@@ -3011,9 +3011,9 @@ def suppression_site(
 def suppression_reason(sites: list[str], creation: bool = False) -> str:
     """Name every suppression this edit declares, not merely that it declares one.
 
-    A verdict that said only what kind of thing happened left the reviewer to
-    find the line themselves — in a diff they were being asked to approve
-    precisely because it needed reading. Every site is listed rather than the
+    A verdict saying only what kind of thing happened would leave the reviewer
+    to find the line themselves — in a diff they are being asked to approve
+    precisely because it needs reading. Every site is listed rather than the
     first, since approving is one decision over the whole batch.
 
     Where the sites are read is the runtime's to answer and not this
@@ -3272,10 +3272,10 @@ class LineVerdict(TypedDict):
 def every_verdict(found: list[LineVerdict]) -> KernelDecision:
     """Every verdict of one effect an edit earned, as a single answer.
 
-    The gate used to answer with the first it met, so an edit came back once
-    per violation: a whole file breaking four rules was refused four times
-    running, each refusal costing a resend of the file. Named together, one
-    resend can fix every one. They are named in the order the file holds
+    Answering with the first one met would send an edit back once per
+    violation: a whole file breaking four rules refused four times running,
+    each refusal costing a resend of the file. Named together, one resend can
+    fix every one. They are named in the order the file holds
     them, each way through beside the line it is for, and a lone verdict is
     returned exactly as it was made.
     """
@@ -3456,10 +3456,10 @@ def antipattern_decision(
 
         Read from the directive's side, through the one placement policy, and
         asked of it rather than guessed: `suppression_reaches` decides, and
-        this only offers it the lines below. Offering a fixed pair was exactly
-        complete while the policy stopped at the next line, and left a
-        directive whose reason spans two lines guarding nothing it could see —
-        so the forward check admitted an edit this one then called spurious.
+        this only offers it the lines below. A fixed pair is complete only
+        where the policy stops at the next line, and would leave a directive
+        whose reason spans two lines guarding nothing it could see — the
+        forward check admitting an edit this one then calls spurious.
 
         The rows and the refined exemptions are the ones the gate matched with
         above, so what counts as a trip here is what counts as a trip
@@ -3918,8 +3918,7 @@ def decide_edit(
     ``acceptance_guard`` is the one gate that answers before the relaxations
     below rather than through them, because it asks whether the file may be
     edited at all. Undeclared, a project judges its tests by the same
-    lattice as anything else, which is what every project did before the
-    guard existed.
+    lattice as anything else.
 
     Each gate reaches as far as its own reason. Anti-patterns, the size gate
     and the full-write gate are all about how production code reads and how
@@ -3976,15 +3975,15 @@ def decide_edit(
         """This gate's verdict, as the project's declared table resolved it.
 
         Every gate below states the verdict the kernel reaches on its own and
-        hands it here, so an empty table decides exactly what this function
-        decided before a table existed — and a project moving one gate has to
-        name it, rather than inheriting a shift it never asked for.
+        hands it here, so an empty table decides exactly what the kernel
+        decides on its own — and a project moving one gate has to name it,
+        rather than inheriting a shift it never asked for.
 
         The gate's name is stamped on as the rule id here rather than repeated
         at each branch, because it is already the one thing every branch
-        supplies. Without it an edit verdict said what it decided and never
-        which gate decided it, and a native tool name — `Edit`, `Write` — is
-        the same answer for all of them.
+        supplies. Without it an edit verdict would say what it decided and
+        never which gate decided it, and a native tool name — `Edit`, `Write`
+        — is the same answer for all of them.
         """
         settled = edit_verdict(rows, gate, suffix, role, operation, default)
         return settled.revised(rule=f"edit:{gate}", evaluator="edit-gate")
@@ -4049,12 +4048,12 @@ def decide_edit(
     # -- and above everything else, which is not. The gates that follow
     # describe how *this* project's code should read, and applying them to
     # another repository's files judges that repository by conventions it
-    # never adopted: measured, one session produced dozens of denials naming
-    # lup rules against a checkout that had its own hooks, its own size
-    # budget, and no lup rule checker to read a suppression directive. The
-    # edit was refused until the other repository's code had been restyled
-    # into this one's conventions, inside a diff whose subject was something
-    # else entirely. So the honest answer is that this policy has nothing to
+    # never adopted: a checkout with its own hooks, its own size budget, and
+    # no lup rule checker to read a suppression directive meets dozens of
+    # denials naming lup rules, and an edit there is refused until the other
+    # repository's code is restyled into this one's conventions, inside a
+    # diff whose subject is something else entirely. So the honest answer is
+    # that this policy has nothing to
     # say about the file, and the human who launched a session here decides.
     if foreign:
         return judged(
@@ -4194,8 +4193,8 @@ def decide_edit(
         # A deliberate handoff and not a gap: a large ordinary edit is
         # exactly what a native auto-accept mode exists for, and this
         # policy interposing would replace a decision an operator already
-        # made. It reached the same word as a parser gap before, which is
-        # what let a gap inherit provider auto-mode.
+        # made. It is spelled apart from a parser gap, so a gap never
+        # inherits provider auto-mode.
         return judged(
             "size",
             handed_over("edit exceeds the small-change gate"),

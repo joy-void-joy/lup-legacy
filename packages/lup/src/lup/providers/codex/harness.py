@@ -761,10 +761,10 @@ def codex_allow_prefixes(
             case subcommand, operation:
                 add([row["command"], subcommand, operation], row["sandbox"])
     for target in runner_targets:
-        # Read on the same terms as a command row above, which it was not
-        # while a target stated its verdict outright: every declared target
-        # took a native prefix allow, so one the project refused was approved
-        # here and refused only by the hook beside it.
+        # Read on the same terms as a command row above: a target stating its
+        # verdict outright would take a native prefix allow, so one the
+        # project refused would be approved here and refused only by the hook
+        # beside it.
         earned = declared_verdict(
             list(target.effects), target.refuses, unresolved_evidence(no_write_facts())
         )

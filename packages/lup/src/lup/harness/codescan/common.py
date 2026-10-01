@@ -159,8 +159,8 @@ class RuleExample(BaseModel, frozen=True):
     """One snippet a rule is checked against, and the verdict it must return.
 
     A rule declares near-misses as well as violations, because one stated only
-    by what it catches is one whose reach nobody wrote down — and every false
-    positive this set has produced was a near-miss nobody had named. Most of
+    by what it catches is one whose reach nobody wrote down — and a false
+    positive is a near-miss nobody named. Most of
     these rules turn on what the subject *is* rather than on how it is spelled,
     so the cleared examples are where that is written down: `.replace` renaming
     a path, `.get` reaching a module's own function, `Field(default_factory=…)`

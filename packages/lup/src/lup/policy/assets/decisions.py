@@ -10,8 +10,8 @@ out of, the root it installs trusted packages beneath, and the envelope a
 verdict is returned in.
 
 The split is drawn there because the arguments a kernel call carries are
-exactly what drifted before. Each runtime passed its own set, nothing compared
-them, and a fact one of them stopped passing was a rule that silently stopped
+exactly what drifts: with each runtime passing its own set and nothing
+comparing them, a fact one of them stops passing is a rule that silently stops
 applying — with no failure anywhere, because a permission that never happens
 looks like a permission that was granted. One call site cannot disagree with
 itself.
@@ -207,7 +207,7 @@ def bash_decision(
     operands alike, because the questions they ask are the same ones —
     whether writing here brings something into being or replaces it, and what
     replacing it would cost. Resolving them for only one of the two writing
-    forms is what left ``rm f`` granted while ``echo x > f`` asked about the
+    forms would leave ``rm f`` granted while ``echo x > f`` asks about the
     same clean, tracked file.
 
     ``cwd`` is where the calling session is, which the command's relative
@@ -1194,17 +1194,17 @@ def authored_review(
     """What the edit gates say about a write whose content the command carries.
 
     :func:`written_review` is the same reading a moment too late. It exists
-    because a shell write was answered by its path alone -- the command
+    because a shell write is answered by its path alone -- the command
     produces its output by running, so before the fact there is nothing to
     read -- and that premise holds for `dev render > docs/api.md` and fails
     for `cat > f <<'EOF'`, where the bytes are in the command. Where they are,
     they go to the same `edit_decision` an `Edit` is put to, at the moment
     that can still change the answer.
 
-    What that closes: a redirection declares its route reviewed, which is what
+    Why it matters: a redirection declares its route reviewed, which is what
     lets the write row allow an overwrite of tracked source. For a route
-    nothing could read that is the honest trade. For this one it was a hole --
-    measured, `cat > packages/lup/src/lup/seams.py <<'EOF'` replaced a tracked
+    nothing can read that is the honest trade. For this one it would be a
+    hole -- `cat > packages/lup/src/lup/seams.py <<'EOF'` replacing a tracked
     library module with one line, allowed and unprompted, past the
     anti-pattern audit, the review-note gate and the size budget alike.
 
@@ -1236,8 +1236,8 @@ def written_review(
     produces its content by running, so before the fact there is nothing to
     read and the write is answered by its path alone.
 
-    Which is a smaller set than it was, and smaller here rather than only in
-    the telling. A command that carries its own bytes is put to the same
+    That set leaves out what a command carries, and leaves it out here rather
+    than only in the telling. A command that carries its own bytes is put to the same
     gates *before* it runs by :func:`authored_review`, so what reaches here
     is the output that genuinely did not exist yet -- and a path that reader
     already named is skipped, or an approved write would report its finding
@@ -1410,9 +1410,9 @@ def repair_report(path: str, file: dict, cwd: Path | None) -> PostToolReport:
 
     The sweep judges by the checkout's rules and the gate ahead of the write
     by the policy this session loaded, and the two differ whenever the
-    sources moved since the launch -- after a rename, the gate demanded a
-    `# lup: ignore[seam-boundary]` the sweep then deleted as dead, and every
-    later edit to the file was refused for the missing directive. So the
+    sources move after the launch -- after a rename, the gate can demand a
+    `# lup: ignore[seam-boundary]` the sweep then deletes as dead, and every
+    later edit to the file is refused for the missing directive. So the
     repair is put to that policy as an edit: where it would refuse taking a
     directive out, the file goes back to what was written, and the agent is
     told the two disagree rather than meeting the refusal on its next edit.
@@ -1460,7 +1460,7 @@ def referred_once(
     The referral's second sentence -- that the repository's conventions are
     its own and the rule checker is not applying any of them -- is true of
     every file in that repository and news only the first time. Printed on
-    every edit it was read about 150 times by one agent, which is the noise
+    every edit, one agent reads it about 150 times in a session, which is the noise
     this project's own "say it once" refuses. So the verdict stands on every
     edit and its recovery goes with the first (:func:`referral_noted`).
     """

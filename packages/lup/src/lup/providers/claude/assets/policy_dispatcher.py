@@ -238,8 +238,8 @@ def parks():
     none is held, nobody reads a parked question until they run a terminal
     command for it, so every ask -- a person's included -- is this runtime's
     own prompt, where the person already is. Measured on 2.1.283 in an
-    interactive auto-mode session: a hook's ask raised the prompt, and the
-    call had not run a minute later with nobody answering.
+    interactive auto-mode session: a hook's ask raises the prompt, and the
+    call has not run a minute later with nobody answering.
     """
     return dashboard_held()
 
@@ -545,7 +545,7 @@ def rendered(decision, payload, placed, attached):
     ``permissionDecision``, which Claude Code takes as the arguments alone and
     leaves the permission where it was: read out of 2.1.283, whose hook result
     yields a bare rewrite exactly when no behaviour was given, validates it
-    against the tool's full input schema, and was measured recording an
+    against the tool's full input schema, and is measured recording an
     unnamed spawn rewritten this way under the name the hook gave it. A denied
     call runs nothing, so there is nothing to place. The rewrites never
     contend for the one ``updatedInput`` field: a directive is placed only in
@@ -780,9 +780,9 @@ def main():
             decision = reviewed["decision"]
             notice = reviewed["notice"]
     # Every way this can fail means one thing — the call went unjudged — and
-    # one answer is right for all of them. Naming the exceptions instead is
-    # what let a plain unreadable file escape, and the traceback exit reaches
-    # PreToolUse as a non-blocking error, so the call proceeded ungoverned.
+    # one answer is right for all of them. Naming the exceptions instead
+    # would let a plain unreadable file escape, and the traceback exit reaches
+    # PreToolUse as a non-blocking error, so the call would proceed ungoverned.
     # Nothing is swallowed: the reason carries whatever went wrong, and an
     # interrupt still passes through as the BaseException it is.
     except Exception as error:
