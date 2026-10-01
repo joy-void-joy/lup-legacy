@@ -163,7 +163,7 @@ def test_a_module_mid_merge_is_one_surface_however_many_stages_it_holds(
 ) -> None:
     """The index holds a conflicted path three times; the walk reads one file.
 
-    Built the way the duplication was met: both sides of a merge edit one
+    Built the way the duplication arises: both sides of a merge edit one
     line, the merge stops, and the working copy is restored from one side
     without being staged — so the file on disk parses clean while the index
     still carries every stage of it.
@@ -372,11 +372,11 @@ def test_a_whole_module_move_and_a_split_told_apart_out_of_git(
 def test_two_modules_sharing_a_word_are_not_one_module_that_moved() -> None:
     """A name resolving elsewhere is not evidence that anything went there.
 
-    ``lup.providers.roster_prompt`` kept every hook it declares while a new
-    and unrelated module about carrier drift was written beside it, spelling
-    two of its constants the same way — enough for a vote per name to call
-    the whole module moved, and enough to rewrite the imports of everything
-    that stayed. What separates coincidence from a move is not how many
+    ``lup.providers.roster_prompt`` keeps every hook it declares while an
+    unrelated module about carrier drift, written beside it, spells two of
+    its constants the same way — enough for a vote per name to call the whole
+    module moved, and enough to rewrite the imports of everything that
+    stayed. What separates coincidence from a move is not how many
     names agree but whether the module still declares any of its own.
     """
     before = capture(

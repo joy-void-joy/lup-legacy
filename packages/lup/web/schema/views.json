@@ -783,7 +783,7 @@
     },
     "ExportView": {
       "additionalProperties": false,
-      "description": "Everything a standalone page needs, so it opens with no server behind it.\n\nThe graph, every node's detail and the declared kinds, because a page\nopened from a file cannot ask for more later \u2014 the worked example this\ncame from was an 18 MB single file for exactly this reason, and a memo\nattachment that needed a server would not be one. Stamped with the moment\nit was taken, since what it shows is the log as it was then.",
+      "description": "Everything a standalone page needs, so it opens with no server behind it.\n\nThe graph, every node's detail and the declared kinds, because a page\nopened from a file cannot ask for more later, and a memo attachment that\nneeds a server is not one. Stamped with the moment\nit was taken, since what it shows is the log as it was then.",
       "properties": {
         "details": {
           "items": {
@@ -865,7 +865,7 @@
     },
     "ForeignCriteriaEvent": {
       "additionalProperties": false,
-      "description": "An accepted review credited ids the concern never declared.\n\nRecorded rather than acted on. Every declared criterion was accounted\nfor, so nothing passed unchecked and the verdict stands; the stray label\nis the reviewer's bookkeeping, and turning an acceptance back over it\nspent a revision round re-deriving the same verdict until the budget\nran out. Journalled so a reviewer that keeps miscrediting is still\nvisible to whoever reads the run.",
+      "description": "An accepted review credited ids the concern never declared.\n\nRecorded rather than acted on. Every declared criterion was accounted\nfor, so nothing passed unchecked and the verdict stands; the stray label\nis the reviewer's bookkeeping, and turning an acceptance back over it\nwould spend revision rounds re-deriving the same verdict until the\nbudget runs out. Journalled so a reviewer that keeps miscrediting is still\nvisible to whoever reads the run.",
       "properties": {
         "concern_id": {
           "title": "Concern Id",
@@ -8236,7 +8236,7 @@
     },
     "VerificationFailedEvent": {
       "additionalProperties": false,
-      "description": "What one gate saw at the moment it decided a concern's round.\n\nA run's record held no verification event of any kind: the check ran,\nproduced a verdict that decided a concern's fate, and left nothing\nbehind. Journalling it puts what the gate saw beside the turns it\ndecided about, which is the one place a later session can read it \u2014 the\nlease worktree the check ran in is usually still held by the run.",
+      "description": "What one gate saw at the moment it decided a concern's round.\n\nUnjournalled, a check runs, produces a verdict that decides a concern's\nfate, and leaves nothing behind in the run's record. Journalling it puts\nwhat the gate saw beside the turns it\ndecided about, which is the one place a later session can read it \u2014 the\nlease worktree the check ran in is usually still held by the run.",
       "properties": {
         "concern_id": {
           "title": "Concern Id",

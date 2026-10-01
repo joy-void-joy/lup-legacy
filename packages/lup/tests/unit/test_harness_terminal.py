@@ -22,7 +22,7 @@ from lup.harness.requirements import Package
 def test_the_operators_terminal_description_crosses_verbatim() -> None:
     """``TERM`` and ``COLORTERM`` are descriptions and are carried as they are.
 
-    Measured: a session losing 24-bit colour on entering the container, with
+    Left behind, a session loses 24-bit colour on entering the container, with
     nothing saying why. The engine sets ``TERM`` to a placeholder of its own
     and leaves ``COLORTERM`` unset, which is exactly the state a truecolour
     terminal is indistinguishable from.
@@ -51,10 +51,10 @@ def test_a_description_the_host_never_set_is_left_out_rather_than_emptied() -> N
 def test_the_multiplexer_between_the_session_and_the_screen_crosses() -> None:
     """Whether a sequence needs wrapping is a fact the container cannot see.
 
-    Measured: a clipboard escape emitted bare into a tmux pane and swallowed
-    there, because the runtime inside read no ``TMUX`` and concluded there
-    was no multiplexer to wrap for -- while the operator's own
-    shift-selection, which bypasses every layer, kept working and made the
+    Left behind, a clipboard escape is emitted bare into a tmux pane and
+    swallowed there, because the runtime inside reads no ``TMUX`` and
+    concludes there is no multiplexer to wrap for -- while the operator's own
+    shift-selection, which bypasses every layer, keeps working and makes the
     loss look like the runtime's rather than the boundary's.
     """
     crossing = (
@@ -69,14 +69,14 @@ def test_the_multiplexer_between_the_session_and_the_screen_crosses() -> None:
 def test_the_multiplexer_that_forwards_truecolour_crosses_with_the_one_that_caps() -> (
     None
 ):
-    """The pair that has to travel together, measured coming apart.
+    """The pair that has to travel together, which comes apart otherwise.
 
     A runtime that finds ``TMUX`` set caps colour at 256, on the assumption
     that a multiplexer may not forward 24-bit; the operator overrules it by
     setting this, which is them answering for the tmux they actually run.
-    Carrying the assumption's trigger while leaving its answer behind was
-    measured as a session rendering 24-bit outside the container and 256
-    inside it, against one unchanged terminal.
+    Carrying the assumption's trigger while leaving its answer behind renders
+    a session at 24-bit outside the container and 256 inside it, against one
+    unchanged terminal.
     """
     crossing = (
         TerminalHandoff()
@@ -315,14 +315,13 @@ def manifest_of_nothing():
 
 
 def test_the_machines_zone_crosses_although_the_host_exports_no_variable() -> None:
-    """The gap that made every contained session run in UTC.
+    """A contained session runs in the machine's zone, not in UTC.
 
-    ``TZ`` was declared as a description that crosses, which is true of
-    ``TERM`` and false of this one: a Linux host keeps its zone in
-    ``/etc/localtime`` and exports the variable for nobody, so the handoff
-    forwarded an absence and the container fell back to UTC. Measured in the
-    history rather than on a screen -- every commit authored inside recorded
-    ``+00:00`` in a repository whose other three thousand carry ``+02:00``.
+    ``TZ`` is not a description that crosses the way ``TERM`` is: a Linux
+    host keeps its zone in ``/etc/localtime`` and exports the variable for
+    nobody, so forwarding the variable alone hands over an absence and the
+    container falls back to UTC -- and every commit authored inside records
+    ``+00:00`` in a repository whose others carry the machine's offset.
     """
     crossing = TerminalHandoff().for_host({"TERM": "xterm"}, "Europe/Paris").environment
 

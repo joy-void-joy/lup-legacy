@@ -13,7 +13,7 @@ import pytest
 import sh
 import typer
 
-from lup.devtools.dev import pr
+from lup.devtools.dev import pr, records
 from tests.unit.repos import commit_file, initialized_repo
 
 
@@ -83,9 +83,7 @@ def test_a_recorded_base_merges(
     repo: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     monkeypatch.chdir(repo)
-    sh.Command("git")(
-        "-C", str(repo), "config", "branch.feature.lup-base", "dev", _tty_out=False
-    )
+    records.remember("feature", records.BranchRecord(base="dev"), repo)
     pr.sync_base(None, as_json=True)
 
     result = emitted(capsys)

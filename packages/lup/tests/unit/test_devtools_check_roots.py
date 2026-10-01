@@ -52,9 +52,9 @@ def test_an_undeclared_suite_asks_its_own_environment_where_it_runs(
 ) -> None:
     """The suite runs under `uv run` from its own directory, so that is where to ask.
 
-    Asked in the gate's interpreter, adlib's nested studio would have been
-    handed `-n` by a gate whose own environment held pytest-xdist, and the
-    studio's pytest, which did not, refuses the flag before collecting a test.
+    Asked in the gate's interpreter, a nested project's suite would be handed
+    `-n` by a gate whose own environment holds pytest-xdist, and the nested
+    pytest, which does not, refuses the flag before collecting a test.
     """
     asked: list[object] = []  # lup: ignore[empty-collection] — call record
 
@@ -73,9 +73,9 @@ def test_a_suite_whose_environment_lacks_xdist_runs_serially(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     # An adopter installs the library's dependencies, which carry no
-    # pytest-xdist, and pytest rejects `-n` before collecting anything. The
-    # pytest row then read FAIL on every branch whatever the suite did, which
-    # is indistinguishable from a real regression.
+    # pytest-xdist, and pytest rejects `-n` before collecting anything. A
+    # pytest row passing `-n` would then read FAIL on every branch whatever
+    # the suite did, which is indistinguishable from a real regression.
     def absent(*arguments: str, **_: object) -> None:
         raise sh.ErrorReturnCode_1(" ".join(arguments), b"", b"")
 
@@ -108,9 +108,9 @@ def test_a_root_whose_directory_is_missing_reports_instead_of_raising(
 ) -> None:
     # The template declares a root at `packages/lup`, which an adopter
     # inherits and does not hold. `sh` changes directory in the forked child,
-    # so the failure arrived as a fork exception rather than an exit status:
-    # it escaped the gate, and the operator got a traceback where a verdict
-    # belonged, with the checks that had already passed never reported.
+    # so the failure arrives as a fork exception rather than an exit status:
+    # left to escape the gate, it hands the operator a traceback where a
+    # verdict belongs, with the checks that had already passed never reported.
     root = check.TestRoot(name="pytest (lup)", directory=tmp_path / "packages/lup")
 
     report = root.checked(4, [])
@@ -147,7 +147,7 @@ def test_a_root_that_cannot_be_entered_is_reported_rather_than_forked_out(
     # The directory is there, so no declaration is wrong and no guard reading
     # one would see this. `sh` enters it in the forked child, and a failure
     # there is a fork exception rather than an exit status — the class the
-    # missing-directory guard fixed one instance of. A gate that crashes on a
+    # missing-directory guard answers one instance of. A gate that crashes on a
     # condition of the environment reports nothing at all, including the
     # checks that had already passed.
     barred = tmp_path / "barred"
@@ -458,8 +458,8 @@ def test_a_configuration_a_merge_holds_open_configures_nothing(
 
 
 def test_a_named_path_nothing_answers_is_refused_by_name(tmp_path: Path) -> None:
-    # Handed to pytest it collected nothing, and the run reported "no tests
-    # ran" and a failed suite without saying which of the names was wrong.
+    # Handed to pytest it collects nothing, and the run reports "no tests ran"
+    # and a failed suite without saying which of the names is wrong.
     (tmp_path / "tests/unit").mkdir(parents=True)
     kept = tmp_path / "tests/unit/test_kept.py"
     kept.write_text("def test_kept() -> None:\n    pass\n", encoding="utf-8")

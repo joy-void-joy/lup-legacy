@@ -165,9 +165,9 @@ def granted_root(scope: str) -> Path:
     A lease's own roots are recorded resolved, and a declared sandbox grant is
     recorded as it was written -- `~/.cache/uv` -- because it answers for
     whichever home reads it. Resolving that spelling without expanding it
-    named `<cwd>/~/.cache/uv`, so the one grant every toolchain needs was
-    refused as outside the boundary it was declared into, while `touch` on the
-    same path, which no reader resolved, went through.
+    would name `<cwd>/~/.cache/uv`, refusing the one grant every toolchain
+    needs as outside the boundary it is declared into, while `touch` on the
+    same path, which no reader resolves, goes through.
     """
     return Path(scope).expanduser().resolve()
 
@@ -644,12 +644,11 @@ def contained(measured: dict[str, list[str]]) -> bool:
     be told to leave some alone, where a container confines the process and
     was never asked.
 
-    Read from what the launch *measured* rather than from a variable. The
-    variable was ``LUP_CONTAINED``, a constant an image bakes, and a constant
-    answers yes for any container built from that image, for a bare ``run``
-    holding none of the lease, and -- since a launcher forwards its own
-    environment -- for an uncontained session started from a shell that
-    happened to export it. That last one is not hypothetical: it is a session
+    Read from what the launch *measured* rather than from a variable. A
+    variable is a constant an image bakes, and a constant answers yes for any
+    container built from that image, for a bare ``run`` holding none of the
+    lease, and -- since a launcher forwards its own environment -- for an
+    uncontained session started from a shell that exports it: a session
     reporting a boundary with no container under it, placing every operation
     by a wall that is not there.
     """
@@ -1419,9 +1418,9 @@ def migrated_relay(records: list[dict], blobs: Path) -> list[dict]:
 
     Each question's copies collapse into the last, which is the state it came
     to, with when it came to it beside it and its documents kept once in the
-    store; replies stay as they were, and a record already in the new shape
-    follows them. A copy claiming an answer is passed over, as it always was,
-    and so is anything that is not a question or a reply.
+    store; replies stay as they are, and a record already in the digest shape
+    follows them. A copy claiming an answer is passed over, and so is anything
+    that is not a question or a reply.
     """
 
     def copied(record: dict) -> str:
@@ -1455,7 +1454,7 @@ def migrated_relay(records: list[dict], blobs: Path) -> list[dict]:
 
 
 def migrate_relay(log: Path) -> None:
-    """Rewrite a relay kept the older way into the shape it is read in now, once.
+    """Rewrite a relay kept as full copies into the shape it is read in, once.
 
     Under the relay's transaction lock and its log's own, so no transition
     and no append lands midway: whoever takes them first rewrites it, and the
@@ -1672,8 +1671,8 @@ def bound_parts(
     A record keeps its scheme -- the parts it bound, in order -- so a reader
     on other code tells a record it cannot check from one that changed:
     ``None`` where the scheme names a part this code does not know. A record
-    parked before the scheme was kept bound the parts it carries; one it
-    holds as null, which a relay writes for a part it never had, it did not.
+    keeping no scheme binds the parts it carries; one it holds as null, which
+    a relay writes for a part it never had, it does not.
     """
     scheme = (
         entry["scheme"]
@@ -2222,7 +2221,7 @@ def record_deferral(
     classified, and the list is read to find the second.
 
     **Written at the moment the verdict exists**, rather than after the
-    command has run. The later event was proposed and refuted: a runtime
+    command has run. The later event cannot serve: a runtime
     offers both "yes" and "yes, don't ask again" and the later event cannot
     tell them apart, and a human may answer by *editing* the command, so it
     fires for something other than what was judged. None of that touches a
@@ -2959,27 +2958,27 @@ def declared_program(root: str, declared: str) -> str:
     put outside the project. A path that resolved to nothing stays nothing,
     because a project that named a location meant that location.
 
-    Accepting only the first is what made this gate unavailable rather than
-    configurable. A declared program it could not resolve produced no
-    diagnostics and said nothing about why, so a project outside one layout
-    did not get a weaker check — it got silence indistinguishable from a
-    clean file, on every edit.
+    Accepting only the first would make this gate unavailable rather than
+    configurable. A declared program it cannot resolve produces no
+    diagnostics and says nothing about why, so a project outside one layout
+    would not get a weaker check — it would get silence indistinguishable
+    from a clean file, on every edit.
 
     A bare name is asked of the checkout's own environment before ``PATH``,
     because that is where a project's toolchain is installed and asking is
     what keeps the declaration from naming a layout. Spelling the path in
     would answer only for the layout it spelled: ``.venv`` is `uv`'s default
-    and nothing else's, so a project that redirected it, or that installs
-    through conda or pyenv, resolved to nothing and was gated in silence.
+    and nothing else's, so a project that redirects it, or that installs
+    through conda or pyenv, would resolve to nothing and be gated in silence.
     The scripts directory comes from the running interpreter — ``bin`` on
     POSIX, ``Scripts`` on Windows — because that is a property of how Python
     is installed rather than of any project, and reading it is what keeps
-    this from being a second layout assumption behind the one it replaces.
+    this from carrying a layout assumption of its own.
     It is read as a candidate rather than as the answer: a hook runs under
     whichever ``python3`` the runtime found, and one installed in ``sbin``
-    names a directory no environment has, which resolved every declared
-    program to a bare name and left the gate silent on a machine where it
-    was installed all along. The conventional pair follows it, so the
+    names a directory no environment has, which alone would resolve every
+    declared program to a bare name and leave the gate silent on a machine
+    where each one is installed. The conventional pair follows it, so the
     interpreter still decides where it can and never decides alone.
     """
     located = Path(root) / declared
@@ -3090,8 +3089,8 @@ def file_diagnostics(
     A name used before it exists is reported as context rather than as a
     refusal: *pending_rules*, and an unknown symbol on an import line. A
     change spanning two edits — the use, then the definition or its import —
-    reports it in between, and as a "blocking error" it arrived dozens of
-    times per change while four builders worked in parallel. What is still
+    reports it in between, and as a "blocking error" it would arrive dozens of
+    times per change wherever several builders work in parallel. What is still
     unresolved when the change settles, `dev check --changed` reports.
     """
     nothing: dict[str, list[str]] = {"blocking": [], "context": []}
@@ -3567,8 +3566,8 @@ def undo_snapshot(
     from it exactly when it is reached for.
 
     Ignored files are not captured, and that is a stated limit rather than an
-    oversight: on the checkout this was built in, ignored-but-precious content
-    came to 592 MB against a 21 MB object store, so capturing it would write
+    oversight: measured on a checkout of this repository, ignored-but-precious
+    content comes to 592 MB against a 21 MB object store, so capturing it would write
     twenty-eight times the repository's whole history before every mutating
     command. ``git clean -fdx`` therefore keeps asking, because it is the one
     command whose purpose is destroying what this cannot restore, and a
@@ -4472,7 +4471,7 @@ def bash_decision(
     operands alike, because the questions they ask are the same ones —
     whether writing here brings something into being or replaces it, and what
     replacing it would cost. Resolving them for only one of the two writing
-    forms is what left ``rm f`` granted while ``echo x > f`` asked about the
+    forms would leave ``rm f`` granted while ``echo x > f`` asks about the
     same clean, tracked file.
 
     ``cwd`` is where the calling session is, which the command's relative
@@ -5459,17 +5458,17 @@ def authored_review(
     """What the edit gates say about a write whose content the command carries.
 
     :func:`written_review` is the same reading a moment too late. It exists
-    because a shell write was answered by its path alone -- the command
+    because a shell write is answered by its path alone -- the command
     produces its output by running, so before the fact there is nothing to
     read -- and that premise holds for `dev render > docs/api.md` and fails
     for `cat > f <<'EOF'`, where the bytes are in the command. Where they are,
     they go to the same `edit_decision` an `Edit` is put to, at the moment
     that can still change the answer.
 
-    What that closes: a redirection declares its route reviewed, which is what
+    Why it matters: a redirection declares its route reviewed, which is what
     lets the write row allow an overwrite of tracked source. For a route
-    nothing could read that is the honest trade. For this one it was a hole --
-    measured, `cat > packages/lup/src/lup/seams.py <<'EOF'` replaced a tracked
+    nothing can read that is the honest trade. For this one it would be a
+    hole -- `cat > packages/lup/src/lup/seams.py <<'EOF'` replacing a tracked
     library module with one line, allowed and unprompted, past the
     anti-pattern audit, the review-note gate and the size budget alike.
 
@@ -5501,8 +5500,8 @@ def written_review(
     produces its content by running, so before the fact there is nothing to
     read and the write is answered by its path alone.
 
-    Which is a smaller set than it was, and smaller here rather than only in
-    the telling. A command that carries its own bytes is put to the same
+    That set leaves out what a command carries, and leaves it out here rather
+    than only in the telling. A command that carries its own bytes is put to the same
     gates *before* it runs by :func:`authored_review`, so what reaches here
     is the output that genuinely did not exist yet -- and a path that reader
     already named is skipped, or an approved write would report its finding
@@ -5675,9 +5674,9 @@ def repair_report(path: str, file: dict, cwd: Path | None) -> PostToolReport:
 
     The sweep judges by the checkout's rules and the gate ahead of the write
     by the policy this session loaded, and the two differ whenever the
-    sources moved since the launch -- after a rename, the gate demanded a
-    `# lup: ignore[seam-boundary]` the sweep then deleted as dead, and every
-    later edit to the file was refused for the missing directive. So the
+    sources move after the launch -- after a rename, the gate can demand a
+    `# lup: ignore[seam-boundary]` the sweep then deletes as dead, and every
+    later edit to the file is refused for the missing directive. So the
     repair is put to that policy as an edit: where it would refuse taking a
     directive out, the file goes back to what was written, and the agent is
     told the two disagree rather than meeting the refusal on its next edit.
@@ -5725,7 +5724,7 @@ def referred_once(
     The referral's second sentence -- that the repository's conventions are
     its own and the rule checker is not applying any of them -- is true of
     every file in that repository and news only the first time. Printed on
-    every edit it was read about 150 times by one agent, which is the noise
+    every edit, one agent reads it about 150 times in a session, which is the noise
     this project's own "say it once" refuses. So the verdict stands on every
     edit and its recovery goes with the first (:func:`referral_noted`).
     """

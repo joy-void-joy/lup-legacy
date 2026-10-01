@@ -686,7 +686,7 @@ STREAM_WRITE_TARGETS = (
 """Write targets that reach a stream or a sink rather than the filesystem.
 
 Named one by one rather than matched by their directory, because `/dev` is
-not a safe prefix and never was: `> /dev/sda` overwrites a disk, `>
+not a safe prefix: `> /dev/sda` overwrites a disk, `>
 /dev/urandom` seeds the kernel's entropy pool, and `> /dev/mem` is worse than
 either. Every entry here either discards what it is given or hands it to a
 descriptor the process already holds.
@@ -1205,9 +1205,9 @@ def resolve_redirection(
     duplication and a read open nothing. Where it does, its target is judged
     by :func:`written_path_verdict`, which is the judgement a `tee` operand
     gets too, at the file it names from ``directory`` -- where the command
-    carrying it runs. Judged as spelled, `cd tests && ls > ../README.md` was
-    a create outside the checkout rather than an overwrite of a human-owned
-    file, while the host stat'd the file the command reaches. ``landing`` is
+    carrying it runs. Judged as spelled, `cd tests && ls > ../README.md`
+    would be a create outside the checkout rather than an overwrite of a
+    human-owned file, while the host stats the file the command reaches. ``landing`` is
     where the line's carried writes land, placed the same way.
     """
     operator = redirect["operator"]
@@ -1283,8 +1283,8 @@ def written_path_verdict(
 
     The shape of the writing command is deliberately not consulted. A heredoc
     body and an ``echo`` argument author identical content, and the create
-    case already admits both — so gating one of them on an existing path drew
-    the line where the cost was lowest rather than where the risk was. What
+    case already admits both — so gating one of them on an existing path
+    would draw the line where the cost is lowest rather than where the risk is. What
     the edit gate reads is content, and that gate is reached through Edit and
     Write, not by re-deriving a weaker copy of it here.
 
@@ -1556,9 +1556,9 @@ def command_directory(words: list[str], rows: list[ShellRuleRow]) -> str | None:
 
     A second way a command reaches a directory, beside the ``cd`` before it:
     ``git -C ../other restore src/mod.py`` restores a file in another
-    checkout, and read without this it named ``src/mod.py`` in *this* one --
-    so whether the loss was captured, and the roles the path is judged under,
-    were both answered about a file the command was never going to touch.
+    checkout, and read without this it would name ``src/mod.py`` in *this*
+    one -- so whether the loss is captured, and the roles the path is judged
+    under, would both be answered about a file the command never touches.
 
     Only the globals a rule declares as naming a directory, which is narrower
     than the globals that consume a word: ``--git-dir`` names a repository and
@@ -1658,13 +1658,13 @@ def command_words_read(words: list[str], rows: list[ShellRuleRow]) -> list[str]:
     """This command with the globals a rule declares as value-carrying removed.
 
     Every reader of a subcommand matches it where it is written -- ``git``,
-    then ``restore`` -- so one global in front of it made each of them answer
-    ``None`` about a command they do model. The row still matched, because
-    the matcher steps over these globals to find the subcommand; the readers
-    the row's verdict is then relaxed or tightened by did not, so ``git -C .
-    restore <protected path>`` reached neither the ownership gate nor the
-    index check, and was allowed where the same restore spelled without the
-    flag asked.
+    then ``restore`` -- so one global in front of it would make each of them
+    answer ``None`` about a command they do model. The row would still match,
+    because the matcher steps over these globals to find the subcommand; the
+    readers the row's verdict is then relaxed or tightened by would not, so
+    ``git -C . restore <protected path>`` would reach neither the ownership
+    gate nor the index check, and be allowed where the same restore spelled
+    without the flag asks.
 
     So they are consumed here, once, and every reader below sees the command
     as it would have been written without them. Only the value-carrying ones:

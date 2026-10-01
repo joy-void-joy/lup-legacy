@@ -5,8 +5,8 @@
 """The wake conditions a deferral states, in spellings the checker resolves.
 
 A `# lup: defer[<condition>]:` note parks work behind something other than
-this note can check. Every such condition was prose, rendered into the notes
-listing and read by whoever happened to look — which is the half of a gate
+this note can check. A condition written as prose is rendered into the notes
+listing and read by whoever happens to look — which is the half of a gate
 that does not work. A deferral is dormant precisely because it is correct to
 be dormant now, so nobody has any reason to read it until the moment it stops
 being correct, and that is the one moment nothing announced.
@@ -99,10 +99,10 @@ def readable_ref(branch: str) -> str:
     every caller goes on to hand it to git.
 
     It is asked of the branch under question *and* of the branch that question
-    is settled against. Asking it of one alone was the defect: a subject
-    resolved through ``origin/`` was compared with a bare integration name
-    that resolved to nothing, so `git merge-base --is-ancestor` failed on its
-    second argument and the landing verdict came back false — reported as
+    is settled against. Asked of one alone, a subject resolved through
+    ``origin/`` is compared with a bare integration name that resolves to
+    nothing, so `git merge-base --is-ancestor` fails on its second argument
+    and the landing verdict comes back false — reported as
     "origin/main has not reached main", which is one ref declining to have
     reached itself.
     """

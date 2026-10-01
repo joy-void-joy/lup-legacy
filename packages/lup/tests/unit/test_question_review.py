@@ -2,11 +2,11 @@
 
 The surface a Codex whole-file review has is `review show`, because no
 Codex hook can ask: an `ask` becomes a queued review that denies the call and
-sends the operator to another terminal. What that terminal showed was the raw
-payload with the preimage printed beneath it. These pin the derivation that
-replaces it, and in particular that it is derived from the *record* — an
-approval binds to the operation somebody was shown, not to whatever the file
-says by the time they answer.
+sends the operator to another terminal. That terminal shows a proposal derived
+from the operation rather than the raw payload with the preimage printed
+beneath it. These pin the derivation, and in particular that it is derived
+from the *record* — an approval binds to the operation somebody was shown,
+not to whatever the file says by the time they answer.
 """
 
 from datetime import UTC, datetime

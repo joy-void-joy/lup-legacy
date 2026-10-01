@@ -245,10 +245,10 @@ def test_a_gate_with_no_suite_declared_says_its_test_stage_is_empty(
 ) -> None:
     """A gate that tests nothing says so, and that is not a failure of the branch.
 
-    adlib declared no test root, its code all living in a nested project, and
-    `dev check` answered "17/17 checks passed" with no word about tests. The
-    nested suite ran only when somebody ran it by hand, and when it finally
-    did, one of its tests had been failing all along.
+    A project declaring no test root, its code all living in a nested project,
+    would otherwise get "17/17 checks passed" with no word about tests, while
+    the nested suite runs only when somebody runs it by hand and a failing
+    test there goes unseen.
     """
     monkeypatch.setattr(check, "project_root", lambda: tmp_path)
     quietly(monkeypatch)

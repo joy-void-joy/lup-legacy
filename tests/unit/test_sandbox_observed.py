@@ -56,8 +56,8 @@ def test_a_tree_listing_collapses_to_its_root() -> None:
 
     `findmnt` nests by default, and a nested payload validates cleanly into a
     table holding only the root -- no error, no warning, just a topology that
-    covers one path and therefore attributes nothing. This is the regression
-    test for a boundary that had stopped explaining itself.
+    covers one path and therefore attributes nothing: a boundary that has
+    stopped explaining itself, with nothing saying so.
     """
     assert [row.target for row in parsed(TREE).filesystems] == ["/"]
 

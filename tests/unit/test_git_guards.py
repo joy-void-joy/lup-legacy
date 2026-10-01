@@ -27,7 +27,6 @@ from lup.devtools.dev.git_guards import (
     DECLARED_GUARDS,
     DRIFT_COMMAND,
     GUARD_MARKER,
-    LEGACY_GUARD_MARKER,
     DeletionOnly,
     GitGuard,
     GuardConflict,
@@ -333,30 +332,6 @@ def test_the_declared_guards_arm_the_commit_and_the_merge_moments_only(
     ]
 
 
-def test_a_hook_armed_under_the_previous_marker_is_still_recognized(
-    tmp_path: Path,
-) -> None:
-    """An upgraded checkout is re-armed, not reported as somebody else's.
-
-    The marker is how an installed hook says it is this command's to rewrite,
-    and it carries more than one spelling across the versions that wrote it.
-    Reading only the current one turns every clone armed by an earlier
-    version into one needing `--force` to touch.
-    """
-    work = tmp_path / "repo"
-    hooks = tmp_path / "hooks"
-    git = initialized_repo(work, hooks)
-    git("config", "core.hooksPath", str(hooks))
-    hooks.mkdir(parents=True, exist_ok=True)
-    (hooks / "pre-commit").write_text(
-        f"#!/bin/sh\n# {LEGACY_GUARD_MARKER}: written earlier.\nexec old\n",
-        encoding="utf-8",
-    )
-
-    assert read_guards([GitGuard()], work)[0].status == "stale"
-    assert install_guards([GitGuard()], work)[0].armed
-
-
 def test_arming_a_checkout_it_cannot_write_reports_instead_of_failing(
     tmp_path: Path,
 ) -> None:
@@ -473,9 +448,10 @@ def test_a_devtools_guard_runs_inside_the_runner_the_hook_started(
 ) -> None:
     """One devtools process per moment: the guard is a call into it, not another.
 
-    Every devtools command a guard names used to be a process of its own,
-    each loading the whole application again; the commit that cost is the
-    one the hook now runs through the one start its trampoline paid for.
+    A devtools command a guard names runs inside the runner the trampoline
+    started, rather than as a process of its own loading the whole
+    application again, so a commit pays for one start however many guards
+    its moment declares.
     """
     guards = [GitGuard(command="uv run lup-devtools refuse 4", refusal="Settle it.")]
     work, git = armed_repository(tmp_path, guards, guards)

@@ -1,10 +1,10 @@
 """Every container start trusts its checkout in one shared document, safely.
 
-Measured on a config volume: two containers started a few milliseconds apart
-both ran the entrypoint's merge through one fixed temporary name. The second
-truncated it while the first was still writing, the first renamed what was
-left over the document, and the next session read 24576 NUL bytes followed by
-the back half of its configuration.
+Two containers started a few milliseconds apart on one config volume, both
+running the entrypoint's merge through one fixed temporary name, race: the
+second truncates it while the first is still writing, the first renames what
+is left over the document, and the next session reads a run of NUL bytes
+followed by the back half of its configuration.
 """
 
 import json

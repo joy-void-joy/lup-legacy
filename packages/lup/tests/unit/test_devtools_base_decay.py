@@ -4,15 +4,16 @@ The record holds a branch name, so it answers only while something still
 carries that name. Deleting the base leaves the record in place pointing at
 nothing, and detection falls through to the topological guess the record
 exists to avoid -- reporting ``guessed``, which is exactly what a branch that
-never had a record reports. A base that decayed and a base nobody wrote became
-the same answer, and the difference reached the reader as a refusal several
-commands later, phrased as though no record had ever been made.
+never had a record reports. Unnamed, a base that decayed and a base nobody
+wrote are the same answer, and the difference reaches the reader as a refusal
+several commands later, phrased as though no record had ever been made.
 """
 
 from pathlib import Path
 
 import pytest
 
+from lup.devtools.dev import records
 from lup.devtools.dev.branches import decayed_base_complaint, detect_base_branch
 from lup.execution.process import LaunchRequest, LocalProcessLauncher
 
@@ -38,12 +39,12 @@ def build_history(root: Path) -> Path:
         [*git_in, *who, "commit", "--allow-empty", "-m", "parent work"],
         [*git_in, "checkout", "-b", "feat-x"],
         [*git_in, *who, "commit", "--allow-empty", "-m", "own work"],
-        [*git_in, "config", "branch.feat-x.lup-base", "feat-parent"],
         [*git_in, "checkout", "dev"],
     ):
         status = launcher.launch(LaunchRequest(arguments=arguments, cwd=root))
         if status.code != 0:
             raise AssertionError(status.stderr)
+    records.remember("feat-x", records.BranchRecord(base="feat-parent"), work)
     return work
 
 

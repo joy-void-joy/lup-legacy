@@ -44,8 +44,8 @@ PASSAGE_SUFFIX = ".passage.md"
 
 Markdown's extension last, so an editor highlights it as the Markdown it is
 and the sweeps that read prose by suffix — the written-command check, the
-review-marker scan — keep reaching it now that the words live here rather
-than in the module. `passage` before it, because the file is a template with
+review-marker scan — reach the words here as well as in the module.
+`passage` before it, because the file is a template with
 values still to place and not the finished page.
 """
 

@@ -246,10 +246,10 @@ The pulse names the code it runs (`code.source`, a digest of those files, and
 stream ends at once, rather than being left for the server's two-second grace
 and then cut off, and each tab reconnects on its own.
 
-`uv run lup-devtools dashboard restart` does the same now, onto its checkout's
+`uv run lup-devtools dashboard restart` does the same at once, onto its checkout's
 code as it stands. Where none runs while sessions hold it — their launchers
-predate keeping it running — it starts one for them from the checkout the
-command runs in. A dashboard that predates restarting itself is replaced
+run code that does not keep it running — it starts one for them from the
+checkout the command runs in. A dashboard whose code has no restart is replaced
 instead: stopped, and started from that checkout for the sessions holding it.
 
 `uv run lup-devtools dashboard status` says whether it serves, where, for how
@@ -390,8 +390,8 @@ dashboard stops, so a pulse older than thirty seconds reads as a dashboard
 that stopped. The operator's `dashboard stop` leaves a pulse in its place
 saying so, which keeps the sessions and the operator's address the last one
 listed, so each line still names its session and the page, and holds until a
-start replaces it. A pulse written by a dashboard from before it listed
-sessions reads as one listing none: the line shows the counts it has,
+start replaces it. A pulse whose dashboard runs code that lists no sessions
+reads as one listing none: the line shows the counts it has,
 places the session by its directory, and links the address it serves at.
 
 The status line runs `uv run lup-devtools dashboard line <pulse>`, which the
@@ -910,7 +910,8 @@ path is not supported. Each is read as a browser writes it, lowercase and
 without its scheme's default port. The Host check then answers each origin's
 host beside loopback's, with and without that default port, and a write is
 taken where its `Origin` is exactly a declared origin or the dashboard's own
-address. Nothing else changes: any other name is refused as before, which is
+address. Nothing else changes: any other name is refused as it is with no
+origin declared, which is
 what a rebinding site sends; the API still wants the capability; and the
 dashboard still binds loopback alone. The dashboard every launch holds and
 `dashboard serve` read the list the same way, again on each request where

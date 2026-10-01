@@ -2,13 +2,11 @@
 
 The home a Codex session opens against is seeded from the operator's own
 configuration, so it holds the model *they* chose and the effort they chose for
-it. Naming only the model therefore did not select a model: it selected half of
-somebody else's pair, and the API was the first thing to notice — a 400 before
-the turn did anything, naming neither the home nor the caller.
-
-Measured rather than imagined: this repository's scoped home carries
-`model_reasoning_effort = "max"`, and every arm of the Codex approval probe
-died with `'max' is not supported with the 'gpt-5.5' model`.
+it. Naming only the model therefore would not select a model: it would select
+half of somebody else's pair, and the API would be the first thing to notice —
+a 400 before the turn does anything, naming neither the home nor the caller.
+A scoped home carrying `model_reasoning_effort = "max"` beside a caller's
+`gpt-5.5` gets `'max' is not supported with the 'gpt-5.5' model`.
 """
 
 from pathlib import Path
@@ -24,9 +22,9 @@ def test_naming_neither_sends_the_default_effort_over_the_homes_model() -> None:
 
 
 def test_a_named_model_never_travels_without_an_effort() -> None:
-    """The defect itself.
+    """The pairing itself.
 
-    Before this, only the model went and the home's effort rode beside it —
+    Sending only the model would leave the home's effort riding beside it —
     a pair nobody chose and neither side could be blamed for.
     """
     selected = Codex(cwd=CWD, model="gpt-5.5").model_selection()
@@ -51,21 +49,20 @@ def test_a_forwarded_none_still_pairs_the_default() -> None:
 def test_an_effort_alone_still_travels_alone() -> None:
     """Asking for effort over the home's own model is a coherent thing to want.
 
-    Only the reverse direction was broken: an effort names no model, so nothing
-    about it can disagree with one.
+    Only the reverse direction needs pairing: an effort names no model, so
+    nothing about it can disagree with one.
     """
     selected = Codex(cwd=CWD, effort="low").model_selection()
 
     assert selected == {"effort": "low"}
 
 
-def test_the_pair_that_broke_the_probe_can_no_longer_be_assembled() -> None:
-    """The regression, stated as the thing that actually happened.
+def test_a_home_max_effort_never_reaches_the_wire_beside_a_named_model() -> None:
+    """A home's `max` never reaches the wire beside a caller's `gpt-5.5`.
 
-    The home said `max`, the caller said `gpt-5.5`, and the API refused the two
-    together. Whatever a home now holds, a named model carries an effort the
-    caller or this default chose, so the home's cannot reach the wire beside a
-    model it never saw.
+    The API refuses the two together. Whatever a home holds, a named model
+    carries an effort the caller or this default chose, so the home's cannot
+    reach the wire beside a model it never saw.
     """
     selected = Codex(cwd=CWD, model="gpt-5.5").model_selection()
 

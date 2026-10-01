@@ -2,7 +2,7 @@
 
 Every worktree cut from a repository shares its ref store, so the guard
 reading `for-each-ref` in one of them sees every branch the repository holds.
-Somebody committing in a sibling while the suite runs moved a ref for real,
+Somebody committing in a sibling while the suite runs moves a ref for real,
 and blaming this run for it turns a routine event into a failure that reads
 exactly like the accident the guard exists for — which is how a real one comes
 to be waved through.
@@ -243,8 +243,7 @@ def worktree_cut(main: Path, name: str, at: Path) -> None:
 
 
 def test_a_worktree_cut_while_the_suite_runs_holds_its_branch(tmp_path: Path) -> None:
-    """The case that failed a check on a policy row: a sibling session's
-    `worktree create`, forty seconds into the run.
+    """A sibling session's `worktree create`, partway through the run.
 
     A map read before the worktree existed holds nothing for its branch, so
     the branch reads as appearing from nowhere. Joined with a map read after

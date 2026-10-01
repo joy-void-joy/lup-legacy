@@ -47,7 +47,7 @@ def sockets_bind() -> bool:
 
     The constructor is inside the guard rather than before it, which is the
     whole measurement: this sandbox refuses `AF_UNIX` at `socket()` itself,
-    so a probe that only guarded the `bind` raised during collection and took
+    so a probe guarding only the `bind` would raise during collection and take
     the entire module down with it -- every test in here reported as an
     error, including the ones that need no socket at all.
     """

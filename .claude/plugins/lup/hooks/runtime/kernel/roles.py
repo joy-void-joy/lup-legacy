@@ -54,11 +54,11 @@ FOREIGN_REPOSITORY_RECOVERY = (
 """What a foreign-repository edit is told, in place of a convention refusal.
 
 The sentence has to say two things at once and be believed on both. That the
-edit may proceed once a human approves it, and — the part that was actually
-costing something — that the rules it is *not* being judged by were never
-about it, so the way through is not to satisfy them. A refusal naming a lup
-rule teaches an agent to restyle somebody else's code until the rule stops
-firing, which is exactly what happened.
+edit may proceed once a human approves it, and — the part that costs
+something when it is missing — that the rules it is *not* being judged by
+were never about it, so the way through is not to satisfy them. A refusal
+naming a lup rule teaches an agent to restyle somebody else's code until the
+rule stops firing.
 """
 
 
@@ -69,12 +69,12 @@ def spells_its_path(word: str) -> bool:
     a different file at run time than the one written down, so every answer
     derived from reading it is an answer about a path that may never exist.
 
-    Both readers of that fact need it and were deriving it apart. The
-    redirection rule refused the create-versus-overwrite relaxation to such a
-    word, while :func:`path_role` matched its declared patterns against it as
-    though every component were a directory name. They disagreed about
-    ``$W/tmp/f.py``, and the role won: ``**/tmp`` absorbed the ``$W`` and
-    called the whole path scratch, which allowed ``rm -rf $W/tmp`` unprompted
+    Both readers of that fact need it, and deriving it apart lets them
+    disagree: the redirection rule refusing the create-versus-overwrite
+    relaxation to such a word while :func:`path_role` matches its declared
+    patterns against it as though every component were a directory name. On
+    ``$W/tmp/f.py`` the role would win: ``**/tmp`` absorbing the ``$W`` and
+    calling the whole path scratch, which allows ``rm -rf $W/tmp`` unprompted
     on the strength of a component saying nothing about where ``$W``
     resolves.
 
@@ -215,8 +215,8 @@ def repository_relative(word: str, checkout: str) -> str:
     root it was never given.
 
     ``checkout`` is empty wherever the caller has no root in hand, and then a
-    path is returned untouched -- the conservative answer this had before any
-    root was passed, rather than a rewrite against a root that was guessed.
+    path is returned untouched -- the conservative answer, rather than a
+    rewrite against a guessed root.
     """
     if not checkout or expands(word):
         return word
@@ -294,7 +294,7 @@ def displaced_targets(
     Where the two roles agree the link changed nothing this table can see:
     ``tmp/a`` pointing at ``tmp/b`` is scratch either way, and the machine's
     temporary root resolving to its own real name — ``/private/tmp`` on a
-    system that spells it that way — is the same root it always was.
+    system that spells it that way — is the same root either way.
     """
     return [
         row

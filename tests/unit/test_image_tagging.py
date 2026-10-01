@@ -130,12 +130,13 @@ def repository(tmp_path: Path) -> Path:
 def test_every_worktree_of_one_repository_shares_a_config_home(
     repository: Path,
 ) -> None:
-    """The bug this name carried, and the whole of §6.
+    """A state volume is named for the project, never for the branch.
 
-    Keyed on the worktree directory, the name is the *branch* -- so the
-    documented `dev worktree create` workflow handed every feature a config
-    home created empty: default theme, trust re-seeded, every preference set
-    by hand again, and a sign-in per branch once one can be made inside.
+    Keyed on the worktree directory, the name would be the *branch* -- so the
+    documented `dev worktree create` workflow would hand every feature a
+    config home created empty: default theme, trust re-seeded, every
+    preference set by hand again, and a sign-in per branch once one can be
+    made inside.
     """
     one = state_volume_name(repository / "tree" / "feat-one", CLAUDE_LOGIN)
     two = state_volume_name(repository / "tree" / "feat-two", CLAUDE_LOGIN)

@@ -48,9 +48,9 @@ class SettingsSchema(BaseModel, frozen=True, extra="forbid"):
     """Every key the CLI's own configuration command accepts for its document.
 
     For Claude Code that document is ``.claude.json``, the CLI's own record,
-    and these are what ``claude config`` lets a person set there: preferences
-    older than the settings files, some of which the settings files now also
-    carry, and state the CLI keeps beside them.
+    and these are what ``claude config`` lets a person set there: preferences,
+    some of which the settings files also carry, and state the CLI keeps
+    beside them.
     """
 
     @classmethod

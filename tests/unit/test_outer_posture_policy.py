@@ -629,9 +629,9 @@ def test_a_checkout_from_a_ref_is_refused_however_its_path_is_spelled(
 ) -> None:
     """This project checks out through `git switch` and `git restore`.
 
-    A path spelled from the checkout was granted as a restore from a ref while
-    the same path spelled absolutely was refused, so which answer a session
-    met turned on how the operand was written. Refused whatever the spelling,
+    Granting a path spelled from the checkout as a restore from a ref while
+    refusing the same path spelled absolutely would turn the answer a session
+    meets on how the operand is written. Refused whatever the spelling,
     and pointed at the `git restore --source` that does the same.
     """
     command = spelled.format(checkout=checkout)

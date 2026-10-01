@@ -80,9 +80,9 @@ def test_a_gate_requoting_facts_that_moved_re_renders_rather_than_conflicts(
 ) -> None:
     """The assembly gate names its base and how far behind that base is.
 
-    Both move while the run is parked on the question, so the gate that
-    re-derives itself on resume was refused by the guard meant for an actor
-    redefining one id — and the run could not reach its own last step.
+    Both move while the run is parked on the question, so the gate
+    re-derives itself on resume — and refused by the guard meant for an actor
+    redefining one id, the run could not reach its own last step.
     """
     mailbox = QuestionMailbox(tmp_path)
     mailbox.queue(pending("integration-assembly", ["approve", "defer"]))

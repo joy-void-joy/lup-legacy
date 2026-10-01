@@ -44,7 +44,18 @@ from .typescript import (
     TYPESCRIPT_SUFFIXES,
     masked_typescript_lines,
     typescript_comment_columns,
+    typescript_comment_lines,
 )
+
+# lup: ignore[constant-declaration] — Markdown's own suffix, read alike by the
+# hook and the audit; the kernel carries no config
+MARKDOWN_SUFFIXES = (".md",)
+"""The files whose text is read as Markdown: prose throughout, code quoted.
+
+The one suffix the hook and the audit both read as a page rather than as
+source, so a rule about how prose is written reaches a passage the way it
+reaches a docstring, and a path both gates classify alike.
+"""
 
 MARKER_RE = re.compile(r"(#|//)\s*lup\s*:", re.IGNORECASE)
 # A review note is any marker whose keyword is not `ignore`, which is the
@@ -81,10 +92,10 @@ IGNORE_RE = re.compile(
 # the leading anchor is what separates it from a trailing inline one. It may
 # carry a reason after the ids, introduced by a dash or a colon the way the
 # inline form and `defer[<condition>]:` already do — a suppression that cannot
-# say why it exists is the shape these rules were written to discourage. The
-# audit reads the same object: a kernel that stopped at `]` would deny every
-# added line in a file whose directive explains itself, while `dev check`
-# called that file exempt.
+# say why it exists is the shape these rules exist to discourage. The audit
+# reads the same object: a kernel stopping at `]` would deny every added line
+# in a file whose directive explains itself, while `dev check` calls that file
+# exempt.
 FILE_IGNORE_RE = re.compile(
     r"^\s*(#|//)\s*lup\s*:\s*ignore\b(?:\s*\[(?P<ids>[^\]]*)\])?"
     r"\s*(?:[-—–:]\s*(?P<reason>\S.*?))?\s*$",
@@ -123,10 +134,10 @@ def written_suppression(
     Every reading of a suppression goes through here, because a directive
     inside a backtick span is prose *about* the syntax and silences nothing:
     a changelog entry saying a rule is suppressed with `# lup: ignore[<rule>]`
-    declared a suppression of a rule named ``<rule>``, and the gate fired on
-    the sentence explaining itself. :func:`quoted_example` already answers
-    this for every prose rule and for the marker scanner; a suppression is
-    the one reader that was deciding it alone.
+    would otherwise declare a suppression of a rule named ``<rule>``, and the
+    gate would fire on the sentence explaining itself. :func:`quoted_example`
+    answers this for every prose rule and for the marker scanner, and a
+    suppression is read the same way rather than decided alone.
 
     Language-independent on purpose. A code span is how a reader tells an
     example from an instruction in Markdown, in a Python docstring and in a
@@ -381,9 +392,9 @@ def covering_suppression_line(
 def suppression_placement(violation_line: int) -> str:
     """Name the lines a refusal expected the directive it did not find on.
 
-    The reported failure this answers is a directive that went spurious while
-    the violation it meant to guard stayed missing, with nothing in either
-    message saying where the two were supposed to meet.
+    Without it, a directive written on the wrong line reads as spurious while
+    the violation it meant to guard reads as missing, and neither message says
+    where the two are supposed to meet.
     """
     if violation_line <= 1:
         return "line 1"
@@ -705,6 +716,38 @@ def python_prose_lines(source: str) -> list[str]:
     return kept
 
 
+QUOTED_CODE_RE = re.compile(r"(`+).*?\1|<code>.*?</code>")
+"""An inline code span, in backticks or in a ``<code>`` element.
+
+Quoted text — a name, a command, an example of the very phrase a rule
+refuses — rather than something the page asserts, so the prose projection
+blanks it. The run of backticks closing a span is the run that opened it,
+which is how a double-backtick span quotes a single backtick.
+"""
+
+
+def blank_quoted_code(line: str) -> str:
+    """One line with every inline code span blanked, its columns kept."""
+    return QUOTED_CODE_RE.sub(lambda quoted: " " * len(quoted.group(0)), line)
+
+
+def markdown_prose_lines(source: str) -> list[str]:
+    """Each Markdown line as the prose it reads as, with the code it quotes blanked.
+
+    A fenced block and an inline code span are quoted rather than asserted:
+    the page shows a command or an example there, so a rule about how its
+    sentences are written reads around them. A fence line and every line
+    inside one stand blank, and every other line keeps its columns.
+    """
+    fenced = False
+    kept: list[str] = []
+    for line in source.splitlines():
+        fence = line.lstrip().startswith(("```", "~~~"))
+        kept.append("" if fenced or fence else blank_quoted_code(line))
+        fenced = fenced != fence
+    return kept
+
+
 class MaskedSource(TypedDict):
     """One document's lines as each rule context reads them, and where comments open.
 
@@ -723,15 +766,20 @@ class MaskedSource(TypedDict):
 
 
 def masked_source(
-    source: str, python_source: bool, typescript_source: bool
+    source: str,
+    python_source: bool,
+    typescript_source: bool,
+    markdown_source: bool = False,
 ) -> MaskedSource:
     """Project a document into the surfaces its rules read, by its grammar.
 
     Python is read through its tokenizer, and where a fragment will not
     tokenize the raw lines stand in with no comment map. The TypeScript family
     is read through :func:`~lup.policy.kernel.typescript.typescript_spans`,
-    which has no failure case: what it cannot classify it leaves as code. Text
-    of neither family is its own projection, every rule reading the whole line.
+    which has no failure case: what it cannot classify it leaves as code.
+    Markdown is prose throughout, less the code it quotes, and holds no
+    comment a directive could open in. Text of none of these is its own
+    projection, every rule reading the whole line.
     """
     if python_source:
         return MaskedSource(
@@ -746,10 +794,17 @@ def masked_source(
             commented=commented,
             code=masked_typescript_lines(source, comments=True),
             # The family has no docstring, so its prose is its comments.
-            prose=commented,
+            prose=typescript_comment_lines(source),
             comment_columns=typescript_comment_columns(source),
         )
     lines = source.splitlines()
+    if markdown_source:
+        return MaskedSource(
+            commented=lines,
+            code=lines,
+            prose=markdown_prose_lines(source),
+            comment_columns={},
+        )
     return MaskedSource(commented=lines, code=lines, prose=lines, comment_columns=None)
 
 
@@ -758,8 +813,8 @@ def quoted_example(line: str, position: int) -> bool:
 
     Prose that documents the marker syntax writes it in backticks, which is
     how a reader tells an example from an instruction. Counting those as
-    notes made documenting the convention indistinguishable from leaving
-    feedback — and made the gate fire on the very text explaining it. Odd
+    notes would make documenting the convention indistinguishable from
+    leaving feedback, and fire the gate on the very text explaining it. Odd
     single-backtick parity catches a marker mid-span; a run directly before
     the marker catches double-backtick quoting, whose even-length run defeats
     the parity check.
@@ -1785,7 +1840,7 @@ def model_config_sites(source: str) -> list[MatchSite]:
 
     The class body is what makes it pydantic's configuration rather than an
     ordinary name, and the tree says which statements are in one — where the
-    pattern had to settle for the name sitting at the start of a line.
+    pattern can only settle for the name sitting at the start of a line.
     """
     tree = python_tree(source)
     if tree is None:
@@ -1931,8 +1986,8 @@ def mapping_value_lines(source: str, values: AbstractSet[str]) -> set[int]:
 
     A union counts as its members: ``dict[str, str | None]`` is the same open
     map of scalars that ``dict[str, str]`` is, and the annotation reaching a
-    scalar through a union is what the pattern's word boundary happened to
-    catch and what reading the tree states outright.
+    scalar through a union is what the pattern's word boundary catches by
+    accident and what reading the tree states outright.
     """
     tree = python_tree(source)
     if tree is None:
@@ -2048,8 +2103,8 @@ def comment_directive_lines(source: str, directive: re.Pattern[str]) -> set[int]
     The pattern is anchored at the comment's own opening, which is what tells
     a suppression from prose about one. `# never write # noqa` is a sentence
     with the spelling in it and silences nothing; searching the whole line
-    reported it, and the only way past a denial like that was a directive
-    guarding a line that guarded nothing.
+    would report it, and the only way past a denial like that would be a
+    directive guarding a line that guards nothing.
     """
     tokens = python_tokens(source)
     if tokens is None:
@@ -2069,36 +2124,50 @@ PYRIGHT_IGNORE_DIRECTIVE_RE = re.compile(r"#\s*pyright:\s*ignore\b")
 NOQA_DIRECTIVE_RE = re.compile(r"#\s*noqa\b")
 
 HISTORICAL_VOICE_RE = re.compile(
-    r"\bused to be\b|\bpreviously\b|\bformerly\b|\brenamed from\b"
-    r"|\bin the past\b|\bbefore this change\b"
+    r"(?i)\bused to be\b|\bpreviously\b|\bformerly\b|\brenamed from\b"
+    r"|\bin the past\b|\bbefore this change\b|\ban earlier version\b"
+    r"|\bhistorically\b|\buntil now\b|\buntil this (?:\w+ed|ran|was)\b"
     r"|\b(?:it|this|that|they|we|which|one|there) used to\b"
-    r"|\bthe old (?:rule|refusal|comparison|arrangement|fallback"
-    r"|behaviour|behavior|design|version)\b"
+    r"|\bwe (?:changed|moved|switched|added|removed|dropped|renamed)\b"
+    r"|\bthis change fixes\b|\bnow (?:lives|sits) in\b"
+    r"|\bthe (?:bug|hole|gap|defect|forgery|asymmetry|regression) (?:this|it)"
+    r" (?:closes|closed|fixes|fixed)\b"
+    r"|\bthe old (?:rule|refusal|comparison|arrangement|fallback|behaviour"
+    r"|behavior|design|version|fold|stream|shape|spelling|layout|format|wording"
+    r"|implementation|approach|mechanism|scheme)\b"
     r"|\bduring the \w+ migration\b|\bfor compatibility (?:consumers|reasons)\b"
-    r"|(?<!&)#\d{2,5}(?![0-9A-Fa-f;])",
-    re.IGNORECASE,
+    r"|(?<![&\w])#\d{2,5}(?![0-9A-Fa-f;])"
 )
 """The spellings that record a change rather than state what is.
 
 Deliberately narrow, because a rule that cries wolf is read as noise and then
 as nothing. Bare `used to` is not here and neither is `no longer`: both are
-overwhelmingly present tense in this tree — a key *used to select* a home, a
-record that *no longer grants* authority — so flagging them would bury the
-handful of real ones under readings that were never about history at all.
+overwhelmingly present tense in this tree — a key `used to select` a home, a
+record that `no longer grants` authority — so flagging them would bury the
+handful of real ones under readings that are not about history at all. Bare
+`now`, `new` and `the old` stay out for the same reason: a value replaced at
+runtime is `the old value`, and a worktree made a moment ago is a `new` one.
 
 What decides it is the subject. `used to` after a pronoun can only be past
 habitual, because the present reading needs an auxiliary the pronoun form has
-nowhere to put: *it used to filter* is history and *a key used to select* is
-not, and no noun tells the two apart. So the pronouns are refused and the
+nowhere to put: a pronoun before `used to filter` is history, a noun before
+`used to select` is not, and no noun tells the two apart. So the pronouns are refused and the
 nouns are left, which loses a reading the rule cannot have without also
-losing the ones it is for.
+losing the ones it is for. `the old` is refused before a noun that names a
+design — a rule, a fold, a spelling, a layout — and left before one a
+running program replaces.
 
-The rest is unambiguous: a phrase that can only be about a prior state, a
-design named as the one before this one, a migration something is *during*,
-an audience described as needing compatibility, and a bare issue number,
-which narrates the change that produced the code instead of the code. An
-entity (`&#124;`) and a colour (`#264F78`) are excluded by shape rather than
-by hoping they stay out of prose.
+The rest is unambiguous: a phrase that can only be about a prior state or the
+moment a thing changed, a fix described by the defect it removed, a
+migration something is `during`, an audience described as needing
+compatibility, and a bare issue number, which narrates the change that
+produced the code instead of the code. An entity (`&#124;`) and a colour
+(`#264F78`) are excluded by shape, and so is a tracker reference written
+`owner/repo#N`: another project's issue standing for the reason a
+workaround exists is the reason, not the history of this code. A phrase
+inside a code span is quoted rather than said, and the prose projection
+blanks it before this is matched. Case-blindness is spelled inline, so the
+row the hermetic runtime matches from the pattern's text keeps it.
 """
 
 
@@ -2154,12 +2223,16 @@ def prose_spans(source: str) -> Iterator[ProseSpan]:
 
 
 def historical_voice_sites(source: str) -> list[MatchSite]:
-    """Prose recording how the code came to be rather than what it is."""
+    """Prose recording how the code came to be rather than what it is.
+
+    A phrase quoted in a code span is an example of the phrase, which is how
+    a docstring documents this rule without tripping it.
+    """
     return sites_at(
         {
             span["line"]
             for span in prose_spans(source)
-            if HISTORICAL_VOICE_RE.search(span["text"])
+            if HISTORICAL_VOICE_RE.search(blank_quoted_code(span["text"]))
         }
     )
 
@@ -2334,7 +2407,7 @@ def tuple_shape_sites(source: str) -> list[MatchSite]:
     """Return the lines carrying a fixed-arity ``tuple[...]`` annotation.
 
     Fixed arity is the whole of what the rule names: positions with no names
-    on them. ``tuple[X, ...]`` is an immutable sequence and was never the
+    on them. ``tuple[X, ...]`` is an immutable sequence and is not the
     subject, so it is not netted and then cleared — it simply is not selected.
 
     A line carrying both keeps its finding, which falls out of selecting the
@@ -3011,9 +3084,9 @@ def suppression_site(
 def suppression_reason(sites: list[str], creation: bool = False) -> str:
     """Name every suppression this edit declares, not merely that it declares one.
 
-    A verdict that said only what kind of thing happened left the reviewer to
-    find the line themselves — in a diff they were being asked to approve
-    precisely because it needed reading. Every site is listed rather than the
+    A verdict saying only what kind of thing happened would leave the reviewer
+    to find the line themselves — in a diff they are being asked to approve
+    precisely because it needs reading. Every site is listed rather than the
     first, since approving is one decision over the whole batch.
 
     Where the sites are read is the runtime's to answer and not this
@@ -3272,10 +3345,10 @@ class LineVerdict(TypedDict):
 def every_verdict(found: list[LineVerdict]) -> KernelDecision:
     """Every verdict of one effect an edit earned, as a single answer.
 
-    The gate used to answer with the first it met, so an edit came back once
-    per violation: a whole file breaking four rules was refused four times
-    running, each refusal costing a resend of the file. Named together, one
-    resend can fix every one. They are named in the order the file holds
+    Answering with the first one met would send an edit back once per
+    violation: a whole file breaking four rules refused four times running,
+    each refusal costing a resend of the file. Named together, one resend can
+    fix every one. They are named in the order the file holds
     them, each way through beside the line it is for, and a lone verdict is
     returned exactly as it was made.
     """
@@ -3302,6 +3375,7 @@ def antipattern_decision(
     resolution: ResolutionRow | None = None,
     resolved: list[ResolvedImportRule] | None = None,
     typescript_source: bool = False,
+    markdown_source: bool = False,
 ) -> KernelDecision | None:
     """Reject newly added unsuppressed anti-patterns and ask on suppressions.
 
@@ -3349,7 +3423,7 @@ def antipattern_decision(
     suppression = "allow" if "antipattern-suppression" in (allowances or []) else "ask"
     added = added_line_numbers(before, after)
     original_lines = after.splitlines()
-    masked = masked_source(after, python_source, typescript_source)
+    masked = masked_source(after, python_source, typescript_source, markdown_source)
     scanned_lines = masked["commented"]
     prose_lines = masked["prose"]
     code_lines = masked["code"]
@@ -3374,9 +3448,9 @@ def antipattern_decision(
         (rule_id, line) for rule_id, lines in unresolved.items() for line in lines
     }
     comment_columns = masked["comment_columns"]
-    previous_columns = masked_source(before or "", python_source, typescript_source)[
-        "comment_columns"
-    ]
+    previous_columns = masked_source(
+        before or "", python_source, typescript_source, markdown_source
+    )["comment_columns"]
 
     def directive_at(number: int) -> re.Match[str] | None:
         return source_suppression(original_lines[number - 1], number, comment_columns)
@@ -3456,10 +3530,10 @@ def antipattern_decision(
 
         Read from the directive's side, through the one placement policy, and
         asked of it rather than guessed: `suppression_reaches` decides, and
-        this only offers it the lines below. Offering a fixed pair was exactly
-        complete while the policy stopped at the next line, and left a
-        directive whose reason spans two lines guarding nothing it could see —
-        so the forward check admitted an edit this one then called spurious.
+        this only offers it the lines below. A fixed pair is complete only
+        where the policy stops at the next line, and would leave a directive
+        whose reason spans two lines guarding nothing it could see — the
+        forward check admitting an edit this one then calls spurious.
 
         The rows and the refined exemptions are the ones the gate matched with
         above, so what counts as a trip here is what counts as a trip
@@ -3918,8 +3992,7 @@ def decide_edit(
     ``acceptance_guard`` is the one gate that answers before the relaxations
     below rather than through them, because it asks whether the file may be
     edited at all. Undeclared, a project judges its tests by the same
-    lattice as anything else, which is what every project did before the
-    guard existed.
+    lattice as anything else.
 
     Each gate reaches as far as its own reason. Anti-patterns, the size gate
     and the full-write gate are all about how production code reads and how
@@ -3976,15 +4049,15 @@ def decide_edit(
         """This gate's verdict, as the project's declared table resolved it.
 
         Every gate below states the verdict the kernel reaches on its own and
-        hands it here, so an empty table decides exactly what this function
-        decided before a table existed — and a project moving one gate has to
-        name it, rather than inheriting a shift it never asked for.
+        hands it here, so an empty table decides exactly what the kernel
+        decides on its own — and a project moving one gate has to name it,
+        rather than inheriting a shift it never asked for.
 
         The gate's name is stamped on as the rule id here rather than repeated
         at each branch, because it is already the one thing every branch
-        supplies. Without it an edit verdict said what it decided and never
-        which gate decided it, and a native tool name — `Edit`, `Write` — is
-        the same answer for all of them.
+        supplies. Without it an edit verdict would say what it decided and
+        never which gate decided it, and a native tool name — `Edit`, `Write`
+        — is the same answer for all of them.
         """
         settled = edit_verdict(rows, gate, suffix, role, operation, default)
         return settled.revised(rule=f"edit:{gate}", evaluator="edit-gate")
@@ -4049,12 +4122,12 @@ def decide_edit(
     # -- and above everything else, which is not. The gates that follow
     # describe how *this* project's code should read, and applying them to
     # another repository's files judges that repository by conventions it
-    # never adopted: measured, one session produced dozens of denials naming
-    # lup rules against a checkout that had its own hooks, its own size
-    # budget, and no lup rule checker to read a suppression directive. The
-    # edit was refused until the other repository's code had been restyled
-    # into this one's conventions, inside a diff whose subject was something
-    # else entirely. So the honest answer is that this policy has nothing to
+    # never adopted: a checkout with its own hooks, its own size budget, and
+    # no lup rule checker to read a suppression directive meets dozens of
+    # denials naming lup rules, and an edit there is refused until the other
+    # repository's code is restyled into this one's conventions, inside a
+    # diff whose subject is something else entirely. So the honest answer is
+    # that this policy has nothing to
     # say about the file, and the human who launched a session here decides.
     if foreign:
         return judged(
@@ -4081,21 +4154,26 @@ def decide_edit(
                 purpose="quality_review"
             ),
         )
-    # The conventions describe how production code should read. A test's
-    # subject is production's behaviour, and scratch is disposable, so
-    # neither is judged against them.
-    if after is not None and role == "production":
+    # The conventions describe how production code should read, and each
+    # rule names the roles it reaches: most stop at production, because a
+    # test's subject is production's behaviour and scratch is disposable,
+    # while one about how prose is written reaches a test's docstring too,
+    # since that is read as the spec of what the test pins. The import
+    # boundaries are production's alone.
+    reaching = [row for row in antipattern_rows if role in row["roles"]]
+    if after is not None and (reaching or role == "production"):
         antipattern = antipattern_decision(
             before,
             after,
-            antipattern_rows,
+            reaching,
             python_source,
             granted,
             resolution,
             resolved_import_rules(path, after, import_boundaries or [])
-            if python_source and not outside_project
+            if python_source and not outside_project and role == "production"
             else None,
             typescript_source=suffix in TYPESCRIPT_SUFFIXES,
+            markdown_source=suffix in MARKDOWN_SUFFIXES,
         )
         # A granted suppression answers this gate and no other, so an allow
         # falls through to the rest of the lattice rather than ending it.
@@ -4194,8 +4272,8 @@ def decide_edit(
         # A deliberate handoff and not a gap: a large ordinary edit is
         # exactly what a native auto-accept mode exists for, and this
         # policy interposing would replace a decision an operator already
-        # made. It reached the same word as a parser gap before, which is
-        # what let a gap inherit provider auto-mode.
+        # made. It is spelled apart from a parser gap, so a gap never
+        # inherits provider auto-mode.
         return judged(
             "size",
             handed_over("edit exceeds the small-change gate"),

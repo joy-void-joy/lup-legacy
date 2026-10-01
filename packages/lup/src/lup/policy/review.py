@@ -131,7 +131,7 @@ def written_file(path: Path, content: str, before: str | None) -> list[ReviewedF
     """The pair a whole-file write produces: its argument is the result.
 
     An overwrite wherever something stood, which is the classification the
-    edit gate turns on and the reason this surface was worth building.
+    edit gate turns on and the reason this surface is worth having.
     """
     return [
         ReviewedFile(

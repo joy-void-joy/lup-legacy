@@ -14,8 +14,8 @@ from .shell import ESCALATE_RE
 # lup: ignore[constant-declaration] — it quotes the marker's own spelling, so
 # the words are fixed by what the kernel parses rather than by anyone's taste
 TOOL_ESCALATE_HINT = (
-    "Or resubmit with a leading '# lup: escalate: <why>' line in one of the"
-    " call's own inputs to put it to a reviewer."
+    "Or resubmit with a leading '# lup: escalate[decision]: <why>' line in one"
+    " of the call's own inputs to put it to a reviewer."
 )
 
 

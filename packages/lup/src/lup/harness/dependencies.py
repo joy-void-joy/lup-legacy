@@ -44,8 +44,7 @@ SPELLED_SKILL = re.compile(r"(?<![\w/.$-])[/$]([a-z][a-z0-9-]*):([a-z][a-z0-9-]*
 
 Beside the parts naming one, because prose can spell an invocation literally
 and a page is not held to the portable-prose rule that refuses it in a skill —
-one such spelling was standing in a core page, naming a git-loop skill no
-check had seen.
+so a core page can name a skill in a spelling no other check reads.
 """
 
 # lup: defer: an MCP tool named in prose (`coordination_peers`) is a fifth kind

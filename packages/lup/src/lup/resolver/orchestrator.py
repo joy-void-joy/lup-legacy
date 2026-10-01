@@ -705,9 +705,9 @@ class WorktreeOrchestrator:
         """Stage a no-commit merge, reporting whether git had to leave a conflict.
 
         The answer is what decides whether an agent turn is spent at all.
-        Accepting exit 0 and exit 1 identically meant a merger was invoked on
-        every parent, handed an already-correct tree it could edit, with
-        nothing to decide — ten such turns in a twelve-parent run.
+        Accepting exit 0 and exit 1 identically would invoke a merger on every
+        parent, handing it an already-correct tree it could edit with nothing
+        to decide — measured, ten such turns in a twelve-parent run.
         """
         if len(parent_commits) != 2:
             raise ValueError("one semantic join step requires exactly two commits")
@@ -919,9 +919,9 @@ class WorktreeOrchestrator:
         # while its content is fully resolved, which is what the merger leaves
         # behind when it edits the file without staging it — `git add -A` below
         # settles exactly that, so an unmerged path is only a failure when the
-        # content still carries markers. Naming both conditions here rejected
-        # resolved work and stopped one line short of the call that would have
-        # accepted it.
+        # content still carries markers. Refusing an unmerged path whose
+        # content is resolved would reject resolved work one line short of the
+        # call that accepts it.
         if checked.code != 0 or unresolved.code != 0:
             raise RuntimeError(
                 f"semantic join for {lease.concern_id} still has "

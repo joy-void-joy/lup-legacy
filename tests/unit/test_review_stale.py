@@ -1,16 +1,15 @@
 """A review whose recorded files moved leaves the queue as stale, wherever that is noticed.
 
-Review 85008796 could not be approved from the page: a `cp` of three live
-files into scratch, then a `sed -i` of the copies, parked with the three
-sources recorded as its preimages, and the session editing those sources
-changed them a hundred seconds later. From then on no approval could release
-it -- the waiter carries a command out only where every recorded file
-stands as recorded -- yet the page showed it waiting, with Approve enabled
-from a detail read before the change, and the refusal landed out of sight.
-Now whoever notices first -- the dashboard on its next look, the page
-opening it, an approval, the requester's own waiter, `review list` -- retires
-it into ``stale``, naming what moved, and the requester is told to re-read
-the file and ask again.
+A review's recorded files can move under it: a `cp` of three live files into
+scratch, then a `sed -i` of the copies, parks with the three sources recorded
+as its preimages, and the session editing those sources changes them a
+minute later. From then on no approval can release it -- the waiter carries a
+command out only where every recorded file stands as recorded -- so shown as
+waiting, with Approve enabled from a detail read before the move, its refusal
+would land out of sight. So whoever notices first -- the dashboard on its next
+look, the page opening it, an approval, the requester's own waiter,
+`review list` -- retires it into ``stale``, naming what moved, and the
+requester is told to re-read the file and ask again.
 """
 
 import os
@@ -51,7 +50,7 @@ def root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 
 
 def copied_then_rewritten(root: Path) -> PersistentQuestion:
-    """Review 85008796's shape: live sources copied into scratch, the copies rewritten in place.
+    """Live sources copied into scratch, and the copies rewritten in place.
 
     Its preimages are the three sources as they stood, and the scratch
     directory and copies as absent -- which is what the hook records.

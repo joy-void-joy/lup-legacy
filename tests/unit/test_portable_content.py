@@ -27,11 +27,11 @@ RUNTIMES: list[NativeSpellings] = [ClaudeSpellings(), CodexSpellings()]
 MARK = "<supplied by the caller>"
 
 REMAINING_PROSE_BREACHES: list[str] = []
-"""Declarations whose prose still names a platform.
+"""Declarations whose prose names a platform.
 
-Empty, and the compilers now refuse a breach outright, so this is a second
+Empty, and the compilers refuse a breach outright, so this is a second
 reading of the same invariant rather than a worklist: it names which
-declaration regressed, where the compile error names only the spelling."""
+declaration breaches it, where the compile error names only the spelling."""
 
 
 def instruction_text(runtime: NativeSpellings) -> str:

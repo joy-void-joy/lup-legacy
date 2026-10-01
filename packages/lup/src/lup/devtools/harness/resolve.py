@@ -287,9 +287,9 @@ def lease_plugin_dir(root: Path, plugin_name: str) -> Path:
     immune to this; a session the SDK opens names nothing, so it resolves
     plugins through the settings at its working directory. Those settings
     register a marketplace under a name, and a name is one global namespace
-    shared by every checkout declaring it — so the plugin a lease actually
-    loaded was whichever tree registered that name last, and a worker was
-    refused an edit by a policy kernel generated from another commit.
+    shared by every checkout declaring it — so the plugin such a lease loads
+    is whichever tree registered that name last, and a worker is refused an
+    edit by a policy kernel generated from another commit.
     """
     return root / ".claude" / "plugins" / plugin_name
 
@@ -1076,9 +1076,9 @@ class DetachedRun(BaseModel, frozen=True):
 def detach_resolve(detached: DetachedRun) -> None:
     """Start a run that outlives this command, and say where to reach it.
 
-    A blocking run holds the launching agent's only turn, so nothing could
-    write to a run while it moved — which made every delivery route in the
-    design unreachable, however well the channels underneath worked. Once
+    A blocking run holds the launching agent's only turn, so nothing can
+    write to the run while it moves — which leaves every delivery route
+    unreachable, however well the channels underneath work. Once
     launching returns, the run directory is the whole contract: the page and
     an orchestrating agent are peers on it, exactly as two pages would be.
 
@@ -1323,23 +1323,23 @@ def worker_policy_hooks(
     after both were built.
 
     ``semantics`` is how one runtime's calls become the vocabulary this
-    policy judges. It is a parameter rather than a constant because both
-    runtimes have that decode now, and hardcoding one was what left the
-    other's workers judged by nothing.
+    policy judges. It is a parameter rather than a constant because each
+    runtime has its own decode, and a hardcoded one would leave the other's
+    workers judged by nothing.
 
     ``relay`` is where an escalation goes when there is nobody here to answer
     it. The marker exists to route a judgement to a human who can weigh the
-    actual command, and a worker session has none attached — so for a worker
-    the three tiers collapsed to two and every escalation was a guaranteed
-    refusal, in exactly the context that most needs one. It still refuses,
-    because nothing here can approve what no human saw; what it stops doing
-    is refusing in silence.
+    actual command, and a worker session has none attached — so without a
+    relay the three tiers collapse to two for a worker and every escalation
+    is a guaranteed refusal, in exactly the context that most needs one. It
+    still refuses, because nothing here can approve what no human saw; what
+    the relay changes is that it does not refuse in silence.
 
     ``sandbox`` is the session's own confinement, read from the declaration
     the factory opens it with rather than from the runtime. Taking the
-    runtime's word granted an escape the session forbade — rendered onto the
-    wire, dropped without a word, and the call left confined to fail on
-    whatever it wrote first. Asking the session instead is what lets a
+    runtime's word would grant an escape the session forbids — rendered onto
+    the wire, dropped without a word, and the call left confined to fail on
+    whatever it writes first. Asking the session instead is what lets a
     worker's toolchain be placed outside and actually get there.
 
     Only the placement is taken from it. What the posture says about
@@ -1347,16 +1347,16 @@ def worker_policy_hooks(
     on a substitution this host cannot afford: its arm takes ``defer`` and
     ``ask`` together, so where there is no human to answer, every guarded
     verdict becomes a run rather than a refusal — ``find -delete`` and ``git
-    push --delete`` among them, and a ``# lup: escalate:`` marker, which
-    resolves to an ask, turned into the way to avoid the human it exists to
+    push --delete`` among them, and a ``# lup: escalate[decision]:`` marker, which
+    resolves to an ask, turns into the way to avoid the human it exists to
     summon. A worker keeps the fail-closed floor until it can answer a
     question through the channel it already holds.
 
-    It composes here, outside the factory that calls it, because the defect
-    this shape exists to prevent was never in a verdict: the kernel answered
-    correctly every time and the session handed it host facts it did not
-    have. A composition only a running resolver can build is one no test
-    reaches, and this one shipped its own widening once already.
+    It composes here, outside the factory that calls it, because what this
+    shape prevents is not a wrong verdict: the kernel answers correctly
+    every time, and the failure is a session handing it host facts it does
+    not have. A composition only a running resolver can build is one no
+    test reaches, so a widening in it ships unseen.
     """
     return create_policy_hooks(
         semantic_policy_for(
@@ -2183,7 +2183,7 @@ def run_resolve(
                     adapter,
                     resolved_run_id,
                     [] if recorded is None else recorded.concerns,
-                    [] if recorded is None else question_views(recorded, mailbox),
+                    question_views(mailbox),
                 )
                 return
             typer.echo(f"Review branch: {manifest.review_branch}")

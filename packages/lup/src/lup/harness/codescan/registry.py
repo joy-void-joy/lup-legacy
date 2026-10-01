@@ -127,6 +127,19 @@ def all_rules(
     three rather than documented as enforced by a page nothing enforces.
     """
     kept = (rules or RuleSet()).selected(selection or RuleSelection())
+    # A rule several tables carry is one rule — the prose rule reads Python,
+    # TypeScript and Markdown alike — so it is one card naming each scope,
+    # shown with the first table's examples.
+    declared = [
+        (scope, rule)
+        for scope, scoped in (
+            ("Python", kept.python),
+            ("TypeScript", kept.typescript),
+            ("Markdown", kept.markdown),
+        )
+        for rule in scoped
+    ]
+    ids = list(dict.fromkeys(rule.id for _, rule in declared))
     return [
         *(
             card(rule, rule.family, rule.scope, rule.defined_in)
@@ -137,12 +150,13 @@ def all_rules(
             for rule in kept.composition
         ),
         *(
-            card(rule, "anti-pattern", scope, antipatterns.__name__)
-            for scope, scoped in (
-                ("Python", kept.python),
-                ("TypeScript", kept.typescript),
+            card(
+                next(rule for _, rule in declared if rule.id == rule_id),
+                "anti-pattern",
+                ", ".join(scope for scope, rule in declared if rule.id == rule_id),
+                antipatterns.__name__,
             )
-            for rule in scoped
+            for rule_id in ids
         ),
     ]
 

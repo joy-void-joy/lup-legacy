@@ -61,7 +61,7 @@ def test_a_modified_tracked_file_survives_a_snapshot(checkout: Path) -> None:
 
 
 def test_an_ignored_file_is_left_out(checkout: Path) -> None:
-    """Stated as a limit rather than a bug: capturing them cost 592 MB.
+    """Stated as a limit rather than a bug: capturing them costs 592 MB here.
 
     Which is why `git clean -fdx` keeps asking -- it is the one command whose
     purpose is destroying exactly what this does not hold.

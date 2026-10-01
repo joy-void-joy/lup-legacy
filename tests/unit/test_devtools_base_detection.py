@@ -1,10 +1,8 @@
 """Behavior tests for base-branch recording and detection.
 
 Worktree creation records its base in ``<common>/lup/branches/<name>.json``,
-and the ``branch.<name>.lup-base`` config key it was written under before
-still answers; detection prefers either over everything else. Both spellings
-are exercised here, because a clone whose records were never adopted has to
-keep behaving as it did. Topology alone cannot recover the creation point —
+and detection prefers that record over everything else. Topology alone
+cannot recover the creation point —
 once branches share tips or the parent merges on, every candidate looks alike
 and the nearest one wins regardless of where the branch was really cut.
 
@@ -50,7 +48,7 @@ def test_recorded_base_resolves_what_topology_cannot(
     git = repo_git(repo)
     git("branch", "feature")
     git("switch", "-c", "topic", "feature")
-    git("config", "branch.topic.lup-base", "feature")
+    records.remember("topic", records.BranchRecord(base="feature"), repo)
     commit_named_file(repo, "t1.txt")
 
     monkeypatch.chdir(repo)
@@ -62,15 +60,15 @@ def test_recorded_base_resolves_what_topology_cannot(
 def test_an_integration_branch_that_moved_on_still_wins_over_a_stale_ancestor(
     repo: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The failure that made a stale sibling the baseline for a whole branch.
+    """A stale sibling never becomes the baseline for a whole branch.
 
     `stale-sibling` sits at a commit older than the fork point, so its tip is
     inside `topic`'s history and it counts as an ancestor. `main` has taken a
     commit since the cut, so it is not one — which is the ordinary state of an
-    integration branch, not a disqualification. While ancestry filtered rather
-    than ranked, `main` was dropped before distance was consulted and the far
-    ancestor won: measured on a real branch as a base 747 commits off, against
-    which the gate reported 137 capabilities gone that nothing had touched.
+    integration branch, not a disqualification. Ancestry used as a filter
+    rather than a rank drops `main` before distance is consulted and lets the
+    far ancestor win: on a real branch that is a base 747 commits off, against
+    which the gate reports 137 capabilities gone that nothing touched.
 
     Distance decides instead, and it is merge-base distance, which needs no
     ancestry to mean anything. The merge base is asserted too, because that is
@@ -158,7 +156,7 @@ def test_stale_record_falls_back_to_guessing(
     git("switch", "-c", "feature")
     commit_named_file(repo, "f1.txt")
     git("switch", "-c", "topic")
-    git("config", "branch.topic.lup-base", "gone")
+    records.remember("topic", records.BranchRecord(base="gone"), repo)
     commit_named_file(repo, "t1.txt")
 
     monkeypatch.chdir(repo)

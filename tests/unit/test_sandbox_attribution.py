@@ -2,7 +2,7 @@
 
 Most of these pin the *negative*: that a failure which merely looks like
 confinement is reported as unattributed. A wrong boundary claim teaches an
-agent to reach for the host when the bug was in its own code, so the tests
+agent to reach for the host when the bug is in its own code, so the tests
 that matter are the ones where nothing is claimed.
 """
 

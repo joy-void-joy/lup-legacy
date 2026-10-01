@@ -1,9 +1,9 @@
 """Following a repository's sessions, without consuming what they are owed.
 
-Written against the failures a watcher can introduce rather than the ones it
+These pin the failures a watcher can introduce rather than the ones it
 reports: a message consumed by the reader that was only meant to notice it, a
-change reported twice, and a run that never lands because nothing told it the
-population was gone.
+change reported twice, and a run that never lands because nothing tells it the
+population is gone.
 """
 
 import json

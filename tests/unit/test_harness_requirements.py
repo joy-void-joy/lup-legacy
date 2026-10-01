@@ -170,8 +170,8 @@ def test_a_group_diagnosis_stays_quiet_about_a_failure_it_cannot_explain() -> No
     """The red herring this gate exists for.
 
     A group difference is nearly always present and nearly never the cause.
-    Ungated, this volunteered "this session is not in the docker group" for a
-    daemon reached over a socket the user already owned outright -- true about
+    Ungated, this volunteers "this session is not in the docker group" for a
+    daemon reached over a socket the user owns outright -- true about
     the groups, unrelated to the failure, and actively costly: a reader who
     acts on it starts a new session and finds nothing changed.
     """
@@ -237,7 +237,7 @@ def test_an_advisory_is_silent_at_launch_and_spoken_at_setup() -> None:
 
 
 def test_an_expensive_check_of_an_important_thing_is_expressible() -> None:
-    """The two axes the first draft conflated, and the case that exposed it.
+    """Two axes one field would conflate, and the case that needs both.
 
     Same-path bind mounting is a prerequisite of the worktree rail -- its
     absence costs a real capability -- and exercising it starts a container,
@@ -265,7 +265,7 @@ def test_an_empty_manifest_checks_nothing_and_installs_nothing() -> None:
 
 
 def test_a_failing_finding_says_what_was_lost_and_what_needed_it() -> None:
-    """Why it failed and what is now missing are different questions."""
+    """Why it failed and what is missing as a result are different questions."""
     lines = requirement("clipboard", Run(command=["lup-no-such-program"])).check({})
     rendered = "\n".join(item.text for item in lines.notices())
     assert "the clipboard capability is unavailable" in rendered
@@ -275,10 +275,10 @@ def test_a_failing_finding_says_what_was_lost_and_what_needed_it() -> None:
 def test_a_container_that_never_started_is_not_read_as_an_absent_capability() -> None:
     """An engine that refused has said nothing about what was inside it.
 
-    The defect this closes: a bind mount whose source did not exist made
-    podman refuse the container, and both at-launch boundary probes announced
-    the capability neither had measured -- an unreachable proxy, an
-    untunnelled egress -- under advice to tear down a network that was fine.
+    A bind mount whose source does not exist makes podman refuse the
+    container. Read as an absent capability, both at-launch boundary probes
+    would announce what neither measured -- an unreachable proxy, an
+    untunnelled egress -- under advice to tear down a network that is fine.
     """
     # `sh` stands in for the container engine here. What is being pinned is a
     # *contained* command exiting 125, the code both engines reserve for a run
@@ -324,8 +324,9 @@ def test_the_declared_manifest_names_only_programs_this_project_invokes() -> Non
     """A manifest that invents a prerequisite refuses machines that were fine.
 
     Pinned as a count rather than a list so adding a genuine requirement is
-    an ordinary edit, while the roster staying small stays deliberate: an
-    earlier draft declared ripgrep, which this project never invokes.
+    an ordinary edit, while the roster staying small stays deliberate:
+    ripgrep, for one, is no prerequisite, because this project never invokes
+    it.
     """
     from lup_template.harness.content.requirements import manifest
 
@@ -410,9 +411,9 @@ def test_the_declared_client_is_the_portable_one_whatever_this_host_runs() -> No
 
     The ownership digest hashes the whole declaration, so a probe of this
     host inside it reports generated artifacts as stale on any machine whose
-    client differs. Measured before this split existed: the digest moved
-    between two runs on *one* machine, minutes apart, because a stale podman
-    pid file was cleaned up between them and the resolution flipped.
+    client differs -- and even on *one* machine it moves between two runs
+    minutes apart, when a stale podman pid file is cleaned up between them and
+    the resolution flips.
     """
     declared = manifest()
     carried = [item for item in declared.requirements if item.by_client]
@@ -420,10 +421,10 @@ def test_the_declared_client_is_the_portable_one_whatever_this_host_runs() -> No
     assert carried, "this project declares no client-carried exercise"
     assert all(item.exercise.programs() == ["docker"] for item in carried)
     # Two *different* checkouts, which is the comparison that catches this.
-    # Asking the same root twice was the earlier assertion and could not fail:
-    # a host fact resolved from the root gives the same answer both times, so
-    # the digest was measured stable against the one input that never varied
-    # while it moved for every worktree that was not this one.
+    # Asking the same root twice cannot fail: a host fact resolved from the
+    # root gives the same answer both times, so the digest would measure
+    # stable against the one input that never varies while moving for every
+    # worktree that is not this one.
     assert source_digest(
         portable_harness(root=Path("/tmp/one-checkout"))
     ) == source_digest(portable_harness(root=Path("/tmp/another-checkout")))
@@ -451,7 +452,7 @@ def test_pointing_a_manifest_at_a_host_moves_only_what_a_machine_supplies() -> N
     ``Run`` keeps every argument the declaration wrote and moves only its
     program. A ``MountProbe`` has no arguments to keep — it is a shape, and
     resolving it is what turns it into a command — so the assertion for it is
-    that the command it became names this checkout rather than any other.
+    that the command it resolves to names this checkout rather than any other.
     """
     declared = manifest()
     here = Path("/tmp/some-checkout")
@@ -483,9 +484,9 @@ def test_a_mount_probe_is_aimed_at_the_checkout_a_machine_names() -> None:
     """The shape carries no path; the resolution carries this one.
 
     The declaration cannot name a checkout, because it is hashed into the
-    ownership digest and a worktree is where somebody put it. Measured before
-    this split: two checkouts of one commit hashing differently, so every one
-    but the last to generate read its own committed tree as stale.
+    ownership digest and a worktree is where somebody put it. Named there,
+    two checkouts of one commit would hash differently, so every one but the
+    last to generate would read its own committed tree as stale.
     """
     here = Path("/tmp/some-checkout")
     aimed = for_host(manifest(), Podman(binary="podman"), here).requirements
@@ -516,11 +517,10 @@ def test_nothing_in_a_declared_manifest_names_a_path_or_a_client() -> None:
 def test_the_image_half_is_exercised_behind_the_argv_a_session_opens() -> None:
     """An image requirement runs inside the container, not beside it.
 
-    The defect this closes: image-side entries were excluded from the host
-    roster and exercised nowhere, so the whole boundary — proxy, mounts,
-    config home — was declared and unverified. What made that invisible is
-    that the one entry which did run spelled its own `docker run`, which
-    verified a container with no network and no mounts.
+    Excluded from the host roster and exercised nowhere else, image-side
+    entries would leave the whole boundary — proxy, mounts, config home —
+    declared and unverified. An entry spelling its own `docker run` hides
+    that, because it verifies a container with no network and no mounts.
     """
     opening = ["podman", "run", "--rm", "--network", "lup-net", "lup-agent:abc"]
     inside = manifest().check_inside({}, opening)
@@ -625,9 +625,9 @@ def test_one_host_roster_spans_every_target() -> None:
 
     The command that spans every target holds a manifest per target, and the
     host halves answer the same question — what this machine carries. Asked
-    one manifest at a time, a reader got the whole roster twice with nothing
-    saying the second was a repeat, and `same-path bind mounts` started its
-    probe container twice to establish what the first had.
+    one manifest at a time, a reader gets the whole roster twice with nothing
+    saying the second is a repeat, and `same-path bind mounts` starts its
+    probe container twice to establish what the first did.
     """
     declared = manifest()
     spanned = Manifest.across([declared, declared])
@@ -700,14 +700,14 @@ def test_verification_is_a_property_rather_than_a_manager() -> None:
 
 
 def test_every_promised_program_is_measured_or_deliberately_dropped() -> None:
-    """Nothing leaves the promise quietly, which is the whole of the defect.
+    """Nothing leaves the promise quietly.
 
-    What this repository met was not a package missing from an image. It was
-    that the vocabulary and the image were two lists nothing compared, so a
-    word could be declared safe for an agent to run unattended and carried
-    nowhere -- and the agent that ran it got 127, which a shell hands to `||`
-    as an ordinary answer. Measured inside the agent container:
-    `cmp -s A B && echo IDENTICAL || echo DIFFERS` printed DIFFERS for two
+    The risk is not a package missing from an image. It is the vocabulary and
+    the image being two lists nothing compares, so a word can be declared
+    safe for an agent to run unattended and carried nowhere -- and the agent
+    that runs it gets 127, which a shell hands to `||` as an ordinary answer.
+    Measured inside the agent container, with `cmp` missing:
+    `cmp -s A B && echo IDENTICAL || echo DIFFERS` prints DIFFERS for two
     byte-identical files.
 
     So the two lists are held against each other here, and a word may leave

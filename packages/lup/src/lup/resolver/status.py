@@ -380,7 +380,7 @@ def phase_progress(state: ResolveState, run_dir: Path) -> PhaseProgress | None:
     A phase earns a bar by knowing both how many items it faces and when each
     one landed. Each of these drives one item at a time and records the moment
     it finished: the joins and the re-checks against their own desks, the
-    workers against the stamp a settling concern now carries.
+    workers against the stamp a settling concern carries.
 
     The worker phases are the long ones and the reason the bar exists, but
     they are also the loosest — several concerns are in flight at once, so a
@@ -447,8 +447,8 @@ def join_tally_bar(tally: RunTally) -> PhaseProgress | None:
 
     The rate is sound here only because the sequence clears its progress
     when the phase opens: ``completions`` accumulate across every join a run
-    performs, so before that clear this would have been timing the
-    worker-phase dependency joins against the integration ones. What it
+    performs, so without that clear this would time the worker-phase
+    dependency joins against the integration ones. What it
     cannot do is fall back to the checkpoint the way :func:`join_bar` does,
     so a resumed run reports no rate until it has timed two of its own
     parents.
@@ -484,11 +484,12 @@ def join_bar(progress: JoinProgress | None, run_dir: Path) -> PhaseProgress | No
 
     The rate is the checkpoint's own landings and nothing else. The
     orchestrator's completions accumulate across every join a run performs,
-    so a worker-phase dependency join was estimating the integration joins
-    that followed it — 24m19s an item against the five minutes they actually
-    took. A phase that has not yet timed two of its own parents reports no
-    rate, which is the same bargain :func:`recheck_bar` makes and the reason
-    verification was the one phase estimating accurately.
+    so read from them a worker-phase dependency join would estimate the
+    integration joins that follow it — measured, 24m19s an item against the
+    five minutes they actually take. A phase that has not yet timed two of
+    its own parents reports no rate, which is the same bargain
+    :func:`recheck_bar` makes, and the one that keeps verification's estimate
+    accurate.
     """
     desks = JoinDesk.active(run_dir)
     checkpoints = [(desk, desk.progress()) for desk in desks]

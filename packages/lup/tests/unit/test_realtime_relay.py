@@ -38,6 +38,7 @@ from lup.orchestration.realtime.relay import (
     create_realtime_relay_tools,
     run_relay_session,
 )
+from lup.orchestration.realtime.models import SleepInput
 from lup.orchestration.realtime.scheduler import Scheduler
 from lup.orchestration.reflection import ReflectionGate
 from lup.sessions.capabilities import SessionEngine, TurnEngine
@@ -640,3 +641,104 @@ class TestRelaySession:
 
         assert turns == 3
         assert conversation.prompts[2] == MISSING_SLEEP_MESSAGE
+
+
+async def apply_with_per_event_commit(
+    mailbox: RealtimeMailbox,
+    applied: list[str],
+    *,
+    fail_on: str | None = None,
+) -> None:
+    """Mirror the parent loop: apply each event, commit only after.
+
+    ``fail_on`` makes the handler raise when it sees a reply with that
+    message, standing in for a handler that errors mid-batch.
+    """
+    for pair in mailbox.peek_new_events():
+        if isinstance(pair.event, ReplyEvent):
+            if pair.event.message == fail_on:
+                raise RuntimeError("handler boom")
+            applied.append(pair.event.message)
+        mailbox.read_offset = pair.commit_offset
+
+
+class TestRelayNoLoss:
+    async def test_raising_handler_leaves_unapplied_events(
+        self, tmp_path: Path
+    ) -> None:
+        """A mid-batch failure must not advance past un-applied events."""
+        writer = RealtimeMailbox(tmp_path)
+        reader = RealtimeMailbox(tmp_path)
+        writer.append_event(ReplyEvent(message="one"))
+        writer.append_event(ReplyEvent(message="two"))
+        writer.append_event(ReplyEvent(message="three"))
+
+        applied: list[str] = []
+        with pytest.raises(RuntimeError):
+            await apply_with_per_event_commit(reader, applied, fail_on="two")
+
+        # "one" applied; the failure at "two" left the offset there.
+        assert applied == ["one"]
+
+        # A retry redelivers "two" and "three" — nothing was dropped.
+        await apply_with_per_event_commit(reader, applied)
+        assert applied == ["one", "two", "three"]
+
+    async def test_no_redelivery_once_fully_applied(self, tmp_path: Path) -> None:
+        writer = RealtimeMailbox(tmp_path)
+        reader = RealtimeMailbox(tmp_path)
+        writer.append_event(ReplyEvent(message="only"))
+
+        applied: list[str] = []
+        await apply_with_per_event_commit(reader, applied)
+        await apply_with_per_event_commit(reader, applied)
+        assert applied == ["only"]
+
+    def test_peek_does_not_advance_offset(self, tmp_path: Path) -> None:
+        writer = RealtimeMailbox(tmp_path)
+        reader = RealtimeMailbox(tmp_path)
+        writer.append_event(ReplyEvent(message="x"))
+
+        before = reader.read_offset
+        pairs = reader.peek_new_events()
+        assert [p.event.message for p in pairs if isinstance(p.event, ReplyEvent)] == [
+            "x"
+        ]
+        assert reader.read_offset == before  # peek is non-destructive
+        # Committing the last pair's offset consumes the event.
+        reader.read_offset = pairs[-1].commit_offset
+        assert reader.peek_new_events() == []
+
+
+class TestRelayStaleReplay:
+    def test_reset_clears_previous_run(self, tmp_path: Path) -> None:
+        """A fresh run must not consume the previous run's leftovers."""
+        mailbox = RealtimeMailbox(tmp_path)
+        mailbox.append_event(ReplyEvent(message="ghost"))
+        mailbox.append_event(RemindEvent(label="old", delay_seconds=5))
+        mailbox.write_sleep_request(SleepInput(seconds=42))
+        mailbox.meta_flag_path.parent.mkdir(parents=True, exist_ok=True)
+        mailbox.meta_flag_path.touch()
+
+        fresh = RealtimeMailbox(tmp_path)
+        # A partial read of the earlier run leaves the offset non-zero too.
+        fresh.read_offset = 10
+        fresh.reset_for_new_run()
+
+        assert fresh.read_offset == 0
+        assert fresh.read_new_events() == []
+        assert fresh.consume_sleep_request() is None
+        assert not mailbox.meta_flag_path.exists()
+        # The file is truncated, not deleted, so the within-run append path
+        # keeps working.
+        assert mailbox.actions_path.read_text(encoding="utf-8") == ""
+
+    def test_within_run_protocol_survives_reset(self, tmp_path: Path) -> None:
+        mailbox = RealtimeMailbox(tmp_path)
+        mailbox.reset_for_new_run()
+        mailbox.append_event(ReplyEvent(message="after reset"))
+
+        events = mailbox.read_new_events()
+        assert [e.message for e in events if isinstance(e, ReplyEvent)] == [
+            "after reset"
+        ]

@@ -95,9 +95,9 @@ and the analyses start competing.
 Derived from the host rather than pinned, because both ends of that trade
 are the host's: a count that suits a large machine oversubscribes a laptop,
 and one that suits a laptop leaves a large machine idle. Measured on a
-32-core host, a cold whole-repository resolve took 20.5s under two servers,
+32-core host, a cold whole-repository resolve takes 20.5s under two servers,
 17.8s under four and 16.0s under eight; across the whole gate, where the
-servers compete with two test suites and a type checker, the same run took
+servers compete with two test suites and a type checker, the same run takes
 41.1s, 36.2s and 33.5s, with six and eight indistinguishable and sixteen
 back up at 36.1s. A quarter of the cores, capped, sits at that knee from
 both directions.

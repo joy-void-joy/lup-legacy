@@ -146,10 +146,10 @@ class SettlementFacts:
 
         The one question the order asks about boundaries, derived rather than
         supplied, because a caller free to compute it is a caller free to
-        compute it differently — and two of them did. The kernel took
-        ``confined`` as its own argument, the shell path filled it from the
-        native sandbox alone, and a container measured per launch reached the
-        row named for it and settled nothing.
+        compute it differently: a kernel taking ``confined`` as its own
+        argument, filled by the shell path from the native sandbox alone,
+        would leave a container measured per launch reaching the row named
+        for it and settling nothing.
 
         Two mechanisms, joined here and nowhere else. The native sandbox
         confines one call at a time and can be told to leave some alone, so
@@ -325,7 +325,7 @@ class SandboxEscalation(SettlementRule):
             escalated=facts.escalation.reason,
             purpose=decision.purpose or "policy_override",
             abstention=None,
-        ).advising(facts.escalation.notice())
+        )
 
 
 class DecisionEscalation(SettlementRule):
@@ -357,17 +357,16 @@ class DecisionEscalation(SettlementRule):
             return None
         assert facts.escalation is not None
         decision = facts.decision
-        notice = facts.escalation.notice()
         if decision.effect == "allow":
             return decision.revised(
                 reason=decision.reason + REDUNDANT_DECISION,
                 visibility="notice",
-            ).advising(notice)
+            )
         if decision.effect == "defer" and decision.abstention == "provider_native":
             return decision.revised(
                 reason=decision.reason + HANDED_OVER_DECISION,
                 visibility="notice",
-            ).advising(notice)
+            )
         prefix = ESCALATED_PREFIX.format(reason=facts.escalation.reason)
         return decision.revised(
             effect="ask",
@@ -376,7 +375,7 @@ class DecisionEscalation(SettlementRule):
             purpose=decision.purpose or "policy_override",
             cause=None,
             abstention=None,
-        ).advising(notice)
+        )
 
 
 class TrappedPlacement(SettlementRule):
@@ -422,7 +421,7 @@ class UnleasedWrite(SettlementRule):
     with no overlay over it, and a mount table cannot close that -- there is no
     remount to make.
 
-    Which is why the judgement does. The mount table was never the barrier
+    Which is why the judgement does. The mount table is not the barrier
     here: the shared administrative directory is mounted writable on purpose,
     because no session could cut a worktree otherwise, and what guards the keys
     inside it is a rule holding an approval question against them by name. This
@@ -471,7 +470,7 @@ class UnleasedWrite(SettlementRule):
         ]
         if not reported or facts.decision.effect not in ("allow", "defer"):
             return None
-        # The write leads. The verdict this replaces said "every segment is
+        # The write leads. The verdict this replaces says "every segment is
         # declared safe", which is true and beside the point: what the
         # approver decides on is the path, so the path is the first thing
         # read. A deferral's own reason stays, since "nobody judged this"
@@ -488,7 +487,7 @@ class UnleasedWrite(SettlementRule):
                 else f"{facts.decision.reason}; {written}"
             ),
             purpose="unrecovered_local_mutation",
-            # Named, because the verdict this replaces was reached by the
+            # Named, because the verdict this replaces is reached by the
             # vocabulary finding nothing to say and carries no id of its own.
             # An ask that names no rule is one nobody can write a case for.
             rule=self.id,
@@ -511,10 +510,10 @@ class ReadOnlyWrite(SettlementRule):
     can approve a write past a read-only mount, and git's own commands --
     commit, fetch, worktree -- reach the state they need without writing
     either. Every verb, because the hole is a place and not a spelling: a
-    redirection's content already met it through the edit gates, while a
-    `cp`, `mv` or `ln` placing the same bytes reached only the loss row,
-    which a capture of the session's own checkout discharged for a tree it
-    never held.
+    redirection's content meets it through the edit gates, while a `cp`,
+    `mv` or `ln` placing the same bytes would reach only the loss row, which
+    a capture of the session's own checkout discharges for a tree it never
+    held.
 
     Read over ``allow``, ``defer`` and ``ask`` alike, and above
     :class:`RecoveredLoss` for that reason; a refusal already standing needs
@@ -585,7 +584,7 @@ class DisplacedWrite(SettlementRule):
     Resolution belongs to the host and the reason belongs here, which is the
     same division `unleased-write` makes: the kernel sees words, so a caller
     that resolved nothing reports nothing and this row is silent — the
-    lexical grants then stand exactly as they did.
+    lexical grants then stand as they are.
 
     Read against ``allow`` and ``defer`` only. A verdict already asking has a
     reviewer, and what they are shown carries the destination.

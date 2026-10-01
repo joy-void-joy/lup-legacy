@@ -259,6 +259,20 @@ class GeneratedBanner(BaseModel, frozen=True):
         """Whether ``content`` already opens with exactly this banner."""
         return BannerPlacement.of(content).body.startswith(self.render(path))
 
+    @staticmethod
+    def carried_by(content: str) -> bool:
+        """Whether ``content`` opens with a banner, whatever source and command.
+
+        Read the way :meth:`lines` writes the first sentence, on the first line
+        below any interpreter line, so a reader asking whether a file is
+        generation's needs no declaration to compare against.
+        """
+        opening = BannerPlacement.of(content).body.splitlines()[:1]
+        return any(
+            "Generated from " in line and "edit the source, not this file." in line
+            for line in opening
+        )
+
 
 PROMPT_TEXT = BannerExemption(reason="prompt_text")
 """Declared by every artifact that is verbatim model-facing prompt text."""

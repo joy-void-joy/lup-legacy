@@ -25,7 +25,7 @@ def names(rules: list[EditRule]) -> list[str]:
 
 
 def test_an_empty_selection_is_the_library_table() -> None:
-    """What every project got before this existed, and what a new one gets."""
+    """What a project that selects nothing gets: the library's table whole."""
     assert names(Selection[EditRule]().over(DEFAULTS)) == ["first", "second", "third"]
 
 

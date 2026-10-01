@@ -1,9 +1,9 @@
 """Another checkout of this repository keeps this one's scratch.
 
-Writing into a sibling worktree's `tmp/` was allowed while deleting there
-asked, though the permissions page states one rule for both, and a `cp` into
-it asked as a copy over production. A session told to reach another checkout
-by absolute path met the question on every delete of its own scratch. The
+The permissions page states one rule for writing into a sibling worktree's
+`tmp/` and for deleting there, and a `cp` into it is no copy over production.
+A session told to reach another checkout by absolute path would otherwise
+meet a question on every delete of its own scratch. The
 host names the other checkouts; the kernel roots this checkout's declared
 scratch at each, and nothing else of theirs.
 """

@@ -1,6 +1,6 @@
 """A batch holds one indexed fold, grown with each append, and reads the same log everybody else does.
 
-Written against the writer it exists for: a trove of thousands of nodes,
+Exercised as the writer it exists for: a trove of thousands of nodes,
 each resolved by slug before it is recorded so the same thing read twice is
 one node. Inside the batch a slug is a lookup; after it, a fresh store reads
 what the batch wrote as if it had been written one call at a time.

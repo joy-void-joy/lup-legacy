@@ -66,10 +66,10 @@ def test_retiring_records_where_the_work_went_without_failing_the_concern(
 ) -> None:
     """A concern settled elsewhere must not read as work that did not hold up.
 
-    Before this, the only ways out were hand-resolving an add/add conflict
-    between two implementations of one thing, letting a worker open on a
-    concern whose notes no longer exist in its tree, or aborting the run and
-    discarding every settled answer to retire one concern.
+    Without retirement, the only ways out are hand-resolving an add/add
+    conflict between two implementations of one thing, letting a worker open
+    on a concern whose notes no longer exist in its tree, or aborting the run
+    and discarding every settled answer to retire one concern.
     """
     repository = seeded(tmp_path, ConcernStatus.LEASED)
 

@@ -1,0 +1,23 @@
+subjects = ["ProjectEntry.last_synced_commit", "legacy_cache_dir"]
+reason = """
+a registration's review position is read from the shared checkpoint \
+`sync mark-synced` records under the common Git directory alone, so a \
+`last_synced_commit` written into sync.json or sync.json.local is not read; \
+and a URL-only registration is found in its clone under `~/.cache/lup/sync/` \
+alone, not also under the checkout's `.cache/sync/`"""
+
+[[steps]]
+instruction = """
+For each registration in sync.json or sync.json.local still carrying a \
+`last_synced_commit`, record that commit as its checkpoint once, then delete \
+the key from the file. `sync status` shows `never` in Last Synced for a \
+registration with no checkpoint."""
+command = ["uv", "run", "lup-devtools", "sync", "mark-synced", "NAME", "--at", "LAST_SYNCED_COMMIT"]
+
+[[steps]]
+instruction = """
+If a checkout holds clones under `.cache/sync/<name>`, push or fetch out any \
+commit made there that you want to keep, then delete `.cache/sync/`; \
+`sync fetch` clones each URL-only registration afresh under \
+`~/.cache/lup/sync/<name>.git`."""
+command = ["uv", "run", "lup-devtools", "sync", "fetch"]

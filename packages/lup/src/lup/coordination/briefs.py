@@ -4,9 +4,8 @@ Three readers, one record. A peer working in this repository can resolve a
 node id and does not want it spelled out; an agent with no access to the
 repository can resolve nothing, so what the peer would look up has to arrive
 inlined; a person wants a file they can open on a machine that cannot query
-the log. The worked example that produced this design had all three as
-separate hand-written artifacts, which is why two of them went stale and the
-third named three paths that had moved.
+the log. Written by hand as three separate artifacts, they drift apart: one
+goes stale while another names paths that have since moved.
 
 **They differ in rendering and not in substance.** Every one of them carries
 the established results with their sources and grades, the open questions,
@@ -119,9 +118,9 @@ class PersonBrief(Audience, frozen=True):
 def result_line(entry: Established, inline: bool) -> str:
     """One established result, with as much of its provenance as fits the reader.
 
-    The grade rides on every rendering. It is the field the worked examples
-    wrote unprompted and carefully, including explicit negatives, and it is
-    the one a receiver uses to decide whether checking is worth their time.
+    The grade rides on every rendering. It is the field a careful writer fills
+    unprompted, explicit negatives included, and the one a receiver uses to
+    decide whether checking is worth their time.
     """
     source = f" (source: {entry.source})" if inline else f" — {entry.source}"
     return f"- [{entry.grade}] {entry.statement}{source}"

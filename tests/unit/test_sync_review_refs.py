@@ -48,7 +48,6 @@ def test_fetch_reads_remote_tip_without_moving_registered_checkout(
                         "name": "lib",
                         "path": str(clone),
                         "branch": "dev",
-                        "last_synced_commit": before,
                     }
                 ]
             }
@@ -86,7 +85,7 @@ def test_unbranched_library_registration_follows_consumed_branch(
     assert found.tip == "refs/remotes/origin/dev"
 
 
-def test_shared_checkpoint_overrides_stale_sibling_local_value(
+def test_a_checkpoint_recorded_in_one_worktree_reads_from_a_sibling(
     registry: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     consumer = git_in(registry, tmp_path / "hooks")
@@ -96,7 +95,6 @@ def test_shared_checkpoint_overrides_stale_sibling_local_value(
     upstream = tmp_path / "upstream"
     remote = initialized_repo(upstream, tmp_path / "hooks")
     commit_file(remote, upstream, "file", "base", "base")
-    before = remote("rev-parse", "HEAD").strip()
     commit_file(remote, upstream, "file", "next", "next")
     after = remote("rev-parse", "HEAD").strip()
     declaration = json.dumps(
@@ -105,7 +103,6 @@ def test_shared_checkpoint_overrides_stale_sibling_local_value(
                 {
                     "name": "lib",
                     "path": str(upstream),
-                    "last_synced_commit": before,
                 }
             ]
         }

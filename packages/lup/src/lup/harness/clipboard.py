@@ -373,9 +373,9 @@ class ClipboardBridge(BaseModel, frozen=True):
         """What tells the shims inside where to reach this broker, and nothing else.
 
         No display. The bridge speaks no X protocol, and a `DISPLAY` naming
-        it sent every X client in the session to an address with no server
-        behind it -- headless Chromium among them, which then gave every page
-        no WebGL at all. A runtime that finds no display reads the clipboard
+        it would send every X client in the session to an address with no
+        server behind it -- headless Chromium among them, which then gives
+        every page no WebGL at all. A runtime that finds no display reads the clipboard
         through the shims by name and copies through the `tmux` shim or the
         terminal's own escape sequence, as Claude Code does (measured on
         2.1.283: it looks for `xclip` to copy only where `DISPLAY` is set); a
@@ -433,14 +433,14 @@ class ClipboardBridge(BaseModel, frozen=True):
         dead Ctrl+V as the runtime being broken, and one told the bridge works
         when the host end answers nothing debugs the container.
 
-        Three rather than two, and the third is the one this was missing. The
-        socket opening says a listener exists; it says nothing about whether
-        anything on this machine answers a clipboard read, and the promise made
-        on the strength of it -- "this session can read and replace what you
-        have copied" -- was asserted every launch and measured on none. The
-        capability requirement that would have caught it is ``checked="setup"``
-        by design, so the one moment it mattered was the one moment nothing
-        asked.
+        Three rather than two, and the third is the one a socket cannot give.
+        The socket opening says a listener exists; it says nothing about
+        whether anything on this machine answers a clipboard read, and a
+        promise made on the strength of it alone -- "this session can read and
+        replace what you have copied" -- is asserted every launch and measured
+        on none. The capability requirement that would catch it is
+        ``checked="setup"`` by design, so the one moment it matters is the one
+        moment nothing asks.
 
         Named backends rather than a platform. Which tool answers is a fact
         about the machine and the process asking, not about the desktop: a

@@ -837,11 +837,11 @@ class BaseSettled(BaseModel, frozen=True):
 
     A tree whose base has moved is self-consistent and says nothing about it,
     so a session opened on one plans and edits against code that is no longer
-    there — which cost a planning pass over thirteen concerns on a tree ten
-    commits behind its remote, where two merged pull requests had already done
-    part of the work being planned. Being behind is not itself grounds for
-    refusing a session, so this syncs and reports. Ahead of the regeneration,
-    so the trees the session opens against are the synced source's.
+    there — a planning pass over a tree behind its remote plans work that
+    merged pull requests have already done. Being behind is not itself
+    grounds for refusing a session, so this syncs and reports. Ahead of the
+    regeneration, so the trees the session opens against are the synced
+    source's.
     """
 
     root: Path

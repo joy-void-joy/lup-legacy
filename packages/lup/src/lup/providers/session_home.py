@@ -78,13 +78,13 @@ class SessionHomes:
         leases with the same basename cannot land on one home; the basename
         rides in front of it so a human can tell them apart on disk.
 
-        The account is in the digest too, and has to be. While the homes sat
-        under the shared one the account was carried by the parent directory;
-        moving them into the checkout dropped it out of the path, and a name
-        derived from the workspace alone handed the second account a home the
-        first had already derived — whose entries point at the first and are
-        never re-pointed. Nothing failed. The session opened and ran as the
-        wrong login, which is the one reading a profile exists to rule out.
+        The account is in the digest too, and has to be. The homes sit in the
+        checkout, so no parent directory carries the account, and a name
+        derived from the workspace alone would hand a second account the home
+        the first had already derived — whose entries point at the first and
+        are never re-pointed. Nothing would fail: the session would open and
+        run as the wrong login, which is the one reading a profile exists to
+        rule out.
         """
         identity = f"{self.shared.resolve()}\n{workspace.resolve()}"
         digest = hashlib.sha256(identity.encode("utf-8"))

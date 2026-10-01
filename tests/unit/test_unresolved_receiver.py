@@ -1,12 +1,12 @@
-"""Issue #459: a `dict-get` marker on a receiver the hook cannot resolve stands.
+"""A `dict-get` marker on a receiver the hook cannot resolve stands.
 
 `request.headers` is Starlette's `Headers`, a `typing.Mapping[str, str]`. The
 sweep resolves that and demands `# lup: ignore[dict-get]` on a `.get("literal")`
 read of it. The edit hook's own checker, answering for one file after a write,
-typed nothing for the receiver — and an unresolved receiver was reported the
-way a resolved non-mapping is, so the post-write repair deleted the marker as
-guarding nothing, the next sweep reported the line missing it, and a session
-restoring it met the repair again.
+can type nothing for the receiver — and were an unresolved receiver reported
+the way a resolved non-mapping is, the post-write repair would delete the
+marker as guarding nothing, the next sweep would report the line missing it,
+and a session restoring it would meet the repair again.
 
 Both halves are pinned here against the one file: the kernel's judgement of
 an edit to an unrelated hunk, and the sweep's audit and repair over the file
@@ -43,7 +43,7 @@ MARKED = (
     '    """Read the resume cursor."""\n'
     '    return request.headers.get("last-event-id", "")  # lup: ignore[dict-get] — open header map\n'
 )
-"""The file as #459 found it: the Starlette header read, with its marker."""
+"""The Starlette header read, with its marker."""
 
 SITE_LINE = 6
 """Where the `.get("literal")` and its directive sit in the text above."""
@@ -63,7 +63,7 @@ HEADERS = ClassDeclaration(
 
 
 class SilentOracle(TypeOracle):
-    """A checker that looked and could type nothing — the hook's answer in #459."""
+    """A checker that looked and could type nothing — the hook's answer here."""
 
     def declarations(
         self,
@@ -106,7 +106,7 @@ def test_an_edit_to_an_unrelated_hunk_leaves_the_marker_standing() -> None:
 
 
 def test_the_sweep_told_nothing_about_the_receiver_calls_no_marker_dead() -> None:
-    """The repair's own audit, with the checker #459's hook actually had."""
+    """The repair's own audit, with the checker the hook actually has."""
     refuted = refute([source(MARKED)], SilentOracle(), PYTHON_ANTI_PATTERNS)["app.py"]
 
     assert [row.settled for row in refuted] == [False]

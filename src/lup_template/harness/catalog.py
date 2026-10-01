@@ -657,8 +657,8 @@ def portable_harness(
     Claude/Codex difference is a rendering decision in the adapters
     (``compile_claude`` / ``compile_codex``) or a support artifact in the
     generation recipes, mapped in ``docs/platform-differentiation.md``.
-    Per-platform declarations overriding a shared default were rejected
-    because they would let semantic content fork silently.
+    Per-platform declarations overriding a shared default would let
+    semantic content fork silently.
 
     *composed* is this repository's roster unless a caller builds what another
     selection would compose — every surface that follows from the modules is
@@ -698,15 +698,15 @@ def portable_harness(
                 UrlScope(origin=AnyHttpUrl("http://docs.claude.com")),
                 UrlScope(origin=AnyHttpUrl("https://code.claude.com")),
                 UrlScope(origin=AnyHttpUrl("http://code.claude.com")),
-                # docs.claude.com now redirects the Agent SDK and API paths
+                # docs.claude.com redirects the Agent SDK and API paths
                 # here, so the route the guidance prescribes leaves the
                 # declared scopes one hop in.
                 UrlScope(origin=AnyHttpUrl("https://platform.claude.com")),
                 UrlScope(origin=AnyHttpUrl("http://platform.claude.com")),
                 # docs.anthropic.com 301s both of those routes onward: the
                 # Claude Code paths to code.claude.com and the API paths to
-                # platform.claude.com, each declared above. Admitting the
-                # legacy host admits the origin a redirect starts at, not a
+                # platform.claude.com, each declared above. Admitting that
+                # host admits the origin a redirect starts at, not a
                 # document these scopes did not already carry.
                 UrlScope(origin=AnyHttpUrl("https://docs.anthropic.com")),
                 UrlScope(origin=AnyHttpUrl("http://docs.anthropic.com")),
@@ -785,7 +785,7 @@ def portable_harness(
                 Path(".pre-commit-config.yaml"),
                 Path("sync.json"),
                 # The gitignored half alongside it, because a registration
-                # there can now carry a `mount` — and that key is what a
+                # there can carry a `mount` — and that key is what a
                 # session may open, at which mode, wherever the project sits
                 # on this machine. An agent free to write one would be
                 # choosing what its next launch mounts, which is the confined
@@ -872,6 +872,12 @@ def portable_harness(
                 HookPathRole(
                     root=Path("packages/lup/src/lup/migrations/pending"), role="data"
                 ),
+                # The changelog is the record of how the code came to be, so
+                # history is its subject rather than a voice to refuse in it:
+                # data, which no convention about how source or prose reads
+                # reaches. The size and whole-file gates stop at production
+                # with the rest, since an entry is reviewed at the release.
+                HookPathRole(root=Path("CHANGELOG.md"), role="data"),
                 # What each suite the gate runs collects is a test by
                 # derivation rather than by a second table: a pytest suite's
                 # `testpaths` — `tests/` at both roots, and a sub-project's
@@ -975,7 +981,7 @@ def portable_harness(
                 ),
                 # The order refuses an ask nobody can record, so an unwritable
                 # queue is a session where each reviewed operation fails
-                # naming the operation — which was never the problem.
+                # naming the operation — which is not the problem.
                 depends_on(
                     "question_relay",
                     "question relay",

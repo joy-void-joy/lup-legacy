@@ -35,7 +35,7 @@ configuration document is left without either; ``/model`` writes ``model``
 and ``/effort`` writes ``modelSettings.<model>.effortLevel`` to the same file.
 With a theme in both, the picker marks the settings file's; with it in the
 document alone, the document's — the CLI reads a settings value first and
-falls back to the document's legacy copy, as its own source does. A theme
+falls back to the document's copy, which its own source calls legacy. A theme
 seeded into ``settings.json`` is left in place at startup.
 """
 
@@ -242,7 +242,7 @@ SETTINGS_FLOWS: dict[ClaudeSettingKey, SettingFlow] = {
 # lup: ignore[constant-declaration] — a decision per key of the CLI's global
 # configuration document, made once here and checked against every release
 DOCUMENT_FLOWS: dict[ClaudeDocumentKey, SettingFlow] = {
-    # Preferences the settings files now hold too, and are read from first.
+    # Preferences the settings files also hold, and are read from first.
     "theme": "returns",
     "editorMode": "returns",
     "verbose": "returns",
@@ -343,7 +343,7 @@ def document_homed(key: str) -> bool:
 
 
 def legacy_preference(key: str) -> bool:
-    """Whether a returning preference the settings hold has a legacy document copy."""
+    """Whether a returning preference the settings hold also has a document copy."""
     return any(
         known == key and flow == "returns" for known, flow in DOCUMENT_FLOWS.items()
     ) and any(known == key for known in SETTINGS_FLOWS)

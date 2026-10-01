@@ -4,8 +4,8 @@
 `semantic_policy_for`; a session judges with the dispatcher generated from the
 same declaration. The dispatcher reads facts about the host before it asks the
 kernel anything -- the launch's measured lease, a peer's claim on a file, the
-rule selection it was compiled with -- and a composition that read none of them
-answered a question no session is ever asked.
+rule selection it was compiled with -- and a composition reading none of them
+answers a question no session is ever asked.
 
 Each case here is put to all three enforcement paths over one real repository:
 the in-process policy, and each runtime's generated dispatcher run on the
