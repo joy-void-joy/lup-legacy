@@ -24,7 +24,6 @@ uncommitted work keeps it and a branch nobody has checked out still advances;
 the merge the caller asks for is the one operation that touches the tree.
 """
 
-import os
 import tarfile
 import tomllib
 from collections.abc import Iterator
@@ -38,6 +37,7 @@ from pydantic import BaseModel
 from lup.devtools.dev.library import DISTRIBUTION
 from lup.devtools.utils import short_sha
 from lup.execution.shell import git
+from lup.harness.environment import inherited
 from lup.harness.passages import PASSAGE_SUFFIX, prose_beside
 
 
@@ -363,15 +363,15 @@ def written_tree(root: Path, contents: Path) -> str:
     writes objects into the repository and touches nothing checked out.
     """
     with TemporaryDirectory() as holding:
-        environment = {
-            # lup: ignore[os-environ] — the process environment is inherited,
-            # not read: git needs its own PATH and configuration home, and the
-            # three names below are what redirect it away from the checkout
-            **os.environ,
-            "GIT_INDEX_FILE": str(Path(holding) / "index"),
-            "GIT_DIR": git_directory(root),
-            "GIT_WORK_TREE": str(contents),
-        }
+        # git keeps its own PATH and configuration home; the three names
+        # below are what redirect it away from the checkout
+        environment = inherited(
+            {
+                "GIT_INDEX_FILE": str(Path(holding) / "index"),
+                "GIT_DIR": git_directory(root),
+                "GIT_WORK_TREE": str(contents),
+            }
+        )
         git("add", "--all", "--force", "--", ".", _cwd=str(contents), _env=environment)
         return git.out("write-tree", _cwd=str(contents), _env=environment)
 

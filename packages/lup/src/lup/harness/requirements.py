@@ -50,6 +50,7 @@ from typing import Annotated, Literal
 import sh
 from pydantic import BaseModel, Discriminator, Field, model_validator
 
+from lup.harness.environment import inherited
 from lup.harness.notice import Notice, Urgency
 from lup.types import EnvVars
 
@@ -502,8 +503,7 @@ class Run(BaseModel, frozen=True):
 
     def run(self) -> ExerciseOutcome:
         """Carry the operation out, answering whether it proved the claim."""
-        # lup: ignore[os-environ] — the command inherits this process's environment, with this exercise's own laid over it
-        environment = {**os.environ, **self.environment}
+        environment = inherited(self.environment)
         try:
             output = str(
                 sh.Command(self.command[0])(*self.command[1:], _env=environment)

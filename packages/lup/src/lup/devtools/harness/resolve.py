@@ -7,7 +7,6 @@ it with work discovered while it ran.
 """
 
 import asyncio
-import os
 from functools import partial
 from collections.abc import AsyncGenerator, Iterator
 from contextlib import asynccontextmanager
@@ -36,7 +35,7 @@ from lup.tools.mcp import (
 from lup.mcp import External
 from lup.policy.grants import LeaseGrants, allowance_grants_environment
 from lup.policy.identity import agent_identity_environment
-from lup.harness.environment import non_interactive_environment
+from lup.harness.environment import inherited, non_interactive_environment
 from lup.harness.ownership import GeneratedArtifacts, generated_artifacts
 from lup.harness.process import LaunchRequest, LocalProcessLauncher, ProcessLauncher
 from lup.sandbox.checked import PointerCheckedLauncher
@@ -1639,11 +1638,7 @@ def run_resolve(
                 install_codex_plugin(root, home.path, trusted=home.isolated)
             return {"CODEX_HOME": str(home.path)}
 
-        session_environment = account.exported(
-            non_interactive_environment(
-                os.environ  # lup: ignore[os-environ] — sessions inherit the console
-            )
-        )
+        session_environment = account.exported(non_interactive_environment(inherited()))
         # Both identities are written, never omitted: a runtime merges the
         # session environment over the launching process's, so a reviewer
         # that stayed silent would inherit an operator's exported identity.

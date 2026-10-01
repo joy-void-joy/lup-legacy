@@ -11,6 +11,7 @@ every agent spawn point. Explicit caller values win except ``VIRTUAL_ENV``:
 the child project must select its own environment from its working directory.
 """
 
+import os
 from collections.abc import Mapping
 
 from lup.coordination.identity import MEMBER_ENV, NAME_ENV, MemberEnv
@@ -41,6 +42,23 @@ def non_interactive_environment(
     """Merge shell defaults without binding a session to its caller's venv."""
     merged = {**NON_INTERACTIVE_SHELL_ENV, **base}
     return {name: value for name, value in merged.items() if name != "VIRTUAL_ENV"}
+
+
+def inherited(overlay: EnvVars | None = None) -> EnvVars:
+    """This process's environment with ``overlay`` laid over it: what a child it starts runs under.
+
+    The one place the library reads its own environment whole. Everywhere
+    else a setting is read through the pydantic-settings model that declares
+    it; this is for the other question — handing a process everything this one
+    has, the PATH that finds a program and the configuration it reads, with a
+    name or two changed — which no model answers, because the point is the
+    names nobody declared. A copy, so a caller changing it changes nothing
+    here.
+    """
+    # lup: ignore[os-environ] — the whole environment a child inherits, by definition
+    environment = dict(os.environ)
+    environment.update(overlay if overlay is not None else {})
+    return environment
 
 
 def inside_a_container(environment: EnvVars) -> bool:

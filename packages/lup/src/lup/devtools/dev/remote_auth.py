@@ -36,6 +36,7 @@ from pydantic import BaseModel
 
 from lup.devtools.utils import decode_stderr, gh
 from lup.execution.shell import git
+from lup.harness.environment import inherited
 from lup.harness.credential import GitAccess
 
 
@@ -156,8 +157,7 @@ def ssh_auth_refusal(destination: str, remote_url: str) -> RemoteRefusal:
     one happened.
     """
     program = git_ssh_program()
-    # lup: ignore[os-environ] — the process boundary, carrying one added setting
-    reaching = {**os.environ, "GIT_SSH_COMMAND": program}
+    reaching = inherited({"GIT_SSH_COMMAND": program})
     try:
         git("ls-remote", "--quiet", remote_url, "HEAD", _ok_code=[0], _env=reaching)
         return RemoteRefusal()

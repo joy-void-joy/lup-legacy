@@ -14,7 +14,6 @@ raises :class:`~lup.launch.refusal.LaunchRefused`.
 """
 
 import logging
-import os
 import sys
 from collections.abc import Callable, Mapping, Sequence
 from datetime import datetime
@@ -24,6 +23,7 @@ from uuid import uuid4
 from pydantic import BaseModel
 
 from lup.harness.devices import Device
+from lup.harness.environment import inherited
 from lup.providers.login import ProviderLogin
 from lup.providers.user_config import UserConfig, UserConfigFile
 from lup.launch.config_volume import HomeSeedPlaces
@@ -436,10 +436,7 @@ def report_requirements(
     # environment, and never through this process's: the launcher is the
     # operator's, and a sentinel left in its environment would make everything
     # it runs afterwards read as a launched session.
-    environ: EnvVars = {
-        **os.environ,  # lup: ignore[os-environ]
-        **sentinels.outside(),
-    }
+    environ = inherited(sentinels.outside())
     # Pointed at this host's client here rather than declared as one, because
     # the declaration is hashed into the ownership digest and a container
     # client is a fact about the machine. This is the only place the
@@ -528,7 +525,7 @@ def verify_inside(
     argv, whose assembly readies each shared git directory the lease reads.
     """
     if environment is None:
-        environ: EnvVars = dict(os.environ)  # lup: ignore[os-environ]
+        environ = inherited()
     else:
         environ = dict(environment)
     leased = held_lease(root, fleet_lease(root, list(accessible)), nested, trees)
@@ -651,10 +648,10 @@ def ambient_config_home(login: ProviderLogin, fallback: Path | None = None) -> P
     it takes the runtime's declared default, which is the right answer for a
     caller that has no home of its own in mind.
     """
-    # lup: ignore[os-environ] — the process environment is the open
-    # mapping this reads by definition, and absence is the answer it wants
-    selected = login.selected_home(dict(os.environ))
-    return selected if fallback is None or selected != login.ambient_home else fallback
+    environ = inherited()
+    selected = login.selected_home(environ)
+    chose_default = selected == login.default_home(environ)
+    return fallback if fallback is not None and chose_default else selected
 
 
 def editor_rendezvous(login: ProviderLogin) -> Path | None:
@@ -665,8 +662,7 @@ def editor_rendezvous(login: ProviderLogin) -> Path | None:
     same variable and knows nothing about ``--profile``. ``None`` where the
     runtime declares no rendezvous, which is every runtime but Claude Code.
     """
-    # lup: ignore[os-environ] — the same open mapping the editor itself reads
-    return login.editor_rendezvous(dict(os.environ))
+    return login.editor_rendezvous(inherited())
 
 
 def settle_boundary(

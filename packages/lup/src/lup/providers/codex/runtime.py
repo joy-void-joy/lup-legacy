@@ -19,8 +19,8 @@ from lup.providers.codex.app_server import (
     CodexAppServer,
     RpcMessage,
     RpcNotification,
-    native_environment,
 )
+from lup.harness.environment import inherited
 from lup.providers.codex.hooks import (
     APPROVAL_METHODS,
     CODEX_SEMANTICS,
@@ -1265,7 +1265,7 @@ class CodexSessionOpener:
         )
         policy_plugin = None
         if not config.sandbox.posture().contained():
-            effective = native_environment(config.environment)
+            effective = inherited(config.environment)
             home = CODEX_LOGIN.selected_home(effective)
             if not effective.get(CODEX_HOME):
                 home.mkdir(mode=0o700, parents=True, exist_ok=True)
@@ -1514,7 +1514,7 @@ async def codex_sessions(config: Codex) -> list[SessionSummary]:
     listing is a read.
     """
     account = codex_account_environment(config)
-    environment = native_environment({**config.environment, **account})
+    environment = inherited({**config.environment, **account})
     if not config.sandbox.posture().contained():
         environment = {
             **environment,

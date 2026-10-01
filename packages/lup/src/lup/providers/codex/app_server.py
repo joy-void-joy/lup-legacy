@@ -10,6 +10,7 @@ import sh
 from pydantic import BaseModel
 
 from lup.execution.threads import run_sync
+from lup.harness.environment import inherited
 from lup.types import EnvVars, JsonObject, JsonValue
 
 
@@ -64,15 +65,6 @@ type DisconnectHandler = Callable[[Exception], None]
 type OutgoingRpcMessage = RpcRequest | RpcNotification | RpcSuccess | RpcFailure
 
 
-def native_environment(overrides: EnvVars) -> EnvVars:
-    """Resolve the environment inherited by one native process boundary."""
-    environment = dict(
-        os.environ  # lup: ignore[os-environ] — native process boundary inheritance
-    )
-    environment.update(overrides)
-    return environment
-
-
 def native_command(executable: Path, environment: EnvVars) -> sh.Command:
     """Resolve the executable in the same PATH its native process receives."""
     return sh.Command(str(executable), search_paths=os.get_exec_path(environment))
@@ -117,7 +109,7 @@ class CodexAppServer:
         def receive_error(line: str) -> None:
             self.stderr.append(line)
 
-        environment = native_environment(self.environment)
+        environment = inherited(self.environment)
         command = native_command(self.executable, environment)
         running = command(
             *self.arguments,

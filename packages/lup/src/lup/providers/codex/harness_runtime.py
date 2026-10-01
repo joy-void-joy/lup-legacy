@@ -16,7 +16,8 @@ from pydantic import BaseModel, Field
 from lup.channels.models import write_atomic
 from lup.execution.locks import exclusive
 from lup.providers.codex.login import CODEX_LOGIN
-from lup.providers.codex.app_server import native_command, native_environment
+from lup.providers.codex.app_server import native_command
+from lup.harness.environment import inherited
 from lup.harness.contracts import CapabilityProbe
 from lup.harness.models import CapabilityEvidence
 from lup.types import EnvVars
@@ -61,7 +62,9 @@ class CodexCliEvidence(BaseModel, frozen=True):
 
 
 class PluginCacheConfig(BaseModel, frozen=True):
-    codex_home: Path = Field(default_factory=lambda: Path.home() / ".codex")
+    codex_home: Path = Field(
+        default_factory=lambda: CODEX_LOGIN.selected_home(inherited())
+    )
     # Required for explicit shared homes and for a stable installed-cache path.
     marketplace: str
     plugin: str = "lup"
@@ -427,7 +430,7 @@ class CodexPluginInstaller:
         """Environment shared by every Codex plugin lifecycle command."""
         self.config.codex_home.mkdir(parents=True, exist_ok=True)
         return {
-            **native_environment(self.environment),
+            **inherited(self.environment),
             **CODEX_LOGIN.environment(self.config.codex_home),
         }
 

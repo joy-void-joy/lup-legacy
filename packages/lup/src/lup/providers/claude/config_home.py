@@ -23,13 +23,13 @@ repository, and to nothing else it happens to open a session in.
 """
 
 import json
-import os
 from pathlib import Path
 
 from pydantic import BaseModel, field_validator
 
 from lup.providers.claude.login import CLAUDE_LOGIN
 from lup.channels.models import write_atomic
+from lup.harness.environment import inherited
 from lup.providers.session_home import SessionHomeLayout, SessionHomes
 from lup.types import EnvVars, JsonObject, JsonValue
 
@@ -224,9 +224,7 @@ def session_config_home(environment: EnvVars) -> Path:
     calling process happens to name — which is all the SDK's own readers
     consult.
     """
-    # lup: ignore[os-environ] — what a spawned session inherits
-    inherited = dict(os.environ)
-    return selected_config_home({**inherited, **environment}).directory
+    return selected_config_home(inherited(environment)).directory
 
 
 def load_document(path: Path) -> JsonObject:
