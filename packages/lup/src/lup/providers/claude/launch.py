@@ -585,9 +585,12 @@ def claude_arguments(
         ],
         # What this runtime shows in its own chrome, made to agree with the
         # name the roster answers to; ahead of ``words``, so a person who
-        # named their own session still wins.
-        "--name",
-        member.cli_name,
+        # named their own session still wins. Left off a reopened
+        # conversation, which keeps the title it last had: naming it after
+        # the worktree again would throw that away, and the roster takes the
+        # kept title up at the session's first prompt instead, the way it
+        # takes up a `/rename`.
+        *(["--name", member.cli_name] if config.resume is None else []),
         *(["--messaging-socket-path", wake_socket] if wake_socket is not None else []),
         *words,
     ]

@@ -46,6 +46,37 @@ own sandbox into a protected path (#531); and a write through a hard link,
 or a link the same line makes, still lands on the file it links to unasked
 (#532).
 
+### What a session's tools did, and whether its transcript holds, have readers
+
+- `uv run lup-devtools tools metrics` shows each tool's calls, errors, error
+  rate and average, fastest and slowest call, per server, over the sessions
+  launched in this checkout — or one session opened in process with
+  `--session`, one launched session with `--member <roster id>`, the
+  processes that recorded a call after a moment with `--since`, the report
+  whole with `--json`.
+- Every tool-server process writes those metrics to a snapshot of its own
+  under its session directory's `metrics/`. The one `metrics.json` every
+  process used to overwrite held whichever of a session's servers wrote
+  last, and nothing read it; it is no longer written, and an old one can be
+  deleted. The directory keeps 30 days and at most 1000 snapshots, pruned as
+  each server starts.
+- A session opened in process records the same tool metrics whichever
+  backend ran it: where a backend runs its tools in subprocesses, the session
+  result now folds in what they wrote, where it used to record none.
+- `uv run lup-devtools trace verify` checks the hash chain of every launch's
+  transcript (`notes/harness/<runtime>/<run>/observable.jsonl`), or the runs
+  named, says where each breaks and how, and exits 1 on a break.
+  `trace events <run>` reads one record by record, `--kind` to narrow it,
+  with the chain's standing first and a line at the record it breaks on.
+- A launched session's transcript is verified as it closes, Claude's and
+  Codex's alike, and a chain that does not hold is said at the terminal.
+- A transcript no longer restarts its chain mid-file after a record longer
+  than 256 KiB: the writer looked only that far back for the last record,
+  found none whole, and read the file as empty. Transcripts written before this that break
+  that way read in `trace verify` as "a second chain starts at record N".
+- `lup.observability.audit.chain_break` replaces `verify_event_chain`,
+  answering where a chain first fails and why rather than whether.
+
 ### Containers starting at once on one config home no longer tear or drop what the others wrote
 
 Several contained sessions of one repository start on its config volume at
@@ -80,6 +111,25 @@ for Claude Code's own recovery by both programs, each saying so on stderr —
 the settings seed used to replace it with its own keys alone — and the start
 after that recovery seeds it afresh. A volume needs nothing done: the next
 start takes the locks.
+
+### A session is named for its work, and keeps the name it had
+
+A session was called after its worktree — `dev`, `dev-2` — on the roster and
+in Claude Code's own chrome. Wherever a roster is declared, the first prompt
+that says what the work is now starts one model call, on the strongest tier
+at low effort, in a process of its own, so no prompt waits on it. The answer
+renames the roster, numbered past a live session's name, and the runtime
+follows: Claude Code shows it from the next prompt, and Codex names the thread
+through its app-server. `HookSet(session_naming=None)` declines.
+
+A title somebody sets in the runtime wins. A `/rename`, or a reopened
+conversation's own title, is taken up by the roster in a session name's shape
+(`Naming Review` answers as `naming-review`) and left in the runtime exactly
+as typed. `harness claude --continue`, `--resume` and `--session` no longer
+pass `--name`, so the conversation keeps its title; a reopened Codex thread's
+own name is read through `thread/read` and taken up the same way.
+
+`SessionEffort` moves to `lup.types`, beside `ModelTier`; import it from there.
 
 ### The policy reads what these commands do, and a deferral never parks
 

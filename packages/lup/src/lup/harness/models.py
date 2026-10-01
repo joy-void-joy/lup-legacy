@@ -59,7 +59,7 @@ from lup.policy.everyday import CommandFamily
 from lup.policy.shell_rules import RunnerTargetRule, ShellCommandRule
 from lup.policy.vocabulary import default_vocabulary
 from lup.seams import SelectableRule, Selection
-from lup.types import JsonValue, ModelTier, ToolGrant, ToolName
+from lup.types import JsonValue, ModelTier, SessionEffort, ToolGrant, ToolName
 
 if TYPE_CHECKING:
     from lup.harness.contracts import NativeSpellings, PromptRenderer
@@ -1463,6 +1463,74 @@ class SubagentCleanup(BaseModel, frozen=True):
     the same arrangement every other spelling in this declaration has."""
 
 
+class SessionNaming(BaseModel, frozen=True):
+    """A project's decision that a session is named for its work, at its first prompt.
+
+    A session is called after its worktree until something renames it, so
+    every session opened in one checkout answers to the same word with a
+    number on it — and so does the runtime chrome that agrees with the
+    roster. Declaring this registers a hook under the runtime's prompt event:
+    at the first prompt that says what the work is, a model is asked for a
+    short name for it in a process of its own, the roster is renamed to the
+    answer, and the runtime's own name for the session follows. Whatever the
+    roster is renamed to later reaches the runtime the same way, once; a
+    title somebody sets in the runtime wins over the answer, and the roster
+    takes it up.
+
+    Registered only where a roster is declared, since a name is what the
+    roster addresses. On by default: the cost is one model call early in a
+    session, which no prompt waits on, and the gain is every listing,
+    message and resume naming the work rather than the checkout.
+    """
+
+    tier: ModelTier = "strongest"
+    reason: str = ""
+    """Why a tier below the strongest was named, which every such role states."""
+
+    effort: SessionEffort = "low"
+    """How hard the naming model thinks: the lowest rung, since the answer is
+    one line — a label read off a request, with nothing to work out first."""
+
+    instruction: str = (
+        "You name a coding session after the work described by the request "
+        "between <request> markers, which opened the session. Do not carry "
+        "out the request. Answer with a name of two to four lowercase words "
+        "joined by hyphens, specific to the work — what a colleague would call "
+        "the task, not a restatement of the request — or null when the request "
+        "does not say what the work is."
+    )
+    """What the naming model is told; the prompt, quoted, is its whole input."""
+
+    attempts: int = Field(default=3, ge=1)
+    """How many prompts are asked before the default name is left standing."""
+
+    deadline_seconds: float = Field(default=30.0, gt=0)
+    """How long one ask may take before it is killed, and another may start."""
+
+    longest: int = Field(default=48, ge=8)
+    """The longest name taken; a longer answer names nothing."""
+
+    @model_validator(mode="after")
+    def a_hook_has_no_model_to_inherit(self) -> "SessionNaming":
+        """Refuse ``inherit``: a hook asks outside any session whose model it could take."""
+        if self.tier == "inherit":
+            raise ValueError(
+                "session naming asks outside any session, so it has no model to "
+                "inherit; name a tier"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def a_lesser_tier_says_why(self) -> "SessionNaming":
+        """Refuse a tier below the strongest named without the reason it was chosen."""
+        if self.tier in ("balanced", "fast") and not self.reason.strip():
+            raise ValueError(
+                f"session naming names the {self.tier!r} tier without a reason; "
+                "say why it asks below the strongest, or leave the tier unset"
+            )
+        return self
+
+
 class HookSandbox(BaseModel, frozen=True):
     """OS sandbox declaration compiled into native settings and launchers.
 
@@ -1662,6 +1730,19 @@ class HookSet(BaseModel, frozen=True):
             "and refused once at the stop that hands its report back while "
             "any of it is still listed. None declines, and leaves a "
             "subagent's leftovers to whoever notices them"
+        ),
+    )
+    session_naming: SessionNaming | None = Field(
+        default=SessionNaming(),
+        description=(
+            "Whether a session is named for its work at its first prompt: a "
+            "model is asked for a short name without holding the prompt, the "
+            "roster is renamed to it, and the runtime's own name for the "
+            "session follows, as it follows every later rename of the roster; "
+            "a title somebody sets in the runtime wins, and the roster takes it "
+            "up. Registered only where a roster is declared. None declines, and "
+            "leaves every session called after its worktree until somebody "
+            "renames it"
         ),
     )
     peer_policy: PeerPolicy | None = Field(

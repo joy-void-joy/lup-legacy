@@ -45,8 +45,7 @@ from lup.channels.models import write_atomic
 from lup.harness.models import NativeName
 from lup.launch.declaration import OuterContainer
 from lup.providers.claude.theme import ClaudeTheme
-from lup.providers.catalog import SessionEffort
-from lup.types import JsonObject, JsonValue, ModelTier
+from lup.types import JsonObject, JsonValue, ModelTier, SessionEffort
 
 
 class UserTheme(BaseModel, frozen=True, extra="forbid"):
