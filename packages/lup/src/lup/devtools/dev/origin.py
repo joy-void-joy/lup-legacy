@@ -48,6 +48,7 @@ from lup.harness.credential import (
     resolved_host,
     same_repository,
 )
+from lup.policy.kernel.diagnostic import devtools, spelled
 from lup.types import StringMap
 
 
@@ -137,11 +138,19 @@ def point_at_template(root: Path, name: str, dry_run: bool) -> bool:
         return True
     pinned = sync.pinned_source(name, root)
     if pinned is not None:
+        repoint = devtools(
+            "dev",
+            "library",
+            "git",
+            "--url",
+            found.repository,
+            f"--{pinned.ref_kind}",
+            pinned.ref,
+        )
         typer.echo(
             f"'{name}' follows the git pin in pyproject.toml, which names "
             f"{pinned.url}; this repository was generated from "
-            f"{found.repository}. To build on it: uv run lup-devtools dev "
-            f"library git --url {found.repository} --{pinned.ref_kind} {pinned.ref}"
+            f"{found.repository}. To build on it: {spelled(repoint)}"
         )
         return False
     declared = sync.load_json(root / "sync.json")
@@ -566,8 +575,8 @@ def report_base(
         report(
             f"This repository was generated from {template.repository}, while "
             f"'{name}' means {registered or 'nothing'}. The base is a commit of "
-            "the template, so point the registration at it first: uv run "
-            "lup-devtools dev init upstream"
+            "the template, so point the registration at it first: "
+            f"{spelled(devtools('dev', 'init', 'upstream'))}"
         )
         return False
     if template.unanswered:

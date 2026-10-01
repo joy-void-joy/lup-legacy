@@ -14,10 +14,10 @@ import json
 from pathlib import Path
 
 import pytest
-import typer
 from pydantic import ValidationError
 
 import lup.devtools.dev.library as library
+from lup.devtools.utils import Refusal
 from lup.execution.shell import git
 from lup.types import JsonValue
 
@@ -207,8 +207,9 @@ def test_a_command_line_may_name_one_ref_and_no_more() -> None:
     # No ref named at all falls back to the repository's default branch.
     assert library.git_source("u").ref == "main"
 
-    with pytest.raises(typer.BadParameter, match="--branch and --tag"):
+    with pytest.raises(Refusal) as refused:
         library.git_source("u", branch="dev", tag="v1")
+    assert refused.value.said["what"] == "--branch and --tag"
 
 
 def test_git_mode_needs_somewhere_to_resolve_from(project: Path) -> None:
@@ -235,8 +236,9 @@ def test_restating_a_settled_mode_changes_nothing(project: Path) -> None:
 def test_vendoring_without_a_package_present_is_refused(tmp_path: Path) -> None:
     (tmp_path / "pyproject.toml").write_text(VENDORED_PYPROJECT, encoding="utf-8")
 
-    with pytest.raises(typer.BadParameter, match="no library to vendor"):
+    with pytest.raises(Refusal) as refused:
         library.set_mode(tmp_path, library.LibraryMode.LOCAL)
+    assert "no library to vendor" in refused.value.said["why"]
 
 
 def test_a_dry_run_reports_without_writing(project: Path) -> None:
@@ -253,8 +255,9 @@ def test_a_dry_run_reports_without_writing(project: Path) -> None:
 def test_an_unrenamed_template_refuses_to_un_vendor(project: Path) -> None:
     (project / "src" / "lup_template").mkdir(parents=True)
 
-    with pytest.raises(typer.BadParameter, match="template itself"):
+    with pytest.raises(Refusal) as refused:
         library.guard_leaving_local(project, force=False)
+    assert "template itself" in refused.value.said["why"]
 
     library.guard_leaving_local(project, force=True)
 
@@ -318,8 +321,9 @@ def test_the_consuming_origin_never_becomes_the_dependency_source(
 ) -> None:
     git("init", "--quiet", str(project))
     git("-C", str(project), "remote", "add", "origin", "https://forge.example/acme/app")
-    with pytest.raises(typer.BadParameter, match="Pass --url"):
+    with pytest.raises(Refusal) as refused:
         library.repository_url(project)
+    assert "--url" in refused.value.said["steps"][0]["run"]
     assert library.library_trackers(project) == []
 
 

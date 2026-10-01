@@ -12,6 +12,7 @@ project generating one native tree is not offered a launcher for the other.
 """
 
 import os
+from collections.abc import Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated
@@ -57,22 +58,27 @@ from lup.harness.requirements import Manifest
 from lup.providers.profiles import ProfileDirectory
 from lup.providers.runtime_homes import runtime_logins
 from lup.devtools.harness.drift import RepositoryWriter
+from lup.devtools.utils import refuse
+from lup.policy.kernel.diagnostic import devtools, step
 from lup.workspace.paths import project_root
 from lup.policy.assets.host import boundary_description
 from lup.sandbox.models import NetworkMode
 from lup.sandbox.observed import unheld
 
 
-def refuse_inside_a_container(command: str, because: str) -> None:
-    """Stop a command whose answer is the host's, where it runs inside a session's container."""
+def refuse_inside_a_container(command: Sequence[str], because: str) -> None:
+    """Stop a command whose answer is the host's, where it runs inside a session's container.
+
+    ``command`` is the command's words after ``lup-devtools``, which the way
+    through runs on the host.
+    """
     # lup: ignore[os-environ] — the process's own placement hint is what is read
     if inside_a_container(dict(os.environ)):
-        typer.echo(
-            f"This runs inside a lup container, where {because}. Run it from a "
-            f"terminal on the host: `uv run lup-devtools {command}`.",
-            err=True,
+        refuse(
+            f"runs inside a lup container here, where {because}",
+            what=" ".join(command),
+            steps=[step("run it from a terminal on the host", devtools(*command))],
         )
-        raise typer.Exit(1)
 
 
 def create_harness_app(
@@ -242,7 +248,7 @@ def create_harness_app(
         `harness binds` to check from inside that the read-only binds hold.
         """
         refuse_inside_a_container(
-            "harness requirements",
+            ["harness", "requirements"],
             "the host's checks would take the container for the host and "
             "--inside cannot start one",
         )
@@ -331,13 +337,11 @@ def create_harness_app(
         if not missing:
             typer.echo(f"All {len(expected)} read-only binds are in place.")
             return
-        typer.echo(
-            "Not mounted read-only any more, so writable from this session: "
-            + ", ".join(missing)
-            + ". Relaunch the session to restore them.",
-            err=True,
+        refuse(
+            "not mounted read-only any more, so writable from this session",
+            what=", ".join(missing),
+            steps=[step("relaunch the session to restore them")],
         )
-        raise typer.Exit(1)
 
     @app.command("sandbox-check")
     def sandbox_check_command(
@@ -521,8 +525,11 @@ def create_harness_app(
         source = (mode.targets_at(allowance) if mode is not None else None) or targets
         build = source.builder(runtime)
         if build is None:
-            named = f"--mode {mode.name} " if mode is not None else ""
-            raise typer.BadParameter(f"{named}declares no {runtime} tree")
+            refuse(
+                f"declares no {runtime} tree",
+                what=f"--mode {mode.name}" if mode is not None else "this project",
+                code=2,
+            )
         return build(project_root(), every_rule_retired() if relaxed else None)
 
     def companion_targets(
@@ -806,7 +813,7 @@ def create_harness_app(
             checkout is left for a merge by hand.
             """
             refuse_inside_a_container(
-                "harness codex-home migrate",
+                ["harness", "codex-home", "migrate"],
                 "lup's state is the container's own rather than the host's",
             )
             moved = launch.move_checkout_codex_homes(dry_run)

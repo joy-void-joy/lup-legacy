@@ -30,8 +30,9 @@ from lup.devtools.dev.scaffold_fit import (
     strided,
     surveyed,
 )
-from lup.devtools.utils import short_sha
+from lup.devtools.utils import Refusal, short_sha
 from lup.execution.shell import git
+from lup.policy.kernel.diagnostic import rendered
 from tests.unit.test_ledger_placement import committed
 from tests.unit.test_scaffold import (
     PACKAGE,
@@ -207,15 +208,16 @@ def test_a_base_equal_to_the_resolved_pin_is_refused_before_anything_is_rooted(
     pinned_at(adopter, head)
     adopting(monkeypatch, upstream)
 
-    with pytest.raises(typer.BadParameter) as refusal:
+    with pytest.raises(Refusal) as refusal:
         update.adopted(adopter, SOURCE, PACKAGE, head, print)
 
-    said = str(refusal.value)
+    said = rendered(refusal.value.said)
     assert "is the commit the library pin already resolves to" in said
     assert "0 fast-forwarded, 0 merged clean, 0 conflicted" in said
     stamped = measured(adopter, upstream, SOURCE, PACKAGE, base)
     assert f"{short_sha(base)} (the scaffold) reads {stamped.spelled()}" in said
-    assert f"`{restated(measured(adopter, upstream, SOURCE, PACKAGE, head))}`" in said
+    anyway = refusal.value.said["steps"][-1]["run"]
+    assert anyway[-2:] == restated(measured(adopter, upstream, SOURCE, PACKAGE, head))
     assert branch_head(adopter, SOURCE.branch) == ""
 
 
@@ -262,10 +264,10 @@ def test_a_base_the_measurement_argues_against_is_refused_and_answerable(
     head = upstream_moved_on(upstream)
     adopting(monkeypatch, upstream)
 
-    with pytest.raises(typer.BadParameter) as refusal:
+    with pytest.raises(Refusal) as refusal:
         update.adopted(adopter, SOURCE, PACKAGE, head, print)
 
-    said = str(refusal.value)
+    said = rendered(refusal.value.said)
     assert "fits this checkout poorly" in said
     stamped = measured(adopter, upstream, SOURCE, PACKAGE, base)
     assert f"{short_sha(base)} (the scaffold) reads {stamped.spelled()}" in said
@@ -289,12 +291,13 @@ def test_an_accepted_fit_that_misstates_the_reading_is_refused(
     reads = measured(adopter, upstream, SOURCE, PACKAGE, head)
     misstated = reads.identical + 1
 
-    with pytest.raises(typer.BadParameter) as refusal:
+    with pytest.raises(Refusal) as refusal:
         update.adopted(adopter, SOURCE, PACKAGE, head, print, misstated)
 
-    said = str(refusal.value)
-    assert f"--accept-fit {misstated} is not what this base reads" in said
-    assert f"`{restated(reads)}`" in said
+    said = refusal.value.said
+    assert said["what"] == f"--accept-fit {misstated}"
+    assert said["why"].startswith("is not what this base reads")
+    assert said["steps"][-1]["run"][-2:] == restated(reads)
     assert branch_head(adopter, SOURCE.branch) == ""
 
 
@@ -306,10 +309,13 @@ def test_a_base_naming_no_commit_is_refused_by_the_clone_that_would_compile_it(
     adopter = adopter_from(tmp_path, upstream, base)
     adopting(monkeypatch, upstream)
 
-    with pytest.raises(typer.BadParameter) as refusal:
+    with pytest.raises(Refusal) as refusal:
         update.adopted(adopter, SOURCE, PACKAGE, "v0.2.0", print)
 
-    assert "names no commit in this project's upstream clone" in str(refusal.value)
+    assert refusal.value.said["what"] == "v0.2.0"
+    assert (
+        "names no commit in this project's upstream clone" in refusal.value.said["why"]
+    )
 
 
 def test_an_adoption_over_a_staged_change_is_refused_before_it_fetches(
@@ -326,10 +332,10 @@ def test_an_adoption_over_a_staged_change_is_refused_before_it_fetches(
 
     monkeypatch.setattr(update, "upstream_checkout", unreached)
 
-    with pytest.raises(typer.BadParameter) as refusal:
+    with pytest.raises(Refusal) as refusal:
         update.adopted(adopter, SOURCE, PACKAGE, base, print)
 
-    assert "Commit them first" in str(refusal.value)
+    assert "commit them first" in [said["says"] for said in refusal.value.said["steps"]]
     assert branch_head(adopter, SOURCE.branch) == ""
 
 

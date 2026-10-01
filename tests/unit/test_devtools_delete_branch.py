@@ -17,6 +17,7 @@ import sh
 import typer
 
 from lup.devtools.dev import branches
+from lup.devtools.utils import Refusal
 from tests.unit.repos import commit_file, initialized_repo
 
 
@@ -107,7 +108,7 @@ def test_forcing_does_not_lift_a_lock(
     sh.Command("git")("-C", str(repo), "worktree", "lock", str(repo.parent / "feature"))
     monkeypatch.chdir(repo)
 
-    with pytest.raises(typer.Exit):
+    with pytest.raises(Refusal) as refused:
         branches.delete_branch("feature", dry_run=False, force=True)
 
     assert (repo.parent / "feature").exists()
@@ -117,9 +118,10 @@ def test_forcing_does_not_lift_a_lock(
     # the dirt carries the run as far as the destructive step, where the lock
     # stops it with the branch half-judged.
     err = capsys.readouterr().err
-    assert "Refusing to delete feature" in err
+    assert refused.value.said["what"] == "feature"
+    assert "nothing was deleted" in refused.value.said["why"]
     assert "worktree removal failed" not in err
-    assert "Use --force to override." not in err
+    assert refused.value.said["steps"] == []
 
 
 def test_the_lock_reason_reaches_the_refusal(
@@ -147,7 +149,7 @@ def test_without_force_a_dirty_worktree_survives(
     repo: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     monkeypatch.chdir(repo)
-    with pytest.raises(typer.Exit):
+    with pytest.raises(Refusal) as refused:
         branches.delete_branch("feature", dry_run=False, force=False)
 
     assert "feature" in branch_names(repo)
@@ -157,7 +159,8 @@ def test_without_force_a_dirty_worktree_survives(
     # The refusal precedes the removal rather than reporting it after the fact:
     # the destructive step is never attempted, so there is nothing to warn about.
     err = capsys.readouterr().err
-    assert "Refusing to delete feature" in err
+    assert refused.value.said["what"] == "feature"
+    assert "nothing was deleted" in refused.value.said["why"]
     assert "worktree removal failed" not in err
 
 

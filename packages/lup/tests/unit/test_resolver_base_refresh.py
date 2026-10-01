@@ -10,9 +10,9 @@ does with three shapes of moved branch.
 from pathlib import Path
 
 import pytest
-import typer
 
 from lup.devtools.harness import resolve
+from lup.devtools.utils import Refusal
 from lup.harness.models import ResolveSpec, SkillInvocation
 from lup.harness.process import LaunchRequest, LocalProcessLauncher
 from lup.resolver.record import Journal, LeaseRefreshedEvent
@@ -445,8 +445,10 @@ def test_the_console_refresh_reports_the_move_and_each_lease(
         patch.setattr(resolve, "project_root", lambda: repository.root)
         resolve.refresh_run(run_id="run-1", apply=False, base="")
         reported = capsys.readouterr().out
-        with pytest.raises(typer.BadParameter, match="no resolver run"):
+        with pytest.raises(Refusal) as refused:
             resolve.refresh_run(run_id="ghost", apply=False, base="")
+
+    assert "names no resolver run" in refused.value.said["why"]
 
     assert "base would move onto dev" in reported
     assert "alpha: conflicts on a.py" in reported

@@ -34,7 +34,9 @@ import typer
 
 from lup.devtools.dev.worktree import sync_dependencies
 from lup.devtools.launcher import ENVIRONMENT_VARIABLE
+from lup.devtools.utils import refuse
 from lup.policy.assets.host import project_environment
+from lup.policy.kernel.diagnostic import devtools, spelled, step
 from lup.workspace.paths import project_root
 
 
@@ -98,25 +100,6 @@ def foreign_installs(root: Path, environment: Path) -> list[Path]:
     ]
 
 
-def borrowed_report(root: Path, environment: Path, owners: list[Path]) -> list[str]:
-    """What to say about an environment another project is installed in.
-
-    Names the variable as well as the directory, because the directory is the
-    symptom and the variable is the decision. Whoever reads this can act on
-    the second and can only be puzzled by the first.
-    """
-    return [
-        f"{environment} currently holds another project: "
-        + ", ".join(str(owner) for owner in owners),
-        f"Syncing {root} into it would uninstall theirs, which is what "
-        "`uv sync` means rather than a failure it could report.",
-        f"An absolute {ENVIRONMENT_VARIABLE} names one directory for every "
-        "project on this machine. Unset it and each checkout gets its own "
-        "`.venv`, or give it a relative value, which `uv` resolves against "
-        "whichever project it is running in.",
-    ]
-
-
 def environment_status(root: Path | None = None) -> None:
     """Report where this project's environment is and who is installed in it."""
     where = project_root() if root is None else root
@@ -124,7 +107,10 @@ def environment_status(root: Path | None = None) -> None:
     typer.echo(f"project:     {where}")
     typer.echo(f"environment: {environment}")
     if not environment.is_dir():
-        typer.echo("             not built yet — run `dev env sync`")
+        typer.echo(
+            "             not built yet — run "
+            f"`{spelled(devtools('dev', 'env', 'sync'))}`"
+        )
         return
     installed = installed_from(environment)
     for source in installed:
@@ -145,18 +131,37 @@ def sync_environment(take_over: bool = False, root: Path | None = None) -> None:
     question. Somebody moving between two projects that share an environment
     is doing exactly what the configuration says to do, and has to be able to
     say so without editing their shell mid-task.
+
+    The refusal names the variable as well as the directory, because the
+    directory is the symptom and the variable is the decision. Whoever reads
+    it can act on the second and can only be puzzled by the first.
     """
     where = project_root() if root is None else root
     environment = project_environment(where)
     owners = foreign_installs(where, environment) if environment.is_dir() else []
     if owners and not take_over:
-        for line in borrowed_report(where, environment, owners):
-            typer.echo(line, err=True)
-        typer.echo(
-            "Re-run with --take-over to sync anyway, which uninstalls theirs.",
-            err=True,
+        refuse(
+            "currently holds another project, "
+            + ", ".join(str(owner) for owner in owners)
+            + f", and syncing {where} into it would uninstall theirs, which is "
+            "what uv sync means rather than a failure it could report",
+            what=str(environment),
+            steps=[
+                step(
+                    f"unset {ENVIRONMENT_VARIABLE}, whose absolute value names one "
+                    "directory for every project on this machine, so each checkout "
+                    "gets its own .venv"
+                ),
+                step(
+                    f"or give {ENVIRONMENT_VARIABLE} a relative value, which uv "
+                    "resolves against whichever project it is running in"
+                ),
+                step(
+                    "or sync anyway, uninstalling theirs",
+                    devtools("dev", "env", "sync", "--take-over"),
+                ),
+            ],
         )
-        raise typer.Exit(1)
     if owners:
         typer.echo(f"Taking {environment} over from {len(owners)} other project(s).")
     typer.echo(f"Syncing {environment}...")

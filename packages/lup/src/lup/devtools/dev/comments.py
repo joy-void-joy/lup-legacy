@@ -38,8 +38,9 @@ from lup.harness.codescan.markers import (
     scan_mode_for,
 )
 from lup.devtools.dev.tracked import tracked_files
-from lup.devtools.utils import decode_stderr, output_json
+from lup.devtools.utils import decode_stderr, output_json, refuse
 from lup.execution.shell import git
+from lup.policy.kernel.diagnostic import devtools, step
 
 
 class FoundComment(MarkerComment):
@@ -156,14 +157,15 @@ def clear_markers(targets: list[str], *, wake: bool = False) -> None:
     """
     branch = git.out("rev-parse", "--abbrev-ref", "HEAD")
     if not branch.startswith("resolve/"):
-        typer.echo(
-            f"Refusing to clear markers: HEAD is '{branch}', not a resolve/* "
-            "branch. Markers are stripped only inside a disposable resolve "
-            "worktree; on a real checkout, edit the note (which prompts) or "
-            "merge a resolve branch.",
-            err=True,
+        refuse(
+            "is checked out, not a resolve/* branch, and markers are cleared only "
+            "inside a disposable resolve worktree",
+            what=branch,
+            steps=[
+                step("on a real checkout, edit the note, which prompts"),
+                step("or merge a resolve branch"),
+            ],
         )
-        raise typer.Exit(1)
 
     for rel, wanted in targets_by_file(targets).items():
         path = Path(rel)
@@ -205,18 +207,31 @@ def withdraw_notes(targets: list[str], reason: str) -> None:
     """
     wanted = targets_by_file(targets)
     if not wanted:
-        typer.echo("Name the notes to withdraw as file:line", err=True)
-        raise typer.Exit(2)
+        refuse(
+            "no notes are named to withdraw",
+            steps=[
+                step(
+                    "name each as file:line",
+                    devtools(
+                        "dev",
+                        "comments",
+                        "--withdraw",
+                        "<file>:<line>",
+                        "--reason",
+                        "<why>",
+                    ),
+                )
+            ],
+            code=2,
+        )
     dirty = [rel for rel in wanted if git.out("diff", "--", rel).strip()]
     if dirty:
-        typer.echo(
-            "Refusing to withdraw: uncommitted changes in "
-            f"{', '.join(sorted(dirty))}. A withdrawal is committed by itself "
-            "so its reason stays attached to the note it removed — commit or "
-            "stash the other work first.",
-            err=True,
+        refuse(
+            "hold uncommitted changes, and a withdrawal is committed by itself so "
+            "its reason stays attached to the note it removed",
+            what=", ".join(sorted(dirty)),
+            steps=[step("commit or stash the other work first")],
         )
-        raise typer.Exit(1)
 
     withdrawn: list[str] = []
     for rel, lines in wanted.items():

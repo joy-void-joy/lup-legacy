@@ -81,6 +81,7 @@ from lup.devtools.review.notifications import (
 )
 from lup.devtools.review.preimages import PreimageWatch
 from lup.devtools.review.thread import ReviewThread, spoken_on
+from lup.devtools.utils import refuse
 from lup.launch.companions import lent_directory
 from lup.policy.relay import (
     LineComment,
@@ -1102,8 +1103,7 @@ def create_operator_dashboard_app(root: Path) -> typer.Typer:
             refuse_inside_a_session(f"dashboard {verb}")
             action()
         except (PermissionError, LookupError) as refusal:
-            typer.echo(str(refusal), err=True)
-            raise typer.Exit(2) from refusal
+            refuse(str(refusal), code=2)
 
     def announced(addresses: list[str], declared: DeclaredOrigins) -> None:
         """Print each launch address, then what to hear of the declared origins."""

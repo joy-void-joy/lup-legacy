@@ -30,13 +30,14 @@ from lup.devtools.dev.conflict_app import create_conflict_app
 from lup.devtools.dev.declarations import DevDeclarations
 from lup.devtools.harness.launch import relocation_hint
 from lup.harness.process import LocalProcessLauncher
+from lup.policy.kernel.diagnostic import devtools, step
 from lup.policy.vocabulary import protected_branches
 from lup.workspace.paths import project_root
 from lup.devtools.git.prepare import prepare
 from lup.devtools.git.settle import settle
 from lup.devtools.entrypoint import in_process
 from lup.devtools.launcher import console_script
-from lup.devtools.utils import decode_stderr
+from lup.devtools.utils import decode_stderr, refuse
 
 
 def create_git_app(declared: Callable[[], DevDeclarations]) -> typer.Typer:
@@ -306,12 +307,16 @@ def create_git_app(declared: Callable[[], DevDeclarations]) -> typer.Typer:
         root = project_root()
         launcher = console_script(root)
         if launcher is None:
-            typer.echo(
-                "This checkout's environment is not synced, so the merge was not "
-                "settled: regenerate and commit what it writes by hand.",
-                err=True,
+            refuse(
+                "this checkout's environment is not synced, so the merge was not"
+                " settled",
+                steps=[
+                    step(
+                        "regenerate, then commit what it writes by hand",
+                        devtools("harness", "generate", "all"),
+                    )
+                ],
             )
-            raise typer.Exit(1)
 
         def regenerate() -> None:
             sh.Command(str(launcher))("harness", "generate", "all", _cwd=str(root))
@@ -319,12 +324,15 @@ def create_git_app(declared: Callable[[], DevDeclarations]) -> typer.Typer:
         try:
             settled = settle(root, regenerate)
         except sh.ErrorReturnCode as error:
-            typer.echo(
-                "The merge was not settled, so its generated trees may be stale: "
-                f"{decode_stderr(error).strip()}",
-                err=True,
+            refuse(
+                "the merge was not settled, so its generated trees may be stale:"
+                f" {decode_stderr(error).strip()}",
+                steps=[
+                    step(
+                        "settle it again once that is fixed", devtools("git", "settle")
+                    )
+                ],
             )
-            raise typer.Exit(1) from error
         if settled is not None:
             typer.echo(settled.report())
 
@@ -417,24 +425,45 @@ def create_git_app(declared: Callable[[], DevDeclarations]) -> typer.Typer:
         blocked = git_guards_mod.blocked_arming(guards, root)
         if blocked:
             typer.echo(blocked, err=True)
-            raise typer.Exit(1)
+            refuse("the hooks cannot be armed from this session")
         try:
             installed = git_guards_mod.install_guards(guards, root, force=force)
         except git_guards_mod.GuardConflict as error:
-            typer.echo(str(error), err=True)
-            raise typer.Exit(1) from error
+            refuse(
+                str(error),
+                steps=[
+                    step(
+                        "replace it once you have read it",
+                        devtools("git", "hooks", "install", "--force"),
+                    )
+                ],
+            )
         except OSError as error:
             # One clone's hooks directory is shared by every worktree cut from
             # it and sits outside all of them, so a sandbox confining writes to
             # the checkout refuses this — as an errno naming a path, which says
             # nothing about hooks to whoever reads it out of a traceback.
-            typer.echo(
-                f"the hooks could not be written: {error}. Where this session "
-                "cannot write them, run "
-                f"`{git_guards_mod.host_install(root)}` from a terminal on the host.",
-                err=True,
+            refuse(
+                f"the hooks could not be written: {error}",
+                steps=[
+                    step(
+                        "where this session cannot write them, install them from a"
+                        " terminal on the host",
+                        devtools(
+                            "git",
+                            "hooks",
+                            "install",
+                            program=(
+                                "uv",
+                                "run",
+                                "--directory",
+                                str(root),
+                                "lup-devtools",
+                            ),
+                        ),
+                    )
+                ],
             )
-            raise typer.Exit(1) from error
         for state in installed:
             typer.echo(state.describe())
 
@@ -548,8 +577,10 @@ def create_git_app(declared: Callable[[], DevDeclarations]) -> typer.Typer:
         root = project_root()
         launcher = console_script(root)
         if launcher is None:
-            raise typer.BadParameter(
-                "Sync this checkout's environment before preparing it."
+            refuse(
+                "this checkout's environment is not synced, so it cannot be prepared",
+                steps=[step("sync it, then prepare it again", ["uv", "sync"])],
+                code=2,
             )
 
         def regenerate() -> None:
@@ -558,8 +589,7 @@ def create_git_app(declared: Callable[[], DevDeclarations]) -> typer.Typer:
         try:
             result = prepare(base, root, regenerate)
         except (RuntimeError, sh.ErrorReturnCode) as error:
-            typer.echo(str(error), err=True)
-            raise typer.Exit(1) from error
+            refuse(str(error))
         typer.echo(
             result.model_dump_json()
             if as_json

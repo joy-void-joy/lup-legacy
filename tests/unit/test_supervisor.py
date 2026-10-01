@@ -18,7 +18,6 @@ from pathlib import Path
 from typing import get_args
 
 import pytest
-import typer
 from httpx import ASGITransport, AsyncClient
 
 from lup.providers.harness import AdapterName
@@ -49,6 +48,7 @@ from lup.resolver.state import ResolverStateRepository
 from lup.devtools.supervisor import doors
 from lup.devtools.supervisor.app import create_supervisor
 from lup.devtools.supervisor.events import stream
+from lup.devtools.utils import Refusal
 from lup.devtools.supervisor.projection import (
     LIVENESS_WINDOW_SECONDS,
     RunIndex,
@@ -539,7 +539,7 @@ def test_a_console_answer_is_refused_before_it_reaches_the_mailbox(
 
     with pytest.MonkeyPatch.context() as patch:
         patch.setattr(doors, "resolve_state_root", lambda: tmp_path)
-        with pytest.raises(typer.BadParameter):
+        with pytest.raises(Refusal):
             doors.answer_questions(pairs=pairs, run_id="run-1")
 
     assert mailbox.offers() == []
@@ -608,8 +608,10 @@ def test_a_message_for_an_actor_nobody_recorded_says_so(
 def test_a_console_door_refuses_a_run_that_was_never_recorded(tmp_path: Path) -> None:
     with pytest.MonkeyPatch.context() as patch:
         patch.setattr(doors, "resolve_state_root", lambda: tmp_path)
-        with pytest.raises(typer.BadParameter, match="no resolver run"):
+        with pytest.raises(Refusal) as refused:
             doors.list_questions(run_id="ghost", pending_only=False)
+
+    assert "names no resolver run" in refused.value.said["why"]
 
 
 async def test_an_unexpected_host_header_is_refused(tmp_path: Path) -> None:

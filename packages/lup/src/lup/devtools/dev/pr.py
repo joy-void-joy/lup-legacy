@@ -39,8 +39,10 @@ from lup.devtools.utils import (
     gh,
     decode_stderr,
     output_json,
+    refuse,
     repository_arguments,
 )
+from lup.policy.kernel.diagnostic import devtools, step
 
 logger = logging.getLogger(__name__)
 
@@ -415,8 +417,10 @@ def status(
             )
         )
     except sh.ErrorReturnCode as e:
-        typer.echo(f"Failed to query PRs via gh: {decode_stderr(e)}", err=True)
-        raise typer.Exit(1)
+        refuse(
+            f"gh could not list its open pull requests: {decode_stderr(e)}",
+            what=branch_name,
+        )
     prs = [GhPrRef.model_validate(row) for row in rows]
 
     if not prs:
@@ -441,10 +445,10 @@ def status(
             )
         )
     except sh.ErrorReturnCode as e:
-        typer.echo(
-            f"Failed to fetch PR #{pr_number} via gh: {decode_stderr(e)}", err=True
+        refuse(
+            f"gh could not read the pull request: {decode_stderr(e)}",
+            what=f"#{pr_number}",
         )
-        raise typer.Exit(1)
 
     reviews = [
         ReviewInfo(
@@ -603,13 +607,17 @@ def merge(
     base_ref = pr_base_ref(pr_number)
     if base_ref and base_ref != integration:
         if not retarget:
-            typer.echo(
-                f"PR #{pr_number} merges into '{base_ref}', not '{integration}': "
-                f"merging now would land the work in that branch instead. "
-                f"Rerun with --retarget to point it at {integration} first.",
-                err=True,
+            refuse(
+                f"merges into {base_ref}, not {integration}, so merging now would"
+                f" land the work in {base_ref}",
+                what=f"#{pr_number}",
+                steps=[
+                    step(
+                        f"point it at {integration} first",
+                        devtools("git", "pr", "merge", str(pr_number), "--retarget"),
+                    )
+                ],
             )
-            raise typer.Exit(1)
         gh("pr", "edit", str(pr_number), *repository_arguments(), "--base", integration)
         typer.echo(f"Retargeted PR #{pr_number}: {base_ref} -> {integration}")
 
@@ -627,8 +635,7 @@ def merge(
         typer.echo(f"Merged PR #{pr_number}")
     except sh.ErrorReturnCode as e:
         if not pr_merged(pr_number):
-            typer.echo(f"Merge failed: {decode_stderr(e)}", err=True)
-            raise typer.Exit(1)
+            refuse(f"gh could not merge it: {decode_stderr(e)}", what=f"#{pr_number}")
         typer.echo(
             f"Merged PR #{pr_number}, but its cleanup did not finish: "
             f"{decode_stderr(e)}",
@@ -695,12 +702,6 @@ def sync_base(
         typer.echo(f"Base branch: {base_branch}", err=True)
 
     if base_source == "guessed":
-        if not as_json:
-            typer.echo(
-                f"Topology alone picked {base_branch}, so nothing is merged."
-                f" Confirm the base, then rerun with --base <branch>.",
-                err=True,
-            )
         output_result(
             SyncBaseResult(
                 feature_branch=feature,
@@ -713,7 +714,16 @@ def sync_base(
             ),
             as_json,
         )
-        raise typer.Exit(1)
+        refuse(
+            "only topology picked this base, so nothing was merged",
+            what=base_branch,
+            steps=[
+                step(
+                    "confirm the base, then name it",
+                    devtools("git", "pr", "sync-base", "--base", "<branch>"),
+                )
+            ],
+        )
 
     base_path = parse_worktrees().get(base_branch)
 
@@ -757,13 +767,22 @@ def sync_base(
             sync_complaint=complaint,
         )
         if not as_json:
-            typer.echo(f"Merge conflicts in {len(conflicts)} file(s):", err=True)
             for f in conflicts:
-                typer.echo(f"  {f}", err=True)
+                typer.echo(f"conflicted: {f}", err=True)
 
     output_result(result, as_json)
     if not result.merged:
-        raise typer.Exit(1)
+        refuse(
+            f"merging it left {len(result.conflicts)} file(s) in conflict",
+            what=base_branch,
+            steps=[
+                step("see the conflicted files", devtools("git", "conflict", "list")),
+                step(
+                    "finish the merge once they are resolved",
+                    devtools("git", "conflict", "complete"),
+                ),
+            ],
+        )
 
 
 def push(
@@ -799,13 +818,16 @@ def push(
     branch_name = current_branch()
     destination = f"refs/heads/{branch_name}:refs/heads/{branch_name}"
     if force and branch_name in protected:
-        typer.echo(
-            f"Refusing to force {branch_name}: other people build on it. "
-            f"`git push --force-with-lease origin {branch_name}` puts the "
-            "question to the user.",
-            err=True,
+        refuse(
+            "other people build on this branch, so it is not forced from here",
+            what=branch_name,
+            steps=[
+                step(
+                    "push it with git, which puts the question to the user",
+                    ["git", "push", "--force-with-lease", "origin", branch_name],
+                )
+            ],
         )
-        raise typer.Exit(1)
 
     complaint = ""
     pushed = False
@@ -818,7 +840,6 @@ def push(
         )
     except sh.ErrorReturnCode as e:
         complaint = decode_stderr(e) or f"git push exited with status {e.exit_code}"
-        typer.echo(f"Push failed: {complaint}", err=True)
 
     existing_pr = None
     try:
@@ -850,7 +871,7 @@ def push(
     )
     output_result(result, as_json)
     if not pushed:
-        raise typer.Exit(1)
+        refuse(f"git could not push it: {complaint}", what=branch_name)
 
 
 class HeadOnRemote(StrEnum):
@@ -930,14 +951,22 @@ def resolve_body(body: str | None, body_file: Path | None) -> str:
     """
     match (body, body_file):
         case (None, None):
-            raise typer.BadParameter("pass --body or --body-file")
+            refuse(
+                "neither was given, and a pull request needs a body",
+                what="--body, --body-file",
+                code=2,
+            )
         case (str(), Path()):
-            raise typer.BadParameter("pass --body or --body-file, not both")
+            refuse(
+                "both were given: pass one of them",
+                what="--body, --body-file",
+                code=2,
+            )
         case (None, Path() as path):
             try:
                 return path.read_text(encoding="utf-8")
             except OSError as e:
-                raise typer.BadParameter(f"cannot read {path}: {e}")
+                refuse(f"cannot be read: {e}", what=str(path), code=2)
         case (str() as text, None):
             return text
 
@@ -981,20 +1010,18 @@ def create(
         )
     except sh.ErrorReturnCode as e:
         complaint = decode_stderr(e)
-        typer.echo(f"Failed to create PR: {complaint}", err=True)
         if diagnosis := creation_diagnosis(head, base, complaint):
             typer.echo(diagnosis, err=True)
-        raise typer.Exit(1)
+        refuse(f"gh could not open a pull request over it: {complaint}", what=head)
 
     url = parse_pr_url(raw)
     if not url:
-        typer.echo(f"PR created but URL not found in output:\n{raw}", err=True)
-        raise typer.Exit(1)
+        typer.echo(raw, err=True)
+        refuse("gh opened a pull request, but its output above names no URL")
 
     number_segment = PurePosixPath(urlparse(url).path).name
     if not number_segment.isdigit():
-        typer.echo(f"PR created at {url} but could not parse number", err=True)
-        raise typer.Exit(1)
+        refuse("gh opened a pull request, but its URL ends in no number", what=url)
 
     result = CreateResult(number=int(number_segment), url=url)
     output_result(result, as_json)
@@ -1011,5 +1038,6 @@ def update(
         gh("pr", "edit", str(pr_number), *repository_arguments(), "--body", body)
         typer.echo(f"Updated PR #{pr_number}")
     except sh.ErrorReturnCode as e:
-        typer.echo(f"Failed to update PR: {decode_stderr(e)}", err=True)
-        raise typer.Exit(1)
+        refuse(
+            f"gh could not update its body: {decode_stderr(e)}", what=f"#{pr_number}"
+        )

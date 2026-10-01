@@ -10,9 +10,10 @@ from collections.abc import Callable
 from pathlib import Path
 
 import pytest
-import typer
 
 from lup.devtools.supervisor import doors
+from lup.devtools.utils import Refusal
+from lup.policy.kernel.diagnostic import rendered
 
 
 @pytest.fixture
@@ -49,13 +50,16 @@ def test_a_door_refuses_a_run_that_does_not_exist(
     It read the journal before anything checked the run was there, so a
     missing directory yielded no actors and that read as a real answer.
     """
-    with pytest.raises(typer.BadParameter, match="no resolver run 'ghost'"):
+    with pytest.raises(Refusal) as refused:
         door()
+
+    assert refused.value.said["what"] == "ghost"
+    assert "names no resolver run" in refused.value.said["why"]
 
 
 def test_the_refusal_names_where_it_looked(elsewhere: Path) -> None:
     """Which is the whole diagnosis when the cause is the wrong directory."""
-    with pytest.raises(typer.BadParameter) as refused:
+    with pytest.raises(Refusal) as refused:
         doors.list_actors(run_id="ghost")
 
-    assert str(elsewhere / ".lup/resolve") in str(refused.value)
+    assert str(elsewhere / ".lup/resolve") in rendered(refused.value.said)

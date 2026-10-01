@@ -36,9 +36,11 @@ from lup.devtools.utils import (
     config_lock_diagnosis,
     decode_stderr,
     format_table,
+    refuse,
     refuse_blocked_config_writes,
     short_sha,
 )
+from lup.policy.kernel.diagnostic import devtools, step
 
 
 class RelocationHint(BaseModel):
@@ -434,7 +436,7 @@ class BranchBase(BaseModel, frozen=True):
 
     Nothing in the arguments separates them, so neither default is right and
     the cost is in guessing rather than in which way one guesses. Where the
-    two answers differ, :meth:`refusal` says so before anything is created
+    two answers differ, :meth:`refuse_guessing` says so before anything is created
     and names both spellings; advice printed after the branch exists is
     advice nobody can act on without an undo.
 
@@ -472,22 +474,42 @@ class BranchBase(BaseModel, frozen=True):
         """The name written as this branch's base, empty where nobody can say."""
         return self.cut_from() or self.current
 
-    def refusal(self) -> str:
-        """Why this base cannot be guessed, empty where it can.
+    def guessed(self) -> bool:
+        """Whether the two bases give different trees and nobody named one."""
+        return not self.named and self.fresh and self.ahead > 0
+
+    def refuse_guessing(self) -> None:
+        """Stop where the base would be a guess, naming both ways to settle it.
 
         Read before the worktree is registered, so whichever of the two the
         caller meant costs them one re-run rather than an undo.
         """
-        if self.named or not self.fresh or not self.ahead:
-            return ""
-        return (
-            f"Cannot tell what {self.branch} should be cut from: this ran in a "
-            f"checkout on {self.current}, which carries {self.ahead} commit(s) "
-            f"{self.integration} does not, so the two bases give different "
-            "trees and nothing here says which one is meant.\n"
-            f"Re-run naming it: --base {self.current} continues that work by "
-            f"stacking on this checkout, --base {self.integration} starts fresh "
-            "from where work lands."
+        if not self.guessed():
+            return
+        refuse(
+            f"this ran in a checkout on {self.current}, which carries"
+            f" {self.ahead} commit(s) {self.integration} does not, so the two"
+            " bases give different trees and nothing says which one is meant",
+            what=self.branch,
+            steps=[
+                step(
+                    "continue that work, stacking on this checkout",
+                    devtools(
+                        "git", "worktree", "create", self.branch, "--base", self.current
+                    ),
+                ),
+                step(
+                    "or start fresh from where work lands",
+                    devtools(
+                        "git",
+                        "worktree",
+                        "create",
+                        self.branch,
+                        "--base",
+                        self.integration,
+                    ),
+                ),
+            ],
         )
 
 
@@ -793,13 +815,15 @@ def finish(steps: Sequence[SetupStep]) -> Iterator[SetupStep]:
     produced nothing leave the same worktree behind, and both are judged by
     what a later run will find rather than by their own account of themselves.
     """
-    for step in steps:
+    for setting in steps:
         try:
-            step.run()
+            setting.run()
         except sh.ErrorReturnCode as e:
-            typer.echo(f"Warning: {step.label()} failed: {decode_stderr(e)}", err=True)
-        if not step.satisfied():
-            yield step
+            typer.echo(
+                f"Warning: {setting.label()} failed: {decode_stderr(e)}", err=True
+            )
+        if not setting.satisfied():
+            yield setting
 
 
 def descends_from(branch: str, base: str) -> bool:
@@ -822,16 +846,29 @@ def register_worktree(name: str, worktree_path: Path, base_branch: str | None) -
     # tree they did not ask for, which is the expensive way to find out. The
     # branch is never moved to answer this: whatever sits on it would go.
     if already_exists and base_branch and not descends_from(name, base_branch):
-        typer.echo(
-            f"{name} already exists and does not descend from {base_branch}, "
-            f"so --base {base_branch} would reach nothing: re-attaching takes "
-            "a branch where it already stands.\n"
-            "Drop --base to re-attach it there, pick a name that does not "
-            f"exist yet to cut a fresh branch from {base_branch}, or move "
-            f"{name} yourself first if discarding what is on it is meant.",
-            err=True,
+        refuse(
+            f"already exists and does not descend from {base_branch}, so"
+            f" --base {base_branch} would reach nothing: re-attaching takes a"
+            " branch where it already stands",
+            what=name,
+            steps=[
+                step(
+                    "re-attach it where it stands",
+                    devtools("git", "worktree", "create", name),
+                ),
+                step(
+                    f"or cut a fresh branch from {base_branch} under a name that"
+                    " does not exist yet",
+                    devtools(
+                        "git", "worktree", "create", "<new-name>", "--base", base_branch
+                    ),
+                ),
+                step(
+                    f"or move {name} yourself first, if discarding what is on it"
+                    " is meant"
+                ),
+            ],
         )
-        raise typer.Exit(1)
 
     if already_exists:
         typer.echo(f"Re-attaching worktree: {worktree_path}")
@@ -849,8 +886,7 @@ def register_worktree(name: str, worktree_path: Path, base_branch: str | None) -
             case _:
                 git("worktree", "add", str(worktree_path), "-b", name)
     except sh.ErrorReturnCode as e:
-        typer.echo(f"Error creating worktree: {decode_stderr(e)}", err=True)
-        raise typer.Exit(1)
+        refuse(f"git could not add the worktree: {decode_stderr(e)}", what=name)
 
 
 def refuse_redirected_pointers() -> None:
@@ -871,8 +907,7 @@ def refuse_redirected_pointers() -> None:
     for notice in trust.notices:
         typer.echo(notice, err=True)
     if trust.refusal:
-        typer.echo(trust.refusal, err=True)
-        raise typer.Exit(1)
+        refuse(trust.refusal)
 
 
 def create(
@@ -933,30 +968,38 @@ def create(
         fresh=not branch_exists(name),
         ahead=commits_ahead(current, integration),
     )
-    contested = base.refusal()
-    if contested:
-        typer.echo(contested, err=True)
-        raise typer.Exit(1)
+    base.refuse_guessing()
     recorded = RecordedBase(branch=name, origin=base.recorded(), cut_fresh=base.fresh)
     if not recorded.origin and not no_record and not recorded.already_recorded():
-        typer.echo(
-            f"Cannot tell what {name} would be cut from: {current_dir} is not on "
-            "a branch, so nothing would be recorded as its base and every later "
-            "reader would have to guess it from topology.\n"
-            "Name it with --base <branch>, or pass --no-record to create the "
-            "worktree with no base recorded.",
-            err=True,
+        refuse(
+            f"{current_dir} is not on a branch, so nothing would be recorded as"
+            " its base and every later reader would have to guess it from"
+            " topology",
+            what=name,
+            steps=[
+                step(
+                    "name the base",
+                    devtools("git", "worktree", "create", name, "--base", "<branch>"),
+                ),
+                step(
+                    "or create it with no base recorded",
+                    devtools("git", "worktree", "create", name, "--no-record"),
+                ),
+            ],
         )
-        raise typer.Exit(1)
 
     if worktree_path.exists() and not resuming:
         if not force:
-            typer.echo(
-                f"Directory exists but is not a registered worktree: {worktree_path}\n"
-                "Re-run with --force to delete it and create the worktree.",
-                err=True,
+            refuse(
+                "the directory exists but is not a registered worktree",
+                what=str(worktree_path),
+                steps=[
+                    step(
+                        "delete it and create the worktree",
+                        devtools("git", "worktree", "create", name, "--force"),
+                    )
+                ],
             )
-            raise typer.Exit(1)
         typer.echo(f"Removing stale worktree directory: {worktree_path}")
         shutil.rmtree(worktree_path)
 
@@ -986,7 +1029,7 @@ def create(
             for workspace in workspaces:
                 yield RestoredWorkspace(worktree=worktree_path, workspace=workspace)
 
-    pending = [step for step in setup() if not step.satisfied()]
+    pending = [setting for setting in setup() if not setting.satisfied()]
 
     if resuming and not pending:
         typer.echo(f"Worktree already active: {worktree_path}")
@@ -995,23 +1038,26 @@ def create(
         typer.echo(f"Worktree exists, but its setup never finished: {worktree_path}")
 
     incomplete = list(finish(pending))
-    unusable = [step for step in incomplete if step.required()]
+    unusable = [setting for setting in incomplete if setting.required()]
 
     typer.echo()
     typer.echo(f"Worktree path: {worktree_path}")
 
-    for step in incomplete:
-        if not step.required():
+    for setting in incomplete:
+        if not setting.required():
             typer.echo(
-                f"Without {step.label()}, which this worktree is usable without."
+                f"Without {setting.label()}, which this worktree is usable without."
             )
 
     if unusable:
         typer.echo("This worktree is not ready — these steps did not complete:")
-        for step in unusable:
-            typer.echo(f"  - {step.label()}")
-        typer.echo("Re-run the same command to finish them.", err=True)
-        raise typer.Exit(1)
+        for setting in unusable:
+            typer.echo(f"  - {setting.label()}")
+        refuse(
+            "its setup did not finish",
+            what=name,
+            steps=[step("run the same command again to finish it")],
+        )
 
     typer.echo("Creating a worktree does not move whoever ran this. To follow it:")
     hint = launcher(worktree_path)
@@ -1131,12 +1177,13 @@ def drop_the_hold(path: Path) -> None:
 def refuse_live_worktree_removal(path: Path) -> None:
     """Recheck ownership immediately before the irreversible removal."""
     if owners := live_worktree_owners(path):
-        typer.echo(
-            f"Refusing to remove {path}: live sessions {', '.join(owners)} use it. "
-            "Wait for their departure; --force does not override live ownership.",
-            err=True,
+        refuse(
+            f"live sessions use it: {', '.join(owners)}",
+            what=str(path),
+            steps=[
+                step("wait for them to leave; --force does not override live ownership")
+            ],
         )
-        raise typer.Exit(1)
 
 
 def said_checkout_state_removed(path: Path) -> None:
@@ -1174,8 +1221,11 @@ def remove(name: str, force: bool) -> None:
         path = tree_dir / name
 
     if not worktree_is_registered(path):
-        typer.echo(f"Not a registered worktree: {path}", err=True)
-        raise typer.Exit(1)
+        refuse(
+            "is not a registered worktree",
+            what=str(path),
+            steps=[step("see the ones there are", devtools("git", "worktree", "list"))],
+        )
 
     try:
         refuse_live_worktree_removal(path)
@@ -1187,7 +1237,17 @@ def remove(name: str, force: bool) -> None:
         typer.echo(f"Removed worktree: {path}")
         said_checkout_state_removed(path)
     except sh.ErrorReturnCode as e:
-        typer.echo(f"Error removing worktree: {attributed_stderr(e)}", err=True)
-        if not force:
-            typer.echo("Use --force to remove even if dirty")
-        raise typer.Exit(1)
+        refuse(
+            f"git could not remove it: {attributed_stderr(e)}",
+            what=str(path),
+            steps=(
+                []
+                if force
+                else [
+                    step(
+                        "remove it even with changes in it",
+                        devtools("git", "worktree", "remove", name, "--force"),
+                    )
+                ]
+            ),
+        )

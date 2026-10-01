@@ -24,6 +24,7 @@ from lup.devtools.dev.branches import (
     settle_base_freshness,
     sync_upstream,
 )
+from lup.devtools.utils import Refusal
 from lup.harness.process import LocalProcessLauncher
 from tests.unit.repos import TEST_IDENTITY, commit_file, initialized_repo
 
@@ -211,8 +212,9 @@ def test_a_run_refuses_to_pin_a_base_nothing_could_read() -> None:
     """The gate a launcher asks about, where there is nobody to ask."""
     unread = BaseFreshness(unreachable="ssh said no")
 
-    with pytest.raises(typer.BadParameter, match="nothing could read"):
+    with pytest.raises(Refusal) as refused:
         require_fresh_base(unread)
+    assert "nothing could read" in refused.value.said["why"]
 
 
 def test_a_checkout_with_no_remote_to_ask_is_not_an_unread_base(
@@ -330,8 +332,11 @@ def test_a_run_refuses_to_pin_a_base_the_remote_has_moved_past() -> None:
     """A run cuts every lease from one base, so it never starts on a stale one."""
     stale = BaseFreshness(base=BaseMeasure(tracked="origin/main", behind=10))
 
-    with pytest.raises(typer.BadParameter, match="git merge origin/main"):
+    with pytest.raises(Refusal) as refused:
         require_fresh_base(stale)
+    assert [way["run"] for way in refused.value.said["steps"]] == [
+        ["git", "merge", "origin/main"]
+    ]
 
 
 class Terminal:

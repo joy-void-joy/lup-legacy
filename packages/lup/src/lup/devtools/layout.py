@@ -8,8 +8,7 @@ rather than a detail of either caller.
 
 from pathlib import Path
 
-import typer
-
+from lup.devtools.utils import refuse
 from lup.workspace.paths import worktrees_directory
 
 
@@ -30,5 +29,7 @@ def get_tree_dir() -> Path:
     """The ``tree/`` directory, or an exit for a command that requires one."""
     if tree := find_tree_dir():
         return tree
-    typer.echo("Error: Could not find tree/ directory", err=True)
-    raise typer.Exit(1)
+    refuse(
+        "no tree/ directory holds this checkout or sits above it, and this command "
+        "keeps sibling worktrees there"
+    )

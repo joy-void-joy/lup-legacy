@@ -38,6 +38,8 @@ from lup.resolver.models import (
 from lup.resolver.state import ResolverStateRepository
 from lup.harness.models import ResolveSpec, SkillInvocation
 from lup.devtools.dev.comments import FoundComment
+from lup.devtools.utils import Refusal
+from lup.policy.kernel.diagnostic import rendered
 from lup.harness.ownership import (
     OWNERSHIP_FILENAME,
     GeneratedArtifacts,
@@ -56,10 +58,10 @@ from lup.devtools.harness.resolve import (
     admission_request,
     chosen_run,
     inert_offers,
-    missing_run_refusal,
     offer_flag_answers,
     parse_answer_flags,
     parse_note_targets,
+    refuse_a_missing_run,
     resolver_intake,
     run_owned,
     scanned_intake,
@@ -158,11 +160,12 @@ def test_an_unfinished_run_is_never_left_behind_silently(tmp_path: Path) -> None
     """
     persisted_run(tmp_path, "resolve-older", ResolvePhase.QUESTIONS)
 
-    with pytest.raises(typer.BadParameter) as refused:
+    with pytest.raises(Refusal) as refused:
         chosen_run(tmp_path, "resolve-fresh", start_new=False, ending=False)
 
-    assert "resolve-older" in str(refused.value)
-    assert "--new" in str(refused.value)
+    said = rendered(refused.value.said)
+    assert "--run-id resolve-older" in said
+    assert "--new" in said
 
 
 def test_a_finished_or_abandoned_run_does_not_stand_in_the_way(
@@ -186,7 +189,7 @@ def test_a_failed_run_still_counts_as_unfinished(tmp_path: Path) -> None:
     """
     persisted_run(tmp_path, "resolve-stumbled", ResolvePhase.FAILED)
 
-    with pytest.raises(typer.BadParameter):
+    with pytest.raises(Refusal):
         chosen_run(tmp_path, "resolve-fresh", start_new=False, ending=False)
 
 
@@ -216,12 +219,13 @@ def test_parse_answer_flags_maps_ids_and_keeps_values_with_equals() -> None:
 
 
 def test_parse_answer_flags_rejects_malformed_and_duplicate_flags() -> None:
-    with pytest.raises(typer.BadParameter):
+    with pytest.raises(Refusal):
         parse_answer_flags(["missing-separator"])
-    with pytest.raises(typer.BadParameter):
+    with pytest.raises(Refusal):
         parse_answer_flags(["=value"])
-    with pytest.raises(typer.BadParameter):
+    with pytest.raises(Refusal) as repeated:
         parse_answer_flags(["q-1=a", "q-1=b"])
+    assert repeated.value.said["what"] == "q-1"
 
 
 def test_flag_answers_become_offers(tmp_path: Path) -> None:
@@ -273,17 +277,18 @@ def test_re_offering_the_settled_value_is_the_no_op_a_rerun_needs(
 
 
 def test_correcting_a_settled_answer_is_refused_rather_than_recorded(
-    tmp_path: Path,
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     """Silence here leased a concern whose design the human had rejected."""
     mailbox = QuestionMailbox(tmp_path)
     settle(mailbox, "q-1", "approve")
 
-    with pytest.raises(typer.BadParameter) as refusal:
+    with pytest.raises(Refusal):
         offer_flag_answers(mailbox, "run-7", {"q-1": "defer"})
 
-    assert "'approve'" in str(refusal.value)
-    assert "'defer'" in str(refusal.value)
+    said = capsys.readouterr().err
+    assert "'approve'" in said
+    assert "'defer'" in said
     assert mailbox.offers() == []
 
 
@@ -293,11 +298,10 @@ def test_every_stale_correction_is_named_by_one_rerun(tmp_path: Path) -> None:
     settle(mailbox, "q-1", "approve")
     settle(mailbox, "q-2", "approve")
 
-    with pytest.raises(typer.BadParameter) as refusal:
+    with pytest.raises(Refusal) as refusal:
         offer_flag_answers(mailbox, "run-7", {"q-1": "defer", "q-2": "defer"})
 
-    assert "q-1" in str(refusal.value)
-    assert "q-2" in str(refusal.value)
+    assert refusal.value.said["what"] == "q-1, q-2"
 
 
 def test_a_still_open_question_keeps_taking_corrections(tmp_path: Path) -> None:
@@ -420,9 +424,9 @@ def test_note_targets_parse_a_path_and_a_line() -> None:
     assert parse_note_targets(["src/module.py:42"]) == [
         NoteTargetRef(file=Path("src/module.py"), line=42)
     ]
-    with pytest.raises(typer.BadParameter):
+    with pytest.raises(Refusal):
         parse_note_targets(["src/module.py"])
-    with pytest.raises(typer.BadParameter):
+    with pytest.raises(Refusal):
         parse_note_targets([":42"])
 
 
@@ -501,7 +505,7 @@ def test_a_detached_seed_does_not_claim_the_run_it_is_about_to_create() -> None:
 
     assert "--admit" in arguments
     # Exactly what the child decides, given exactly what the launcher hands it.
-    assert missing_run_refusal(forwarded_run_id(arguments), "resolve-derived") is None
+    refuse_a_missing_run(forwarded_run_id(arguments), "resolve-derived")
 
 
 def test_a_detached_admission_into_a_run_a_human_named_still_refuses() -> None:
@@ -509,7 +513,8 @@ def test_a_detached_admission_into_a_run_a_human_named_still_refuses() -> None:
     arguments = detached("resolve-typo", admission_flags(["widen the run"]))
 
     assert forwarded_run_id(arguments) == "resolve-typo"
-    assert missing_run_refusal(forwarded_run_id(arguments), "resolve-typo") is not None
+    with pytest.raises(Refusal):
+        refuse_a_missing_run(forwarded_run_id(arguments), "resolve-typo")
 
 
 def test_a_detached_launch_carries_the_evidence_scope_it_was_given() -> None:
@@ -660,7 +665,7 @@ def test_an_admitted_note_carries_the_text_and_context_the_tree_holds() -> None:
 
 def test_an_admitted_note_target_that_names_no_open_note_is_refused() -> None:
     """A deferred note never reaches the actionable set, so it is refused."""
-    with pytest.raises(typer.BadParameter, match="no actionable"):
+    with pytest.raises(Refusal) as refused:
         admission_notes(
             [NoteTargetRef(file=Path("parked.py"), line=2)],
             resolver_intake(
@@ -668,6 +673,8 @@ def test_an_admitted_note_target_that_names_no_open_note_is_refused() -> None:
                 GeneratedArtifacts(by_path={}),
             ).actionable,
         )
+    assert "no actionable" in refused.value.said["why"]
+    assert refused.value.said["what"] == "parked.py:2"
 
 
 OPEN_NOTE = """\
@@ -771,20 +778,21 @@ def test_the_preview_lists_exactly_what_a_run_would_plan_from(
 
 def test_statements_offered_to_no_named_run_seed_one_rather_than_refusing() -> None:
     """An id nobody named was never a claim that the run exists."""
-    assert missing_run_refusal(None, "resolve-abc123def456") is None
+    refuse_a_missing_run(None, "resolve-abc123def456")
 
 
 def test_admitting_into_a_run_named_explicitly_still_refuses_when_it_is_missing() -> (
     None
 ):
     """A typo would otherwise start a second run and lease a worktree each."""
-    refusal = missing_run_refusal("resolve-typo", "resolve-typo")
+    with pytest.raises(Refusal) as refused:
+        refuse_a_missing_run("resolve-typo", "resolve-typo")
 
-    assert refusal is not None
+    refusal = rendered(refused.value.said)
     assert "resolve-typo" in refusal
     # The refusal says statements are usable without a run, rather than
     # leaving a reader to infer that one must pre-exist for them to count.
-    assert "Statements seed a run of their own" in refusal
+    assert "statements seed a run of their own" in refusal
     assert "drop --run-id" in refusal
 
 

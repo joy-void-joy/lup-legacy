@@ -49,7 +49,7 @@ from lup.devtools.feedback.state import (
     match_outcomes,
     save_analyzed,
 )
-from lup.devtools.utils import format_table, output_json
+from lup.devtools.utils import format_table, output_json, refuse
 
 logger = logging.getLogger(__name__)
 
@@ -271,8 +271,7 @@ def collect(
 ) -> None:
     """Collect feedback metrics from sessions."""
     if since and all_time:
-        typer.echo("Error: --since and --all-time are mutually exclusive", err=True)
-        raise typer.Exit(1)
+        refuse("are mutually exclusive", what="--since --all-time")
 
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 

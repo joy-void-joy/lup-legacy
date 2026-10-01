@@ -11,10 +11,10 @@ anything is generated.
 from pathlib import Path
 
 import pytest
-import typer
 
 import lup.devtools.harness.launch as launch
 import lup.providers.claude.launch as claude_launch
+from lup.devtools.utils import Refusal
 from lup.launch.declaration import LaunchSandbox
 from tests.unit.harness_launch import Caught, checkout, composition, profiles, stub_host
 
@@ -67,10 +67,12 @@ def test_claude_passes_a_named_effort_unchanged(root: Path, caught: Caught) -> N
 def test_a_named_effort_the_model_lacks_is_the_command_lines_mistake(
     root: Path, caught: Caught
 ) -> None:
-    with pytest.raises(typer.BadParameter, match="haiku"):
+    with pytest.raises(Refusal) as lacked:
         claude_effort(root, caught, "haiku", "max")
-    with pytest.raises(typer.BadParameter, match="not an effort"):
+    with pytest.raises(Refusal) as unknown:
         claude_effort(root, caught, "opus", "enormous")
+    assert "haiku" in lacked.value.said["why"]
+    assert "not an effort" in unknown.value.said["why"]
     assert caught.events == []
 
 

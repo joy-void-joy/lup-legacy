@@ -16,6 +16,7 @@ from lup.harness.models import ResolveSpec
 from lup.policy.hooks import LupHooksConfig
 from lup.policy.grants import LeaseGrants
 from lup.policy.identity import ConcernAllowance
+from lup.policy.kernel.diagnostic import devtools, spelled
 
 type ActorKind = Literal["worker", "reviewer", "merger", "planner", "run"]
 """The roles this run addresses, which the resolver validates at its own edge.
@@ -597,15 +598,17 @@ class HeldLease(BaseModel, frozen=True):
         if self.alive:
             return f"lease of run {self.run_id} ({self.standing})"
         if self.standing == ResolvePhase.COMPLETE:
+            status = devtools("resolve", "status", "--run-id", self.run_id)
             return (
                 f"leftover of completed run {self.run_id}; check what of it "
-                f"reached the integration branch with `lup-devtools harness "
-                f"resolve status --run-id {self.run_id}` before clearing it"
+                f"reached the integration branch with `{spelled(status)}` before "
+                "clearing it"
             )
+        resume = devtools("resolve", "--adapter", "<adapter>", "--run-id", self.run_id)
+        abort = devtools("resolve", "--run-id", self.run_id, "--abort", "<reason>")
         return (
             f"lease of run {self.run_id} ({self.standing}); resume it with "
-            f"`lup-devtools resolve --adapter <a> --run-id {self.run_id}`, "
-            f"or release every lease with `--abort <reason>`"
+            f"`{spelled(resume)}`, or release every lease with `{spelled(abort)}`"
         )
 
 

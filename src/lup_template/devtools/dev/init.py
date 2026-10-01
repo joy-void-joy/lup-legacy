@@ -33,6 +33,7 @@ from lup.devtools.dev.library import VENDORED_ROOT
 from lup.devtools.dev.plugin import set_marketplace_name
 from lup.devtools.dev.scaffold import ScaffoldFile, ScaffoldSource
 from lup.devtools.dev.tracked import tracked_files
+from lup.devtools.utils import refuse
 from lup_template.harness.catalog import declared_plugin
 from lup.execution.shell import git
 
@@ -514,12 +515,10 @@ def rename_package(
 ) -> None:
     """Rename the lup_template Python package to a project-specific name."""
     if not new_name.isidentifier():
-        typer.echo(f"Error: {new_name!r} is not a valid Python identifier", err=True)
-        raise typer.Exit(1)
+        refuse("is not a valid Python identifier", what=new_name)
 
     if new_name == "lup_template":
-        typer.echo("Error: new name is the same as the current name", err=True)
-        raise typer.Exit(1)
+        refuse("is the package's current name", what=new_name)
 
     root = project_root()
     src_dir = root / "src"
@@ -527,12 +526,10 @@ def rename_package(
     new_pkg = src_dir / new_name
 
     if not old_pkg.is_dir():
-        typer.echo(f"Error: {old_pkg} does not exist", err=True)
-        raise typer.Exit(1)
+        refuse("does not exist, so there is no package to rename", what=str(old_pkg))
 
     if new_pkg.exists():
-        typer.echo(f"Error: {new_pkg} already exists", err=True)
-        raise typer.Exit(1)
+        refuse("already exists", what=str(new_pkg))
 
     all_changes: list[str] = []  # lup: ignore[empty-collection] — change log
 

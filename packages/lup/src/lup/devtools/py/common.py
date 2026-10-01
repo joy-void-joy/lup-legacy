@@ -8,10 +8,11 @@ import sys
 import typing
 from pathlib import Path
 
-import typer
 from pydantic import BaseModel
 
 from lup.devtools.py.search import name_candidates
+from lup.devtools.utils import refuse
+from lup.policy.kernel.diagnostic import devtools, step
 from lup.workspace.paths import find_nearest_pyproject
 
 # ---------------------------------------------------------------------------
@@ -71,8 +72,7 @@ def find_module_path(module_name: str) -> Path | None:
 
 
 def fail(msg: str) -> typing.NoReturn:
-    typer.echo(f"Error: {msg}", err=True)
-    raise typer.Exit(1)
+    refuse(msg)
 
 
 def fail_unresolved(path: str, reason: str) -> typing.NoReturn:
@@ -90,13 +90,17 @@ def fail_unresolved(path: str, reason: str) -> typing.NoReturn:
     """
     name = leaf_name(path)
     found = name_candidates(name, find_nearest_pyproject())
-    if not found:
-        fail(reason)
-    typer.echo(f"Error: {reason}", err=True)
-    typer.echo(f"'{name}' is defined at:", err=True)
-    for match in sorted(found, key=lambda match: match["import_path"]):
-        typer.echo(f"  {match['kind']:10s}  {match['import_path']}", err=True)
-    raise typer.Exit(1)
+    refuse(
+        reason,
+        what=path,
+        steps=[
+            step(
+                f"read the {match['kind']} '{name}' where it is defined",
+                devtools("dev", "py", "source", match["import_path"]),
+            )
+            for match in sorted(found, key=lambda match: match["import_path"])
+        ],
+    )
 
 
 @functools.cache

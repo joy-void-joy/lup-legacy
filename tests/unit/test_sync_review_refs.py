@@ -219,8 +219,8 @@ def test_a_registration_cannot_fetch_a_checkout_for_another_remote(
 
     said = "\n".join(messages)
     assert "two names" in said
-    assert 'point that entry\'s "path" at a checkout of it' in said
-    assert "uv run lup-devtools sync setup source /path/to/repo" in said
+    assert 'point the entry\'s "path" at a checkout of it' in said
+    assert "`uv run lup-devtools sync setup source <path>`" in said
 
 
 def test_setup_checkpoint_honors_the_committed_branch(

@@ -13,6 +13,11 @@ subjects = [
     "SpawnNames.recovery",
     "row_verdict.arguments",
     "EscalationRequest.notice",
+    "borrowed_report",
+    "pin_refusal",
+    "fit_refusal",
+    "BranchBase.refusal",
+    "missing_run_refusal",
 ]
 reason = """
 every message read at an event takes one shape, lup.policy.kernel.diagnostic: \
@@ -46,3 +51,16 @@ End a devtools command's error with refuse(why, what=..., steps=[...], code=...)
 from lup.devtools.utils, in place of typer.echo(..., err=True) followed by \
 raise typer.Exit(1) and in place of raise typer.BadParameter(...). Catch \
 lup.devtools.utils.Refusal where a test caught typer.BadParameter."""
+
+[[steps]]
+instruction = """
+The CLI helpers that built a refusal's text now raise it, so call them where \
+the command stops: BranchBase.refusal() is refuse_guessing(), asked when \
+guessed() holds; pin_refusal and fit_refusal are refuse_the_pin and \
+refuse_a_poor_fit, with adopted_anyway as their shared way through; \
+missing_run_refusal is refuse_a_missing_run; and sync_environment refuses \
+on its own where borrowed_report returned lines to print. \
+RemoteMeasure.update_command returns the command as words, \
+refuse_inside_a_container takes the command as words, and \
+refused_on_the_host_only takes no argument: its caller names the host \
+command as a step."""

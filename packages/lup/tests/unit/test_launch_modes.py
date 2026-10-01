@@ -15,11 +15,11 @@ from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
-import typer
 from pydantic import ValidationError
 
 import lup.devtools.harness.launch as launch
 from lup.devtools.harness.composition import NativeTargets
+from lup.devtools.utils import Refusal
 from lup.harness.models import PromptDocument, TextPart
 from lup.launch.companions import CompanionLaunch, Contribution, HostCompanion
 from lup.launch.declaration import (
@@ -28,6 +28,7 @@ from lup.launch.declaration import (
     OuterContainer,
     Recording,
 )
+from lup.policy.kernel.diagnostic import rendered
 from lup.providers.claude import Claude
 from lup.providers.codex import Codex
 from lup.types import CustomModel
@@ -91,10 +92,11 @@ def test_a_mode_is_selected_by_its_name() -> None:
 
 
 def test_an_undeclared_mode_is_refused_naming_the_declared_ones() -> None:
-    with pytest.raises(typer.BadParameter) as refused:
+    with pytest.raises(Refusal) as refused:
         launch.selected_mode(MODES, "syra")
 
-    assert "free" in str(refused.value) and "research" in str(refused.value)
+    said = refused.value.said["why"]
+    assert "free" in said and "research" in said
 
 
 def test_a_mode_s_preset_is_laid_over_the_project_s_declaration(root: Path) -> None:
@@ -163,13 +165,14 @@ def test_a_mode_leaves_the_wall_to_the_command_line() -> None:
 def test_a_mode_switching_the_asking_off_is_refused_on_the_host(
     root: Path, posture: LaunchSandbox
 ) -> None:
-    with pytest.raises(typer.BadParameter) as refused:
+    with pytest.raises(Refusal) as refused:
         claude(root, mode=FREE, sandbox=posture)
 
-    said = str(refused.value)
+    said = rendered(refused.value.said)
     assert "free" in said and "auto" in said and "--sandbox outer" in said
-    with pytest.raises(typer.BadParameter, match="auto_review"):
+    with pytest.raises(Refusal) as refused:
         codex(root, mode=FREE, sandbox=posture)
+    assert "auto_review" in refused.value.said["why"]
 
 
 def test_a_mode_asking_nothing_a_container_stands_in_for_opens_on_the_host(
@@ -194,8 +197,9 @@ def test_a_mode_s_own_guidance_is_the_container_s_and_refused_on_the_host(
 
     held = claude(root, mode=guided).sandbox
     assert isinstance(held, OuterContainer) and held.guidance is not None
-    with pytest.raises(typer.BadParameter, match="guidance"):
+    with pytest.raises(Refusal) as refused:
         codex(root, mode=guided, sandbox=LaunchSandbox.INNER)
+    assert "guidance" in refused.value.said["why"]
 
 
 def test_a_mode_s_companions_are_held_beside_the_project_s(root: Path) -> None:

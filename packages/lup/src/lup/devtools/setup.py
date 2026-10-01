@@ -28,8 +28,10 @@ from rich.panel import Panel
 from rich.table import Table
 from lup.devtools.harness.composition import claude_profile_directory
 from lup.devtools.harness.profile_app import create_profile_app
+from lup.devtools.utils import refuse, warn
 from lup.harness.environment import inside_a_container
 from lup.launch.secrets import HostSecrets
+from lup.policy.kernel.diagnostic import Step, devtools, spelled, step
 from lup.providers.profiles import ProfileDirectory
 from lup.types import EnvVars
 from lup.workspace.paths import project_root
@@ -99,20 +101,20 @@ def host_store() -> HostSecrets:
     return HostSecrets.for_checkout(PROJECT_ROOT)
 
 
-def refused_on_the_host_only(command: str) -> str:
-    """Why a host-only write is refused here, naming the host command; empty on the host.
+def refused_on_the_host_only() -> str:
+    """Why a host-only write is refused here; empty on the host.
 
     Asked before anything is typed: a secret entered inside a container
     would land in the container's own configuration, where no companion on
-    the host reads it and the session can.
+    the host reads it and the session can. The way through is the same
+    `setup` command run on the host, which each caller names.
     """
     # lup: ignore[os-environ] — the process's own placement hint is what is read
     if not inside_a_container(dict(os.environ)):
         return ""
     return (
-        "This runs inside a lup container, where a host-only secret would land "
-        "in the container rather than in the host store. Set it from a "
-        f"terminal on the host: `uv run lup-devtools setup {command}`."
+        "this runs inside a lup container, where a host-only secret would land "
+        "in the container rather than in the host store"
     )
 
 
@@ -215,7 +217,13 @@ class Integration(BaseModel):
 
     def refused_here(self) -> str:
         """Why this integration cannot be answered in this process; empty where it can."""
-        return refused_on_the_host_only(self.command) if self.host_only else ""
+        return refused_on_the_host_only() if self.host_only else ""
+
+    def on_the_host(self) -> Step:
+        """The way through when :meth:`refused_here` refuses: the same setup, on the host."""
+        return step(
+            "set it from a terminal on the host", devtools("setup", self.command)
+        )
 
     def run(self) -> EnvVars:
         """Run the setup flow and return env vars to write."""
@@ -302,8 +310,11 @@ def make_setup_command(integration: Integration) -> Callable[[], None]:
     def run_one() -> None:
         refused = integration.refused_here()
         if refused:
-            typer.echo(refused, err=True)
-            raise typer.Exit(1)
+            refuse(
+                refused,
+                what=f"setup {integration.command}",
+                steps=[integration.on_the_host()],
+            )
         values = integration.run()
         if values:
             console.print(f"[green]Saved to {integration.save(values)}[/]")
@@ -373,10 +384,14 @@ def create_setup_app(
         For a key no integration declares. The store is outside every
         checkout, under your lup config, and no session holds what it keeps.
         """
-        refused = refused_on_the_host_only(f"secret {key}")
+        refused = refused_on_the_host_only()
         if refused:
-            typer.echo(refused, err=True)
-            raise typer.Exit(1)
+            command = ["setup", "secret", key, *(["--unset"] if unset else [])]
+            refuse(
+                refused,
+                what=spelled(command),
+                steps=[step("set it from a terminal on the host", devtools(*command))],
+            )
         store = host_store()
         if unset:
             store.clear([key])
@@ -408,7 +423,11 @@ def create_setup_app(
         for integration in integrations:
             refused = integration.refused_here()
             if refused:
-                typer.echo(f"{integration.name}: {refused}", err=True)
+                warn(
+                    refused,
+                    what=f"setup {integration.command}",
+                    steps=[integration.on_the_host()],
+                )
                 continue
             values = integration.run()
             if values:

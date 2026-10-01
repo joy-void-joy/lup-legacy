@@ -23,46 +23,57 @@ from typer.main import get_command
 
 
 def project_application() -> typer.Typer:
-    """Load the one project application registered for this environment."""
+    """Load the one project application registered for this environment.
+
+    The refusals are imported here rather than at the top, so the routes that
+    load nothing of the project pay nothing for them.
+    """
+    from lup.devtools.utils import refuse
+    from lup.policy.kernel.diagnostic import step
+
     match list(entry_points(group="lup.devtools", name="application")):
         case [registered]:
             application = registered.load()
         case []:
-            typer.echo(
-                "No installed distribution registers a 'lup.devtools' application, "
-                "so there is no project CLI to run: `uv sync` in the project "
-                "installs it.",
-                err=True,
+            refuse(
+                "no installed distribution registers a 'lup.devtools' application, "
+                "so there is no project CLI to run",
+                steps=[step("install it, in the project", ["uv", "sync"])],
             )
-            raise typer.Exit(1)
         case registrations:
-            named = "\n".join(
-                f"  {entry.value}, from {entry.dist.name} in {entry.dist.locate_file('')}"
-                if entry.dist
-                else f"  {entry.value}"
-                for entry in registrations
+            for entry in registrations:
+                typer.echo(
+                    f"  {entry.value}, from {entry.dist.name} in {entry.dist.locate_file('')}"
+                    if entry.dist
+                    else f"  {entry.value}",
+                    err=True,
+                )
+            refuse(
+                "more than one distribution registers a 'lup.devtools' application, "
+                "where a project's environment holds one; the one the project no "
+                "longer declares, its package under a name it had before a rename, "
+                "is a leftover",
+                steps=[
+                    step(
+                        "in the package source's folder, delete the build's "
+                        "<name>.egg-info, which the editable install reads",
+                        ["rm", "-r", "<name>.egg-info"],
+                    ),
+                    step(
+                        "in the environment, remove the one uv run kept, keeping the "
+                        "lup-devtools script installed, which a plain uv sync removes "
+                        "with it",
+                        ["uv", "sync", "--reinstall-package", "<project>"],
+                    ),
+                ],
             )
-            typer.echo(
-                "More than one distribution registers a 'lup.devtools' application, "
-                f"where a project's environment holds one:\n{named}\n"
-                "The one the project no longer declares, its package under a name it "
-                "had before a rename, is one of two leftovers. In the package "
-                "source's folder, it is a build's `<name>.egg-info`, which the "
-                "editable install reads: delete that folder. In the environment, "
-                "`uv run` kept it, since it only adds: `uv sync --reinstall-package "
-                "<the project's name>` removes it and keeps the `lup-devtools` "
-                "script both installed, which a plain `uv sync` removes with it.",
-                err=True,
-            )
-            raise typer.Exit(1)
 
     if not isinstance(application, typer.Typer):
-        typer.echo(
-            "The 'lup.devtools' application entry point must resolve to a "
-            "Typer application.",
-            err=True,
+        refuse(
+            "does not resolve to a Typer application, which the 'lup.devtools' "
+            "application entry point must",
+            what=registered.value,
         )
-        raise typer.Exit(1)
     return application
 
 

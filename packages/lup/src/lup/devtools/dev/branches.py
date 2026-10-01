@@ -39,9 +39,11 @@ from lup.devtools.utils import (
     attributed_stderr,
     decode_stderr,
     output_json,
+    refuse,
     repository_arguments,
     short_sha,
 )
+from lup.policy.kernel.diagnostic import Step, devtools, spelled, step
 
 logger = logging.getLogger(__name__)
 
@@ -1192,8 +1194,10 @@ def detect_base_branch(branch: str | None = None) -> BaseCandidate:
     ]
 
     if not local_branches:
-        typer.echo("No other local branches to compare against.", err=True)
-        raise typer.Exit(1)
+        refuse(
+            "no other local branch is there to measure its base against",
+            what=effective,
+        )
 
     def measure(candidate: str) -> BaseCandidate | None:
         try:
@@ -1231,8 +1235,10 @@ def detect_base_branch(branch: str | None = None) -> BaseCandidate:
     candidates = [m for c in local_branches if (m := measure(c)) is not None]
 
     if not candidates:
-        typer.echo("Could not determine base branch.", err=True)
-        raise typer.Exit(1)
+        refuse(
+            "no local branch shares any history with it, so its base cannot be told",
+            what=effective,
+        )
 
     # Every measured candidate is ranked, and ancestry only breaks a tie among
     # equals. Ancestry disqualifies nobody, because a branch fails it for the
@@ -1303,8 +1309,8 @@ class RemoteMeasure(BaseModel, ABC, frozen=True):
     """Commits that branch holds which this checkout does not."""
 
     @abstractmethod
-    def update_command(self) -> str:
-        """What a reader runs to take the commits this reading found missing."""
+    def update_command(self) -> list[str]:
+        """The words a reader runs to take the commits this reading found missing."""
 
     @abstractmethod
     def subject(self) -> str:
@@ -1320,7 +1326,7 @@ class RemoteMeasure(BaseModel, ABC, frozen=True):
             return f"{self.subject()} is current with {self.tracked}"
         return (
             f"{self.subject()} is {self.behind} commit(s) behind {self.tracked}: "
-            f"update with `{self.update_command()}`"
+            f"update with `{spelled(self.update_command())}`"
         )
 
     def notice(self) -> str:
@@ -1338,8 +1344,8 @@ class RemoteMeasure(BaseModel, ABC, frozen=True):
 class UpstreamMeasure(RemoteMeasure, frozen=True):
     """The branch's own remote, whose commits arrive by fast-forward."""
 
-    def update_command(self) -> str:
-        return "git pull --ff-only"
+    def update_command(self) -> list[str]:
+        return ["git", "pull", "--ff-only"]
 
     def subject(self) -> str:
         return "branch"
@@ -1353,8 +1359,8 @@ class BaseMeasure(RemoteMeasure, frozen=True):
     exits non-zero on the only checkout this reading is ever printed for.
     """
 
-    def update_command(self) -> str:
-        return f"git merge {self.tracked}"
+    def update_command(self) -> list[str]:
+        return ["git", "merge", self.tracked]
 
     def subject(self) -> str:
         return "base"
@@ -1739,11 +1745,21 @@ def require_fresh_base(freshness: BaseFreshness) -> None:
     """
     typer.echo(freshness.report())
     if freshness.stale():
-        raise typer.BadParameter(freshness.report())
+        refuse(
+            "a run pins one base for every lease it cuts, so it does not start"
+            " on one the remote has moved past",
+            steps=[
+                step("take the missing commits first", reading.update_command())
+                for reading in freshness.measures()
+                if reading.stale()
+            ],
+            code=2,
+        )
     if freshness.unanswered():
-        raise typer.BadParameter(
-            "a run pins one base for every lease it cuts, so it does not start "
-            "on a base nothing could read"
+        refuse(
+            "a run pins one base for every lease it cuts, so it does not start"
+            " on a base nothing could read",
+            code=2,
         )
 
 
@@ -1893,8 +1909,11 @@ def pr_body(
         _ok_code=[0],
     )
     if not log_lines:
-        typer.echo("No commits found since base branch", err=True)
-        raise typer.Exit(1)
+        refuse(
+            "this branch holds no commits past its base, so there is nothing to"
+            " describe",
+            what=base,
+        )
 
     groups: dict[str, list[str]] = defaultdict(list)
     for line in log_lines:
@@ -2709,8 +2728,7 @@ def abort_deletion(plan: DeletionPlan, completed: list[str], failure: str) -> No
     equally, including the ones it has nothing to do with — and it stood
     where the repair would otherwise have run.
     """
-    typer.echo(f"Failed to delete {plan.branch}: {failure}", err=True)
-
+    recovery: list[Step] = []
     if plan.worktree is not None and not Path(plan.worktree).exists():
         try:
             git("worktree", "prune")
@@ -2719,16 +2737,19 @@ def abort_deletion(plan: DeletionPlan, completed: list[str], failure: str) -> No
             )
         except sh.ErrorReturnCode as error:
             typer.echo(
-                f"The checkout at {plan.worktree} is gone but still registered. "
-                f"Recover with `git worktree prune`: {decode_stderr(error)}",
+                f"The checkout at {plan.worktree} is gone but still registered,"
+                f" and pruning it failed: {decode_stderr(error)}",
                 err=True,
             )
             diagnosis = config_lock_diagnosis()
             if diagnosis:
                 typer.echo(diagnosis, err=True)
+            recovery = [
+                step("clear the stranded registration", ["git", "worktree", "prune"])
+            ]
 
     typer.echo(f"Completed first: {', '.join(completed) or 'nothing'}", err=True)
-    raise typer.Exit(1)
+    refuse(f"the deletion stopped: {failure}", what=plan.branch, steps=recovery)
 
 
 def worktree_left_as_mount_point(path: str) -> bool:
@@ -2869,8 +2890,13 @@ def delete_branch(
     """
     cur = git.out("branch", "--show-current")
     if name == cur:
-        typer.echo(f"Error: cannot delete the current branch ({name})", err=True)
-        raise typer.Exit(1)
+        refuse(
+            "is the branch checked out here, which cannot be deleted",
+            what=name,
+            steps=[
+                step("switch to another branch first", ["git", "switch", "<branch>"])
+            ],
+        )
 
     plan = plan_deletion(name, force, remote, scaffold)
 
@@ -2883,12 +2909,22 @@ def delete_branch(
 
     blocked = plan.blocked()
     if blocked:
-        typer.echo(f"Refusing to delete {name} — nothing was changed:", err=True)
         for action in blocked:
-            typer.echo(f"  {action.render()}", err=True)
-        if plan.forceable():
-            typer.echo("Use --force to override.", err=True)
-        raise typer.Exit(1)
+            typer.echo(action.render(), err=True)
+        refuse(
+            "has a step above that cannot run, so nothing was deleted",
+            what=name,
+            steps=(
+                [
+                    step(
+                        "delete it anyway, losing what those steps protect",
+                        devtools("git", "delete", name, "--force"),
+                    )
+                ]
+                if plan.forceable()
+                else []
+            ),
+        )
 
     integration = get_integration_branch()
     landed = holding_copy(plan.ref(), integration)
@@ -3071,8 +3107,7 @@ def run_retirement(plan: RetirementPlan, reason: str) -> int:
         git("push", "--force-with-lease", "origin", f"{plan.branch}:{plan.branch}")
         typer.echo(f"Pushed {plan.branch} to origin")
     except sh.ErrorReturnCode as error:
-        typer.echo(f"Could not push {plan.branch}: {decode_stderr(error)}", err=True)
-        raise typer.Exit(1)
+        refuse(f"could not push it: {decode_stderr(error)}", what=plan.branch)
 
     number = plan.pull_request
     if number is None:
@@ -3091,8 +3126,10 @@ def run_retirement(plan: RetirementPlan, reason: str) -> int:
                 f"Retiring `{plan.branch}`: {reason}",
             )
         except sh.ErrorReturnCode as error:
-            typer.echo(f"Could not open a request: {decode_stderr(error)}", err=True)
-            raise typer.Exit(1)
+            refuse(
+                f"could not open a pull request over it: {decode_stderr(error)}",
+                what=plan.branch,
+            )
         number = int(PurePosixPath(urlparse(raw.strip().splitlines()[-1]).path).name)
         typer.echo(f"Opened #{number}")
 
@@ -3121,8 +3158,10 @@ def run_retirement(plan: RetirementPlan, reason: str) -> int:
         )
         typer.echo(f"Closed #{number}")
     except sh.ErrorReturnCode as error:
-        typer.echo(f"Could not close #{number}: {decode_stderr(error)}", err=True)
-        raise typer.Exit(1)
+        refuse(
+            f"could not close the pull request: {decode_stderr(error)}",
+            what=f"#{number}",
+        )
 
     return number
 
@@ -3141,8 +3180,13 @@ def retire_branch(
     """
     target = integration if integration is not None else get_integration_branch()
     if name == git.out("branch", "--show-current"):
-        typer.echo(f"Error: cannot retire the current branch ({name})", err=True)
-        raise typer.Exit(1)
+        refuse(
+            "is the branch checked out here, which cannot be retired",
+            what=name,
+            steps=[
+                step("switch to another branch first", ["git", "switch", "<branch>"])
+            ],
+        )
 
     plan = plan_retirement(name, target, scaffold)
 
@@ -3158,18 +3202,16 @@ def retire_branch(
 
     blocked = plan.blocked()
     if blocked:
-        typer.echo(f"Refusing to retire {name} — nothing was changed:", err=True)
         for action in blocked:
-            typer.echo(f"  {action.render()}", err=True)
-        raise typer.Exit(1)
+            typer.echo(action.render(), err=True)
+        refuse("has a step above that cannot run, so nothing was changed", what=name)
 
     if not plan.unique_commits:
-        typer.echo(
-            f"{name} holds nothing {target} lacks — `git delete` is enough, and "
-            "no request is needed to preserve it.",
-            err=True,
+        refuse(
+            f"holds nothing {target} lacks, so no request is needed to preserve it",
+            what=name,
+            steps=[step("delete it instead", devtools("git", "delete", name))],
         )
-        raise typer.Exit(1)
 
     number = run_retirement(plan, reason)
     delete_branch(
@@ -3196,12 +3238,14 @@ def create_resolve_branch(concern_id: str) -> None:
     ok = bool(slug) and slug[0].isalnum()
     ok = ok and all(c.isalnum() or c in "._-" for c in slug)
     if not ok:
-        typer.echo(f"Invalid concern id: {concern_id!r}", err=True)
-        raise typer.Exit(1)
+        refuse(
+            "is not a concern id, which starts with a letter or digit and holds"
+            " only letters, digits, '.', '_' and '-'",
+            what=concern_id,
+        )
     branch = f"resolve/{slug}"
     try:
         git("checkout", "-b", branch)
     except sh.ErrorReturnCode as e:
-        typer.echo(f"Could not create {branch}: {decode_stderr(e)}", err=True)
-        raise typer.Exit(1)
+        refuse(f"could not create it: {decode_stderr(e)}", what=branch)
     typer.echo(f"Created and switched to {branch}")

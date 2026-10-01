@@ -15,6 +15,7 @@ from typing import Annotated
 
 import typer
 
+from lup.devtools.utils import refuse
 from lup.providers.profile_migration import migrate_profiles
 from lup.providers.profiles import Profile, ProfileDirectory, ProfileScope
 from lup.providers.user_config import UserConfigFile
@@ -53,7 +54,7 @@ def create_profile_app(directory: ProfileDirectory) -> typer.Typer:
         try:
             return act()
         except (KeyError, ValueError) as error:
-            raise typer.BadParameter(str(error)) from error
+            refuse(str(error), code=2)
 
     def scope(shared: bool) -> ProfileScope:
         """The registry a command acts on: this checkout's unless ``--global``."""

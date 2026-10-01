@@ -49,7 +49,8 @@ from lup.workspace.history import (
 )
 from lup.workspace.paths import parse_timestamp, project_root, traces_path
 
-from lup.devtools.utils import output_json
+from lup.devtools.utils import output_json, refuse
+from lup.policy.kernel.diagnostic import devtools, step
 
 # lup: ignore[constant-declaration] — how much of a trace the default view
 # opens with is this command's own presentation, and `--full` is the whole
@@ -413,9 +414,11 @@ def show(session_id: str, full: bool, tool_calls: bool, as_json: bool) -> None:
     trace_path = find_trace(session_id)
 
     if not trace_path:
-        typer.echo(f"No trace found for session {session_id}", err=True)
-        typer.echo(f"Checked: {traces_path()}", err=True)
-        raise typer.Exit(1)
+        refuse(
+            f"no trace is recorded for this session under {traces_path()}",
+            what=session_id,
+            steps=[step("list the recorded traces", devtools("trace", "list"))],
+        )
 
     content = load_trace(trace_path)
 

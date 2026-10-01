@@ -36,6 +36,7 @@ from lup.coordination.rendering import USER_HOLDER, render
 from lup.coordination.repository import RepositoryPeers
 from lup.coordination.tasks import NEEDS_NAMES, Needs, Task
 from lup.coordination.refs import ActorRef
+from lup.devtools.utils import refuse
 from lup.ledger.cite import read_cites
 from lup.ledger.journal import LedgerRefusal, LedgerStore
 from lup.ledger.kinds import by_kind, declared_fields, kind_of, summary_of
@@ -45,6 +46,7 @@ from lup.ledger.snapshot import snapshot
 from lup.ledger.writeup import Writeup, WriteupError, write_writeup
 from lup.observability.sessions import session_recorder
 from lup.observability.sweep import index_notes
+from lup.policy.kernel.diagnostic import devtools, step
 from lup.types import JsonObject
 from pathlib import Path
 from pydantic import TypeAdapter, ValidationError
@@ -70,8 +72,11 @@ def validated_needs(spelling: str) -> Needs:
     """
     if spelling in NEEDS_NAMES:
         return spelling
-    raise typer.BadParameter(
-        f"{spelling!r} is not one of {', '.join(name for name in NEEDS_NAMES if name)}"
+    refuse(
+        "is not a word --needs takes; it takes one of "
+        + ", ".join(name for name in NEEDS_NAMES if name),
+        what=spelling,
+        code=2,
     )
 
 
@@ -90,8 +95,10 @@ def validated_audience(spelling: str) -> Audience:
         case "person":
             return PersonBrief()
         case _:
-            raise typer.BadParameter(
-                f"{spelling!r} is not one of peer, detached, person"
+            refuse(
+                "is not a reader --for names; it names peer, detached or person",
+                what=spelling,
+                code=2,
             )
 
 
@@ -106,12 +113,14 @@ def validated_results(spellings: list[str]) -> list[Established]:
     def parsed(spelling: str) -> Established:
         try:
             return Established.model_validate_json(spelling)
-        except ValueError as invalid:
-            raise typer.BadParameter(
-                f"{spelling!r} is not an established result: every one needs a"
-                ' statement, a source and a grade, as {"statement": ...,'
-                ' "source": ..., "grade": ...}'
-            ) from invalid
+        except ValueError:
+            refuse(
+                "is not an established result: every one needs a statement, a"
+                ' source and a grade, as {"statement": ..., "source": ...,'
+                ' "grade": ...}',
+                what=spelling,
+                code=2,
+            )
 
     return [parsed(spelling) for spelling in spellings]
 
@@ -147,9 +156,7 @@ def parsed_payload(text: str) -> JsonObject:
     try:
         return TypeAdapter(JsonObject).validate_json(text or "{}")
     except ValidationError as invalid:
-        raise typer.BadParameter(
-            f"--json must be a JSON object: {invalid}"
-        ) from invalid
+        refuse(f"must be a JSON object: {invalid}", what="--json", code=2)
 
 
 def create_ledger_app(
@@ -186,8 +193,11 @@ def create_ledger_app(
     def found(held: LedgerStore, node_id: str) -> LedgerNode:
         node = held.resolve(node_id, classes)
         if node is None:
-            typer.echo(f"No node in this repository has the id {node_id!r}.")
-            raise typer.Exit(1)
+            refuse(
+                "is the id of no node in this repository",
+                what=node_id,
+                steps=[step("see every node", devtools("ledger", "list"))],
+            )
         return node
 
     @app.command("types")
@@ -241,8 +251,16 @@ def create_ledger_app(
         """
         declared = node_kinds.get(kind)
         if declared is None:
-            raise typer.BadParameter(
-                f"{kind!r} is not a declared node kind; `ledger types` lists them"
+            refuse(
+                "is not a declared node kind",
+                what=kind,
+                steps=[
+                    step(
+                        "see the kinds this project declares",
+                        devtools("ledger", "types"),
+                    )
+                ],
+                code=2,
             )
         fields = parsed_payload(payload)
         if slug:
@@ -256,9 +274,9 @@ def create_ledger_app(
                 attachments=[path.read_bytes() for path in attach or []],
             )
         except ValidationError as invalid:
-            raise typer.BadParameter(str(invalid)) from invalid
+            refuse(str(invalid), what=kind, code=2)
         except LedgerRefusal as refused:
-            raise typer.BadParameter(str(refused)) from refused
+            refuse(str(refused), what=kind, code=2)
         typer.echo(
             f"{node.id}: {node.title}" + (f"  ({node.slug})" if node.slug else "")
         )
@@ -280,8 +298,16 @@ def create_ledger_app(
         """
         declared = edge_kinds.get(kind)
         if declared is None:
-            raise typer.BadParameter(
-                f"{kind!r} is not a declared edge kind; `ledger types` lists them"
+            refuse(
+                "is not a declared edge kind",
+                what=kind,
+                steps=[
+                    step(
+                        "see the kinds this project declares",
+                        devtools("ledger", "types"),
+                    )
+                ],
+                code=2,
             )
         held = store()
         try:
@@ -292,9 +318,9 @@ def create_ledger_app(
                 parsed_payload(payload),
             )
         except ValidationError as invalid:
-            raise typer.BadParameter(str(invalid)) from invalid
+            refuse(str(invalid), what=kind, code=2)
         except LedgerRefusal as refused:
-            raise typer.BadParameter(str(refused)) from refused
+            refuse(str(refused), what=kind, code=2)
         typer.echo(f"{edge.kind}: {edge.source} -> {edge.target}")
 
     @app.command("amend")
@@ -316,7 +342,7 @@ def create_ledger_app(
                 {**node.model_dump(), **parsed_payload(payload)}
             )
         except ValidationError as invalid:
-            raise typer.BadParameter(str(invalid)) from invalid
+            refuse(str(invalid), what=node_id, code=2)
         held.amend(changed)
         typer.echo(f"{node.id}: amended")
 
@@ -358,16 +384,17 @@ def create_ledger_app(
         chosen = [each for each in declared if not name or each.name == name]
         if not chosen:
             names = ", ".join(each.name for each in declared) or "none"
-            typer.echo(f"No writeup named {name!r} is declared; declared: {names}.")
-            raise typer.Exit(1)
+            refuse(
+                f"is not a declared writeup; this project declares {names}",
+                what=name,
+            )
         for each in chosen:
             try:
                 written = write_writeup(
                     each, classes, project_root(), check=check, layout=layout
                 )
             except (RuntimeError, WriteupError) as problem:
-                typer.echo(str(problem))
-                raise typer.Exit(1) from problem
+                refuse(str(problem), what=each.name)
             typer.echo(f"{'verified' if check else 'written'} {written}")
 
     @app.command("list")
@@ -399,9 +426,7 @@ def create_ledger_app(
         try:
             moment = datetime.fromisoformat(since) if since else None
         except ValueError as invalid:
-            raise typer.BadParameter(
-                f"--since must be ISO 8601: {invalid}"
-            ) from invalid
+            refuse(f"must be ISO 8601: {invalid}", what="--since", code=2)
         moved = held.moved_since(moment) if moment is not None else None
         with held.batch():
             rows = [
@@ -428,8 +453,11 @@ def create_ledger_app(
         held = store()
         found = held.resolve(node_id, classes)
         if found is None:
-            typer.echo(f"No node in this repository has the id {node_id!r}.")
-            raise typer.Exit(1)
+            refuse(
+                "is the id of no node in this repository",
+                what=node_id,
+                steps=[step("see every node", devtools("ledger", "list"))],
+            )
         typer.echo(node_line(held, found, classes))
         if found.text:
             typer.echo(found.text)
@@ -583,8 +611,16 @@ def create_ledger_app(
         # else is not a handoff, which is the answer rather than a narrowing.
         found = next((node for node in held.read(Handoff) if node.id == node_id), None)
         if found is None:
-            typer.echo(f"No handoff in this repository has the id {node_id!r}.")
-            raise typer.Exit(1)
+            refuse(
+                "is the id of no handoff in this repository",
+                what=node_id,
+                steps=[
+                    step(
+                        "see the handoffs",
+                        devtools("ledger", "list", "--kind", kind_of(Handoff)),
+                    )
+                ],
+            )
         carried = {task.id: task for task in held.read(Task)}
         moved = [
             carried[edge.target]
@@ -641,12 +677,12 @@ def create_ledger_app(
         found = held.resolve(node_id, classes)
         closed = found.completed() if found is not None else None
         if found is None or closed is None:
-            typer.echo(
-                f"No node with the id {node_id!r} is something that can be done."
+            refuse(
+                "names a record, which is not work that can be done"
                 if found is not None
-                else f"No node in this repository has the id {node_id!r}."
+                else "is the id of no node in this repository",
+                what=node_id,
             )
-            raise typer.Exit(1)
         held.amend(closed)
         typer.echo(f"{found.id}: done")
 
@@ -677,8 +713,16 @@ def create_ledger_app(
         named = list(kinds or [])
         for kind in named:
             if kind not in node_kinds and kind not in edge_kinds:
-                raise typer.BadParameter(
-                    f"{kind!r} is not a declared kind; `ledger types` lists them"
+                refuse(
+                    "is not a declared kind",
+                    what=kind,
+                    steps=[
+                        step(
+                            "see the kinds this project declares",
+                            devtools("ledger", "types"),
+                        )
+                    ],
+                    code=2,
                 )
         held = store()
         moved = migrate(held, named or None)
@@ -714,11 +758,10 @@ def create_ledger_app(
         """
         recorder = session_recorder(project_root(), author(), classes, layout)
         if recorder is None:
-            typer.echo(
-                "This project does not index its runs: `observability:session` and"
-                " `observability:output` are not among its declared kinds."
+            refuse(
+                "this project does not index its runs: observability:session and"
+                " observability:output are not among its declared kinds"
             )
-            raise typer.Exit(1)
         swept = index_notes(recorder)
         typer.echo(
             f"{len(swept.sessions())} session(s) and {len(swept.outputs())} output(s)"
@@ -751,10 +794,9 @@ def create_ledger_app(
         )
         held = layout.local.root(root)
         if not held.exists():
-            typer.echo("This repository has recorded nothing local to snapshot.")
             if kept:
-                typer.echo(kept)
-            raise typer.Exit(1)
+                typer.echo(kept, err=True)
+            refuse("this repository has recorded nothing local to snapshot")
         commit = snapshot(
             held,
             shared_git_directory(root),
@@ -803,6 +845,6 @@ def create_ledger_app(
                 root, classes, relations, host, port, open_page, layout=layout
             )
         except ValueError as error:
-            raise typer.BadParameter(str(error)) from error
+            refuse(str(error), code=2)
 
     return app

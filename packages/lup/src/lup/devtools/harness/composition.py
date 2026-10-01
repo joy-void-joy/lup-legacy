@@ -12,16 +12,17 @@ here decides anything about content.
 from pathlib import Path
 from typing import Protocol, runtime_checkable
 
-import typer
 from pydantic import BaseModel
 
 from lup.providers.claude.login import CLAUDE_LOGIN
 from lup.harness.codescan.common import RuleSelection
 from lup.devtools.harness.drift import refuse_generation
+from lup.devtools.utils import refuse
 from lup.harness.generate import (
     NativeHarnessComposition,
     obstruction_at,
 )
+from lup.policy.kernel.diagnostic import step
 from lup.providers.profile_tree import profile_directory
 from lup.providers.profiles import ProfileDirectory
 
@@ -100,5 +101,9 @@ class NativeTargets(BaseModel, frozen=True, arbitrary_types_allowed=True):
         build = self.builder(value)
         if build is not None:
             return [compiled(value, build)]
-        named = ", ".join([*self.builders, self.every])
-        raise typer.BadParameter(f"target must be one of: {named}")
+        refuse(
+            "is not a target this project declares",
+            what=value,
+            steps=[step(f"name one of: {', '.join([*self.builders, self.every])}")],
+            code=2,
+        )

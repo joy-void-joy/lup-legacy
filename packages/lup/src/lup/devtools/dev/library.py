@@ -60,7 +60,8 @@ from lup.harness.codescan.common import LIBRARY_PACKAGE_ROOT
 from lup.harness.credential import parse_remote, remote_url, resolved_host
 from lup.devtools.project import Tracker
 from lup.types import JsonObject, JsonValue
-from lup.devtools.utils import decode_stderr, slug_from_remote
+from lup.devtools.utils import decode_stderr, refuse, slug_from_remote
+from lup.policy.kernel.diagnostic import devtools, step
 from lup.providers.routing import Provider
 
 # The three below spell where the vendored copy sits, which is a fact about
@@ -165,21 +166,50 @@ class GitSource(BaseModel, frozen=True):
                 f"refs/heads/{self.ref}",
             )
         except sh.ErrorReturnCode as error:
+            unsynced = ("uv", "run", "--no-sync", "lup-devtools")
             if error.exit_code == 2:
-                raise typer.BadParameter(
-                    f"Pinned branch {self.ref!r} is absent at {self.url}. "
-                    "The existing lock remains usable. Inspect the remote branches "
-                    "and compare the locked commit with the intended replacement; "
-                    "then run `uv run --no-sync lup-devtools dev library git "
-                    "--branch <replacement>` and `uv run --no-sync lup-devtools "
-                    "dev update`, or `dev update --commit <reviewed-sha>`. "
-                    "No replacement branch was selected automatically."
-                ) from error
-            raise typer.BadParameter(
-                f"Could not verify pinned branch {self.ref!r} at {self.url}: "
-                f"{decode_stderr(error) or f'git exited {error.exit_code}'}. "
-                "Its absence is unconfirmed; restore remote access before updating."
-            ) from error
+                refuse(
+                    f"the pinned branch is gone from {self.url}; the existing lock"
+                    " still works, and no replacement was picked for you",
+                    what=self.ref,
+                    steps=[
+                        step(
+                            "compare the locked commit with the branch meant to"
+                            " replace it, then pin that one",
+                            devtools(
+                                "dev",
+                                "library",
+                                "git",
+                                "--branch",
+                                "<replacement>",
+                                program=unsynced,
+                            ),
+                        ),
+                        step(
+                            "then move every carrier to it",
+                            devtools("dev", "update", program=unsynced),
+                        ),
+                        step(
+                            "or pin a commit you have reviewed",
+                            devtools(
+                                "dev",
+                                "update",
+                                "--commit",
+                                "<reviewed-sha>",
+                                program=unsynced,
+                            ),
+                        ),
+                    ],
+                    code=2,
+                )
+            refuse(
+                f"could not reach {self.url} to verify the pinned branch, so"
+                " whether it is gone is unknown:"
+                f" {decode_stderr(error) or f'git exited {error.exit_code}'}",
+                what=self.ref,
+                steps=[step("restore access to the remote before updating")],
+                code=2,
+            )
 
     def entry(self) -> tomlkit.items.InlineTable:
         """Render the ``[tool.uv.sources]`` value this source declares."""
@@ -228,9 +258,10 @@ def git_source(
         case [only] if only.ref is not None:
             return GitSource(url=url, ref_kind=only.kind, ref=only.ref)
         case _:
-            raise typer.BadParameter(
-                "name one of --branch, --tag, or --rev, not "
-                + " and ".join(f"--{flag.kind}" for flag in named)
+            refuse(
+                "each names the one ref to pin, so give only one of them",
+                what=" and ".join(f"--{flag.kind}" for flag in named),
+                code=2,
             )
 
 
@@ -306,11 +337,25 @@ def repository_url(
     """Require a declared dependency source, allowing an explicit override."""
     found = url if url is not None else configured_repository(root, project)
     if not found.strip():
-        raise typer.BadParameter(
-            f"No repository is configured for '{project}'. Pass --url <repository> "
-            "to dev library git, set its url in sync.json, or say how this "
-            f"machine reaches it: sync remote {project} <url>, or sync setup "
-            f"{project} /path/to/repo."
+        refuse(
+            "no repository is configured for it",
+            what=project,
+            steps=[
+                step(
+                    "name one for this run",
+                    devtools("dev", "library", "git", "--url", "<repository>"),
+                ),
+                step("or set its url in sync.json"),
+                step(
+                    "or say how this machine reaches it",
+                    devtools("sync", "remote", project, "<url>"),
+                ),
+                step(
+                    "or where its checkout is on this machine",
+                    devtools("sync", "setup", project, "<path>"),
+                ),
+            ],
+            code=2,
         )
     return found
 
@@ -419,10 +464,10 @@ def apply_search_path(
     started with rather than a reshuffled diff.
     """
     holder = document
-    for step in table:
-        if step not in holder:
+    for name in table:
+        if name not in holder:
             return []
-        holder = holder[step]
+        holder = holder[name]
     if key not in holder:
         return []
     paths = [str(entry) for entry in holder[key]]
@@ -513,10 +558,17 @@ def guard_leaving_local(root: Path, force: bool) -> None:
     """
     if force or not (root / "src" / "lup_template").is_dir():
         return
-    raise typer.BadParameter(
-        "src/lup_template/ is still present, so this checkout is the template "
-        "itself rather than a project built on it. Run `dev init rename-package "
-        "<project>` first, or pass --force to un-vendor anyway."
+    refuse(
+        "src/lup_template/ is still present, so this checkout is the template"
+        " itself rather than a project built on it",
+        steps=[
+            step(
+                "make it a project of its own first",
+                devtools("dev", "init", "rename-package", "<project>"),
+            ),
+            step("or pass --force to un-vendor anyway"),
+        ],
+        code=2,
     )
 
 
@@ -533,10 +585,15 @@ def set_mode(
     """Rewrite ``pyproject.toml`` so ``lup`` resolves the way ``mode`` says."""
     vendored = mode is LibraryMode.LOCAL
     if vendored and not (root / VENDORED_ROOT).is_dir():
-        raise typer.BadParameter(
-            f"{VENDORED_ROOT}/ is not present, so there is no library to vendor. "
-            "Resolve it from its repository instead — "
-            "`dev library git --branch <branch>`."
+        refuse(
+            f"{VENDORED_ROOT}/ is not present, so there is no library to vendor",
+            steps=[
+                step(
+                    "resolve it from its repository instead",
+                    devtools("dev", "library", "git", "--branch", "<branch>"),
+                )
+            ],
+            code=2,
         )
     pyproject = root / "pyproject.toml"
     document = tomlkit.parse(pyproject.read_text(encoding="utf-8"))
