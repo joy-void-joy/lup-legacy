@@ -21,16 +21,17 @@ command a composed CLI mounts.
 """
 
 import os
+from pathlib import Path
 from typing import Annotated
 
 import typer
-from pydantic import ImportString, TypeAdapter
+from pydantic import BaseModel, ImportString, TypeAdapter
 
 from lup.coordination.bare.runtime import Runtime, runtime_of, stdin_runtime
 from lup.coordination.identity import MemberEnv, session_cli_name
 from lup.coordination.repository import runtime_member
 from lup.coordination.wake import WakePath
-from lup.observability.metrics import configure_metrics, metrics_path
+from lup.observability.metrics import configure_metrics, open_metrics_sink
 from lup.orchestration.reflection import ReviewGate
 from lup.providers.identity import native_session_id, native_wake
 from lup.tools.mcp import serve_stdio
@@ -38,10 +39,39 @@ from lup.mcp import NeedsHook, ServedServer
 from lup.tools.toolsets import SessionNeeds
 from lup.types import JsonObject
 from lup.workspace.context import SessionContext, read_session_context
+from lup.workspace.history import iter_session_dirs
 from lup.workspace.paths import project_root
 
 
-def harness_session_context(name: str) -> SessionContext:
+class ServedSessions(BaseModel, frozen=True):
+    """Where a natively launched tool server opens the session it serves.
+
+    One value read twice: by the server, which opens its session there, and
+    by whoever reads back what the servers of hand-driven sessions wrote —
+    so the two cannot name different directories.
+    """
+
+    kind: str = "harness"
+    """The directory under each agent version's sessions they are opened in."""
+
+    def directories(self) -> list[Path]:
+        """Every session a natively launched server opened in this checkout.
+
+        Oldest agent version first. Every server of every session launched
+        in one checkout is started under the session name its launch
+        declares, so this is usually one directory per version, shared.
+        """
+        return [
+            directory
+            for parent in iter_session_dirs(session_id=self.kind)
+            for directory in sorted(parent.iterdir())
+            if directory.is_dir()
+        ]
+
+
+def harness_session_context(
+    name: str, served: ServedSessions = ServedSessions()
+) -> SessionContext:
     """Open the session a natively launched tool server serves.
 
     An adapter-launched server is handed a session that already exists; a
@@ -53,7 +83,13 @@ def harness_session_context(name: str) -> SessionContext:
     """
     from lup.workspace.notes import session_gate_flag, setup_notes
 
-    notes = setup_notes(session_id=name, task_id=name, type="harness")
+    # lup: defer: setup_notes makes a new timestamped directory under outputs/
+    # on every call, and every server process of every launched session calls
+    # it here, so a checkout gathers one empty directory per server start (733
+    # in a month of this repository's dev checkout). The session only uses
+    # their parent; whether setup_notes stops stamping one for a session that
+    # never writes there, or this stops calling it, is a choice to make.
+    notes = setup_notes(session_id=name, task_id=name, type=served.kind)
     return SessionContext(
         session_dir=notes.session,
         outputs_dir=notes.output.parent,
@@ -123,7 +159,6 @@ def resolved_needs(session: str | None, runtime: str | None) -> SessionNeeds | N
             needs = context_needs(context, "", runtime=served)
         case _:
             return None
-    configure_metrics(metrics_path(context.session_dir))
     return needs
 
 
@@ -137,6 +172,10 @@ def serve(
     A server that builds nothing for this session still serves, empty: the
     runtime started it because the launch declared it, and a process that
     exited instead would read to that runtime as a server that crashed.
+
+    What its tools record is written through to a snapshot of this process's
+    own under the session's directory, named for the server and the session's
+    roster identity, which is where ``tools metrics`` reads it.
     """
     from lup.tools.mcp import create_mcp_server
 
@@ -147,6 +186,7 @@ def serve(
         for tool in hosted.tools:
             typer.echo(tool.name)
         return
+    configure_metrics(open_metrics_sink(needs.session_dir, server.name, needs.member))
     serve_stdio(hosted)
 
 
