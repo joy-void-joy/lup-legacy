@@ -28,7 +28,7 @@ no safe path from a native edit back to source.
 Decision: Store each skill and agent in one module as `Skill`, `Agent`, and
 `PromptDocument` values. Store guidance and templates as typed documents or
 plain assets. Aggregate them through explicit imports. Both native trees render
-from those declarations; byte parity with a retired catalog is not a contract.
+from those declarations.
 
 Consequences: Prompt changes are ordinary string diffs. Semantic parts such as
 `ArgumentsRef` and `SkillInvocation` preserve intent across native spellings.
@@ -210,7 +210,7 @@ The `pre-commit` framework config is dropped: it named a framework nothing
 depended on, it wanted the same hook path, and it regenerated where a gate
 should read.
 
-Consequences: Skipping `dev check` no longer skips the drift check. The three
+Consequences: Skipping `dev check` does not skip the drift check. The three
 refusing paths cannot disagree, because there is one computation and one
 failure message naming the command that settles it. The check is whole-tree
 and unscoped, which the sub-second cost affords. Two cases stay the
@@ -256,8 +256,8 @@ one project serves neither `dashboard` nor `report`, another hand-wrote a
 `dev` tree carrying none of the quality gate, and no one decided either.
 
 Decision: A roster the library ships reaches a project whole, and the project
-declares only its difference — the subtractive shape `RuleSelection` already
-used for scan rules, now also `SubAppSelection` and `ContentSelection`. The
+declares only its difference — the subtractive shape `RuleSelection`,
+`SubAppSelection` and `ContentSelection` share. The
 sub-app roster is one table with two projections, `LIBRARY_SPECS` for the
 documents that describe the CLI and `DevtoolsDeclarations.roster` for the CLI
 itself, so a document and a command tree cannot name different sub-apps. What
@@ -267,9 +267,9 @@ holds, which is what makes inheriting the whole roster possible at all.
 Consequences: A sub-app added to the library appears in every project on its
 next lock refresh, and a factory that grows an argument grows a field with a
 default rather than breaking a call site in each downstream at once. Declining
-stays available and becomes visible: the `retired from lup` row in `dev check`
+is available and visible: the `retired from lup` row in `dev check`
 names every retirement, advisory like `application placement`, because
-declining is allowed and only its invisibility was the defect. A project
+declining is allowed and only a decline nobody can see is a defect. A project
 keeping its own version of a sub-app declares one under that name, since the
 roster resolves last-declaration-wins.
 
@@ -299,11 +299,10 @@ clear. The number never reaches the compile gates or the generated runtime
 config: a scaffold's self-restraint is not a fact about any runtime's ceiling.
 
 Consequences: gating, not advisory — a reservation nobody has to honour is
-spent by the first section that wants the room, which is how the headroom went
-missing before anyone had declared one. Landing it required substantial
-condensing, and the criterion the guidance already stated for itself did that
-work: norms no gate fires on stayed, mechanisms shrank to a name and a pointer
-into the generated reference. `dev guidance` reports the per-heading weights,
+spent by the first section that wants the room. The guidance fits it by the
+criterion it states for itself: norms no gate fires on stay, mechanisms are a
+name and a pointer into the generated reference. `dev guidance` reports the
+per-heading weights,
 because a single number says a cut is needed and nothing about where. A
 project with a thinner scaffold, or none, states its own share through the
 report's `headroom` parameter rather than forking the default.

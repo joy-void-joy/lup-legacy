@@ -504,8 +504,7 @@ A `Requirement` in the manifest is what a declared *capability* asked for. It
 takes a purpose, an exercise that proves a machine has the thing, and a policy
 for going without — so it is the right door exactly when the absence deserves
 a diagnostic. It is the wrong one otherwise: a manifest that invents
-prerequisites refuses machines that were fine, which is why ripgrep was
-declared here once and taken back out.
+prerequisites refuses machines that are fine.
 
 `Image.tooling` is the third, and the one for a program this project's work
 simply needs present. Declared where the image is composed:
@@ -532,7 +531,7 @@ ownership manifest. It mutates nothing. A conflict means one of these:
 
 | Category | Meaning | Action |
 |---|---|---|
-| `backpropagation_candidate` | A previously generated file differs from its owned digest. | Reproduce the intended change in the typed content or policy source, then regenerate. |
+| `backpropagation_candidate` | A generated file differs from its owned digest. | Reproduce the intended change in the typed content or policy source, then regenerate. |
 | `unknown_conflict` | Lup has no ownership proof for the existing bytes. | Decide whether the file belongs in typed generation or should stay local-only. |
 | `local_only` | The recipe deliberately leaves the path to the user. | Keep it outside generation. |
 | `sensitive_local_only` | The path may hold credentials or trust state. | Never import or commit it through the harness. |

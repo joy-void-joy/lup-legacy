@@ -382,7 +382,7 @@ Four tiers, and imports only ever point downward.
    one, the do-not-edit banner and the escaping of a derived table's cells;
    `lup.seams` and `lup.execution` are the rest. Burying one of these inside a
    subject is what manufactures a cycle — folding `channels` in with
-   `workspace` did exactly that and was undone. Gathering two of them under a
+   `workspace` would do exactly that. Gathering two of them under a
    question they share does not, and cannot: a package holding only leaves has
    no outgoing edge to close a loop with.
 2. **`capabilities` and `events`** — each subject carries both.
@@ -456,10 +456,10 @@ an agent declares them in, beside the session wrappers that go around them;
 `budget.py` and `quota.py` are the two opposite kinds of "no more work" it
 applies.
 
-Everything about *which* runtime answers moved out to `providers`, and
-everything about running work *over* a session moved out to
+Everything about *which* runtime answers lives in `providers`, and
+everything about running work *over* a session lives in
 `orchestration` — a turn engine that also held routing, profile trees and a
-background agent was three subjects sharing one name.
+background agent would be three subjects sharing one name.
 
 Unsupported behavior is *absent* from a provider's type rather than present
 and raising: `CodexTurn` has `steer`, and `ClaudeTurn` has no such method.
@@ -553,12 +553,11 @@ Which entries this table has to cover is walked from the installed `lup`
 package when the page is generated — `packages/lup/src/lup` in this repository,
 and wherever a downstream project resolved the dependency to. Generation fails
 naming any package that is neither described here nor tiered above, so a
-package added to the library cannot be quietly missing from its own roster —
-the way six of them once were.
+package added to the library cannot be quietly missing from its own roster.
 
 | Package | Solves |
 | --- | --- |
-| `channels` | File-backed channels: a value that settles, and an ordered log. The widest dependency in the library: most of its top-level entries write through this one, which is what makes it a package rather than a helper inside any of them. Counted rather than listed, because the list is the thing that falls behind — the roster this paragraph came from named six consumers where the import graph held eleven, and nobody notices a sentence going stale. |
+| `channels` | File-backed channels: a value that settles, and an ordered log. The widest dependency in the library: most of its top-level entries write through this one, which is what makes it a package rather than a helper inside any of them. Counted rather than listed, because a list is the thing that falls behind — a hand-kept roster of consumers drifts from the import graph, and nobody notices a sentence going stale. |
 | `coordination` | Addressable agents: one held session each, reachable while they work. An agent a caller opens, drives for one turn and closes cannot be talked to, because there is nothing to talk to between the call and the result. This package is the other shape — an actor holds its session across turns, takes mail mid-turn through a hook it never chooses to check, and asks questions that settle without stalling whoever asked. |
 | `devtools` | The development CLI a project built on lup inherits rather than forks. Worktrees and branches, trace and Python introspection, the resolver supervisor, the sync registry, version bookkeeping. Ships the whole roster — `roster.py` wires every sub-app over one `DevtoolsDeclarations`, and an application declares only what it retires and what only it has, so a sub-app added here reaches it on the next lock refresh instead of waiting to be noticed. Requires the `web` extra for the supervisor. |
 | `execution` | What carrying work out runs into, and what to do about each of it. The retry and the throttle a flaky or rate-limited service is met with, the executor a blocking call is handed to so work in flight outlives any one loop&#x27;s teardown, and whether a path can be written at all — or whether a boundary owns it and something merely died holding a lock. |
@@ -570,7 +569,7 @@ the way six of them once were.
 | `orchestration` | Running more than one piece of work, and staying able to speak to it. A background agent that coalesces wakes into turns; a scheduler and relay for work that sleeps; the review gates a turn passes through; and spec-driven delegation for runtimes whose own subagents will not do. The cohort of held sessions those meet, and the mail that lands in front of each one&#x27;s next tool call, are :mod:`lup.coordination`&#x27;s. |
 | `runs` | Work that outlives the tool call which started it, and stays watchable. A job long enough to be worth launching in the background is a job nobody can see. The answer here is one directory and a protocol over it: the run declares what it scheduled before starting, lands one atomically written result per unit, claims a unit while it works on it, and writes a line each time something happens. Everything a follower knows it reads from those, so a run launched detached, from another session, or before this shell existed is observable without being touched — and following one cannot perturb it. |
 | `sandbox` | Docker-based Python sandbox, split by concern. A Docker-isolated Python REPL — mount topology, container lifecycle, and the exec-multiplexed socket protocol. Requires the `docker` extra. |
-| `seams` | A seam over a library table: taking it as offered, saying what differs. A seam is *a place this library holds an opinion a project is meant to overrule*, which is the definition `dev seams` reads and writes by. Most of them are declarations in the adopting project&#x27;s own catalog and need no mechanism here at all. The ones shaped like a table do, and this is theirs: three reach a project as a starting point rather than a fixture — the anti-patterns it holds its code to, the shell vocabulary it runs, the edit gates it judges its own changes by — and in all three the only way to disagree with one entry was to restate the table around it, where a restatement fallen behind the library looks exactly like a decision. A project names what it drops and adds what the library lacks, keyed on the same id a directive, a denial and the generated reference already use, so an override replaces its namesake in place rather than sitting beside it. |
+| `seams` | A seam over a library table: taking it as offered, saying what differs. A seam is *a place this library holds an opinion a project is meant to overrule*, which is the definition `dev seams` reads and writes by. Most of them are declarations in the adopting project&#x27;s own catalog and need no mechanism here at all. The ones shaped like a table do, and this is theirs: three reach a project as a starting point rather than a fixture — the anti-patterns it holds its code to, the shell vocabulary it runs, the edit gates it judges its own changes by — and in all three, without a seam, the only way to disagree with one entry is to restate the table around it, where a restatement fallen behind the library looks exactly like a decision. A project names what it drops and adds what the library lacks, keyed on the same id a directive, a denial and the generated reference already use, so an override replaces its namesake in place rather than sitting beside it. |
 | `tools` | What an agent is given to act with, and what decides which of it it gets. The tool decorator and server surface, the built-in presets, the conditional availability policy, and the LSP-backed code intelligence the agent tools are built on. One subject: the instruments, not the work done with them. |
 | `web` | Local web surfaces: the boundaries a page served on this machine keeps. What a page served on this machine does to stay local-only — the loopback bind refusal and the `Host` check that DNS rebinding would otherwise walk past — and the one sequence that stands such a page up, with the bundles and view schemas it serves. One subject: a local HTTP surface a browser reaches. The two user-facing pages, `devtools/dashboard` and `devtools/supervisor`, sit *on* this; it does not belong beside them. |
 | `workspace` | Session workspace: where a run&#x27;s data lives and how it is addressed. Where a run&#x27;s data lives: version-aware paths, the `SessionContext` that crosses a process boundary, session history, and the note directories a session may touch. |
@@ -578,9 +577,8 @@ the way six of them once were.
 ### What is left to place
 
 The roster above is where the tree stands, and where the three questions put
-it. Thirty-four top-level entries became these by asking, of each one, which
-of the four kinds it is: a foundation that imports nothing here, a subject,
-the one vendor boundary, or tooling.
+it. Each top-level entry is one of four kinds: a foundation that imports
+nothing here, a subject, the one vendor boundary, or tooling.
 
 `resolver` is the entry the downward question is hardest on, because
 everything that drives it is tooling: 12 modules under
@@ -611,12 +609,12 @@ questions still open; the tenth is the shape of a guarantee.
 The first five have one shape: a registry sitting in the package that
 everything it registers already imports. Every tool group is declared in
 `tools.mcp`'s vocabulary, and `tools/toolsets.py` assembles them all, so the
-edge closes by moving the assembly above what it assembles. The last four have
-the shape the do-not-edit banner had: vocabulary both sides speak — an actor
+edge closes by moving the assembly above what it assembles. The last four
+share one shape: vocabulary both sides speak — an actor
 reference, a journal record, a history reader, a clipboard probe — sitting
-inside one of them, which closes by moving it below both, as
-`lup.formats.banner` already did for the banner the policy bundle and harness
-both write. `tools` ↔ `devtools` also carries the question the rest of the
+inside one of them, which closes by moving it below both, the way
+`lup.formats.banner` sits below the policy bundle and the harness, which both
+write the banner. `tools` ↔ `devtools` also carries the question the rest of the
 table assumes an answer to: its one import back is deferred inside a function,
 and whether a deferred import counts as an edge at all is the question to
 answer before an acyclicity check is written — answering it by choosing a
@@ -632,7 +630,7 @@ written. This package exists to decide identically in two homes, the compiled
 hook and `dev check`, and one shared reading of the source is how the two are
 held to the same answer. Cutting the edge would mean two implementations of
 that reading, drifting apart on exactly the cases nobody thought to test —
-which is the failure the package was built to prevent, reintroduced for the
+which is the failure the package exists to prevent, reintroduced for the
 sake of a tidier graph.
 
 Acting on one of these answers is a command rather than an afternoon.

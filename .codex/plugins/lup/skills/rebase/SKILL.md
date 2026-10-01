@@ -137,7 +137,7 @@ git branch -f rebase-backup HEAD
 git reset --soft <base>
 ```
 
-All changes are now staged. For each logical unit of work:
+All changes are staged at this point. For each logical unit of work:
 - Selectively unstage with `git reset HEAD <files>`, then stage and commit relevant pieces
 - Or use `git commit` with specific files to build atomic commits
 - Order logically: dependencies first, then features, then polish

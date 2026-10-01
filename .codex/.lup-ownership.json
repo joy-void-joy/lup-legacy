@@ -30,7 +30,7 @@
     {
       "path": ".codex/agents/version-explorer.toml",
       "category": "generated",
-      "sha256": "622460807c31b8509f3ac019c6e66e66d5a245c9675f98ab28b65f5e86cb8ef1",
+      "sha256": "a6a30e1de455f523f1e55829ba24ffc6870c876f1561302779288a6800bd260f",
       "semantic_id": "agent.version-explorer",
       "executable": false
     },
@@ -128,14 +128,14 @@
     {
       "path": ".codex/plugins/lup/hooks/runtime/coordination/naming.py",
       "category": "generated",
-      "sha256": "60990cff106a1efb096200d302d658c34be5d1ffd27739b05246c11a1a6f6d2b",
+      "sha256": "b1eda6e11a232324eaa74a0207c36f76bc93aebf453e4d362d9968a362f33dc3",
       "semantic_id": "hooks.lup-policy",
       "executable": false
     },
     {
       "path": ".codex/plugins/lup/hooks/runtime/coordination/runtime.py",
       "category": "generated",
-      "sha256": "8744c1fd7c479bb3ab0605023fb73269c3999059a96112cbc18f1230dab1e1b0",
+      "sha256": "c2391783df07f24b8f8c9cd1810fc6f52511add9e175ca1ae18430b58145b2da",
       "semantic_id": "hooks.lup-policy",
       "executable": false
     },
@@ -149,7 +149,7 @@
     {
       "path": ".codex/plugins/lup/hooks/runtime/coordination/store.py",
       "category": "generated",
-      "sha256": "9b10d151b0e480d4b98586a1a6023122a31b1573c69ed83145eb4042c7a3173b",
+      "sha256": "e50e1a2cc81b08f90b7251826d9a88fbdac7b5e86701ee921365d2d27f8c898a",
       "semantic_id": "hooks.lup-policy",
       "executable": false
     },
@@ -534,7 +534,7 @@
     {
       "path": ".codex/plugins/lup/skills/brainstorm/SKILL.md",
       "category": "generated",
-      "sha256": "d77020e37a75dc2b542d965351dfbdfd8a4618c9d3a0c5dd6dc1a639e5d9cbad",
+      "sha256": "8644aaa08f924ce9ef8c70159001b8fb3ce8226e7148dc3c3e1378af9d43b057",
       "semantic_id": "skill.brainstorm",
       "executable": false
     },
@@ -576,14 +576,14 @@
     {
       "path": ".codex/plugins/lup/skills/delegate/SKILL.md",
       "category": "generated",
-      "sha256": "36f5ed424e7f227f2723ac551f285b52b53a372af9cfc083cdba9c912fcf596f",
+      "sha256": "2c1d7101710da71aa1eddd156d6b6ae880e781170e9a6ad2e97d05bc8613cf6e",
       "semantic_id": "skill.delegate",
       "executable": false
     },
     {
       "path": ".codex/plugins/lup/skills/distill/SKILL.md",
       "category": "generated",
-      "sha256": "fbe9a95fb5fa8d15c9db61092c321dcb57a90c3dbeae72d8475a71cf4752e131",
+      "sha256": "136855d37b80e0822185767e1bf00847eeb12d3dd7c40df160eb2e05a412b30e",
       "semantic_id": "skill.distill",
       "executable": false
     },
@@ -597,7 +597,7 @@
     {
       "path": ".codex/plugins/lup/skills/fb-implement/SKILL.md",
       "category": "generated",
-      "sha256": "592f98bae48f71d130bd0720716e2f8aae4faa9c46d9d7e1312edc3c6484ec63",
+      "sha256": "7d69cece069dc618ea677a22866ec4c7a2985bf82d725f3f8e850131bfb55fa5",
       "semantic_id": "skill.fb-implement",
       "executable": false
     },
@@ -653,7 +653,7 @@
     {
       "path": ".codex/plugins/lup/skills/import/SKILL.md",
       "category": "generated",
-      "sha256": "18d45fd06ffbdcdd03c61c4018f18b57c291cbe29335e7f7178b5cbc11addfdf",
+      "sha256": "a98377e8638007f69498f3193130ee3c166bb6e0f8209c795ad88260629be69d",
       "semantic_id": "skill.import",
       "executable": false
     },
@@ -688,7 +688,7 @@
     {
       "path": ".codex/plugins/lup/skills/meta/SKILL.md",
       "category": "generated",
-      "sha256": "55e8171c8584947b5a6f4ab79ab30da33ba2fae0ce7ee8caa72d08cf9b447f60",
+      "sha256": "dec0e94453da94e8c3b0790468e1b5e7b99724e8d93df6bc24b5a3693682751a",
       "semantic_id": "skill.meta",
       "executable": false
     },
@@ -709,7 +709,7 @@
     {
       "path": ".codex/plugins/lup/skills/rebase/SKILL.md",
       "category": "generated",
-      "sha256": "0263adabaa9386a2299d3206be31b4f771de07ac36aaf74478c0ea993da7e8bf",
+      "sha256": "1c44ead64a4de83e0fbfd310522b80c62c722812ab51c03ab47f402a90cdce9b",
       "semantic_id": "skill.rebase",
       "executable": false
     },
@@ -751,7 +751,7 @@
     {
       "path": ".codex/plugins/lup/skills/resolve/SKILL.md",
       "category": "generated",
-      "sha256": "61a9d8c9ac6ce253d5717b9fb9e2092aabb5fea287edf7e29c1bed960bfaa61a",
+      "sha256": "776db181929ec0cc80d1d3f6f9740eb949b482da5f9e80acb0d9759b7663fcfb",
       "semantic_id": "skill.resolve",
       "executable": false
     },
