@@ -70,8 +70,8 @@ def carried_vocabulary(
     measured here; a session that wants a manual page has the web.
 
     Answered once per process: deriving it judges every word of the table
-    through the shell policy, which made it most of what building the harness
-    cost, and both inputs are declarations that do not move while it runs.
+    through the shell policy, which is most of what building the harness
+    costs, and both inputs are declarations that do not move while it runs.
     """
     return tuple(
         name
@@ -86,26 +86,26 @@ def manifest(boundary: SessionEgress | None = None) -> Manifest:
     ``boundary`` is the network posture the image half is asked about, and it
     defaults to the one this repository declares. A parameter because the
     entries below divide on it and a caller that cannot vary it cannot ask
-    what the other posture would produce -- which is how the whole at-launch
-    set went empty under a change to one field, with every test still green.
+    what the other posture would produce -- so a change to one field could
+    empty the whole at-launch set while every test asking only about the
+    declared posture stayed green.
 
     Nothing here names a path, a container client, or an image tag, and that
     is load-bearing rather than tidy. This manifest sits inside the `Harness`
     the ownership digest hashes, so a host fact written into it moves that
-    digest per machine: measured, two worktrees of one commit hashing
-    differently, which made every checkout but the last one to generate read
-    its own committed tree as stale. The shapes are declared here and
+    digest per machine: two worktrees of one commit would hash differently,
+    and every checkout but the last one to generate would read its own
+    committed tree as stale. The shapes are declared here and
     `lup.harness.toolchain.for_host` aims them at what this machine answered.
 
     Ordered by how early a session notices an absence, not by importance, and
-    deliberately short. A first draft also declared ripgrep, and exercising it
-    refuted the declaration twice over: this project never invokes `rg` --
-    only the policy vocabulary judges it, which is a rule about what an
-    *agent* may run -- and on the machine that raised the finding `rg` was a
-    shell function rather than an executable, so `command -v` would have
-    called it present while nothing spawned could reach it. A manifest that
-    invents prerequisites refuses machines that were fine, which is this
-    module's own failure pointed the other way.
+    deliberately short. Ripgrep is not here, and declaring it would be wrong
+    twice over: this project never invokes `rg` -- only the policy vocabulary
+    judges it, which is a rule about what an *agent* may run -- and `rg` can
+    be a shell function rather than an executable, which `command -v` calls
+    present while nothing spawned can reach it. A manifest that invents
+    prerequisites refuses machines that are fine, which is this module's own
+    failure pointed the other way.
 
     The image half is exercised inside the container a session opens, which
     `harness requirements --inside` is for. Three of its entries take a

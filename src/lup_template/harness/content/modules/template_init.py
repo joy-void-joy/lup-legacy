@@ -3,13 +3,13 @@
 Three skills whose subject is the project rather than the work inside it:
 initializing one, installing the plugin into it, and restarting one from a
 predecessor that was explored rather than finished. They have nothing to say
-inside a working repository, which is why they stay behind when the rest of
-the roster becomes the library's.
+inside a working repository, which is why they are this repository's while
+the rest of the roster is the library's.
 
 Designing is not among them. `/lup:brainstorm` shapes a new agent before
 initialization *and* a feature inside a project that already exists, so it
 has as much to say in a working repository as in an empty one — it is core's,
-and a project declining this module keeps it. Distill stays: restarting from
+and a project declining this module keeps it. Distill is here: restarting from
 an explored predecessor is standing a project up again, and it reaches for
 upstream's import and tracking the way initialization does, which is why the
 spec requires upstream. Nor is the guide to this project's own layout here:
