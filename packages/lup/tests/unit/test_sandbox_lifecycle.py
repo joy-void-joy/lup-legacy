@@ -37,7 +37,7 @@ from lup.sandbox.models import (
     SandboxNotInitializedError,
 )
 from lup.types import JsonObject
-from lup.sandbox.process import process_start_token
+from lup.sandbox.process import process_is_alive, process_start_token
 from lup.sandbox.repl import REPL_SERVER_SCRIPT, ReplSession
 
 
@@ -264,9 +264,9 @@ Asked for rather than spelled. A sandbox derives its egress config path from
 the parent of its shared directory and unlinks it on the way down, so naming
 a literal ``/tmp`` puts a write into a directory the suite does not own — and
 ``missing_ok`` covers a file that is not there, not a filesystem that will
-not take one. The suite then passes or fails on whether the machine running
-it happens to keep ``/tmp`` writable, which is how it came to fail under a
-sandbox that mounts it read-only while passing everywhere else.
+not take one. The suite would then pass or fail on whether the machine running
+it happens to keep ``/tmp`` writable, failing under a sandbox that mounts it
+read-only while passing everywhere else.
 """
 
 
@@ -514,9 +514,9 @@ class TestDestroy:
         """`missing_ok` answers absence, which is not the only way unlink fails.
 
         A read-only or permission-denied location raises rather than reporting
-        the file gone, and that escaped a teardown whose every other step logs
-        and continues — so a container and its volume were left behind over a
-        configuration file, at the one moment nothing is left to retry.
+        the file gone, and left to escape a teardown whose every other step
+        logs and continues, it would leave a container and its volume behind
+        over a configuration file, at the one moment nothing is left to retry.
         """
         client = FakeDockerClient()
         sandbox = make_sandbox(client)
@@ -605,7 +605,7 @@ class TestStartAndStop:
         Asserted at the ``containers.run`` call rather than on the attribute,
         because a ceiling held on the sandbox and never passed to Docker is
         exactly the failure this parameter exists to prevent — and it reads
-        as configured right up until a cell dies against the old default.
+        as configured right up until a cell dies against the default ceiling.
         """
         client = self.start_ready_client()
         monkeypatch.setattr(docker, "from_env", lambda: as_client(client))
@@ -848,3 +848,73 @@ class TestDockerReachability:
         with pytest.raises(ValueError, match="what the session raised"):
             with sandbox_cleanup(session_id="masked", shared_dir=tmp_path):
                 raise ValueError("what the session raised")
+
+
+HAVE_PROC = Path("/proc/self/stat").exists()
+
+
+def unstarted_sandbox() -> Sandbox:
+    """A Sandbox whose __init__ touches no Docker (no start() called)."""
+    return Sandbox(session_id="liveness-test", shared_dir="/tmp/lup-test-shared")
+
+
+NEVER_A_PID = 0x7FFFFFFF  # far above any real Linux PID; os.kill -> ProcessLookupError
+
+
+class TestProcessLiveness:
+    def test_own_process_is_alive(self) -> None:
+        token = process_start_token(os.getpid())
+        assert process_is_alive(os.getpid(), token) is True
+
+    def test_absent_pid_is_dead(self) -> None:
+        assert process_is_alive(NEVER_A_PID, None) is False
+        assert process_is_alive(0, None) is False
+        assert process_is_alive(-1, None) is False
+
+    @pytest.mark.skipif(not HAVE_PROC, reason="needs /proc start tokens")
+    def test_reused_pid_token_mismatch_is_dead(self) -> None:
+        """A live PID with a stale token means the original owner is gone."""
+        assert process_start_token(os.getpid()) is not None
+        assert process_is_alive(os.getpid(), "0") is False
+
+    @pytest.mark.skipif(not HAVE_PROC, reason="needs /proc start tokens")
+    def test_start_token_absent_for_dead_pid(self) -> None:
+        assert process_start_token(NEVER_A_PID) is None
+
+
+class TestContainerOrphanDecision:
+    def test_live_owner_kept_even_when_ancient(self) -> None:
+        """A long-lived owner keeps its container past STALE_AGE_HOURS."""
+        sandbox = unstarted_sandbox()
+        ancient = str(time.time() - sandbox.STALE_AGE_HOURS * 3600 * 10)
+        labels = {
+            sandbox.OWNER_PID_LABEL: str(os.getpid()),
+            sandbox.OWNER_START_LABEL: process_start_token(os.getpid()) or "",
+            sandbox.CREATED_AT_LABEL: ancient,
+        }
+        assert sandbox.container_is_orphaned(labels) is False
+
+    def test_dead_owner_is_orphaned(self) -> None:
+        sandbox = unstarted_sandbox()
+        labels = {
+            sandbox.OWNER_PID_LABEL: str(NEVER_A_PID),
+            sandbox.CREATED_AT_LABEL: str(time.time()),  # young, but owner gone
+        }
+        assert sandbox.container_is_orphaned(labels) is True
+
+    def test_unparseable_owner_pid_is_orphaned(self) -> None:
+        sandbox = unstarted_sandbox()
+        assert sandbox.container_is_orphaned({sandbox.OWNER_PID_LABEL: "nope"}) is True
+
+    def test_age_fallback_when_no_owner_label(self) -> None:
+        sandbox = unstarted_sandbox()
+        fresh = {sandbox.CREATED_AT_LABEL: str(time.time())}
+        old = {
+            sandbox.CREATED_AT_LABEL: str(
+                time.time() - sandbox.STALE_AGE_HOURS * 3600 - 60
+            )
+        }
+        assert sandbox.container_is_orphaned(fresh) is False
+        assert sandbox.container_is_orphaned(old) is True
+        # No labels at all -> created_at defaults to 0 -> treated as stale.
+        assert sandbox.container_is_orphaned({}) is True

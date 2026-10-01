@@ -1,11 +1,13 @@
 """Metrics collection behavior, including the cross-process file mode."""
 
+import json
 from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
 
 from lup.observability.metrics import (
+    MetricsCollector,
     collector,
     configure_metrics,
     get_metrics_summary,
@@ -58,3 +60,47 @@ class TestInProcessSummary:
         reset_metrics()
 
         assert get_metrics_summary()["total_tool_calls"] == 0
+
+
+class TestMetricsAtomicFlush:
+    def test_flush_leaves_valid_json_and_no_temp(self, tmp_path: Path) -> None:
+        target = metrics_path(tmp_path)
+        collector = MetricsCollector()
+        collector.flush_path = target
+
+        collector.record("search", 12.5)
+        collector.record("search", 7.5, is_error=True)
+
+        # The target is always complete, parseable JSON.
+        summary = json.loads(target.read_text(encoding="utf-8"))
+        assert summary["total_tool_calls"] == 2
+        # The write-then-rename temp file is gone after a successful flush.
+        assert not target.with_suffix(".tmp").exists()
+        assert read_metrics_summary(tmp_path) is not None
+
+    def test_target_only_changes_on_atomic_commit(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The target file is mutated only by the rename, never in place.
+
+        If the commit (``Path.replace``) fails, the target a reader may be
+        parsing must still hold the previous complete snapshot — proof the
+        new bytes were staged on a temp file, not written into the target.
+        A direct write-into-place would truncate the target first.
+        """
+        target = metrics_path(tmp_path)
+        collector = MetricsCollector()
+        collector.flush_path = target
+
+        collector.record("good", 1.0)
+        good = target.read_text(encoding="utf-8")
+        assert json.loads(good)["total_tool_calls"] == 1
+
+        def failing_replace(src: object, dst: object) -> None:
+            raise OSError("rename interrupted")
+
+        monkeypatch.setattr(Path, "replace", failing_replace)
+        collector.record("doomed", 1.0)  # flush() swallows the OSError
+
+        # The target still parses as the last complete snapshot, untouched.
+        assert target.read_text(encoding="utf-8") == good
