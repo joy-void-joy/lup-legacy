@@ -83,6 +83,12 @@ def harness_session_context(
     """
     from lup.workspace.notes import session_gate_flag, setup_notes
 
+    # lup: defer: setup_notes makes a new timestamped directory under outputs/
+    # on every call, and every server process of every launched session calls
+    # it here, so a checkout gathers one empty directory per server start (733
+    # in a month of this repository's dev checkout). The session only uses
+    # their parent; whether setup_notes stops stamping one for a session that
+    # never writes there, or this stops calling it, is a choice to make.
     notes = setup_notes(session_id=name, task_id=name, type=served.kind)
     return SessionContext(
         session_dir=notes.session,
