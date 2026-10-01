@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { DashboardEvent, LiveMessage, LiveSession, ReviewSummary, StreamFrame } from "../generated/views";
-import { applied, called, codeNotice, conversation, paged, repositoryMessages, sessionTree, UNSAID, type LiveState } from "./live";
+import { applied, called, codeNotice, conversation, moved, NO_KEYS, paged, repositoryMessages, UNSAID, type LiveState } from "./live";
 
 const repository = { key: "r1", name: "lup", repository: "/src/lup.git", checkout: "/src/lup.git/tree/dev" };
 
@@ -45,6 +45,7 @@ function snapshot(): LiveState {
     extents: [{ repository: "r1", earlier: 900 }],
     reviews: { roots: [], errors: [], reviews: [review("q1", "2026-09-29T09:00:00Z")], history: 0 },
     code: UNSAID,
+    keys: NO_KEYS,
   }));
 }
 
@@ -77,13 +78,24 @@ describe("live state", () => {
     expect(scoped.reviews.history).toBe(1204);
   });
 
-  test("sessions nest their subagents beneath them, working ones first", () => {
-    const [group] = sessionTree(snapshot());
-    expect(group?.repository.name).toBe("lup");
-    expect(group?.sessions.map((node) => [node.session.id, node.subagents.map((each) => each.name)])).toEqual([
-      ["lead", ["scout"]],
-      ["other", []],
-    ]);
+  test("the person's keys arrive with the whole state and move by their own frame", () => {
+    const state = snapshot();
+    expect(state.keys).toEqual(NO_KEYS);
+    const keys = { ...NO_KEYS, source: "/home/me/.config/lup/config.toml", changed: [{ action: "agent.next", keys: ["<A-Right>", ")"], origin: "config" as const, what: "", why: "", way: "" }] };
+    const rebound = applied(state, frame({ type: "keys", keys }));
+    expect(rebound.keys).toEqual(keys);
+    expect(rebound.sessions).toBe(state.sessions);
+  });
+
+  test("the live log says what each frame moved: an arrival, a call begun, a message, a review parked", () => {
+    const state = snapshot();
+    const calling = frame({ type: "session", session: row("lead", { activity: { calling: "Bash", arguments: {}, at: "2026-09-29T10:00:00Z", said: "", transcript: "" } }) });
+    expect(moved(state, calling).map((line) => line.text)).toEqual(["lead calling Bash"]);
+    expect(moved(state, frame({ type: "session", session: row("new") })).map((line) => line.text)).toEqual(["new arrived"]);
+    const posted = frame({ type: "message", message: message("m9", { sender: "lead", recipient: "other", text: "hello" }) });
+    expect(moved(state, posted).map((line) => line.text)).toEqual(["lead → other: hello"]);
+    expect(moved(state, frame({ type: "review", review: review("q2", "2026-09-29T11:00:00Z") }))[0]?.text).toContain("review q2 parked by lead");
+    expect(moved(state, frame({ type: "review", review: review("q1", "2026-09-29T09:00:00Z") }))).toEqual([]);
   });
 
   test("a session's conversation is what it was sent and what it sent, oldest first", () => {

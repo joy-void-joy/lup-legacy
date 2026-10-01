@@ -448,6 +448,12 @@ page at a time (`GET /api/reviews/history?offset=<n>&limit=<m>`, most
 recently settled first) with **Load older requests**, and a link to a review
 further back is looked up there by its id.
 
+The person's own keys ride the same stream: the first frame carries the keys in
+effect — every action whose keys differ from lup's, and what was refused and
+why — and a `keys` frame follows whenever their lup config changes on disk, so
+a saved `[dashboard.keys]` reaches every open tab with nothing to reload
+(Personal keys, below).
+
 Until the first frame arrives, the page shows loading with unknown counts.
 After it, a queue that is not current — the stream reconnecting, or a
 checkout whose queue could not be read — keeps its last counts, marked as
@@ -457,48 +463,148 @@ every queue read can confirm that no requests are waiting. A queue read that
 fails is read again a moment later before it is reported, so a writer
 appending to a relay never blanks the page.
 
-## Sessions
+## The page
 
-The Sessions view lists every session of every repository the dashboard
-serves, read from that repository's roster, with its native subagents nested
-beneath it — each subagent is a roster row of its own, named from its spawn.
-Each row says what the session says it is doing, the call it is waiting on or
-the last thing it said, and how many messages wait in its mailbox. Sessions
-that stopped within the roster's window stay listed, marked stopped.
+The page is one editor. Its middle window holds one buffer — a review, an
+agent, the operator's own row, a repository's page, the inbox, or a
+discussion — with the agents tree on its left and the context window on its
+right, describing what the buffer holds beside the lines it describes. The
+split under the buffer is the box: the note on a review, the message box
+beside an agent, the post box under a discussion. The tabline above names the
+views — **1 Supervise**, **2 History**, **3 Inbox**, **4 Threads** and
+**5 Setup**, `{n}gt` going to view n — with what each counts; the statusline
+below says the mode, where focus is, what is open and where the cursor
+stands, what is unsent, what waits on the operator, whether the stream is
+live, and which code the dashboard runs; the command line sits under it.
 
-Choose a session to read its id, worktree and task; what it says it is doing;
-what it is doing now, folded from the runtime's own transcript the row names —
-the last thing it said in its own words, and the tool call nothing has answered
-yet, with its arguments (a subagent's from its own transcript beside its
-session's); what its calls hold, marked where another session holds it too;
-its subagents; and every message sent to it or by it, oldest first, each marked
-as waiting in its mailbox or taken. Choose a repository's name to read every
-message its sessions sent each other as one conversation. Messages come from
-the repository's mail record, `mail.jsonl` in its coordination store, where
-every message posted lands as well as in its reader's mailbox, so what was said
-stays readable after its reader took it, for as long as the clone stands: the
-record is never trimmed. So it is never read whole either. The stream carries
-each repository's latest hundred messages and whatever is posted after them,
-read from the record's end, and **Load earlier messages**, in a session's
-messages or a repository's, reads the hundred before the earliest the page
-holds (`GET /api/repositories/<key>/messages?before=<byte>`), back to the
-record's start.
+Focus decides where keys act, and exactly one place has it: the tree (History's
+list in History, the discussions in Threads), the buffer, the box, or the
+context. It wears the one outline on the page, and the statusline names it —
+`in the tree`, `in the buffer`, `in the box`, `in the context`. In the tree
+`j`/`k` walk its rows, opening each; in the buffer the cursor moves like an
+editor's; in the context they walk its items, and `Enter` acts on one.
+`Tab` and `Shift+Tab` move focus round the places that show, from inside the
+box too; `Esc` from the box, the tree or the context goes to the buffer; a
+click moves focus where it lands.
 
-## Writing to a session
+In the buffer the cursor has a line and a column, and the caret is drawn on
+its character while the buffer has focus. `h`/`l` move a character and
+`j`/`k` a line, keeping the column chosen; `w`, `b` and `e` move by words
+across lines; `0`, `^` and `$` go to the line's start, its first non-blank and
+its end; a count repeats any of them (`3w`, `5j`). `gg` and `G` go to the top
+and the bottom, `{n}G` to line n of the file in a review and row n anywhere
+else; `{` and `}` go to the previous and next change or step in a review, and
+section elsewhere; `Ctrl+d`/`Ctrl+u` and `PgDn`/`PgUp` move half a page. `/`
+searches the window with focus, incrementally and smartcase, landing on the
+match's column, and `;` and `,` go to the next and previous match. A click
+puts the cursor on the character clicked. The statusline says where it stands:
+`L972:12` in a review, `row r:c` anywhere else. Help, the full context of a call, `:messages`, `:map` and the finder
+open as floats over the page, drawn only while open, and every one closes
+with `q`, `Esc`, its ✕, or the key that opened it. What the dashboard says —
+an answer's outcome, a refusal, a restart — comes up as a notice at the top
+right; an outcome closes on its own, and a refusal or the dashboard's own word
+stands until dismissed (`Space u d`). `:messages` keeps everything the page said.
 
-A running session has a box beneath its messages. What the operator writes goes
-the way a session's own `coordination_send` to a peer goes: into the session's
-mailbox, signed `user`, where its hook hands it over before its next tool call
-as `[message from user by page] …`, then through its wake path so an idle
-session takes a turn — its wake socket for Claude Code, `codex queue` for
-Codex — carrying everything waiting for it. The page says which happened: the
-runtime accepted the wake, the message waits for the next tool call (a
-subagent's only route), or why no wake was attempted. The session answers the
-operator by sending to `user`. The box writes through the page's capability and
-origin check, addressed by the repository's key and the session's member id —
-the id every verb accepts and no rename changes
-(`POST /api/repositories/<key>/sessions/<member-id>/messages`). A session that
-stopped has no box: a message to it would wait for nobody.
+The windows give way by width rather than squeezing. From 1600 px the tree is
+wide enough that names and calls wrap less; below 1280 px the tree and the
+editor show, the context steps aside, and `Space o` brings it in the tree's
+place and gives it back when it goes. Long lines wrap beside the gutter rather
+than cutting anything; `:set nowrap` scrolls them sideways instead. Below
+861 px the page is the touch layout (On a phone or a tablet, below). The colours follow
+the system's light or dark setting and come from one palette — Claude Code's
+colour-blind themes and VS Code's high-contrast ones — every text colour
+reading at 7:1 or better on whatever it sits on; `:contrast` shows each colour,
+where it came from, and how it reads. No state is told by colour alone: every
+row carries a glyph or a sign as well.
+
+## Supervising
+
+The Supervise view is where the page lands. Its tree lists every repository
+the dashboard serves, the operator's own row, and each session read from that
+repository's roster, with its native subagents nested beneath it — each
+subagent a roster row of its own, named from its spawn — and under each agent
+the reviews it parked that wait on the operator. An agent's row reads its
+standing — `●` working, `◌` idle, `◷` quiet (a call running ten minutes with
+nothing new), `○` stopped — its name, and what needs the operator: `?n`
+reviews waiting, `✎n` unread messages it sent the operator, `✉n` messages
+waiting in its own mailbox, `⌂n` paths its calls hold and `!n` paths another
+agent holds too, then how long since it was heard. Its second line is what it
+is doing: the call nothing has answered yet in one line, or what it last said.
+A repository's stopped agents fold into one row at the end of its tree, unless
+something under one still runs, waits on the operator, or wrote to them
+unread; `za` or a click on that row shows them, and `:set stopped` shows every
+repository's. `Space t t` narrows the tree to the agents that need the
+operator, `Space t r` to the reviews waiting, and `Space t a` shows every agent.
+
+Choose an agent — a click, the tree's own `j`/`k` while it has focus, `(` and
+`)` in the tree's order, `:agent <name>`, or `Space f a` — to read its buffer:
+what it is doing now, folded from the runtime's own transcript its row names
+(the call nothing has answered yet with its arguments, and the last thing it
+said in its own words), then every message sent to it or by it, oldest first,
+each marked as waiting in its mailbox or taken. Its context says its kind and
+parent, what needs the operator, its id, worktree and task, when it arrived
+and was last heard, what a message to it reaches, what its calls hold —
+marked where another agent holds it too — its mailbox, the reviews it parked,
+its subagents, and what can be done to it. `gs` goes from a review to the
+agent that asked, or from an agent to its parent session; `gr` goes from an
+agent to a review it parked. A repository's own row opens its page: its
+members, every message between them as one conversation, and a live log of
+what the stream moved, which the page writes from the frames it applies.
+
+Messages come from the repository's mail record, `mail.jsonl` in its
+coordination store, where every message posted lands as well as in its
+reader's mailbox, so what was said stays readable after its reader took it,
+for as long as the clone stands: the record is never trimmed. So it is never
+read whole either. The stream carries each repository's latest hundred
+messages and whatever is posted after them, read from the record's end, and
+`E`, or the **Load earlier messages** row, reads the hundred before the
+earliest the page holds (`GET /api/repositories/<key>/messages?before=<byte>`),
+back to the record's start.
+
+Beside a running agent, the box under its buffer writes to it: `c` enters it,
+and `Alt+Enter` sends. What the operator writes goes the way a session's own
+`coordination_send` to a peer goes: into the agent's mailbox, signed `user`,
+where its hook hands it over before its next tool call as
+`[message from user by page] …`, then through its wake path so an idle session
+takes a turn — its wake socket for Claude Code, `codex queue` for Codex —
+carrying everything waiting for it. The page says which happened in the
+server's own words: the runtime accepted the wake, the message waits for the
+next tool call (a subagent's only route), or why no wake was attempted. The
+agent answers the operator by sending to `user`. The box writes through the
+page's capability and origin check, addressed by the repository's key and the
+member id — the id every verb accepts and no rename changes
+(`POST /api/repositories/<key>/sessions/<member-id>/messages`). A stopped
+agent has no box: a message to it would wait for nobody, and the box's place
+names its parent session instead. `Space a p` asks a subagent's parent session
+what it is doing, in words written for the operator, and a repository's page
+broadcasts its box to every working member, one message each.
+
+The Inbox lists every message addressed to the operator, in every repository,
+newest first; `Enter` on one opens its sender with the box ready to write
+back. The operator's own row shows what was sent to them, what they sent
+lately, and their working verbs.
+
+Threads reads the same mail as discussions. A post is one message, or the
+copies one send left in several mailboxes — the same sender, text and time —
+shown once with every recipient and whether each took it. Posts that reply to
+each other through `in_reply_to`, transitively, are a thread, titled by its
+first post's first line; the posts between the same members that reply to
+nothing are their running conversation, titled by who is in it. Its list holds
+every discussion in every repository, newest first, `●` where something in it
+is unread to the operator; its buffer shows one whole: each post with its
+author's standing, every recipient marked taken `✓`, waiting `◷` or unread to
+the operator, the post it answers, and its text. Its context names who is in
+it, each one step from their agent. `r` or `Enter` on a post makes the box
+answer that post, `c` goes to the box, `Space f t` finds a discussion, and
+`:threads` opens the view.
+
+What else supervising will do — post into a discussion to everyone in it,
+reply in a message's thread, interrupt a turn, wake without a message, read a
+whole transcript, rename or stop an agent, redirect its next call, mark the
+inbox read, and the operator's own description, holds and standing notices —
+waits on new routes in the dashboard's server; the page lists each with the
+route it needs, and a key, button or command reaching one is refused naming
+it, the draft kept.
 
 ## Reviews
 
@@ -551,20 +657,20 @@ declined the setup module serves no pane, and the pane says so.
 
 ## Reviewing requests
 
-The editor is the centre of a review, at any width: it takes the height left
-and scrolls inside itself, and the context around it is single lines. Above
-it, the title — the change's paths relative to the checkout it changes, which
-leads the line — with the full path on hover; one line naming the queue, the
-directory the call runs in, the session that asked and when, with **Details**
-opening the complete record; then the policy's reason, "Why approval is
-needed · <rule>", in full. Below, the comment box
-is pinned open and focused on every waiting review, with the decisions beside
-it. What a review said and what it came to are its thread: the operator's
-remarks, the requester's replies, and the answer, oldest first.
+A review is one buffer. Its bar says what the call is in plain terms — a
+proposal of eleven files, a write that replaces a file, a shell command of five
+steps of which two need approval — who asked and how that agent stands, and
+under it, in the warning colour, what the policy asks about; `gd` walks the
+parts it names. The buffer opens on the first of them. Its context holds the
+rest beside it: the queue, the directory the call runs in, when it was asked,
+the files, exceptions and markers, the thread, and `I` for the complete record
+— the tool input and the whole question, pretty-printed. What a review said
+and what it came to are its thread: the operator's remarks, the requester's
+replies, and the answer, oldest first.
 
-Beside the policy's reason stands the requester's own account of the call,
-labelled as the claim it is — what it is for is the agent's to say, why it
-asks is the policy's — and never cut; a long one folds behind **Show all**.
+The requester's own account of the call stands in the context as prose,
+labelled with where it was found and as the claim it is — what it is for is
+the agent's to say, why it asks is the policy's — and never cut.
 It is recorded when the call parks, from what the runtime's half reads there:
 the note the tool call carries beside the command (Claude Code's
 `description`, Codex's `justification` for running outside its sandbox), and
@@ -574,15 +680,19 @@ it said nothing there, what its roster row says it is on stands in, labelled
 as the session's; a proposal's is its `--why`, with each file's note on that
 file. `review show` prints the same lines.
 
-A command shows beneath, whole. Where its line runs several commands, each one
-that asks or is refused is listed with the verdict it reached on its own, its
-reason and rule, and the ones allowed on their own fold beneath, so a line
-that asks twice is approved knowing both questions (`docs/permissions.md`).
-Its file changes show the way an edit's do, one diff per file in the order it
-writes them: the documents the policy worked out when it judged the command,
-read off the review rather than re-derived where it is read. The steps whose
-result exists only once they run are listed beside it, each with the files it
-leaves so.
+A command's buffer starts with what asked. Where its line runs several
+commands, each one that asks or is refused comes first, with the verdict it
+reached on its own, its reason and rule; where the policy judged the line
+whole, the line as a whole is what asked, with the question's own reason. Then
+the command, whole, the asking steps marked inside it, so a line that asks
+twice is approved knowing both questions (`docs/permissions.md`). The steps
+allowed on their own fold beneath with the steps whose effect shows only once
+they run — each saying so quietly, "effect shown only after it runs · allowed
+on its own" where its own verdict allowed it — information, never the cause;
+the bar's one line names only what asked. Its file changes show the way an
+edit's do, one diff per file in the order it writes them: the documents the
+policy worked out when it judged the command, read off the review rather than
+re-derived where it is read.
 
 The dashboard titles requests from captured evidence: a file's action and path,
 the number of files, or the command to run. The paths are relative to the
@@ -602,20 +712,29 @@ answer it then. That covers a review only another principal may answer, one
 parked by newer code than the dashboard runs, and one whose record or
 documents this code cannot read back.
 
-The default view includes files
-that require review and highlights newly introduced rule exceptions. Files the
-policy allows automatically or explicitly leaves to the native provider, and
-existing exceptions, remain available in the full-operation view. A captured
-deferral means Lup requests no approval for that file; the native provider
-still applies its own permissions. Approval still applies to the exact
-complete submission. Where recorded evidence cannot establish a file's status,
-it remains visible rather than being treated as automatically allowed. A
-review of several files has a navigator with change counts and path search,
-and `[` and `]` move between files; one of a single file gives the editor the
-whole width. Each file shows as a coloured, numbered diff, its syntax
-highlighted by the file's extension, with Before, After and Raw views beside
-it. The lines a diff leaves out fold into one expander per gap, and
-**Whole file** (`f`) shows the entire file with the changes marked in place.
+Each file's header says, inline and never folded away, why that file needs
+approval, in a few words read off the gate that decided its verdict and the
+file's own facts — `protected`, `new devtools module`, `written whole,
+66 lines`, `adds a # lup: note`, `adds a rule suppression` — or `automatic`
+where the policy let it through; the policy's own sentence is a `K` away. The
+context counts a proposal's files by those reasons, `7 protected · 1 new
+devtools module · 3 written whole`. A protected file names the root that
+protects it where its verdict records the rule it matched.
+
+The default view includes files that require review and highlights newly
+introduced rule exceptions. Files the policy allows automatically or
+explicitly leaves to the native provider fold to their header, and existing
+exceptions show in the full operation (`F`). A captured deferral means Lup
+requests no approval for that file; the native provider still applies its own
+permissions. Approval still applies to the exact complete submission. Where
+recorded evidence cannot establish a file's status, it remains visible rather
+than being treated as automatically allowed. `[` and `]` move between files,
+and `Space f f` finds one by its path. Each file shows as a coloured, numbered
+diff, its syntax highlighted by the file's extension; `Space v` shows the file
+before or after instead, or the unified diff as text, and `Space w v` splits
+before | after side by side. The lines a diff leaves out fold into one row per
+gap, which `Enter` or `za` opens, and `f` shows the whole file with the
+changes marked in place.
 
 Every `# lup:` marker is marked where it stands, in its own colour and
 labelled with its kind: an open note, parked work (`defer:`, and
@@ -623,35 +742,51 @@ labelled with its kind: an open note, parked work (`defer:`, and
 customization point (`template:`), and a rule exception (`ignore[<rule>]`).
 `m` and `Shift+M` jump to the next and previous marker across the review's
 files, opening the whole file where a marker stands outside the diff's hunks.
-Rule exceptions are also grouped by rule in the navigator, with `n` and `p`
-to jump between them; existing exceptions appear only in the full-operation
-view.
+Rule exceptions are listed by rule in the context, with `n` and `p` to jump
+between them; existing exceptions appear only in the full operation.
 
-Click a line number to comment on that line, and Shift+click another to
-comment on the range between: an inline box opens beneath it. Comments are
-drafts until sent — with a decision, or alone — and stored in the answer, or
-the remark, as structured anchors: the path, the first and last line, the
-side the numbers belong to (`before` or `after`), and the note. They show on
-answered reviews where they were made, and in the thread.
+`i`, `a`, `o` or `Enter` on a line comments on it; `V`, then `j`/`k`, then `gc`
+comments on the range picked; a click on a line number comments on that line
+and Shift+click on another on the range between. A comment is a box beneath
+its last line, `Esc` leaves it, `x` on its line deletes it and `u` brings it
+back. Comments are drafts until sent — with a decision, or alone — and stored
+in the answer, or the remark, as structured anchors: the path, the first and
+last line, the side the numbers belong to (`before` or `after`), and the note.
+They show on answered reviews where they were made, and in the thread.
 
-Ctrl+Enter (Cmd+Enter) approves; Alt+Delete declines — the forward Delete
-key, never Backspace, so Alt+Backspace still deletes a word; Alt+Enter sends
-the note and line comments without deciding. Alt+↑ and Alt+↓ move to the
-previous and next review, from inside the box too. Esc leaves the box, so the
-one-letter keys apply again: `j` / `k` for the next and previous request,
-`c` back into the box, `[` / `]`, `n` / `p`, `m` / `Shift+M`, `f`, and `?`
-for the help that lists them. Holding a key cannot answer another request.
+The triage loop: a review opens in its note box. While the box is empty, `j`
+and `k` move to the next and previous review, landing in its box, and `↓`/`↑`
+and `Ctrl+d`/`Ctrl+u` scroll the diff behind it; the first letter typed makes
+the box the operator's, and from then on every key types. `Ctrl+Enter`
+(`Cmd+Enter`) approves; `Alt+Delete` declines — the forward Delete key, never
+Backspace, so `Alt+Backspace` still deletes a word; `Alt+Enter` sends the note
+and line comments without deciding. All three work from anywhere, the box, a
+line comment or the buffer, and `Alt+↑`/`Alt+↓` move to the previous and next
+review from anywhere too, the draft staying with its review. `Esc` reads in
+the buffer and `c` comes back to the box. Holding a key cannot answer another
+request, and `:w` or `:wq` writes nothing: an answer is deliberate.
 
 Answering is immediate: the page shows the review answered and opens the next
-one at once, and reconciles with the server's reply in a toast that says how
-the requester hears of it — its waiter holding the review, the mailbox and
-whether the session was woken, or nobody running to hear it — and whether a
-copy went to a subagent's session. A refusal puts the review back where it
-was, the note and line comments with it, and says why in the toast, on the
-queue row and above the box. Auto-advance can be turned off to stay on the
-answered request. New arrivals do not move a selection already under review.
+one at once, in its box, and reconciles with the server's reply in a notice
+that says how the requester hears of it — its waiter holding the review, the
+mailbox and whether the session was woken, or nobody running to hear it — and
+whether a copy went to a subagent's session. A refusal puts the review back
+where it was, the note and line comments with it, and says why in a notice
+that stands until dismissed and opens the review again. `Space u a` turns off
+advancing, to stay on the answered request. New arrivals do not move a
+selection already under review.
 
-Use **Copy link** to share a request without sharing a credential. Links use
+The command line (`:`) runs commands with Tab completion — `:approve`,
+`:decline`, `:send`, `:review <id>`, `:agent <name>`, `:threads`, `:set`, a
+line number — and the finder (`Space Space` for reviews, `Space f` then a
+letter for agents, the inbox, discussions, History, a review's files, the
+buffer's lines, every message, the commands, the keys or the markers) filters
+as you type and previews what `Enter` opens. `Space` shows what the leader
+does after a moment, `?` lists every key with its action's name, and `K`
+shows what is attached to the line, file, step, message or tree row under the
+cursor.
+
+`Space y` copies a link to share a request without sharing a credential. Links use
 `#review=<question-id>`; copied links also name the checkout to distinguish
 identical IDs. They open the exact pending or historical request,
 including in another tab of an already authorized browser. Back, forward, and
@@ -693,6 +828,66 @@ origins the person declared alone. These controls protect the browser
 surface; they are not isolation against arbitrary processes running as the
 operator's user. The session's filesystem and process boundary remains part
 of the authority boundary.
+
+## Personal keys
+
+Every key the page answers runs one action with a stable name — `answer.approve`,
+`down`, `find.agent`, `word.next` — and the help, which-key and the key finder
+all read the one catalog of them the library declares
+(`lup.devtools.dashboard.keys`), compiled into the page, so none of them can
+say a key does something it does not. A person rebinds actions by name in their
+own lup config, never a project's:
+
+```toml
+# ~/.config/lup/config.toml
+[dashboard.keys]
+"agent.next" = ["<A-Right>", ")"]   # a list replaces the action's keys
+"help" = "<F1>"                      # one key alone is a list of one
+"tree.stopped" = []                  # no keys unbinds it
+```
+
+Keys are written in Vim's notation: `<C-d>` is Ctrl+d, `<A-Del>` Alt+Delete,
+`<leader>fa` Space then f then a, `gd` g then d. Each entry is checked on its
+own, and one that cannot apply is refused saying what was written, why, and
+the way through, while the rest apply: a name no action has (with the nearest
+one that does), a key that does not read, a key the browser keeps for itself,
+a key that would type into a box for an action that works while one is typed
+in, or a key another action already holds where both act. A conflict refuses
+the override that made it, and lup's own key stands. A key that starts a longer
+one where both act runs after a short wait for the rest, and the report says
+which.
+
+The dashboard reads the file on every look and hands the keys in effect to
+every tab on the stream; a tab says once at load what the person's keys did,
+and again when the file changes. `:map` lists what applied and what was
+refused; `:map <action> <keys>` tries keys in this tab alone, checked by the
+dashboard as the file is; `:unmap <keys>` takes a key off whatever holds it;
+and `:mapwrite` writes the tab's lines into the file, keeping its comments.
+`uv run lup-devtools dashboard keys` prints the same report offline.
+
+## On a phone or a tablet
+
+Below 861 px the page is one column, not a squeezed desktop: a top bar names
+what is in view in two lines at most, and opens the tree and the context as
+drawers; an action bar above the tabs holds what the keys hold — Approve,
+Decline and Send on a review, Write beside an agent, Post to all in a
+discussion — every button at least 44 px; the five views sit in a tab bar under
+the thumb, each with what it counts. Nothing lands in the note box, whose
+keyboard would cover the diff. An answer takes two taps in different places:
+the first opens a sheet saying what goes with it, its confirming button at the
+top and Cancel at the bottom, where the first tap was, so a double tap cannot
+confirm.
+
+One strip under a review's bar steps through it — `‹ change 2/36 ▾ › full
+file` — by exceptions where the review shows any, else by changes; tapping the
+kind offers every kind with where the cursor stands in each, and `full file`
+shows the whole file at the cursor until it reads `back to diff`. The editor's
+bar drops what the top bar already says and folds what the policy asks about
+to two lines, and a note, what an agent said, a message or a post folds to
+four lines with `more`. A sideways swipe over the buffer moves to the next or
+previous item, a long press on a line starts a range that taps stretch, and a
+tap on a line with something attached shows it. Notices sit under the top bar,
+never over its buttons.
 
 ## Behind a reverse proxy
 
