@@ -2,6 +2,50 @@
 
 ## Unreleased
 
+### A write reached through a variable, a substitution or a `cd` asks as the path it names would
+
+`cd w && F=<protected path> && sed -i … $F` rewrote a protected file with no
+question inside the runtime's own sandbox, while the same `sed` naming the
+path asked (#529). The assignment after `&&` was left unread, and a command
+referencing a name bound to something unread was answered by a floor the
+sandbox settles — a sandbox that confines the call, not the checkout it
+writes in. The same floor answered many other spellings of one write.
+
+- A variable the line settles is judged as the literal it holds: one
+  assigned in a `&&` chain holds for the rest of that chain, so the line
+  above asks as `sed -i … <protected path>` does. Past an `||` or the end of
+  the chain the name is unread.
+- A write through a word nothing on the line can read — a `read`, a
+  substitution's output, an assignment an `||` may skip, a loop over a glob,
+  `while read` — asks as `sed -i 1d $F` does for a name the line never
+  assigned, on every placement. A reference that could also become a flag
+  still earns its floor where the command asks nothing, and no longer hides
+  every command after it on the line: `read F; git status $F; git push
+  --force origin main` left the push unjudged.
+- A `cd` is followed the way the shell follows it: through `&&`, `||`, `!`
+  and into the `if` branch its condition chose, so `cd a || rm x` and `if cd
+  packages; then rm lup/…; fi` are judged where they run. Where the line
+  may have skipped or undone a move, and after a `cd` nothing can read, a
+  relative path written is one only the run can name, and asks instead of
+  being carried by a boundary. `command cd` and `builtin cd` move the shell
+  as `cd` does.
+- `find -exec`'s `{}` is a path only the run names beneath each starting
+  point: `find packages -exec rm {} +` asks where it was read as `rm ./x`.
+- A `select`, an arithmetic command and a construct nested past the depth
+  the walk opens no longer hide the commands inside and after them.
+
+What changes for a session: a write through a glob loop, a `read`, a
+substitution or `find -exec` asks even into scratch — spell the paths, or
+run a script under `tmp/`. Where no boundary runs, those writes ask where
+they used to be refused. Still open: a `cd` into a directory that is not
+there, followed by `;`, is taken to have succeeded, so what runs after it is
+judged in a directory the shell never entered (recorded in
+`lup.policy.kernel.lex.placed_andor`); an unclassified command, or a write
+after an array or a function definition, is still carried by the runtime's
+own sandbox into a protected path (#531); and a write through a hard link,
+or a link the same line makes, still lands on the file it links to unasked
+(#532).
+
 ### What a session's tools did, and whether its transcript holds, have readers
 
 - `uv run lup-devtools tools metrics` shows each tool's calls, errors, error
