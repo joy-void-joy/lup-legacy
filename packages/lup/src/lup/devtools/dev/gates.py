@@ -56,13 +56,14 @@ from typing import ClassVar
 import sh
 from pydantic import BaseModel
 
+from lup.execution.git import Repository
 from lup.harness.codescan.markers import (
     MarkerComment,
     NoteKind,
     find_feedback,
     scan_mode_for,
 )
-from lup.devtools.dev.branches import get_integration_branch, is_ancestor
+from lup.devtools.dev.branches import get_integration_branch
 from lup.devtools.dev.comments import FoundComment
 from lup.devtools.dev.records import read_record
 from lup.execution.shell import git
@@ -85,7 +86,7 @@ def current_branch() -> str:
     to run a check from and no gate that names a branch can match one. It
     falls through to the questions that do not need it.
     """
-    return git.out("branch", "--show-current").strip()
+    return Repository(Path.cwd()).branch()
 
 
 def readable_ref(branch: str) -> str:
@@ -105,13 +106,11 @@ def readable_ref(branch: str) -> str:
     "origin/main has not reached main", which is one ref declining to have
     reached itself.
     """
-    for ref in (branch, f"origin/{branch}"):
-        try:
-            git("rev-parse", "--verify", "--quiet", f"{ref}^{{commit}}")
-        except sh.ErrorReturnCode:
-            continue
-        return ref
-    return ""
+    repository = Repository(Path.cwd())
+    return next(
+        (ref for ref in (branch, f"origin/{branch}") if repository.resolves(ref)),
+        "",
+    )
 
 
 class GateVerdict(BaseModel, frozen=True):
@@ -245,7 +244,7 @@ class BranchInPlay(Gate, frozen=True):
                     "landed is a question it cannot answer"
                 ),
             )
-        if is_ancestor(readable, landed_in):
+        if Repository(Path.cwd()).is_ancestor(readable, landed_in):
             return GateVerdict(
                 fired=True, evidence=f"{readable} has reached {landed_in}"
             )

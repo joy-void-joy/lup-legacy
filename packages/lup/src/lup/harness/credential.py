@@ -66,6 +66,7 @@ from urllib.parse import urlsplit
 import sh
 from pydantic import BaseModel, Discriminator, Field
 
+from lup.execution.git import Repository
 from lup.devtools.utils import gh
 from lup.execution.shell import git
 from lup.harness.environment import NON_INTERACTIVE_SHELL_ENV
@@ -511,21 +512,6 @@ def same_repository(left: str, right: str) -> bool:
             return False
 
 
-def remote_url(root: Path, name: str) -> str:
-    """One remote's URL as git resolves it, or nothing when it cannot be had.
-
-    Through ``get-url`` rather than by reading a listing, because git already
-    has a command whose whole output is the value -- and because it applies
-    the resolution: an ``insteadOf`` already in play is followed to the URL
-    the remote actually reaches rather than matched on whatever somebody
-    typed.
-    """
-    try:
-        return git.out("-C", str(root), "remote", "get-url", name).strip()
-    except sh.ErrorReturnCode:
-        return ""
-
-
 def remote_rewrites(
     root: Path, host: str, transport: ForgeTransport
 ) -> list[RemoteRewrite]:
@@ -555,7 +541,7 @@ def remote_rewrites(
         address
         for name in names
         if name
-        for address in [parse_remote(remote_url(root, name))]
+        for address in [parse_remote(Repository(root).remote_url(name) or "")]
         if address is not None and not transport.carries(address, host)
     ]
     found = {

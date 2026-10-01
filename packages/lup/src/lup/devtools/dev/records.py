@@ -29,6 +29,7 @@ from pathlib import Path, PurePosixPath
 import sh
 from pydantic import BaseModel
 
+from lup.execution.git import Repository
 from lup.channels.models import publish_atomic
 from lup.execution.shell import git
 
@@ -149,11 +150,7 @@ def shared_directory_of(root: Path) -> Path:
     as long as the checkout is, and the key is a resolved path rather than
     "wherever this process is", so a caller that moves is a different ask.
     """
-    return Path(
-        git.out(
-            "-C", str(root), "rev-parse", "--path-format=absolute", "--git-common-dir"
-        )
-    )
+    return Repository(root).common_dir()
 
 
 def shared_directory(cwd: Path | None = None) -> Path:

@@ -116,6 +116,7 @@ from pathlib import Path, PurePosixPath
 import sh
 from pydantic import BaseModel, Field, field_validator
 
+from lup.execution.git import GitError, Repository
 from lup.execution.shell import git
 
 
@@ -421,10 +422,9 @@ def same_path(roots: list[Path]) -> dict[Path, str]:
 
 def repository_layout(worktree: Path) -> RepositoryLayout:
     """Where this checkout keeps its own admin directory and the shared one."""
-    asked = ["rev-parse", "--path-format=absolute"]
+    repository = Repository(worktree)
     return RepositoryLayout(
-        common=Path(git.out("-C", str(worktree), *asked, "--git-common-dir").strip()),
-        private=Path(git.out("-C", str(worktree), *asked, "--git-dir").strip()),
+        common=repository.common_dir(), private=repository.git_dir()
     )
 
 
@@ -476,13 +476,11 @@ def sibling_worktrees(worktree: Path) -> list[Path]:
     sibling checkouts live is a repository's own arrangement, and a scan
     would sweep in whatever else happens to sit beside them.
     """
-    listed = git.lines("-C", str(worktree), "worktree", "list", "--porcelain")
-    found = [
-        Path(line.removeprefix("worktree "))
-        for line in listed
-        if line.startswith("worktree ")
+    return [
+        listed.path
+        for listed in Repository(worktree).worktrees()
+        if listed.path != worktree and listed.path.is_dir()
     ]
-    return [path for path in found if path != worktree and path.is_dir()]
 
 
 def siblings_of(worktree: Path, layout: RepositoryLayout) -> list[Path]:
@@ -630,7 +628,7 @@ def in_repository(path: Path) -> bool:
     """
     try:
         repository_layout(path)
-    except sh.ErrorReturnCode:
+    except GitError:
         return False
     return True
 

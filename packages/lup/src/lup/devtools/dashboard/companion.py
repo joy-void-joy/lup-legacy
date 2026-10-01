@@ -32,9 +32,9 @@ from typing import Literal
 from urllib.parse import urlsplit
 
 import httpx
-import sh
 from pydantic import BaseModel, Field, ValidationError
 
+from lup.execution.git import GitError
 from lup.coordination.identity import MEMBER_ENV, NAME_ENV
 from lup.devtools.dashboard.address import AdvertisedDashboard
 from lup.devtools.dashboard.pulse import (
@@ -216,7 +216,7 @@ class DashboardRegistry(BaseModel, frozen=True):
         """Record one launch in ``checkout`` for as long as it holds the dashboard."""
         try:
             repository = repository_layout(checkout).common.resolve()
-        except (sh.ErrorReturnCode, OSError):
+        except (GitError, OSError):
             repository = checkout.resolve()
         known = KnownRepository(repository=repository, checkout=checkout.resolve())
         record = LaunchRecord(
@@ -242,7 +242,7 @@ class DashboardRegistry(BaseModel, frozen=True):
                 return known
             try:
                 siblings = sibling_worktrees(known.repository)
-            except (sh.ErrorReturnCode, OSError, ValueError):
+            except (GitError, OSError, ValueError):
                 return None
             present = [path for path in siblings if (path / ".git").exists()]
             return (

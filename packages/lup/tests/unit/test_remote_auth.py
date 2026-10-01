@@ -15,20 +15,12 @@ from lup.devtools.dev import remote_auth
 SSH_REMOTE = "git@github.com:acme/widget.git"
 
 
-class StubGit:
-    """Just enough git to answer where origin points."""
-
-    def __init__(self, remote: str) -> None:
-        self.remote = remote
+class UnconfiguredGit:
+    """A git whose configuration names no ssh command."""
 
     def out(self, *arguments: str, **keywords: object) -> str:
-        """What `git remote get-url origin` prints.
-
-        Keywords are accepted and dropped because the real command takes
-        sh's, and a caller passing `_ok_code` for a query allowed to come
-        back empty is asking git a question this can answer.
-        """
-        return self.remote
+        """What `git config --get core.sshCommand` prints with nothing set."""
+        return ""
 
 
 class StubForgeClient:
@@ -58,7 +50,7 @@ def test_an_ssh_remote_reaches_the_forge_client_for_the_api_question(
     is the one case where a failure would have surfaced anyway.
     """
     client = StubForgeClient()
-    monkeypatch.setattr(remote_auth, "git", StubGit(SSH_REMOTE))
+    monkeypatch.setattr(remote_auth, "origin_url", lambda: SSH_REMOTE)
     monkeypatch.setattr(remote_auth, "gh", client)
 
     assert remote_auth.check_forge_api() is False
@@ -79,7 +71,7 @@ def test_the_transport_probe_still_declines_to_ask_the_client(
         """An ssh destination that answers, which a forwarded agent's does."""
         return remote_auth.RemoteRefusal()
 
-    monkeypatch.setattr(remote_auth, "git", StubGit(SSH_REMOTE))
+    monkeypatch.setattr(remote_auth, "origin_url", lambda: SSH_REMOTE)
     monkeypatch.setattr(remote_auth, "gh", client)
     monkeypatch.setattr(remote_auth, "ssh_auth_refusal", reachable)
 
@@ -117,7 +109,7 @@ def test_a_session_handed_no_ssh_command_still_probes_without_prompting(
     be free to stop on a passphrase prompt nobody is there to answer.
     """
     monkeypatch.delenv("GIT_SSH_COMMAND", raising=False)
-    monkeypatch.setattr(remote_auth, "git", StubGit(""))
+    monkeypatch.setattr(remote_auth, "git", UnconfiguredGit())
 
     assert remote_auth.git_ssh_program() == "ssh -o BatchMode=yes -o ConnectTimeout=5"
 

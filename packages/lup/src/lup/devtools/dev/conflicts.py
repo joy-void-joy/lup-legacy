@@ -39,6 +39,7 @@ import sh
 import typer
 from pydantic import BaseModel
 
+from lup.execution.git import Repository
 from lup.devtools.launcher import (
     CONSOLE_SCRIPT,
     DEFAULT_ENVIRONMENT,
@@ -126,16 +127,12 @@ class ConflictReport(TypedDict):
     out_of_scope_count: int
 
 
-def find_git_dir() -> Path:
-    """Locate the .git directory (works in worktrees too)."""
-    return Path(git.out("rev-parse", "--git-dir"))
-
-
 def detect_conflict_state() -> str | None:
     """Detect whether we're in a merge, rebase, or cherry-pick."""
-    git_dir = find_git_dir()
-    if (git_dir / "MERGE_HEAD").exists():
+    repository = Repository(Path.cwd())
+    if repository.merging() is not None:
         return "merge"
+    git_dir = repository.git_dir()
     if (git_dir / "rebase-merge").is_dir() or (git_dir / "rebase-apply").is_dir():
         return "rebase"
     if (git_dir / "CHERRY_PICK_HEAD").exists():
@@ -152,14 +149,18 @@ class BranchScope(BaseModel):
 
 def get_branch_files(state: str) -> BranchScope:
     """The merge base and this branch's touched files, for scope classification."""
-    git_dir = find_git_dir()
+    repository = Repository(Path.cwd())
+    git_dir = repository.git_dir()
 
     def ref_file(path: Path) -> str:
         return path.read_text().strip()
 
     match state:
         case "merge":
-            merge_head = git.out("rev-parse", "MERGE_HEAD")
+            merge_head = repository.merging()
+            if merge_head is None:
+                typer.echo("No merge is in progress", err=True)
+                raise typer.Exit(1)
             base = git.out("merge-base", "HEAD", merge_head)
             tip = "HEAD"
 
@@ -198,7 +199,7 @@ def get_branch_files(state: str) -> BranchScope:
 
 def list_conflicted_files() -> list[str]:
     """List files with unresolved conflicts."""
-    return git.lines("diff", "--name-only", "--diff-filter=U", _ok_code=[0])
+    return [str(path) for path in Repository(Path.cwd()).conflicted()]
 
 
 def count_conflict_markers(path: str) -> int:

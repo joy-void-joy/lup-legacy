@@ -15,6 +15,7 @@ from pathlib import Path
 
 from pydantic import BaseModel, computed_field
 
+from lup.execution.git import Repository
 from lup.devtools.utils import format_table, output_json
 from lup.execution.shell import git
 
@@ -109,10 +110,9 @@ def collect() -> PendingResult:
     """The true pending change set for the current worktree."""
     payload = str(git("status", "--porcelain=v1", "-z"))
 
+    repository = Repository(Path.cwd())
     return exclude_masked(
-        parse_porcelain(payload),
-        Path(git.out("rev-parse", "--show-toplevel")),
-        git.out("branch", "--show-current"),
+        parse_porcelain(payload), repository.top(), repository.branch()
     )
 
 
