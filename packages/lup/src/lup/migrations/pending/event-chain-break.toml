@@ -1,0 +1,13 @@
+subjects = ["verify_event_chain"]
+reason = """
+verifying an observable transcript says where its chain first fails and how \
+— another record shape, a second chain begun mid-file, a missing record, a \
+broken link, an edited record — rather than only whether it held"""
+
+[[steps]]
+instruction = """
+Call chain_break(events) from lup.observability.audit where \
+verify_event_chain(events) was called: it returns None where the chain holds \
+and a ChainBreak naming the record and the fault where it does not, so \
+`verify_event_chain(events)` reads `chain_break(events) is None`."""
+command = ["uv", "run", "lup-devtools", "dev", "py", "text", "verify_event_chain", "."]

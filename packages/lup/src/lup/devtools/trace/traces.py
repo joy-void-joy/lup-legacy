@@ -26,6 +26,7 @@ Examples::
 import json
 import re
 from collections import defaultdict
+from collections.abc import Sequence
 from datetime import datetime
 from pathlib import Path
 from typing import TypedDict
@@ -34,6 +35,12 @@ from pydantic import BaseModel
 
 import typer
 
+from lup.observability.audit import (
+    ChainBreak,
+    ObservableEvent,
+    chain_break,
+    read_observable_events,
+)
 from lup.observability.blocks import truncate_str
 from lup.observability.trace import (
     TraceEvent,
@@ -42,14 +49,21 @@ from lup.observability.trace import (
     tool_result_ok,
 )
 from lup.workspace.history import (
+    iter_run_dirs,
     iter_session_dirs,
     iter_trace_event_files,
     iter_trace_log_files,
+    run_transcript,
     session_backend,
 )
-from lup.workspace.paths import parse_timestamp, project_root, traces_path
+from lup.workspace.paths import (
+    harness_runs_path,
+    parse_timestamp,
+    project_root,
+    traces_path,
+)
 
-from lup.devtools.utils import output_json
+from lup.devtools.utils import format_table, output_json
 
 # lup: ignore[constant-declaration] — how much of a trace the default view
 # opens with is this command's own presentation, and `--full` is the whole
@@ -649,3 +663,128 @@ def capabilities(as_json: bool) -> None:
 
     for req in results:
         typer.echo(f"- {req['text']}")
+
+
+# ── launch transcripts: the hash-chained journal, checked before it is read ──
+
+
+class TranscriptCheck(BaseModel, frozen=True):
+    """One launch transcript's chain, as it reads now."""
+
+    run: str
+    """The run directory's name: when it opened, which runtime, and its id."""
+
+    path: Path
+    records: int
+    broken: ChainBreak | None = None
+
+    def verdict(self) -> str:
+        """``intact``, or where and how the chain breaks."""
+        return "✓ intact" if self.broken is None else f"✗ {self.broken.explained()}"
+
+
+class TranscriptEvents(BaseModel, frozen=True):
+    """One transcript read whole: its chain, and the records asked for."""
+
+    check: TranscriptCheck
+    events: list[ObservableEvent]
+
+
+def checked(path: Path, events: Sequence[ObservableEvent]) -> TranscriptCheck:
+    """One transcript's records, verified."""
+    return TranscriptCheck(
+        run=path.parent.name,
+        path=path,
+        records=len(events),
+        broken=chain_break(events),
+    )
+
+
+def transcript_of(reference: str) -> Path:
+    """The transcript a reference names: a run id, a run directory, or the file.
+
+    A run id is looked for under the default runs root, where a launch writes
+    unless its mode named another; a run kept anywhere else is named by path.
+    """
+    named = Path(reference)
+    if named.is_file():
+        return named
+    if named.is_dir():
+        return run_transcript(named)
+    found = [run_transcript(run) for run in iter_run_dirs(run_id=reference)]
+    match found:
+        case [path] if path.is_file():
+            return path
+        case [path]:
+            refusal = f"run {reference} wrote no transcript at {path}"
+        case _:
+            refusal = (
+                f"no launch run named {reference} under {harness_runs_path()}; "
+                "`trace verify` lists every run there, and a run kept elsewhere "
+                "is named by its path"
+            )
+    typer.echo(refusal, err=True)
+    raise typer.Exit(1)
+
+
+def verify_transcripts(references: Sequence[str], as_json: bool) -> None:
+    """Check each named transcript's chain, or every launch's, and fail on a break."""
+    paths = (
+        [transcript_of(reference) for reference in references]
+        if references
+        else [
+            path for run in iter_run_dirs() if (path := run_transcript(run)).is_file()
+        ]
+    )
+    checks = [checked(path, read_observable_events(path)) for path in paths]
+    intact = [check for check in checks if check.broken is None]
+    match as_json, checks:
+        case True, _:
+            output_json([check.model_dump(mode="json") for check in checks])
+        case False, []:
+            typer.echo(f"No launch transcripts under {harness_runs_path()}")
+        case False, _:
+            rows = [
+                [check.run, str(check.records), check.verdict()] for check in checks
+            ]
+            typer.echo(
+                format_table(
+                    ("Run", "Records", "Chain"),
+                    rows,
+                    aligns=("left", "right", "left"),
+                )
+            )
+            typer.echo(f"\n{len(intact)} of {len(checks)} transcript(s) verify")
+    if len(intact) < len(checks):
+        raise typer.Exit(1)
+
+
+def transcript_events(reference: str, kinds: Sequence[str], as_json: bool) -> None:
+    """Read one transcript's records, its chain checked and said first.
+
+    Where the chain breaks, a line says so at the record it breaks on, so a
+    reader sees which of what follows was vouched for and which was not.
+    """
+    path = transcript_of(reference)
+    every = read_observable_events(path)
+    check = checked(path, every)
+    if as_json:
+        selected = [event for event in every if not kinds or event.kind in kinds]
+        output_json(TranscriptEvents(check=check, events=selected))
+        return
+    boundary = check.broken.position if check.broken is not None else None
+    typer.echo(f"{check.path}\n{check.records} record(s), chain {check.verdict()}\n")
+    for position, event in enumerate(every):
+        if position == boundary:
+            typer.echo(
+                f"── the chain breaks here, at record {position}: what follows "
+                "is not vouched for by what came before ──"
+            )
+        if kinds and event.kind not in kinds:
+            continue
+        moment = datetime.fromisoformat(event.timestamp)
+        payload = json.dumps(event.payload, ensure_ascii=False, sort_keys=True)
+        typer.echo(
+            f"{event.seq:>6} {moment:%Y-%m-%d %H:%M:%S} "
+            f"{event.actor.kind}:{event.actor.name} {event.kind} {payload}"
+        )

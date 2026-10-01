@@ -38,6 +38,14 @@ still be the most expensive thing in the run, and `analyze` alone cannot say
 so. `trends` is what distinguishes a change that moved a metric from one that
 coincided with it, so read it before crediting a version with an improvement.
 
+All three read session results, which only a session opened in process
+writes. A session launched through `lup-devtools harness` leaves none, and
+its tools' health is in the snapshots its tool servers wrote instead:
+
+```bash
+uv run lup-devtools tools metrics
+```
+
 ### 3. Reasoning patterns
 
 From investigation findings:
