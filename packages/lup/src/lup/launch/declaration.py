@@ -18,7 +18,7 @@ from pydantic import BaseModel, Field, field_validator
 
 from lup.harness.devices import Device
 from lup.harness.image import Image, MemoryLimit, SessionPrivileges, detected_client
-from lup.harness.messaging import WakeSockets
+from lup.harness.wake_sockets import WakeSockets
 from lup.harness.models import Harness, HookSet, PromptDocument, Resumption
 from lup.harness.notice import Notice
 from lup.harness.requirements import Manifest

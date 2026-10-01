@@ -30,7 +30,7 @@ from lup.coordination.identity import (
 )
 from lup.coordination.repository import RepositoryPeers
 from lup.coordination.wake import WakePath
-from lup.harness.messaging import WakeSockets
+from lup.harness.wake_sockets import WakeSockets
 from lup.harness.models import Resumption
 from lup.workspace.edition import shared_git_directory
 from tests.unit.harness_launch import composition, harness, profiles, stub_host
