@@ -25,6 +25,7 @@ from .roles import (
     path_role,
     repository_relative,
     spells_its_path,
+    writes_to_a_stream,
 )
 from .semantics import Reach
 from .rows import (
@@ -463,12 +464,17 @@ class PathVerb(TypedDict):
     machine besides, so it keeps its question wherever it lands: no scratch or
     recoverable grant reads it, and its entry only says where a local
     destination is, so a protected one is asked about as the path it is.
+    ``fills`` marks a verb that writes content into the file at each landing
+    rather than replacing the entry there: a copy and a `tee` open their
+    destination and write into it, so a stream there keeps nothing, where a
+    move, a link or an install puts a new entry in the device's place.
     """
 
     inert: str
     lands: Literal["each", "last", "moved"]
     creates: bool
     remote: bool
+    fills: bool
 
 
 # Every verb that acts on paths. Membership is about taking paths, not about
@@ -479,26 +485,66 @@ class PathVerb(TypedDict):
 # at the path afterwards is not what was there before.
 # lup: ignore[library-default] — each verb's own POSIX grammar, fixed by what the utility does rather than by who is asking
 PATH_VERBS = {
-    "rm": PathVerb(inert="rfv", lands="each", creates=False, remote=False),
-    "rmdir": PathVerb(inert="pv", lands="each", creates=False, remote=False),
-    "mv": PathVerb(inert="fnv", lands="moved", creates=True, remote=False),
-    "cp": PathVerb(inert="aprRvL", lands="last", creates=True, remote=False),
+    "rm": PathVerb(inert="rfv", lands="each", creates=False, remote=False, fills=False),
+    "rmdir": PathVerb(
+        inert="pv", lands="each", creates=False, remote=False, fills=False
+    ),
+    "mv": PathVerb(inert="fnv", lands="moved", creates=True, remote=False, fills=False),
+    "cp": PathVerb(
+        inert="aprRvL", lands="last", creates=True, remote=False, fills=True
+    ),
     # A copy with modes attached, which is how it writes launch authority as
-    # surely as `cp` does.
-    "install": PathVerb(inert="cCDpvT", lands="last", creates=True, remote=False),
-    "mkdir": PathVerb(inert="pv", lands="each", creates=False, remote=False),
-    "touch": PathVerb(inert="acm", lands="each", creates=False, remote=False),
-    "ln": PathVerb(inert="sfnvrihTPL", lands="last", creates=False, remote=False),
-    "tee": PathVerb(inert="aip", lands="each", creates=False, remote=False),
-    "truncate": PathVerb(inert="co", lands="each", creates=False, remote=False),
+    # surely as `cp` does. It unlinks what stood at the destination first.
+    "install": PathVerb(
+        inert="cCDpvT", lands="last", creates=True, remote=False, fills=False
+    ),
+    "mkdir": PathVerb(
+        inert="pv", lands="each", creates=False, remote=False, fills=False
+    ),
+    "touch": PathVerb(
+        inert="acm", lands="each", creates=False, remote=False, fills=False
+    ),
+    "ln": PathVerb(
+        inert="sfnvrihTPL", lands="last", creates=False, remote=False, fills=False
+    ),
+    "tee": PathVerb(inert="aip", lands="each", creates=False, remote=False, fills=True),
+    "truncate": PathVerb(
+        inert="co", lands="each", creates=False, remote=False, fills=False
+    ),
     "rsync": PathVerb(
         inert="vqcarRbulLkKHpEAXogDtOJSnWxyCzhPimIUNFs0468",
         lands="last",
         creates=False,
         remote=True,
+        fills=False,
     ),
-    "scp": PathVerb(inert="346ABCOpqRrTv", lands="last", creates=False, remote=True),
+    "scp": PathVerb(
+        inert="346ABCOpqRrTv", lands="last", creates=False, remote=True, fills=False
+    ),
 }
+
+
+# lup: ignore[constant-declaration] — one wording for every writer a stream answers
+STREAM_WRITE_REASON = "this write lands in a stream, which keeps nothing"
+
+
+def fills_a_stream(words: list[str], landing: str) -> bool:
+    """Whether this verb only writes content into *landing*, and it is a stream.
+
+    The path verbs' half of what :func:`~lup.policy.kernel.roles.writes_to_a_stream`
+    already answers for a redirection: `| tee /dev/null` and `cp f /dev/null`
+    write into the device, which keeps nothing, so no reader asking where a
+    write lands -- the lease, a capture, the container's mounts -- is handed
+    one. Only where every flag left the operands meaning what they read, since
+    `cp --remove-destination` would replace the device instead.
+    """
+    executable = posixpath.basename(words[0]) if words else ""
+    return (
+        executable in PATH_VERBS
+        and PATH_VERBS[executable]["fills"]
+        and path_verb_operands(words)["inert"]
+        and writes_to_a_stream(landing)
+    )
 
 
 def leaves_the_checkout(path_text: str) -> bool:
@@ -1217,11 +1263,19 @@ def written_targets(
 
     ``None`` only for an unmodelled line, which leaves every caller with the
     answer it had before it asked.
+
+    A stream a write flag names, or one a copy or a `tee` writes into, loses
+    nothing and is not among them: `sort -o /dev/null` and `cp f /dev/null`
+    write over no file.
     """
     if not words:
         return None
     if write_flags:
-        return flag_write_targets(words, list(write_flags))
+        return [
+            target
+            for target in flag_write_targets(words, list(write_flags))
+            if not writes_to_a_stream(target)
+        ]
     archived = archive_write(words)
     if archived is not None:
         return archive_targets(archived)
@@ -1231,7 +1285,11 @@ def written_targets(
     verb = path_verb_operands(words)
     if not verb["inert"]:
         return verb["operands"]
-    return written_operands(executable, verb["operands"])
+    return [
+        target
+        for target in written_operands(executable, verb["operands"])
+        if not fills_a_stream(words, target)
+    ]
 
 
 def created_destination(
@@ -1284,13 +1342,14 @@ def refuses_generated_plugin_target(
     redirection's target — so the refusal and the reason it carries are
     written once and cannot drift between the paths that reach them.
 
-    Scratch this checkout declares is the exception, for the reason the edit
-    gate gives: nothing this project generates lands there, so a plugin tree
-    under it is somebody's own — a probe kit's hand-written plugin. The word
-    is read back to the checkout's own spelling before it is asked, and one
-    the host found landing under another role keeps the refusal, because its
-    spelling is then not where the bytes go. Without the roles nothing is
-    scratch, and every plugin-shaped path is refused.
+    Scratch this repository declares is the exception, here or in another of
+    its worktrees, for the reason the edit gate gives: nothing this project
+    generates lands there, so a plugin tree under it is somebody's own — a
+    probe kit's hand-written plugin. The word is read back to the checkout's
+    own spelling before it is asked, and one the host found landing under
+    another role keeps the refusal, because its spelling is then not where
+    the bytes go. Without the roles nothing is scratch, and every
+    plugin-shaped path is refused.
     """
     if not is_generated_plugin_target(word):
         return None
@@ -1576,9 +1635,10 @@ def git_init_in_scratch(
 
     A repository made there is as disposable as the scratch holding it, and a
     project scaffolded under `tmp/` needs one. Every directory it makes has
-    to be named and sit under a scratch root this checkout declares: a work
-    tree left to wherever git stands is this checkout's own, and a separate
-    git dir anywhere else would move the repository out from under it. The
+    to be named and sit under a scratch root this repository declares, in
+    this checkout or in another of its worktrees: a work tree left to
+    wherever git stands is that checkout's own, and a separate git dir
+    anywhere else would move the repository out from under it. The
     words are the placed ones, so a `cd` or `git -C` is already in them, and
     a link a directory crosses is the host's to resolve like any write's.
     """
@@ -1825,7 +1885,13 @@ def confined_to_recoverable_roots(
     inert = verb["inert"]
     if not inert or not operands:
         return None
-    targets = written_operands(executable, operands)
+    targets = [
+        target
+        for target in written_operands(executable, operands)
+        if not fills_a_stream(words, target)
+    ]
+    if not targets:
+        return KernelDecision("allow", STREAM_WRITE_REASON)
     if written_beyond_the_checkout(targets, path_roles):
         return None
     created = created_destination(executable, operands, existing_targets, path_roles)

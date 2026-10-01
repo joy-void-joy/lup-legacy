@@ -141,6 +141,7 @@ def measured_landings(
     targets: list[str],
     measured: dict[str, list[str]],
     root: Path | None = None,
+    siblings: list[str] | None = None,
     mountinfo: Path = Path("/proc/self/mountinfo"),
 ) -> list[list[str]]:
     """Where each target lands, as this launch's lease and this mount table say.
@@ -148,13 +149,15 @@ def measured_landings(
     Asked by a caller that already knows the session runs in a container:
     the question these answer is asked only there. A mount table nobody
     can read places every target on the host, which keeps every question.
+    ``siblings`` are the repository's other checkouts, as
+    :func:`sibling_worktrees` names them.
     """
     try:
         lent = lent_mount_points(mountinfo.read_text())
     except OSError:
         return [[target, "host"] for target in targets]
     shared = host_shared_roots(measured, lent, str(Path.home()))
-    return landed_targets(targets, shared, root)
+    return landed_targets(targets, shared, root, siblings)
 
 
 def destination_policy_binding(path_text: str, root: Path | None) -> str:
@@ -2758,22 +2761,27 @@ def foreign_repository(path_text: str, root: Path | None) -> bool:
 
 
 def this_checkout_path(path_text: str, root: Path | None) -> str:
-    """This path as the session's own checkout spells it, or "" outside it.
+    """This path as this repository's checkout holding it spells it, or "".
 
     :func:`worktree_path` anchors a path at the checkout nearest the file,
     which is the right anchor for every rule but one. A repository nested
-    inside this checkout -- a probe kit given its own ``git init`` under
+    inside a checkout -- a probe kit given its own ``git init`` under
     ``tmp/``, so a runtime launched there takes it as the project root -- has
-    a ``.git`` nearer the file than this checkout's, so the file arrives
-    spelled against the kit and claims none of the roles this checkout
+    a ``.git`` nearer the file than the checkout's, so the file arrives
+    spelled against the kit and claims none of the roles this repository
     declares for the tree around it. This is the other anchor, and the kernel
     reads it for that one question.
 
+    The session's own checkout is asked first, then the other worktrees of
+    the same repository (:func:`sibling_worktrees`), the deepest holding the
+    file: a session is sent to work in a sibling by absolute path, and a kit
+    under that sibling's ``tmp/`` is the same project's scratch.
+
     Resolved before it is compared, so a link is judged where it lands: a
-    ``refs/`` entry pointing at another project is outside this checkout
-    however it is spelled. A relative path is anchored on the session's own
-    directory, where the tool carrying it resolves it, and a session in no
-    checkout holds nothing, which the empty answer says.
+    ``refs/`` entry pointing at another project is outside every checkout of
+    this one however it is spelled. A relative path is anchored on the
+    session's own directory, where the tool carrying it resolves it, and a
+    session in no checkout holds nothing, which the empty answer says.
     """
     if root is None:
         return ""
@@ -2781,9 +2789,17 @@ def this_checkout_path(path_text: str, root: Path | None) -> str:
     if not checkout:
         return ""
     resolved = (root / path_text).resolve()
-    if not resolved.is_relative_to(checkout):
+    if resolved.is_relative_to(checkout):
+        return resolved.relative_to(checkout).as_posix()
+    holding = [
+        tree
+        for tree in (Path(sibling).resolve() for sibling in sibling_worktrees(root))
+        if resolved.is_relative_to(tree)
+    ]
+    if not holding:
         return ""
-    return resolved.relative_to(checkout).as_posix()
+    nearest = max(holding, key=lambda tree: len(tree.parts))
+    return resolved.relative_to(nearest).as_posix()
 
 
 def publish_edition(path_text: str, session: str) -> None:
@@ -3987,7 +4003,10 @@ def host_shared_roots(
 
 
 def landed_targets(
-    targets: list[str], shared: list[str], root: Path | None = None
+    targets: list[str],
+    shared: list[str],
+    root: Path | None = None,
+    siblings: list[str] | None = None,
 ) -> list[list[str]]:
     """Place each target: this checkout, somewhere else the host shares, or the container.
 
@@ -3996,15 +4015,19 @@ def landed_targets(
     where it lands. A target no one can read -- an expansion, a substitution,
     a directory a `cd` left unknown -- lands ``host``: nothing here can vouch
     for where it goes, and that is the answer that keeps a question.
+
+    Another worktree of this repository in ``siblings`` is the checkout too:
+    the same project on another branch, which a session is sent to work in by
+    absolute path, rather than a tree somebody else lent the container.
     """
     where = Path.cwd() if root is None else root
-    checkout = where.resolve()
+    checkouts = [where.resolve(), *(Path(tree).resolve() for tree in siblings or [])]
 
     def landing(target: str) -> str:
         if "$" in target or "`" in target:
             return "host"
         resolved = (where / target).resolve()
-        if resolved.is_relative_to(checkout):
+        if any(resolved.is_relative_to(checkout) for checkout in checkouts):
             return "checkout"
         if any(resolved.is_relative_to(scope) for scope in shared):
             return "host"

@@ -12,8 +12,9 @@ Every surface is driven here the way a session drives it — each runtime's
 generated dispatcher run on the payload its harness sends, and `dev policy`'s
 own reading — against one layout holding the kit and every repository that
 keeps its question: one nested in the checkout outside any scratch root, one
-beside the checkout, the same one reached through a `refs/` link, and a kit
-under a sibling worktree's scratch.
+beside the checkout, and the same one reached through a `refs/` link. A kit
+under a sibling worktree's scratch is the same project's scratch on another
+branch, and is read as the checkout holding it spells it.
 
 The kit's own plugin is the same case one refusal later. A probe kit carries
 a hand-written `.claude/plugins/` or `.codex/plugins/` of its own, and the
@@ -60,15 +61,17 @@ REFUSED = "from typing import Any"
 KIT = "checkout/tmp/kit/probe.py"
 """The file this is about: inside a probe kit, under the checkout's `tmp/`."""
 
+SIBLING_KIT = "sibling/tmp/kit/probe.py"
+"""The same kit made under a sibling worktree's `tmp/`, reached by absolute path."""
+
 KEEPS_ITS_QUESTION = [
     pytest.param("checkout/vendor/lib/probe.py", id="nested-outside-scratch"),
     pytest.param("elsewhere/src/probe.py", id="beside-the-checkout"),
     pytest.param("elsewhere/tmp/probe.py", id="another-repositorys-own-tmp"),
     pytest.param("checkout/refs/elsewhere/src/probe.py", id="refs-link"),
     pytest.param("checkout/refs/elsewhere/tmp/probe.py", id="refs-link-into-tmp"),
-    pytest.param("sibling/tmp/kit/probe.py", id="sibling-worktree-scratch"),
 ]
-"""Every repository the checkout's scratch does not hold, spelled from the base.
+"""Every repository no checkout's scratch holds, spelled from the base.
 
 `elsewhere/tmp/` is the one a precedence read off the wrong spelling would
 open: against its own checkout it reads `tmp/probe.py`, which is exactly how
@@ -89,9 +92,9 @@ GENERATED_ELSEWHERE = [
     ),
     pytest.param("elsewhere/.claude/plugins/p/x.md", id="another-repositorys-tree"),
     pytest.param("elsewhere/tmp/.claude/plugins/p/x.md", id="another-repositorys-tmp"),
-    pytest.param("sibling/tmp/kit/.claude/plugins/p/x.md", id="sibling-scratch"),
+    pytest.param("sibling/.claude/plugins/lup/x.md", id="sibling-worktrees-tree"),
 ]
-"""Every plugin tree the checkout's own scratch does not hold, spelled from the base.
+"""Every plugin tree no checkout's scratch holds, spelled from the base.
 
 `checkout/tmp/linked/.claude` is a link into this checkout's real `.claude`:
 spelled under scratch, landing in the generated tree, which is the spelling
@@ -134,6 +137,7 @@ def base(tmp_path: Path) -> Path:
         "elsewhere/.claude/plugins/p/x.md",
         "elsewhere/tmp/.claude/plugins/p/x.md",
         "sibling/tmp/kit/.claude/plugins/p/x.md",
+        "sibling/.claude/plugins/lup/x.md",
     ):
         (tmp_path / held).parent.mkdir(parents=True, exist_ok=True)
         (tmp_path / held).write_text(f"{PREIMAGE}\n", encoding="utf-8")
@@ -290,6 +294,27 @@ def test_an_edit_inside_a_kit_under_scratch_is_scratch(
     runtime: Runtime, base: Path
 ) -> None:
     assert verdict(runtime, edit(runtime, base / KIT, base), base)[0] == "allow"
+
+
+def test_a_kit_under_a_sibling_worktrees_scratch_is_scratch_too(
+    runtime: Runtime, base: Path
+) -> None:
+    """A sibling's `tmp/` is this project's scratch, so a kit there is a kit.
+
+    Read off the session's own checkout alone, the file had no spelling but
+    the kit's, and the referral put each edit of a throwaway probe a session
+    had just made with `git init` there to the operator as somebody else's
+    code. A plugin tree the kit writes for itself is its own, as one under the
+    session's scratch is.
+    """
+    kit_plugin = base / "sibling/tmp/kit/.claude/plugins/p/x.md"
+    calls = [
+        edit(runtime, base / SIBLING_KIT, base),
+        created(runtime, base / "sibling/tmp/kit/hooks/record.py", base),
+        edit(runtime, kit_plugin, base),
+    ]
+
+    assert [verdict(runtime, call, base)[0] for call in calls] == ["allow"] * 3
 
 
 def test_a_file_created_inside_a_kit_under_scratch_is_scratch(
@@ -452,6 +477,16 @@ def test_the_preview_reads_the_kit_as_scratch(base: Path) -> None:
     assert {reading.effect for read in readings for reading in read.readings} == {
         "allow"
     }
+
+
+def test_the_preview_reads_a_kit_under_a_sibling_worktrees_scratch_as_scratch(
+    base: Path,
+) -> None:
+    previewed = verdict_for(
+        str(base / SIBLING_KIT), "edit", False, base / "checkout", declared_hook_set()
+    )
+
+    assert {reading.effect for reading in previewed.readings} == {"allow"}
 
 
 @pytest.mark.parametrize(

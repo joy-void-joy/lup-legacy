@@ -102,7 +102,8 @@ core.pager=… push --force` keeps the push's question, and a clone behind it
 still has its landing placed. What names a place — a redirection, a path verb's operand, a write flag, the
 landing a row declares (`git clone <repo> <dir>`, `gh release download -D`) —
 is placed by the host against the lease and its own mount table: in this
-checkout, somewhere else the host lent, or the container's own. A path
+checkout or another worktree of its repository, somewhere else the host
+lent, or the container's own. A path
 nobody can read, and a mount table nobody can read, land on the host. A
 reach nobody stated — any verdict reached by code rather than a declared
 effect — keeps its question everywhere, which is why `sudo` (whose payload
@@ -487,9 +488,16 @@ meet the one rule — and the machine's temporary root, the session
 scratchpad (`$TMPDIR`, `/tmp/claude-*`) with the rest of `/tmp` around it,
 which no review pass reads and no capture holds (reassigning `TMPDIR` asks,
 and a suffix climbing clear of `/tmp` leaves the grant behind); discards and
-fd dups strip. A repository made in this checkout's declared scratch is as
-disposable as the scratch holding it, so `git init tmp/p` — after a `cd` or
-`git -C`, with a separate git dir there too — is a scratch write, its
+fd dups strip. A stream — `/dev/null`, `/dev/stdout`, `/dev/stderr`, `/dev/tty`
+and the two descriptors behind them — keeps nothing written into it, so it is
+no file a write lands on by any spelling: a redirection, a `tee` operand, a
+copy's destination (`cp f /dev/null`), or a write flag's value (`curl -o
+/dev/null`, `sort -o /dev/null`, `git diff --output=/dev/null`). A verb that
+replaces the device itself — `rm`, `mv`, `ln`, `touch` — is judged by its row.
+A repository made in this repository's declared scratch, in this checkout or
+in another of its worktrees, is as disposable as the scratch holding it, so
+`git init tmp/p` — after a `cd` or `git -C`, with a separate git dir there
+too, or spelled under a sibling worktree's `tmp/` — is a scratch write, its
 directories resolved by the host as any write target is. Every other `git
 init` stays unclassified: one naming no directory makes the repository
 wherever git stands, a `--git-dir` moves it, and `--template` copies a
@@ -1109,31 +1117,40 @@ serves it, ask.
 A file another repository holds, with no destination grant, meets a referral
 in place of the gates below: the edit **asks**, and the reason says that
 repository's conventions are its own, so the way through is never to restyle
-its code into this one's. The exception is this checkout's own scratch. A
+its code into this one's. The exception is this repository's own scratch. A
 repository nested under a root declared scratch here — a probe kit given its
 own `git init` under `tmp/` — is judged as the scratch around it, so an edit,
 a redirect and a command's output landing there are allowed like any other
 scratch file, on both runtimes and after the fact alike. The claim is read off
-the path as this checkout spells it, never as the nested repository does, so
-a kit under a sibling worktree's `tmp/`, a `refs/` link landing in another
-project, and another repository's own `tmp/` all keep the referral.
+the path as the checkout of this repository holding it spells it — this one,
+or another of its worktrees, so a kit under a sibling worktree's `tmp/` is
+scratch too — never as the nested repository does, so a `refs/` link landing
+in another project and another repository's own `tmp/` keep the referral.
 
 The refusal to write a generated plugin tree by hand stops at the same line,
 and for a reason of its own: nothing this project generates lands in its
 scratch, which a test walking both recipes pins. So a kit's own hand-written
 `.claude/plugins/` or `.codex/plugins/` there is written like any other
-scratch file — by an edit, a redirect or a path verb. This checkout's compiled
-trees stay refused, and so does every tree its scratch does not hold: a
-sibling worktree's, another repository's, one under the machine's temporary
-root, and this checkout's own reached through a link planted in scratch, which
-the host resolves and the shell refuses once it has seen the link move the
-write.
+scratch file — by an edit, a redirect or a path verb, in this checkout's
+scratch or a sibling worktree's. Every compiled tree stays refused, this
+checkout's and a sibling worktree's alike, and so does every tree no scratch
+of this repository holds: another repository's, one under the machine's
+temporary root, and this checkout's own reached through a link planted in
+scratch, which the host resolves and the shell refuses once it has seen the
+link move the write.
 
 Edit decisions cover protected paths, marker changes, size, the canonical
 anti-pattern audit, and declared import ownership. A human-owned file
 surfaces every change to it, edit or shell write, as an approval its author
 answers. An edit over the size gate alone is deferred — the hook
 emits no decision, so auto-accept applies while hard gates stay explicit.
+The language server an anti-pattern rule consults is started only for a file
+in production, the one role those rules read, and a command's Git facts —
+which files are tracked, which can be restored, which other worktrees the
+repository has — are gathered before any edit gate starts it, since a checker
+spending what is left of the deadline would leave Git no time to answer: a
+heredoc into a sibling's `tmp/` would read as an outside path, and a redirect
+over tracked source beside it as a file Git never held.
 
 A deferral is never a question lup puts, and nothing parks one, whichever
 spelling carried the change — an `Edit`, a `cp` over a file, a heredoc, a

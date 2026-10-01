@@ -45,10 +45,9 @@ from .lex import (
     simple_commands,
     substitutions,
     verb_path_words,
-    writes_to_a_stream,
     written_verb_words,
 )
-from .roles import spells_its_path
+from .roles import spells_its_path, writes_to_a_stream
 from .rows import (
     EditOperation,
     RewriteReading,
@@ -418,6 +417,9 @@ def verb_steps(
             if not operands["inert"] or len(landed) < 2 or None in landed:
                 return ran
             *sources, target = [path for path in landed if path is not None]
+            # A copy into a stream leaves no document; a move still replaces it.
+            if executable == "cp" and writes_to_a_stream(target):
+                return []
             clobbers = not any(
                 "n" in word[1:]
                 for word in words[1:]

@@ -622,6 +622,7 @@ class ShellPolicy(DecisionPolicy[ShellCommand]):
                             shell_posture_targets(event.command, self.rules),
                             boundary,
                             root,
+                            siblings,
                         )
                     )
                     if self.contained and self.inside_placement

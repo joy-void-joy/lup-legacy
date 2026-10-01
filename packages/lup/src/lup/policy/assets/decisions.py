@@ -246,6 +246,44 @@ def bash_decision(
     # exist yet, and a refused command is snapshotted too -- one ref for a
     # state the tree was already in, which dedup collapses.
     reference = undo_snapshot(cwd, command)
+    # Every fact Git answers is asked here, before the edit gates below: a
+    # gate may start a type checker that spends what is left of the hook's
+    # deadline, and a Git question asked with nothing left reads as no answer
+    # -- no other checkout, nothing tracked -- so a heredoc into a sibling
+    # worktree's `tmp/` would read as an outside path, and a redirect over
+    # tracked source beside it as a file Git never held.
+    #
+    # Another checkout of this repository keeps this one's scratch, reached by
+    # the absolute path a session spells it with -- so Git is asked for the
+    # checkouts only where the command names such a path at all.
+    siblings = (
+        sibling_worktrees(cwd)
+        if any(
+            target.startswith("/")
+            for target in [*shell_write_targets(command), *acted_on, *flagged]
+        )
+        else []
+    )
+    tracked = tracked_write_targets(
+        [*shell_write_targets(command), *acted_on, *flagged], cwd
+    )
+    recoverable = recoverable_write_targets(
+        [*shell_write_targets(command), *acted_on], cwd
+    )
+    # A snapshot proves a capture only of what it took, and it takes nothing
+    # Git ignores: one ignored target outside declared scratch, which needs no
+    # capture, leaves the loss uncaptured.
+    recovered = bool(reference) and not ignored_write_targets(
+        unscratched(
+            [
+                *shell_write_targets(command),
+                *shell_written_targets(command, SHELL_RULES),
+            ],
+            PATH_ROLES,
+            str(cwd or Path.cwd()),
+        ),
+        cwd,
+    )
     # What the line leaves in every file it writes, step by step, and the
     # edit gates' verdict on each file its own bytes or a rewrite reach. Both
     # halves of the rewrite reading come off it -- the documents a rewrite
@@ -257,17 +295,6 @@ def bash_decision(
         lambda target, document: rewritten_row(
             target, document, judged[document["path"]], cwd or Path.cwd()
         ),
-    )
-    # Another checkout of this repository keeps this one's scratch, reached by
-    # the absolute path a session spells it with -- so Git is asked for the
-    # checkouts only where the command names such a path at all.
-    siblings = (
-        sibling_worktrees(cwd)
-        if any(
-            target.startswith("/")
-            for target in [*shell_write_targets(command), *acted_on, *flagged]
-        )
-        else []
     )
     verdict = decide_shell(
         command,
@@ -282,12 +309,8 @@ def bash_decision(
         existing_targets=existing_write_targets(
             [*shell_write_targets(command), *acted_on, *flagged], cwd
         ),
-        tracked_targets=tracked_write_targets(
-            [*shell_write_targets(command), *acted_on, *flagged], cwd
-        ),
-        recoverable_targets=recoverable_write_targets(
-            [*shell_write_targets(command), *acted_on], cwd
-        ),
+        tracked_targets=tracked,
+        recoverable_targets=recoverable,
         directory_targets=directory_write_targets(acted_on, cwd),
         empty_directories=empty_directory_targets(acted_on, cwd),
         recoverable_target_limit=RECOVERABLE_TARGET_LIMIT,
@@ -409,7 +432,10 @@ def bash_decision(
         landings=(
             landing_rows(
                 measured_landings(
-                    shell_posture_targets(command, SHELL_RULES), boundary, cwd
+                    shell_posture_targets(command, SHELL_RULES),
+                    boundary,
+                    cwd,
+                    siblings,
                 )
             )
             if inside and delivers(boundary, "inside_placement")
@@ -422,21 +448,7 @@ def bash_decision(
             if any(host in command for host in ("localhost", "127.", "::1"))
             else []
         ),
-        # A snapshot proves a capture only of what it took, and it takes
-        # nothing Git ignores: one ignored target outside declared scratch,
-        # which needs no capture, leaves the loss uncaptured.
-        recovered=bool(reference)
-        and not ignored_write_targets(
-            unscratched(
-                [
-                    *shell_write_targets(command),
-                    *shell_written_targets(command, SHELL_RULES),
-                ],
-                PATH_ROLES,
-                str(cwd or Path.cwd()),
-            ),
-            cwd,
-        ),
+        recovered=recovered,
     )
     # The gates an edit is judged by, over the writes this command carries the
     # content of. Joined here rather than inside the classifier because they
@@ -1137,7 +1149,9 @@ def local_edit_decision(
         if resolve_external
         and not outside_this_repository
         and after is not None
-        and awaits_resolution(before, after, rows, python_source)
+        and awaits_resolution(
+            before, after, rows, python_source, worktree_path(path_text), PATH_ROLES
+        )
         else None
     )
     return decide_edit(
