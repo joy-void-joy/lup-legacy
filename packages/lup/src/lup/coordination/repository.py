@@ -52,7 +52,7 @@ from lup.coordination.identity import (
     session_cli_name,
 )
 from lup.coordination.bare.mail import new_post_id
-from lup.coordination.mail import ActorDelivery, Posting
+from lup.coordination.mail import ActorDelivery, Posting, StandingNotice
 from lup.coordination.meeting import coordination_root
 from lup.coordination.peers import USER_ADDRESS, USER_KIND, USER_TASK, user_peer
 from lup.coordination.pulse import Pulse
@@ -789,15 +789,22 @@ class RepositoryPeers:
                 reached.append(landed)
         return ThreadPost(post=post, thread=thread, reached=reached, refused=refused)
 
-    def notify(self, text: str, door: Door = Door.AGENT, by: str = "") -> None:
+    def notify(
+        self, text: str, door: Door = Door.AGENT, by: str = ""
+    ) -> StandingNotice:
         """State something true for every session here, and for whoever starts next.
 
         A notice is state rather than mail: it is read at the head of every
         prompt for as long as it stands, so a session opened tomorrow reads it
         at its first. Whoever is working is told now as well, because a fact
         worth stating is worth hearing before the turn they are in ends.
+        Hands back the notice, whose id takes it down again.
         """
-        self.cohort.notify(text, door=door, by=by)
+        return self.cohort.notify(text, door=door, by=by)
+
+    def withdraw(self, notice_id: str) -> bool:
+        """Take one standing notice down, saying whether it was there to take down."""
+        return self.cohort.mail.retract(notice_id)
 
     def waiting(self, member_id: str) -> ActorDelivery:
         """What is queued for this session, consuming none of it."""

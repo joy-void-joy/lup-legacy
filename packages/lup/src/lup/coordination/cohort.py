@@ -46,7 +46,7 @@ from uuid import uuid4
 from pydantic import BaseModel, TypeAdapter
 
 from lup.coordination.bare.mail import new_post_id
-from lup.coordination.mail import ActorDelivery, ActorMail, Posting
+from lup.coordination.mail import ActorDelivery, ActorMail, Posting, StandingNotice
 from lup.coordination.manifest import CohortManifest, publish_manifest
 from lup.coordination.peers import USER_KIND, join_user
 from lup.coordination.refs import ActorRef
@@ -428,8 +428,10 @@ class ActorCohort:
             posting=posting,
         )
 
-    def notify(self, text: str, door: Door = Door.AGENT, by: str = "") -> None:
-        """State something that is true for this whole population.
+    def notify(
+        self, text: str, door: Door = Door.AGENT, by: str = ""
+    ) -> StandingNotice:
+        """State something that is true for this whole population, and hand back the notice.
 
         Two effects, because a statement has two audiences. It is posted as a
         **notice**, which is state: every member reads it at the head of every
@@ -442,11 +444,12 @@ class ActorCohort:
         of what it needs: the message was the interruption, and there was
         nothing to interrupt.
         """
-        self.mail.notify(text, door=door, by=by)
+        notice = self.mail.notify(text, door=door, by=by)
         posting = Posting(post=new_post_id())
         for member in self.live():
             if member.running:
                 self.say(member.actor, text, door=door, sender=by, posting=posting)
+        return notice
 
     def redirect_all(self, text: str, door: Door = Door.AGENT) -> None:
         """Stop every agent that is working, and say what to do instead.
