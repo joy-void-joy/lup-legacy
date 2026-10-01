@@ -17,6 +17,7 @@ from lup.channels.models import (
 )
 from lup.channels.slot import Slot, SlotSet
 from lup.channels.stream import Stream
+from lup.execution.locks import exclusive, try_exclusive
 
 
 class Decision(BaseModel):
@@ -246,3 +247,40 @@ def test_a_compare_and_swap_replaces_only_what_it_read(tmp_path: Path) -> None:
 
     assert ledger.read_bytes() == b"mine"
     assert [held.name for held in tmp_path.iterdir()] == ["ledger.json"]
+
+
+def test_a_held_section_is_refused_to_a_second_holder_and_free_after(
+    tmp_path: Path,
+) -> None:
+    """The file the writers agree on, beside what they write, made where it is missing."""
+    lock = tmp_path / "nested" / "state.lock"
+
+    with exclusive(lock):
+        with try_exclusive(lock) as second:
+            assert second is False
+    with try_exclusive(lock) as after:
+        assert after is True
+
+
+def test_a_section_waits_for_its_holder_rather_than_interleaving(
+    tmp_path: Path,
+) -> None:
+    lock = tmp_path / "state.lock"
+    order: list[str] = []
+    entered = threading.Event()
+
+    def holder() -> None:
+        with exclusive(lock):
+            order.append("held")
+            entered.set()
+            threading.Event().wait(0.2)
+            order.append("released")
+
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        held = pool.submit(holder)
+        entered.wait()
+        with exclusive(lock):
+            order.append("waited")
+        held.result()
+
+    assert order == ["held", "released", "waited"]
