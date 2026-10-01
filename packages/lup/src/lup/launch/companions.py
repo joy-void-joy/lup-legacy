@@ -29,7 +29,6 @@ review of the declaration reads it.
 """
 
 import asyncio
-import fcntl
 import hashlib
 import logging
 import os
@@ -60,6 +59,7 @@ from pydantic import BaseModel, Field, StringConstraints, ValidationError
 
 from lup.channels.models import publish_atomic
 from lup.channels.wait import wait_until
+from lup.execution.locks import exclusive
 from lup.harness.notice import Notice
 from lup.launch.declaration import Loopback, Mount
 from lup.launch.refusal import LaunchRefused
@@ -838,13 +838,8 @@ class CompanionSlot(BaseModel, frozen=True):
     @contextmanager
     def locked(self) -> Iterator[None]:
         """Hold this companion for one launch's read, decide and write."""
-        self.directory.mkdir(parents=True, exist_ok=True)
-        with (self.directory / "lock").open("a", encoding="utf-8") as handle:
-            fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
-            try:
-                yield
-            finally:
-                fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+        with exclusive(self.directory / "lock"):
+            yield
 
     def read(self) -> CompanionState:
         """What is kept of this companion; nothing, where nothing is or it does not parse."""
@@ -955,13 +950,8 @@ def given_ports(
 @contextmanager
 def choosing_ports(home: Path) -> Iterator[None]:
     """Hold port choosing for every companion, so two are never given one port."""
-    home.mkdir(parents=True, exist_ok=True)
-    with (home / "ports.lock").open("a", encoding="utf-8") as handle:
-        fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
-        try:
-            yield
-        finally:
-            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+    with exclusive(home / "ports.lock"):
+        yield
 
 
 def kept_elsewhere(home: Path, slot: CompanionSlot) -> list[int]:

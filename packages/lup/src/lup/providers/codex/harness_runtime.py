@@ -1,6 +1,5 @@
 """Codex CLI evidence, cache verification, and explicit plugin installation."""
 
-import fcntl
 import hashlib
 import json
 import shutil
@@ -15,6 +14,7 @@ from semver import Version
 from pydantic import BaseModel, Field
 
 from lup.channels.models import write_atomic
+from lup.execution.locks import exclusive
 from lup.providers.codex.login import CODEX_LOGIN
 from lup.providers.codex.app_server import native_command, native_environment
 from lup.harness.contracts import CapabilityProbe
@@ -32,9 +32,7 @@ def codex_home_lock(home: Path) -> Iterator[None]:
     terminal -- each preparing it: two such writes that read the same
     document each rename a copy lacking what the other added.
     """
-    home.mkdir(parents=True, exist_ok=True)
-    with (home / ".lup-plugin-install.lock").open("a") as lock:
-        fcntl.flock(lock, fcntl.LOCK_EX)
+    with exclusive(home / ".lup-plugin-install.lock"):
         yield
 
 

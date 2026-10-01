@@ -56,6 +56,7 @@ from lup.coordination.identity import session_member_id
 from lup.coordination.repository import RepositoryPeers
 from lup.coordination.wake import WakePath, wake
 from lup.devtools.review.preimages import PreimageWatch, moved
+from lup.execution.locks import try_exclusive
 from lup.devtools.review.propose import previewed
 from lup.devtools.review.thread import ReviewThread
 from lup.policy.assets.host import review_home
@@ -220,13 +221,8 @@ class ReviewWaiters(BaseModel, frozen=True):
         path = self.path(review)
         if not path.is_file():
             return False
-        with path.open("a", encoding="utf-8") as handle:
-            try:
-                fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-            except BlockingIOError:
-                return True
-            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
-        return False
+        with try_exclusive(path) as free:
+            return not free
 
 
 class Asker(BaseModel, frozen=True):
