@@ -13,7 +13,7 @@ the child project must select its own environment from its working directory.
 
 import os
 from collections.abc import Mapping
-from typing import Self
+from typing import Literal, Self
 
 from pydantic import BaseModel, Field
 from pydantic_settings import BaseSettings, PydanticBaseSettingsSource
@@ -26,6 +26,7 @@ from lup.policy.identity import (
     REVIEW_ANSWERS_ENV,
 )
 from lup.devtools.launcher import ENVIRONMENT_VARIABLE
+from lup.providers.runtime_homes import selected_runtime
 from lup.sessions.recursion import RecursiveAgentSettings
 from lup.types import EnvVars
 from lup.workspace.context import SESSION_DIR_ENV, SESSION_ID_ENV
@@ -111,12 +112,14 @@ class Placement(BaseModel, frozen=True):
     the hint withholds there and nothing else. What the launch *measured*
     is the boundary ledger's, which the policy host reads.
 
-    Which runtime's session a process is in is not among them: it is read
+    Which runtime's session a process is in rides beside them: it is read
     off the configuration-home variable each launcher exports, which only
-    the providers may spell, by :func:`~lup.providers.runtime_homes.selected_runtime`.
+    the providers may spell, by :func:`~lup.providers.runtime_homes.selected_runtime`
+    over the same environment — the one handed over, or this process's own
+    as :func:`inherited` reads it.
     """
 
-    # lup: defer: carry `runtime` here once this module holds the sanctioned
+    # lup: solved: carry `runtime` here once this module holds the sanctioned
     # whole-environment reader (`inherited`, on refactor-lib-files-state):
     # `here()` then asks selected_runtime of that environment rather than
     # devtools/harness/launch.py reading os.environ for it
@@ -131,20 +134,31 @@ class Placement(BaseModel, frozen=True):
     roster identity, an agent identity or a session directory, and a command
     the operator runs from a terminal carries none of them."""
 
+    runtime: Literal["claude", "codex"] | None = None
+    """Whose session this is, by the configuration home its launcher selected;
+    ``None`` in no runtime's session, the operator's terminal among them."""
+
     @classmethod
     def of(cls, environment: EnvVars) -> Self:
         """The placement a launch's environment describes, read from it alone."""
-        return cls.read(GivenPlacementEnv.model_validate(environment))
+        return cls.read(
+            GivenPlacementEnv.model_validate(environment), selected_runtime(environment)
+        )
 
     @classmethod
     def here(cls) -> Self:
         """The placement of this process."""
-        return cls.read(PlacementEnv())
+        return cls.read(PlacementEnv(), selected_runtime(inherited()))
 
     @classmethod
-    def read(cls, variables: PlacementEnv) -> Self:
-        """The placement the launch's variables state."""
+    def read(
+        cls,
+        variables: PlacementEnv,
+        runtime: Literal["claude", "codex"] | None = None,
+    ) -> Self:
+        """The placement the launch's variables state, in that runtime's session."""
         return cls(
+            runtime=runtime,
             contained=variables.contained == "1",
             sandboxed=variables.sandbox == "1",
             in_session=any(
