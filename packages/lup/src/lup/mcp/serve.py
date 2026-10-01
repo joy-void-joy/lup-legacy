@@ -30,7 +30,7 @@ from lup.coordination.bare.runtime import Runtime, runtime_of, stdin_runtime
 from lup.coordination.identity import MemberEnv, session_cli_name
 from lup.coordination.repository import runtime_member
 from lup.coordination.wake import WakePath
-from lup.observability.metrics import configure_metrics, metrics_path
+from lup.observability.metrics import configure_metrics, open_metrics_sink
 from lup.orchestration.reflection import ReviewGate
 from lup.providers.identity import native_session_id, native_wake
 from lup.tools.mcp import serve_stdio
@@ -123,7 +123,6 @@ def resolved_needs(session: str | None, runtime: str | None) -> SessionNeeds | N
             needs = context_needs(context, "", runtime=served)
         case _:
             return None
-    configure_metrics(metrics_path(context.session_dir))
     return needs
 
 
@@ -137,6 +136,10 @@ def serve(
     A server that builds nothing for this session still serves, empty: the
     runtime started it because the launch declared it, and a process that
     exited instead would read to that runtime as a server that crashed.
+
+    What its tools record is written through to a snapshot of this process's
+    own under the session's directory, named for the server and the session's
+    roster identity, which is where ``tools metrics`` reads it.
     """
     from lup.tools.mcp import create_mcp_server
 
@@ -147,6 +150,7 @@ def serve(
         for tool in hosted.tools:
             typer.echo(tool.name)
         return
+    configure_metrics(open_metrics_sink(needs.session_dir, server.name, needs.member))
     serve_stdio(hosted)
 
 
