@@ -135,7 +135,7 @@
     {
       "path": ".claude/plugins/lup/commands/fb-analyze.md",
       "category": "generated",
-      "sha256": "571c09ae4086efe7ffa44138796f66d596bcb29e13383e9430ab6d5374defe99",
+      "sha256": "6e6718414546041f7b23461da362c946a03751117af418e18d73b6543e5668aa",
       "semantic_id": "skill.fb-analyze",
       "executable": false
     },
@@ -303,7 +303,7 @@
     {
       "path": ".claude/plugins/lup/commands/review.md",
       "category": "generated",
-      "sha256": "58fff6e86c861f4c4162654a868f3d94699b2a0639684b6e3b5110deae343c42",
+      "sha256": "6e2585fec1185c7bda667c6bdc076149a45293fde20b0a7cedf79dbe16d7c137",
       "semantic_id": "skill.review",
       "executable": false
     },
@@ -849,7 +849,7 @@
     {
       "path": "docs/library.md",
       "category": "generated",
-      "sha256": "d88e0d8c637e98944d7edff6f314f26afdc356d3a06684c1e30970d804ee4fe1",
+      "sha256": "f946bcc14f710bfc439a77fb24cfd56a3bb8ed34bc4597a2320cc7c8be57a42b",
       "semantic_id": "docs.library",
       "executable": false
     },
@@ -884,7 +884,7 @@
     {
       "path": "docs/platform-differentiation.md",
       "category": "generated",
-      "sha256": "61f12f64529b68b3dab6c769e108543204a653f3ce6ce0804b684f330e957d8e",
+      "sha256": "3dff5ff73f43a2d0162ce3e94032085b26a508f12d2a505d4763c3768ac2a5f0",
       "semantic_id": "docs.platform-differentiation",
       "executable": false
     },
@@ -912,7 +912,7 @@
     {
       "path": "docs/self-improvement.md",
       "category": "generated",
-      "sha256": "4774805a2d37c288ed7c7ab3e1242e709e30222746da32c26d64646e7b07b2b1",
+      "sha256": "31d6ab8f3bd9b10f96f76e101438499320cc9bacf3e4e234f9f30d6974ef58d0",
       "semantic_id": "docs.self-improvement",
       "executable": false
     },

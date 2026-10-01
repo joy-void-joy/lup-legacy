@@ -590,7 +590,7 @@
     {
       "path": ".codex/plugins/lup/skills/fb-analyze/SKILL.md",
       "category": "generated",
-      "sha256": "039d3f8da262f1492b6a0ae1310e9dd74694fc9d95d202ac5ff87c4b5c859236",
+      "sha256": "8f7dc77e6c8e917dc3a5819e738539820908a2761a8afc70f1f8076a3f01bf60",
       "semantic_id": "skill.fb-analyze",
       "executable": false
     },
@@ -758,7 +758,7 @@
     {
       "path": ".codex/plugins/lup/skills/review/SKILL.md",
       "category": "generated",
-      "sha256": "976397dc20c0ad97760c00c7a3c98fb0309bdc76fb5bc51ef3290e3bf08124af",
+      "sha256": "447cc3e2c51cb15b07e3b77486058611225c7714d8dfe60a00c48c38007e230f",
       "semantic_id": "skill.review",
       "executable": false
     },
