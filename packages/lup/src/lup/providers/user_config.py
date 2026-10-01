@@ -32,6 +32,7 @@ import tomlkit
 from pydantic import (
     AfterValidator,
     BaseModel,
+    BeforeValidator,
     Field,
     HttpUrl,
     ValidationError,
@@ -102,6 +103,15 @@ type BrowserOrigin = Annotated[HttpUrl, AfterValidator(origin_only)]
 """Where a browser reaches a page, as ``https://their.proxy.name`` or ``http://host:8080``."""
 
 
+def one_or_many(value: JsonValue) -> JsonValue:
+    """A key written alone, as the list of one it stands for."""
+    return [value] if isinstance(value, str) else value
+
+
+type KeySequences = Annotated[list[str], BeforeValidator(one_or_many)]
+"""The keys one dashboard action runs on: a key, or a list of keys, ``[]`` for none."""
+
+
 class UserDashboard(BaseModel, frozen=True, extra="forbid"):
     """How the dashboard reaches for the person when a review parks, and where they reach it."""
 
@@ -117,6 +127,14 @@ class UserDashboard(BaseModel, frozen=True, extra="forbid"):
     ``Host`` is one of theirs and takes a write whose ``Origin`` is one, and
     `dashboard status`, `dashboard open` and an operator's launch print the
     page's launch address at each."""
+
+    keys: dict[str, KeySequences] = {}
+    """``[dashboard.keys]``: the page's actions rebound by name, each to a key
+    or a list of keys in Vim's notation (``"agent.next" = ["<A-Right>", ")"]``),
+    ``[]`` unbinding it. A value replaces lup's keys for that action. Each
+    entry is checked against the dashboard's action catalog, and one that
+    cannot apply is refused alone and reported — on the page, and by
+    `dashboard keys` — rather than refusing this file."""
 
     def served_at(self) -> list[str]:
         """Each declared origin as a browser writes it in ``Origin``: its default port left out."""

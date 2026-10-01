@@ -115,6 +115,42 @@ or a link the same line makes, still lands on the file it links to unasked
 - `lup.observability.audit.chain_break` replaces `verify_event_chain`,
   answering where a chain first fails and why rather than whether.
 
+### The dashboard is one keyboard-driven editor, supervising every agent
+
+The page is rebuilt as an editor (`docs/dashboard.md`). A tree of every
+repository's agents — each session with its subagents, and under each agent
+the reviews it parked — sits beside one buffer and a context window; a
+tabline names five views (Supervise, History, Inbox, Threads, Setup), a
+statusline says the mode, where focus is and where the cursor stands, and a
+command line, a finder, which-key and a help drawn from one action catalog sit
+over it.
+
+- Reviewing keeps its triage loop: a review opens in its note box, `j`/`k`
+  move on while the box is empty, `Ctrl+Enter`, `Alt+Delete` and `Alt+Enter`
+  answer from anywhere, and an answer moves on at once, put back whole if the
+  server refuses it.
+- A review's bar says what the call is and what the policy asks about; a shell
+  command shows the steps that asked first, and folds the steps whose effect
+  shows only after they run with the ones allowed on their own.
+- Each file's header says in a few words why it needs approval, read off its
+  verdict's gate rather than its reason sentence (`ReviewFile.review_label`),
+  and the context counts a proposal's files by those reasons.
+- Focus decides where keys act: in the tree `j`/`k` walk its rows, in the
+  buffer the cursor moves like an editor's — a line and a column, `w`, `b`,
+  `e`, `0`, `^`, `$`, counts, `{n}G` — and `Tab` moves focus round, with one
+  outline on the place that has it.
+- Supervising: an agent's buffer shows what it is doing now and every message
+  to or from it, its box writes to it, and Threads reads the agents' mail as
+  discussions. What waits on new server routes is listed with the route it
+  needs, and refused naming it.
+- Personal keys: `[dashboard.keys]` in your lup config rebinds actions by name,
+  each entry checked on its own and refused with what, why and the way through;
+  the keys reach every open tab on the stream when the file changes, and
+  `lup-devtools dashboard keys` prints the report.
+- Below 861 px the page is a touch layout: drawers, an action bar and a tab bar
+  under the thumb, a strip that steps through a review, and long prose folded
+  to four lines.
+
 ### Containers starting at once on one config home no longer tear or drop what the others wrote
 
 Several contained sessions of one repository start on its config volume at
