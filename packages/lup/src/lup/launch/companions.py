@@ -231,13 +231,6 @@ class HostCompanion(BaseModel, ABC, frozen=True, extra="forbid"):
         """
 
 
-def named_apart(companions: Sequence[HostCompanion]) -> None:
-    """Refuse two companions under one name, whose state and contributions would collide."""
-    names = [companion.name for companion in companions]
-    if len(names) != len(dict.fromkeys(names)):
-        raise ValueError(f"host companions must be named apart, got {names}")
-
-
 @contextmanager
 def held_companions(
     companions: Sequence[HostCompanion], launch: CompanionLaunch

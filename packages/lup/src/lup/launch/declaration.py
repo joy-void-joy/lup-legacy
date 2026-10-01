@@ -9,7 +9,7 @@ declaration is compiled, in the words of the field, rather than dropped.
 
 import shlex
 from abc import ABC, abstractmethod
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Sequence
 from enum import StrEnum
 from pathlib import Path
 from typing import Protocol, Self, runtime_checkable
@@ -28,6 +28,24 @@ from lup.sandbox.models import NetworkMode
 from lup.sandbox.rail import AccessibleRoot, NestedRepository
 from lup.sessions.events import SessionId, SessionSummary
 from lup.types import EnvVars
+
+
+class Named(Protocol):
+    """Anything a declaration lists under a name of its own."""
+
+    @property
+    def name(self) -> str: ...
+
+
+def distinct_names(items: Sequence[Named], what: str) -> None:
+    """Refuse two of ``what`` under one name, which would address one as the other.
+
+    A tool server's name addresses its tools and a companion's names its
+    state, so two under one name collide wherever either is looked up.
+    """
+    names = [item.name for item in items]
+    if len(names) != len(dict.fromkeys(names)):
+        raise ValueError(f"{what} must each be named apart, got {names}")
 
 
 class Mount(BaseModel, frozen=True, extra="forbid"):
