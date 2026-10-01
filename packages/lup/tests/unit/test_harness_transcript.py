@@ -8,6 +8,7 @@ A trace nobody wrote reads exactly like a session nobody ran, which is why the
 assertion has to be that the transcript exists rather than that it is correct.
 """
 
+import json
 import logging
 from pathlib import Path
 
@@ -178,3 +179,29 @@ def test_the_watcher_reports_its_failures_on_the_captured_logger() -> None:
     assert (
         logging.getLogger("lup.observability.native") is launch_session.watcher_logger()
     )
+
+
+def test_a_transcript_that_verifies_closes_quietly(
+    project: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    started(project).close(succeeded=True)
+
+    assert "verify" not in capsys.readouterr().out
+
+
+def test_a_transcript_edited_while_open_is_said_at_close(
+    project: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Every launch, Claude's or Codex's, closes through here, so both are checked."""
+    transcript = started(project)
+    path = transcript.journal.path
+    first, *rest = path.read_text(encoding="utf-8").splitlines()
+    record = json.loads(first)
+    record["payload"]["model"] = "another-model"
+    path.write_text("\n".join([json.dumps(record), *rest]) + "\n", encoding="utf-8")
+
+    transcript.close(succeeded=True)
+
+    said = capsys.readouterr().out
+    assert "transcript does not verify: record 0 is not what was hashed" in said
+    assert f"trace events {path.parent.name}" in said

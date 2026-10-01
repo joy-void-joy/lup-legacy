@@ -17,6 +17,7 @@ poison a log that a live process is still appending to.
 
 import logging
 import os
+from itertools import count
 from pathlib import Path
 
 from pydantic import TypeAdapter, ValidationError
@@ -137,19 +138,30 @@ class Stream[T]:
         passed over rather than reported: the frontier is expected to be
         cut. A caller wanting every record still uses `read_from`, which
         reports what it could not decode.
+
+        The window is where the search starts, not where it stops. A record
+        longer than the window leaves nothing in it that decodes, and
+        answering None there tells a chained writer the log is empty — so it
+        restarts the sequence at zero mid-file, and the chain breaks with
+        nothing having been tampered with. The window doubles until a record
+        decodes or it covers the whole file, which only a log holding no
+        complete record at all answers with None.
         """
         if not self.path.exists():
             return None
         size = self.path.stat().st_size
         with self.path.open("rb") as handle:
-            handle.seek(max(0, size - window))
-            data = handle.read()
-        for raw in reversed(data.splitlines()):
-            line = raw.strip()
-            if not line:
-                continue
-            try:
-                return self.adapter.validate_json(line)
-            except ValidationError:
-                logger.debug("Incomplete record at the tail of %s", self.path)
+            for doubling in count():
+                start = max(0, size - (max(window, 1) << doubling))
+                handle.seek(start)
+                for raw in reversed(handle.read(size - start).splitlines()):
+                    line = raw.strip()
+                    if not line:
+                        continue
+                    try:
+                        return self.adapter.validate_json(line)
+                    except ValidationError:
+                        logger.debug("Incomplete record at the tail of %s", self.path)
+                if start == 0:
+                    return None
         return None

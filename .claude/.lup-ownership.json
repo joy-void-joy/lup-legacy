@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "generator_version": "0.2.0",
-  "source_digest": "ff5fbb0ee49f8e598c2754a1209e9c0f2a42b94ff7303cc159c7d3f9ae960db6",
+  "source_digest": "2f735a43355fc9cc4a04e5163b45bceac22575cd17ecaf1e54d3aa3873986a46",
   "target_requirements": [
     "claude-code"
   ],
@@ -135,7 +135,7 @@
     {
       "path": ".claude/plugins/lup/commands/fb-analyze.md",
       "category": "generated",
-      "sha256": "571c09ae4086efe7ffa44138796f66d596bcb29e13383e9430ab6d5374defe99",
+      "sha256": "6e6718414546041f7b23461da362c946a03751117af418e18d73b6543e5668aa",
       "semantic_id": "skill.fb-analyze",
       "executable": false
     },
@@ -212,7 +212,7 @@
     {
       "path": ".claude/plugins/lup/commands/install.md",
       "category": "generated",
-      "sha256": "f21a68cc9f869eaf1d2eb657ea8f2b67669730af3ef546a19eab75a3b3a12704",
+      "sha256": "6c80aad36206273357e0474bc84cd069d2e815ad224deb9a68f8f706b836a9cd",
       "semantic_id": "skill.install",
       "executable": false
     },
@@ -303,7 +303,7 @@
     {
       "path": ".claude/plugins/lup/commands/review.md",
       "category": "generated",
-      "sha256": "58fff6e86c861f4c4162654a868f3d94699b2a0639684b6e3b5110deae343c42",
+      "sha256": "6e2585fec1185c7bda667c6bdc076149a45293fde20b0a7cedf79dbe16d7c137",
       "semantic_id": "skill.review",
       "executable": false
     },
@@ -849,7 +849,7 @@
     {
       "path": "docs/library.md",
       "category": "generated",
-      "sha256": "1cad6ab9241903528a344cc3b9923f26c60d82a5544ece435cec36ea73af03a4",
+      "sha256": "332e72e80ddf39c33ac17382ca6310a142df5ab3267367cc8013b63993dc29ae",
       "semantic_id": "docs.library",
       "executable": false
     },
@@ -884,7 +884,7 @@
     {
       "path": "docs/platform-differentiation.md",
       "category": "generated",
-      "sha256": "5856e2b42962b0e0cdac6b570c06b765448fb3588752f8198b6fd690c0f73b02",
+      "sha256": "ee826c41d4ed5f2d82b3caee9f89228d69c14ca0948a41fb93249e29519f51ec",
       "semantic_id": "docs.platform-differentiation",
       "executable": false
     },
@@ -912,7 +912,7 @@
     {
       "path": "docs/self-improvement.md",
       "category": "generated",
-      "sha256": "4774805a2d37c288ed7c7ab3e1242e709e30222746da32c26d64646e7b07b2b1",
+      "sha256": "31d6ab8f3bd9b10f96f76e101438499320cc9bacf3e4e234f9f30d6974ef58d0",
       "semantic_id": "docs.self-improvement",
       "executable": false
     },
@@ -926,7 +926,7 @@
     {
       "path": "docs/template.md",
       "category": "generated",
-      "sha256": "b6c57926939e588a868f69b331d7bc0c2f45fffe08c95463d8a820ca5a3a32d1",
+      "sha256": "c7cce5619d596ec8f49cd271597680e647176182a2fe09adcf1ac2bd0b81dafb",
       "semantic_id": "docs.template",
       "executable": false
     },
