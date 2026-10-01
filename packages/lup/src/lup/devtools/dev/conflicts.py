@@ -47,6 +47,7 @@ from lup.devtools.launcher import (
 )
 from lup.execution.shell import git
 from lup.types import EnvVars
+from lup.workspace.paths import find_nearest_pyproject
 from lup.devtools.utils import (
     format_table,
     decode_stderr,
@@ -110,6 +111,21 @@ def conflicted_manifest_notice(root: Path) -> str:
         f"Reach this toolchain as `{launcher} ...` meanwhile — "
         f"`{invocation(launcher, 'git', 'conflict', 'status', '--json')}`."
     )
+
+
+def report_conflicted_manifest() -> None:
+    """Say what to run when `uv` is about to stop being able to start.
+
+    Every command is documented as ``uv run lup-devtools ...``, and a
+    conflicted ``pyproject.toml`` turns all of them into a parse error from a
+    tool that never reached this program. Installed as the root callback of
+    every composed CLI and of the conflict-safe route alike, so whichever
+    invocation does get through carries the diagnosis to the session before
+    the failure does.
+    """
+    root = find_nearest_pyproject()
+    if root is not None and manifest_conflicted(root):
+        typer.echo(conflicted_manifest_notice(root), err=True)
 
 
 class ConflictFile(TypedDict):

@@ -34,6 +34,11 @@
   `git`; the CLI's `LaunchRequest` is `LaunchArguments`; `named_apart` and
   `uniquely_named` are one `distinct_names`; `lup.harness.messaging` is
   `lup.harness.wake_sockets`.
+- `lup.devtools.subapps.compose` installs the root callback that names the
+  launcher to use while `pyproject.toml` holds conflict markers, so a
+  project's composed CLI no longer carries its own copy of it: drop
+  `report_a_conflicted_manifest` and the `callback()` line wiring it from
+  your `devtools/main.py`.
 
 ### What a session's tools did, and whether its transcript holds, have readers
 
