@@ -26,6 +26,8 @@ from pathlib import Path
 
 from pydantic import BaseModel, ValidationError
 
+from lup.channels.models import publish_atomic
+
 
 class KnownRepositories(BaseModel):
     """Every repository git directory lup has vouched for from the host."""
@@ -107,13 +109,7 @@ def remember(repositories: Sequence[Path]) -> list[Path]:
     added = sorted({str(path.resolve()) for path in repositories} - held)
     if not added:
         return []
-    store = store_file()
-    store.parent.mkdir(parents=True, exist_ok=True)
-    staged = store.with_name(f".{store.name}.{os.getpid()}")
-    staged.write_text(
-        KnownRepositories(repositories=sorted({*held, *added})).model_dump_json(
-            indent=2
-        )
+    publish_atomic(
+        store_file(), KnownRepositories(repositories=sorted({*held, *added}))
     )
-    staged.replace(store)
     return [Path(path) for path in added]

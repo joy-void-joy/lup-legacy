@@ -24,6 +24,8 @@ from pathlib import Path
 
 from pydantic import BaseModel, Field, TypeAdapter, computed_field
 
+from lup.channels.models import publish_atomic
+
 logger = logging.getLogger(__name__)
 
 
@@ -221,8 +223,5 @@ class JournalStore:
     def record(self, cell: JournalCell) -> ReplayJournal:
         """Append one executed cell and replace the file whole."""
         journal = self.load().recording(cell)
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        temporary = self.path.with_suffix(".tmp")
-        temporary.write_text(journal.model_dump_json(indent=2), encoding="utf-8")
-        temporary.replace(self.path)
+        publish_atomic(self.path, journal)
         return journal

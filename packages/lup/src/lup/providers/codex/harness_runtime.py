@@ -3,18 +3,18 @@
 import fcntl
 import hashlib
 import json
-import os
 import shutil
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from pathlib import Path
-from tempfile import TemporaryDirectory, mkstemp
+from tempfile import TemporaryDirectory
 
 import sh
 import tomlkit
 from semver import Version
 from pydantic import BaseModel, Field
 
+from lup.channels.models import write_atomic
 from lup.providers.codex.login import CODEX_LOGIN
 from lup.providers.codex.app_server import native_command, native_environment
 from lup.harness.contracts import CapabilityProbe
@@ -52,14 +52,7 @@ def replace_codex_config(home: Path, text: str) -> None:
     """
     settings = (home / "config.toml").resolve()
     mode = settings.stat().st_mode & 0o777 if settings.exists() else 0o600
-    descriptor, staged = mkstemp(prefix=".config.toml.lup-", dir=settings.parent)
-    try:
-        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
-            handle.write(text)
-        Path(staged).chmod(mode)
-        Path(staged).replace(settings)
-    finally:
-        Path(staged).unlink(missing_ok=True)
+    write_atomic(settings, text.encode("utf-8"), mode=mode)
 
 
 class CodexCliEvidence(BaseModel, frozen=True):

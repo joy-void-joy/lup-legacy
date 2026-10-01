@@ -36,6 +36,7 @@ import sh
 from pydantic import BaseModel, Field, ValidationError
 from pydantic_settings import BaseSettings
 
+from lup.channels.models import publish_atomic
 from lup.coordination.identity import MEMBER_ENV, NAME_ENV
 from lup.devtools.dashboard.address import AdvertisedDashboard
 from lup.devtools.dashboard.pulse import (
@@ -238,10 +239,7 @@ class DashboardRegistry(BaseModel, frozen=True):
 
     def recorded(self, known: KnownRepository) -> None:
         """Keep one repository known, with a checkout of it, until its directory is gone."""
-        written(
-            self.repositories_directory() / f"{known.key()}.json",
-            known.model_dump_json(indent=2),
-        )
+        publish_atomic(self.repositories_directory() / f"{known.key()}.json", known)
 
     @contextmanager
     def registered(self, checkout: Path) -> Iterator[None]:
@@ -258,7 +256,7 @@ class DashboardRegistry(BaseModel, frozen=True):
         )
         self.recorded(known)
         launch = self.launches_directory() / f"{uuid.uuid4().hex}.json"
-        written(launch, record.model_dump_json(indent=2))
+        publish_atomic(launch, record)
         try:
             yield
         finally:
@@ -306,14 +304,6 @@ class DashboardRegistry(BaseModel, frozen=True):
     def live(self, repository: Path) -> bool:
         """Whether any running launch holds the dashboard for this repository."""
         return any(record.repository == repository for record in self.launches())
-
-
-def written(path: Path, text: str) -> None:
-    """Replace one file in a single rename, so no reader meets half of it."""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    staged = path.with_name(f"{path.name}.{uuid.uuid4().hex}")
-    staged.write_text(text, encoding="utf-8")
-    staged.replace(path)
 
 
 def read_model[Model: BaseModel](path: Path, model: type[Model]) -> Model | None:
@@ -645,7 +635,7 @@ class Dashboard(SharedProcess, frozen=True):
                     for member in (last.members if last is not None else [])
                 ],
             )
-            written(pulse.path, halted.model_dump_json(indent=2))
+            publish_atomic(pulse.path, halted)
         return True
 
 

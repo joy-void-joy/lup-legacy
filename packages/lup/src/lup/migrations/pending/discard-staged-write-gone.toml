@@ -1,0 +1,11 @@
+subjects = ["discard_staged_write"]
+reason = """
+`AtomicMaterializer` writes each artifact through `write_atomic`, which \
+removes its own staging file whether or not the rename succeeds, so there \
+is no leftover staging file for a caller to clean up"""
+
+[[steps]]
+instruction = """
+Delete the `discard_staged_write(error)` call in front of \
+`refused_write(error)`; a refused materialization leaves nothing staged \
+behind."""

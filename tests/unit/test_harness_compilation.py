@@ -68,7 +68,6 @@ from lup.harness.requirements import LostCapability, Requirement, Run
 from lup.harness.materialization import (
     AtomicMaterializer,
     MaterializationConflictError,
-    discard_staged_write,
     refused_write,
 )
 from lup.harness.validation import validated_tree
@@ -1599,7 +1598,7 @@ def test_materialization_rejects_stale_base(tmp_path: Path) -> None:
 
 
 def test_a_refused_write_names_the_boundary_and_drops_its_staging(
-    tmp_path: Path,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """A runtime protects its own configuration by mounting it, not by mode.
 
@@ -1607,15 +1606,38 @@ def test_a_refused_write_names_the_boundary_and_drops_its_staging(
     busy device — an errno about hardware, which sends a reader looking at
     the disk instead of at the boundary that actually decided.
     """
-    staged = tmp_path / ".settings.json.abc123.tmp"
-    staged.write_text("staged\n", encoding="utf-8")
-    error = OSError(errno.EBUSY, "Device or resource busy", str(staged))
-    error.filename2 = str(tmp_path / "settings.json")
+    path = tmp_path / "settings.json"
+    path.write_text("old\n", encoding="utf-8")
+    current = CurrentTree(
+        root=tmp_path,
+        artifacts=[
+            CurrentArtifact(
+                path=Path("settings.json"),
+                content="old\n",
+                category="generated",
+                sha256=content_digest("old\n"),
+            )
+        ],
+    )
+    desired = ArtifactTree(
+        artifacts=[
+            Artifact(path=Path("settings.json"), content="new", semantic_id="owned")
+        ]
+    )
+    proposal = DeterministicReconciler().propose(current, desired)
 
-    discard_staged_write(error)
-    refusal = str(refused_write(error))
+    def busy(staged: Path, target: Path) -> Path:
+        raise OSError(
+            errno.EBUSY, "Device or resource busy", str(staged), None, str(target)
+        )
 
-    assert not staged.exists()
+    monkeypatch.setattr(Path, "replace", busy)
+    with pytest.raises(OSError) as refused:
+        AtomicMaterializer().apply(proposal)
+    monkeypatch.undo()
+    refusal = str(refused_write(refused.value))
+
+    assert [held.name for held in tmp_path.iterdir()] == ["settings.json"]
     assert "settings.json" in refusal and ".tmp" not in refusal
     assert "sandbox" in refusal
 

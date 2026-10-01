@@ -58,6 +58,7 @@ from typing import Annotated
 import sh
 from pydantic import BaseModel, Field, StringConstraints, ValidationError
 
+from lup.channels.models import publish_atomic
 from lup.channels.wait import wait_until
 from lup.harness.notice import Notice
 from lup.launch.declaration import Loopback, Mount
@@ -759,9 +760,7 @@ class CompanionSlot(BaseModel, frozen=True):
 
     def keep(self, record: Reaped) -> None:
         """Write how a process ended where every holder reads it; outside the slot's lock, so staged first."""
-        staged = self.directory / f"reaped.json.{uuid.uuid4().hex}"
-        staged.write_text(record.model_dump_json(), encoding="utf-8")
-        staged.replace(self.directory / "reaped.json")
+        publish_atomic(self.directory / "reaped.json", record)
 
     def ended(
         self, running: Running, within: float = 2.0, every: float = 0.05
@@ -860,10 +859,7 @@ class CompanionSlot(BaseModel, frozen=True):
 
     def write(self, state: CompanionState) -> None:
         """Replace the state in one rename, so no reader meets half of it."""
-        path = self.directory / "state.json"
-        staged = path.with_name("state.json.tmp")
-        staged.write_text(state.model_dump_json(indent=2), encoding="utf-8")
-        staged.replace(path)
+        publish_atomic(self.directory / "state.json", state)
 
 
 def companions_home() -> Path:

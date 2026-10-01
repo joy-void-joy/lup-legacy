@@ -10,6 +10,7 @@ so the next session on the host reads the tree exactly as it was.
 import hashlib
 from pathlib import Path
 
+from lup.channels.models import write_atomic
 from lup.launch.refusal import LaunchRefused
 
 
@@ -38,8 +39,5 @@ def held_guidance(
     digest = hashlib.sha256(content.encode("utf-8")).hexdigest()[:16]
     written = guidance_home(cache) / digest / committed.name
     if not written.is_file():
-        written.parent.mkdir(parents=True, exist_ok=True)
-        staged = written.with_name(f".{written.name}.partial")
-        staged.write_text(content, encoding="utf-8")
-        staged.replace(written)
+        write_atomic(written, content.encode("utf-8"))
     return {written: str(target)}
