@@ -114,7 +114,9 @@ def test_the_in_process_policy_names_the_same_rule(
     decision = judged(checkout, written(path))
 
     (row,) = [
-        row for row in decision.file_reviews if Path(row["path"]).name == Path(path).name
+        row
+        for row in decision.file_reviews
+        if Path(row["path"]).name == Path(path).name
     ]
 
     assert row["protected"] is not None
