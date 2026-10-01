@@ -257,13 +257,24 @@ class DashboardRegistry(BaseModel, frozen=True):
         return [known for known in found if known is not None]
 
     def launches(self) -> list[LaunchRecord]:
-        """Every launch still running that holds the dashboard, sweeping the rest."""
+        """Every launch still running that holds the dashboard, sweeping the rest.
+
+        A record kept before its holder carried a scope is adopted where that
+        holder still runs here, and written back so, once.
+        """
 
         def running(path: Path) -> LaunchRecord | None:
-            record = read_model(path, LaunchRecord)
+            kept = read_model(path, LaunchRecord)
+            record = (
+                None
+                if kept is None
+                else kept.model_copy(update={"holder": kept.holder.adopted()})
+            )
             if record is None or not record.holder.running():
                 path.unlink(missing_ok=True)
                 return None
+            if record != kept:
+                written(path, record.model_dump_json(indent=2))
             return record
 
         found = [

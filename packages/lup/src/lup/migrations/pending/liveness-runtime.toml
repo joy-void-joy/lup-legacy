@@ -32,7 +32,7 @@ record rather than a pid and a start token."""
 [[steps]]
 instruction = """
 `LiveProcess.started` is a string, empty where unknown, beside a `scope` \
-naming the pid namespace and boot it was read in. A shared companion started \
-before this change carries no scope, so the first launch after it reads it as \
-gone and starts another: stop the earlier one by the pid its state recorded \
-(`kill -TERM -<pid>`) or restart the dashboard."""
+naming the pid namespace and boot it was read in; build one with \
+`LiveProcess.of(pid)`. A record kept without a scope is adopted where its pid \
+and start time name a process running here, so a companion already running \
+is joined and needs nothing done."""

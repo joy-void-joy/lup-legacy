@@ -61,6 +61,7 @@ from pydantic import BaseModel, Field, StringConstraints, ValidationError
 from lup.channels.wait import wait_until
 from lup.execution.shell import ShDone
 from lup.coordination.bare.runtime import (
+    ENDED_STATES,
     EXIT_FIELD,
     STARTED_FIELD,
     Runtime,
@@ -499,6 +500,26 @@ class LiveProcess(BaseModel, frozen=True):
         """The bare record this is a view of."""
         return Runtime(pid=self.pid, started=self.started, scope=self.scope)
 
+    def adopted(self) -> Self:
+        """This record with its scope, where it was kept before records carried one.
+
+        Such a record names a pid read in no namespace it says. Where that pid
+        runs here now and started at the tick the record holds, it is the
+        process the record was taken of — the operator's dashboard, started
+        before scopes were kept, is the case — so it is adopted as this
+        namespace's; anything else stays unknown, as the bare record reads it.
+        """
+        if self.scope or not self.started:
+            return self
+        fields = stat_fields(self.pid)
+        if (
+            len(fields) <= STARTED_FIELD
+            or fields[STARTED_FIELD] != self.started
+            or fields[0] in ENDED_STATES
+        ):
+            return self
+        return self.model_copy(update={"scope": process_scope()})
+
     def alive(self) -> bool | None:
         """Whether it still runs; ``None`` where this process cannot ask."""
         return runtime_alive(self.runtime(), process_scope())
@@ -799,6 +820,36 @@ class CompanionState(BaseModel, frozen=True):
             and stop.process == running.process
         )
 
+    def adopted(self) -> Self:
+        """This state with every process it names adopted, as :meth:`LiveProcess.adopted` says."""
+        running = self.running
+        stopped = self.stopped
+        exited = self.exited
+        return self.model_copy(
+            update={
+                "running": None
+                if running is None
+                else running.model_copy(
+                    update={
+                        "process": running.process.adopted(),
+                        "spawner": None
+                        if running.spawner is None
+                        else running.spawner.adopted(),
+                    }
+                ),
+                "leases": [
+                    lease.model_copy(update={"holder": lease.holder.adopted()})
+                    for lease in self.leases
+                ],
+                "stopped": None
+                if stopped is None
+                else stopped.model_copy(update={"process": stopped.process.adopted()}),
+                "exited": None
+                if exited is None
+                else exited.model_copy(update={"process": exited.process.adopted()}),
+            }
+        )
+
 
 class Started(BaseModel, frozen=True):
     """One start of a shared companion: the state it leaves, and whether what it started answered."""
@@ -917,12 +968,19 @@ class CompanionSlot(BaseModel, frozen=True):
                 fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
 
     def read(self) -> CompanionState:
-        """What is kept of this companion; nothing, where nothing is or it does not parse."""
+        """What is kept of this companion; nothing, where nothing is or it does not parse.
+
+        A state kept before its processes carried a scope is read adopted
+        (:meth:`CompanionState.adopted`), and the first launch to hold the
+        companion writes it back that way under the slot's lock — so a
+        companion still running from then is joined rather than doubled, and
+        no reader outside the lock writes over a launch inside it.
+        """
         path = self.directory / "state.json"
         if not path.is_file():
             return CompanionState()
         try:
-            return CompanionState.model_validate_json(path.read_bytes())
+            return CompanionState.model_validate_json(path.read_bytes()).adopted()
         except ValidationError as error:
             logger.warning("host companion state %s starts over: %s", path, error)
             return CompanionState()
