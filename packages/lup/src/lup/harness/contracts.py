@@ -31,6 +31,7 @@ if TYPE_CHECKING:
         TreeLocation,
     )
     from lup.harness.reconciliation import CurrentTree, ReconciliationProposal
+    from lup.policy.models import ProtectedRoot
     from lup.types import ModelTier
 
 
@@ -168,6 +169,19 @@ class NativeSpellings(SkillInvocationRenderer, ABC):  # lup: ignore[abc-capabili
     @abstractmethod
     def runtime_name(self) -> Atom:
         """Name the runtime the way prose addresses it."""
+
+    # lup: ignore[abc-capability] — NativeSpellings owns one runtime's whole vocabulary, deliberately wider than the three-method shape; the class docstring carries the argument
+    @property
+    @abstractmethod
+    def protected_tree(self) -> ProtectedRoot:
+        """This runtime's own tree, as a protected root, with what it holds in plain words.
+
+        Declared by the adapter that owns the tree and by no project, and
+        collected from every runtime the library supports
+        (:func:`lup.providers.harness.runtime_trees`), so a session running
+        one runtime cannot rewrite the settings, trust state or skills the
+        other reads.
+        """
 
     # lup: ignore[abc-capability] — NativeSpellings owns one runtime's whole vocabulary, deliberately wider than the three-method shape; the class docstring carries the argument
     @property

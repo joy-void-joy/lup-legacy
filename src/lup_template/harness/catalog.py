@@ -31,6 +31,7 @@ from lup.harness.models import (
 from lup.providers.claude.harness import ClaudeSpellings
 from lup.providers.claude.login import CLAUDE_LOGIN
 from lup.providers.codex.harness import CodexSpellings
+from lup.providers.harness import runtime_trees
 from lup.providers.codex.login import CODEX_LOGIN
 from lup.policy.bundle import compilation_sources
 from lup.policy.models import ProtectedRoot, UrlScope
@@ -762,18 +763,9 @@ def portable_harness(
             # domain whose sensitive files are a data directory, a migration
             # set or a deployment manifest says so instead.
             protected_edit_roots=[
-                # Both runtimes' trees, because one of them being protected
-                # and the other open is a hole with no reason behind it: the
-                # settings, trust state and hand-written skills under each
-                # decide the same things about the session that reads them.
-                ProtectedRoot(
-                    path=Path(".claude"),
-                    description="Claude Code's settings, trust state and skills",
-                ),
-                ProtectedRoot(
-                    path=Path(".codex"),
-                    description="Codex's settings, trust state and skills",
-                ),
+                # Every supported runtime's own tree, as its adapter declares
+                # it, whichever runtime a session runs.
+                *runtime_trees(),
                 # Every manifest and lockfile, in whichever package holds it:
                 # what an install fetches and runs is declared there, and the
                 # commands that write them for a reason are judged by the

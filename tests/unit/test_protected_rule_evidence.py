@@ -16,6 +16,8 @@ from pathlib import Path
 import pytest
 
 from lup.policy.relay import CapturedFileReview, ProtectedMatch
+from lup.providers.harness import every_runtime, runtime_trees
+from lup_template.harness.catalog import declared_hook_set
 from tests.unit.test_command_evidence import Runtime, judged, parked
 from tests.unit.repos import commit_file, initialized_repo
 
@@ -28,6 +30,26 @@ MATCHED = [
             description="the policy's own code",
         ),
         id="declared-root",
+    ),
+    # Each runtime's own tree, as its adapter declares it, protected on both
+    # runtimes whichever one runs.
+    pytest.param(
+        ".claude/agents/note.md",
+        ProtectedMatch(
+            kind="subtree",
+            root=".claude",
+            description="Claude Code's settings, trust state and skills",
+        ),
+        id="claude-tree",
+    ),
+    pytest.param(
+        ".codex/agents/note.md",
+        ProtectedMatch(
+            kind="subtree",
+            root=".codex",
+            description="Codex's settings, trust state and skills",
+        ),
+        id="codex-tree",
     ),
     pytest.param(
         ".lup/reviews/note.md",
@@ -142,3 +164,22 @@ def test_a_verdict_recorded_before_the_rule_was_kept_still_reads() -> None:
     }
 
     assert CapturedFileReview.model_validate(recorded).protected is None
+
+
+def test_every_supported_runtime_declares_its_own_tree_and_the_hooks_protect_each() -> (
+    None
+):
+    """Each adapter names its tree, and the hook set holds every one of them.
+
+    The provider-neutral catalog names no runtime's tree; it takes what every
+    adapter declares, so a session on one runtime meets the other's tree
+    protected too.
+    """
+    trees = runtime_trees()
+
+    assert [(tree.path, tree.description) for tree in trees] == [
+        (runtime.protected_tree.path, runtime.protected_tree.description)
+        for runtime in every_runtime()
+    ]
+    assert {tree.path for tree in trees} == {Path(".claude"), Path(".codex")}
+    assert set(trees) <= set(declared_hook_set().protected_roots())

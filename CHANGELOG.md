@@ -17,6 +17,15 @@ dispatcher assets. `HookSet.protected_roots()` reads the list as roots either
 way, and `hooks roles` prints each description. A review recorded before
 carries no `protected`, and still reads.
 
+A runtime's own tree is declared by its adapter rather than by a project:
+`NativeSpellings.protected_tree` answers `.claude` for Claude Code and
+`.codex` for Codex, each described, and `lup.providers.harness.runtime_trees()`
+collects every supported runtime's. The catalog spreads that in place of the
+two paths it named, so both trees stay protected whichever runtime a session
+runs. An adopter's own `NativeSpellings` implements `protected_tree`, and a
+hook set that listed `.claude` and `.codex` by hand can spread
+`runtime_trees()` instead.
+
 ### What a session's tools did, and whether its transcript holds, have readers
 
 - `uv run lup-devtools tools metrics` shows each tool's calls, errors, error

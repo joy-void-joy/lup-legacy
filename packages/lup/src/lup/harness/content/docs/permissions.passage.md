@@ -1370,7 +1370,11 @@ manifest or lockfile wherever it sits), the `root` it names, and a
 description by declaring a `ProtectedRoot(path=…, description=…)` in
 `protected_edit_roots` beside the bare paths it already lists; a bare path
 is described by itself, and a review recorded before the field existed
-carries none. A step whose result exists only once it runs -- a program's output
+carries none. A runtime's own tree is the adapter's to declare
+(`NativeSpellings.protected_tree`: `.claude` and `.codex`, each with what it
+holds), and `lup.providers.harness.runtime_trees()` collects every supported
+runtime's, which the hook set spreads into `protected_edit_roots`, so each
+runtime's tree is protected whichever one a session runs. A step whose result exists only once it runs -- a program's output
 redirected into a file, `sort -o`, a formatter, a script, a loop, a word
 the shell expands into other words -- is listed as that, with the files it
 leaves so, and never run to find out; a file that does not read as text is
