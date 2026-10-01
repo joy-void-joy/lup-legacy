@@ -21,7 +21,6 @@ out of what the session inherits, even where the operator's shell exported
 one, and the store's values leave it only for the host companions naming them.
 """
 
-import os
 from collections.abc import Callable, Iterable
 from pathlib import Path
 from tempfile import NamedTemporaryFile
@@ -29,7 +28,7 @@ from tempfile import NamedTemporaryFile
 from dotenv import dotenv_values, set_key, unset_key
 from pydantic import BaseModel, Field
 
-from lup.harness.environment import inside_a_container
+from lup.harness.environment import Placement
 from lup.types import EnvVars
 from lup.workspace.paths import read_project_name
 
@@ -104,8 +103,7 @@ class HostSecrets(BaseModel, frozen=True):
         there lands in the container's own configuration, where no host
         companion reads it and the session can, and would read as saved.
         """
-        # lup: ignore[os-environ] — the process's own placement hint is what is read
-        if inside_a_container(dict(os.environ)):
+        if Placement.here().contained:
             raise HostOnlyRefused(
                 "This runs inside a lup container, where a host-only secret "
                 "would land in the container rather than in the host store the "

@@ -22,7 +22,7 @@ import pytest
 from lup.coordination.identity import mint_member_id
 from lup.coordination.wake import WakePath, wake
 from lup.harness.image import Image
-from lup.harness.messaging import WakeSockets
+from lup.harness.wake_sockets import WakeSockets
 
 # The four directories Claude Code will scan for peers, as its own binary
 # spells them. Written out rather than imported because they are the runtime's

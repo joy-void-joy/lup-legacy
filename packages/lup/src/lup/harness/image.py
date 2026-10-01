@@ -49,7 +49,7 @@ from lup.harness.credential import (
 )
 from lup.harness.egress import SessionEgress
 from lup.harness.environment import NON_INTERACTIVE_SHELL_ENV
-from lup.harness.messaging import WakeSockets
+from lup.harness.wake_sockets import WakeSockets
 from lup.harness.requirements import Manifest, Package, PackageManager
 from lup.harness.terminal import TerminalHandoff
 from lup.types import EnvVars, JsonObject

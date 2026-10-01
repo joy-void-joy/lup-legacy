@@ -41,6 +41,10 @@ are cut off first, because a name may hold spaces and parentheses.
 PARENT_FIELD = 1
 """Where ``ppid`` sits among the same fields, field 4 of proc(5)."""
 
+EXIT_FIELD = 49
+"""Where ``exit_code`` sits among the same fields, field 52 of proc(5): the
+wait status a process that has exited carries until it is collected."""
+
 # lup: ignore[library-default] — proc(5)'s own state letters for a process that has exited
 ENDED_STATES = ("Z", "X")
 """What a process that has exited reads as while it waits to be collected."""

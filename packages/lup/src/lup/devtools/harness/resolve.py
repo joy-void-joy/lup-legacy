@@ -38,7 +38,8 @@ from lup.policy.grants import LeaseGrants, allowance_grants_environment
 from lup.policy.identity import agent_identity_environment
 from lup.harness.environment import non_interactive_environment
 from lup.harness.ownership import GeneratedArtifacts, generated_artifacts
-from lup.harness.process import LaunchRequest, LocalProcessLauncher, ProcessLauncher
+from lup.execution.git import Repository
+from lup.execution.process import LocalProcessLauncher, ProcessLauncher
 from lup.sandbox.checked import PointerCheckedLauncher
 from lup.resolver.contracts import (
     ResolverAssemblyDeferred,
@@ -819,29 +820,6 @@ def report_admission(admission: ConcernAdmission, adapter: str, run_id: str) -> 
     typer.echo(f"  {rerun_recipe(adapter, run_id, admission.outstanding)}")
 
 
-def resolver_git(
-    launcher: ProcessLauncher,
-    root: Path,
-    arguments: list[str],
-    *,
-    environment: EnvVars | None = None,
-) -> str:
-    """Run one resolver-owned Git inspection or snapshot operation."""
-    status = launcher.launch(
-        LaunchRequest(
-            arguments=["git", *arguments],
-            cwd=root,
-            environment=environment or {},
-        )
-    )
-    if status.code != 0:
-        raise RuntimeError(
-            f"resolver Git operation failed ({' '.join(arguments)}): {status.stderr}"
-        )
-    lines = status.stdout.splitlines()
-    return lines[0] if len(lines) == 1 else "\n".join(lines)
-
-
 def resolver_source_snapshot(
     launcher: ProcessLauncher,
     root: Path,
@@ -849,47 +827,33 @@ def resolver_source_snapshot(
     note_paths: list[Path],
 ) -> SourceSnapshot:
     """Create an unattached source commit containing current review-note files."""
-    branch = resolver_git(launcher, root, ["branch", "--show-current"]) or "HEAD"
-    head = resolver_git(launcher, root, ["rev-parse", "HEAD"])
+    repository = Repository(root, launcher)
+    branch = repository.branch() or "HEAD"
+    head = repository.answer("rev-parse", "HEAD")
     # A run seeded from statements alone has no note file to preserve, and a
     # pathless diff would compare the whole tree and snapshot HEAD's own tree
     # under a second commit.
     if not note_paths:
         return SourceSnapshot(branch=branch, commit=head)
-    status = launcher.launch(
-        LaunchRequest(
-            arguments=["git", "diff", "--quiet", "HEAD", "--", *map(str, note_paths)],
-            cwd=root,
-        )
-    )
+    status = repository.run("diff", "--quiet", "HEAD", "--", *map(str, note_paths))
     if status.code == 0:
         return SourceSnapshot(branch=branch, commit=head)
     if status.code != 1:
         raise RuntimeError(f"resolver source inspection failed: {status.stderr}")
     run_root.mkdir(parents=True, exist_ok=True)
     index = (run_root / ".source.index").resolve()
-    environment = {"GIT_INDEX_FILE": str(index)}
+    indexed = Repository(root, launcher, {"GIT_INDEX_FILE": str(index)})
     try:
-        resolver_git(launcher, root, ["read-tree", "HEAD"], environment=environment)
-        resolver_git(
-            launcher,
-            root,
-            ["add", "--", *map(str, note_paths)],
-            environment=environment,
-        )
-        tree = resolver_git(launcher, root, ["write-tree"], environment=environment)
-        commit = resolver_git(
-            launcher,
-            root,
-            [
-                "commit-tree",
-                tree,
-                "-p",
-                head,
-                "-m",
-                "chore(review): resolver source snapshot",
-            ],
-            environment=environment,
+        indexed.answer("read-tree", "HEAD")
+        indexed.answer("add", "--", *map(str, note_paths))
+        tree = indexed.answer("write-tree")
+        commit = indexed.answer(
+            "commit-tree",
+            tree,
+            "-p",
+            head,
+            "-m",
+            "chore(review): resolver source snapshot",
         )
     finally:
         if index.exists():
@@ -910,7 +874,7 @@ def integration_branch(launcher: ProcessLauncher, root: Path, run_id: str) -> st
     branch nobody asked for and leaves the human to reconcile two. Advancing
     the branch it was launched from is what makes a nested run compose.
     """
-    current = resolver_git(launcher, root, ["branch", "--show-current"])
+    current = Repository(root, launcher).branch()
     if current.startswith("resolve/") and current.endswith(REVIEW_BRANCH_SUFFIX):
         return current
     return f"resolve/{run_id}{REVIEW_BRANCH_SUFFIX}"
@@ -1130,10 +1094,7 @@ def detach_resolve(detached: DetachedRun) -> None:
     """
     root = project_root()
     resolved = detached.run_id or (
-        "resolve-"
-        + resolver_git(
-            LocalProcessLauncher(), root, ["rev-parse", "--short=12", "HEAD"]
-        )
+        "resolve-" + Repository(root).answer("rev-parse", "--short=12", "HEAD")
     )
     # Resolve the evidence here and discard what it returns. The child
     # resolves it again, but only the child would meet a `--admit-note`
@@ -1212,10 +1173,7 @@ def queue_existing_admission(
     state_root = root / ".lup" / "resolve"
     selected = run_id or chosen_run(
         state_root,
-        "resolve-"
-        + resolver_git(
-            LocalProcessLauncher(), root, ["rev-parse", "--short=12", "HEAD"]
-        ),
+        "resolve-" + Repository(root).answer("rev-parse", "--short=12", "HEAD"),
         start_new=False,
         ending=False,
     )
@@ -1531,7 +1489,8 @@ def run_resolve(
     state_root = root / ".lup" / "resolve"
     resolved_run_id = run_id or chosen_run(
         state_root,
-        "resolve-" + resolver_git(launcher, root, ["rev-parse", "--short=12", "HEAD"]),
+        "resolve-"
+        + Repository(root, launcher).answer("rev-parse", "--short=12", "HEAD"),
         start_new=start_new,
         ending=abort_reason is not None,
     )

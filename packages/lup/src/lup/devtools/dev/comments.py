@@ -27,6 +27,7 @@ from pathlib import Path
 import sh
 import typer
 
+from lup.execution.git import Repository
 from lup.harness.codescan.markers import (
     MarkerComment,
     NoteKind,
@@ -154,7 +155,7 @@ def clear_markers(targets: list[str], *, wake: bool = False) -> None:
     removed only through an `Edit` (which prompts for review) or a reviewed
     merge of a resolve branch.
     """
-    branch = git.out("rev-parse", "--abbrev-ref", "HEAD")
+    branch = Repository(Path.cwd()).branch() or "HEAD"
     if not branch.startswith("resolve/"):
         typer.echo(
             f"Refusing to clear markers: HEAD is '{branch}', not a resolve/* "

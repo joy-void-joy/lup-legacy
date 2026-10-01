@@ -14,7 +14,6 @@ detection, validation) supplies ``setup_func`` instead, and ``status_func``
 overrides the display when env-key presence isn't the whole story.
 """
 
-import os
 import webbrowser
 from collections.abc import Callable, Iterable
 from pathlib import Path
@@ -28,7 +27,7 @@ from rich.panel import Panel
 from rich.table import Table
 from lup.devtools.harness.composition import claude_profile_directory
 from lup.devtools.harness.profile_app import create_profile_app
-from lup.harness.environment import inside_a_container
+from lup.harness.environment import Placement
 from lup.launch.secrets import HostSecrets
 from lup.providers.profiles import ProfileDirectory
 from lup.types import EnvVars
@@ -106,8 +105,7 @@ def refused_on_the_host_only(command: str) -> str:
     would land in the container's own configuration, where no companion on
     the host reads it and the session can.
     """
-    # lup: ignore[os-environ] — the process's own placement hint is what is read
-    if not inside_a_container(dict(os.environ)):
+    if not Placement.here().contained:
         return ""
     return (
         "This runs inside a lup container, where a host-only secret would land "

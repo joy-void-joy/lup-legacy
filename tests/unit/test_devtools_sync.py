@@ -16,6 +16,7 @@ import sh
 import typer
 
 from lup.devtools import sync
+from lup.execution.git import Repository
 from tests.unit.repos import commit_file, git_in, initialized_repo
 
 
@@ -238,9 +239,13 @@ def test_a_materialized_clone_carries_the_whole_history_and_every_branch(
     materialize()
     bare = str(cache / "up.git")
 
-    assert sync.git_in(bare, "rev-list", "--count", "main") == "3"
-    assert sync.git_in(bare, "rev-parse", "--is-shallow-repository") == "false"
-    assert sync.git_in(bare, "branch", "--format=%(refname:short)").split() == [
+    assert Repository(Path(bare)).answer("rev-list", "--count", "main") == "3"
+    assert (
+        Repository(Path(bare)).answer("rev-parse", "--is-shallow-repository") == "false"
+    )
+    assert Repository(Path(bare)).answer(
+        "branch", "--format=%(refname:short)"
+    ).split() == [
         "main",
         "sidecar",
     ]
@@ -290,11 +295,11 @@ def test_a_bare_path_registration_is_read_at_the_branch_it_registered(
     materialize()
     bare = cache / "up.git"
     sidecar = bare / "tree" / "sidecar"
-    sync.git_in(str(bare), "worktree", "add", str(sidecar), "sidecar")
+    Repository(Path(str(bare))).answer("worktree", "add", str(sidecar), "sidecar")
     commit_file(
         git_in(sidecar, tmp_path / "hooks"), sidecar, "side.txt", "on\n", "sidecar work"
     )
-    main = sync.git_in(str(bare), "rev-parse", "main")
+    main = Repository(Path(str(bare))).answer("rev-parse", "main")
     registered(
         registry_root,
         {
@@ -434,7 +439,7 @@ def cloned_with_origin(remote: Path, repository: Path, origin: str) -> None:
     """
     repository.parent.mkdir(parents=True, exist_ok=True)
     sh.Command("git")("clone", "--bare", str(remote), str(repository), _tty_out=False)
-    sync.git_in(str(repository), "remote", "set-url", "origin", origin)
+    Repository(Path(str(repository))).answer("remote", "set-url", "origin", origin)
 
 
 def test_a_tracked_requirement_nobody_answered_is_reported_with_its_command(

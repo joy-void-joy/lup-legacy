@@ -8,7 +8,7 @@ from lup.resolver.contracts import ResolverAwaitingAnswers
 from lup.resolver.join_desk import JoinDesk, JoinPlan, JoinProgressRecord
 from lup.resolver.join_tools import JoinReport
 from lup.resolver.models import MaterialQuestion, ResolveInventory, WritableRootLease
-from lup.harness.process import LocalProcessLauncher
+from lup.execution.process import LocalProcessLauncher
 from tests.unit.test_resolver_core import (
     admitting_core,
     concern,

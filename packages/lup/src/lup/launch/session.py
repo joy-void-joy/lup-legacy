@@ -30,7 +30,7 @@ from lup.launch.config_volume import HomeSeedPlaces
 from lup.launch.container import contained_argv, held_lease, state_volume_name
 from lup.coordination.identity import MEMBER_ENV, NAME_ENV, LaunchedMember
 from lup.coordination.repository import RepositoryPeers, launched_member
-from lup.harness.messaging import WakeSockets
+from lup.harness.wake_sockets import WakeSockets
 from lup.workspace.edition import shared_git_directory
 from lup.harness.models import HookSet
 from lup.policy.boundary import BoundaryPreflight

@@ -28,6 +28,7 @@ from pathlib import Path
 
 from pydantic import BaseModel
 
+from lup.execution.git import Repository
 from lup.execution.shell import git
 
 # lup: ignore[library-default] — git's own state files, which say a sequencer
@@ -75,7 +76,7 @@ def settle(root: Path, regenerate: Callable[[], None]) -> Settled | None:
     parents = git.out(*here, "log", "-1", "--format=%P", "HEAD").split()
     if len(parents) < 2:
         return None
-    state = Path(git.out(*here, "rev-parse", "--absolute-git-dir"))
+    state = Repository(root).git_dir()
     if any((state / name).exists() for name in SEQUENCER_STATE):
         return None
     branch = git.out(*here, "symbolic-ref", "-q", "HEAD", _ok_code=[0, 1])

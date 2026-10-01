@@ -25,7 +25,7 @@ from lup.harness.generate import MachineOverlay, NativeHarnessComposition
 from lup.providers.claude.harness import CLAUDE_OVERLAY
 from lup.providers.codex.harness import CODEX_OVERLAY
 from lup.providers.harness import claude_machine_overlay, codex_machine_overlay
-from lup.harness.messaging import WakeSockets
+from lup.harness.wake_sockets import WakeSockets
 from lup.harness.models import Harness
 from lup.observability.audit import TraceJournal
 from lup.providers.codex.home import CodexHomeSelection

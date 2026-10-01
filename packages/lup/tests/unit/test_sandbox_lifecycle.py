@@ -37,7 +37,7 @@ from lup.sandbox.models import (
     SandboxNotInitializedError,
 )
 from lup.types import JsonObject
-from lup.sandbox.process import process_is_alive, process_start_token
+from lup.coordination.bare.runtime import process_scope, runtime_of
 from lup.sandbox.repl import REPL_SERVER_SCRIPT, ReplSession
 
 
@@ -490,7 +490,8 @@ class TestOrphanSweep:
             {
                 Sandbox.SANDBOX_LABEL: "1",
                 Sandbox.OWNER_PID_LABEL: str(os.getpid()),
-                Sandbox.OWNER_START_LABEL: process_start_token(os.getpid()) or "",
+                Sandbox.OWNER_START_LABEL: runtime_of(os.getpid()).get("started", ""),
+                Sandbox.OWNER_SCOPE_LABEL: runtime_of(os.getpid()).get("scope", ""),
             },
         )
         client.containers.listed = [live]
@@ -850,9 +851,6 @@ class TestDockerReachability:
                 raise ValueError("what the session raised")
 
 
-HAVE_PROC = Path("/proc/self/stat").exists()
-
-
 def unstarted_sandbox() -> Sandbox:
     """A Sandbox whose __init__ touches no Docker (no start() called)."""
     return Sandbox(session_id="liveness-test", shared_dir="/tmp/lup-test-shared")
@@ -861,35 +859,16 @@ def unstarted_sandbox() -> Sandbox:
 NEVER_A_PID = 0x7FFFFFFF  # far above any real Linux PID; os.kill -> ProcessLookupError
 
 
-class TestProcessLiveness:
-    def test_own_process_is_alive(self) -> None:
-        token = process_start_token(os.getpid())
-        assert process_is_alive(os.getpid(), token) is True
-
-    def test_absent_pid_is_dead(self) -> None:
-        assert process_is_alive(NEVER_A_PID, None) is False
-        assert process_is_alive(0, None) is False
-        assert process_is_alive(-1, None) is False
-
-    @pytest.mark.skipif(not HAVE_PROC, reason="needs /proc start tokens")
-    def test_reused_pid_token_mismatch_is_dead(self) -> None:
-        """A live PID with a stale token means the original owner is gone."""
-        assert process_start_token(os.getpid()) is not None
-        assert process_is_alive(os.getpid(), "0") is False
-
-    @pytest.mark.skipif(not HAVE_PROC, reason="needs /proc start tokens")
-    def test_start_token_absent_for_dead_pid(self) -> None:
-        assert process_start_token(NEVER_A_PID) is None
-
-
 class TestContainerOrphanDecision:
     def test_live_owner_kept_even_when_ancient(self) -> None:
         """A long-lived owner keeps its container past STALE_AGE_HOURS."""
         sandbox = unstarted_sandbox()
         ancient = str(time.time() - sandbox.STALE_AGE_HOURS * 3600 * 10)
+        owner = runtime_of(os.getpid())
         labels = {
             sandbox.OWNER_PID_LABEL: str(os.getpid()),
-            sandbox.OWNER_START_LABEL: process_start_token(os.getpid()) or "",
+            sandbox.OWNER_START_LABEL: owner.get("started", ""),
+            sandbox.OWNER_SCOPE_LABEL: owner.get("scope", ""),
             sandbox.CREATED_AT_LABEL: ancient,
         }
         assert sandbox.container_is_orphaned(labels) is False
@@ -898,9 +877,30 @@ class TestContainerOrphanDecision:
         sandbox = unstarted_sandbox()
         labels = {
             sandbox.OWNER_PID_LABEL: str(NEVER_A_PID),
+            sandbox.OWNER_START_LABEL: "1",
+            sandbox.OWNER_SCOPE_LABEL: process_scope(),
             sandbox.CREATED_AT_LABEL: str(time.time()),  # young, but owner gone
         }
         assert sandbox.container_is_orphaned(labels) is True
+
+    def test_an_owner_recorded_elsewhere_is_judged_by_age(self) -> None:
+        """A pid from another namespace names some other process here."""
+        sandbox = unstarted_sandbox()
+        owner = runtime_of(os.getpid())
+        elsewhere = {
+            sandbox.OWNER_PID_LABEL: str(os.getpid()),
+            sandbox.OWNER_START_LABEL: owner.get("started", ""),
+            sandbox.OWNER_SCOPE_LABEL: "another-namespace",
+        }
+        young = {**elsewhere, sandbox.CREATED_AT_LABEL: str(time.time())}
+        old = {
+            **elsewhere,
+            sandbox.CREATED_AT_LABEL: str(
+                time.time() - sandbox.STALE_AGE_HOURS * 3600 - 60
+            ),
+        }
+        assert sandbox.container_is_orphaned(young) is False
+        assert sandbox.container_is_orphaned(old) is True
 
     def test_unparseable_owner_pid_is_orphaned(self) -> None:
         sandbox = unstarted_sandbox()

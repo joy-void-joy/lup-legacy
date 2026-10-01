@@ -11,7 +11,6 @@ A launch command exists exactly when its adapter is among those targets: a
 project generating one native tree is not offered a launcher for the other.
 """
 
-import os
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated
@@ -46,7 +45,7 @@ from lup.launch.container import (
     retire_images,
     superseded_images,
 )
-from lup.harness.environment import inside_a_container
+from lup.harness.environment import Placement
 from lup.harness.image import Image, detected_client
 from lup.harness.generate import NativeHarnessComposition
 from lup.devtools.harness.profile_app import create_profile_app
@@ -65,8 +64,7 @@ from lup.sandbox.observed import unheld
 
 def refuse_inside_a_container(command: str, because: str) -> None:
     """Stop a command whose answer is the host's, where it runs inside a session's container."""
-    # lup: ignore[os-environ] — the process's own placement hint is what is read
-    if inside_a_container(dict(os.environ)):
+    if Placement.here().contained:
         typer.echo(
             f"This runs inside a lup container, where {because}. Run it from a "
             f"terminal on the host: `uv run lup-devtools {command}`.",
@@ -727,7 +725,7 @@ def create_harness_app(
             ] = None,
         ) -> None:
             selected = launch.selected_mode(modes, mode)
-            request = launch.LaunchRequest(
+            request = launch.LaunchArguments(
                 words=list(ctx.args),
                 model=model,
                 effort=effort,
@@ -1006,7 +1004,7 @@ def create_harness_app(
             ] = None,
         ) -> None:
             selected = launch.selected_mode(modes, mode)
-            request = launch.LaunchRequest(
+            request = launch.LaunchArguments(
                 words=list(ctx.args),
                 model=model,
                 effort=effort,

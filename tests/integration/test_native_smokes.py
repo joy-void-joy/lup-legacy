@@ -22,7 +22,7 @@ from lup.providers.claude.harness import ClaudeSpellings
 from lup.providers.claude import Claude, ClaudeTools
 from lup.providers.codex.harness_runtime import CodexPluginInstaller, PluginCacheConfig
 from lup.providers.codex import Codex
-from lup.harness.process import LocalProcessLauncher
+from lup.execution.process import LocalProcessLauncher
 from lup.resolver.core import ResolverCore
 from lup.mcp import Toolset
 from lup.channels.models import utc_now

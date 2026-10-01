@@ -11,8 +11,9 @@ import sh
 import typer
 from pydantic import BaseModel
 
-from lup.execution.shell import LazyCommand, git
-from lup.execution.writability import admin_dirs, diagnose_git_admin, inspect_git_admin
+from lup.execution.git import GitError, Repository
+from lup.execution.shell import LazyCommand
+from lup.execution.writability import diagnose_git_admin, inspect_git_admin
 from lup.sandbox.attribution import attribute_filesystem
 from lup.sandbox.observed import observed_topology
 from lup.sandbox.translation import MountTopology
@@ -155,11 +156,11 @@ def slug_from_remote(url: str) -> str:
 
 def repository_slug() -> str:
     """The ``owner/name`` this checkout answers to, empty when unreadable."""
-    try:
-        return slug_from_remote(git.out("remote", "get-url", "origin"))
-    except sh.ErrorReturnCode as error:
-        logger.warning("no origin remote to read a slug from: %s", decode_stderr(error))
+    origin = Repository(Path.cwd()).remote_url("origin")
+    if origin is None:
+        logger.warning("no origin remote to read a slug from")
         return ""
+    return slug_from_remote(origin)
 
 
 def repository_arguments() -> list[str]:
@@ -220,25 +221,15 @@ def attributed_stderr(
     return f"{reported}\n{account.sentence()}" if account.explains() else reported
 
 
-def git_admin_dirs(cwd: Path | None = None) -> list[Path]:
-    """Every admin directory a checkout writes its configuration through.
-
-    A worktree's own ``.git`` is a file naming its admin directory and a bare
-    clone has no ``.git`` at all, so the layout is asked of git rather than
-    reconstructed from the checkout — and the ask still answers when every
-    write is being refused.
-    """
-    root = cwd if cwd is not None else Path.cwd()
-    return admin_dirs(
-        root, git.lines("rev-parse", "--git-dir", "--git-common-dir", _cwd=str(root))
-    )
-
-
 def config_lock_diagnosis(cwd: Path | None = None) -> str:
-    """Why git config writes cannot run here, empty when they can."""
+    """Why git config writes cannot run here, empty when they can.
+
+    The admin directories are asked of git rather than reconstructed from
+    the checkout, and the ask still answers when every write is refused.
+    """
     try:
-        admins = git_admin_dirs(cwd)
-    except sh.ErrorReturnCode:
+        admins = Repository(cwd if cwd is not None else Path.cwd()).admin_dirs()
+    except GitError:
         # No repository to diagnose: whatever the caller's git failure was,
         # the lock protocol is not what it tripped on.
         return ""
@@ -255,8 +246,8 @@ def clear_stale_config_locks(cwd: Path | None = None) -> Iterator[str]:
     declines removal is touched.
     """
     try:
-        admins = git_admin_dirs(cwd)
-    except sh.ErrorReturnCode:
+        admins = Repository(cwd if cwd is not None else Path.cwd()).admin_dirs()
+    except GitError:
         return
     for admin in admins:
         for obstruction in inspect_git_admin(admin):

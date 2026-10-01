@@ -13,6 +13,7 @@ from pathlib import Path
 
 import sh
 
+from lup.execution.git import Worktree
 from lup.devtools.gitguard import (
     TEST_IDENTITY,
     ForeignCheckouts,
@@ -117,11 +118,11 @@ def test_a_repository_git_cannot_read_blames_the_suite_for_everything(
 
 def test_a_detached_or_bare_entry_claims_no_ref() -> None:
     """Only a `branch` line names a ref; the others hold none to attribute."""
-    listing = (
-        "worktree /a\nHEAD abc\ndetached\n\n"
-        "worktree /b\nHEAD def\nbranch refs/heads/held\n\n"
-        "worktree /c\nbare\n"
-    )
+    listing = [
+        Worktree(path=Path("/a"), head="abc", detached=True),
+        Worktree(path=Path("/b"), head="def", branch="held"),
+        Worktree(path=Path("/c"), bare=True),
+    ]
 
     assert ForeignCheckouts.declared(listing, Path("/other")) == {
         "refs/heads/held": str(Path("/b").resolve())
@@ -130,7 +131,7 @@ def test_a_detached_or_bare_entry_claims_no_ref() -> None:
 
 def test_the_checkout_under_test_never_counts_as_foreign() -> None:
     """Its own branch is exactly the one the guard must keep answering for."""
-    listing = "worktree /a\nHEAD abc\nbranch refs/heads/mine\n"
+    listing = [Worktree(path=Path("/a"), head="abc", branch="mine")]
 
     assert ForeignCheckouts.declared(listing, Path("/a").resolve()) == {}
 

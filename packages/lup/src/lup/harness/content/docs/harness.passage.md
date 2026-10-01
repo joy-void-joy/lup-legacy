@@ -223,7 +223,7 @@ Python to a launched native plugin.
    capabilities, `lup.launch.session` composes the session a launch opens,
    and `lup.devtools.harness.launch` runs the native CLI in the
    foreground of the launching terminal, over the non-interactive defaults
-   from `lup.harness.environment`. `lup.harness.process` is the
+   from `lup.harness.environment`. `lup.execution.process` is the
    captured-output launcher seam the resolver and the base-freshness probe run
    `git` and verification commands through.
 

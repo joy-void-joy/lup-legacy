@@ -1,0 +1,45 @@
+subjects = [
+    "LaunchRequest",
+    "LaunchRequest.words",
+    "LaunchRequest.model",
+    "LaunchRequest.effort",
+    "LaunchRequest.profile",
+    "LaunchRequest.resume",
+    "LaunchRequest.sandbox",
+    "LaunchRequest.mounts",
+    "LaunchRequest.read_only",
+    "LaunchRequest.devices",
+    "LaunchRequest.network",
+    "LaunchRequest.memory",
+    "LaunchRequest.sudo",
+    "LaunchRequest.hold_generated",
+    "LaunchRequest.container",
+    "LaunchRequest.max_recursive_agent",
+    "LaunchRequest.transcribe_session",
+    "LaunchRequest.relaxed",
+    "LaunchRequest.mode",
+    "LaunchRequest.recorder",
+    "LaunchRequest.allowance",
+    "LaunchRequest.reopening",
+    "LaunchRequest.recording",
+    "LaunchRequest.stated_claude",
+    "LaunchRequest.stated_codex",
+    "LaunchRequest.stated_launch",
+    "LaunchRequest.refuse_hosted_mode",
+    "LaunchRequest.posture",
+    "LaunchRequest.stated",
+    "LaunchRequest.settled_container",
+    "LaunchRequest.wall",
+    "LaunchRequest.say_hosted_settings",
+]
+reason = """
+`lup.devtools.harness.launch.LaunchRequest` shared its name with the \
+launcher seam's `lup.execution.process.LaunchRequest` while meaning \
+something else, a `harness claude|codex` command line, so it takes the name \
+for what it holds"""
+
+[[steps]]
+instruction = """
+Name `lup.devtools.harness.launch.LaunchArguments` where you built a \
+`lup.devtools.harness.launch.LaunchRequest`; the launcher seam's \
+`LaunchRequest` is unchanged."""

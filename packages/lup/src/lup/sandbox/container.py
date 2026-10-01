@@ -107,7 +107,13 @@ from lup.sandbox.attribution import (
 from lup.sandbox.egress import EgressPolicy
 from lup.sandbox.models import DockerDaemonInfo, RootfulDaemonError
 from lup.types import EnvVars
-from lup.sandbox.process import decode_output, process_is_alive, process_start_token
+from lup.coordination.bare.runtime import (
+    Runtime,
+    process_scope,
+    runtime_alive,
+    runtime_of,
+)
+from lup.sandbox.process import decode_output
 from lup.sandbox.repl import REPL_SERVER_SCRIPT, ReplSession
 from lup.sandbox.translation import MountTopology
 
@@ -510,6 +516,7 @@ class Sandbox:
     VOLUME_LABEL = "lup.sandbox.volume"
     OWNER_PID_LABEL = "lup.sandbox.owner_pid"
     OWNER_START_LABEL = "lup.sandbox.owner_start"
+    OWNER_SCOPE_LABEL = "lup.sandbox.owner_scope"
     DURABLE_LABEL = "lup.sandbox.durable"
     STALE_AGE_HOURS = 24.0
 
@@ -569,9 +576,11 @@ class Sandbox:
         that queued it — it is still reaped once it ages past
         ``STALE_AGE_HOURS``, so a forgotten job cannot leak forever.
         """
+        owner = runtime_of(os.getpid())
         owned = {
-            self.OWNER_PID_LABEL: str(os.getpid()),
-            self.OWNER_START_LABEL: process_start_token(os.getpid()) or "",
+            self.OWNER_PID_LABEL: str(owner.get("pid", os.getpid())),
+            self.OWNER_START_LABEL: owner.get("started", ""),
+            self.OWNER_SCOPE_LABEL: owner.get("scope", ""),
         }
         return {
             self.SANDBOX_LABEL: "1",
@@ -700,8 +709,9 @@ class Sandbox:
         Liveness is owner-driven: a container whose creating process is
         still running is kept even past ``STALE_AGE_HOURS`` — this
         library's persistent/relay agents are meant to run indefinitely.
-        Only when the owner-pid label is missing (older containers, or
-        ones created elsewhere) do we fall back to the age heuristic.
+        Only where the owner cannot be asked about — no owner-pid label, or
+        one recorded in another pid namespace or boot, whose number names
+        some other process here — do we fall back to the age heuristic.
         """
         owner_pid_raw = labels.get(self.OWNER_PID_LABEL)
         if owner_pid_raw is not None:
@@ -709,8 +719,14 @@ class Sandbox:
                 owner_pid = int(owner_pid_raw)
             except ValueError:
                 return True
-            started = labels.get(self.OWNER_START_LABEL)
-            return not process_is_alive(owner_pid, started)
+            owner = Runtime(
+                pid=owner_pid,
+                started=labels.get(self.OWNER_START_LABEL) or "",
+                scope=labels.get(self.OWNER_SCOPE_LABEL) or "",
+            )
+            alive = runtime_alive(owner, process_scope())
+            if alive is not None:
+                return not alive
         try:
             created_raw = labels.get(self.CREATED_AT_LABEL)
             created_at = float(created_raw or "0")

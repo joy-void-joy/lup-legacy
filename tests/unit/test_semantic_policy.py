@@ -1087,9 +1087,11 @@ SHELL_POLICY_CASES = [
     # `tee f` writes what `> f` writes, so the two spellings of one write get
     # one verdict: an outside file asks unless the session is confined, a
     # target only the run resolves asks, a protected file asks by name, and
-    # a directory a `cd` moved to is where each one lands. A `tee` handed its
-    # operands by `find -exec` or `xargs` writes files no word names, and an
-    # option this does not read leaves its files unread; each keeps its ask.
+    # a directory a `cd` moved to is where each one lands -- one a `cd` left
+    # unreadable is a path only the run resolves, which no boundary settles.
+    # A `tee` handed its operands by `find -exec` or `xargs` writes files no
+    # word names, and an option this does not read leaves its files unread;
+    # each keeps its ask.
     DecisionCase(input="date > /srv/other/tmp/x.txt", effect="ask"),
     DecisionCase(input="date | tee /srv/other/tmp/x.txt", effect="ask"),
     DecisionCase(input="date > /srv/other/tmp/x.txt", effect="ask", sandboxed=True),
@@ -1101,8 +1103,10 @@ SHELL_POLICY_CASES = [
     DecisionCase(input="date | tee README.md", effect="ask"),
     DecisionCase(input="cd tests && date > ../README.md", effect="ask"),
     DecisionCase(input="cd tests && date | tee ../README.md", effect="ask"),
-    DecisionCase(input='cd "$D" && date > run.log', effect="deny"),
-    DecisionCase(input='cd "$D" && date | tee run.log', effect="deny"),
+    DecisionCase(input='cd "$D" && date > run.log', effect="ask"),
+    DecisionCase(input='cd "$D" && date | tee run.log', effect="ask"),
+    DecisionCase(input='cd "$D" && date > run.log', effect="ask", sandboxed=True),
+    DecisionCase(input='cd "$D" && date | tee run.log', effect="ask", sandboxed=True),
     DecisionCase(input="find . -exec tee {} \\;", effect="ask"),
     DecisionCase(input="ls | xargs tee", effect="ask"),
     DecisionCase(input="date | tee --output-error=warn f", effect="ask"),
@@ -1583,7 +1587,12 @@ SHELL_POLICY_CASES = [
         input="for a in tmp/x tmp/y; do for b in 1 2; do echo x > $a/$b; done; done",
         effect="allow",
     ),
-    DecisionCase(input="for f in tmp/a; do f=README.md; rm $f; done", effect="deny"),
+    DecisionCase(input="for f in tmp/a; do f=README.md; rm $f; done", effect="ask"),
+    DecisionCase(
+        input="for f in tmp/a; do f=README.md; rm $f; done",
+        effect="ask",
+        sandboxed=True,
+    ),
     DecisionCase(
         input="for f in tmp/a; do f=README.md; echo x > $f; done", effect="ask"
     ),
@@ -1641,7 +1650,10 @@ SHELL_POLICY_CASES = [
     DecisionCase(input="cp f 'a$b'", effect="allow"),
     DecisionCase(input="rm -rf $TMPDIR/build", effect="allow"),
     DecisionCase(input="rm -rf '$TMPDIR/build'", effect="ask"),
-    DecisionCase(input="for f in a{-rf,}; do rm $f; done", effect="deny"),
+    DecisionCase(input="for f in a{-rf,}; do rm $f; done", effect="ask"),
+    DecisionCase(
+        input="for f in a{-rf,}; do rm $f; done", effect="ask", sandboxed=True
+    ),
     # A flag that runs a program is not a flag that writes a file, and keeps
     # its own question however ordinary the file beside it is.
     DecisionCase(input="sort --compress-program=x -o out f", effect="ask"),
@@ -2029,13 +2041,19 @@ SHELL_POLICY_CASES = [
     # reviewability rule being answered by a supply-chain question.
     DecisionCase(input="uv run --with requests python -c 'x'", effect="deny"),
     # Unknown words behind a literal blessed uv run target only reach that
-    # target's argv; at or before the target they keep the opaque gate.
+    # target's argv; at or before the target they keep the opaque gate, and
+    # the run is asked about as the option it spells, whatever confines it.
     DecisionCase(
         input='uv run lup-devtools dev pr update 22 --body "$(cat tmp/x.md)"',
         effect="allow",
     ),
     DecisionCase(
-        input='uv run --python "$(cat v.txt)" lup-devtools dev check', effect="deny"
+        input='uv run --python "$(cat v.txt)" lup-devtools dev check', effect="ask"
+    ),
+    DecisionCase(
+        input='uv run --python "$(cat v.txt)" lup-devtools dev check',
+        effect="ask",
+        sandboxed=True,
     ),
     DecisionCase(input='uv run "$(cat t.txt)" dev check', effect="deny"),
     # The target is found the way uv finds it: past uv's globals, and past
@@ -3696,8 +3714,10 @@ DOWNLOAD_CASES = [
         effect="ask",
         existing=["notes.txt"],
     ),
-    # An option no grammar lists is unread, as is one missing its value and a
-    # substitution that could spell either; a boundary still carries them.
+    # An option no grammar lists is unread, as is one missing its value; a
+    # boundary still carries them. A substitution that could spell either is
+    # judged as the download it spells, whose origin no scope names, and that
+    # question stands wherever the session runs.
     DecisionCase(input="curl -K cfg https://docs.example.com/", effect="deny"),
     DecisionCase(
         input="curl -K cfg https://docs.example.com/", effect="allow", sandboxed=True
@@ -3706,7 +3726,12 @@ DOWNLOAD_CASES = [
     DecisionCase(input="wget -r https://docs.example.com/", effect="deny"),
     DecisionCase(input="wget", effect="deny"),
     DecisionCase(
-        input="curl $(echo -o /etc/x) https://docs.example.com/", effect="deny"
+        input="curl $(echo -o /etc/x) https://docs.example.com/", effect="ask"
+    ),
+    DecisionCase(
+        input="curl $(echo -o /etc/x) https://docs.example.com/",
+        effect="ask",
+        sandboxed=True,
     ),
 ]
 """Downloads read against a fetch table of their own, since their verdicts turn on it.

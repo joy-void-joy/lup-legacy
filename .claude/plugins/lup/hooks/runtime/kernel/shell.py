@@ -12,7 +12,6 @@ from .decision import (
     RELAY_HINT,
     RESHAPE_HINT,
     SUBSTITUTION_SENTINEL,
-    carrying_readings,
     joined_decision,
     judged_command,
     recovery_dischargeable,
@@ -70,7 +69,7 @@ from .bindings import (
     bind_name,
     bind_script,
     carried_words,
-    expanded_script,
+    command_lists,
     pure_assignment_names,
     references,
     unrollable,
@@ -137,6 +136,7 @@ from .commands import (
     git_restore_unchanged,
     git_symbolic_ref_read,
     Reading,
+    objection_or_floor,
     strictest_reading,
     unread_programs,
     unread_readings,
@@ -394,15 +394,45 @@ def sed_facts(context: ShellContext) -> SedContext:
     )
 
 
+def find_starting_points(words: list[str]) -> list[str]:
+    """The paths a `find` walks from, `.` where it names none.
+
+    They follow find's own options (`-H`, `-L`, `-P`, `-D <debug>`,
+    `-O<level>`) and end at the first word opening the expression.
+    """
+    roots: list[str] = []
+    valued = False
+    for word in words[1:]:
+        if valued:
+            valued = False
+            continue
+        if not roots and (word in ("-H", "-L", "-P") or word.startswith("-O")):
+            continue
+        if not roots and word == "-D":
+            valued = True
+            continue
+        if word.startswith(("-", "(", ")", "!", ",")):
+            break
+        roots.append(word)
+    return roots or ["."]
+
+
 def decide_find_words(
     words: list[str], context: ShellContext, directory: str | None = ""
 ) -> KernelDecision:
-    """Classify find, recursing into -exec payloads with {} as a path word.
+    """Classify find, recursing into -exec payloads once per path a {} could be.
 
-    Expansions of ``{}`` inherit find's ``./``-prefixed paths, so the payload
-    is judged with a literal path word in each placeholder position. The
-    interactive ``-ok`` forms would hang a non-interactive shell.
+    What ``{}`` becomes is whatever the walk finds, so it is spelled as a path
+    only the run resolves, beneath each starting point in turn -- where
+    find's own output begins, so it reads as a path and never as a flag. A
+    literal stand-in would be judged as the one file it names, `rm ./x` a
+    deletion a capture restores, where `find packages -exec rm {} +` removes
+    every file under `packages`, protected ones among them.
+    ``-execdir`` runs its payload beside each file found, in a directory the
+    run chooses, so every path it names is read from one nothing here can
+    name. The interactive ``-ok`` forms would hang a non-interactive shell.
     """
+    roots = find_starting_points(words)
     remaining = [words[0]]
     position = 1
     while position < len(words):
@@ -424,13 +454,23 @@ def decide_find_words(
             )
             if terminator is None:
                 return unjudged("find -exec payload does not terminate")
-            payload = [
-                "./x" if piece == "{}" else piece
-                for piece in words[position + 1 : terminator]
-            ]
-            if not payload:
+            pieces = words[position + 1 : terminator]
+            if not pieces:
                 return unjudged("find -exec payload is empty")
-            verdict = decide_shell_segment(payload, context, directory)
+            beside = word == "-execdir"
+            found = ["./$FOUND"] if beside else [f"{root}/$FOUND" for root in roots]
+            verdict = max(
+                (
+                    decide_shell_segment(
+                        # lup: ignore[string-replace] — find substitutes `{}` as text, wherever it stands in a word
+                        [piece.replace("{}", path) for piece in pieces],
+                        context,
+                        None if beside else directory,
+                    )
+                    for path in found
+                ),
+                key=lambda reading: STRENGTH.index(reading.effect),
+            )
             if verdict.effect != "allow":
                 return verdict
             position = terminator + 1
@@ -1044,11 +1084,8 @@ def decide_shell_segment(
     )
     if withheld is not None:
         return withheld
-    placed = placed_words(words, directory, context["rows"])
-    if placed is None:
-        return unjudged(
-            "this segment names a file from a directory a `cd` left unreadable"
-        ).advising("Spell the path in full, or run the command in its own call.")
+    placement = placed_words(words, directory, context["rows"])
+    placed = placement["words"]
     # Where the command's own globals stand it, which the placed words no
     # longer spell: `uv --directory d run rm x` hands `rm x` to `d`.
     moved = command_directory(words, context["rows"])
@@ -1091,8 +1128,15 @@ def decide_shell_segment(
         )
         == "unrecoverable"
     ):
-        return unheld_loss(verdict, worked)
-    return verdict
+        verdict = unheld_loss(verdict, worked)
+    if not placement["unplaced"]:
+        return verdict
+    return objection_or_floor(
+        unjudged(
+            "this segment names a file from a directory a `cd` left unreadable"
+        ).advising("Spell the path in full, or run the command in its own call."),
+        (verdict,),
+    )
 
 
 def unheld_loss(decision: KernelDecision, tree: str) -> KernelDecision:
@@ -1136,16 +1180,18 @@ def decide_placed_words(
             return refused
         # Abstaining is the floor rather than the answer: a result standing
         # where a verb or a guarded flag goes is read as the strictest one it
-        # could be, as any other word nobody can read is. The floor carries
-        # what the command as spelled objects to, since the result could as
-        # well be the operand it is standing in for: `git push $(cat f)`
-        # could name a branch to force or delete.
+        # could be, as any other word nobody can read is. The result could as
+        # well be the operand it is standing in for, so what the command as
+        # spelled asks is asked -- `sed -i 1d $(cat f)` could rewrite a
+        # protected file -- and the floor carries what it objects to
+        # otherwise: `git push $(cat f)` could name a branch to force or
+        # delete.
         floor = unjudged(
             "a command substitution result could become a guarded flag"
         ).advising("Run it in its own call and splice the literal output.")
         spelled = decide_segment_words(words, context, directory, operands_judged)
         return strictest_reading(
-            carrying_readings(floor, (spelled,)),
+            objection_or_floor(floor, (spelled,)),
             unread_readings(words, context["rows"], write_facts(context)),
         )
     decision = decide_segment_words(words, context, directory, operands_judged)
@@ -1270,16 +1316,20 @@ def read_bindings(
 def gate_references(
     words: list[Word], bindings: tuple[ShellBinding, ...], context: ShellContext
 ) -> KernelDecision | None:
-    """Gate a reference to a name this walk bound by argument safety.
+    """The floor under a command referencing a name this walk bound opaquely.
 
     Literal bindings were already expanded, once, by the binding pass over
     the command's tree (:func:`~lup.policy.kernel.bindings.bind_script`),
     which every other reader of the command shares. A reference still
     standing is one that pass would not resolve -- a ``read``, a non-literal
-    assignment, or a name rebound inside a construct that may or may not run
-    -- so it can expand to any word, and a referencing command must name an
-    argument-safe one. Expanding it here instead would judge a word the
-    host's readers never see, which is the disagreement the pass removed.
+    assignment, a loop over words nobody can list, or a name rebound inside a
+    construct that may or may not run -- so it can expand to any word, and a
+    referencing command that is not argument-safe earns at least this floor.
+    It is a floor and not the answer: :func:`decide_simple` judges the
+    command as spelled beside it, with the reference standing, and whatever
+    that asks is asked (:func:`~lup.policy.kernel.commands.objection_or_floor`).
+    Expanding it here instead would judge a word the host's readers never
+    see, which is the disagreement the pass removed.
     """
     for binding in bindings:
         if not references(words, binding["name"]):
@@ -1298,15 +1348,10 @@ def gate_references(
 
 
 class Walked(TypedDict):
-    """What classifying a list decided, the bindings after it, and whether it stopped.
-
-    ``stopped`` is a construct the walk could not read: nothing after it in
-    the same list is judged, because what follows depends on what it did.
-    """
+    """What classifying a list decided, and the bindings standing after it."""
 
     decisions: list[KernelDecision]
     bindings: tuple[ShellBinding, ...]
-    stopped: bool
 
 
 def decide_for_body(
@@ -1315,56 +1360,52 @@ def decide_for_body(
     depth: int,
     bindings: tuple[ShellBinding, ...] = (),
 ) -> list[KernelDecision]:
-    """Classify a ``for`` body once per literal loop word, or gated when opaque.
+    """Classify a ``for`` body once per literal loop word, or with its name unread.
 
     A literal word list instantiates the body exactly -- once per word, in the
     binding pass every reader shares -- so a word landing in a guarded flag
-    position is judged as the flag it becomes. A non-literal list (globs,
-    expansions) can become any word, and a body assigning the loop's name
-    makes a later reference some other value, so there every command
-    referencing the variable must name an argument-safe command before one
-    placeholder pass.
+    position is judged as the flag it becomes. Any other loop -- over a glob,
+    an expansion, the positional parameters, more words than one line is
+    worth reading, or with a body assigning the loop's own name -- leaves
+    each reference to the name as spelled, and the body is judged with the
+    name bound to nothing anybody can read: every command referencing it
+    stands on :func:`gate_references`' floor, and asks whatever it asks with
+    the reference standing, so `for f in src/*.py; do sed -i 1d $f; done` asks
+    as `sed -i 1d $f` does.
     """
     name = command["name"]
     if dangerous_env_name(name):
         return [
             KernelDecision("ask", dangerous_assignment_reason("looping over", [name]))
         ]
-    if not command["listed"]:
-        return [unjudged("loop form is not classified")]
-    loop_words = command["words"]
-    if len(loop_words) > 16:
-        return [unjudged("loop word list is too long to instantiate")]
-
-    def instantiations(values: list[str]) -> list[KernelDecision]:
-        return [
-            decision
-            for value in values
-            for decision in decide_list(
-                expanded_script(
-                    command["body"], (ShellBinding(name=name, value=value),)
-                ),
-                context,
-                depth + 1,
-                bindings,
-            )["decisions"]
-        ]
-
     # The binding pass read a literal list's body once per word already, for
     # every reader of the line, so each pass is in the body as it stands.
-    if unrollable(command):
-        return decide_list(command["body"], context, depth + 1, bindings)["decisions"]
-    for inner in simple_commands(command["body"]):
-        if references(inner["words"], name):
-            words = command_words([word_text(word) for word in inner["words"]])
-            if not words or not argument_safe_words(words, context):
-                return [
-                    unjudged(
-                        "the loop variable is not one literal word on every pass,"
-                        " so an argument could become a guarded flag"
-                    )
-                ]
-    return instantiations(["x"])
+    scope = bindings if unrollable(command) else bind_name(bindings, name, None)
+    return decide_list(command["body"], context, depth + 1, scope)["decisions"]
+
+
+def unreadable_construct(
+    reason: str, command: Command, context: ShellContext
+) -> KernelDecision:
+    """What a construct the walk does not read earns: its floor, or what it runs asks.
+
+    A function, a ``select``, an arithmetic command and a construct nested
+    past the depth the walk opens are left unjudged as structures, but the
+    commands inside them are commands all the same: `function f { rm
+    README.md; }` removes a human-owned file whenever `f` runs, and a body
+    runs wherever the call is, which nothing here follows. Each is judged where it
+    stands, flat, and what any of them asks is asked, over the floor the
+    construct earns on its own.
+    """
+    inside = [
+        decide_shell_segment(texts, context, inner["directory"], operands_judged=True)
+        for script in command_lists(command)
+        for inner in simple_commands(script)
+        if inner["kind"] == "simple"
+        for texts in [[word_text(word) for word in inner["words"]]]
+        if texts
+    ]
+    return objection_or_floor(unjudged(reason), tuple(inside))
 
 
 def joined_lists(scripts: list[Script]) -> Script:
@@ -1381,19 +1422,17 @@ def decide_substitutions(
     context: ShellContext,
     depth: int,
     bindings: tuple[ShellBinding, ...],
-) -> Walked:
+) -> list[KernelDecision]:
     """Classify every command the substitutions in these words run.
 
     Each runs in a subshell of its own, so nothing it binds reaches the words
     after it.
     """
-    decisions: list[KernelDecision] = []
-    for inner in substitutions(words):
-        walked = decide_list(inner, context, depth, bindings)
-        decisions.extend(walked["decisions"])
-        if walked["stopped"]:
-            return Walked(decisions=decisions, bindings=bindings, stopped=True)
-    return Walked(decisions=decisions, bindings=bindings, stopped=False)
+    return [
+        decision
+        for inner in substitutions(words)
+        for decision in decide_list(inner, context, depth, bindings)["decisions"]
+    ]
 
 
 def decide_simple(
@@ -1401,13 +1440,31 @@ def decide_simple(
     context: ShellContext,
     bindings: tuple[ShellBinding, ...],
 ) -> Walked:
-    """Classify one simple command, rebinding where it assigns or reads."""
+    """Classify one simple command, rebinding where it assigns or reads.
+
+    A reference to a name bound to something nobody can read puts the
+    command on :func:`gate_references`' floor, and the command as spelled is
+    judged beside it: what that asks is asked.
+    """
+    walked = decide_simple_words(command, context, bindings)
+    gated = gate_references(command["words"], bindings, context)
+    if gated is None:
+        return walked
+    return Walked(
+        decisions=[objection_or_floor(gated, tuple(walked["decisions"]))],
+        bindings=walked["bindings"],
+    )
+
+
+def decide_simple_words(
+    command: Command,
+    context: ShellContext,
+    bindings: tuple[ShellBinding, ...],
+) -> Walked:
+    """One simple command's own verdict, and the bindings it leaves behind."""
     texts = [word_text(word) for word in command["words"]]
     if not texts:
-        return Walked(decisions=[], bindings=bindings, stopped=False)
-    gated = gate_references(command["words"], bindings, context)
-    if gated is not None:
-        return Walked(decisions=[gated], bindings=bindings, stopped=True)
+        return Walked(decisions=[], bindings=bindings)
     assignments = pure_assignment_names(texts)
     if assignments is not None:
         dangerous = [
@@ -1417,11 +1474,10 @@ def decide_simple(
             return Walked(
                 decisions=[dangerous_assignment("assigning", dangerous)],
                 bindings=bindings,
-                stopped=False,
             )
         for pair in assignments:
             bindings = bind_name(bindings, pair["name"], pair["value"])
-        return Walked(decisions=[], bindings=bindings, stopped=False)
+        return Walked(decisions=[], bindings=bindings)
     words = effective_command(texts)["words"]
     printed = printed_secret(
         command["words"][len(texts) - len(words) :],
@@ -1429,12 +1485,12 @@ def decide_simple(
         context["secret_variables"],
     )
     if printed is not None:
-        return Walked(decisions=[printed], bindings=bindings, stopped=False)
+        return Walked(decisions=[printed], bindings=bindings)
     if words and posixpath.basename(words[0]) == "read":
         extended = read_bindings(words, bindings)
         if isinstance(extended, KernelDecision):
-            return Walked(decisions=[extended], bindings=bindings, stopped=True)
-        return Walked(decisions=[], bindings=extended, stopped=False)
+            return Walked(decisions=[extended], bindings=bindings)
+        return Walked(decisions=[], bindings=extended)
     return Walked(
         decisions=[
             decide_shell_segment(
@@ -1442,7 +1498,6 @@ def decide_simple(
             )
         ],
         bindings=bindings,
-        stopped=False,
     )
 
 
@@ -1455,81 +1510,68 @@ def decide_command(
     """Classify one command of any kind, recursing into the lists it runs.
 
     A loop, a conditional and a case construct each open one level, and a
-    third level is left unjudged rather than walked. A brace group runs in
-    this shell, so what it binds stands after it; a subshell does not.
+    third level is read flat rather than walked (:func:`unreadable_construct`).
+    A brace group runs in this shell, so what it binds stands after it; a
+    subshell does not.
     """
     if command["kind"] == "simple":
         judged = decide_simple(command, context, bindings)
         spelled = spelled_command(command)
-        own = Walked(
-            decisions=[
-                judged_command(decision, spelled) for decision in judged["decisions"]
-            ],
-            bindings=judged["bindings"],
-            stopped=judged["stopped"],
-        )
-        if own["stopped"]:
-            return own
         inner = decide_substitutions(carried_words(command), context, depth, bindings)
         return Walked(
-            decisions=[*own["decisions"], *inner["decisions"]],
-            bindings=own["bindings"],
-            stopped=inner["stopped"],
+            decisions=[
+                *[
+                    judged_command(decision, spelled)
+                    for decision in judged["decisions"]
+                ],
+                *inner,
+            ],
+            bindings=judged["bindings"],
         )
     header = decide_substitutions(carried_words(command), context, depth, bindings)
-    if header["stopped"]:
-        return header
 
-    def stop(reason: str) -> Walked:
+    def unread(reason: str) -> Walked:
         return Walked(
-            decisions=[*header["decisions"], unjudged(reason)],
+            decisions=[*header, unreadable_construct(reason, command, context)],
             bindings=bindings,
-            stopped=True,
         )
 
     def nested(scripts: list[Script]) -> Walked:
         walked = decide_list(joined_lists(scripts), context, depth + 1, bindings)
-        return Walked(
-            decisions=[*header["decisions"], *walked["decisions"]],
-            bindings=bindings,
-            stopped=False,
-        )
+        return Walked(decisions=[*header, *walked["decisions"]], bindings=bindings)
 
     match command["kind"]:
         case "test":
             return Walked(
                 decisions=[
-                    *header["decisions"],
+                    *header,
                     KernelDecision("allow", "test expression is read-only"),
                 ],
                 bindings=bindings,
-                stopped=False,
             )
         case "brace" | "subshell":
             walked = decide_list(command["body"], context, depth, bindings)
             return Walked(
-                decisions=[*header["decisions"], *walked["decisions"]],
+                decisions=[*header, *walked["decisions"]],
                 bindings=walked["bindings"] if command["kind"] == "brace" else bindings,
-                stopped=walked["stopped"],
             )
         case "for" if depth >= 2:
-            return stop("loops nest too deeply")
+            return unread("loops nest too deeply")
         case "for":
             return Walked(
                 decisions=[
-                    *header["decisions"],
+                    *header,
                     *decide_for_body(command, context, depth, bindings),
                 ],
                 bindings=bindings,
-                stopped=False,
             )
         case "while" | "until" if depth >= 2:
-            return stop("loops nest too deeply")
+            return unread("loops nest too deeply")
         case "while" | "until":
             clause = command["clauses"][0]
             return nested([clause["condition"], clause["body"]])
         case "if" if depth >= 2:
-            return stop("conditionals nest too deeply")
+            return unread("conditionals nest too deeply")
         case "if":
             return nested(
                 [
@@ -1542,15 +1584,15 @@ def decide_command(
                 ]
             )
         case "case" if depth >= 2:
-            return stop("case constructs nest too deeply")
+            return unread("case constructs nest too deeply")
         case "case":
             return nested([arm["body"] for arm in command["arms"]])
         case "select":
-            return stop("loop form is not classified")
+            return unread("loop form is not classified")
         case "function":
-            return stop("shell function definitions are not classified")
+            return unread("shell function definitions are not classified")
         case _:
-            return stop("arithmetic command is not classified")
+            return unread("arithmetic command is not classified")
 
 
 def decide_list(
@@ -1565,15 +1607,17 @@ def decide_list(
     new tuple for the commands that follow, recursion receives the current
     value, and nothing mutates across scopes. A reference the binding pass
     left live stays a live ``$`` word for the guarded-flag gates.
+
+    Every command is judged, a construct the walk does not read among them:
+    what runs after one is still what runs, and a verdict that stopped there
+    left each command behind it to whichever boundary settles the floor.
     """
     decisions: list[KernelDecision] = []
     for command in list_commands(script):
         walked = decide_command(command, context, depth, bindings)
         decisions.extend(walked["decisions"])
         bindings = walked["bindings"]
-        if walked["stopped"]:
-            return Walked(decisions=decisions, bindings=bindings, stopped=True)
-    return Walked(decisions=decisions, bindings=bindings, stopped=False)
+    return Walked(decisions=decisions, bindings=bindings)
 
 
 def classify_shell(

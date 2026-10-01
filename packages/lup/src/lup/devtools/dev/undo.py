@@ -60,6 +60,7 @@ from uuid import uuid4
 
 from pydantic import BaseModel, Field
 
+from lup.execution.git import Repository
 from lup.execution.shell import git
 from lup.policy.assets.host import (
     undo_expire,
@@ -210,11 +211,7 @@ def empty_undo_ref(path: Path) -> bool:
 
 def damaged_refs(root: Path) -> list[DamagedUndoRef]:
     """Find the broken loose refs Git omits from its ordinary undo listing."""
-    common = Path(
-        git.out(
-            "-C", str(root), "rev-parse", "--path-format=absolute", "--git-common-dir"
-        )
-    )
+    common = Repository(root).common_dir()
     return [
         DamagedUndoRef(ref=path.relative_to(common).as_posix(), path=path)
         for path in (common / UNDO_NAMESPACE).rglob("*")

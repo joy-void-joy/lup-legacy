@@ -14,22 +14,25 @@ environment, and stopped with it, or once no running session of that
 repository holds the dashboard any more.
 """
 
-import asyncio
 import hashlib
 import hmac
-import os
 import socket
 import threading
 from collections.abc import Callable
 from pathlib import Path
 
-import sh
 from pydantic import BaseModel
 
-from lup.channels.wait import wait_until
 from lup.devtools.dashboard.companion import KnownRepository
 from lup.devtools.launcher import console_script
-from lup.launch.companions import LiveProcess, port_answers
+from lup.launch.companions import (
+    DetachedProcess,
+    LiveProcess,
+    choosing_ports,
+    companions_home,
+    kept_elsewhere,
+    port_answers,
+)
 
 
 class SetupPane(BaseModel, frozen=True):
@@ -52,7 +55,11 @@ class SetupChild(BaseModel, frozen=True):
 
 
 def free_port() -> int:
-    """A port nothing listens on at this moment, as the kernel picks one."""
+    """A port nothing listens on at this moment, as the kernel picks one.
+
+    Taken under the lock every companion chooses its ports under, and held
+    by the page before the lock is let go, so no companion is given it too.
+    """
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
         probe.bind(("127.0.0.1", 0))
         return probe.getsockname()[1]
@@ -129,30 +136,25 @@ class SetupPanes:
             )
             if known is None:
                 raise LookupError(f"no repository is known as {key!r}")
-            port = free_port()
-            self.logs.mkdir(parents=True, exist_ok=True)
             log = self.logs / f"setup-{key}.log"
-            program, *arguments = setup_command(known.checkout, port)
-            with log.open("ab") as output, Path(os.devnull).open("rb") as nothing:
-                running = sh.Command(program)(
-                    *arguments,
-                    _cwd=str(known.checkout),
-                    _bg=True,
-                    _bg_exc=False,
-                    _new_session=True,
-                    _in=nothing,
-                    _out=output,
-                    _err_to_out=True,
+            home = companions_home()
+            with choosing_ports(home):
+                claimed = kept_elsewhere(home)
+                port = next(
+                    candidate
+                    for candidate in iter(free_port, 0)
+                    if candidate not in claimed
                 )
-            process = LiveProcess.of(running.pid)
-            serving = asyncio.run(
-                wait_until(
-                    lambda: True if port_answers(port) else None,
-                    wait_seconds=self.ready_within,
-                    poll_interval_seconds=0.1,
+                started = DetachedProcess.start(
+                    setup_command(known.checkout, port),
+                    known.checkout,
+                    None,
+                    log,
+                    lambda: port_answers(port),
+                    self.ready_within,
                 )
-            )
-            if serving is None:
+            process = started.process
+            if not started.answered:
                 process.stop(5.0)
                 raise RuntimeError(
                     f"{known.name()} served no setup page within "

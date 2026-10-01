@@ -14,7 +14,7 @@ import typer
 
 from lup.devtools.harness import resolve
 from lup.harness.models import ResolveSpec, SkillInvocation
-from lup.harness.process import LaunchRequest, LocalProcessLauncher
+from lup.execution.process import LaunchRequest, LocalProcessLauncher
 from lup.resolver.record import Journal, LeaseRefreshedEvent
 from lup.resolver.models import (
     AcceptanceCriterion,

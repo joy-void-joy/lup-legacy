@@ -33,6 +33,7 @@ from secrets import token_hex
 
 from pydantic import BaseModel, Field
 
+from lup.execution.git import Repository
 from lup.execution.shell import git
 from lup.harness.requirements import SENTINEL_VARIABLE
 from lup.policy.boundary import BoundaryPreflight
@@ -300,10 +301,7 @@ def exclude_sandbox_placeholders(root: Path) -> list[str]:
     ]
     if not placeholders:
         return []
-    common = git.out(
-        "-C", str(root), "rev-parse", "--path-format=absolute", "--git-common-dir"
-    ).strip()
-    exclude = Path(common) / "info" / "exclude"
+    exclude = Repository(root).common_dir() / "info" / "exclude"
     exclude.parent.mkdir(parents=True, exist_ok=True)
     held_lines = (
         exclude.read_text(encoding="utf-8").splitlines() if exclude.exists() else []

@@ -283,11 +283,6 @@ def inspect_git_admin(
     return list(held_locks(git_dir, lock_names, stale_after))
 
 
-def admin_dirs(root: Path, named: Sequence[str]) -> list[Path]:
-    """The distinct directories ``git rev-parse`` named, resolved against a root."""
-    return list(dict.fromkeys((root / line).resolve() for line in named if line))
-
-
 def obstructions_across(git_dirs: Sequence[Path]) -> list[LockObstruction]:
     """Everything holding the lock across a checkout's admin directories.
 

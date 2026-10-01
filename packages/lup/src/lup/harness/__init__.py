@@ -20,9 +20,6 @@ generated. Modules map to concerns:
   proposal.
 - :mod:`lup.harness.proposals` — persists backpropagation source patches for
   review instead of applying them.
-- :mod:`lup.harness.process` — the captured-output local launcher (the
-  resolver's git operations and verification commands, the base-freshness
-  probe a launch settles).
 - :mod:`lup.harness.environment` — the non-interactive shell defaults merged
   into every agent-spawned command so credential prompts fail fast.
 
@@ -31,8 +28,8 @@ modules implement seams from ``contracts`` (whose own imports are type-only);
 ``reconciliation`` builds on ``ownership``; ``materialization`` and
 ``proposals`` build on ``reconciliation``. Nothing here imports an adapter.
 
-Placement rule: a model with one managing module lives in that module (launch
-types in ``process``, proposal rows in ``reconciliation``, ...); only
+Placement rule: a model with one managing module lives in that module
+(proposal rows in ``reconciliation``, ...); only
 vocabulary shared across stages lives in ``models``. File position itself
 documents ownership.
 """
