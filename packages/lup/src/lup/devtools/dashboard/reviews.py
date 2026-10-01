@@ -39,7 +39,7 @@ from typing import TYPE_CHECKING
 import httpx
 import sh
 import typer
-from pydantic import BaseModel, Field, PrivateAttr
+from pydantic import BaseModel, Field, JsonValue, PrivateAttr
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_fixed
 
 from lup.coordination.repository import PeerDepartedError
@@ -861,6 +861,7 @@ def dashboard_app(
         earlier_messages,
         reply,
     )
+    from lup.devtools.dashboard.keys import DashboardKeys, KeyBindings, KeyTry
     from lup.devtools.dashboard.stream import LiveFeed
     from lup.web.serve import bundle_app
 
@@ -891,11 +892,14 @@ def dashboard_app(
     def watched() -> list[KnownRepository]:
         return [*named, *(registry.repositories() if registry is not None else [])]
 
+    keys = DashboardKeys(config)
     feed = (
         feed
         if feed is not None
         else LiveFeed(
-            watched, ReviewStore(roots=roots, discover=discover, registry=registry)
+            watched,
+            ReviewStore(roots=roots, discover=discover, registry=registry),
+            keys=keys,
         )
     )
     store = feed.reviews
@@ -1013,6 +1017,24 @@ def dashboard_app(
         if known is None:
             raise HTTPException(status_code=404, detail="No repository has that key")
         return earlier_messages(known, before)
+
+    @app.post("/api/keys/try")
+    def try_keys(tried: KeyTry) -> KeyBindings:
+        """The person's keys with one tab's ``:map`` lines checked over them, as the config is."""
+        return keys.tried(tried.lines)
+
+    @app.post("/api/keys")
+    def write_keys(tried: KeyTry) -> KeyBindings:
+        """Write one tab's ``:map`` lines into ``[dashboard.keys]``, keeping the file's comments."""
+        written = keys.tried(tried.lines)
+        tab: dict[tuple[str, ...], JsonValue | None] = {
+            ("dashboard", "keys", each.action): list(each.keys)
+            for each in written.changed
+            if each.origin == "tab"
+        }
+        if tab:
+            keys.config.record(tab)
+        return keys.tried([])
 
     @app.get("/api/setup")
     def setup_panes() -> list[SetupPane]:
@@ -1227,6 +1249,35 @@ def create_operator_dashboard_app(root: Path) -> typer.Typer:
             )
 
         refused("reopen", settled)
+
+    @app.command("keys")
+    def keys_cmd() -> None:
+        """Print the dashboard's keys as your `[dashboard.keys]` leaves them, and every entry it refused."""
+        from lup.devtools.dashboard.keys import DashboardKeys, KeymapCatalog
+
+        catalog = KeymapCatalog()
+        read = DashboardKeys(UserConfigFile(), catalog)()
+        typer.echo(read.source or "No lup config: every key is lup's own.")
+        if read.unread:
+            typer.echo(f"Unread, so lup's keys stand: {read.unread}")
+        yours = {each.action: each for each in read.changed}
+        for entry in catalog.actions:
+            mine = yours.get(entry.name)
+            shown = mine.keys if mine is not None else entry.keys
+            spoken = ", ".join(catalog.pretty(each) for each in shown) or "unbound"
+            mark = (
+                f"  (yours; lup's is {', '.join(entry.keys) or 'unbound'})"
+                if mine
+                else ""
+            )
+            typer.echo(f"{entry.name:26} {spoken}{mark}")
+        for refusal in read.report.refused:
+            way = f" — {refusal.way}" if refusal.way else ""
+            typer.echo(
+                f"refused {refusal.action or refusal.what}: `{refusal.what}` {refusal.why}{way}"
+            )
+        for wait in read.report.waits:
+            typer.echo(f"waits: {wait}")
 
     @app.command("restart")
     def restart_cmd() -> None:

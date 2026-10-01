@@ -52,6 +52,7 @@ Run any of them with `uv run lup-devtools <command>`, and add `--help` for its a
 | `dashboard status` | Say whether the dashboard runs, where, for how many sessions, and what waits. |
 | `dashboard line` | Print what a session&#x27;s status line shows: which session, what waits on you, and the dashboard. |
 | `dashboard reopen` | Whether a review parking while no tab is open reopens the page in the browser. |
+| `dashboard keys` | Print the dashboard&#x27;s keys as your `[dashboard.keys]` leaves them, and every entry it refused. |
 | `dashboard restart` | Restart the running dashboard onto its checkout&#x27;s code, keeping its address. |
 | `dashboard stop` | Stop the running dashboard; it stays stopped until a restart or a launch. |
 
