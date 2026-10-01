@@ -1,9 +1,10 @@
 """Every CLI composed from the library says what to run while its manifest conflicts.
 
-The notice used to be wired by each application's own composition root, so
-every adopter carried a copy of it; the library's `compose` wires it now.
+The library's `compose` wires the notice, so no application's composition
+root carries a copy of it.
 """
 
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
@@ -11,6 +12,15 @@ import typer
 from typer.testing import CliRunner
 
 from lup.devtools.subapps import compose, subapp
+from lup.workspace.paths import find_nearest_pyproject
+
+
+@pytest.fixture(autouse=True)
+def manifest_found_afresh() -> Iterator[None]:
+    """The nearest manifest is cached per process, and each test stands somewhere else."""
+    find_nearest_pyproject.cache_clear()
+    yield
+    find_nearest_pyproject.cache_clear()
 
 
 def composed() -> typer.Typer:
