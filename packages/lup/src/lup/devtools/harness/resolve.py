@@ -2224,7 +2224,7 @@ def run_resolve(
                     adapter,
                     resolved_run_id,
                     [] if recorded is None else recorded.concerns,
-                    [] if recorded is None else question_views(recorded, mailbox),
+                    question_views(mailbox),
                 )
                 return
             typer.echo(f"Review branch: {manifest.review_branch}")
