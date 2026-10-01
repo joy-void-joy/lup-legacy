@@ -58,6 +58,13 @@ def test_a_word_is_quoted_only_where_a_shell_needs_it() -> None:
     assert spelled(["echo", "$HOME", "~/x", ""]) == "echo $HOME ~/x ''"
 
 
+def test_a_placeholder_the_reader_replaces_whole_is_never_quoted() -> None:
+    assert spelled(["uv", "run", "lup-devtools", "<the same words>"]) == (
+        "uv run lup-devtools <the same words>"
+    )
+    assert spelled(["echo", "<a>b"]) == "echo <a>b"
+
+
 def test_a_devtools_command_is_spelled_through_uv_run() -> None:
     assert devtools("harness", "generate", "all") == [
         "uv",

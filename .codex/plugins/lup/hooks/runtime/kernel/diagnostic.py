@@ -103,13 +103,15 @@ def spelled(run: Sequence[str]) -> str:
     """A command as a reader types it, each word quoted only where a shell needs it.
 
     A word of letters, digits and ``@%+=:,./-_`` is written as it is. So is a
-    placeholder in angle brackets, ``<name>``, which the reader replaces, and
-    a ``$NAME`` or leading ``~`` the shell is meant to expand. Any other word
-    goes in single quotes.
+    placeholder in angle brackets, ``<name>`` or ``<the same words>``, which
+    the reader replaces whole, and a ``$NAME`` or leading ``~`` the shell is
+    meant to expand. Any other word goes in single quotes.
     """
 
     def plain(word: str) -> bool:
-        """Whether a shell reads this word as written."""
+        """Whether a shell reads this word as written, or the reader replaces it whole."""
+        if len(word) > 2 and word.startswith("<") and word.endswith(">"):
+            return True
         return word != "" and all(
             character.isalnum() or character in "@%+=:,./-_<>$~" for character in word
         )

@@ -338,8 +338,8 @@ def test_two_edits_waiting_are_told_how_to_ask_once(
     assert "review propose" not in first
     assert "2 of your edits now wait on the operator" in second
     assert (
-        f"`uv run --directory {root} lup-devtools review propose '<that directory, "
-        "absolute>' --why"
+        f"`uv run --directory {root} lup-devtools review propose <that directory, "
+        "absolute> --why"
     ) in second
     assert "under one directory in the tmp/ of the checkout they change" in second
     assert "in plain words" in second

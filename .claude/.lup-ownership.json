@@ -492,7 +492,7 @@
     {
       "path": ".claude/plugins/lup/hooks/runtime/kernel/diagnostic.py",
       "category": "generated",
-      "sha256": "4f4186ad8e426c6d0ff851f2e7d6ede27d96081333e1f7e134e4ccff0657e1c5",
+      "sha256": "7c2d609a6f236705a0b3bbd406d98778eaa1a98b8aefe63397a19207f0cbcedf",
       "semantic_id": "hooks.lup-policy",
       "executable": false
     },
