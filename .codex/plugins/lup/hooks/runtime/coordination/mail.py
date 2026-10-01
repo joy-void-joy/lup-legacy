@@ -31,7 +31,6 @@ tool call, and mail that cannot be read must not stop the work it was meant to
 inform.
 """
 
-import fcntl
 import json
 from pathlib import Path
 from typing import TypedDict
@@ -46,6 +45,7 @@ from .store import (
     discarded,
     listed,
     loaded,
+    locked,
     published,
     stamped,
     text,
@@ -167,9 +167,7 @@ def recorded(root: Path, posted: Posted) -> bool:
     senders' lines never interleave however long either message is.
     """
     try:
-        root.mkdir(parents=True, exist_ok=True)
-        with (root / MAIL_RECORD).open("a", encoding="utf-8") as record:
-            fcntl.flock(record.fileno(), fcntl.LOCK_EX)
+        with locked(root / MAIL_RECORD) as record:
             record.write(json.dumps(posted) + "\n")
             record.flush()
     except OSError:
