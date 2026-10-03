@@ -241,6 +241,9 @@ floor never stands in for what the command asks as spelled: a boundary
 settling it confines the call, not the checkout the call writes in, and a
 protected file there was rewritten unasked. `eval`, `source` and an
 interpreter's inline code stay refused, and `xargs` keeps its own question.
+What `uv run` hands an interpreter is read as `uv run` reads it, so
+`uv run python s.py $T` gets the same floor as `uv run bash s.sh $T`, while
+`uv run python -c … $T` and `uv run python $T` stay refused.
 
 Where the capture was actually *taken*, `RecoveredLoss` settles the question
 as a **permission**. Not a deferral: deferring would make the outcome depend
