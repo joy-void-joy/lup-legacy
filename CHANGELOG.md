@@ -2,6 +2,23 @@
 
 ## Unreleased
 
+### The dashboard highlights a conflicted file's code through its merge markers
+
+A file a merge left conflicted no longer throws the dashboard's syntax
+highlighting off at its markers, where a string or comment opened on one side
+ran on into the other side and often the rest of the file. Each version of the
+file — ours, theirs, and the common ancestor where diff3 or zdiff3 records it —
+is highlighted whole as the file it would be, and every line takes the colours
+of the version it belongs to: a line both sides share as ours reads it, a
+side's line as its own side does. Each side is barred down its left edge in its
+own colour and line (ours solid, the ancestor dotted, theirs double), and each
+marker is bold in its side's colour and names the side and branch it opens or
+closes. A review proposing a resolution shows the same in both columns. A
+conflict left unterminated, or with its markers out of order, is highlighted
+as the file stands. The markers are read by `conflicts.ts` in the dashboard
+page, which accepts git's longer markers too (`conflict-marker-size`, and the
+inner conflicts a merge of merge bases writes).
+
 ### Files, locks and per-person state are each spelled once in the library
 
 The same file chores were hand-rolled at dozens of sites, each a little
