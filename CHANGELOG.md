@@ -37,6 +37,17 @@
   heads it, and `--take` takes them as read. `coordination send` takes
   `--as user` to sign an answer so the reply comes back to the person, and
   `--reply-to <post>` to put it in that post's thread; it prints the post id.
+- The page supervises through those routes. Beside an agent: wake it
+  (`Space a w`), interrupt its turn (`Space a n`, or **Interrupt** by the box),
+  redirect its next call, answer its last message in its thread
+  (`Space a r`, `r` on any message), rename it, stop its runtime (asked
+  twice), and read its whole transcript live (`T`). The operator's verbs
+  (`:describe`, `:notice`/`:unnotice`, `:lock`/`:release`, `:read`, `X` in the
+  inbox) reach theirs, a post into a discussion goes to its thread, and a
+  broadcast is one post. Threads group by post and thread ids. The page reads
+  the stream's `served` and refuses, naming the route, what a dashboard running
+  older code does not serve. The keymap catalog's actions say which piece of
+  supervision each needs (`needs`) where they said `server="new"`.
 - A fork's row names the subagent that spawned it, read from the runtime's
   own record (Claude Code's `parentAgentId`, Codex's `parent_thread_id`),
   where it was a plain sibling with an empty `spawned_by`. A member writes

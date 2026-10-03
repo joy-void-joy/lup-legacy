@@ -52,8 +52,8 @@ describe("discussions: the mail read as threads", () => {
     const at = "2026-09-29T11:00:00Z";
     const state = live([
       message("m1", "res", "sum", "Plan: split the corpus.", "2026-09-29T10:59:00Z"),
-      message("m2", "user", "res", "Go ahead, both of you.", at, { in_reply_to: "m1", door: "page" }),
-      message("m3", "user", "sum", "Go ahead, both of you.", at, { in_reply_to: "m1", door: "page", waiting: true }),
+      message("m2", "user", "res", "Go ahead, both of you.", at, { in_reply_to: "m1", door: "page", post: "p2", thread: "m1" }),
+      message("m3", "user", "sum", "Go ahead, both of you.", at, { in_reply_to: "m1", door: "page", waiting: true, post: "p2", thread: "m1" }),
     ]);
     const [thread] = discussions(state);
     expect(thread?.posts.map((post) => post.copies.map((copy) => copy.recipient))).toEqual([["sum"], ["res", "sum"]]);
@@ -61,6 +61,29 @@ describe("discussions: the mail read as threads", () => {
     expect(rows.map((row) => row.t)).toEqual(["sec", "post", "post"]);
     const second = rows[2];
     expect(second?.t === "post" && second.answered?.text).toBe("Plan: split the corpus.");
+  });
+
+  test("posts sharing a thread are one thread, which a post into it names, even where none replies to another here", () => {
+    const state = live([
+      message("m1", "res", "sum", "Which print do we trust?", "2026-09-29T10:00:00Z", { post: "p1", thread: "p1" }),
+      message("m2", "sum", "res", "The revision.", "2026-09-29T10:01:00Z", { post: "p2", thread: "p1" }),
+      message("m3", "sum", "user", "And you?", "2026-09-29T10:02:00Z", { post: "p3", thread: "p1", waiting: true }),
+    ]);
+    const [thread, ...rest] = discussions(state);
+    expect(rest).toEqual([]);
+    expect(thread?.kind).toBe("thread");
+    expect(thread?.posts.map((post) => post.id)).toEqual(["p1", "p2", "p3"]);
+    expect(thread?.thread).toBe("p1");
+  });
+
+  test("a message the record kept from before posts had ids is one post with the copies sharing its sender, text and time", () => {
+    const at = "2026-09-29T11:00:00Z";
+    const [only] = discussions(live([
+      message("m1", "user", "res", "Both of you, stop.", at, { post: "", thread: "" }),
+      message("m2", "user", "sum", "Both of you, stop.", at, { post: "", thread: "" }),
+    ]));
+    expect(only?.posts.map((post) => [post.id, post.copies.map((copy) => copy.recipient)])).toEqual([["m1", ["res", "sum"]]]);
+    expect(only?.thread).toBe("m1");
   });
 
   test("a conversation including the operator is titled with the others and you", () => {

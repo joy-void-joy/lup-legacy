@@ -2,19 +2,43 @@
 // The handler table answers every action the library's catalog declares — the
 // page's test checks the two name the same actions — and the dispatcher reads
 // the keymap in effect: lup's keys, with the person's and this tab's over them.
+import type { LiveSession } from "../generated/views";
 import type { Dashboard } from "./dashboard";
-import { cancelVisual, changeJump, closeComment, commentAtCursor, commitVisual, copyLink, cursorColumn, cycleWin, edge, enter, escape, fold, foldTree, goAsker, goReview, gotoJudged, gotoLine, halfPage, hover, lineEdge, memberHere, moveAgent, moveCursor, moveException, moveFile, moveInbox, moveMarker, moveReview, moveWin, quit, replyHere, repositoryHere, rowHere, searchStep, setCursor, setPaneView, split, startSearch, startVisual, toggleFull, toggleSide, toggleWhole, transcriptHere, undoDelete, wordMotion, xHere } from "./editor";
+import { cancelVisual, changeJump, closeComment, commentAtCursor, commitVisual, copyLink, cursorColumn, cycleWin, edge, enter, escape, fold, foldTree, goAsker, goReview, gotoJudged, gotoLine, halfPage, hover, lineEdge, memberHere, moveAgent, moveCursor, moveException, moveFile, moveInbox, moveMarker, moveReview, moveWin, quit, replyHere, replyToMessage, repositoryHere, rowHere, searchStep, setCursor, setPaneView, split, startSearch, startVisual, toggleFull, toggleSide, toggleWhole, transcriptHere, undoDelete, wordMotion, xHere } from "./editor";
 import { keyName, type Bound } from "./keys";
 import { commandKey, openCommand } from "./commands";
 import { openFinder } from "./finder";
-import { unserved, type Feature } from "./served";
 import { VIEWS, type Float } from "./state";
-import { parentOf, standing } from "./supervision";
+import { inboxOf, parentOf, standing } from "./supervision";
 
 /** What one action does, given the count typed before its keys and whether one was. */
 export type Handler = (d: Dashboard, count: number, counted: boolean) => void;
 
-const refuse = (feature: Feature): Handler => (d) => d.say(unserved(feature), "err");
+/** Act on the agent in view, or say how to choose one. */
+function withAgent(d: Dashboard, act: (session: LiveSession) => void): void {
+  const session = memberHere(d);
+  if (session === undefined) { d.say("choose an agent first (on the left, or Space fa)"); return; }
+  act(session);
+}
+
+/** The agent's box, answering the last message between it and the operator, in that message's thread. */
+function replyToLast(d: Dashboard): void {
+  withAgent(d, (session) => {
+    const live = d.state.live;
+    const last = live === null ? undefined : [...live.messages.values()]
+      .filter((message) => message.repository === session.repository && [message.sender, message.recipient].includes(session.id))
+      .sort((left, right) => left.at - right.at).at(-1);
+    if (last === undefined) { d.say(`nothing between you and ${session.name || session.id} to reply to; c writes a new message`); return; }
+    replyToMessage(d, last);
+  });
+}
+
+/** The file the cursor is on in a review, as its checkout names it; nothing elsewhere. */
+function fileHere(d: Dashboard): string {
+  const row = rowHere(d);
+  const fi = row !== undefined && "fi" in row && row.fi !== undefined ? row.fi : -1;
+  return d.centerKind() === "review" && fi >= 0 ? d.current()?.detail?.files[fi]?.path ?? "" : "";
+}
 
 function toggleFloat(d: Dashboard, float: Float): void {
   d.set((state) => ({ float: state.float?.kind === float.kind ? null : float }));
@@ -96,21 +120,21 @@ export const HANDLERS: Record<string, Handler> = {
   "search.next": (d, count) => { for (let at = 0; at < count; at += 1) searchStep(d, false); },
   "search.previous": (d, count) => { for (let at = 0; at < count; at += 1) searchStep(d, true); },
   "agent.write": (d) => write(d),
-  "agent.reply": refuse("reply-thread"),
-  "agent.wake": (d) => { write(d); d.say("today a wake rides a message: write it, then Alt+Enter; the message route wakes it where it can. A bare wake needs new server work."); },
-  "agent.nudge": refuse("interrupt"),
+  "agent.reply": (d) => replyToLast(d),
+  "agent.wake": (d) => withAgent(d, (session) => void d.wake(session)),
+  "agent.nudge": (d) => withAgent(d, (session) => void d.interrupt(session, d.state.replyDrafts[session.key] ?? "")),
   "agent.parent": (d) => askParent(d),
   "agent.transcript": (d) => transcriptHere(d),
-  "agent.rename": refuse("rename"),
-  "agent.stop": refuse("stop"),
+  "agent.rename": (d) => withAgent(d, (session) => openCommand(d, `rename ${session.name || session.id} `)),
+  "agent.stop": (d) => withAgent(d, (session) => void d.stopRuntime(session)),
   "message.reply": (d) => replyHere(d),
   "messages.earlier": (d) => { const repository = repositoryHere(d); void d.loadEarlier(repository); },
-  "peer.describe": refuse("describe"),
-  "peer.lock": refuse("claims"),
-  "peer.release": refuse("claims"),
-  "peer.notice": refuse("notices"),
+  "peer.describe": (d) => openCommand(d, "describe "),
+  "peer.lock": (d) => openCommand(d, `lock ${fileHere(d)}`),
+  "peer.release": (d) => openCommand(d, `release ${fileHere(d)}`),
+  "peer.notice": (d) => openCommand(d, "notice "),
   "peer.broadcast": (d) => openCommand(d, "broadcast "),
-  "peer.redirect": refuse("redirect"),
+  "peer.redirect": (d) => { const session = memberHere(d); openCommand(d, `redirect ${session === undefined ? "" : `${session.name || session.id} `}`); },
   "tree.all": (d) => setTree(d, "all"),
   "tree.attention": (d) => setTree(d, "attention"),
   "tree.reviews": (d) => setTree(d, "reviews"),
@@ -133,7 +157,7 @@ export const HANDLERS: Record<string, Handler> = {
   "view.raw": (d) => setPaneView(d, "raw"),
   close: (d) => quit(d),
   delete: (d) => xHere(d),
-  "inbox.readall": refuse("inbox-read"),
+  "inbox.readall": (d) => { const live = d.state.live; if (live !== null) void d.markRead(inboxOf(live)); },
   box: (d) => d.focusWin("composer"),
   escape: (d) => escape(d),
   "comment.line": (d) => commentAtCursor(d),

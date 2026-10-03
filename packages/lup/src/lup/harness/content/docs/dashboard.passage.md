@@ -598,35 +598,59 @@ member id — the id every verb accepts and no rename changes
 agent has no box: a message to it would wait for nobody, and the box's place
 names its parent session instead. `Space a p` asks a subagent's parent session
 what it is doing, in words written for the operator, and a repository's page
-broadcasts its box to every working member, one message each.
+broadcasts its box to every working member as one post, each woken.
+
+Beside the box, **Interrupt** (`Space a n`) sends its words, or standard ones
+where it is empty, with priority `now`, and **Redirect** sends them as a
+redirect. `Space a r` makes the box answer the last message between the agent
+and the operator, and `r` or `Enter` on a message the one under the cursor,
+in its thread; the box names what it answers, and `✕` lets it go. `Space a w`
+wakes the agent, `Space a R` (`:rename`) renames it, and `Space a x` stops its
+runtime: the first press says which process it would signal, and only a
+second within ten seconds, or `:stop!`, sends it. `T` reads the agent's whole
+transcript in a float, from its latest page back, following it while it
+shows. The context lists every one of these on the agent, with where it runs —
+its runtime, who spawned it, and the process the dashboard could stop or why
+not — and its latest calls. On a phone, **Act** under the agent opens the same
+list.
 
 The Inbox lists every message addressed to the operator, in every repository,
 newest first; `Enter` on one opens its sender with the box ready to write
 back. The operator's own row shows what was sent to them, what they sent
 lately, and their working verbs.
 
-Threads reads the same mail as discussions. A post is one message, or the
-copies one send left in several mailboxes — the same sender, text and time —
-shown once with every recipient and whether each took it. Posts that reply to
+Threads reads the same mail as discussions. A post is the copies one send
+left in several mailboxes, sharing one post id, shown once with every
+recipient and whether each took it. Posts sharing a thread, or replying to
 each other through `in_reply_to`, transitively, are a thread, titled by its
 first post's first line; the posts between the same members that reply to
-nothing are their running conversation, titled by who is in it. Its list holds
+nothing are their running conversation, titled by who is in it. A message the
+record kept from before posts had ids is one post with the copies sharing its
+sender, text and time, threaded by its `in_reply_to` alone. Its list holds
 every discussion in every repository, newest first, `●` where something in it
 is unread to the operator; its buffer shows one whole: each post with its
 author's standing, every recipient marked taken `✓`, waiting `◷` or unread to
 the operator, the post it answers, and its text. Its context names who is in
 it, each one step from their agent. `r` or `Enter` on a post makes the box
-answer that post, `c` goes to the box, `Space f t` finds a discussion, and
-`:threads` opens the view.
+answer that post, `c` goes to the box, `Alt+Enter` posts to everyone in the
+discussion through its thread, `Space f t` finds a discussion, and `:threads`
+opens the view.
 
 The dashboard's server serves the rest of supervising — a reply in a
 message's thread, a redirect, an interrupt, a wake without a message, a whole
 transcript, renaming and stopping an agent, standing notices, the operator's
 own description and holds, marking the inbox read, and a post into a
 discussion to everyone in it — as the sections below say, and the whole state
-the stream hands a tab names each (`served`). The page does not call them
-yet: it lists each with the route it needs, and a key, button or command
-reaching one is refused naming it, the draft kept.
+the stream hands a tab names each (`served`). The page reads that: an action
+whose piece a dashboard running older code does not serve is refused naming
+the route it needs, the draft kept, and the help, the finder and the context
+mark it not served here. The operator's own verbs are commands: `:describe`,
+`:notice` and `:unnotice`, `:lock` and `:release` (a relative path is the
+repository's checkout's), `:redirect`, `:read` and `:read all` (`x` and `X`
+in the inbox), and `:wake`, `:nudge`, `:interrupt`, `:rename`, `:transcript`
+and `:stop` for an agent. Their own row shows what they are on, what they
+hold and the notices standing, each held path and notice a click from being
+given back or withdrawn.
 
 ## A reply, a redirect, an interrupt
 

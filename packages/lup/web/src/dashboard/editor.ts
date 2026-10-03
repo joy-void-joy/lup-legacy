@@ -2,14 +2,13 @@
 // the context's item; folds, the jumps between files, exceptions, markers and
 // what the policy asked about; line comments and visual ranges; splits; the
 // `/` search; hover. Each reads the controller's state and moves it.
-import type { ReviewRoot } from "../generated/views";
+import type { LiveMessage, ReviewRoot } from "../generated/views";
 import { lastColumn, lineText, words } from "./caret";
 import { draftId, type Dashboard } from "./dashboard";
 import { basename, changeStop, exceptionRules, exceptionStops, judgedOf, lineCount, markerLabel, markerStops, needsReview, rowText, type PaneView, type Row, type Side } from "./review";
 import type { Win } from "./state";
-import { activityBrief, inboxOf, memberById, type TreeItem } from "./supervision";
-import { unserved } from "./served";
-import { discussionLine, memberName, type Post } from "./threads";
+import { activityBrief, counterpart, inboxOf, memberById, type TreeItem } from "./supervision";
+import { discussionLine, type Post } from "./threads";
 
 type How = "nearest" | "center" | "top";
 
@@ -826,39 +825,52 @@ export function enter(d: Dashboard): void {
 
 /** `r` or Enter on a post: the box under the discussion answers that post rather than the last. */
 export function replyToPost(d: Dashboard, post: Post): void {
-  d.set({ threadReply: post.copies[0]?.id ?? post.id });
+  d.set({ threadReply: post.id });
   d.focusWin("composer");
 }
 
-/** `r`: in a discussion, answer the post under the cursor; beside an agent, its message's thread, which needs new server work. */
+/** The box beside the agent a message is between, answering that message in its thread. */
+export function replyToMessage(d: Dashboard, message: LiveMessage): void {
+  const live = d.state.live;
+  const session = live === null ? undefined : counterpart(live, message);
+  if (session === undefined) { d.say("whoever wrote it is not on the roster this page holds", "err"); return; }
+  if (!session.running) { d.say(`${session.name || session.id} has stopped; nothing would read a reply`, "err"); return; }
+  d.set((state) => ({ replyTo: { ...state.replyTo, [session.key]: message.post || message.id } }));
+  d.openOther("member", session.key, "box");
+}
+
+/** `r`: in a discussion, answer the post under the cursor; beside an agent or in the inbox, the message under it, in its thread. */
 export function replyHere(d: Dashboard): void {
   const row = rowHere(d);
   if (row?.t === "post") { replyToPost(d, row.post); return; }
-  d.say(unserved("reply-thread"), "err");
+  if (row?.t === "mail") { replyToMessage(d, row.m); return; }
+  d.say("r answers the message under the cursor; put it on one first");
 }
 
-/** `T`: the transcript of the post's author in a discussion, of the agent in view elsewhere; reading one needs new server work. */
+/** `T`: the transcript of the post's author in a discussion, of the agent in view elsewhere. */
 export function transcriptHere(d: Dashboard): void {
   const row = rowHere(d);
   const live = d.state.live;
-  const author = row?.t === "post" && live !== null ? memberName(live, row.post.repository, row.post.sender) : memberHere(d)?.name ?? "";
-  d.say(`${author !== "" ? `${author}'s transcript ` : "a transcript "}${unserved("transcript")}`, "err");
+  const author = row?.t === "post" && live !== null ? memberById(live, row.post.repository, row.post.sender) : memberHere(d);
+  if (author === undefined) { d.say("choose an agent first (on the left, or Space fa)"); return; }
+  void d.openTranscript(author);
 }
 
-/** A message opens its sender, the box ready to write back; threading the reply needs new server work. */
-export function openMessage(d: Dashboard, message: import("../generated/views").LiveMessage): void {
+/** A message opens whoever it is between with you, the box ready to answer it in its thread. */
+export function openMessage(d: Dashboard, message: LiveMessage): void {
   const live = d.state.live;
   if (live === null) return;
-  const sender = live.sessions.get(`${message.repository}/${message.sender}`) ?? [...live.sessions.values()].find((each) => each.repository === message.repository && each.id === (message.sender === "user" ? message.recipient : message.sender));
-  if (sender === undefined) { d.openOther("repo", message.repository); return; }
-  d.openOther("member", sender.key, sender.running ? "box" : "normal");
+  const session = counterpart(live, message);
+  if (session === undefined) { d.openOther("repo", message.repository); return; }
+  if (session.running) replyToMessage(d, message);
+  else d.openOther("member", session.key, "normal");
 }
 
-/** `x`: delete a draft comment on a review; beside an agent or in the inbox, what needs new server work says so. */
+/** `x`: delete a draft comment on a review; beside an agent or in the inbox, mark the message to you under the cursor read. */
 export function xHere(d: Dashboard): void {
   if (d.centerKind() === "review") { deleteDraft(d); return; }
   const row = rowHere(d);
-  if (row?.t === "mail" && row.unread) { d.say(unserved("inbox-read"), "err"); return; }
+  if (row?.t === "mail" && row.unread) { void d.markRead([row.m]); return; }
   d.say("nothing to mark here: x marks a message read or deletes a draft comment");
 }
 

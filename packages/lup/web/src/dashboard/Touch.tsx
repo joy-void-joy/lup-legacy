@@ -7,11 +7,12 @@
 // runs on the desktop, and nothing is hover-only.
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import type { Answer, Dashboard } from "./dashboard";
-import { commitVisual, cancelVisual, gotoJudged, hover, moveAgent, moveException, moveFile, moveInbox, moveMarker, moveReview, rowsOf, setCursor, startVisual, toggleWhole, visualSpan } from "./editor";
+import { commitVisual, cancelVisual, gotoJudged, hover, moveAgent, moveException, moveFile, moveInbox, moveMarker, moveReview, rowHere, rowsOf, setCursor, startVisual, toggleWhole, transcriptHere, visualSpan } from "./editor";
 import { openCommand, runCommand } from "./commands";
 import { openFinder } from "./finder";
 import { askedBy, exceptionStops, headOf, headShort, judgedOf, markerStops, plural, stateLabel, stateSign, type Row } from "./review";
-import { unserved } from "./served";
+import { HANDLERS } from "./actions";
+import type { Feature } from "./served";
 import { VIEW_NAMES, VIEWS, type NavKind, type PageState } from "./state";
 import { GLYPH, inboxOf, kindWords, standing, unreadCount } from "./supervision";
 import { memberName } from "./threads";
@@ -102,9 +103,10 @@ export function ActionBar({ d, state }: { d: Dashboard; state: PageState }) {
         {nav(1, "Next review")}</div>;
     }
     case "member": return <div id="actionbar" aria-label="Actions">{nav(-1, "Previous agent")}<button type="button" onClick={() => d.focusWin("composer")}>Write</button>
-      <button type="button" onClick={() => d.say(unserved("transcript"), "err")}>Transcript</button>{nav(1, "Next agent")}</div>;
+      <button type="button" onClick={() => transcriptHere(d)}>Transcript</button>
+      <button type="button" onClick={() => d.set({ touch: { drawer: "", sheet: "agent" } })}>Act</button>{nav(1, "Next agent")}</div>;
     case "inbox": return <div id="actionbar" aria-label="Actions">{nav(-1, "Previous message")}<button type="button" onClick={() => d.focusWin("composer")}>Reply</button>
-      <button type="button" onClick={() => d.say(unserved("inbox-read"), "err")}>Mark read</button>{nav(1, "Next message")}</div>;
+      <button type="button" onClick={() => { const row = rowHere(d); if (row?.t === "mail") void d.markRead([row.m]); else d.say("put the cursor on a message first"); }}>Mark read</button>{nav(1, "Next message")}</div>;
     case "thread": return <div id="actionbar" aria-label="Actions">{nav(-1, "Previous discussion")}<button type="button" className="approve" onClick={() => d.focusWin("composer")}>Post to all</button>
       <button type="button" onClick={() => d.set({ touch: { drawer: "context", sheet: "" } })}>Who is in it</button>{nav(1, "Next discussion")}</div>;
     case "repo": return <div id="actionbar" aria-label="Actions">{nav(-1, "Previous agent")}<button type="button" onClick={() => d.focusWin("composer")}>Broadcast</button>{nav(1, "Next agent")}</div>;
@@ -126,11 +128,34 @@ export function TabBar({ d, state }: { d: Dashboard; state: PageState }) {
 
 const VERBS: Record<Answer, string> = { approve: "Approve", decline: "Decline", remark: "Send without deciding" };
 
+/** What the phone's agent sheet offers, each the catalog action a key runs, and what it needs from the server. */
+const AGENT_ACTS: { action: string; label: string; needs?: Feature }[] = [
+  { action: "agent.wake", label: "Wake it", needs: "bare-wake" },
+  { action: "agent.nudge", label: "Interrupt its turn (the box's words, or the standard ones)", needs: "interrupt" },
+  { action: "agent.reply", label: "Reply to its last message, in its thread", needs: "reply-thread" },
+  { action: "peer.redirect", label: "Redirect its next call…", needs: "redirect" },
+  { action: "agent.rename", label: "Rename it…", needs: "rename" },
+  { action: "agent.stop", label: "Stop its runtime (tap twice)", needs: "stop" },
+  { action: "agent.parent", label: "Ask its parent session about it" },
+];
+
 export function Sheet({ d, state }: { d: Dashboard; state: PageState }) {
   const sheet = state.touch.sheet;
   const close = () => d.set({ touch: { drawer: "", sheet: "" } });
   if (sheet === "" || sheet === "hover") return null;
   if (sheet === "nav") return <NavKinds d={d} state={state} />;
+  if (sheet === "agent") {
+    const session = state.live?.sessions.get(state.sel.key);
+    const act = (action: string) => () => { close(); HANDLERS[action]?.(d, 1, false); };
+    const lacking = (needs: Feature) => d.lacks(needs) !== "";
+    return <div id="sheet" role="dialog" aria-modal="true" aria-label="Act on the agent">
+      <h3>{session === undefined ? "Act on the agent" : `Act on ${session.name || session.id}`}</h3>
+      <div className="list">
+        {AGENT_ACTS.map(({ action, label, needs }) => <button key={action} type="button" disabled={needs !== undefined && lacking(needs)} title={needs === undefined ? "" : d.lacks(needs)} onClick={act(action)}>{label}</button>)}
+      </div>
+      <button type="button" className="big cancel" onClick={close}>Close</button>
+    </div>;
+  }
   if (sheet === "more") {
     const live = state.live;
     const run = (command: string) => () => { close(); runCommand(d, command); };

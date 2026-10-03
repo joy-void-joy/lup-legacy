@@ -1,4 +1,8 @@
-import type { KeyBindings, KeyLine, KeyTry, MessagePage, MessageRequest, ReplyOutcome, ReviewAnswer, ReviewDecision, ReviewDetail, ReviewHistory, ReviewRemarkRequest, ReviewSnapshot, SetupPane, StreamFrame } from "../generated/views";
+import type {
+  Broadcast, Claimed, ClaimRequest, Described, DescriptionRequest, FollowedFrom, FollowOutcome, FollowRequest, InboxRead, InboxReadRequest, KeyBindings, KeyLine, KeyTry,
+  LiveNotice, MessagePage, MessageRequest, NameRequest, PostOutcome, PostRequest, Released, Renamed, ReplyOutcome, ReviewAnswer, ReviewDecision, ReviewDetail,
+  ReviewHistory, ReviewRemarkRequest, ReviewSnapshot, SetupPane, Stopped, StreamFrame, TextRequest, TranscriptPage, Withdrawn,
+} from "../generated/views";
 
 /** Where this origin keeps the operator's capability, and the key a storage event names. */
 export const TOKEN_KEY = "lup-dashboard-token";
@@ -99,14 +103,90 @@ export async function remarkReview(key: string, remark: ReviewRemarkRequest, tok
   }))).json();
 }
 
+/** How a message reaches its agent: the post it answers, whether it redirects, and whether it interrupts the turn. */
+export type Sending = Partial<Omit<MessageRequest, "text">>;
+
+const repo = (repository: string) => `api/repositories/${encodeURIComponent(repository)}`;
+const agent = (repository: string, member: string) => `${repo(repository)}/sessions/${encodeURIComponent(member)}`;
+
 /** The operator's message to one session or subagent, addressed by its repository's key and its member id. */
-export async function sendReply(repository: string, member: string, text: string, token: string): Promise<ReplyOutcome> {
-  const request: MessageRequest = { text, in_reply_to: "", redirect: false, priority: "next" };
-  return (await accepted(await fetch(`api/repositories/${encodeURIComponent(repository)}/sessions/${encodeURIComponent(member)}/messages`, {
-    method: "POST",
-    headers: { ...authorization(token), "Content-Type": "application/json" },
-    body: JSON.stringify(request),
-  }))).json();
+export async function sendReply(repository: string, member: string, text: string, token: string, sending: Sending = {}): Promise<ReplyOutcome> {
+  const request: MessageRequest = { text, in_reply_to: "", redirect: false, priority: "next", ...sending };
+  return posted(`${agent(repository, member)}/messages`, request, token);
+}
+
+/** Make an agent look, with whatever waits for it, or a line saying the operator asked it to. */
+export async function wakeAgent(repository: string, member: string, token: string): Promise<ReplyOutcome> {
+  return posted(`${agent(repository, member)}/wake`, {}, token);
+}
+
+/** What the agent is called from now on. */
+export async function renameAgent(repository: string, member: string, name: string, token: string): Promise<Renamed> {
+  const request: NameRequest = { name };
+  return posted(`${agent(repository, member)}/name`, request, token);
+}
+
+/** End an agent's runtime, where the dashboard can be sure which process it is. */
+export async function stopAgent(repository: string, member: string, token: string): Promise<Stopped> {
+  return posted(`${agent(repository, member)}/stop`, {}, token);
+}
+
+/** One post to every working member of a repository, each woken as a message is. */
+export async function broadcastTo(repository: string, text: string, token: string): Promise<Broadcast> {
+  const request: TextRequest = { text };
+  return posted(`${repo(repository)}/broadcast`, request, token);
+}
+
+/** A standing notice every session of a repository reads at the head of each prompt. */
+export async function postNotice(repository: string, text: string, token: string): Promise<LiveNotice> {
+  const request: TextRequest = { text };
+  return posted(`${repo(repository)}/notices`, request, token);
+}
+
+/** Take one standing notice down. */
+export async function withdrawNotice(repository: string, id: string, token: string): Promise<Withdrawn> {
+  return deleted(`${repo(repository)}/notices/${encodeURIComponent(id)}`, null, token);
+}
+
+/** What the operator is on, said on their row in every repository served. */
+export async function describeYou(text: string, token: string): Promise<Described> {
+  const request: DescriptionRequest = { text };
+  return posted("api/user/description", request, token);
+}
+
+/** Hold an absolute path as the operator: an agent writing under it is asked first. */
+export async function holdPath(repository: string, path: string, token: string): Promise<Claimed> {
+  const request: ClaimRequest = { path };
+  return posted(`${repo(repository)}/claims`, request, token);
+}
+
+/** Give back a path the operator holds. */
+export async function releasePath(repository: string, path: string, token: string): Promise<Released> {
+  const request: ClaimRequest = { path };
+  return deleted(`${repo(repository)}/claims`, request, token);
+}
+
+/** Take exactly these messages out of the operator's mailbox, as read. */
+export async function readInbox(repository: string, ids: [string, ...string[]], token: string): Promise<InboxRead> {
+  const request: InboxReadRequest = { ids };
+  return posted(`${repo(repository)}/inbox/read`, request, token);
+}
+
+/** One post into a discussion, to everyone in it, answering its latest post or the one named. */
+export async function postInto(repository: string, thread: string, request: PostRequest, token: string): Promise<PostOutcome> {
+  return posted(`${repo(repository)}/threads/${encodeURIComponent(thread)}/posts`, request, token);
+}
+
+/** One page of an agent's transcript, its lines ending by byte `before`, or its latest page. */
+export async function readTranscript(repository: string, member: string, token: string, before: number | null = null, signal?: AbortSignal): Promise<TranscriptPage> {
+  const query = before === null ? "" : `?${new URLSearchParams({ before: String(before) })}`;
+  return (await accepted(await fetch(`${agent(repository, member)}/transcript${query}`, { headers: authorization(token), signal }))).json();
+}
+
+/** Follow these transcripts from where the tab has read each, renewed while the tab shows them. */
+export async function followTranscripts(sessions: FollowedFrom[], token: string): Promise<FollowOutcome> {
+  const request: FollowRequest = { sessions };
+  return posted("api/transcripts/follow", request, token);
 }
 
 /**
@@ -183,6 +263,15 @@ async function posted<Reply>(path: string, body: unknown, token: string): Promis
     method: "POST",
     headers: { ...authorization(token), "Content-Type": "application/json" },
     body: JSON.stringify(body),
+  }))).json();
+}
+
+/** A `DELETE`, held to the same capability, origin and JSON a `POST` is; *body* null sends none. */
+async function deleted<Reply>(path: string, body: unknown, token: string): Promise<Reply> {
+  return (await accepted(await fetch(path, {
+    method: "DELETE",
+    headers: { ...authorization(token), "Content-Type": "application/json" },
+    ...(body === null ? {} : { body: JSON.stringify(body) }),
   }))).json();
 }
 
