@@ -11,7 +11,7 @@ from pathlib import Path
 import pytest
 import sh
 
-from lup.devtools.dev import drift_fold
+import lup.providers.assets.drift_fold as drift_fold
 from lup.devtools.gitguard import TEST_IDENTITY
 from lup.execution.git import GitError, Repository
 from lup.execution.process import LocalProcessLauncher
