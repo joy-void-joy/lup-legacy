@@ -16,6 +16,7 @@ import sh
 import typer
 
 from lup.devtools import sync
+from lup.diagnostics import Refusal
 from lup.execution.git import Repository
 from tests.unit.repos import commit_file, git_in, initialized_repo
 
@@ -181,7 +182,7 @@ def test_a_checkpoint_that_names_no_commit_is_refused_rather_than_recorded(
     """
     path, _commits = upstream
 
-    with pytest.raises(typer.BadParameter):
+    with pytest.raises(Refusal):
         sync.resolved_checkpoint(path, "no-such-ref")
 
 
@@ -589,9 +590,9 @@ def test_a_transport_naming_another_repository_is_refused_where_it_is_written(
     with pytest.raises(typer.Exit):
         sync.set_remote("up", "git@example.test:someone-else/repo.git")
 
-    out = capsys.readouterr().out
-    assert "does not name the repository 'up' is registered as" in out
-    assert "register it under its own name" in out
+    said = capsys.readouterr().err
+    assert "does not name the repository 'up' is registered as" in said
+    assert "register it under its own name" in said
     assert sync.local_file().exists() is False
 
 

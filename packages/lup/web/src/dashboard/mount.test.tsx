@@ -138,7 +138,11 @@ describe("dashboard page", () => {
   const queue = () => ({ roots: [root], reviews: rows, errors: [], history: settled().length });
   const snapshot = () => sent({ type: "snapshot", repositories: [repository], sessions, messages, extents, reviews: queue(), code, keys, users, served, budget });
   const deliver = async (text: string) => { await act(async () => stream?.enqueue(new TextEncoder().encode(text))); };
-  const posted = () => requests.filter((request) => request.method === "POST");
+  /** What the page wrote: its posts, a question about code being a read that posts only to carry the Origin check. */
+  const posted = () => requests.filter((request) => request.method === "POST" && !request.path.startsWith("api/code/"));
+  const asked = (route: string) => requests.filter((request) => request.path === `api/code/${route}`);
+  /** What the fixture's language server answers, by route. */
+  let answers: Record<string, unknown> = {};
 
   beforeEach(() => {
     const first = review();
@@ -149,6 +153,7 @@ describe("dashboard page", () => {
     streamStatus = 200;
     stream = null;
     requests = [];
+    answers = {};
     sessions = [session("lead"), session("lead-a1", { parent: "lead", kind: "subagent", name: "scout" }), session("old", { running: false, summary: "Handed back." })];
     messages = [];
     extents = [{ repository: "r1", earlier: 0 }];
@@ -215,6 +220,10 @@ describe("dashboard page", () => {
       }
       const supervising = supervised(path, options?.method ?? "GET", body);
       if (supervising !== null) return supervising;
+      if (path.startsWith("api/code/")) {
+        const answer = answers[path.slice("api/code/".length)];
+        return Response.json(answer ?? { served: false, server: "", why: "no language server reads this fixture", markdown: "", locations: [], types: [], modifiers: [], data: [], path: "", text: "" });
+      }
       return Response.json({ detail: `Unknown fixture route ${path}` }, { status: 404 });
     }, { preconnect() {} });
   });
@@ -309,11 +318,13 @@ describe("dashboard page", () => {
     const markers = [...page.root.querySelectorAll(".pane .r.cf-at")];
     expect(markers.map((row) => row.querySelector(".vt[class*='cfs-']")?.textContent)).toEqual(["◂ ours · HEAD", "◂ theirs · feat-x", "◂ end of theirs · feat-x"]);
     expect(markers.every((row) => row.classList.contains("del"))).toBe(true);
+    // The TypeScript grammar arrives after the first paint, which draws the file plain until it has.
+    await until(() => page.root.querySelector(".pane .r.cf-theirs:not(.cf-at) .sy-kw") !== null, "TypeScript's colours");
     const theirs = one(page.root, ".pane .r.cf-theirs:not(.cf-at)");
-    expect(theirs.querySelector(".hljs-keyword")?.textContent).toBe("const");
+    expect(theirs.querySelector(".sy-kw")?.textContent).toBe("const");
     const shared = [...page.root.querySelectorAll(".pane .r.ctx")].find((row) => row.textContent?.includes("kept short"));
     expect(shared?.classList.contains("cf")).toBe(false);
-    expect(shared?.querySelector(".hljs-comment")?.textContent).toContain("kept short");
+    expect(shared?.querySelector(".sy-com")?.textContent).toContain("kept short");
   });
 
   test("Ctrl+Enter approves exactly what the page showed, comments included, and the next review opens in its box", async () => {
@@ -543,7 +554,7 @@ describe("dashboard page", () => {
   });
 
 
-  const supervisedPosts = () => requests.filter((request) => request.method !== "GET" && request.path !== "api/stream");
+  const supervisedPosts = () => requests.filter((request) => request.method !== "GET" && request.path !== "api/stream" && !request.path.startsWith("api/code/"));
   const said = () => [...document.querySelectorAll("#cmdline, #notify, [role=status]")].map((node) => node.textContent ?? "").join(" ");
 
   test("an agent is woken, interrupted, renamed and stopped from its keys, each through its route", async () => {
@@ -867,5 +878,102 @@ describe("dashboard page", () => {
     await until(() => posted().some((request) => request.path === "api/keys/try"), "the tried line");
     expect(posted().find((request) => request.path === "api/keys/try")?.body).toEqual({ lines: [{ action: "search.next", keys: ["ü"] }] });
     await until(() => (page.root.querySelector("#cmd-msg")?.textContent ?? "").includes("in this tab"), "what :map says");
+  });
+
+  /** The review proposing a Python file that uses a class from beside it; its after side's third line is `value = Record()`. */
+  function python() {
+    const proposal = review();
+    const [base] = proposal.files;
+    if (base === undefined) throw new Error("the fixture review has a file");
+    proposal.files = [{
+      ...base, before: "value = None\n", after: "from models import Record\n\nvalue = Record()\n", additions: 3, deletions: 1,
+      hunks: [{ header: "@@ -1 +1,3 @@", old_start: 1, old_end: 1, new_start: 1, new_end: 3, lines: [
+        { kind: "remove", text: "value = None\n", old_line: 1, new_line: null, suppression: false },
+        { kind: "add", text: "from models import Record\n", old_line: null, new_line: 1, suppression: false },
+        { kind: "add", text: "\n", old_line: null, new_line: 2, suppression: false },
+        { kind: "add", text: "value = Record()\n", old_line: null, new_line: 3, suppression: false },
+      ] }],
+    }];
+    details.set("tree-q1", proposal);
+  }
+  const AFTER = { review: "tree-q1", side: "after", checkout: "/project", path: "/project/file.py" };
+  const cursorText = () => shown?.root.querySelector(".pane .r.cur .tx")?.textContent ?? "";
+
+  /** Into the buffer, on `Record` of the after side's third line. */
+  async function onRecord() {
+    await key("Escape", {}, note());
+    for (const each of ["3", "G", "0", "w", "w"]) await key(each, {}, document.body);
+    await until(() => cursorText().startsWith("value = Record()"), "the cursor on the third line");
+  }
+
+  test("K on a name in code asks its language server and shows its type and docs; on a file's header K keeps the policy's sentence", async () => {
+    python();
+    answers.hover = { served: true, server: "basedpyright", why: "", markdown: "```python\nclass Record()\n```\n---\nA record somebody keeps." };
+    const page = await landed();
+    await onRecord();
+    await key("K", {}, document.body);
+    await until(() => asked("hover").length === 1, "the hover asked for");
+    expect(asked("hover")[0]?.body).toEqual({ source: AFTER, line: 3, column: 8 });
+    await until(() => (page.root.querySelector("#hover")?.textContent ?? "").includes("A record somebody keeps."), "the server's answer");
+    await until(() => page.root.querySelector("#hover .hv-pre .sy-kw")?.textContent === "class", "the signature coloured as Python");
+    expect(page.root.querySelector("#hover")?.textContent).toContain("basedpyright");
+    await key("Escape", {}, document.body);
+    await key("g", {}, document.body);
+    await key("g", {}, document.body);
+    await until(() => (page.root.querySelector(".pane .r.cur")?.classList.contains("fh") ?? false), "the file's header");
+    await key("K", {}, document.body);
+    await until(() => (page.root.querySelector("#hover")?.textContent ?? "").includes("This file requires approval."), "the policy's sentence");
+    expect(asked("hover")).toHaveLength(1);
+  });
+
+  test("gd opens the definition read-only in this window, and Ctrl+o comes back to where it stood", async () => {
+    python();
+    answers.definition = { served: true, server: "basedpyright", why: "", locations: [{ path: "/project/models.py", line: 2, column: 6, preview: "class Record:" }] };
+    answers.text = { served: true, server: "", why: "", path: "/project/models.py", text: "# models\nclass Record:\n    pass\n" };
+    const page = await landed();
+    await onRecord();
+    await key("g", {}, document.body);
+    await key("d", {}, document.body);
+    await until(() => page.root.querySelector(".pane-title.peek") !== null, "the definition in the window");
+    expect(asked("definition")[0]?.body).toEqual({ source: AFTER, line: 3, column: 8 });
+    expect(asked("text")[0]?.body).toEqual({ review: "", side: "after", checkout: "/project", path: "/project/models.py" });
+    expect(page.root.querySelector(".pane-title.peek")?.textContent).toContain("Record · models.py:2 · as it stands · read-only");
+    expect(page.root.querySelectorAll(".pane .r.code")).toHaveLength(3);
+    await until(() => cursorText() === "class Record:", "the cursor on the definition");
+    await key("o", { ctrlKey: true }, document.body);
+    await until(() => page.root.querySelector(".pane-title.peek") === null, "the review again");
+    expect(page.root.querySelectorAll(".pane .r.code")).toHaveLength(0);
+    expect(cursorText()).toStartWith("value = Record()");
+  });
+
+  test("gr lists every use in the context, focus there, and Enter opens one in the window", async () => {
+    python();
+    answers.references = { served: true, server: "basedpyright", why: "", locations: [
+      { path: "/project/file.py", line: 3, column: 8, preview: "value = Record()" },
+      { path: "/project/other.py", line: 7, column: 4, preview: "    Record()" },
+    ] };
+    const page = await landed();
+    await onRecord();
+    await key("g", {}, document.body);
+    await key("r", {}, document.body);
+    await until(() => page.root.querySelectorAll(".cx.refs .it").length === 2, "the uses listed");
+    expect(page.root.querySelector(".cx.refs")?.textContent).toContain("uses of Record");
+    expect(page.root.querySelector(".cx.refs")?.textContent).toContain("other.py:7");
+    await until(() => status().includes("in the context"), "focus in the context");
+    await key("Enter", {}, document.body);
+    await until(() => page.root.querySelector(".pane-title.peek") !== null, "the use opened");
+    expect(page.root.querySelector(".pane-title.peek")?.textContent).toContain("the review's after");
+    expect(asked("text")).toHaveLength(0);
+    await until(() => cursorText().startsWith("value = Record()"), "the cursor on the use");
+  });
+
+  test("a language server's tokens colour a name by what it is, over tree-sitter's guess", async () => {
+    python();
+    answers.tokens = { served: true, server: "basedpyright", why: "", types: ["class", "function"], modifiers: [], data: [2, 8, 6, 1, 0] };
+    const page = await landed();
+    const record = () => [...page.root.querySelectorAll(".pane .r.add .tx span")].find((span) => span.textContent === "Record" && span.closest(".r")?.textContent?.includes("value"));
+    await until(() => record()?.getAttribute("data-s") === "lsp.function", "the server's colour");
+    expect(record()?.className).toBe("sy-fn");
+    expect(asked("tokens").map((request) => (request.body as { side: string }).side).sort()).toEqual(["after", "before"]);
   });
 });

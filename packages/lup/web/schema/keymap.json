@@ -1925,19 +1925,19 @@
     {
       "name": "judged",
       "keys": [
-        "gd"
+        "g?"
       ],
-      "description": "jump to what the policy asks about; again for the next part",
+      "description": "jump to what the policy asks about (the lines marked ?); again for the next part",
       "group": "editor",
       "mode": "normal",
       "scope": "review",
       "focus": "any",
-      "stands": "new",
+      "stands": "changed",
       "needs": null,
       "also": [],
       "hidden": false,
       "note": "",
-      "was": ""
+      "was": "gd, which now goes to a definition"
     },
     {
       "name": "fold.toggle",
@@ -2034,10 +2034,61 @@
       "keys": [
         "K"
       ],
-      "description": "hover: what is attached to this line, file, step, message, agent or tree row",
+      "description": "what is this: on code, the name under the cursor as its language server describes it (type, signature, docs); on anything else, what is attached to the line, file, step, message, agent or tree row",
       "group": "editor",
       "mode": "normal",
       "scope": "anywhere",
+      "focus": "any",
+      "stands": "changed",
+      "needs": null,
+      "also": [],
+      "hidden": false,
+      "note": "on code it asks the language server",
+      "was": ""
+    },
+    {
+      "name": "definition",
+      "keys": [
+        "gd"
+      ],
+      "description": "go to the definition of the name under the cursor, shown read-only in the buffer; Ctrl+o comes back",
+      "group": "editor",
+      "mode": "normal",
+      "scope": "review",
+      "focus": "buffer",
+      "stands": "new",
+      "needs": null,
+      "also": [],
+      "hidden": false,
+      "note": "",
+      "was": ""
+    },
+    {
+      "name": "references",
+      "keys": [
+        "gr"
+      ],
+      "description": "list every use of the name under the cursor in the context; Enter on one opens it",
+      "group": "editor",
+      "mode": "normal",
+      "scope": "review",
+      "focus": "buffer",
+      "stands": "new",
+      "needs": null,
+      "also": [],
+      "hidden": false,
+      "note": "",
+      "was": ""
+    },
+    {
+      "name": "jump.back",
+      "keys": [
+        "<C-o>"
+      ],
+      "description": "back to where gd or a reference jumped from",
+      "group": "editor",
+      "mode": "normal",
+      "scope": "review",
       "focus": "any",
       "stands": "new",
       "needs": null,

@@ -333,7 +333,11 @@ def swept(root: Path, now: datetime | None = None) -> list[Hold]:
 
 
 def refusal(holds: list[Hold]) -> str:
-    """The one sentence a call refused at the hook's limit is told."""
+    """Why a call refused at the hook's limit was refused, in the hold's own words.
+
+    The refusal's one clause: the hook that refuses gives it the diagnostic
+    shape every refusal speaks, with :data:`~.store.RETRY` its way through.
+    """
     said = text(holds[0].get("said")) if holds else ""
     return f"{said or PAUSED_SAID}; {UNTRIED}"
 

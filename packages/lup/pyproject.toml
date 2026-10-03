@@ -44,6 +44,7 @@ claude = [
 codex = []
 docker = ["docker>=7.1.0"]
 web = [
+    "basedpyright>=1.40.1",
     "fastapi>=0.139.0",
     "uvicorn[standard]>=0.49.0",
 ]

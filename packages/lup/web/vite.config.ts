@@ -6,10 +6,37 @@
 import { defineConfig, parseAst } from "vite";
 import type { Plugin } from "vite";
 import react from "@vitejs/plugin-react";
+import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 
 /** The surfaces whose page is also exported as one self-contained file. */
 const EXPORTED = ["explorer"];
+
+/** The suffix that imports a file's bytes as base64 text. */
+const BASE64 = "?base64";
+
+/**
+ * A file imported as `<file>?base64` becomes a module whose default export
+ * is its bytes in base64: how a WASM reaches a bundle that holds text alone.
+ * Imported dynamically, each is a chunk of its own, fetched only when asked
+ * for.
+ */
+export function base64Files(): Plugin {
+  return {
+    name: "lup:base64",
+    enforce: "pre",
+    async resolveId(source, importer) {
+      if (!source.endsWith(BASE64)) return null;
+      const found = await this.resolve(source.slice(0, -BASE64.length), importer, { skipSelf: true });
+      return found === null ? null : `${found.id}${BASE64}`;
+    },
+    async load(id) {
+      if (!id.endsWith(BASE64)) return null;
+      const bytes = await readFile(id.slice(0, -BASE64.length));
+      return `export default ${JSON.stringify(bytes.toString("base64"))};`;
+    },
+  };
+}
 
 /** One emitted file by name, with the text it holds. */
 export interface Emitted {
@@ -178,7 +205,7 @@ export default defineConfig(({ mode }) => {
     // Relative asset URLs, so a bundle serves from any prefix and an exported
     // single file needs no origin at all.
     base: "./",
-    plugins: [react(), inlineSafe(EXPORTED.includes(surface))],
+    plugins: [react(), base64Files(), inlineSafe(EXPORTED.includes(surface))],
     build: {
       outDir: resolve(__dirname, "out", surface),
       emptyOutDir: true,
@@ -188,10 +215,13 @@ export default defineConfig(({ mode }) => {
       // ships a large one.
       assetsInlineLimit: 1 << 20,
       sourcemap: false,
-      // One script and one stylesheet per surface, so an export can carry a
-      // surface whole: a chunk loaded by relative URL has no server to load
-      // it from once the page is a file.
-      rollupOptions: { output: { inlineDynamicImports: true } },
+      // A surface that exports is one script and one stylesheet, so its
+      // export can carry it whole: a chunk loaded by relative URL has no
+      // server to load it from once the page is a file. A served surface
+      // splits what it imports dynamically into chunks of their own — the
+      // dashboard's grammars, each a WASM carried inline as base64 text —
+      // fetched from its `assets/` only once the page asks for one.
+      rollupOptions: { output: { codeSplitting: !EXPORTED.includes(surface) } },
     },
   };
 });

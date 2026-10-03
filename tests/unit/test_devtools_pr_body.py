@@ -139,29 +139,29 @@ class TestPrCreate:
         assert resolve_body(None, source) == written
 
     def test_body_and_body_file_together_refused(self, tmp_path: Path) -> None:
-        import typer
-
         from lup.devtools.dev.pr import resolve_body
+        from lup.diagnostics import Refusal
 
         source = tmp_path / "body.md"
         source.write_text("from the file", encoding="utf-8")
 
-        with pytest.raises(typer.BadParameter):
+        with pytest.raises(Refusal) as refused:
             resolve_body("inline", source)
+        assert refused.value.exit_code == 2
 
     def test_neither_body_refused(self) -> None:
-        import typer
-
         from lup.devtools.dev.pr import resolve_body
+        from lup.diagnostics import Refusal
 
-        with pytest.raises(typer.BadParameter):
+        with pytest.raises(Refusal) as refused:
             resolve_body(None, None)
+        assert refused.value.exit_code == 2
 
     def test_unreadable_body_file_names_the_path(self, tmp_path: Path) -> None:
-        import typer
-
         from lup.devtools.dev.pr import resolve_body
+        from lup.diagnostics import Refusal
 
         missing = tmp_path / "absent.md"
-        with pytest.raises(typer.BadParameter, match="absent.md"):
+        with pytest.raises(Refusal) as refused:
             resolve_body(None, missing)
+        assert refused.value.said["what"] == str(missing)

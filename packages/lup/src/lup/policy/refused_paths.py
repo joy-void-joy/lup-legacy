@@ -15,6 +15,7 @@ from collections.abc import Sequence
 
 from pydantic import BaseModel, Field, field_validator
 
+from lup.policy.kernel.diagnostic import Step, step
 from lup.policy.kernel.rows import RefusedPathRow
 
 
@@ -38,7 +39,7 @@ class RefusedPaths(BaseModel, frozen=True):
     paths: list[str] = Field(min_length=1)
     exempt: list[str] = []
     reason: str = Field(min_length=1)
-    recovery: str = Field(min_length=1)
+    recovery: list[Step] = Field(min_length=1)
 
     @field_validator("paths", "exempt")
     @classmethod
@@ -116,11 +117,15 @@ def credential_files(
     return RefusedPaths(
         paths=[*paths, *also],
         exempt=list(exempt),
-        reason="this path holds a key or a login, and reading it writes the"
-        " secret into this transcript",
-        recovery="Let the program that uses it read it -- ssh, git, gh and the"
-        " cloud clients each do -- and ask the user for anything that needs"
-        " its contents.",
+        reason="holds a key or a login, and reading it writes the secret into"
+        " this transcript",
+        recovery=[
+            step(
+                "let the program that uses it read it: ssh, git, gh and the cloud"
+                " clients each do"
+            ),
+            step("ask the user for anything that needs its contents"),
+        ],
     )
 
 

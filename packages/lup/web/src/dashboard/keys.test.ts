@@ -113,7 +113,10 @@ describe("the keymap", () => {
     expect(sequencer.press("g", bindings)).toEqual({ kind: "pending", exact: null });
     expect(sequencer.shown()).toBe("g");
     const done = sequencer.press("d", bindings);
-    expect(done.kind === "run" && done.bound.action.name === "judged").toBe(true);
+    expect(done.kind === "run" && done.bound.action.name === "definition").toBe(true);
+    sequencer.press("g", bindings);
+    const asked = sequencer.press("?", bindings);
+    expect(asked.kind === "run" && asked.bound.action.name === "judged").toBe(true);
     expect(sequencer.press("<leader>", bindings).kind).toBe("pending");
     expect(sequencer.press("w", bindings).kind).toBe("pending");
     expect(sequencer.press("<BS>", bindings).kind).toBe("pending");

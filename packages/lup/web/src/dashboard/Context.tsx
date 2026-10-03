@@ -6,7 +6,7 @@
 import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import type { AgentMeter, BudgetView, LiveSession } from "../generated/views";
 import type { Dashboard } from "./dashboard";
-import { gotoJudged, moveException, moveMarker, reveal, jumpTo, rowsOf } from "./editor";
+import { gotoJudged, moveException, moveMarker, openLocation, reveal, jumpTo, rowsOf } from "./editor";
 import { askedBy, basename, checkoutLabel, EFFECT_SIGN, exceptionRules, exceptionStops, exceptionsOf, headOf, headText, judgedOf, lineSummary, MARKER_LETTER, markerLabel, markerStops, needsReview, plural, relative, SOURCES, staleSentences, stateClass, stateLabel, stateSign } from "./review";
 import { HANDLERS } from "./actions";
 import type { Feature } from "./served";
@@ -46,6 +46,7 @@ function ReviewContext({ d, state }: { d: Dashboard; state: PageState }) {
   const parent = d.parentName(row, state);
   const asker = d.asker(row, state);
   const judged = detail === null ? [] : judgedOf(detail, row);
+  const refs = state.refs?.owner === row.key ? state.refs : null;
   const full = d.ui(row.key, state).full;
   const notices = [
     ...(row.stale.length > 0 ? [<div key="stale" className="notice err">Retired as stale: {staleSentences(row).join("; ")}.</div>] : []),
@@ -55,7 +56,14 @@ function ReviewContext({ d, state }: { d: Dashboard; state: PageState }) {
   ];
   const sending = state.sending.get(row.key);
   const thread = detail === null ? [] : sending === undefined ? detail.thread : [...detail.thread, sending];
+  // First, so `gr` lands focus on its first use: the context's items are numbered as they are made.
+  const references = refs === null ? null : <section className="cx refs"><h3>{refs.why.endsWith("definitions") ? "definitions" : "uses"} of <span className="s-name">{refs.at.name}</span> <span className="k">Enter opens · {d.keymap.spoken("jump.back")} back</span></h3>
+    {refs.locations === null && <p className="muted">asking the language server…</p>}
+    {refs.locations !== null && refs.locations.length === 0 && <p className="muted">{refs.why}</p>}
+    {(refs.locations ?? []).map((location) => item(() => void openLocation(d, refs.at, location), <><span className="info">→</span> {relative(location.path, target)}:{location.line}<br /><span className="muted">{location.preview.trim()}</span></>))}
+  </section>;
   return <>
+    {references}
     <section className="cx cxhead">
       <div className="kind"><span className={`st-${stateClass(row)}`}>{stateSign(row)} {stateLabel(row)}</span> · {headText(headOf(entry))}</div>
       <div className="title" title={`${target}\n${row.title}`}><span className="muted">{checkoutLabel(target, root)}:</span> {row.title}</div>
@@ -65,7 +73,7 @@ function ReviewContext({ d, state }: { d: Dashboard; state: PageState }) {
       {detail?.question.account.map((said, index) => <div key={index} className="said-by"><p className="src">{SOURCES[said.source] ?? said.source}</p>
         <Clamp d={d} narrow={state.narrow} open={state.unclamped.has(`said:${row.key}:${index}`)} id={`said:${row.key}:${index}`} as="p"><span className="prose">{said.text}</span></Clamp></div>)}
     </section>
-    {judged.length > 0 && <section className="cx"><h3>the policy asks about <span className="k">gd</span></h3><p className="warn">{row.rule || "unattributed"}</p>
+    {judged.length > 0 && <section className="cx"><h3>the policy asks about <span className="k">{d.keymap.spoken("judged")}</span></h3><p className="warn">{row.rule || "unattributed"}</p>
       {judged.map((each, index) => {
         const where = each.kind === "segment" ? `step ${each.si + 1}: ${each.segment.command}` : each.kind === "file" ? `${relative(each.file.path, target)}${each.lines.length > 0 ? ` · ${lineSummary(each.lines)}` : ""}` : "the command line as a whole";
         return item(() => gotoJudged(d, index), <><span className="warn">?</span> {where}<br /><span className="muted">{each.reason || row.reason}</span></>);

@@ -5,21 +5,28 @@
 // state is told by colour alone: a line inside a conflict a merge left is
 // barred by its side — ours solid, the ancestor dotted, theirs double — and
 // each marker line names the side it opens or closes after it.
-import { memo, useEffect, useLayoutEffect, useRef, type ReactNode } from "react";
+import { memo, useEffect, useLayoutEffect, useMemo, useRef, type ReactNode } from "react";
 import type { ReviewFile } from "../generated/views";
 import { caretAt, columnAt, lastColumn, lineText } from "./caret";
 import { standingWords } from "./conflicts";
-import type { Dashboard } from "./dashboard";
-import { fold, pickLine, placeCursor, setCursor } from "./editor";
-import { highlightedLines, languageFor, type Line, type Token } from "./highlight";
+import { semanticKey, type Dashboard } from "./dashboard";
+import { askHover, codeAt, fold, pickLine, placeCursor, setCursor } from "./editor";
+import { highlightedLines, languageFor, useGrammars, type Line, type Paint, type Token } from "./highlight";
 import { EFFECT_SIGN, exceptionRules, MARKER_LETTER, markerLabel, plural, relative, reviewLabel, type DraftComment, type Row, type RowOf, type SentComment, type Side } from "./review";
 import { clock, GLYPH, mailHeads, standing } from "./supervision";
 import type { LiveState } from "./live";
+import type { Peek } from "./state";
 import { memberById } from "./supervision";
 import { memberName } from "./threads";
 import { Clamp } from "./Touch";
 
-const LINES = new WeakMap<ReviewFile, Partial<Record<Side, Line[]>>>();
+/** A document's lines as they were last coloured: with how many grammars settled, and over which server's paint. */
+type Coloured = { settled: number; overlay: Paint[] | undefined; lines: Line[] };
+
+const LINES = new WeakMap<ReviewFile, Partial<Record<Side, Coloured>>>();
+
+/** How long the pointer rests on a name before its hover opens, as an editor's does. */
+const POINTER_REST = 500;
 
 /** Scrolling the view carries the cursor, as Neovim's does, so the next live update never scrolls back to where it was left. */
 function followScroll(d: Dashboard, pane: 0 | 1, scroller: HTMLElement | null): void {
@@ -33,15 +40,19 @@ function followScroll(d: Dashboard, pane: 0 | 1, scroller: HTMLElement | null): 
   if (next !== undefined) setCursor(d, pane, Number(next.dataset.i));
 }
 
-/** A file side's lines as the grammar coloured them, read once per file. */
-function linesFor(file: ReviewFile, side: Side): Line[] {
+/**
+ * A file side's lines as its grammar and its language server coloured them,
+ * read once per file, and again only once a grammar arrives or the server's
+ * paint does.
+ */
+function linesFor(file: ReviewFile, side: Side, overlay: Paint[] | undefined, settled: number): Line[] {
   const held = LINES.get(file) ?? {};
   LINES.set(file, held);
   const known = held[side];
-  if (known !== undefined) return known;
-  const made = highlightedLines(file[side] ?? "", languageFor(file.path));
-  held[side] = made;
-  return made;
+  if (known !== undefined && known.settled === settled && known.overlay === overlay) return known.lines;
+  const lines = highlightedLines(file[side] ?? "", languageFor(file.path), overlay);
+  held[side] = { settled, overlay, lines };
+  return lines;
 }
 
 /** A text with every match of the search lit, as hlsearch lights it. */
@@ -62,8 +73,9 @@ export function lit(text: string, pattern: RegExp | null, classes = ""): ReactNo
   return classes === "" ? <>{parts}</> : <span className={classes}>{parts}</span>;
 }
 
+/** A line's tokens, each carrying the capture or the server's type that coloured it (`data-s`), so what a colour means can be read off the page. */
 function Toks({ tokens, pattern }: { tokens: Token[]; pattern: RegExp | null }): ReactNode {
-  return tokens.map((token, index) => <span key={index} className={token.classes === "" ? undefined : token.classes}>{lit(token.text, pattern)}</span>);
+  return tokens.map((token, index) => <span key={index} className={token.classes === "" ? undefined : token.classes} data-s={token.capture}>{lit(token.text, pattern)}</span>);
 }
 
 const blank = <span className="sg"><b /><b /></span>;
@@ -84,6 +96,12 @@ type RowProps = {
   /** On a phone, whether this row's long prose is opened past its four lines. */
   open: boolean;
   now: number;
+  /** How many grammars have settled, so a row redraws once its own arrives. */
+  settled: number;
+  /** The language server's paint over the document this row's line comes from. */
+  overlay: Paint[] | undefined;
+  /** A line of a document `gd` opened, as coloured. */
+  code: Line | undefined;
 };
 
 function Annotation({ row }: { row: RowOf<"line"> }) {
@@ -93,11 +111,20 @@ function Annotation({ row }: { row: RowOf<"line"> }) {
   return <b> </b>;
 }
 
-function LineRow({ row, d, pane, cur, vis, pattern, files, judgedRule }: RowProps & { row: RowOf<"line"> }) {
+/** A line of a document `gd` opened: read-only, numbered from one, coloured as its review's lines are. */
+function CodeRow({ row, cur, pattern, code }: RowProps & { row: RowOf<"code"> }) {
+  return <div className={`r one ctx code${cur ? " cur" : ""}`} data-i={row.i}>
+    <span className="sg"><b> </b><b> </b></span>
+    <span className="ln">{row.n}</span>
+    <span className="tx">{code === undefined ? lit(row.text, pattern) : <Toks tokens={code.tokens} pattern={pattern} />}</span>
+  </div>;
+}
+
+function LineRow({ row, d, pane, cur, vis, pattern, files, judgedRule, overlay, settled }: RowProps & { row: RowOf<"line"> }) {
   const kind = row.kind === "add" ? "add" : row.kind === "remove" ? "del" : row.kind === "meta" ? "meta" : "ctx";
   const file = files[row.fi];
   const number = row.tokenSide === "before" ? row.old : row.new;
-  const coloured = row.kind === "meta" || file === undefined || number === null ? undefined : linesFor(file, row.tokenSide)[number - 1];
+  const coloured = row.kind === "meta" || file === undefined || number === null ? undefined : linesFor(file, row.tokenSide, overlay, settled)[number - 1];
   const conflict = coloured?.conflict ?? null;
   const conflictClass = conflict === null ? "" : ` cf cf-${conflict.side}${conflict.marker === null ? "" : " cf-at"}`;
   const sign = row.kind === "add" ? row.chg ? <b className="dg-c" title="changed line">~</b> : <b className="dg-a" title="added line">+</b>
@@ -247,6 +274,7 @@ const RowView = memo(function RowView(props: RowProps) {
     case "kv": return <div className={cls("full kv")} data-i={row.i}>{blank}<span className="tx"><span className="k">{row.k}</span>{lit(row.v, pattern)}</span></div>;
     case "said": return <div className={cls("full said")} data-i={row.i}>{blank}<span className="tx"><Clamp d={d} narrow={props.touch} open={props.open} id={row.key}>{lit(row.text, pattern)}</Clamp></span></div>;
     case "post": return <PostRow {...props} row={row} />;
+    case "code": return <CodeRow {...props} row={row} />;
     case "log": return <div className={cls("full tl")} data-i={row.i}>{blank}<span className="tx"><span className="muted">{clock(row.at)}</span> {lit(row.text, pattern)}</span></div>;
     case "earlier": return <div className={cls("full fold")} data-i={row.i} onClick={() => void d.loadEarlier(row.repository)}><span className="sg"><b>▸</b><b /></span>
       <span className="tx">Load earlier messages · E or Enter <span className="muted">(an older page of the mail record, before byte {row.before.toLocaleString("en")})</span></span></div>;
@@ -300,7 +328,56 @@ function useCaret(d: Dashboard, pane: 0 | 1, element: React.RefObject<HTMLDivEle
   }, [d, pane, element, caret, shown, cur, want, rows]);
 }
 
-export function BufferView({ d, pane, rows, cur, want, active, focused, editing, pattern, span, files, target, live, touch, judgedRule, title, numberWidth, unclamped, now }: {
+/**
+ * Ask the language server about every document the window draws, once each:
+ * both sides of each of the review's files, or the document `gd` opened.
+ */
+function useSemantic(d: Dashboard, review: string, checkout: string, files: ReviewFile[], peek: Peek | null): void {
+  useEffect(() => {
+    if (peek !== null) { d.askSemantic(peek.source, peek.text); return; }
+    if (review === "") return;
+    for (const file of files) {
+      for (const side of ["after", "before"] as const) {
+        const text = file[side];
+        if (text !== null) d.askSemantic({ review, side, checkout, path: file.path }, text);
+      }
+    }
+  }, [d, review, checkout, files, peek]);
+}
+
+/**
+ * Rest the pointer on a name in code and its hover opens beside it, as an
+ * editor's does; moving off the name closes a hover the pointer opened. On a
+ * touch screen nothing hovers: a long press asks instead.
+ */
+function usePointerHover(d: Dashboard, pane: 0 | 1, touch: boolean) {
+  const resting = useRef<{ timer: ReturnType<typeof setTimeout> | undefined; on: string }>({ timer: undefined, on: "" });
+  useEffect(() => () => clearTimeout(resting.current.timer), []);
+  return {
+    move: (event: React.MouseEvent) => {
+      if (touch) return;
+      const now = resting.current;
+      clearTimeout(now.timer);
+      const target = event.target instanceof Element ? event.target : null;
+      const hit = target?.closest<HTMLElement>(".r") ?? null;
+      const at = hit === null || target?.closest(".tx") === null ? null : codeAt(d, pane, Number(hit.dataset.i), columnAt(hit, event.clientX, event.clientY));
+      const on = at === null || at.name === "" ? "" : `${hit?.dataset.i ?? ""}:${at.name}`;
+      const float = d.state.float;
+      if (on !== now.on && float?.kind === "hover" && float.code?.pointer === true) d.set({ float: null });
+      now.on = on;
+      if (at === null || on === "") return;
+      const top = event.clientY + 16;
+      const left = event.clientX;
+      now.timer = setTimeout(() => {
+        const open = d.state.float;
+        if (open === null || (open.kind === "hover" && open.code?.pointer === true)) askHover(d, at, top, left, true);
+      }, POINTER_REST);
+    },
+    leave: () => { clearTimeout(resting.current.timer); resting.current.on = ""; },
+  };
+}
+
+export function BufferView({ d, pane, rows, cur, want, active, focused, editing, pattern, span, files, target, live, touch, judgedRule, title, numberWidth, unclamped, now, review, checkout, peek, semantic }: {
   d: Dashboard;
   pane: 0 | 1;
   rows: Row[];
@@ -321,10 +398,27 @@ export function BufferView({ d, pane, rows, cur, want, active, focused, editing,
   numberWidth: string;
   unclamped: ReadonlySet<string>;
   now: number;
+  /** The open review's key and the checkout it changes, where the window shows one. */
+  review: string;
+  checkout: string;
+  /** The document `gd` opened in this window in place of the review. */
+  peek: Peek | null;
+  /** Each document's paint from its language server, by its key. */
+  semantic: ReadonlyMap<string, Paint[]>;
 }) {
   const element = useRef<HTMLDivElement>(null);
   const caret = useRef<HTMLSpanElement>(null);
   const following = useRef(0);
+  const settled = useGrammars(peek !== null ? [languageFor(peek.source.path)] : files.map((file) => languageFor(file.path)));
+  useSemantic(d, review, checkout, files, peek);
+  const pointer = usePointerHover(d, pane, touch);
+  const peekOverlay = peek === null ? undefined : semantic.get(semanticKey(peek.source));
+  const peekLines = useMemo(() => peek === null ? [] : highlightedLines(peek.text, languageFor(peek.source.path), peekOverlay), [peek, peekOverlay, settled]);
+  const overlayOf = (row: Row) => row.t !== "line" ? undefined : (() => {
+    const file = files[row.fi];
+    return file === undefined ? undefined : semantic.get(semanticKey({ review, side: row.tokenSide, checkout, path: file.path }));
+  })();
+  const heading = peek === null ? title : `${peek.name} · ${relative(peek.source.path, checkout)}:${peek.line} · ${peek.source.review === "" ? "as it stands" : `the review's ${peek.source.side}`} · read-only`;
   useLayoutEffect(() => {
     d.elements.panes[pane] = element.current;
     return () => { d.elements.panes[pane] = null; };
@@ -344,6 +438,7 @@ export function BufferView({ d, pane, rows, cur, want, active, focused, editing,
   return <div className={`buf pane${active ? " active" : ""}`} ref={element} tabIndex={-1} role="region" aria-label={pane === 0 ? "Buffer" : "Second window"} data-pane={pane}
     style={{ ["--lnw" as string]: numberWidth }}
     onScroll={() => { cancelAnimationFrame(following.current); following.current = requestAnimationFrame(() => { followScroll(d, pane, element.current); }); }}
+    onMouseMove={pointer.move} onMouseLeave={pointer.leave}
     onClick={(event) => {
       const hit = event.target instanceof Element ? event.target.closest<HTMLElement>(".r") : null;
       if (hit === null || (event.target instanceof Element && event.target.closest("textarea, button") !== null)) return;
@@ -352,10 +447,11 @@ export function BufferView({ d, pane, rows, cur, want, active, focused, editing,
       if (d.state.focus !== "editor") d.focusWin("editor");
       placeCursor(d, pane, Number(hit.dataset.i), columnAt(hit, event.clientX, event.clientY));
     }}>
-    {title !== "" && <div className="pane-title">{title} <span className="muted">· Space v changes what this window shows</span></div>}
+    {heading !== "" && <div className={`pane-title${peek !== null ? " peek" : ""}`}>{heading} <span className="muted">· {peek !== null ? `${d.keymap.spoken("jump.back")} or q comes back` : "Space v changes what this window shows"}</span></div>}
     {rows.map((row) => <RowView key={row.key} row={row} d={d} pane={pane} cur={row.i === cur} vis={inRange(row, span)} editing={row.t === "cm" ? editing : null} pattern={pattern}
       files={files} target={target} live={row.t === "mail" || row.t === "post" ? live : null} touch={touch} judgedRule={"fi" in row && row.fi !== undefined ? judgedRule(row.fi) : ""}
-      open={unclamped.has(row.key)} now={row.t === "post" ? now : 0} />)}
+      open={unclamped.has(row.key)} now={row.t === "post" ? now : 0} settled={row.t === "line" || row.t === "code" ? settled : 0}
+      overlay={overlayOf(row)} code={row.t === "code" ? peekLines[row.n - 1] : undefined} />)}
     <span className="caret" ref={caret} aria-hidden="true" hidden />
   </div>;
 }

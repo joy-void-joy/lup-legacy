@@ -35,6 +35,7 @@ from lup.devtools.harness.drift import (
     generate_with_report,
 )
 from lup.devtools.sync import accessible_roots, granted_devices
+from lup.diagnostics import refuse, warn
 from lup.harness.devices import Device
 from lup.harness.generate import NativeHarnessComposition
 from lup.harness.image import Image, MemoryLimit
@@ -71,6 +72,7 @@ from lup.launch.declaration import (
 from lup.launch.refusal import LaunchRefused
 from lup.launch.session import StandingGrants, personal_config
 from lup.observability.sessions import SessionRecorder
+from lup.policy.kernel.diagnostic import devtools, step
 from lup.harness.environment import Placement
 from lup.providers.claude import Claude, ClaudeTools
 from lup.providers.claude.harness import ClaudeSpellings
@@ -106,7 +108,7 @@ def usage_refusals() -> Iterator[None]:
     try:
         yield
     except LaunchRefused as refusal:
-        raise typer.BadParameter(str(refusal)) from refusal
+        refuse(str(refusal), code=2)
 
 
 def standing_grants() -> StandingGrants:
@@ -132,11 +134,13 @@ def declared_devices(names: list[str]) -> list[Device]:
     def declared(name: str) -> Device:
         try:
             return Device(name=name)
-        except ValidationError as error:
-            raise typer.BadParameter(
-                f"--device {name!r}: a device is named the way CDI names it, "
-                "vendor/class=device, such as nvidia.com/gpu=all"
-            ) from error
+        except ValidationError:
+            refuse(
+                "is not a device named the way CDI names one, vendor/class=device,"
+                " such as nvidia.com/gpu=all",
+                what=f"--device {name}",
+                code=2,
+            )
 
     return [declared(name) for name in names]
 
@@ -147,11 +151,13 @@ def memory_limit(spelled: str | None) -> MemoryLimit | None:
         return None
     try:
         return MemoryLimit.model_validate(spelled)
-    except ValidationError as error:
-        raise typer.BadParameter(
-            f"--memory {spelled!r}: a limit is an amount such as 12GiB or "
-            "512MiB, or a share such as 75%"
-        ) from error
+    except ValidationError:
+        refuse(
+            "is not a memory limit: an amount such as 12GiB or 512MiB, or a share"
+            " such as 75%",
+            what=f"--memory {spelled}",
+            code=2,
+        )
 
 
 @runtime_checkable
@@ -318,13 +324,11 @@ def selected_mode(modes: list[LaunchMode], name: str | None) -> LaunchMode | Non
         return None
     declared = {mode.name: mode for mode in modes}
     if name not in declared:
-        raise typer.BadParameter(
-            f"--mode {name!r} is not a mode this project declares"
-            + (
-                f"; it declares {', '.join(declared)}"
-                if declared
-                else "; it declares none"
-            )
+        refuse(
+            "is not a mode this project declares; it declares "
+            + (", ".join(declared) or "none"),
+            what=f"--mode {name}",
+            code=2,
         )
     return declared[name]
 
@@ -356,12 +360,22 @@ def announce_relaxed_rules(relaxed: bool, plugin: Plugin) -> None:
         text=f"anti-patterns retired for this session: {retired} rules",
         urgency="warning",
     ).say()
-    typer.echo(
-        "`dev check --antipatterns` still holds this repository to them; run "
-        "`lup-devtools harness generate all` before committing, or the "
-        "compiled tree carries a policy nothing declares. To retire them for "
-        "good instead, `dev seams --retire-all` writes it where a review sees "
-        "it."
+    warn(
+        "the sweep still holds this repository to every one of them, and the"
+        " tree just compiled carries a policy nothing declares",
+        steps=[
+            step(
+                "see what the sweep holds it to",
+                devtools("dev", "check", "--antipatterns"),
+            ),
+            step(
+                "regenerate before committing", devtools("harness", "generate", "all")
+            ),
+            step(
+                "or retire them for good, where a review sees it",
+                devtools("dev", "seams", "--retire-all"),
+            ),
+        ],
     )
 
 
@@ -440,7 +454,7 @@ class LaunchArguments(BaseModel, frozen=True, arbitrary_types_allowed=True):
         """The session to reopen, refusing two named at once before anything runs."""
         contradiction = self.resume.contradicted()
         if contradiction is not None:
-            raise typer.BadParameter(contradiction)
+            refuse(contradiction, code=2)
         if self.resume.session is not None:
             return Reopen(session=SessionId(value=self.resume.session))
         if self.resume.pick:
@@ -511,10 +525,24 @@ class LaunchArguments(BaseModel, frozen=True, arbitrary_types_allowed=True):
             return
         asked = self.mode.contained_only(runtime)
         if asked:
-            raise typer.BadParameter(
-                f"mode {self.mode.name!r} asks for {', '.join(asked)}, which only "
-                "a container stands in for, and this session opens on the host; "
-                "launch it with --sandbox outer, where Docker or Podman answers"
+            refuse(
+                f"asks for {', '.join(asked)}, which only a container stands in"
+                " for, and this session opens on the host",
+                what=f"--mode {self.mode.name}",
+                steps=[
+                    step(
+                        "launch it in a container, where Docker or Podman answers",
+                        devtools(
+                            "harness",
+                            runtime,
+                            "--mode",
+                            self.mode.name,
+                            "--sandbox",
+                            "outer",
+                        ),
+                    )
+                ],
+                code=2,
             )
 
     def posture(self, settle: bool) -> LaunchSandbox:
@@ -661,7 +689,7 @@ def effort_named[T](spelled: str | None, named: Callable[[str], T]) -> T | None:
     try:
         return named(spelled)
     except ValueError as refusal:
-        raise typer.BadParameter(str(refusal)) from refusal
+        refuse(str(refusal), code=2)
 
 
 def declared[T](build: Callable[[], T]) -> T:
@@ -674,9 +702,7 @@ def declared[T](build: Callable[[], T]) -> T:
     try:
         return build()
     except ValidationError as refusal:
-        raise typer.BadParameter(
-            "; ".join(str(error["msg"]) for error in refusal.errors())
-        ) from refusal
+        refuse("; ".join(str(error["msg"]) for error in refusal.errors()), code=2)
 
 
 def machine_overlay(composition: NativeHarnessComposition) -> list[Path]:
@@ -726,7 +752,16 @@ def claude_declaration(
         home = profiles.launch_home(request.profile)
         selected = request.profile or profiles.active_name()
     except (KeyError, ValueError, DefaultHomeProfile) as error:
-        raise typer.BadParameter(str(error)) from error
+        refuse(
+            str(error),
+            steps=[
+                step(
+                    "see the profiles a launch can select",
+                    devtools("harness", "profile", "list"),
+                )
+            ],
+            code=2,
+        )
     # lup: solved: a contained session runs in its repository's config volume,
     # so no theme reaches it and none it sets returns to the account; which
     # home a container's theme belongs to is the volume's question.

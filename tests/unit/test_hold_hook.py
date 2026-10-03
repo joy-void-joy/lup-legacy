@@ -162,6 +162,6 @@ def test_a_call_still_held_at_the_limit_is_refused_to_be_retried(
     assert status == 0
     assert answer["permissionDecision"] == "deny"
     assert answer["permissionDecisionReason"] == (
-        "paused by the operator; this call didn't run; retry it"
+        "refused: paused by the operator; this call didn't run\n→ retry it"
     )
     assert 1.0 <= elapsed < 15

@@ -213,9 +213,7 @@ def test_the_operator_s_words_are_said_first(family: Family) -> None:
     )
     place(family.root, operator_pause(HoldScope.REPOSITORY))
     covering = bare.covering(family.root, family.session)
-    assert bare.refusal(covering) == (
-        "paused by the operator; this call didn't run; retry it"
-    )
+    assert bare.refusal(covering) == ("paused by the operator; this call didn't run")
 
 
 class Clock:

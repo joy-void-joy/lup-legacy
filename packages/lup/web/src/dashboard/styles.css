@@ -157,18 +157,13 @@ mark.sm { background: var(--sel-bg); color: var(--sel-fg); }
 .intro h2 { font-size: inherit; color: var(--fg); margin: 0 0 var(--lh); }
 .intro p { margin: 0 0 .5em; }
 
-/* syntax: highlight.js's classes on the palette's syntax tokens */
-.hljs-keyword, .hljs-meta .hljs-keyword, .hljs-selector-tag, .hljs-doctag { color: var(--s-kw); }
-.hljs-string, .hljs-regexp, .hljs-meta .hljs-string, .hljs-char.escape_ { color: var(--s-str); }
-.hljs-comment, .hljs-quote { color: var(--s-com); font-style: italic; }
-.hljs-number { color: var(--s-num); }
-.hljs-title, .hljs-title.function_, .hljs-section, .hljs-meta { color: var(--s-fn); }
-.hljs-type, .hljs-title.class_, .hljs-built_in, .hljs-name, .hljs-tag { color: var(--s-ty); }
-.hljs-variable, .hljs-params, .hljs-template-variable, .hljs-subst { color: var(--s-var); }
-.hljs-literal, .hljs-symbol { color: var(--s-con); }
-.hljs-attr, .hljs-attribute, .hljs-property, .hljs-selector-class, .hljs-selector-id { color: var(--s-key); }
-.hljs-addition { color: var(--add-sign); } .hljs-deletion { color: var(--del-sign); }
-.hljs-emphasis { font-style: italic; } .hljs-strong { font-weight: 700; }
+/* syntax: the group a tree-sitter capture or a language server's token type draws in (highlight.tsx), on the palette's syntax tokens */
+.sy-kw { color: var(--s-kw); } .sy-ctl { color: var(--s-ctl); } .sy-str { color: var(--s-str); }
+.sy-com { color: var(--s-com); font-style: italic; } .sy-num { color: var(--s-num); } .sy-con { color: var(--s-con); }
+.sy-fn { color: var(--s-fn); } .sy-ty { color: var(--s-ty); } .sy-var { color: var(--s-var); } .sy-key { color: var(--s-key); }
+.sy-add { color: var(--add-sign); } .sy-del { color: var(--del-sign); } .sy-chg { color: var(--chg-sign); } .sy-err { color: var(--err); }
+.sy-head { color: var(--s-kw); font-weight: 700; } .sy-em { font-style: italic; } .sy-strong { font-weight: 700; }
+.sy-link { color: var(--link); text-decoration: underline; }
 
 /* the box under the editor */
 #composer { border-top: 1px solid var(--border); }
@@ -313,6 +308,14 @@ button.seg { cursor: pointer; }
 #hover { max-width: min(90ch, calc(100vw - 2ch)); max-height: 50vh; overflow: auto; padding: 0 1ch; }
 #hover h4 { color: var(--fg); border: 0; }
 #hover .fx { position: absolute; top: 0; right: 0; }
+#hover .hv-code { border-bottom: 1px solid var(--border); margin-bottom: .5em; }
+#hover .hv-code p, #hover .hv-code ul, #hover .hv-code ol { margin: .4em 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+#hover .hv-code h1, #hover .hv-code h2, #hover .hv-code h3, #hover .hv-code h4 { font-size: inherit; color: var(--fg); margin: .5em 0 .2em; }
+#hover .hv-code hr { border: 0; border-top: 1px dotted var(--border); }
+#hover .hv-code code { color: var(--s-str); }
+#hover .hv-pre { margin: .3em 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.pane-title.peek { color: var(--fg); border-bottom-color: var(--focus); }
+.cx.refs .s-name { color: var(--s-ty); }
 
 /* notices: stacked at the top right */
 #notify { position: fixed; right: 1ch; top: calc(var(--tabtop, var(--lh)) + 4px); z-index: 60; display: flex; flex-direction: column; gap: 4px; width: min(64ch, calc(100vw - 2ch)); }

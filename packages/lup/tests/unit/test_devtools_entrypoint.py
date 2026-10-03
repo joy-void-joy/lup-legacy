@@ -52,8 +52,8 @@ def test_a_package_left_behind_by_a_rename_is_named_with_what_removes_it(
     said = capsys.readouterr().err
     assert f"before_rename.devtools.main:app, from before_rename in {tmp_path}" in said
     assert f"after_rename.devtools.main:app, from after_rename in {tmp_path}" in said
-    assert "`<name>.egg-info`, which the editable install reads" in said
-    assert "`uv sync --reinstall-package <the project's name>`" in said
+    assert "<name>.egg-info, which the editable install reads" in said
+    assert "`uv sync --reinstall-package <project>`" in said
 
 
 def test_an_environment_with_no_project_says_what_installs_one(
@@ -64,7 +64,7 @@ def test_an_environment_with_no_project_says_what_installs_one(
     with pytest.raises(typer.Exit):
         entrypoint.project_application()
 
-    assert "`uv sync` in the project installs it" in capsys.readouterr().err
+    assert "→ install it, in the project: `uv sync`" in capsys.readouterr().err
 
 
 def test_the_status_line_is_read_without_the_project_application(

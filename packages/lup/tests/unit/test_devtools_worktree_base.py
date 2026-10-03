@@ -33,6 +33,7 @@ from lup.devtools.dev.worktree import (
     commits_ahead,
     register_worktree,
 )
+from lup.diagnostics import Refusal
 from lup.execution.process import LaunchRequest, LocalProcessLauncher
 
 
@@ -172,18 +173,19 @@ def test_two_bases_that_differ_are_asked_about_rather_than_guessed() -> None:
     A refusal rather than advice printed after the branch is cut, which no
     reader can act on without an undo.
     """
-    asked = cutting().refusal()
+    with pytest.raises(Refusal) as asked:
+        cutting().refuse_guessing()
 
-    assert "--base feature" in asked
-    assert "--base dev" in asked
-    assert "topic" in asked
+    ways = [way["run"][-3:] for way in asked.value.said["steps"]]
+    assert ways == [["topic", "--base", "feature"], ["topic", "--base", "dev"]]
+    assert asked.value.said["what"] == "topic"
 
 
 def test_a_named_base_ends_the_question_it_answers() -> None:
     """The flag is the whole answer, so nothing is asked and nothing overrides it."""
     named = cutting(named="feature")
 
-    assert named.refusal() == ""
+    assert not named.guessed()
     assert named.cut_from() == "feature"
 
 
@@ -196,7 +198,7 @@ def test_a_checkout_holding_nothing_of_its_own_is_not_asked_about() -> None:
     """
     settled = cutting(ahead=0)
 
-    assert settled.refusal() == ""
+    assert not settled.guessed()
     assert settled.cut_from() == "dev"
     assert settled.recorded() == "dev"
 
@@ -209,6 +211,6 @@ def test_a_re_attached_branch_is_cut_from_nothing_so_nothing_is_asked() -> None:
     """
     reattached = cutting(fresh=False)
 
-    assert reattached.refusal() == ""
+    assert not reattached.guessed()
     assert reattached.cut_from() is None
     assert reattached.recorded() == "feature"

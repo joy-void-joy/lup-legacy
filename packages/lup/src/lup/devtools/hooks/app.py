@@ -31,9 +31,11 @@ from lup.harness.enforcement import declared_path_rules, semantic_policy_for
 from lup.harness.models import HookSet
 from lup.policy.everyday import SESSION_SHAPES, SessionShape
 from lup.policy.foreign import foreign_warnings
+from lup.policy.kernel.diagnostic import rendered
 from lup.policy.models import Decision, FetchUrl
 from lup.workspace.paths import project_root
 from lup.devtools.utils import output_json
+from lup.diagnostics import refuse
 
 
 def input_text(file: Path) -> str:
@@ -63,8 +65,9 @@ def command_text(command: str | None, file: Path | None) -> str:
         return command
     if file is not None and command is None:
         return input_text(file)
-    raise typer.BadParameter(
-        "name the command once: as an argument, or with --file (`-` for stdin)"
+    refuse(
+        "name the command once: as an argument, or with `--file` (`-` for stdin)",
+        code=2,
     )
 
 
@@ -96,8 +99,10 @@ def report(
                 pass
             case placement:
                 typer.echo(f"       runs {placement} the sandbox")
-        if decision.reason:
-            typer.echo(f"       {decision.reason}")
+        for line in rendered(
+            decision.as_kernel().placed(escapable=True).diagnostic()
+        ).splitlines():
+            typer.echo(f"       {line}")
         for said in warnings or []:
             typer.echo(f"       warning: {said}")
     if decision.effect != "allow":
@@ -429,8 +434,7 @@ def create_hooks_app(declared: Callable[[], HookSet]) -> typer.Typer:
         """Retire an execution observation without changing authorization."""
         gone = forget(project_root(), selector)
         if not gone:
-            typer.echo(f"Nothing remembered matches {selector!r}.", err=True)
-            raise typer.Exit(1)
+            refuse("nothing remembered matches it", what=selector)
         for item in gone:
             typer.echo(f"forgotten {item.fingerprint[:12]}  {item.subject}")
 

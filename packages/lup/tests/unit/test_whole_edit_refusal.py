@@ -42,8 +42,8 @@ def test_each_violation_carries_its_own_way_through() -> None:
     decision = antipattern_decision(None, FOUR_VIOLATIONS, rows, python_source=True)
 
     assert decision is not None
-    assert "line 5: No suppression is accepted" in decision.recovery
-    assert "line 9: Suppress on line 9" in decision.recovery
+    assert "line 5: no suppression is accepted" in decision.addressed()
+    assert "line 9: to keep it, suppress it on line 9" in decision.addressed()
 
 
 def test_the_violations_are_named_in_the_order_the_file_holds_them() -> None:
@@ -52,8 +52,8 @@ def test_the_violations_are_named_in_the_order_the_file_holds_them() -> None:
     decision = antipattern_decision(None, FOUR_VIOLATIONS, rows, python_source=True)
 
     assert decision is not None
-    named = [line for line in decision.reason.splitlines() if line.startswith("line ")]
-    numbers = [int(line.split(":")[0].removeprefix("line ")) for line in named]
+    named = [line for line in decision.reason.splitlines() if line.startswith("`line ")]
+    numbers = [int(line.split("`")[1].removeprefix("line ")) for line in named]
     assert numbers == sorted(numbers)
 
 
@@ -65,8 +65,8 @@ def test_one_violation_reads_as_it_always_has() -> None:
     )
 
     assert decision is not None
-    assert decision.reason.startswith("line 1: ")
-    assert decision.recovery.startswith("Suppress on line 1")
+    assert decision.subject == "line 1"
+    assert decision.recovery[0]["says"].startswith("to keep it, suppress it on line 1")
 
 
 def test_a_question_does_not_hide_a_refusal_below_it() -> None:

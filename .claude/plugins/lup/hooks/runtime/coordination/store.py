@@ -142,8 +142,9 @@ PAUSED_REASON = "paused"
 PAUSED_SAID = "paused by the operator"
 """The operator's pause, as its file names it and as an agent and a row read it."""
 
-UNTRIED = "this call didn't run; retry it"
-"""What follows a hold's words when a call is refused at its hook's limit.
+UNTRIED = "this call didn't run"
+RETRY = "retry it"
+"""What a call refused at its hook's limit is told after the hold's words, and its one way through.
 
 The call did not run, and the same call made again is held afresh; nothing
 more is said, because a held agent has nothing to do but ask again.

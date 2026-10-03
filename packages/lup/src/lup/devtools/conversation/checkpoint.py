@@ -8,6 +8,7 @@ import sh
 import typer
 
 from lup.devtools.utils import decode_stderr
+from lup.diagnostics import refuse
 from lup.execution.shell import git
 
 logger = logging.getLogger(__name__)
@@ -66,8 +67,9 @@ def checkpoint_delivery(
         revision = git.out("rev-parse", "--short", "HEAD", _cwd=str(root))
     except sh.ErrorReturnCode as error:
         logger.exception("Could not checkpoint retained conversation data")
-        raise typer.BadParameter(
-            f"Could not checkpoint retained conversation data: {decode_stderr(error)}"
-        ) from error
+        refuse(
+            f"could not checkpoint retained conversation data: {decode_stderr(error)}",
+            code=2,
+        )
     typer.echo(f"Committed {provider} conversation checkpoint: {revision}")
     return revision

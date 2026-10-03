@@ -81,7 +81,8 @@ asks you first.
   time". The hooks that hold a call declare `HookSet.hold_seconds` plus
   `policy_timeout` (a day and thirty seconds by default). A call still held
   at the end of `hold_seconds` is refused with "paused by the operator; this
-  call didn't run; retry it", and the retry is held again.
+  call didn't run" in the diagnostic shape, its way through "retry it", and
+  the retry is held again.
   - Measured on Claude Code 2.1.285: a declared timeout of up to 10^16
     seconds is honoured, and a call held 65 minutes ran cleanly.
   - A new hook, `coordination_hold.sh`, holds every tool's calls for both
@@ -105,6 +106,86 @@ asks you first.
   command refuses a shell that an agent's runtime started, and the policy
   refuses it to an agent.
 
+### Every refusal, question and command error says what was caught, why, and the way through
+
+A hook's refusal, a question put to the person approving a call, a devtools
+command's error and a gate's finding now read alike:
+
+```
+refused: `pip` — changes packages outside this project's lockfile
+→ add the package through uv, which keeps the lockfile: `uv add <package>`
+→ or remove one: `uv remove <package>`
+```
+
+The first line is the verdict, the words of the call that decided it, and
+why; an approver reads only that line. Each `→` line is one way through, and
+a command it names is stored as the words that run it rather than written
+into the sentence, so it is always spelled the same — `uv run lup-devtools …`
+for this project's CLI — and `dev check` confirms each one exists.
+
+- A reason no longer repeats the whole command back (`… — \`rm -rf build\``);
+  the operative words lead instead (`asks: \`rm build\` — deleting files
+  requires approval`). A write or a delete names the paths it touches as the
+  policy placed them, so one a `cd` left unknown reads `$PWD/…`.
+- An ask the container or a capture settles says only why it is allowed,
+  instead of "requires approval … allowed without asking".
+- A parked review opens on `queued:`, not `refused:`.
+- `dev policy` prints a verdict exactly as the hook sends it, ways through
+  included.
+- "Change the command to one the policy allows" is offered only where a
+  refusal names no way of its own; the escalation line stays either way.
+- The generated pages under `docs/` and `AGENTS.md` are refused alike to an
+  edit tool and a shell `>`, naming `uv run lup-devtools harness generate all`;
+  an edit tool used to be allowed there while `>` asked for an unrelated reason.
+- Hints that named `dev coordination …` (no such group) or a bare
+  `lup-devtools …` (which the policy refuses) name the real command.
+- `run monitor` on a path that is not a directory is an error, where it used
+  to read as a run with nothing landed and wait forever.
+- A command ends on an error through `lup.diagnostics.refuse`, and
+  a test refuses an error exit built from a bare string.
+
+A project's own shell rules, refused tools and paths declare `recovery` as a
+list of `step(...)` from `lup.policy.kernel.diagnostic`; `dev migrate pending`
+names the change. The edit-evaluator protocol is version 2.
+### The dashboard's editor colours code as Neovim does, and says what a name is
+
+The page's highlighting saw a Python class only where it was defined:
+`Field(...)`, an annotation and a type at a use site stayed plain, and
+nothing on the page said what a name was.
+
+- Each file is read by its tree-sitter grammar (`web-tree-sitter` with
+  `tree-sitter-wasm`, every grammar's WASM and its package's own highlights
+  query) in place of lowlight, and coloured by capture as Neovim does: types,
+  constructors, functions and methods, parameters, modules, decorators,
+  `self`, keywords, strings, numbers and comments. Where a published query
+  leaves out what nvim-treesitter reads, in Python and TypeScript, the page
+  adds it after. A grammar is a chunk of its own, fetched the first time a
+  file in its language is drawn; the main script is 495 KB, 540 KB before.
+- Where a language server reads a file, its semantic tokens are laid over
+  tree-sitter's, the server winning as in Neovim.
+- `K` on a name in code shows its language server's hover — type, signature
+  and documentation — and keeps showing the policy's sentence on a file's
+  header; the pointer resting on a name, or a long press on a phone, does the
+  same. `gd` opens the definition read-only in the window and `Ctrl+o` comes
+  back; `gr` lists every use in the context. What the policy asks about moved
+  from `gd` to `g?`. All four rebind in `[dashboard.keys]`.
+- The dashboard asks through its own routes (`/api/code/hover`,
+  `definition`, `references`, `tokens`, `text`), behind its capability, Host
+  and Origin checks, about the file as it stands or a review's proposed
+  after-document, opened in memory. One server per repository and language
+  starts on the first question, takes each checkout as a workspace folder,
+  stops after ten idle minutes, and answers each question within a bound or
+  says why it did not (`lup.tools.lsp.pool`). Python is read by basedpyright,
+  in lup's `web` extra, TypeScript and JavaScript by TypeScript 7's
+  `tsc --lsp` (`lup.tools.lsp.servers`).
+- A language server only reads: it starts from the dashboard's own
+  environment, never a checkout's `.venv`, and a checkout's packages reach it
+  as directories read off its site-packages and `.pth` files, nothing in them
+  run.
+- An LSP session reads its server in one task: a question can be withdrawn
+  (`$/cancelRequest`) without leaving the stream half read, the server's own
+  requests are answered, a document can be re-sent as changed, and a session
+  names its `languageId` and capabilities.
 ### A runtime's tree is spelled by its adapter, and read off it everywhere else
 
 `.claude` and `.codex` were spelled by hand outside their adapters: in the

@@ -40,6 +40,8 @@ from lup.devtools.supervisor.doors import (
     show_status,
 )
 from lup.devtools.supervisor.page import SUPERVISOR_PORT
+from lup.diagnostics import refuse
+from lup.policy.kernel.diagnostic import devtools, spelled, step
 from lup.providers.profiles import DefaultHomeProfile, ProfileDirectory
 from lup.workspace.paths import project_root
 
@@ -247,8 +249,8 @@ def create_resolve_app(
             typer.Option(
                 "--supervise",
                 help="Open the supervisor page beside this run. Sugar for a long "
-                "--wait plus `lup-devtools resolve supervise`, which you "
-                "can also run yourself against any run at any time.",
+                f"--wait plus `{spelled(devtools('resolve', 'supervise'))}`, which "
+                "you can also run yourself against any run at any time.",
             ),
         ] = False,
         supervise_port: Annotated[
@@ -352,19 +354,25 @@ def create_resolve_app(
         try:
             account = directory.account(profile)
         except (KeyError, DefaultHomeProfile) as error:
-            raise typer.BadParameter(str(error), param_hint="--profile") from error
+            refuse(str(error), what="--profile", code=2)
         if detach:
             if adapter is None:
-                raise typer.BadParameter(
-                    "--adapter is required to drive a resolver run"
+                refuse(
+                    "is required to drive a resolver run",
+                    what="--adapter",
+                    steps=[step(f"name one of: {', '.join(targets.builders)}")],
+                    code=2,
                 )
             # Ending a run reads recorded state and frees worktrees: it takes
             # no turn, so there is nothing for a child to outlive this command
             # with, and a relaunch carrying no `--abort` would start the run it
             # was asked to end.
             if abort is not None:
-                raise typer.BadParameter(
-                    "a run cannot be started detached and ended in one command"
+                refuse(
+                    "a run cannot be started detached and ended in one command",
+                    what="--detach --abort",
+                    steps=[step("end the run without --detach")],
+                    code=2,
                 )
             resolve.detach_resolve(
                 resolve.DetachedRun(
@@ -393,7 +401,12 @@ def create_resolve_app(
         # is taken and no skill invocation is rendered, so the one thing an
         # adapter decides never comes up.
         if adapter is None and abort is None:
-            raise typer.BadParameter("--adapter is required to drive a resolver run")
+            refuse(
+                "is required to drive a resolver run",
+                what="--adapter",
+                steps=[step(f"name one of: {', '.join(targets.builders)}")],
+                code=2,
+            )
         spawn = resolve.SupervisorSpawn(
             enabled=supervise, port=supervise_port, linger=supervise_linger
         )

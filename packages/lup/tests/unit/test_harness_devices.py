@@ -14,6 +14,7 @@ import typer
 from pydantic import ValidationError
 
 import lup.devtools.sync as sync
+from lup.diagnostics import Refusal
 from lup.launch.container import record_boundary
 from lup.devtools.harness.launch import declared_devices
 from lup.harness.devices import (
@@ -80,8 +81,11 @@ def test_a_name_the_engine_would_refuse_is_refused_at_declaration(name: str) -> 
 
 def test_a_flag_naming_no_device_is_refused_in_the_launchers_words() -> None:
     """The value typed is named, with the shape it should have had."""
-    with pytest.raises(typer.BadParameter, match="'all'.*nvidia.com/gpu=all"):
+    with pytest.raises(Refusal) as refused:
         declared_devices(["nvidia.com/gpu=0", "all"])
+
+    assert refused.value.said["what"] == "--device all"
+    assert "nvidia.com/gpu=all" in refused.value.said["why"]
 
 
 def test_declared_devices_keep_the_order_they_were_typed_in() -> None:
@@ -344,8 +348,10 @@ def test_a_grant_naming_no_device_is_refused_before_anything_starts(
     local_registry(tmp_path, monkeypatch)
     monkeypatch.setattr(sync, "verified_grant", proved)
 
-    with pytest.raises(typer.BadParameter, match="'all'"):
+    with pytest.raises(Refusal) as refused_grant:
         sync.grant_device("all")
+
+    assert refused_grant.value.said["what"] == "all"
 
 
 def test_a_revoked_grant_leaves_the_others_standing(

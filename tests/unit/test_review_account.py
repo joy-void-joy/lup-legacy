@@ -343,7 +343,7 @@ def test_two_edits_waiting_are_told_how_to_ask_once(
     ) in second
     assert "under one directory in the tmp/ of the checkout they change" in second
     assert "in plain words" in second
-    assert "`review propose --help` shows how" in second
+    assert "lup-devtools review propose --help`" in second
 
 
 def test_a_transcript_is_read_back_across_blocks_and_past_a_torn_line(

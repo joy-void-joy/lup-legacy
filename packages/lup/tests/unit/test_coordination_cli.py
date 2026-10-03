@@ -166,5 +166,5 @@ def test_a_send_signed_by_nobody_here_is_refused(
     )
 
     assert refused.exit_code != 0
-    assert "`--as` takes `user`" in refused.output
+    assert "`--as somebody` — signs as nobody here: it takes `user`" in refused.output
     assert peers.waiting(member).messages == []

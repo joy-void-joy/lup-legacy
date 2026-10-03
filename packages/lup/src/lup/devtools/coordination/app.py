@@ -41,6 +41,8 @@ from lup.devtools.coordination.pausing import pause, resume
 from lup.coordination.touches import HeldPath
 from lup.coordination.watch import Watcher
 from lup.coordination.watcher import watcher_pipeline
+from lup.diagnostics import refuse
+from lup.policy.kernel.diagnostic import devtools, step
 from lup.runs.pipeline import RunRequest
 from lup.workspace.paths import project_root
 
@@ -155,7 +157,15 @@ def create_coordination_app() -> typer.Typer:
         try:
             peers().join(chosen, tree, cli_name=name, delivery=Delivery.WAITING)
         except NameTakenError as taken:
-            raise typer.BadParameter(str(taken)) from taken
+            refuse(
+                str(taken),
+                steps=[
+                    step(
+                        "see which names are taken", devtools("coordination", "roster")
+                    )
+                ],
+                code=2,
+            )
         typer.echo(chosen)
 
     @app.command("describe")
@@ -179,7 +189,15 @@ def create_coordination_app() -> typer.Typer:
         try:
             peers().rename(member_id, name)
         except NameTakenError as taken:
-            raise typer.BadParameter(str(taken)) from taken
+            refuse(
+                str(taken),
+                steps=[
+                    step(
+                        "see which names are taken", devtools("coordination", "roster")
+                    )
+                ],
+                code=2,
+            )
 
     @app.command("leave")
     def leave_cmd(
@@ -259,9 +277,13 @@ def create_coordination_app() -> typer.Typer:
         """
         known = peers()
         if sender and sender != USER_ADDRESS and known.row(sender) is None:
-            raise typer.BadParameter(
-                f"nobody here signs as {sender!r}: `--as` takes `user` or a "
-                "member's id, which `dev coordination roster` lists"
+            refuse(
+                "signs as nobody here: it takes `user` or a member's id",
+                what=f"--as {sender}",
+                steps=[
+                    step("see the members' ids", devtools("coordination", "roster"))
+                ],
+                code=2,
             )
         post = new_post_id()
         try:
@@ -275,13 +297,17 @@ def create_coordination_app() -> typer.Typer:
                 posting=Posting(post=post),
             )
         except PeerDepartedError as departed:
-            raise typer.BadParameter(
-                f"{departed}; `dev coordination roster` lists who is here"
-            ) from departed
+            refuse(
+                str(departed),
+                steps=[step("see who is here", devtools("coordination", "roster"))],
+                code=2,
+            )
         if found is None:
-            raise typer.BadParameter(
-                f"no session answers to {to!r}; "
-                "`dev coordination roster` lists who is here"
+            refuse(
+                "no session answers to it",
+                what=to,
+                steps=[step("see who is here", devtools("coordination", "roster"))],
+                code=2,
             )
         carries = known.cohort.delivery(found)
         typer.echo(f"queued for {found.label()} as post {post}, carried by {carries}")
@@ -335,9 +361,11 @@ def create_coordination_app() -> typer.Typer:
         were told, which is right — it held while they were told it.
         """
         if not peers().cohort.mail.retract(notice_id):
-            raise typer.BadParameter(
-                f"{notice_id!r} names nothing standing over this repository; "
-                "`dev coordination notices` lists what does"
+            refuse(
+                "names nothing standing over this repository",
+                what=notice_id,
+                steps=[step("see what does", devtools("coordination", "notices"))],
+                code=2,
             )
         typer.echo(f"retracted {notice_id}")
 
@@ -375,28 +403,45 @@ def create_coordination_app() -> typer.Typer:
         agent's shell; the operator's own terminal carries none.
         """
         if session_member_id():
-            raise typer.BadParameter(
-                f"an agent's shell cannot {verb} any agent, itself included: the "
-                "operator does, on the dashboard or from a terminal outside "
-                "every agent session"
+            refuse(
+                f"an agent's shell cannot {verb} any agent, itself included",
+                what=f"coordination {verb}",
+                steps=[
+                    step(
+                        "the operator does, on the dashboard or from a terminal"
+                        " outside every agent session"
+                    )
+                ],
+                code=2,
             )
 
     def scoped(
         known: RepositoryPeers, member: str, tree: bool, repository: bool
     ) -> Hold:
         """The pause a pause or resume names: an agent's, its tree's, or the repository's."""
+        if repository and (member or tree):
+            refuse("a repository's pause names no agent and no tree", code=2)
         if repository:
-            if member or tree:
-                raise typer.BadParameter("--repository names no agent and no tree")
             return operator_pause(HoldScope.REPOSITORY)
         if not member:
-            raise typer.BadParameter(
-                "name an agent by its name or id, or pass --repository or --everything"
+            refuse(
+                "name the agent, or the whole repository or everything",
+                steps=[
+                    step(
+                        "name it by its name or id, which the roster lists",
+                        devtools("coordination", "roster"),
+                    ),
+                    step("or pass --repository or --everything"),
+                ],
+                code=2,
             )
         found = known.address(member)
         if found is None:
-            raise typer.BadParameter(
-                f"no agent answers to {member!r}; `coordination roster` lists who is here"
+            refuse(
+                "no agent here answers to that name",
+                what=member,
+                steps=[step("see who is here", devtools("coordination", "roster"))],
+                code=2,
             )
         return operator_pause(HoldScope.TREE if tree else HoldScope.AGENT, found.id)
 
@@ -464,7 +509,11 @@ def create_coordination_app() -> typer.Typer:
         try:
             outcome = pause(known, named.scope, named.member, freeze=freeze)
         except (LookupError, PeerDepartedError) as missing:
-            raise typer.BadParameter(str(missing)) from missing
+            refuse(
+                str(missing),
+                steps=[step("see who is here", devtools("coordination", "roster"))],
+                code=2,
+            )
         typer.echo(outcome.detail)
 
     @app.command("resume")
@@ -511,7 +560,11 @@ def create_coordination_app() -> typer.Typer:
         try:
             outcome = resume(known, named.scope, named.member)
         except LookupError as missing:
-            raise typer.BadParameter(str(missing)) from missing
+            refuse(
+                str(missing),
+                steps=[step("see what is held", devtools("coordination", "held"))],
+                code=2,
+            )
         typer.echo(outcome.detail)
 
     @app.command("held")
@@ -559,8 +612,10 @@ def create_coordination_app() -> typer.Typer:
         """Take everything beneath a prefix, before having touched any of it."""
         target = prefix.resolve()
         if not target.exists():
-            raise typer.BadParameter(
-                f"{target} does not exist; a lock covers what is there to write"
+            refuse(
+                "does not exist, and a lock covers only what is there to write",
+                what=str(target),
+                code=2,
             )
         peers().lock(member_id, target)
 
@@ -574,9 +629,13 @@ def create_coordination_app() -> typer.Typer:
         """Give a prefix back, refusing where this session does not hold it."""
         target = prefix.resolve()
         if not peers().release(member_id, target):
-            raise typer.BadParameter(
-                f"session {member_id} does not hold {target}; "
-                "`dev coordination holdings` lists who holds what"
+            refuse(
+                f"session {member_id} does not hold it",
+                what=str(target),
+                steps=[
+                    step("see who holds what", devtools("coordination", "holdings"))
+                ],
+                code=2,
             )
 
     @app.command("watch")

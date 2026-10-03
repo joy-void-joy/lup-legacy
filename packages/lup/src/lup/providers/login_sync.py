@@ -8,7 +8,7 @@ can rotate the refresh credential with the access token, so every other copy
 is left holding one the provider may no longer answer. A Codex launch
 already converges its worktree home with the account, newer refresh winning,
 at every launch and when the session closes
-(:meth:`lup.providers.codex.home.CodexHome.publish`). A Claude copy renews in
+(:meth:`lup.providers.codex.home.CodexWorktreeHomeStore.publish`). A Claude copy renews in
 place with no such moment, so this carries it while sessions run: the newest
 copy is written into every other one, the profile's included.
 

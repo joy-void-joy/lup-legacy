@@ -377,6 +377,8 @@ def test_a_session_opened_here_is_held_and_refused_at_the_limit(
     )
 
     assert output.decision == "deny"
-    assert output.reason == "paused by the operator; this call didn't run; retry it"
+    assert output.reason == (
+        "refused: paused by the operator; this call didn't run\n→ retry it"
+    )
     assert 1.0 <= time.monotonic() - started < 5
     assert matcher.matcher == "" and matcher.timeout == 60
