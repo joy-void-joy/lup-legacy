@@ -247,10 +247,14 @@ class NativeSemantics(BaseModel, frozen=True):
     and the routed set. Left false, a placement never reaches the wire — the
     conservative direction, and the right one for a seam that answers with a
     verdict alone and never rewrites the call it judges."""
-    refusable_tools: list[str] = []
-    """Routed tools a declared refusal still reaches, the runtime's spawns:
-    the dispatcher's branch for one asks the refusal table first, so a
-    refusal of one is in force rather than unreachable."""
+    spawn_tools: list[str] = []
+    """This runtime's spellings of a spawn, as its hooks name them.
+
+    An adapter fact the policy needs on every path: a dispatcher's spawn
+    branch asks the refusal table before judging the name, so a refusal of a
+    spawn is in force rather than unreachable; and a seam that never sees a
+    spawn is told by :meth:`spawning_refused` that its session should open
+    without the tools that make one."""
 
     def also_refusing(self, refused: list[RefusedTool]) -> "NativeSemantics":
         """The same decoder, registered for the refused tools as well.
@@ -262,9 +266,19 @@ class NativeSemantics(BaseModel, frozen=True):
         """
         return NativeSemantics(
             decode=self.decode,
-            routed_tools=routed_for(self.routed_tools, refused, self.refusable_tools),
+            routed_tools=routed_for(self.routed_tools, refused, self.spawn_tools),
             escapable=self.escapable,
-            refusable_tools=self.refusable_tools,
+            spawn_tools=self.spawn_tools,
+        )
+
+    def spawning_refused(self, refused: list[RefusedTool]) -> bool:
+        """Whether *refused* turns down a spawn outright, in any of this runtime's spellings.
+
+        Outright meaning the whole tool: a refusal naming one subject of a
+        spawn leaves the others to go out, so whatever makes them stays.
+        """
+        return any(
+            rule.tool in self.spawn_tools and not rule.specifier for rule in refused
         )
 
     def escapes_from(self, sandbox: SandboxPosture) -> bool:

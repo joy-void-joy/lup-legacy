@@ -515,9 +515,11 @@ class Codex(
         installs only uncontained and only where the project generated one,
         so elsewhere the refusal holds by the tool not being there. One
         switch takes both spellings, because which one a model is offered is
-        its catalog row's to say rather than the session's.
+        its catalog row's to say rather than the session's. The question is
+        put to the seam an in-process session is judged through, which names
+        the spawns it cannot see.
         """
-        from lup.providers.codex.harness import CODEX_DISPATCHER
+        from lup.providers.codex.hooks import CODEX_SEMANTICS
 
         if self.delegated_tools is not None:
             return CodexBuiltins(
@@ -527,11 +529,11 @@ class Codex(
             )
         granted = CodexBuiltins.compile(self.tools.builtin)
         policy = self.enforced_policy()
-        refused = policy is not None and any(
-            rule.tool in CODEX_DISPATCHER.spawn_tools and not rule.specifier
-            for rule in policy.refused_tools
-        )
-        return granted.model_copy(update={"agents": False}) if refused else granted
+        if policy is not None and CODEX_SEMANTICS.spawning_refused(
+            policy.refused_tools
+        ):
+            return granted.model_copy(update={"agents": False})
+        return granted
 
     def workspace(self) -> Path:
         """The directory a session works in: the declared one, or where the caller is."""

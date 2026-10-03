@@ -10,6 +10,7 @@ import tomlkit
 from lup.providers.codex.login import CODEX_LOGIN
 from lup.providers.codex.builtins import CodexBuiltins
 from lup.providers.codex.model_choice import codex_model_arguments, codex_model_id
+from lup.providers.codex.native import CODEX_SPAWN_TOOLS
 from lup.providers.codex.subagents import CodexModelTiers
 from lup.providers.drift_prompt import drift_hook
 from lup.providers.peer_delivery import delivery_artifacts, delivery_command
@@ -560,18 +561,8 @@ CODEX_DISPATCHER = DispatcherDeclaration(
     runtime_name="Codex",
     package="lup.providers.codex",
     managed_root_env=CODEX_LOGIN.config_home_env,
-    routed_tools=[
-        "Bash",
-        "web_fetch",
-        "apply_patch",
-        "collaborationspawn_agent",
-        "spawn_agent",
-    ],
-    # Both spellings of one act: `multi_agent_v2`'s, which the hook names by
-    # its namespace and tool run together, and `multi_agent_v1`'s, which it
-    # names bare (0.159.2). Which a session gets is the model catalog's
-    # `multi_agent_version` and the two features, not the project's choice.
-    spawn_tools=["collaborationspawn_agent", "spawn_agent"],
+    routed_tools=["Bash", "web_fetch", "apply_patch", *CODEX_SPAWN_TOOLS],
+    spawn_tools=CODEX_SPAWN_TOOLS,
     hook_events=["PermissionRequest", "PreToolUse", "PostToolUse"],
     observation_event="PostToolUse",
     # No spawn, unlike Claude Code's: 0.159.2 lists `task_name` as required
