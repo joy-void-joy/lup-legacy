@@ -252,6 +252,7 @@ PATH_RULES: list[PathRuleRow] = [
         "reason": "protected path requires approval",
         "recovery": "",
         "allow_autonomous": False,
+        "description": "Claude Code's settings, trust state and skills",
     },
     {
         "kind": "subtree",
@@ -259,6 +260,7 @@ PATH_RULES: list[PathRuleRow] = [
         "reason": "protected path requires approval",
         "recovery": "",
         "allow_autonomous": False,
+        "description": "Codex's settings, trust state and skills",
     },
     {
         "kind": "contains_part",
@@ -266,6 +268,7 @@ PATH_RULES: list[PathRuleRow] = [
         "reason": "protected path requires approval",
         "recovery": "",
         "allow_autonomous": False,
+        "description": "a manifest or lockfile an install trusts",
     },
     {
         "kind": "contains_part",
@@ -273,6 +276,7 @@ PATH_RULES: list[PathRuleRow] = [
         "reason": "protected path requires approval",
         "recovery": "",
         "allow_autonomous": False,
+        "description": "a manifest or lockfile an install trusts",
     },
     {
         "kind": "contains_part",
@@ -280,6 +284,7 @@ PATH_RULES: list[PathRuleRow] = [
         "reason": "protected path requires approval",
         "recovery": "",
         "allow_autonomous": False,
+        "description": "a manifest or lockfile an install trusts",
     },
     {
         "kind": "contains_part",
@@ -287,6 +292,7 @@ PATH_RULES: list[PathRuleRow] = [
         "reason": "protected path requires approval",
         "recovery": "",
         "allow_autonomous": False,
+        "description": "a manifest or lockfile an install trusts",
     },
     {
         "kind": "contains_part",
@@ -294,6 +300,7 @@ PATH_RULES: list[PathRuleRow] = [
         "reason": "protected path requires approval",
         "recovery": "",
         "allow_autonomous": False,
+        "description": "a manifest or lockfile an install trusts",
     },
     {
         "kind": "contains_part",
@@ -301,6 +308,7 @@ PATH_RULES: list[PathRuleRow] = [
         "reason": "protected path requires approval",
         "recovery": "",
         "allow_autonomous": False,
+        "description": "a manifest or lockfile an install trusts",
     },
     {
         "kind": "contains_part",
@@ -308,6 +316,7 @@ PATH_RULES: list[PathRuleRow] = [
         "reason": "protected path requires approval",
         "recovery": "",
         "allow_autonomous": False,
+        "description": "a manifest or lockfile an install trusts",
     },
     {
         "kind": "contains_part",
@@ -315,6 +324,7 @@ PATH_RULES: list[PathRuleRow] = [
         "reason": "protected path requires approval",
         "recovery": "",
         "allow_autonomous": False,
+        "description": "a manifest or lockfile an install trusts",
     },
     {
         "kind": "contains_part",
@@ -322,6 +332,7 @@ PATH_RULES: list[PathRuleRow] = [
         "reason": "protected path requires approval",
         "recovery": "",
         "allow_autonomous": False,
+        "description": "a manifest or lockfile an install trusts",
     },
     {
         "kind": "contains_part",
@@ -329,6 +340,7 @@ PATH_RULES: list[PathRuleRow] = [
         "reason": "protected path requires approval",
         "recovery": "",
         "allow_autonomous": False,
+        "description": "a manifest or lockfile an install trusts",
     },
     {
         "kind": "subtree",
@@ -336,6 +348,7 @@ PATH_RULES: list[PathRuleRow] = [
         "reason": "protected path requires approval",
         "recovery": "",
         "allow_autonomous": False,
+        "description": "CI, run with the repository's secrets",
     },
     {
         "kind": "subtree",
@@ -343,6 +356,7 @@ PATH_RULES: list[PathRuleRow] = [
         "reason": "protected path requires approval",
         "recovery": "",
         "allow_autonomous": False,
+        "description": "the editor's tasks and launches",
     },
     {
         "kind": "subtree",
@@ -350,6 +364,7 @@ PATH_RULES: list[PathRuleRow] = [
         "reason": "protected path requires approval",
         "recovery": "",
         "allow_autonomous": False,
+        "description": "the container recipe",
     },
     {
         "kind": "subtree",
@@ -357,6 +372,7 @@ PATH_RULES: list[PathRuleRow] = [
         "reason": "protected path requires approval",
         "recovery": "",
         "allow_autonomous": False,
+        "description": "the hooks `git commit` runs",
     },
     {
         "kind": "subtree",
@@ -364,6 +380,7 @@ PATH_RULES: list[PathRuleRow] = [
         "reason": "protected path requires approval",
         "recovery": "",
         "allow_autonomous": False,
+        "description": "the launch registry: what a session mounts",
     },
     {
         "kind": "subtree",
@@ -371,6 +388,7 @@ PATH_RULES: list[PathRuleRow] = [
         "reason": "protected path requires approval",
         "recovery": "",
         "allow_autonomous": False,
+        "description": "this machine's launch registry: what a session mounts",
     },
     {
         "kind": "subtree",
@@ -378,6 +396,7 @@ PATH_RULES: list[PathRuleRow] = [
         "reason": "protected path requires approval",
         "recovery": "",
         "allow_autonomous": False,
+        "description": "the policy's own code",
     },
     {
         "kind": "subtree",
@@ -385,6 +404,7 @@ PATH_RULES: list[PathRuleRow] = [
         "reason": "protected path requires approval",
         "recovery": "",
         "allow_autonomous": False,
+        "description": "the hooks this project declares",
     },
     {
         "kind": "subtree",
@@ -392,6 +412,7 @@ PATH_RULES: list[PathRuleRow] = [
         "reason": "protected path requires approval",
         "recovery": "",
         "allow_autonomous": False,
+        "description": "which rules this project holds itself to",
     },
     {
         "kind": "subtree",
@@ -399,6 +420,7 @@ PATH_RULES: list[PathRuleRow] = [
         "reason": "protected path requires approval",
         "recovery": "",
         "allow_autonomous": False,
+        "description": "how this project judges shell commands",
     },
     {
         "kind": "subtree",
@@ -406,6 +428,7 @@ PATH_RULES: list[PathRuleRow] = [
         "reason": "protected path requires approval",
         "recovery": "",
         "allow_autonomous": False,
+        "description": "the code-scan rules",
     },
     {
         "kind": "subtree",
@@ -413,6 +436,7 @@ PATH_RULES: list[PathRuleRow] = [
         "reason": "protected path requires approval",
         "recovery": "",
         "allow_autonomous": False,
+        "description": "what compiles the policy into the hooks",
     },
     {
         "kind": "subtree",
@@ -420,6 +444,7 @@ PATH_RULES: list[PathRuleRow] = [
         "reason": "protected path requires approval",
         "recovery": "",
         "allow_autonomous": False,
+        "description": "what compiles the policy into the hooks",
     },
     {
         "kind": "subtree",
@@ -427,6 +452,7 @@ PATH_RULES: list[PathRuleRow] = [
         "reason": "protected path requires approval",
         "recovery": "",
         "allow_autonomous": False,
+        "description": "what compiles the policy into the hooks",
     },
     {
         "kind": "subtree",
@@ -434,6 +460,7 @@ PATH_RULES: list[PathRuleRow] = [
         "reason": "protected path requires approval",
         "recovery": "",
         "allow_autonomous": False,
+        "description": "what compiles the policy into the hooks",
     },
     {
         "kind": "subtree",
@@ -441,6 +468,15 @@ PATH_RULES: list[PathRuleRow] = [
         "reason": "protected path requires approval",
         "recovery": "",
         "allow_autonomous": False,
+        "description": "what compiles the policy into the hooks",
+    },
+    {
+        "kind": "subtree",
+        "value": "packages/lup/src/lup/harness/contracts.py",
+        "reason": "protected path requires approval",
+        "recovery": "",
+        "allow_autonomous": False,
+        "description": "what compiles the policy into the hooks",
     },
     {
         "kind": "subtree",
@@ -448,6 +484,7 @@ PATH_RULES: list[PathRuleRow] = [
         "reason": "protected path requires approval",
         "recovery": "",
         "allow_autonomous": False,
+        "description": "what compiles the policy into the hooks",
     },
     {
         "kind": "subtree",
@@ -455,6 +492,7 @@ PATH_RULES: list[PathRuleRow] = [
         "reason": "protected path requires approval",
         "recovery": "",
         "allow_autonomous": False,
+        "description": "what compiles the policy into the hooks",
     },
     {
         "kind": "subtree",
@@ -462,6 +500,7 @@ PATH_RULES: list[PathRuleRow] = [
         "reason": "protected path requires approval",
         "recovery": "",
         "allow_autonomous": False,
+        "description": "what compiles the policy into the hooks",
     },
     {
         "kind": "subtree",
@@ -469,6 +508,7 @@ PATH_RULES: list[PathRuleRow] = [
         "reason": "protected path requires approval",
         "recovery": "",
         "allow_autonomous": False,
+        "description": "what compiles the policy into the hooks",
     },
     {
         "kind": "subtree",
@@ -476,6 +516,7 @@ PATH_RULES: list[PathRuleRow] = [
         "reason": "protected path requires approval",
         "recovery": "",
         "allow_autonomous": False,
+        "description": "what compiles the policy into the hooks",
     },
     {
         "kind": "subtree",
@@ -483,6 +524,7 @@ PATH_RULES: list[PathRuleRow] = [
         "reason": "protected path requires approval",
         "recovery": "",
         "allow_autonomous": False,
+        "description": "what compiles the policy into the hooks",
     },
     {
         "kind": "subtree",
@@ -490,6 +532,7 @@ PATH_RULES: list[PathRuleRow] = [
         "reason": "protected path requires approval",
         "recovery": "",
         "allow_autonomous": False,
+        "description": "what compiles the policy into the hooks",
     },
     {
         "kind": "subtree",
@@ -497,6 +540,7 @@ PATH_RULES: list[PathRuleRow] = [
         "reason": "protected path requires approval",
         "recovery": "",
         "allow_autonomous": False,
+        "description": "the hook assets",
     },
     {
         "kind": "subtree",
@@ -504,6 +548,7 @@ PATH_RULES: list[PathRuleRow] = [
         "reason": "protected path requires approval",
         "recovery": "",
         "allow_autonomous": False,
+        "description": "the hook assets",
     },
     {
         "kind": "exact",
@@ -511,6 +556,7 @@ PATH_RULES: list[PathRuleRow] = [
         "reason": "README.md is human-authored",
         "recovery": "Propose the exact change and let the user apply it.",
         "allow_autonomous": False,
+        "description": "a file its human author owns",
     },
     {
         "kind": "subtree",
@@ -518,6 +564,7 @@ PATH_RULES: list[PathRuleRow] = [
         "reason": "protected path requires approval",
         "recovery": "",
         "allow_autonomous": False,
+        "description": "lup's own launch and review state",
     },
     {
         "kind": "subtree",
@@ -525,6 +572,7 @@ PATH_RULES: list[PathRuleRow] = [
         "reason": "protected path requires approval",
         "recovery": "",
         "allow_autonomous": False,
+        "description": "lup's own launch and review state",
     },
     {
         "kind": "subtree",
@@ -532,6 +580,7 @@ PATH_RULES: list[PathRuleRow] = [
         "reason": "protected path requires approval",
         "recovery": "",
         "allow_autonomous": False,
+        "description": "lup's own launch and review state",
     },
     {
         "kind": "subtree",
@@ -539,6 +588,7 @@ PATH_RULES: list[PathRuleRow] = [
         "reason": "protected path requires approval",
         "recovery": "",
         "allow_autonomous": False,
+        "description": "lup's own launch and review state",
     },
     {
         "kind": "subtree",
@@ -546,6 +596,7 @@ PATH_RULES: list[PathRuleRow] = [
         "reason": "protected path requires approval",
         "recovery": "",
         "allow_autonomous": False,
+        "description": "lup's own launch and review state",
     },
     {
         "kind": "subtree",
@@ -553,6 +604,7 @@ PATH_RULES: list[PathRuleRow] = [
         "reason": "protected path requires approval",
         "recovery": "",
         "allow_autonomous": False,
+        "description": "lup's own launch and review state",
     },
     {
         "kind": "name_prefix",
@@ -560,6 +612,7 @@ PATH_RULES: list[PathRuleRow] = [
         "reason": "protected path requires approval",
         "recovery": "",
         "allow_autonomous": False,
+        "description": "an environment file, where secrets are kept",
     },
     {
         "kind": "new_devtools",
@@ -567,6 +620,7 @@ PATH_RULES: list[PathRuleRow] = [
         "reason": "new devtools module requires approval",
         "recovery": "",
         "allow_autonomous": False,
+        "description": "a new devtools module",
     },
 ]
 
@@ -31707,3 +31761,5 @@ REPAIR_COMMAND: list[str] = [
 ]
 
 HOOK_DEADLINE_SECONDS = 25.0
+
+HOOK_ANSWER_SECONDS = 28.0

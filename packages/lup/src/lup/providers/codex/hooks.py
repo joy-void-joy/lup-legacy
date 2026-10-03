@@ -54,8 +54,13 @@ from lup.providers.codex.native import (
     CodexShellOperation,
     CodexUnknownOperation,
 )
-from lup.policy.hooks import LupHookInput, LupHookOutput, LupHooksConfig
-from lup.policy.enforcement import NativeSemantics
+from lup.policy.hooks import (
+    LupHookInput,
+    LupHookMatcher,
+    LupHookOutput,
+    LupHooksConfig,
+)
+from lup.policy.enforcement import NativeSemantics, unjudged_output
 from lup.policy.models import SemanticTool
 from lup.types import JsonObject
 from lup.sessions.errors import UnsupportedCapability
@@ -270,6 +275,12 @@ class CodexApprovalResponder(BaseModel, frozen=True, arbitrary_types_allowed=Tru
         The approval reply carries only a decision. Context and refusal
         reasons reach the active turn through its steering transport, and
         durable mailbox receipts advance only once that transport accepts them.
+
+        A hook that raises is answered with the refusal of a call nobody
+        judged, which declines it and tells the turn why. The app-server
+        would decline an error reply too, but as "approval request failed",
+        with nothing reaching the agent; and it waits on an approval without
+        limit, so a policy hook bounds its own judgement rather than this.
         """
         if not self.handles(method):
             return DECLINE
@@ -280,9 +291,15 @@ class CodexApprovalResponder(BaseModel, frozen=True, arbitrary_types_allowed=Tru
             # lup: ignore[re-call] — native matcher language
             or re.search(matcher.matcher or "", method) is not None
         ]
-        outputs = [
-            await matcher.hook(self.hook_input(method, params)) for matcher in matchers
-        ]
+
+        async def answered(matcher: LupHookMatcher) -> LupHookOutput:
+            try:
+                return await matcher.hook(self.hook_input(method, params))
+            except Exception as error:
+                logger.exception("declining %s: a hook raised judging it", method)
+                return unjudged_output(error)
+
+        outputs = [await answered(matcher) for matcher in matchers]
         if not outputs:
             return DECLINE
         for output in outputs:

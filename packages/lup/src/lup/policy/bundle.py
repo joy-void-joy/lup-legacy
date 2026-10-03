@@ -57,6 +57,7 @@ from lup.policy.kernel.rows import (
 )
 from lup.policy.edit_rules import EditRule, erase_edit_rules
 from lup.policy.imports import ImportBoundary
+from lup.policy.models import ProtectedRoot
 from lup.policy.peer_policy import PeerPolicy, erase_peer_policy
 from lup.policy.refused_paths import RefusedPaths
 from lup.policy.refused_tools import RefusedTool, erase_refused_tools
@@ -192,7 +193,7 @@ def compilation_sources(
     )
 
 
-def hook_deadline(hook_timeout: int, verdict_reserve: float = 5.0) -> float:
+def hook_deadline(hook_timeout: float, verdict_reserve: float = 5.0) -> float:
     """How long a verdict may take, given what the runtime gives the hook.
 
     That timeout less ``verdict_reserve``, the time starting the interpreter
@@ -202,6 +203,19 @@ def hook_deadline(hook_timeout: int, verdict_reserve: float = 5.0) -> float:
     hook it previews is.
     """
     return hook_timeout - verdict_reserve
+
+
+def hook_answer_limit(hook_timeout: float, exit_reserve: float = 2.0) -> float:
+    """When the hook answers with whatever it has, given what the runtime gives it.
+
+    That timeout less ``exit_reserve``, the time stopping the judgement,
+    writing a refusal and ending the process take: a runtime reads nothing
+    the hook said until its process has ended, so a refusal written at the
+    timeout is never read and the call runs. Later than :func:`hook_deadline`
+    and the alarm past it, which still answer from inside the judgement
+    first wherever they can reach it.
+    """
+    return hook_timeout - exit_reserve
 
 
 def bundled_antipattern_rows(
@@ -243,11 +257,14 @@ def runtime_url_scope(
 
 
 def runtime_path_rules(
-    protected_roots: list[str], human_owned_files: list[str]
+    protected_roots: list[ProtectedRoot], human_owned_files: list[str]
 ) -> list[PathRuleRow]:
     """Compile application roots plus invariant edit guardrails."""
     return [
-        *[path_rule_row(protected_root_rule(root)) for root in protected_roots],
+        *[
+            path_rule_row(protected_root_rule(root.path.as_posix(), root.description))
+            for root in protected_roots
+        ],
         *[path_rule_row(human_owned_path_rule(path)) for path in human_owned_files],
         *[path_rule_row(rule) for rule in invariant_path_rules()],
     ]
@@ -292,6 +309,7 @@ def path_rule_rows_literal(rows: list[PathRuleRow]) -> str:
                 f'"reason": {json.dumps(row["reason"])}',
                 f'"recovery": {json.dumps(row["recovery"])}',
                 f'"allow_autonomous": {row["allow_autonomous"]}',
+                f'"description": {python_literal(row["description"] if "description" in row else row["value"])}',
             ]
             for row in rows
         ]
@@ -683,7 +701,7 @@ def render_policy_data(
     *,
     allowed_fetch_scopes: list[UrlScopeRow],
     denied_fetch_scopes: list[UrlScopeRow],
-    protected_roots: list[str],
+    protected_roots: list[ProtectedRoot],
     human_owned_files: list[str],
     autonomous_agent_identities: list[str],
     path_roles: list[PathRoleRow],
@@ -719,8 +737,9 @@ def render_policy_data(
     which no compiled constant could know.
 
     ``hook_timeout`` is what the runtime gives the policy hook, the same value
-    its hooks file declares, and the hook's deadline is derived from it rather
-    than restated beside it, by :func:`hook_deadline`.
+    its hooks file declares, and the hook's deadline and the moment it answers
+    whatever it has are derived from it rather than restated beside it, by
+    :func:`hook_deadline` and :func:`hook_answer_limit`.
     """
     body = "\n\n".join(
         [
@@ -784,6 +803,7 @@ def render_policy_data(
             + string_rows_literal(resolution_command),
             "REPAIR_COMMAND: list[str] = " + string_rows_literal(repair_command),
             "HOOK_DEADLINE_SECONDS = " + json.dumps(hook_deadline(hook_timeout)),
+            "HOOK_ANSWER_SECONDS = " + json.dumps(hook_answer_limit(hook_timeout)),
         ]
     )
     return (

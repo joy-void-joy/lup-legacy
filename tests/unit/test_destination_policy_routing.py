@@ -350,8 +350,15 @@ def test_protocol_preserves_all_semantic_fields_and_rejects_malformed_responses(
     assert decision_wire(restored) == row
     # The caller's record of what the call does -- each file's document, the
     # steps no document shows, each command of its line with its own verdict
-    # -- is bound where the call is, never carried by an owner.
-    assert set(row) == set(vars(source)) - {"file_reviews", "unpreviewed", "segments"}
+    # -- is bound where the call is, never carried by an owner; nor is the
+    # protected-path rule an owner's verdict met, which this protocol version
+    # leaves out so origins and owners of either version still read it.
+    assert set(row) == set(vars(source)) - {
+        "file_reviews",
+        "unpreviewed",
+        "segments",
+        "protected",
+    }
     for malformed in (
         {"protocol": 2, "decision": row},
         {"protocol": 1, "decision": {"effect": "allow"}},

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -21,7 +22,7 @@ from lup.policy.hooks import (
     LupHooksConfig,
 )
 from lup.providers.claude.harness import CLAUDE_DISPATCHER
-from lup.policy.enforcement import NativeSemantics
+from lup.policy.enforcement import NativeSemantics, unjudged_output
 from lup.policy.kernel.decision import SandboxPlacement
 from lup.policy.models import SemanticTool
 from lup.types import JsonObject, ToolName
@@ -30,6 +31,8 @@ from lup.workspace.paths import extract_glob_dir
 if TYPE_CHECKING:
     import claude_agent_sdk as claude
     from claude_agent_sdk import types as claude_types
+
+logger = logging.getLogger(__name__)
 
 
 def claude_hook_tool_path(tool_name: ToolName, tool_input: JsonObject) -> str:
@@ -100,7 +103,13 @@ def build_claude_hook_handler(
     [claude.HookInput, str | None, claude_types.HookContext],
     Awaitable[claude_types.SyncHookJSONOutput],
 ]:
-    """Close one native handler over a typed portable hook callback."""
+    """Close one native handler over a typed portable hook callback.
+
+    A PreToolUse callback that raises is answered with a refusal rather than
+    passed on as the error: Claude Code runs the tool past a callback that
+    failed (measured on 2.1.259 and 2.1.285), and a gate that failed has not
+    let anything through.
+    """
 
     async def claude_hook(
         input_data: claude.HookInput,
@@ -119,17 +128,22 @@ def build_claude_hook_handler(
             else False
         )
         cwd = input_data["cwd"] if "cwd" in input_data else ""
-        output = await matcher.hook(
-            LupHookInput(
-                event=event,
-                tool_name=tool_name,
-                tool_input=tool_input,
-                tool_path=claude_hook_tool_path(tool_name, tool_input),
-                tool_result=tool_result,
-                cwd=cwd,
-                stop_hook_active=stop_hook_active,
-            )
+        given = LupHookInput(
+            event=event,
+            tool_name=tool_name,
+            tool_input=tool_input,
+            tool_path=claude_hook_tool_path(tool_name, tool_input),
+            tool_result=tool_result,
+            cwd=cwd,
+            stop_hook_active=stop_hook_active,
         )
+        try:
+            output = await matcher.hook(given)
+        except Exception as error:
+            if event != "PreToolUse":
+                raise
+            logger.exception("refusing %s: its PreToolUse hook raised", tool_name)
+            output = unjudged_output(error)
         rendered = lup_hook_output_to_claude(
             output,
             event=event,
@@ -158,9 +172,9 @@ def lup_hooks_to_claude(
         matcher: LupHookMatcher, event: LupHookEvent
     ) -> claude_types.HookMatcher:
         handler = build_claude_hook_handler(matcher, event=event)
-        if matcher.matcher is not None:
-            return claude_types.HookMatcher(matcher=matcher.matcher, hooks=[handler])
-        return claude_types.HookMatcher(hooks=[handler])
+        return claude_types.HookMatcher(
+            matcher=matcher.matcher, hooks=[handler], timeout=matcher.timeout
+        )
 
     return {
         event: [native_matcher(matcher, event) for matcher in matchers]

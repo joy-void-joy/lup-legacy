@@ -70,6 +70,10 @@ def decision_wire(decision: KernelDecision) -> DecisionWire:
     evaluator cannot substitute the caller's path or image digests through
     advisory metadata, and the transport does not change for that metadata.
     """
+    # lup: defer: the protected-path rule an owner's verdict met is not
+    # carried, so a file another repository's policy judged names no rule on
+    # the origin's row. Both sides read this shape exactly, so carrying it is
+    # a protocol version an older origin or owner can still decline.
     return DecisionWire(
         effect=decision.effect,
         reason=decision.reason,

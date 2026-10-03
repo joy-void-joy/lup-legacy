@@ -15,13 +15,12 @@ import pytest
 
 from lup.devtools.review.app import (
     FileReason,
-    ProtectedMatch,
     ReviewAttribution,
     ReviewFile,
     ReviewSuppression,
     file_reason,
 )
-from lup.policy.relay import CapturedFileReview
+from lup.policy.relay import CapturedFileReview, ProtectedMatch
 from lup.policy.review import ReviewedFile
 
 

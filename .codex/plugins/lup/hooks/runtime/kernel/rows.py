@@ -4,16 +4,7 @@ from typing import Literal, TypedDict, NotRequired
 
 from .decision import CheckpointRequirement, SandboxPlacement, KernelDecision
 from .effects import EffectRow
-from .semantics import ReviewerRequirement
-
-type PathRuleKind = Literal[
-    "exact",
-    "subtree",
-    "name_prefix",
-    "new_subtree",
-    "contains_part",
-    "new_devtools",
-]
+from .semantics import PathRuleKind, ReviewerRequirement
 
 type RuleLevel = Literal["root", "command", "subcommand", "operation"]
 """Which nesting level of a shell table a resolved value was declared at.
@@ -49,6 +40,10 @@ class PathRuleRow(TypedDict):
 
     ``allow_autonomous`` releases the rule for an identity that already
     reviews its own edits; every other rule holds regardless of caller.
+    ``description`` says in plain words what the rule protects, for a
+    reviewer who sees which rule a file met; it is the value itself where
+    nothing was declared, and absent from a row another repository's older
+    policy renders, which the value then stands in for.
     """
 
     kind: PathRuleKind
@@ -56,6 +51,7 @@ class PathRuleRow(TypedDict):
     reason: str
     recovery: str
     allow_autonomous: bool
+    description: NotRequired[str]
 
 
 class DisplacedTargetRow(TypedDict):

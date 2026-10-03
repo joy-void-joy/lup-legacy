@@ -74,7 +74,6 @@ from lup.policy.kernel.edit import (
     resites_a_suppression,
     written_suppression,
 )
-from lup.policy.kernel.rows import PathRuleKind
 from lup.policy.assets.host import (
     append_review_record,
     checkout_home,
@@ -84,6 +83,7 @@ from lup.policy.relay import (
     AppendedRecords,
     CapturedFileReview,
     PersistentQuestion,
+    ProtectedMatch,
     QuestionRecord,
     QuestionRelay,
     RecordedQuestion,
@@ -479,15 +479,6 @@ class ReviewHunk(BaseModel, frozen=True):
             )
             for group in groups
         ]
-
-
-class ProtectedMatch(BaseModel, frozen=True):
-    """The protected-path rule a file's verdict matched: its kind, its root, and what the root holds."""
-
-    kind: PathRuleKind
-    root: str
-    description: str
-    """What the declaration says the root holds; the root itself where it says nothing."""
 
 
 class ReviewAttribution(BaseModel, frozen=True):

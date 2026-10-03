@@ -40,6 +40,7 @@ from lup.harness.contracts import (
     Spelling,
 )
 from lup.harness.generation import argument_text
+from lup.policy.models import ProtectedRoot
 from lup.harness.prompts import (
     SPAWNED_SESSION_LOSES_SHELL,
     guidance_banner,
@@ -86,6 +87,13 @@ class ClaudeSpellings(NativeSpellings):
     @property
     def runtime_name(self) -> Atom:
         return Atom("Claude Code")
+
+    @property
+    def protected_tree(self) -> ProtectedRoot:
+        return ProtectedRoot(
+            path=Path(self.tree("tree_root")),
+            description="Claude Code's settings, trust state and skills",
+        )
 
     @property
     def native_identifiers(self) -> list[Atom]:
@@ -898,9 +906,7 @@ class ClaudeHookRenderer(ArtifactRenderer[HookSet]):
                             )
                             for scope in source.denied_fetch
                         ],
-                        protected_roots=[
-                            path.as_posix() for path in source.protected_edit_roots
-                        ],
+                        protected_roots=source.protected_roots(),
                         human_owned_files=[
                             path.as_posix() for path in source.human_owned_files
                         ],

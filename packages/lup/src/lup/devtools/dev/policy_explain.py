@@ -33,6 +33,7 @@ from lup.policy.assets.host import (
     measured_boundary,
     opened_deadline,
     text_at,
+    unjudged_reason,
 )
 from lup.policy.bundle import hook_deadline
 from lup.policy.kernel.lex import shell_write_targets, shell_written_targets
@@ -260,7 +261,9 @@ def read_under(
         if not deadline_passed():
             raise
         return PolicyReading(
-            placement=placement.name, effect="deny", reason=str(overran)
+            placement=placement.name,
+            effect="deny",
+            reason=unjudged_reason(overran, True),
         )
     finally:
         closed_deadline(previous)
