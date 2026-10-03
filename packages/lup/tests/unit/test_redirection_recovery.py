@@ -68,6 +68,7 @@ def test_a_redirection_into_a_protected_path_keeps_its_question() -> None:
             reason="human-owned",
             recovery="",
             allow_autonomous=False,
+            description="docs/owned.md",
         )
     ]
     into_owned = decide_shell("cat > docs/owned.md", rows(), path_rules=owned)

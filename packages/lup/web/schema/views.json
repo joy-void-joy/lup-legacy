@@ -5029,6 +5029,17 @@
       "title": "ParkSubmission",
       "type": "object"
     },
+    "PathRuleKind": {
+      "enum": [
+        "exact",
+        "subtree",
+        "name_prefix",
+        "new_subtree",
+        "contains_part",
+        "new_devtools"
+      ],
+      "type": "string"
+    },
     "PendingQuestionView": {
       "additionalProperties": false,
       "description": "One question this run has asked, with whatever answer state it holds.\n\n``offer`` is a value some door proposed that no promoter has taken yet.\nShowing it is what makes an offer correctable in the page: a human sees\nthe pending value and can replace it before it counts.",
@@ -5093,6 +5104,30 @@
         "phase"
       ],
       "title": "PhaseChangedEvent",
+      "type": "object"
+    },
+    "ProtectedMatch": {
+      "additionalProperties": false,
+      "description": "The protected-path rule a file met, as a reviewer is shown it.\n\n``kind`` is how the rule matched -- ``subtree`` for a declared root or\nlup's own state, ``name_prefix`` for an environment file, ``new_devtools``\nfor a devtools module not written yet, ``exact`` for a human-owned file,\n``contains_part`` for a manifest or lockfile wherever it sits. ``root`` is\nthe rule's value as declared, and ``description`` what that is in plain\nwords, the root itself where nothing was declared.",
+      "properties": {
+        "description": {
+          "title": "Description",
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/$defs/PathRuleKind"
+        },
+        "root": {
+          "title": "Root",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "root",
+        "description"
+      ],
+      "title": "ProtectedMatch",
       "type": "object"
     },
     "QuestionAnswer": {
@@ -5364,6 +5399,17 @@
           "title": "Path",
           "type": "string"
         },
+        "protected": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ProtectedMatch"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
         "reason": {
           "title": "Reason",
           "type": "string"
@@ -5388,6 +5434,7 @@
         "rules",
         "before_sha256",
         "after_sha256",
+        "protected",
         "after"
       ],
       "title": "RecordedFileReview",

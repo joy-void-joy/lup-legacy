@@ -45,7 +45,7 @@ from lup.tools.mcp import ToolDeclaration
 from lup.policy.boundary import BoundaryCapability
 from lup.policy.kernel.rows import AcceptanceGuardRow, PathRoleName, SpawnNameRow
 from lup.policy.kernel.semantics import UnjudgedAmbient
-from lup.policy.models import PolicyId, UrlScope
+from lup.policy.models import PolicyId, ProtectedRoot, UrlScope
 from lup.policy.peer_policy import PeerPolicy
 from lup.policy.refused_paths import (
     RefusedPaths,
@@ -1599,7 +1599,14 @@ class HookSet(BaseModel, frozen=True):
     policy_ids: list[PolicyId]
     allowed_fetch: list[UrlScope] = []
     denied_fetch: list[UrlScope] = []
-    protected_edit_roots: list[Path] = []
+    protected_edit_roots: list[ProtectedRoot | Path] = Field(
+        default=[],
+        description=(
+            "Trees an edit needs approval into: a bare path, or a ProtectedRoot "
+            "naming in plain words what the tree is, which a reviewer reads "
+            "beside each file that met it"
+        ),
+    )
     import_boundaries: list[ImportBoundary] = []
     path_roles: list[HookPathRole] = Field(
         default=[],
@@ -1920,6 +1927,13 @@ class HookSet(BaseModel, frozen=True):
         here so the canonical policy composes no second reading of it.
         """
         return self.unscoped_fetch or self.unjudged_ambient
+
+    def protected_roots(self) -> list[ProtectedRoot]:
+        """Every declared protected root, a bare path read as one with no description."""
+        return [
+            root if isinstance(root, ProtectedRoot) else ProtectedRoot(path=root)
+            for root in self.protected_edit_roots
+        ]
 
     def resolved_shell_rules(self) -> list[ShellCommandRule]:
         """The shell vocabulary this project actually judges by.

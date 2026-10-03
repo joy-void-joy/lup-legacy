@@ -111,6 +111,30 @@ What changes for a session: a call the policy cannot judge in time is
 refused, where the runtime used to run it. Retry it once; a refusal that
 repeats is the policy's defect to report.
 
+### A file's verdict says which protected rule it met
+
+A question about a protected file said `edit:protected-path` whether the file
+was the policy's own code, a lockfile, an environment file or a human-owned
+README. Each file verdict (`lup.policy.relay.FileVerdict`, and the kernel's
+`FileReviewRow`) carries `protected`: the matched rule's `kind`, the `root`
+it names, and a `description` of that root in plain words. A hook set
+describes a root by declaring `ProtectedRoot(path=…, description=…)` in
+`protected_edit_roots`, where a bare `Path` still works and is described by
+itself; this project describes its own, such as "the policy's own code" for
+`packages/lup/src/lup/policy` and "the hook assets" for each runtime's
+dispatcher assets. `HookSet.protected_roots()` reads the list as roots either
+way, and `hooks roles` prints each description. A review recorded before
+carries no `protected`, and still reads.
+
+A runtime's own tree is declared by its adapter rather than by a project:
+`NativeSpellings.protected_tree` answers `.claude` for Claude Code and
+`.codex` for Codex, each described, and `lup.providers.harness.runtime_trees()`
+collects every supported runtime's. The catalog spreads that in place of the
+two paths it named, so both trees stay protected whichever runtime a session
+runs. An adopter's own `NativeSpellings` implements `protected_tree`, and a
+hook set that listed `.claude` and `.codex` by hand can spread
+`runtime_trees()` instead.
+
 ### A sibling worktree's scratch is scratch for every question, and a stream is no file
 
 Several false positives parked reviews that nobody needed:

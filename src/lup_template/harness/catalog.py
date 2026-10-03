@@ -31,9 +31,10 @@ from lup.harness.models import (
 from lup.providers.claude.harness import ClaudeSpellings
 from lup.providers.claude.login import CLAUDE_LOGIN
 from lup.providers.codex.harness import CodexSpellings
+from lup.providers.harness import runtime_trees
 from lup.providers.codex.login import CODEX_LOGIN
 from lup.policy.bundle import compilation_sources
-from lup.policy.models import UrlScope
+from lup.policy.models import ProtectedRoot, UrlScope
 from lup.policy.refused_paths import credential_files
 from lup.policy.rules import dependency_declarations
 from lup.harness.codescan.common import ApplicationRoots
@@ -762,28 +763,44 @@ def portable_harness(
             # domain whose sensitive files are a data directory, a migration
             # set or a deployment manifest says so instead.
             protected_edit_roots=[
-                # Both runtimes' trees, because one of them being protected
-                # and the other open is a hole with no reason behind it: the
-                # settings, trust state and hand-written skills under each
-                # decide the same things about the session that reads them.
-                Path(".claude"),
-                Path(".codex"),
+                # Every supported runtime's own tree, as its adapter declares
+                # it, whichever runtime a session runs.
+                *runtime_trees(),
                 # Every manifest and lockfile, in whichever package holds it:
                 # what an install fetches and runs is declared there, and the
                 # commands that write them for a reason are judged by the
                 # dependency rows rather than by a path.
-                *dependency_declarations(),
+                *(
+                    ProtectedRoot(
+                        path=declared,
+                        description="a manifest or lockfile an install trusts",
+                    )
+                    for declared in dependency_declarations()
+                ),
                 # CI runs with the repository's secrets and on every push, so
                 # a workflow or an action is code somebody else executes.
-                Path(".github"),
+                ProtectedRoot(
+                    path=Path(".github"),
+                    description="CI, run with the repository's secrets",
+                ),
                 # And the same by other hands, later and outside the session:
                 # an editor's tasks and launch configurations, a container
                 # recipe, and the hooks `git commit` runs. None of them has
                 # this policy in front of it when it runs.
-                Path(".vscode"),
-                Path(".devcontainer"),
-                Path(".pre-commit-config.yaml"),
-                Path("sync.json"),
+                ProtectedRoot(
+                    path=Path(".vscode"), description="the editor's tasks and launches"
+                ),
+                ProtectedRoot(
+                    path=Path(".devcontainer"), description="the container recipe"
+                ),
+                ProtectedRoot(
+                    path=Path(".pre-commit-config.yaml"),
+                    description="the hooks `git commit` runs",
+                ),
+                ProtectedRoot(
+                    path=Path("sync.json"),
+                    description="the launch registry: what a session mounts",
+                ),
                 # The gitignored half alongside it, because a registration
                 # there can carry a `mount` — and that key is what a
                 # session may open, at which mode, wherever the project sits
@@ -793,7 +810,10 @@ def portable_harness(
                 # identity and the forge credential are resolved on the host.
                 # Gitignored is not a substitute. The gate is who may write
                 # it, and nothing was asking.
-                Path("sync.json.local"),
+                ProtectedRoot(
+                    path=Path("sync.json.local"),
+                    description="this machine's launch registry: what a session mounts",
+                ),
                 # What the agent is allowed to do at all is declared here, and
                 # an agent that can widen its own policy without a question
                 # has a preference rather than a boundary. Protected so the
@@ -802,20 +822,43 @@ def portable_harness(
                 # a declaration appears in a review, is drift-checked, and
                 # holds for the next session, where a per-call escape helps
                 # once and evaporates.
-                Path("packages/lup/src/lup/policy"),
-                Path(LAYOUT.path("harness", "catalog.py")),
+                ProtectedRoot(
+                    path=Path("packages/lup/src/lup/policy"),
+                    description="the policy's own code",
+                ),
+                ProtectedRoot(
+                    path=Path(LAYOUT.path("harness", "catalog.py")),
+                    description="the hooks this project declares",
+                ),
                 # Which of those rules apply is the same widening by another
                 # name: retiring a scan rule, or judging a command differently,
                 # is decided in these, and the next generation compiles it into
                 # the hooks as surely as an edit of the policy would.
-                Path(LAYOUT.path("harness", "content", "catalog.py")),
-                Path(LAYOUT.path("harness", "content", "shell_vocabulary.py")),
-                Path("packages/lup/src/lup/harness/codescan"),
+                ProtectedRoot(
+                    path=Path(LAYOUT.path("harness", "content", "catalog.py")),
+                    description="which rules this project holds itself to",
+                ),
+                ProtectedRoot(
+                    path=Path(LAYOUT.path("harness", "content", "shell_vocabulary.py")),
+                    description="how this project judges shell commands",
+                ),
+                ProtectedRoot(
+                    path=Path("packages/lup/src/lup/harness/codescan"),
+                    description="the code-scan rules",
+                ),
                 # And what compiles all of it into the hooks, or into a
                 # session composed here: an edit there and a regeneration
                 # change what judges the session as an edit of the policy
                 # would. Read off the compilation's imports, not listed.
-                *(Path("packages/lup/src/lup", path) for path in compilation_sources()),
+                *(
+                    ProtectedRoot(
+                        path=Path("packages/lup/src/lup", source),
+                        description="the hook assets"
+                        if source.name == "assets"
+                        else "what compiles the policy into the hooks",
+                    )
+                    for source in compilation_sources()
+                ),
             ],
             # lup: template: what each tree in this domain is *for*. A role is
             # how a gate tells a fixture from production and a build product

@@ -41,6 +41,7 @@ from lup.harness.models import (
     Skill,
 )
 from lup.harness.validation import validated_tree
+from lup.policy.models import ProtectedRoot
 from lup.policy.review import ReviewedFile
 from lup.policy.kernel.review import literal_input
 
@@ -59,14 +60,30 @@ class AdapterName(StrEnum):
     CODEX = "codex"
 
 
-def prompt_renderer(own: NativeSpellings) -> SpelledPromptRenderer:
-    """Compose the one renderer around the vocabulary of one runtime.
+def every_runtime() -> list[NativeSpellings]:
+    """Every runtime this library supports, in the order prose names them.
 
-    Prose that teaches every tree names the runtimes in this order, so the
-    ordering is a single composition decision rather than a claim any one
-    adapter makes about the others.
+    One composition decision rather than a claim any one adapter makes about
+    the others: prompts that teach every tree name them in this order, and
+    the policy protects each one's own tree.
     """
-    return SpelledPromptRenderer(own=own, every=[ClaudeSpellings(), CodexSpellings()])
+    return [ClaudeSpellings(), CodexSpellings()]
+
+
+def runtime_trees() -> list[ProtectedRoot]:
+    """Every supported runtime's own tree, as each adapter declares it protected.
+
+    All of them, whichever runtime a session runs: one runtime's tree
+    protected and the other's open is a hole with no reason behind it, since
+    the settings, trust state and skills under each decide the same things
+    about the session that reads them.
+    """
+    return [runtime.protected_tree for runtime in every_runtime()]
+
+
+def prompt_renderer(own: NativeSpellings) -> SpelledPromptRenderer:
+    """Compose the one renderer around the vocabulary of one runtime."""
+    return SpelledPromptRenderer(own=own, every=every_runtime())
 
 
 def claude_prompt_renderer() -> SpelledPromptRenderer:
