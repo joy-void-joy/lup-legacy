@@ -2,6 +2,46 @@
 
 ## Unreleased
 
+### The dashboard's editor colours code as Neovim does, and says what a name is
+
+The page's highlighting saw a Python class only where it was defined:
+`Field(...)`, an annotation and a type at a use site stayed plain, and
+nothing on the page said what a name was.
+
+- Each file is read by its tree-sitter grammar (`web-tree-sitter` with
+  `tree-sitter-wasm`, every grammar's WASM and its package's own highlights
+  query) in place of lowlight, and coloured by capture as Neovim does: types,
+  constructors, functions and methods, parameters, modules, decorators,
+  `self`, keywords, strings, numbers and comments. Where a published query
+  leaves out what nvim-treesitter reads, in Python and TypeScript, the page
+  adds it after. A grammar is a chunk of its own, fetched the first time a
+  file in its language is drawn; the main script is 495 KB, 540 KB before.
+- Where a language server reads a file, its semantic tokens are laid over
+  tree-sitter's, the server winning as in Neovim.
+- `K` on a name in code shows its language server's hover — type, signature
+  and documentation — and keeps showing the policy's sentence on a file's
+  header; the pointer resting on a name, or a long press on a phone, does the
+  same. `gd` opens the definition read-only in the window and `Ctrl+o` comes
+  back; `gr` lists every use in the context. What the policy asks about moved
+  from `gd` to `g?`. All four rebind in `[dashboard.keys]`.
+- The dashboard asks through its own routes (`/api/code/hover`,
+  `definition`, `references`, `tokens`, `text`), behind its capability, Host
+  and Origin checks, about the file as it stands or a review's proposed
+  after-document, opened in memory. One server per repository and language
+  starts on the first question, takes each checkout as a workspace folder,
+  stops after ten idle minutes, and answers each question within a bound or
+  says why it did not (`lup.tools.lsp.pool`). Python is read by basedpyright,
+  in lup's `web` extra, TypeScript and JavaScript by TypeScript 7's
+  `tsc --lsp` (`lup.tools.lsp.servers`).
+- A language server only reads: it starts from the dashboard's own
+  environment, never a checkout's `.venv`, and a checkout's packages reach it
+  as directories read off its site-packages and `.pth` files, nothing in them
+  run.
+- An LSP session reads its server in one task: a question can be withdrawn
+  (`$/cancelRequest`) without leaving the stream half read, the server's own
+  requests are answered, a document can be re-sent as changed, and a session
+  names its `languageId` and capabilities.
+
 ### Another session's stash no longer fails the test suite
 
 The suites' guard against a test writing into the real checkout
