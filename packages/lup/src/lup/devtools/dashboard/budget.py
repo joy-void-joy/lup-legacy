@@ -405,11 +405,20 @@ class AccountWatch:
         except UsageUnavailable as unreadable:
             self.error = str(unreadable)
             return
-        self.observed(report.windows, now)
+        self.observed(report.windows, report.read_at or now)
+        self.error = report.stale
+
+    def fresh(self, now: datetime, within: timedelta) -> bool:
+        """Whether a reading from anywhere -- a session's status line, a rollout, the provider -- is that recent."""
+        return self.read_at is not None and now - self.read_at < within
 
     def observed(self, windows: list[PacingWindow], now: datetime) -> None:
-        """Take a reading from anywhere that reports one: the provider, or a rollout."""
-        if not windows:
+        """Take a reading from anywhere that reports one: the provider, a rollout, a status line.
+
+        One older than the latest is kept out, so a reading another reader
+        took a while ago never stands over a fresher one.
+        """
+        if not windows or (self.read_at is not None and now <= self.read_at):
             return
         with self.lock:
             self.readings.append(WindowReading(at=now, windows=windows))
@@ -579,8 +588,10 @@ class AccountPoller:
                 for each in found
             }
             watches = list(self.watches.values())
+        within = timedelta(seconds=self.interval(moment))
         for watch in watches:
-            watch.read(moment)
+            if not watch.fresh(moment, within):
+                watch.read(moment)
         self.ledger.published([watch.standing(moment) for watch in watches])
 
     def polling(self) -> None:
@@ -917,6 +928,25 @@ class BudgetGovernor:
             for session in [sessions[spend.session]]
         ]
 
+    def heard_windows(self, agents: list[Placed]) -> None:
+        """Take the windows each session's status line handed as a reading of the account it draws on."""
+        join, poller = self.join, self.poller
+        if join is None or poller is None:
+            return
+        drawing = {
+            answer: each.account
+            for each in agents
+            if not each.agent.parent
+            for answer in each.agent.answers
+        }
+        for reading in join.windows():
+            if reading.session in drawing:
+                poller.observed(
+                    drawing[reading.session].key,
+                    reading.windows,
+                    datetime.fromtimestamp(reading.at, UTC),
+                )
+
     def rollout_charges(self, agents: list[Placed], moment: datetime) -> list[Charge]:
         """What Codex agents' rollouts counted since, charged; the windows they carry, observed."""
         followed = {
@@ -995,6 +1025,7 @@ class BudgetGovernor:
             for each in found
         ]
         epoch = moment.timestamp()
+        self.heard_windows(agents)
         charges = [
             *self.telemetry_charges(agents, moment),
             *self.rollout_charges(agents, moment),

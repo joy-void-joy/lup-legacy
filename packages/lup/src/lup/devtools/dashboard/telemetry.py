@@ -25,7 +25,9 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from pydantic import BaseModel, Field, ValidationError
 from pydantic.alias_generators import to_camel
+from pydantic_settings import BaseSettings
 
+from lup.observability.usage.models import PacingWindow
 from lup.types import EnvVars
 
 logger = logging.getLogger(__name__)
@@ -189,6 +191,22 @@ def agents(
     ]
 
 
+class HandedWindows(BaseModel, frozen=True):
+    """An account's windows as one session's runtime last heard them, handed by its status line.
+
+    Claude Code 2.1.285 hands its status line command ``rate_limits`` --
+    ``five_hour`` and ``seven_day``, each ``used_percentage`` and
+    ``resets_at`` in seconds since the epoch -- from the rate-limit headers
+    of the session's own last request (read in its bundle), so every running
+    session can tell the budget its account's windows with no request of
+    its own. ``at`` is when the status line read them.
+    """
+
+    session: str
+    at: float
+    windows: list[PacingWindow]
+
+
 class TelemetryJoin:
     """Requests waiting for their span to say whose they were, and the ones settled.
 
@@ -203,6 +221,7 @@ class TelemetryJoin:
         self.lock = threading.Lock()
         self.waiting: dict[str, RequestSpend] = {}
         self.makers: dict[str, RequestAgent] = {}
+        self.handed: dict[str, HandedWindows] = {}
 
     def spent(self, received: list[RequestSpend]) -> None:
         with self.lock:
@@ -211,6 +230,16 @@ class TelemetryJoin:
     def made(self, received: list[RequestAgent]) -> None:
         with self.lock:
             self.makers.update({each.request: each for each in received})
+
+    def heard(self, reading: HandedWindows) -> None:
+        """Keep the latest windows one session's status line handed."""
+        with self.lock:
+            self.handed[reading.session] = reading
+
+    def windows(self) -> list[HandedWindows]:
+        """The windows each session last handed; a reader keeps out one older than it holds."""
+        with self.lock:
+            return list(self.handed.values())
 
     def settled(self, now: float) -> list[RequestSpend]:
         """Every request whose maker is known, or whose span did not come within the grace."""
@@ -259,6 +288,7 @@ class TelemetryReceiver:
             "/v1/logs": self.logs,
             "/v1/traces": self.traces,
             "/v1/metrics": lambda body: None,
+            "/lup/windows": self.windows,
         }
         expected = f"Bearer {token}"
 
@@ -295,6 +325,9 @@ class TelemetryReceiver:
             target=self.server.serve_forever, name="lup-telemetry", daemon=True
         )
 
+    def windows(self, body: bytes) -> None:
+        self.join.heard(HandedWindows.model_validate_json(body))
+
     def logs(self, body: bytes) -> None:
         self.join.spent(spends(LogsExport.model_validate_json(body)))
 
@@ -314,11 +347,31 @@ class TelemetryReceiver:
         self.server.server_close()
 
 
+class HandedTelemetry(BaseSettings, extra="ignore"):
+    """Where a launch pointed this process's telemetry, as its environment says."""
+
+    endpoint: str = Field(default="", validation_alias="OTEL_EXPORTER_OTLP_ENDPOINT")
+    headers: str = Field(default="", validation_alias="OTEL_EXPORTER_OTLP_HEADERS")
+
+
 class TelemetryEnvironment(BaseModel, frozen=True):
     """The variables that point a Claude session's telemetry at the dashboard."""
 
     port: int = Field(gt=0)
     token: str
+
+    @classmethod
+    def handed(cls, said: HandedTelemetry) -> "TelemetryEnvironment | None":
+        """The telemetry port and token a launch handed, read back from what :meth:`variables` wrote."""
+        local, prefix = "http://127.0.0.1:", "Authorization=Bearer "
+        port = said.endpoint.removeprefix(local)
+        if not (
+            said.endpoint.startswith(local)
+            and port.isdigit()
+            and said.headers.startswith(prefix)
+        ):
+            return None
+        return cls(port=int(port), token=said.headers.removeprefix(prefix))
 
     def variables(self) -> EnvVars:
         """Logs and traces over OTLP/HTTP JSON to the telemetry port, bearing the token."""

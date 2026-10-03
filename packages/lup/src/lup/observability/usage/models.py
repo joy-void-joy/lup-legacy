@@ -95,6 +95,14 @@ class UsageReport(BaseModel, frozen=True):
     quiet day that was never measured.
     """
 
+    read_at: datetime | None = None
+    """When the windows were read, where that was not just now: a reading
+    another reader made of the same account, or the last good one standing
+    while the provider refuses to be asked again."""
+
+    stale: str = ""
+    """Why the windows are not fresher, where they are not."""
+
 
 class UsageUnavailable(RuntimeError):
     """One account's usage could not be read this time.

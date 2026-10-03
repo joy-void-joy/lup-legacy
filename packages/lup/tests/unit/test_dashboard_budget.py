@@ -42,7 +42,12 @@ from lup.launch.config_volume import (
 from lup.providers.harness import AdapterName
 from lup.devtools.dashboard.companion import KnownRepository
 from lup.devtools.dashboard.live import RunningAgent
-from lup.devtools.dashboard.telemetry import RequestAgent, RequestSpend, TelemetryJoin
+from lup.devtools.dashboard.telemetry import (
+    HandedWindows,
+    RequestAgent,
+    RequestSpend,
+    TelemetryJoin,
+)
 from lup.observability.usage.models import (
     PacingWindow,
     UsageReader,
@@ -622,9 +627,56 @@ def test_the_poller_reads_more_often_near_a_ceiling(tmp_path: Path) -> None:
         reader=lambda each: reader,
     )
     poller.poll(NOW)
-    assert poller.interval(NOW) == 120
+    assert poller.interval(NOW) == 300
+    poller.poll(NOW + timedelta(minutes=1))
+    assert reader.used == [88.0], "a reading still fresh is not asked for again"
+    later = NOW + timedelta(minutes=6)
+    poller.poll(later)
+    assert poller.interval(later) == 90
+
+
+def test_a_session_s_status_line_reading_stands_in_for_the_provider(
+    tmp_path: Path,
+) -> None:
+    join = TelemetryJoin()
+    door = Door()
+    home = AccountHome(account=CLAUDE, home=tmp_path, signed_in=True)
+    reader = Reader([10.0, 20.0])
+    poller = AccountPoller(
+        lambda: [tmp_path],
+        SpendLedger(tmp_path / "ledger.json"),
+        config(tmp_path),
+        homes=lambda roots: [home],
+        reader=lambda each: reader,
+    )
     poller.poll(NOW)
-    assert poller.interval(NOW) == 30
+    governing = BudgetGovernor(
+        SpendLedger(tmp_path / "ledger.json"),
+        config(tmp_path),
+        door,
+        poller=poller,
+        join=join,
+    )
+    join.heard(
+        HandedWindows(
+            session="conversation-worker",
+            at=(NOW + timedelta(minutes=2)).timestamp(),
+            windows=[
+                PacingWindow(
+                    label="5-hour",
+                    utilization_pct=96,
+                    resets_at=NOW + timedelta(hours=2),
+                    window_hours=5,
+                )
+            ],
+        )
+    )
+    seen = repository(tmp_path, session("worker", calling="Bash"))
+    view = governing.look([seen], NOW + timedelta(minutes=3))
+    assert view.accounts[0].windows[0].window.utilization_pct == 96
+    assert [each.cause for each in door.holding(seen.store)] == ["window"]
+    poller.poll(NOW + timedelta(minutes=3))
+    assert reader.used == [20.0], "a session's fresh reading spares the provider"
 
 
 def test_the_account_a_repositorys_volume_holds_is_read_and_charged(

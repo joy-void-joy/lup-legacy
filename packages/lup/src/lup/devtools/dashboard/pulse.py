@@ -54,10 +54,17 @@ reaches for nothing heavier than pydantic.
 from datetime import UTC, datetime, timedelta
 from pathlib import Path, PurePath
 from shutil import get_terminal_size
+import urllib.request
 from typing import Literal, TextIO
 
 from pydantic import BaseModel, ValidationError
 
+from lup.devtools.dashboard.telemetry import (
+    HandedTelemetry,
+    HandedWindows,
+    TelemetryEnvironment,
+)
+from lup.observability.usage.models import PacingWindow
 from lup.sessions.limits import AccountStanding
 
 # lup: ignore[constant-declaration] — the launch that exports it and the session
@@ -324,19 +331,54 @@ class StatusWorkspace(BaseModel, frozen=True):
     project_dir: str = ""
 
 
+class StatusWindow(BaseModel, frozen=True):
+    """One plan window as the runtime hands its status line: how much is used, and when it resets."""
+
+    used_percentage: float
+    resets_at: float
+    """Seconds since the epoch."""
+
+
+class StatusRateLimits(BaseModel, frozen=True):
+    """The plan's windows as the session's last request heard them, where the runtime says.
+
+    Read in Claude Code 2.1.285's bundle: ``rate_limits`` carries
+    ``five_hour`` and ``seven_day``, each built from the rate-limit headers
+    of the session's own requests, and is left out where neither is known.
+    """
+
+    five_hour: StatusWindow | None = None
+    seven_day: StatusWindow | None = None
+
+    def windows(self) -> list[PacingWindow]:
+        """The windows as the budget reads them, labelled as the usage endpoint's are."""
+        named = [("5-hour", 5.0, self.five_hour), ("weekly", 168.0, self.seven_day)]
+        return [
+            PacingWindow(
+                label=label,
+                utilization_pct=window.used_percentage,
+                resets_at=datetime.fromtimestamp(window.resets_at, UTC),
+                window_hours=hours,
+            )
+            for label, hours, window in named
+            if window is not None
+        ]
+
+
 class StatusInput(BaseModel, frozen=True):
     """What the runtime hands its status line command on stdin, as much of it as the line reads.
 
     Claude Code's ``statusLine`` input, documented at
     https://code.claude.com/docs/en/statusline#available-data: the session's
-    id, the transcript it writes, and the directory it was launched in. The
-    rest of what it hands is left unread.
+    id, the transcript it writes, the directory it was launched in, and its
+    account's windows. The rest of what it hands is left unread.
     """
 
     session_id: str = ""
     transcript_path: str = ""
     cwd: str = ""
     workspace: StatusWorkspace = StatusWorkspace()
+    rate_limits: StatusRateLimits = StatusRateLimits()
 
     @classmethod
     def read(cls, stream: TextIO | None) -> "StatusInput":
@@ -638,9 +680,50 @@ def answered(pulse: Path, stdin: TextIO | None, margin: int = 2) -> str:
     around the row, which its documentation does not size.
     """
     columns = get_terminal_size((0, 0)).columns
+    status = StatusInput.read(stdin)
+    handed_windows(status, TelemetryEnvironment.handed(HandedTelemetry()))
     fitted = status_line(
         pulse,
-        StatusInput.read(stdin),
+        status,
         columns=max(columns - margin, 1) if columns else 0,
     )
     return fitted.painted()
+
+
+def handed_windows(
+    status: StatusInput,
+    telemetry: TelemetryEnvironment | None,
+    now: datetime | None = None,
+    timeout: float = 0.5,
+) -> bool:
+    """Hand the dashboard the windows the runtime gave this status line; whether it took them.
+
+    Through the telemetry port the launch pointed the session at, bearing its
+    token, so every running session keeps its account's windows fresh with
+    no request to the usage endpoint. A line is printed whatever this does:
+    a dashboard out of reach this time hears from the next line. Sent with
+    the standard library's client rather than httpx, because the status line
+    runs at every turn of every session and loads nothing it can spare.
+    """
+    windows = status.rate_limits.windows()
+    if telemetry is None or not windows or not status.session_id:
+        return False
+    reading = HandedWindows(
+        session=status.session_id,
+        at=(now or datetime.now(UTC)).timestamp(),
+        windows=windows,
+    )
+    request = urllib.request.Request(
+        f"http://127.0.0.1:{telemetry.port}/lup/windows",
+        data=reading.model_dump_json().encode("utf-8"),
+        headers={
+            "Authorization": f"Bearer {telemetry.token}",
+            "Content-Type": "application/json",
+        },
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as answer:
+            return answer.status == 200
+    except OSError:
+        return False
