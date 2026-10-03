@@ -233,6 +233,31 @@ describe("dashboard page", () => {
     expect([...page.root.querySelectorAll(".pane .r.del .tx, .pane .r.add .tx")].map((line) => line.textContent?.slice(0, 5))).toEqual(["befor", "after"]);
   });
 
+  test("a resolution of a conflicted file colours each side as its own, bars it, and names each marker's side and branch", async () => {
+    const [opening, split, closing] = ["<", "=", ">"].map((char) => char.repeat(7));
+    const lines = ["export function greet(name: string): string {", `${opening} HEAD`, "  /* kept short", split, "  const message = `Hey ${name}`;", `${closing} feat-x`, "     closed here */", "  return name;", "}"];
+    const kept = [0, 2, 6, 7, 8];
+    const resolution = review();
+    const [base] = resolution.files;
+    if (base === undefined) throw new Error("the fixture review has a file");
+    resolution.files = [{
+      ...base, path: "/project/greet.ts", before: `${lines.join("\n")}\n`, after: `${kept.map((at) => lines[at]).join("\n")}\n`, additions: 0, deletions: 4,
+      hunks: [{ header: "@@ -1,9 +1,5 @@", old_start: 1, old_end: 9, new_start: 1, new_end: 5, lines: lines.map((text, at) => ({
+        kind: kept.includes(at) ? "context" : "remove", text: `${text}\n`, old_line: at + 1 as number | null, new_line: kept.includes(at) ? kept.indexOf(at) + 1 as number | null : null, suppression: false,
+      })) }],
+    }];
+    details.set("tree-q1", resolution);
+    const page = await landed();
+    const markers = [...page.root.querySelectorAll(".pane .r.cf-at")];
+    expect(markers.map((row) => row.querySelector(".vt[class*='cfs-']")?.textContent)).toEqual(["◂ ours · HEAD", "◂ theirs · feat-x", "◂ end of theirs · feat-x"]);
+    expect(markers.every((row) => row.classList.contains("del"))).toBe(true);
+    const theirs = one(page.root, ".pane .r.cf-theirs:not(.cf-at)");
+    expect(theirs.querySelector(".hljs-keyword")?.textContent).toBe("const");
+    const shared = [...page.root.querySelectorAll(".pane .r.ctx")].find((row) => row.textContent?.includes("kept short"));
+    expect(shared?.classList.contains("cf")).toBe(false);
+    expect(shared?.querySelector(".hljs-comment")?.textContent).toContain("kept short");
+  });
+
   test("Ctrl+Enter approves exactly what the page showed, comments included, and the next review opens in its box", async () => {
     add("tree-q2", "2026-09-24T11:00:00Z");
     const page = await landed();
