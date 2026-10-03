@@ -100,11 +100,18 @@ it — which Claude Code records beside the session's transcript and Codex atop
 the subagent's own rollout — numbered like any default name, and live
 while its session is: it ends when the subagent stops, forwarding whatever it
 never read to its session, and with its session in any case. A subagent
-reaches the session that dispatched it at that session's address. What a
-subagent's calls change is held on its row, so a sibling writing there is
-asked, and the session writing under a subagent it has running is asked too;
-a subagent is not asked about its own session's claims, since the session
-dispatched it into that work. `dev policy` run from a subagent's shell carries
+reaches the session that dispatched it at that session's address. Each row
+records who spawned it, from the runtime's own record of the spawn: a
+subagent's session, or for a fork or a subagent nested below another, the
+subagent it came from — Claude Code's `parentAgentId` in that same record,
+Codex's `parent_thread_id` atop the subagent's rollout — and for a runtime
+started from a session's shell, that session (below). What a subagent's calls
+change is held on its row and the hold shows to everyone; a sibling writing
+there is asked, and so is every member outside the family. A member is not
+asked about what its own descendants hold — a subagent it spawned, that
+subagent's forks at any remove, a runtime its shell started — since that is
+its own work further on, nor a subagent about its own session's claims, since
+the session dispatched it into that work. `dev policy` run from a subagent's shell carries
 only the session's id; it reads as that subagent while the subagent's command
 is the one the session's family has running — the dispatcher opens a window
 keyed by the calling conversation around each command — and as the session

@@ -178,6 +178,94 @@ async def test_a_lock_holds_a_path_for_one_subagent_against_its_sibling(
     assert peers.holding(module) == []
 
 
+async def test_a_subagent_and_its_session_are_not_asked_about_each_other_s_holds(
+    tmp_path: Path, worktree: Path
+) -> None:
+    """The session dispatched it, and what it holds is the session's own work further on."""
+    peers = RepositoryPeers(tmp_path)
+    tools = verbs(peers, worktree)
+    await described(tools, worktree, "a0cacac5")
+    module = worktree / "cli.py"
+    module.write_text("value = 1\n", encoding="utf-8")
+    child = store.subagent_id(SESSION, "a0cacac5")
+
+    peers.touched(SESSION, module)
+    assert store.claim_holders(peers.root, str(module), child, session=SESSION) == []
+
+    peers.touched(child, module)
+    assert store.claim_holders(peers.root, str(module), SESSION, session=SESSION) == []
+    assert [
+        holder.id for claim in peers.holding(module) for holder in claim.holders
+    ] == [
+        SESSION,
+        child,
+    ]
+
+
+def test_a_fork_names_the_subagent_that_spawned_it(
+    tmp_path: Path, worktree: Path
+) -> None:
+    """A fork is a subagent's own spawn: its row says whose, from the runtime's record."""
+    peers = RepositoryPeers(tmp_path)
+    peers.join(SESSION, worktree, cli_name="lead")
+    builder = peers.join_subagent(SESSION, store.Caller(agent_id="a0cacac5"))
+    fork = peers.join_subagent(
+        SESSION, store.Caller(agent_id="f0f0f0f0", spawned_by="a0cacac5")
+    )
+
+    rows = {row.member.actor.id: row.member for row in peers.listing()}
+
+    assert rows[builder.id].spawned_by == SESSION
+    assert rows[fork.id].spawned_by == builder.id
+    assert rows[fork.id].parent == SESSION
+
+
+def test_a_member_writes_what_its_own_descendants_hold_and_its_sibling_is_asked(
+    tmp_path: Path, worktree: Path
+) -> None:
+    """A builder's own fork holding a file is the builder's work further on; a sibling's is not."""
+    peers = RepositoryPeers(tmp_path)
+    peers.join(SESSION, worktree, cli_name="lead")
+    builder = peers.join_subagent(
+        SESSION, store.Caller(agent_id="a0cacac5", name="builder")
+    )
+    sibling = peers.join_subagent(
+        SESSION, store.Caller(agent_id="b1dbdbd6", name="sibling")
+    )
+    fork = peers.join_subagent(
+        SESSION,
+        store.Caller(agent_id="f0f0f0f0", spawned_by="a0cacac5", name="fork"),
+    )
+    module = worktree / "cli.py"
+    module.write_text("value = 1\n", encoding="utf-8")
+    peers.lock(fork.id, module)
+
+    assert (
+        store.claim_holders(peers.root, str(module), builder.id, session=SESSION) == []
+    )
+    assert store.claim_holders(peers.root, str(module), SESSION, session=SESSION) == []
+    assert store.claim_holders(
+        peers.root, str(module), sibling.id, session=SESSION
+    ) == ["fork"]
+    assert [claim.path for claim in peers.holding(module)] == [str(module)]
+
+
+def test_a_runtime_a_session_s_shell_started_is_its_descendant(
+    tmp_path: Path, worktree: Path
+) -> None:
+    """A `claude -p` the session ran is its own work further on; another session's is not."""
+    peers = RepositoryPeers(tmp_path)
+    peers.join(SESSION, worktree, cli_name="lead")
+    peers.join("def456", worktree, cli_name="other")
+    peers.join("spawned1", worktree, spawned_by=SESSION)
+    module = worktree / "cli.py"
+    module.write_text("value = 1\n", encoding="utf-8")
+    peers.lock("spawned1", module)
+
+    assert store.claim_holders(peers.root, str(module), SESSION) == []
+    assert store.claim_holders(peers.root, str(module), "def456") == ["lead-spawned"]
+
+
 async def test_a_subagent_reaches_its_own_session_and_not_itself(
     tmp_path: Path, worktree: Path
 ) -> None:

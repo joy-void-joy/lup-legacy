@@ -72,7 +72,7 @@
     {
       "path": ".codex/plugins/lup/hooks/runtime/caller_payload.py",
       "category": "generated",
-      "sha256": "38deaf58bc328b8178069d75028bf0707167cb93e751a10078aade1b00a114dc",
+      "sha256": "2f4395b4de2a7a3a751abbf9e9a3e18665654651b7b36fc9e3c2e983cc441998",
       "semantic_id": "hooks.lup-policy",
       "executable": false
     },
@@ -149,7 +149,7 @@
     {
       "path": ".codex/plugins/lup/hooks/runtime/coordination/store.py",
       "category": "generated",
-      "sha256": "9b10d151b0e480d4b98586a1a6023122a31b1573c69ed83145eb4042c7a3173b",
+      "sha256": "dbde7b9bfe68dc775aa9bd1650862ec77add9948f28e27fc59ecd3e6c2232625",
       "semantic_id": "hooks.lup-policy",
       "executable": false
     },

@@ -32,6 +32,12 @@
 - The person's holds count: an agent writing under one is asked, told `held
   by user — the operator locked this path`, and `coordination_peers` lists
   the person's row last.
+- A fork's row names the subagent that spawned it, read from the runtime's
+  own record (Claude Code's `parentAgentId`, Codex's `parent_thread_id`),
+  where it was a plain sibling with an empty `spawned_by`. A member writes
+  what its own descendants hold without being asked, a session included
+  under its subagents; the hold still shows, and a sibling or anyone outside
+  the family is still asked.
 - A redirect a wake carried still refuses the agent's next tool call. A wake
   that reached used to hand the redirect over with everything else, so the
   delivery hook never saw it and the next call went through.

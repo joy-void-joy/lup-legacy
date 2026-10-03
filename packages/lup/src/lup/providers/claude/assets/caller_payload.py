@@ -29,6 +29,12 @@ What the spawn called the subagent is in no payload. Claude Code writes it to
 spawn carrying no ``name`` wrote none. ``transcript_path`` names the parent's
 transcript in every subagent event, which is what the path is read from.
 
+The same record says which subagent spawned this one, where another subagent
+did: a fork's carries ``parentAgentId``, that subagent's own id, beside
+``isFork`` and a ``spawnDepth`` of two or more, and a subagent the session
+itself spawned carries none — read off 2.1.285's records of an orchestrating
+session's subagents and the forks they spawned.
+
 Every failure is silence: a call left unstamped acts as the session, which is
 what every call did before there was anything to stamp.
 """
@@ -57,6 +63,7 @@ class Spawned(TypedDict, total=False):
     """What the runtime recorded about one subagent's spawn, as far as this reads."""
 
     name: str
+    parentAgentId: str
 
 
 class Rewritten(TypedDict):
@@ -75,12 +82,12 @@ def subagent_record(transcript: str, agent: str, suffix: str) -> Path:
     return Path(transcript).with_suffix("") / "subagents" / f"agent-{agent}{suffix}"
 
 
-def spawned_name(transcript: str, agent: str) -> str:
-    """What the spawn called this subagent, blank where nothing recorded one."""
+def spawn_of(transcript: str, agent: str) -> Spawned:
+    """What the runtime recorded about this subagent's spawn, empty where nothing did."""
     if not transcript or not agent:
-        return ""
+        return Spawned()
     recorded = loaded(subagent_record(transcript, agent, ".meta.json"), Spawned)
-    return text(recorded.get("name")) if recorded is not None else ""
+    return recorded if recorded is not None else Spawned()
 
 
 def transcript_of(payload: Payload) -> Path | None:
@@ -127,11 +134,13 @@ def spoken(record: dict[str, WireValue]) -> str | None:
 def caller_of(payload: Payload) -> Caller:
     """The conversation one tool event came from, blank for the session's own."""
     agent = text(payload.get("agent_id"))
+    spawn = spawn_of(text(payload.get("transcript_path")), agent)
     return Caller(
         agent_id=agent,
         agent_type=text(payload.get("agent_type")),
         cwd=text(payload.get("cwd")),
-        name=spawned_name(text(payload.get("transcript_path")), agent),
+        name=text(spawn.get("name")),
+        spawned_by=text(spawn.get("parentAgentId")),
     )
 
 
