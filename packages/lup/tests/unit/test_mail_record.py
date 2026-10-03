@@ -102,8 +102,11 @@ def test_a_peer_message_names_the_session_that_sent_it(tmp_path: Path) -> None:
 
     waiting = peers.waiting(reader).messages
     assert [message.sender for message in waiting] == [writer]
+    [post] = [message.post for message in waiting]
     handed = bare_mail.spoken(bare_mail.waiting(peers.root, f"session-{reader}"))
-    assert handed == f"[message from {writer} by agent] rebase before you commit"
+    assert handed == (
+        f"[message from {writer} by agent · post {post}] rebase before you commit"
+    )
 
 
 def test_mail_nobody_signed_reads_as_it_did(tmp_path: Path) -> None:
@@ -112,8 +115,9 @@ def test_mail_nobody_signed_reads_as_it_did(tmp_path: Path) -> None:
 
     peers.send(reader, "a door said this")
 
+    [post] = [message.post for message in peers.waiting(reader).messages]
     handed = bare_mail.spoken(bare_mail.waiting(peers.root, f"session-{reader}"))
-    assert handed == "[message by agent] a door said this"
+    assert handed == f"[message by agent · post {post}] a door said this"
 
 
 def posted_at(root: Path, reader: str, body: str, when: datetime) -> None:
@@ -258,6 +262,10 @@ def test_a_nudge_names_who_sent_each_message(tmp_path: Path) -> None:
     reader = joined(peers, "reader", tmp_path)
     peers.send(reader, "look at the dashboard", door=Door.PAGE, sender=USER_ADDRESS)
 
-    carried = nudge_text(peers.waiting(reader).messages)
+    [message] = peers.waiting(reader).messages
+    carried = nudge_text([message])
 
-    assert "from user by page —\nlook at the dashboard" in carried
+    assert (
+        f"[message from user by page · post {message.post}]\nlook at the dashboard"
+        in carried
+    )

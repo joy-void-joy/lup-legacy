@@ -7,9 +7,9 @@ const repository = { key: "r1", name: "lup", repository: "/src/lup.git", checkou
 function row(id: string, fields: Partial<LiveSession> = {}): LiveSession {
   return {
     key: `r1/${id}`, repository: "r1", id, parent: "", kind: "session", name: id, doing: "", task: "", running: true,
-    worktree: "", holding: [], contested: [], delivery: "hook", wake: "claude", arrived: null, heard: null,
-    summary: "", error: "", waiting: 0,
-    activity: { said: "", calling: "", arguments: {}, at: null, transcript: "" },
+    worktree: "", holding: [], contested: [], delivery: "hook", wake: "claude", runtime: "claude", spawned_by: "",
+    process: null, arrived: null, heard: null, summary: "", error: "", waiting: 0,
+    activity: { said: "", calling: "", arguments: {}, at: null, transcript: "", recent: [] },
     ...fields,
   };
 }
@@ -17,7 +17,7 @@ function row(id: string, fields: Partial<LiveSession> = {}): LiveSession {
 function message(id: string, fields: Partial<LiveMessage> = {}): LiveMessage {
   return {
     key: `r1/${id}`, repository: "r1", id, at: 0, sender: "", recipient: "lead", recipient_kind: "session",
-    text: id, door: "agent", redirect: false, in_reply_to: "", sent_at: "2026-09-29T10:00:00Z", waiting: true,
+    text: id, door: "agent", redirect: false, in_reply_to: "", post: id, thread: id, sent_at: "2026-09-29T10:00:00Z", waiting: true,
     ...fields,
   };
 }
@@ -45,6 +45,8 @@ function snapshot(): LiveState {
     extents: [{ repository: "r1", earlier: 900 }],
     reviews: { roots: [], errors: [], reviews: [review("q1", "2026-09-29T09:00:00Z")], history: 0 },
     code: UNSAID,
+    users: [],
+    served: [],
     keys: NO_KEYS,
   }));
 }
@@ -89,7 +91,7 @@ describe("live state", () => {
 
   test("the live log says what each frame moved: an arrival, a call begun, a message, a review parked", () => {
     const state = snapshot();
-    const calling = frame({ type: "session", session: row("lead", { activity: { calling: "Bash", arguments: {}, at: "2026-09-29T10:00:00Z", said: "", transcript: "" } }) });
+    const calling = frame({ type: "session", session: row("lead", { activity: { calling: "Bash", arguments: {}, at: "2026-09-29T10:00:00Z", said: "", transcript: "", recent: [] } }) });
     expect(moved(state, calling).map((line) => line.text)).toEqual(["lead calling Bash"]);
     expect(moved(state, frame({ type: "session", session: row("new") })).map((line) => line.text)).toEqual(["new arrived"]);
     const posted = frame({ type: "message", message: message("m9", { sender: "lead", recipient: "other", text: "hello" }) });

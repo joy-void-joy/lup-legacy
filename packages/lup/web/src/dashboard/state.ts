@@ -2,7 +2,7 @@
 // draws from. Each part is replaced, never edited in place, so a view that
 // reads one part redraws only when that part moves.
 import { useSyncExternalStore } from "react";
-import type { KeyBindings, KeyLine, ReviewDetail, ReviewSummary, SetupPane, ThreadEntry } from "../generated/views";
+import type { KeyBindings, KeyLine, ReviewDetail, ReviewSummary, SetupPane, ThreadEntry, TranscriptEntry } from "../generated/views";
 import type { ReviewAccess, ReviewLink } from "./api";
 import type { LiveState } from "./live";
 import type { Draft, PaneView, ReviewUi } from "./review";
@@ -40,7 +40,23 @@ export type Float =
   | { kind: "keys" }
   | { kind: "checkouts" }
   | { kind: "hover"; top: number; left: number }
-  | { kind: "finder"; picker: string; query: string; cur: number };
+  | { kind: "finder"; picker: string; query: string; cur: number }
+  | { kind: "transcript" };
+
+/** An agent's transcript as the float shows it: the pages read, and what the stream carried on since. */
+export type TranscriptView = {
+  session: string;
+  repository: string;
+  member: string;
+  name: string;
+  entries: TranscriptEntry[];
+  /** The byte the earliest page read starts at; 0 where it is the transcript's start. */
+  earlier: number;
+  /** The byte just past the last whole line read, which the stream carries on from. */
+  end: number;
+  loading: boolean;
+  error: string;
+};
 
 /** The command line: `:` runs a command, `/` searches the focused window. */
 export type CommandLine = { prefix: ":" | "/"; text: string; wild: string[]; wildAt: number; base: string; history: number };
@@ -49,7 +65,7 @@ export type CommandLine = { prefix: ":" | "/"; text: string; wild: string[]; wil
 export type Search = { pattern: string; typing: string | null; from: { win: Win; pane: number; cur: number; tree: number } | null; lit: boolean };
 
 /** What the touch layout has open: a drawer, and a sheet over it. */
-export type Touch = { drawer: "" | "tree" | "context"; sheet: "" | "more" | "approve" | "decline" | "remark" | "hover" | "nav" };
+export type Touch = { drawer: "" | "tree" | "context"; sheet: "" | "more" | "agent" | "approve" | "decline" | "remark" | "hover" | "nav" };
 
 /** What the phone's strip under a review steps by (decision 123). */
 export type NavKind = "exception" | "change" | "file" | "marker" | "asked";
@@ -115,6 +131,11 @@ export type PageState = {
   replyOutcome: Readonly<Record<string, { text: string; error: boolean }>>;
   /** The post `r` chose to answer in the open discussion; empty answers its last. */
   threadReply: string;
+  /** The post an agent's box answers, by the box's key; empty starts a thread of its own. */
+  replyTo: Readonly<Record<string, string>>;
+  /** The agent whose stop is asked for once and waits for the second ask, by key. */
+  stopArmed: string;
+  transcript: TranscriptView | null;
   log: LogLine[];
   keyLines: KeyLine[];
   tried: KeyBindings | null;
@@ -137,7 +158,7 @@ export function initialState(access: ReviewAccess, linked: ReviewLink | null, wi
     settings: { wrap: true, numbers: true, advance: true, size: 13 },
     armed: false, typing: false, pending: "", whichKey: false, float: null, cmdline: null,
     search: { pattern: "", typing: null, from: null, lit: false },
-    notes: [], said: [], message: { text: "", tone: "" }, replyDrafts: {}, replyOutcome: {}, threadReply: "", log: [], keyLines: [], tried: null,
+    notes: [], said: [], message: { text: "", tone: "" }, replyDrafts: {}, replyOutcome: {}, threadReply: "", replyTo: {}, stopArmed: "", transcript: null, log: [], keyLines: [], tried: null,
     touch: { drawer: "", sheet: "" }, unclamped: new Set(), navKind: "", now: Date.now(),
   };
 }

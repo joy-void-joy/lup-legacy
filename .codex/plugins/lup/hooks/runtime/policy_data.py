@@ -30089,6 +30089,8 @@ PEER_POLICY: PeerPolicyRow | None = {
     "listing_note": "This repository's own roster, which is a different population from the listing above: these are the sessions working in this clone, in whatever worktree, and they include peers no account-scoped listing can see. Reach any of them with `coordination_send`, which records what it carries. The person watching is always at `user`.",
     "claim_reason": "another live session has changed or locked this path",
     "claim_recovery": "Writing under a held path is how two sessions overwrite each other between merges. Ask the holder with `coordination_send` first, or go ahead if you already know what they are doing; a claim expires with the session holding it, so one still standing means that session has not stopped.",
+    "operator": "user",
+    "operator_reason": "the operator locked this path",
 }
 
 AUTONOMOUS_AGENT_IDENTITIES: list[str] = [

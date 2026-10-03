@@ -1,6 +1,9 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import type { StreamFrame } from "../generated/views";
-import { answerReview, remarkReview, followDashboard, readReviews, readReviewLink, reviewLink, sendReply, takeToken, type Followed } from "./api";
+import {
+  answerReview, broadcastTo, describeYou, followDashboard, followTranscripts, holdPath, postInto, postNotice, readInbox, readReviewLink, readReviews,
+  readTranscript, releasePath, remarkReview, renameAgent, reviewLink, sendReply, stopAgent, takeToken, wakeAgent, withdrawNotice, type Followed,
+} from "./api";
 
 const originalFetch = globalThis.fetch;
 const originalStorage = Object.getOwnPropertyDescriptor(globalThis, "localStorage");
@@ -102,7 +105,7 @@ function sse(frame: StreamFrame): string {
 
 const whole: StreamFrame = {
   cursor: '{"epoch":"e1","seq":0}',
-  event: { type: "snapshot", repositories: [], sessions: [], messages: [], extents: [], reviews: snapshot, code: { source: "", root: "", since: null, older: false, failing: "", restarted: "" }, keys: { source: "", unread: "", changed: [], report: { applied: [], refused: [], waits: [] } } },
+  event: { type: "snapshot", repositories: [], sessions: [], messages: [], extents: [], reviews: snapshot, code: { source: "", root: "", since: null, older: false, failing: "", restarted: "" }, users: [], served: [], keys: { source: "", unread: "", changed: [], report: { applied: [], refused: [], waits: [] } } },
 };
 
 const gone: StreamFrame = { cursor: '{"epoch":"e1","seq":1}', event: { type: "session_gone", key: "r/é-session" } };
@@ -201,11 +204,57 @@ describe("reply", () => {
     expect(calls[0]?.options?.method).toBe("POST");
     expect(new Headers(calls[0]?.options?.headers).get("Authorization")).toBe("Bearer secret");
     expect(new Headers(calls[0]?.options?.headers).get("Content-Type")).toBe("application/json");
-    expect(JSON.parse(String(calls[0]?.options?.body))).toEqual({ text: "rebase first" });
+    expect(JSON.parse(String(calls[0]?.options?.body))).toEqual({ text: "rebase first", in_reply_to: "", redirect: false, priority: "next" });
   });
 
   test("a refused reply says why", async () => {
     globalThis.fetch = Object.assign(async () => Response.json({ detail: "abc left at noon" }, { status: 409 }), { preconnect() {} });
     await expect(sendReply("r", "abc", "hello", "secret")).rejects.toThrow("abc left at noon");
+  });
+});
+
+describe("supervising", () => {
+  test("each write goes to its route with the capability, as JSON, and the body its model takes", async () => {
+    const calls: { url: string; method: string; body: unknown }[] = [];
+    globalThis.fetch = Object.assign(async (input: string | URL | Request, options?: RequestInit) => {
+      calls.push({ url: String(input), method: options?.method ?? "GET", body: typeof options?.body === "string" ? JSON.parse(options.body) : null });
+      expect(new Headers(options?.headers).get("Authorization")).toBe("Bearer secret");
+      return Response.json({});
+    }, { preconnect() {} });
+    await sendReply("r", "lead", "stop", "secret", { priority: "now", redirect: true, in_reply_to: "p1" });
+    await wakeAgent("r", "lead", "secret");
+    await renameAgent("r", "lead", "chief", "secret");
+    await stopAgent("r", "lead", "secret");
+    await broadcastTo("r", "rebase", "secret");
+    await postNotice("r", "freeze main", "secret");
+    await withdrawNotice("r", "n1", "secret");
+    await describeYou("landing", "secret");
+    await holdPath("r", "/repo/a.py", "secret");
+    await releasePath("r", "/repo/a.py", "secret");
+    await readInbox("r", ["m1", "m2"], "secret");
+    await postInto("r", "t1", { text: "all of you", in_reply_to: "", to: [] }, "secret");
+    await readTranscript("r", "lead", "secret", 900);
+    await followTranscripts([{ repository: "r", member: "lead", after: 120 }], "secret");
+    expect(calls).toEqual([
+      { url: "api/repositories/r/sessions/lead/messages", method: "POST", body: { text: "stop", in_reply_to: "p1", redirect: true, priority: "now" } },
+      { url: "api/repositories/r/sessions/lead/wake", method: "POST", body: {} },
+      { url: "api/repositories/r/sessions/lead/name", method: "POST", body: { name: "chief" } },
+      { url: "api/repositories/r/sessions/lead/stop", method: "POST", body: {} },
+      { url: "api/repositories/r/broadcast", method: "POST", body: { text: "rebase" } },
+      { url: "api/repositories/r/notices", method: "POST", body: { text: "freeze main" } },
+      { url: "api/repositories/r/notices/n1", method: "DELETE", body: null },
+      { url: "api/user/description", method: "POST", body: { text: "landing" } },
+      { url: "api/repositories/r/claims", method: "POST", body: { path: "/repo/a.py" } },
+      { url: "api/repositories/r/claims", method: "DELETE", body: { path: "/repo/a.py" } },
+      { url: "api/repositories/r/inbox/read", method: "POST", body: { ids: ["m1", "m2"] } },
+      { url: "api/repositories/r/threads/t1/posts", method: "POST", body: { text: "all of you", in_reply_to: "", to: [] } },
+      { url: "api/repositories/r/sessions/lead/transcript?before=900", method: "GET", body: null },
+      { url: "api/transcripts/follow", method: "POST", body: { sessions: [{ repository: "r", member: "lead", after: 120 }] } },
+    ]);
+  });
+
+  test("a refused write says why, in the server's words", async () => {
+    globalThis.fetch = Object.assign(async () => Response.json({ detail: "this dashboard cannot stop it: another pid namespace" }, { status: 409 }), { preconnect() {} });
+    await expect(stopAgent("r", "lead", "secret")).rejects.toThrow("another pid namespace");
   });
 });

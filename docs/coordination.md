@@ -54,6 +54,13 @@ and whether an address reaches anybody depends on which of two paths the
 caller is on. `live()` is the one place they are left out, because nobody
 started them and a listing of spawns should not claim otherwise.
 
+In a repository the person is a full peer. Their row says what they are on,
+and they hold a path the way a session does — from the dashboard, which
+writes their row as `user` — so a session about to write under a path they
+hold is asked first, told `held by user — the operator locked this path`.
+They never stop, so what they hold stands until they give it back.
+`coordination_peers` lists their row last, at `user`.
+
 ## Identity
 
 Two facts, deliberately separate. The **id** is minted once and never moves:
@@ -95,11 +102,21 @@ it — which Claude Code records beside the session's transcript and Codex atop
 the subagent's own rollout — numbered like any default name, and live
 while its session is: it ends when the subagent stops, forwarding whatever it
 never read to its session, and with its session in any case. A subagent
-reaches the session that dispatched it at that session's address. What a
-subagent's calls change is held on its row, so a sibling writing there is
-asked, and the session writing under a subagent it has running is asked too;
-a subagent is not asked about its own session's claims, since the session
-dispatched it into that work. `dev policy` run from a subagent's shell carries
+reaches the session that dispatched it at that session's address. Each row
+records who spawned it, from the runtime's own record of the spawn: a
+subagent's session, or for a fork or a subagent nested below another, the
+subagent it came from — Claude Code's `parentAgentId` in that same record,
+Codex's `parent_thread_id` atop the subagent's rollout — and for a runtime
+started from a session's shell, that session (below). What a subagent's calls
+change is held on its row and the hold shows to everyone; a sibling writing
+there is asked, and so is every member outside the family. A member is not
+asked about what its own descendants hold — a subagent it spawned, that
+subagent's forks at any remove, a runtime its shell started — since that is
+its own work further on, nor a subagent about its own session's claims, since
+the session dispatched it into that work. Such a write is allowed, and the
+writer is told beside the call's result, in the post-tool context both
+runtimes add, one line a hold: `<file>: your subagent <name> holds this file
+and is still running` — "still running" only where it is. `dev policy` run from a subagent's shell carries
 only the session's id; it reads as that subagent while the subagent's command
 is the one the session's family has running — the dispatcher opens a window
 keyed by the calling conversation around each command — and as the session
@@ -362,6 +379,27 @@ hands over what it carried then, the way the member's own delivery hook
 does: that hook, at the member's next tool call, hands over only what no wake
 carried, and a message is put in front of the member once.
 
+A redirect is the one a wake carries and leaves: what it asks is that the
+member's next tool call be refused, which only the hook handing it over can
+do. So a wake puts it in front of the member to read and leaves it waiting,
+marked carried, and no wake or mailbox relay carries it again; the hook
+refuses the next call with it on either runtime.
+
+A Claude wake can ask for the turn it reaches to stop for it, with the
+frame's own priority `now`. Measured on Claude Code 2.1.285 in an interactive
+session: a turn that is generating ends within milliseconds and the
+frame's message is taken as the next turn, while a tool call already running
+runs to its end first and the message is taken right after it — as a `next`
+frame is taken at that point. Codex's queue takes a message for the thread's
+next turn whatever is asked, so a Codex turn is stopped apart from it:
+`lup.providers.codex.interrupt.interrupted_turn` asks the app-server the
+session's configuration home runs for `turn/interrupt` on the thread's
+running turn, from the execution scope its row recorded, and the queue then
+takes the message as the next turn. Measured on Codex 0.159.2 against an
+inert local model endpoint, a turn running a thirty-second command ended
+`interrupted` within ten milliseconds; the command's own process was left to
+finish.
+
 The asymmetry is the runtime's own. One of them serves a command that reaches
 a session from any process, so waking finishes the job itself. The other has
 no command that speaks to a running session at all — so waking returns an
@@ -498,8 +536,9 @@ over, and no way for a second reader to be behind a first.
 
 A message is signed with the address a reply reaches — the sending member's
 id, or `user` for the person — and its reader is handed it as
-`[message from <sender> by <door>] …`; a door with no address of its own, a
-run steering its workers, signs nothing and reads `[message by <door>] …`.
+`[message from <sender> by <door> · post <post>] …`; a door with no address
+of its own, a run steering its workers, signs nothing and reads
+`[message by <door> · post <post>] …`.
 Every message posted also lands on the store's mail record, `mail.jsonl`, one
 line naming the member it went to: the mailbox is its reader's position and
 empties as it is read, so what was said to a member, and by whom, is read
@@ -540,6 +579,28 @@ tomorrow is told at its own first prompt, which is the whole of what a notice
 being state rather than mail buys. `coordination notice`, `coordination
 notices` and `coordination unnotice` are the console's; a run's are the same
 three verbs under `resolve`.
+
+## Posts, threads and discussions
+
+Every message names its **post**, which every copy one send leaves shares —
+a notice told to every live member is one post in many mailboxes — and its
+**thread**, the post the thread began with: its own, where it answers
+nothing. A reply names the post it answers in `in_reply_to` and goes into
+that post's thread, so a thread survives a message in its chain being
+taken: the ids are on every copy rather than derived from the chain.
+
+A **discussion** is a thread posted into whole. `RepositoryPeers.post_into`
+reads the thread back from the record's end to its first post — everyone who
+wrote in it or was written to is in it — and leaves one copy for each of them
+but the sender, all sharing one post, answering the thread's latest post
+unless the sender names one, and bringing in anybody the sender names. Its
+reader is told the discussion before the message:
+`[discussion «<its first line>» · with <everyone else> · thread <thread>]
+[message from <sender> by <door> · post <post>] …`. An agent answers with
+`coordination_send`: `in_reply_to` answers one post to one peer, `thread`
+answers everyone in the discussion, the person included, and an `address`
+beside a thread brings that peer in. What it reached comes back as one row
+per peer, and who it could not — a peer that stopped — is said.
 
 ## One fold, three readers
 

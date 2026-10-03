@@ -36,6 +36,7 @@ from decisions import (
     claim_window_closed,
     claim_window_opened,
     edit_claim_decision,
+    family_hold_report,
     fetch_decision,
     merged,
     named_claim_recorded,
@@ -667,7 +668,12 @@ def observe(payload):
         # The tier that needs no comparison: the call said which file, so the
         # claim it leaves is one another session can act on unqualified.
         named_claim_recorded(path, session_root(payload), caller_of(payload))
-        return reviewed_writes([path], session_root(payload))
+        return merged(
+            [
+                family_hold_report([path], session_root(payload), caller_of(payload)),
+                reviewed_writes([path], session_root(payload)),
+            ]
+        )
     command = tool_input["command"] if "command" in tool_input else ""
     if not command:
         return PostToolReport(blocking=[], context=[])
@@ -676,6 +682,7 @@ def observe(payload):
     changed = claim_window_closed(session_root(payload), caller_of(payload))
     return merged(
         [
+            family_hold_report(changed, session_root(payload), caller_of(payload)),
             written_review(
                 command,
                 session_root(payload) or Path.cwd(),

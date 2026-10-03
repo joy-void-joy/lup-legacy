@@ -553,6 +553,27 @@ agent to a review it parked. A repository's own row opens its page: its
 members, every message between them as one conversation, and a live log of
 what the stream moved, which the page writes from the frames it applies.
 
+Every agent's row also says which runtime it runs in (a subagent its
+session's), the session whose shell spawned it where one did, and its runtime
+process — pid and start time, whether the dashboard shares its pid namespace,
+and whether the dashboard could stop it or why not. Its latest twelve calls
+ride with what it is doing now, each answered, failed or still waiting, summed
+up by its own description, command or path. The person's own row in each
+repository rides the stream too, as a `user` event: what they say they are on,
+what they hold, the notices standing there, and how many messages to them wait.
+A message carries its `post` and `thread`, which is how the page groups a
+discussion. The whole state the stream hands a fresh tab says which pieces of
+supervision this server serves (`served`), by the names the page gives them.
+
+An agent's whole transcript is read a page at a time from its end
+(`GET /api/repositories/<key>/sessions/<member-id>/transcript?before=<byte>&limit=<n>`):
+each entry is something said, a call made with its arguments, or what a call
+returned, whole, placed by the byte its line starts at. A tab showing one
+follows it by asking for it with the byte its page ends at
+(`POST /api/transcripts/follow`), renewed while it shows it: the stream then
+carries `transcript` frames with what that transcript recorded since, for as
+long as some tab renews within a minute.
+
 Messages come from the repository's mail record, `mail.jsonl` in its
 coordination store, where every message posted lands as well as in its
 reader's mailbox, so what was said stays readable after its reader took it,
@@ -567,7 +588,7 @@ Beside a running agent, the box under its buffer writes to it: `c` enters it,
 and `Alt+Enter` sends. What the operator writes goes the way a session's own
 `coordination_send` to a peer goes: into the agent's mailbox, signed `user`,
 where its hook hands it over before its next tool call as
-`[message from user by page] …`, then through its wake path so an idle session
+`[message from user by page · post <post>] …`, then through its wake path so an idle session
 takes a turn — its wake socket for Claude Code, `codex queue` for Codex —
 carrying everything waiting for it. The page says which happened in the
 server's own words: the runtime accepted the wake, the message waits for the
@@ -579,34 +600,131 @@ member id — the id every verb accepts and no rename changes
 agent has no box: a message to it would wait for nobody, and the box's place
 names its parent session instead. `Space a p` asks a subagent's parent session
 what it is doing, in words written for the operator, and a repository's page
-broadcasts its box to every working member, one message each.
+broadcasts its box to every working member as one post, each woken.
+
+Beside the box, **Interrupt** (`Space a n`) sends its words, or standard ones
+where it is empty, with priority `now`, and **Redirect** sends them as a
+redirect. `Space a r` makes the box answer the last message between the agent
+and the operator, and `r` or `Enter` on a message the one under the cursor,
+in its thread; the box names what it answers, and `✕` lets it go. `Space a w`
+wakes the agent, `Space a R` (`:rename`) renames it, and `Space a x` stops its
+runtime: the first press says which process it would signal, and only a
+second within ten seconds, or `:stop!`, sends it. `T` reads the agent's whole
+transcript in a float, from its latest page back, following it while it
+shows. The context lists every one of these on the agent, with where it runs —
+its runtime, who spawned it, and the process the dashboard could stop or why
+not — and its latest calls. On a phone, **Act** under the agent opens the same
+list.
 
 The Inbox lists every message addressed to the operator, in every repository,
 newest first; `Enter` on one opens its sender with the box ready to write
 back. The operator's own row shows what was sent to them, what they sent
 lately, and their working verbs.
 
-Threads reads the same mail as discussions. A post is one message, or the
-copies one send left in several mailboxes — the same sender, text and time —
-shown once with every recipient and whether each took it. Posts that reply to
+Threads reads the same mail as discussions. A post is the copies one send
+left in several mailboxes, sharing one post id, shown once with every
+recipient and whether each took it. Posts sharing a thread, or replying to
 each other through `in_reply_to`, transitively, are a thread, titled by its
 first post's first line; the posts between the same members that reply to
-nothing are their running conversation, titled by who is in it. Its list holds
+nothing are their running conversation, titled by who is in it. A message the
+record kept from before posts had ids is one post with the copies sharing its
+sender, text and time, threaded by its `in_reply_to` alone. Its list holds
 every discussion in every repository, newest first, `●` where something in it
 is unread to the operator; its buffer shows one whole: each post with its
 author's standing, every recipient marked taken `✓`, waiting `◷` or unread to
 the operator, the post it answers, and its text. Its context names who is in
 it, each one step from their agent. `r` or `Enter` on a post makes the box
-answer that post, `c` goes to the box, `Space f t` finds a discussion, and
-`:threads` opens the view.
+answer that post, `c` goes to the box, `Alt+Enter` posts to everyone in the
+discussion through its thread, `Space f t` finds a discussion, and `:threads`
+opens the view.
 
-What else supervising will do — post into a discussion to everyone in it,
-reply in a message's thread, interrupt a turn, wake without a message, read a
-whole transcript, rename or stop an agent, redirect its next call, mark the
-inbox read, and the operator's own description, holds and standing notices —
-waits on new routes in the dashboard's server; the page lists each with the
-route it needs, and a key, button or command reaching one is refused naming
-it, the draft kept.
+The dashboard's server serves the rest of supervising — a reply in a
+message's thread, a redirect, an interrupt, a wake without a message, a whole
+transcript, renaming and stopping an agent, standing notices, the operator's
+own description and holds, marking the inbox read, and a post into a
+discussion to everyone in it — as the sections below say, and the whole state
+the stream hands a tab names each (`served`). The page reads that: an action
+whose piece a dashboard running older code does not serve is refused naming
+the route it needs, the draft kept, and the help, the finder and the context
+mark it not served here. The operator's own verbs are commands: `:describe`,
+`:notice` and `:unnotice`, `:lock` and `:release` (a relative path is the
+repository's checkout's), `:redirect`, `:read` and `:read all` (`x` and `X`
+in the inbox), and `:wake`, `:nudge`, `:interrupt`, `:rename`, `:transcript`
+and `:stop` for an agent. Their own row shows what they are on, what they
+hold and the notices standing, each held path and notice a click from being
+given back or withdrawn.
+
+## A reply, a redirect, an interrupt
+
+A message can answer one the operator was sent (`in_reply_to`, a post id),
+which puts it in that post's thread. It can be a **redirect**, which refuses
+the agent's next tool call with the operator's words: a wake shows it to the
+agent and leaves it for the hook, which refuses that call. With priority `now`
+it stops the agent's turn for it. A Claude session is asked through its wake
+socket: a turn that is generating ends at once, and a tool call already
+running finishes first — measured on Claude Code 2.1.285. A Codex session's
+running turn is stopped through the app-server its configuration home runs —
+at once, even mid-command, though the command's own process runs on — and its
+queue takes the message as the next turn, measured on Codex 0.159.2; only a
+dashboard in the execution scope its row recorded can reach that app-server. A subagent has no wake of its own, so its
+message waits for its next call and its session is interrupted with a copy
+naming it. `now` is refused, saying why, for an agent nothing can reach.
+
+## Acting on an agent
+
+Every write below holds to the page's capability, its own origin and JSON, a
+`DELETE` as much as a `POST`, and answers what it could not do with why: 404
+where nothing answers to what was named, 409 where something does and the verb
+cannot be done to it.
+
+- **Wake** (`POST …/sessions/<member-id>/wake`): makes a session look, carrying
+  what waits for it, or, where nothing does, a line saying the person asked it
+  to look. A subagent has no wake of its own.
+- **Rename** (`POST …/sessions/<member-id>/name`, `{name}`): what the agent is
+  called from now on; a name another live agent answers to is refused, and the
+  old name reaches it until another takes it.
+- **Stop** (`POST …/sessions/<member-id>/stop`): sends SIGTERM to the runtime
+  process its row recorded, only where the dashboard shares that process's pid
+  namespace and the process with that id still started when the row recorded
+  it. A contained session's runtime is its launcher's to stop, and a subagent
+  ends with its session; both are refused saying so.
+- **Broadcast** (`POST /api/repositories/<key>/broadcast`, `{text}`): one post
+  to every working agent of a repository, each woken as a message is.
+
+## Discussions
+
+A thread is posted into whole (`POST
+/api/repositories/<key>/threads/<thread>/posts`, `{text, in_reply_to, to}`): one
+copy to everyone who wrote in it or was written to, sharing one post id,
+answering the thread's latest post unless `in_reply_to` names another, and
+bringing in any member `to` names. Each copy is headed by the discussion —
+`[discussion «<first line>» · with <everyone else> · thread <thread>]` — so its
+reader can answer everyone with `coordination_send`'s `thread`, and each is
+woken as a message is. The answer says what became of each copy.
+
+## You as a peer
+
+The person is a full peer in every repository the dashboard serves:
+
+- **What you are on** (`POST /api/user/description`, `{text}`): said on your
+  row in every repository served, which `coordination_peers` lists last.
+- **Holds** (`POST` and `DELETE /api/repositories/<key>/claims`, `{path}`): you
+  hold an absolute, existing path the way a session's `coordination_lock` does,
+  and an agent about to write under it is asked first, told `held by user — the
+  operator locked this path`. Only what you hold can be given back; giving back
+  another's hold is refused, naming them.
+- **Notices** (`POST /api/repositories/<key>/notices`, `{text}`; `DELETE
+  …/notices/<id>`): a fact every session reads at the head of each prompt, until
+  it is withdrawn; the working ones are told at once as well.
+- **Your inbox** (`POST /api/repositories/<key>/inbox/read`, `{ids}`): takes
+  exactly those messages out of your mailbox, as read.
+
+The same mailbox reads from a shell, in the repository of the working
+directory: `lup-devtools coordination mailbox --id user` prints each message
+headed with who sent it and its post, and `--take` takes them as read.
+`lup-devtools coordination send <text> --to <agent> --as user` answers, signed
+so the reply comes back to you, and `--reply-to <post>` puts it in that post's
+thread.
 
 ## Reviews
 

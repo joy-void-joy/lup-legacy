@@ -123,6 +123,11 @@ class TurnBlock(BaseModel, ABC, frozen=True):
         """The id of the call this block answers, if it answers one."""
         return None
 
+    @property
+    def answer_payload(self) -> str | None:
+        """What the call this block answers returned, whole, if it answers one."""
+        return None
+
     def delegated_role(
         self,
         tools: tuple[str, ...] = DELEGATION_TOOLS,
@@ -224,6 +229,10 @@ class TurnToolResultBlock(TurnBlock, frozen=True):
     @property
     def answered_call_id(self) -> str | None:
         return self.tool_call_id
+
+    @property
+    def answer_payload(self) -> str | None:
+        return self.content
 
     @property
     def refusal(self) -> ToolRefusal | None:

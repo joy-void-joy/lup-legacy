@@ -307,6 +307,37 @@
       "title": "BlockStartedEvent",
       "type": "object"
     },
+    "Broadcast": {
+      "additionalProperties": false,
+      "description": "One message to every working member of a repository, one post between them.",
+      "properties": {
+        "outcomes": {
+          "items": {
+            "$ref": "#/$defs/ReplyOutcome"
+          },
+          "title": "Outcomes",
+          "type": "array"
+        },
+        "post": {
+          "title": "Post",
+          "type": "string"
+        }
+      },
+      "required": [
+        "post",
+        "outcomes"
+      ],
+      "title": "Broadcast",
+      "type": "object"
+    },
+    "CallState": {
+      "enum": [
+        "ok",
+        "error",
+        "pending"
+      ],
+      "type": "string"
+    },
     "CarriedParent": {
       "additionalProperties": false,
       "description": "One parent whose commits another parent already contains.",
@@ -325,6 +356,43 @@
         "inside"
       ],
       "title": "CarriedParent",
+      "type": "object"
+    },
+    "ClaimRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "minLength": 1,
+          "title": "Path",
+          "type": "string"
+        }
+      },
+      "required": [
+        "path"
+      ],
+      "title": "ClaimRequest",
+      "type": "object"
+    },
+    "Claimed": {
+      "additionalProperties": false,
+      "properties": {
+        "holders": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Holders",
+          "type": "array"
+        },
+        "path": {
+          "title": "Path",
+          "type": "string"
+        }
+      },
+      "required": [
+        "path",
+        "holders"
+      ],
+      "title": "Claimed",
       "type": "object"
     },
     "CommandSegment": {
@@ -621,6 +689,17 @@
           "title": "Name",
           "type": "string"
         },
+        "needs": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Feature"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
         "note": {
           "default": "",
           "title": "Note",
@@ -629,10 +708,6 @@
         "scope": {
           "$ref": "#/$defs/KeyScope",
           "default": "anywhere"
-        },
-        "server": {
-          "$ref": "#/$defs/KeyServer",
-          "default": "today"
         },
         "stands": {
           "$ref": "#/$defs/KeyStanding",
@@ -653,7 +728,7 @@
         "scope",
         "focus",
         "stands",
-        "server",
+        "needs",
         "also",
         "hidden",
         "note",
@@ -675,7 +750,9 @@
           "service": "#/$defs/ServiceEvent",
           "session": "#/$defs/SessionEvent",
           "session_gone": "#/$defs/SessionGoneEvent",
-          "snapshot": "#/$defs/SnapshotEvent"
+          "snapshot": "#/$defs/SnapshotEvent",
+          "transcript": "#/$defs/TranscriptEvent",
+          "user": "#/$defs/UserEvent"
         },
         "propertyName": "type"
       },
@@ -711,6 +788,12 @@
           "$ref": "#/$defs/ServiceEvent"
         },
         {
+          "$ref": "#/$defs/UserEvent"
+        },
+        {
+          "$ref": "#/$defs/TranscriptEvent"
+        },
+        {
           "$ref": "#/$defs/KeysEvent"
         }
       ]
@@ -723,6 +806,39 @@
         "defer"
       ],
       "type": "string"
+    },
+    "Described": {
+      "additionalProperties": false,
+      "description": "Every repository whose roster now says what the person is on.",
+      "properties": {
+        "repositories": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Repositories",
+          "type": "array"
+        }
+      },
+      "required": [
+        "repositories"
+      ],
+      "title": "Described",
+      "type": "object"
+    },
+    "DescriptionRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "text": {
+          "default": "",
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "text"
+      ],
+      "title": "DescriptionRequest",
+      "type": "object"
     },
     "EdgeCount": {
       "additionalProperties": false,
@@ -778,6 +894,14 @@
         "spending",
         "repository_security",
         "opaque"
+      ],
+      "type": "string"
+    },
+    "EntryKind": {
+      "enum": [
+        "text",
+        "call",
+        "result"
       ],
       "type": "string"
     },
@@ -841,6 +965,23 @@
       "title": "ExternalEffectPlan",
       "type": "object"
     },
+    "Feature": {
+      "enum": [
+        "reply-thread",
+        "redirect",
+        "interrupt",
+        "bare-wake",
+        "rename",
+        "stop",
+        "transcript",
+        "notices",
+        "describe",
+        "claims",
+        "inbox-read",
+        "thread-post"
+      ],
+      "type": "string"
+    },
     "FileReason": {
       "additionalProperties": false,
       "description": "Why one file needs approval, in a few plain words read off its verdict.\n\nRead off the gate that decided and the file's own structured facts, never\noff the reason sentence, so the words cannot drift from the verdict they\nname; the sentence stays one look away for whoever wants it whole.",
@@ -861,6 +1002,103 @@
         "words"
       ],
       "title": "FileReason",
+      "type": "object"
+    },
+    "FollowOutcome": {
+      "additionalProperties": false,
+      "description": "What a tab now follows, by session key, and for how long without renewing.",
+      "properties": {
+        "refused": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/FollowRefused"
+          },
+          "title": "Refused",
+          "type": "array"
+        },
+        "seconds": {
+          "title": "Seconds",
+          "type": "number"
+        },
+        "sessions": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Sessions",
+          "type": "array"
+        }
+      },
+      "required": [
+        "sessions",
+        "refused",
+        "seconds"
+      ],
+      "title": "FollowOutcome",
+      "type": "object"
+    },
+    "FollowRefused": {
+      "additionalProperties": false,
+      "description": "One transcript a tab asked to follow that nothing here could follow, and why.",
+      "properties": {
+        "reason": {
+          "title": "Reason",
+          "type": "string"
+        },
+        "session": {
+          "title": "Session",
+          "type": "string"
+        }
+      },
+      "required": [
+        "session",
+        "reason"
+      ],
+      "title": "FollowRefused",
+      "type": "object"
+    },
+    "FollowRequest": {
+      "additionalProperties": false,
+      "description": "Every transcript one tab follows now; one it leaves out lapses with its lease.",
+      "properties": {
+        "sessions": {
+          "items": {
+            "$ref": "#/$defs/FollowedFrom"
+          },
+          "title": "Sessions",
+          "type": "array"
+        }
+      },
+      "required": [
+        "sessions"
+      ],
+      "title": "FollowRequest",
+      "type": "object"
+    },
+    "FollowedFrom": {
+      "additionalProperties": false,
+      "description": "One transcript a tab follows: whose, and the byte it has read to.",
+      "properties": {
+        "after": {
+          "default": 0,
+          "minimum": 0,
+          "title": "After",
+          "type": "integer"
+        },
+        "member": {
+          "title": "Member",
+          "type": "string"
+        },
+        "repository": {
+          "title": "Repository",
+          "type": "string"
+        }
+      },
+      "required": [
+        "repository",
+        "member",
+        "after"
+      ],
+      "title": "FollowedFrom",
       "type": "object"
     },
     "ForeignCriteriaEvent": {
@@ -938,6 +1176,41 @@
         "standings"
       ],
       "title": "GraphView",
+      "type": "object"
+    },
+    "InboxRead": {
+      "additionalProperties": false,
+      "properties": {
+        "read": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Read",
+          "type": "array"
+        }
+      },
+      "required": [
+        "read"
+      ],
+      "title": "InboxRead",
+      "type": "object"
+    },
+    "InboxReadRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "ids": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Ids",
+          "type": "array"
+        }
+      },
+      "required": [
+        "ids"
+      ],
+      "title": "InboxReadRequest",
       "type": "object"
     },
     "IntegrationRecoveredEvent": {
@@ -1394,13 +1667,6 @@
       ],
       "type": "string"
     },
-    "KeyServer": {
-      "enum": [
-        "today",
-        "new"
-      ],
-      "type": "string"
-    },
     "KeyStanding": {
       "enum": [
         "decided",
@@ -1445,9 +1711,9 @@
               ],
               "mode": "any",
               "name": "answer.approve",
+              "needs": null,
               "note": "",
               "scope": "anywhere",
-              "server": "today",
               "stands": "decided",
               "was": ""
             },
@@ -1462,9 +1728,9 @@
               ],
               "mode": "any",
               "name": "answer.decline",
+              "needs": null,
               "note": "",
               "scope": "anywhere",
-              "server": "today",
               "stands": "decided",
               "was": ""
             },
@@ -1479,9 +1745,9 @@
               ],
               "mode": "any",
               "name": "answer.send",
+              "needs": null,
               "note": "",
               "scope": "anywhere",
-              "server": "today",
               "stands": "decided",
               "was": ""
             },
@@ -1498,9 +1764,9 @@
               ],
               "mode": "any",
               "name": "review.previous.typing",
+              "needs": null,
               "note": "",
               "scope": "anywhere",
-              "server": "today",
               "stands": "decided",
               "was": ""
             },
@@ -1515,9 +1781,9 @@
               ],
               "mode": "any",
               "name": "review.next.typing",
+              "needs": null,
               "note": "",
               "scope": "anywhere",
-              "server": "today",
               "stands": "decided",
               "was": ""
             },
@@ -1534,9 +1800,9 @@
               ],
               "mode": "box",
               "name": "box.next",
+              "needs": null,
               "note": "",
               "scope": "anywhere",
-              "server": "today",
               "stands": "new",
               "was": ""
             },
@@ -1551,9 +1817,9 @@
               ],
               "mode": "box",
               "name": "box.previous",
+              "needs": null,
               "note": "",
               "scope": "anywhere",
-              "server": "today",
               "stands": "new",
               "was": ""
             },
@@ -1570,9 +1836,9 @@
               ],
               "mode": "box",
               "name": "box.down",
+              "needs": null,
               "note": "",
               "scope": "anywhere",
-              "server": "today",
               "stands": "new",
               "was": ""
             },
@@ -1587,9 +1853,9 @@
               ],
               "mode": "box",
               "name": "box.up",
+              "needs": null,
               "note": "",
               "scope": "anywhere",
-              "server": "today",
               "stands": "new",
               "was": ""
             },
@@ -1607,9 +1873,9 @@
               ],
               "mode": "box",
               "name": "box.halfdown",
+              "needs": null,
               "note": "",
               "scope": "anywhere",
-              "server": "today",
               "stands": "new",
               "was": ""
             },
@@ -1625,9 +1891,9 @@
               ],
               "mode": "box",
               "name": "box.halfup",
+              "needs": null,
               "note": "",
               "scope": "anywhere",
-              "server": "today",
               "stands": "new",
               "was": ""
             },
@@ -1645,9 +1911,9 @@
               ],
               "mode": "normal",
               "name": "down",
+              "needs": null,
               "note": "",
               "scope": "anywhere",
-              "server": "today",
               "stands": "changed",
               "was": "j/k: the next and previous review from anywhere in Normal mode"
             },
@@ -1663,9 +1929,9 @@
               ],
               "mode": "normal",
               "name": "up",
+              "needs": null,
               "note": "",
               "scope": "anywhere",
-              "server": "today",
               "stands": "changed",
               "was": ""
             },
@@ -1682,9 +1948,9 @@
               ],
               "mode": "any",
               "name": "focus.next",
+              "needs": null,
               "note": "",
               "scope": "anywhere",
-              "server": "today",
               "stands": "new",
               "was": ""
             },
@@ -1699,9 +1965,9 @@
               ],
               "mode": "any",
               "name": "focus.previous",
+              "needs": null,
               "note": "",
               "scope": "anywhere",
-              "server": "today",
               "stands": "new",
               "was": ""
             },
@@ -1718,9 +1984,9 @@
               ],
               "mode": "normal",
               "name": "agent.next",
+              "needs": null,
               "note": "",
               "scope": "notsetup",
-              "server": "today",
               "stands": "new",
               "was": ""
             },
@@ -1735,9 +2001,9 @@
               ],
               "mode": "normal",
               "name": "agent.previous",
+              "needs": null,
               "note": "",
               "scope": "notsetup",
-              "server": "today",
               "stands": "new",
               "was": ""
             },
@@ -1752,9 +2018,9 @@
               ],
               "mode": "normal",
               "name": "go.asker",
+              "needs": null,
               "note": "",
               "scope": "notsetup",
-              "server": "today",
               "stands": "new",
               "was": ""
             },
@@ -1769,9 +2035,9 @@
               ],
               "mode": "normal",
               "name": "go.review",
+              "needs": null,
               "note": "",
               "scope": "buffer",
-              "server": "today",
               "stands": "new",
               "was": ""
             },
@@ -1787,9 +2053,9 @@
               ],
               "mode": "normal",
               "name": "inbox",
+              "needs": null,
               "note": "",
               "scope": "anywhere",
-              "server": "today",
               "stands": "new",
               "was": ""
             },
@@ -1805,9 +2071,9 @@
               ],
               "mode": "normal",
               "name": "you",
+              "needs": null,
               "note": "",
               "scope": "anywhere",
-              "server": "today",
               "stands": "new",
               "was": ""
             },
@@ -1822,9 +2088,9 @@
               ],
               "mode": "normal",
               "name": "search",
+              "needs": null,
               "note": "",
               "scope": "anywhere",
-              "server": "today",
               "stands": "new",
               "was": "/: find a line, fuzzy (now Space f /)"
             },
@@ -1841,9 +2107,9 @@
               ],
               "mode": "normal",
               "name": "search.next",
+              "needs": null,
               "note": "",
               "scope": "anywhere",
-              "server": "today",
               "stands": "new",
               "was": ""
             },
@@ -1858,9 +2124,9 @@
               ],
               "mode": "normal",
               "name": "search.previous",
+              "needs": null,
               "note": "",
               "scope": "anywhere",
-              "server": "today",
               "stands": "new",
               "was": ""
             },
@@ -1875,9 +2141,9 @@
               ],
               "mode": "normal",
               "name": "agent.write",
+              "needs": null,
               "note": "",
               "scope": "anywhere",
-              "server": "today",
               "stands": "new",
               "was": ""
             },
@@ -1892,9 +2158,9 @@
               ],
               "mode": "normal",
               "name": "agent.reply",
+              "needs": "reply-thread",
               "note": "",
               "scope": "anywhere",
-              "server": "new",
               "stands": "new",
               "was": ""
             },
@@ -1909,9 +2175,9 @@
               ],
               "mode": "normal",
               "name": "agent.wake",
-              "note": "today as a message; a bare wake is new",
+              "needs": "bare-wake",
+              "note": "",
               "scope": "anywhere",
-              "server": "today",
               "stands": "new",
               "was": ""
             },
@@ -1926,9 +2192,9 @@
               ],
               "mode": "normal",
               "name": "agent.nudge",
+              "needs": "interrupt",
               "note": "",
               "scope": "anywhere",
-              "server": "new",
               "stands": "new",
               "was": ""
             },
@@ -1943,9 +2209,9 @@
               ],
               "mode": "normal",
               "name": "agent.parent",
+              "needs": null,
               "note": "",
               "scope": "anywhere",
-              "server": "today",
               "stands": "new",
               "was": ""
             },
@@ -1961,9 +2227,9 @@
               ],
               "mode": "normal",
               "name": "agent.transcript",
+              "needs": "transcript",
               "note": "",
               "scope": "notreview",
-              "server": "new",
               "stands": "new",
               "was": ""
             },
@@ -1978,9 +2244,9 @@
               ],
               "mode": "normal",
               "name": "agent.rename",
+              "needs": "rename",
               "note": "",
               "scope": "anywhere",
-              "server": "new",
               "stands": "new",
               "was": ""
             },
@@ -1995,9 +2261,9 @@
               ],
               "mode": "normal",
               "name": "agent.stop",
+              "needs": "stop",
               "note": "",
               "scope": "anywhere",
-              "server": "new",
               "stands": "new",
               "was": ""
             },
@@ -2012,9 +2278,9 @@
               ],
               "mode": "normal",
               "name": "message.reply",
+              "needs": "reply-thread",
               "note": "",
               "scope": "buffer",
-              "server": "new",
               "stands": "new",
               "was": ""
             },
@@ -2029,9 +2295,9 @@
               ],
               "mode": "normal",
               "name": "messages.earlier",
+              "needs": null,
               "note": "was the Load earlier messages button",
               "scope": "buffer",
-              "server": "today",
               "stands": "changed",
               "was": ""
             },
@@ -2046,9 +2312,9 @@
               ],
               "mode": "normal",
               "name": "peer.describe",
+              "needs": "describe",
               "note": "",
               "scope": "anywhere",
-              "server": "new",
               "stands": "new",
               "was": ""
             },
@@ -2063,9 +2329,9 @@
               ],
               "mode": "normal",
               "name": "peer.lock",
+              "needs": "claims",
               "note": "",
               "scope": "anywhere",
-              "server": "new",
               "stands": "new",
               "was": ""
             },
@@ -2080,9 +2346,9 @@
               ],
               "mode": "normal",
               "name": "peer.release",
+              "needs": "claims",
               "note": "",
               "scope": "anywhere",
-              "server": "new",
               "stands": "new",
               "was": ""
             },
@@ -2097,9 +2363,9 @@
               ],
               "mode": "normal",
               "name": "peer.notice",
+              "needs": "notices",
               "note": "",
               "scope": "anywhere",
-              "server": "new",
               "stands": "new",
               "was": ""
             },
@@ -2114,9 +2380,9 @@
               ],
               "mode": "normal",
               "name": "peer.broadcast",
+              "needs": null,
               "note": "",
               "scope": "anywhere",
-              "server": "today",
               "stands": "new",
               "was": ""
             },
@@ -2131,9 +2397,9 @@
               ],
               "mode": "normal",
               "name": "peer.redirect",
+              "needs": "redirect",
               "note": "",
               "scope": "anywhere",
-              "server": "new",
               "stands": "new",
               "was": ""
             },
@@ -2151,9 +2417,9 @@
               ],
               "mode": "normal",
               "name": "tree.all",
+              "needs": null,
               "note": "",
               "scope": "anywhere",
-              "server": "today",
               "stands": "new",
               "was": ""
             },
@@ -2168,9 +2434,9 @@
               ],
               "mode": "normal",
               "name": "tree.attention",
+              "needs": null,
               "note": "",
               "scope": "anywhere",
-              "server": "today",
               "stands": "new",
               "was": ""
             },
@@ -2185,9 +2451,9 @@
               ],
               "mode": "normal",
               "name": "tree.reviews",
+              "needs": null,
               "note": "",
               "scope": "anywhere",
-              "server": "today",
               "stands": "new",
               "was": ""
             },
@@ -2202,9 +2468,9 @@
               ],
               "mode": "normal",
               "name": "tree.stopped",
+              "needs": null,
               "note": "",
               "scope": "anywhere",
-              "server": "today",
               "stands": "new",
               "was": ""
             },
@@ -2221,9 +2487,9 @@
               ],
               "mode": "normal",
               "name": "tab.next",
+              "needs": null,
               "note": "",
               "scope": "anywhere",
-              "server": "today",
               "stands": "new",
               "was": ""
             },
@@ -2238,9 +2504,9 @@
               ],
               "mode": "normal",
               "name": "tab.previous",
+              "needs": null,
               "note": "",
               "scope": "anywhere",
-              "server": "today",
               "stands": "new",
               "was": ""
             },
@@ -2255,9 +2521,9 @@
               ],
               "mode": "normal",
               "name": "tree.toggle",
+              "needs": null,
               "note": "the tree replaces the queue",
               "scope": "anywhere",
-              "server": "today",
               "stands": "changed",
               "was": ""
             },
@@ -2272,9 +2538,9 @@
               ],
               "mode": "normal",
               "name": "context.toggle",
+              "needs": null,
               "note": "",
               "scope": "anywhere",
-              "server": "today",
               "stands": "new",
               "was": ""
             },
@@ -2289,9 +2555,9 @@
               ],
               "mode": "normal",
               "name": "split.vertical",
+              "needs": null,
               "note": "",
               "scope": "review",
-              "server": "today",
               "stands": "new",
               "was": ""
             },
@@ -2306,9 +2572,9 @@
               ],
               "mode": "normal",
               "name": "split.below",
+              "needs": null,
               "note": "",
               "scope": "review",
-              "server": "today",
               "stands": "new",
               "was": ""
             },
@@ -2324,9 +2590,9 @@
               ],
               "mode": "normal",
               "name": "split.close",
+              "needs": null,
               "note": "",
               "scope": "review",
-              "server": "today",
               "stands": "new",
               "was": ""
             },
@@ -2341,9 +2607,9 @@
               ],
               "mode": "normal",
               "name": "window.next",
+              "needs": null,
               "note": "",
               "scope": "anywhere",
-              "server": "today",
               "stands": "new",
               "was": ""
             },
@@ -2362,9 +2628,9 @@
               ],
               "mode": "normal",
               "name": "window.left",
+              "needs": null,
               "note": "",
               "scope": "anywhere",
-              "server": "today",
               "stands": "new",
               "was": ""
             },
@@ -2379,9 +2645,9 @@
               ],
               "mode": "normal",
               "name": "window.right",
+              "needs": null,
               "note": "",
               "scope": "anywhere",
-              "server": "today",
               "stands": "new",
               "was": ""
             },
@@ -2396,9 +2662,9 @@
               ],
               "mode": "normal",
               "name": "window.below",
+              "needs": null,
               "note": "",
               "scope": "anywhere",
-              "server": "today",
               "stands": "new",
               "was": ""
             },
@@ -2413,9 +2679,9 @@
               ],
               "mode": "normal",
               "name": "window.above",
+              "needs": null,
               "note": "",
               "scope": "anywhere",
-              "server": "today",
               "stands": "new",
               "was": ""
             },
@@ -2430,9 +2696,9 @@
               ],
               "mode": "normal",
               "name": "view.diff",
+              "needs": null,
               "note": "",
               "scope": "review",
-              "server": "today",
               "stands": "new",
               "was": ""
             },
@@ -2447,9 +2713,9 @@
               ],
               "mode": "normal",
               "name": "view.before",
+              "needs": null,
               "note": "",
               "scope": "review",
-              "server": "today",
               "stands": "new",
               "was": ""
             },
@@ -2464,9 +2730,9 @@
               ],
               "mode": "normal",
               "name": "view.after",
+              "needs": null,
               "note": "",
               "scope": "review",
-              "server": "today",
               "stands": "new",
               "was": ""
             },
@@ -2481,9 +2747,9 @@
               ],
               "mode": "normal",
               "name": "view.raw",
+              "needs": null,
               "note": "",
               "scope": "review",
-              "server": "today",
               "stands": "new",
               "was": ""
             },
@@ -2498,9 +2764,9 @@
               ],
               "mode": "normal",
               "name": "close",
+              "needs": null,
               "note": "",
               "scope": "anywhere",
-              "server": "today",
               "stands": "new",
               "was": ""
             },
@@ -2515,9 +2781,9 @@
               ],
               "mode": "normal",
               "name": "delete",
+              "needs": null,
               "note": "",
               "scope": "notsetup",
-              "server": "today",
               "stands": "new",
               "was": ""
             },
@@ -2532,9 +2798,9 @@
               ],
               "mode": "normal",
               "name": "inbox.readall",
+              "needs": "inbox-read",
               "note": "",
               "scope": "inbox",
-              "server": "new",
               "stands": "new",
               "was": ""
             },
@@ -2549,9 +2815,9 @@
               ],
               "mode": "normal",
               "name": "box",
+              "needs": null,
               "note": "",
               "scope": "anywhere",
-              "server": "today",
               "stands": "decided",
               "was": ""
             },
@@ -2566,9 +2832,9 @@
               ],
               "mode": "normal",
               "name": "escape",
+              "needs": null,
               "note": "",
               "scope": "anywhere",
-              "server": "today",
               "stands": "decided",
               "was": ""
             },
@@ -2585,9 +2851,9 @@
               ],
               "mode": "normal",
               "name": "comment.line",
+              "needs": null,
               "note": "",
               "scope": "review",
-              "server": "today",
               "stands": "new",
               "was": ""
             },
@@ -2602,9 +2868,9 @@
               ],
               "mode": "normal",
               "name": "open",
+              "needs": null,
               "note": "",
               "scope": "anywhere",
-              "server": "today",
               "stands": "new",
               "was": ""
             },
@@ -2620,9 +2886,9 @@
               ],
               "mode": "normal",
               "name": "visual",
+              "needs": null,
               "note": "",
               "scope": "review",
-              "server": "today",
               "stands": "new",
               "was": ""
             },
@@ -2637,9 +2903,9 @@
               ],
               "mode": "normal",
               "name": "undo",
+              "needs": null,
               "note": "",
               "scope": "review",
-              "server": "today",
               "stands": "new",
               "was": ""
             },
@@ -2657,9 +2923,9 @@
               ],
               "mode": "normal",
               "name": "left",
+              "needs": null,
               "note": "",
               "scope": "anywhere",
-              "server": "today",
               "stands": "new",
               "was": ""
             },
@@ -2675,9 +2941,9 @@
               ],
               "mode": "normal",
               "name": "right",
+              "needs": null,
               "note": "",
               "scope": "anywhere",
-              "server": "today",
               "stands": "new",
               "was": ""
             },
@@ -2695,9 +2961,9 @@
               ],
               "mode": "normal",
               "name": "word.next",
+              "needs": null,
               "note": "",
               "scope": "anywhere",
-              "server": "today",
               "stands": "new",
               "was": ""
             },
@@ -2712,9 +2978,9 @@
               ],
               "mode": "normal",
               "name": "word.back",
+              "needs": null,
               "note": "",
               "scope": "anywhere",
-              "server": "today",
               "stands": "new",
               "was": ""
             },
@@ -2729,9 +2995,9 @@
               ],
               "mode": "normal",
               "name": "word.end",
+              "needs": null,
               "note": "",
               "scope": "anywhere",
-              "server": "today",
               "stands": "new",
               "was": ""
             },
@@ -2749,9 +3015,9 @@
               ],
               "mode": "normal",
               "name": "line.start",
+              "needs": null,
               "note": "",
               "scope": "anywhere",
-              "server": "today",
               "stands": "new",
               "was": ""
             },
@@ -2766,9 +3032,9 @@
               ],
               "mode": "normal",
               "name": "line.first",
+              "needs": null,
               "note": "",
               "scope": "anywhere",
-              "server": "today",
               "stands": "new",
               "was": ""
             },
@@ -2783,9 +3049,9 @@
               ],
               "mode": "normal",
               "name": "line.end",
+              "needs": null,
               "note": "",
               "scope": "anywhere",
-              "server": "today",
               "stands": "new",
               "was": ""
             },
@@ -2803,9 +3069,9 @@
               ],
               "mode": "normal",
               "name": "page.halfdown",
+              "needs": null,
               "note": "",
               "scope": "anywhere",
-              "server": "today",
               "stands": "new",
               "was": ""
             },
@@ -2821,9 +3087,9 @@
               ],
               "mode": "normal",
               "name": "page.halfup",
+              "needs": null,
               "note": "",
               "scope": "anywhere",
-              "server": "today",
               "stands": "new",
               "was": ""
             },
@@ -2840,9 +3106,9 @@
               ],
               "mode": "normal",
               "name": "top",
+              "needs": null,
               "note": "",
               "scope": "anywhere",
-              "server": "today",
               "stands": "new",
               "was": ""
             },
@@ -2857,9 +3123,9 @@
               ],
               "mode": "normal",
               "name": "bottom",
+              "needs": null,
               "note": "",
               "scope": "anywhere",
-              "server": "today",
               "stands": "new",
               "was": ""
             },
@@ -2876,9 +3142,9 @@
               ],
               "mode": "normal",
               "name": "change.next",
+              "needs": null,
               "note": "",
               "scope": "anywhere",
-              "server": "today",
               "stands": "new",
               "was": ""
             },
@@ -2893,9 +3159,9 @@
               ],
               "mode": "normal",
               "name": "change.previous",
+              "needs": null,
               "note": "",
               "scope": "anywhere",
-              "server": "today",
               "stands": "new",
               "was": ""
             },
@@ -2912,9 +3178,9 @@
               ],
               "mode": "normal",
               "name": "file.next",
+              "needs": null,
               "note": "",
               "scope": "review",
-              "server": "today",
               "stands": "decided",
               "was": ""
             },
@@ -2929,9 +3195,9 @@
               ],
               "mode": "normal",
               "name": "file.previous",
+              "needs": null,
               "note": "",
               "scope": "review",
-              "server": "today",
               "stands": "decided",
               "was": ""
             },
@@ -2948,9 +3214,9 @@
               ],
               "mode": "normal",
               "name": "exception.next",
+              "needs": null,
               "note": "",
               "scope": "review",
-              "server": "today",
               "stands": "decided",
               "was": ""
             },
@@ -2965,9 +3231,9 @@
               ],
               "mode": "normal",
               "name": "exception.previous",
+              "needs": null,
               "note": "",
               "scope": "review",
-              "server": "today",
               "stands": "decided",
               "was": ""
             },
@@ -2984,9 +3250,9 @@
               ],
               "mode": "normal",
               "name": "marker.next",
+              "needs": null,
               "note": "",
               "scope": "review",
-              "server": "today",
               "stands": "decided",
               "was": ""
             },
@@ -3001,9 +3267,9 @@
               ],
               "mode": "normal",
               "name": "marker.previous",
+              "needs": null,
               "note": "",
               "scope": "review",
-              "server": "today",
               "stands": "decided",
               "was": ""
             },
@@ -3018,9 +3284,9 @@
               ],
               "mode": "normal",
               "name": "file.whole",
+              "needs": null,
               "note": "",
               "scope": "review",
-              "server": "today",
               "stands": "decided",
               "was": ""
             },
@@ -3035,9 +3301,9 @@
               ],
               "mode": "normal",
               "name": "review.full",
+              "needs": null,
               "note": "was the Full operation button",
               "scope": "review",
-              "server": "today",
               "stands": "changed",
               "was": ""
             },
@@ -3052,9 +3318,9 @@
               ],
               "mode": "normal",
               "name": "judged",
+              "needs": null,
               "note": "",
               "scope": "review",
-              "server": "today",
               "stands": "new",
               "was": ""
             },
@@ -3072,9 +3338,9 @@
               ],
               "mode": "normal",
               "name": "fold.toggle",
+              "needs": null,
               "note": "",
               "scope": "anywhere",
-              "server": "today",
               "stands": "new",
               "was": ""
             },
@@ -3089,9 +3355,9 @@
               ],
               "mode": "normal",
               "name": "fold.open",
+              "needs": null,
               "note": "",
               "scope": "review",
-              "server": "today",
               "stands": "new",
               "was": ""
             },
@@ -3106,9 +3372,9 @@
               ],
               "mode": "normal",
               "name": "fold.close",
+              "needs": null,
               "note": "",
               "scope": "review",
-              "server": "today",
               "stands": "new",
               "was": ""
             },
@@ -3125,9 +3391,9 @@
               ],
               "mode": "normal",
               "name": "fold.all",
+              "needs": null,
               "note": "",
               "scope": "review",
-              "server": "today",
               "stands": "new",
               "was": ""
             },
@@ -3142,9 +3408,9 @@
               ],
               "mode": "normal",
               "name": "fold.none",
+              "needs": null,
               "note": "",
               "scope": "review",
-              "server": "today",
               "stands": "new",
               "was": ""
             },
@@ -3159,9 +3425,9 @@
               ],
               "mode": "normal",
               "name": "hover",
+              "needs": null,
               "note": "",
               "scope": "anywhere",
-              "server": "today",
               "stands": "new",
               "was": ""
             },
@@ -3176,9 +3442,9 @@
               ],
               "mode": "normal",
               "name": "context.full",
+              "needs": null,
               "note": "was Details, stacked above the editor",
               "scope": "anywhere",
-              "server": "today",
               "stands": "changed",
               "was": ""
             },
@@ -3194,9 +3460,9 @@
               ],
               "mode": "normal",
               "name": "find.review",
+              "needs": null,
               "note": "",
               "scope": "anywhere",
-              "server": "today",
               "stands": "new",
               "was": ""
             },
@@ -3212,9 +3478,9 @@
               ],
               "mode": "normal",
               "name": "find.agent",
+              "needs": null,
               "note": "",
               "scope": "anywhere",
-              "server": "today",
               "stands": "new",
               "was": ""
             },
@@ -3229,9 +3495,9 @@
               ],
               "mode": "normal",
               "name": "find.inbox",
+              "needs": null,
               "note": "",
               "scope": "anywhere",
-              "server": "today",
               "stands": "new",
               "was": ""
             },
@@ -3246,9 +3512,9 @@
               ],
               "mode": "normal",
               "name": "find.thread",
+              "needs": null,
               "note": "",
               "scope": "anywhere",
-              "server": "today",
               "stands": "new",
               "was": ""
             },
@@ -3263,9 +3529,9 @@
               ],
               "mode": "normal",
               "name": "find.history",
+              "needs": null,
               "note": "",
               "scope": "anywhere",
-              "server": "today",
               "stands": "new",
               "was": ""
             },
@@ -3280,9 +3546,9 @@
               ],
               "mode": "normal",
               "name": "find.file",
+              "needs": null,
               "note": "",
               "scope": "review",
-              "server": "today",
               "stands": "new",
               "was": ""
             },
@@ -3297,9 +3563,9 @@
               ],
               "mode": "normal",
               "name": "find.line",
+              "needs": null,
               "note": "",
               "scope": "anywhere",
-              "server": "today",
               "stands": "new",
               "was": ""
             },
@@ -3314,9 +3580,9 @@
               ],
               "mode": "normal",
               "name": "find.message",
+              "needs": null,
               "note": "",
               "scope": "anywhere",
-              "server": "today",
               "stands": "new",
               "was": ""
             },
@@ -3331,9 +3597,9 @@
               ],
               "mode": "normal",
               "name": "find.command",
+              "needs": null,
               "note": "",
               "scope": "anywhere",
-              "server": "today",
               "stands": "new",
               "was": ""
             },
@@ -3348,9 +3614,9 @@
               ],
               "mode": "normal",
               "name": "find.key",
+              "needs": null,
               "note": "",
               "scope": "anywhere",
-              "server": "today",
               "stands": "new",
               "was": ""
             },
@@ -3365,9 +3631,9 @@
               ],
               "mode": "normal",
               "name": "find.marker",
+              "needs": null,
               "note": "",
               "scope": "review",
-              "server": "today",
               "stands": "new",
               "was": ""
             },
@@ -3382,9 +3648,9 @@
               ],
               "mode": "normal",
               "name": "ui.wrap",
+              "needs": null,
               "note": "",
               "scope": "anywhere",
-              "server": "today",
               "stands": "new",
               "was": ""
             },
@@ -3399,9 +3665,9 @@
               ],
               "mode": "normal",
               "name": "ui.numbers",
+              "needs": null,
               "note": "",
               "scope": "anywhere",
-              "server": "today",
               "stands": "new",
               "was": ""
             },
@@ -3416,9 +3682,9 @@
               ],
               "mode": "normal",
               "name": "ui.advance",
+              "needs": null,
               "note": "was the checkbox",
               "scope": "anywhere",
-              "server": "today",
               "stands": "changed",
               "was": ""
             },
@@ -3433,9 +3699,9 @@
               ],
               "mode": "normal",
               "name": "ui.dismiss",
+              "needs": null,
               "note": "",
               "scope": "anywhere",
-              "server": "today",
               "stands": "new",
               "was": ""
             },
@@ -3450,9 +3716,9 @@
               ],
               "mode": "normal",
               "name": "link",
+              "needs": null,
               "note": "was the Copy link button",
               "scope": "review",
-              "server": "today",
               "stands": "changed",
               "was": ""
             },
@@ -3467,9 +3733,9 @@
               ],
               "mode": "normal",
               "name": "reconnect",
+              "needs": null,
               "note": "was the Reconnect button",
               "scope": "anywhere",
-              "server": "today",
               "stands": "changed",
               "was": ""
             },
@@ -3484,9 +3750,9 @@
               ],
               "mode": "normal",
               "name": "messages",
+              "needs": null,
               "note": "",
               "scope": "anywhere",
-              "server": "today",
               "stands": "new",
               "was": ""
             },
@@ -3502,9 +3768,9 @@
               ],
               "mode": "normal",
               "name": "help",
+              "needs": null,
               "note": "",
               "scope": "anywhere",
-              "server": "today",
               "stands": "decided",
               "was": ""
             },
@@ -3519,9 +3785,9 @@
               ],
               "mode": "normal",
               "name": "cmdline",
+              "needs": null,
               "note": "",
               "scope": "anywhere",
-              "server": "today",
               "stands": "new",
               "was": ""
             }
@@ -4072,6 +4338,11 @@
           "title": "Key",
           "type": "string"
         },
+        "post": {
+          "default": "",
+          "title": "Post",
+          "type": "string"
+        },
         "recipient": {
           "title": "Recipient",
           "type": "string"
@@ -4101,6 +4372,11 @@
           "title": "Text",
           "type": "string"
         },
+        "thread": {
+          "default": "",
+          "title": "Thread",
+          "type": "string"
+        },
         "waiting": {
           "title": "Waiting",
           "type": "boolean"
@@ -4118,10 +4394,49 @@
         "door",
         "redirect",
         "in_reply_to",
+        "post",
+        "thread",
         "sent_at",
         "waiting"
       ],
       "title": "LiveMessage",
+      "type": "object"
+    },
+    "LiveNotice": {
+      "additionalProperties": false,
+      "description": "One fact standing over a repository's sessions, read at the head of every prompt.",
+      "properties": {
+        "by": {
+          "default": "",
+          "title": "By",
+          "type": "string"
+        },
+        "door": {
+          "title": "Door",
+          "type": "string"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "posted_at": {
+          "format": "date-time",
+          "title": "Posted At",
+          "type": "string"
+        },
+        "text": {
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "text",
+        "by",
+        "door",
+        "posted_at"
+      ],
+      "title": "LiveNotice",
       "type": "object"
     },
     "LiveRepository": {
@@ -4164,6 +4479,7 @@
             "arguments": {},
             "at": null,
             "calling": "",
+            "recent": [],
             "said": "",
             "transcript": ""
           }
@@ -4247,6 +4563,17 @@
           "title": "Parent",
           "type": "string"
         },
+        "process": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SessionProcess"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
         "repository": {
           "title": "Repository",
           "type": "string"
@@ -4254,6 +4581,16 @@
         "running": {
           "title": "Running",
           "type": "boolean"
+        },
+        "runtime": {
+          "default": "",
+          "title": "Runtime",
+          "type": "string"
+        },
+        "spawned_by": {
+          "default": "",
+          "title": "Spawned By",
+          "type": "string"
         },
         "summary": {
           "default": "",
@@ -4296,6 +4633,9 @@
         "contested",
         "delivery",
         "wake",
+        "runtime",
+        "spawned_by",
+        "process",
         "arrived",
         "heard",
         "summary",
@@ -4561,6 +4901,39 @@
       "title": "MessagePostedEvent",
       "type": "object"
     },
+    "MessageRequest": {
+      "additionalProperties": false,
+      "description": "What the operator writes to one agent, and how it reaches it.",
+      "properties": {
+        "in_reply_to": {
+          "default": "",
+          "title": "In Reply To",
+          "type": "string"
+        },
+        "priority": {
+          "$ref": "#/$defs/WakePriority",
+          "default": "next"
+        },
+        "redirect": {
+          "default": false,
+          "title": "Redirect",
+          "type": "boolean"
+        },
+        "text": {
+          "minLength": 1,
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "text",
+        "in_reply_to",
+        "redirect",
+        "priority"
+      ],
+      "title": "MessageRequest",
+      "type": "object"
+    },
     "MessageSubmission": {
       "additionalProperties": false,
       "description": "Something a door is telling an actor. This decides nothing.",
@@ -4716,6 +5089,21 @@
       "title": "MutationFootprint",
       "type": "object"
     },
+    "NameRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "title": "NameRequest",
+      "type": "object"
+    },
     "NetworkPlan": {
       "additionalProperties": false,
       "description": "Where an operation reaches, recorded as evidence rather than policed.\n\nLup builds no egress proxy, chases no redirects, and polices no DNS: the\nboundary's own network posture stands, and this is what the classifier\ncould see. An operation whose only unusual fact is an unfamiliar\ndestination settles like any other operation \u2014 contained it runs inside,\nambient it follows the profile's declaration.",
@@ -4862,6 +5250,26 @@
       "title": "NodeView",
       "type": "object"
     },
+    "NotReached": {
+      "additionalProperties": false,
+      "description": "One member a post was meant for and did not reach, and why.",
+      "properties": {
+        "address": {
+          "title": "Address",
+          "type": "string"
+        },
+        "reason": {
+          "title": "Reason",
+          "type": "string"
+        }
+      },
+      "required": [
+        "address",
+        "reason"
+      ],
+      "title": "NotReached",
+      "type": "object"
+    },
     "NoteKind": {
       "description": "The closed vocabulary of review-note flavors.\n\nAn ordinary actionable note, parked work \u2014 behind a stated gate or simply\nparked \u2014 a claim that a note has been addressed and is waiting to be\nchecked, or a customization point the scaffold leaves to the domain\nadopting it. A `StrEnum` rather than a `Literal` so the same declaration\nis both the type every consumer dispatches on and the choice list\n`dev comments --kind` offers, which is one fewer place for the vocabulary\nto drift out of agreement with itself.",
       "enum": [
@@ -4872,6 +5280,13 @@
       ],
       "title": "NoteKind",
       "type": "string"
+    },
+    "Nothing": {
+      "additionalProperties": false,
+      "description": "A write that carries nothing beyond whom it acts on.",
+      "properties": {},
+      "title": "Nothing",
+      "type": "object"
     },
     "Operation": {
       "additionalProperties": false,
@@ -5104,6 +5519,74 @@
         "phase"
       ],
       "title": "PhaseChangedEvent",
+      "type": "object"
+    },
+    "PostOutcome": {
+      "additionalProperties": false,
+      "description": "One post into a discussion: the id every copy shares, and what became of each.",
+      "properties": {
+        "deliveries": {
+          "items": {
+            "$ref": "#/$defs/ReplyOutcome"
+          },
+          "title": "Deliveries",
+          "type": "array"
+        },
+        "post": {
+          "title": "Post",
+          "type": "string"
+        },
+        "refused": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/NotReached"
+          },
+          "title": "Refused",
+          "type": "array"
+        },
+        "thread": {
+          "title": "Thread",
+          "type": "string"
+        }
+      },
+      "required": [
+        "post",
+        "thread",
+        "deliveries",
+        "refused"
+      ],
+      "title": "PostOutcome",
+      "type": "object"
+    },
+    "PostRequest": {
+      "additionalProperties": false,
+      "description": "One post into a discussion, to everyone in it.",
+      "properties": {
+        "in_reply_to": {
+          "default": "",
+          "title": "In Reply To",
+          "type": "string"
+        },
+        "text": {
+          "minLength": 1,
+          "title": "Text",
+          "type": "string"
+        },
+        "to": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "To",
+          "type": "array"
+        }
+      },
+      "required": [
+        "text",
+        "in_reply_to",
+        "to"
+      ],
+      "title": "PostRequest",
       "type": "object"
     },
     "ProtectedMatch": {
@@ -5770,12 +6253,63 @@
       "title": "RecordedQuestion",
       "type": "object"
     },
+    "Released": {
+      "additionalProperties": false,
+      "properties": {
+        "holders": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Holders",
+          "type": "array"
+        },
+        "path": {
+          "title": "Path",
+          "type": "string"
+        }
+      },
+      "required": [
+        "path",
+        "holders"
+      ],
+      "title": "Released",
+      "type": "object"
+    },
+    "Renamed": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "session": {
+          "title": "Session",
+          "type": "string"
+        }
+      },
+      "required": [
+        "session",
+        "name"
+      ],
+      "title": "Renamed",
+      "type": "object"
+    },
     "ReplyOutcome": {
       "additionalProperties": false,
-      "description": "What became of the operator's message: queued in the mailbox, and whether a wake landed.",
+      "description": "What became of one message the operator wrote: queued, and whether a wake landed.",
       "properties": {
         "detail": {
           "title": "Detail",
+          "type": "string"
+        },
+        "interrupted": {
+          "default": false,
+          "title": "Interrupted",
+          "type": "boolean"
+        },
+        "post": {
+          "default": "",
+          "title": "Post",
           "type": "string"
         },
         "queued": {
@@ -5784,6 +6318,11 @@
         },
         "session": {
           "title": "Session",
+          "type": "string"
+        },
+        "thread": {
+          "default": "",
+          "title": "Thread",
           "type": "string"
         },
         "woken": {
@@ -5795,25 +6334,12 @@
         "session",
         "queued",
         "woken",
+        "interrupted",
+        "post",
+        "thread",
         "detail"
       ],
       "title": "ReplyOutcome",
-      "type": "object"
-    },
-    "ReplyRequest": {
-      "additionalProperties": false,
-      "description": "What the operator wrote to one session.",
-      "properties": {
-        "text": {
-          "minLength": 1,
-          "title": "Text",
-          "type": "string"
-        }
-      },
-      "required": [
-        "text"
-      ],
-      "title": "ReplyRequest",
       "type": "object"
     },
     "RepositoryEvent": {
@@ -7253,6 +7779,51 @@
       "title": "ScopeRequest",
       "type": "object"
     },
+    "SeenCall": {
+      "additionalProperties": false,
+      "description": "One call a conversation made, and whether it has been answered.",
+      "properties": {
+        "at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "At"
+        },
+        "call": {
+          "title": "Call",
+          "type": "string"
+        },
+        "state": {
+          "$ref": "#/$defs/CallState",
+          "default": "pending"
+        },
+        "summary": {
+          "default": "",
+          "title": "Summary",
+          "type": "string"
+        },
+        "tool": {
+          "title": "Tool",
+          "type": "string"
+        }
+      },
+      "required": [
+        "call",
+        "tool",
+        "summary",
+        "at",
+        "state"
+      ],
+      "title": "SeenCall",
+      "type": "object"
+    },
     "ServiceEvent": {
       "additionalProperties": false,
       "description": "Which code the dashboard runs, changed: older than its checkout, or moved onto it.",
@@ -7300,6 +7871,14 @@
           "title": "Calling",
           "type": "string"
         },
+        "recent": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/SeenCall"
+          },
+          "title": "Recent",
+          "type": "array"
+        },
         "said": {
           "default": "",
           "title": "Said",
@@ -7316,7 +7895,8 @@
         "calling",
         "arguments",
         "at",
-        "transcript"
+        "transcript",
+        "recent"
       ],
       "title": "SessionActivity",
       "type": "object"
@@ -7377,6 +7957,42 @@
         "value"
       ],
       "title": "SessionId",
+      "type": "object"
+    },
+    "SessionProcess": {
+      "additionalProperties": false,
+      "description": "The runtime process one row answers for, and whether this dashboard could stop it.",
+      "properties": {
+        "here": {
+          "title": "Here",
+          "type": "boolean"
+        },
+        "pid": {
+          "title": "Pid",
+          "type": "integer"
+        },
+        "started": {
+          "title": "Started",
+          "type": "string"
+        },
+        "stoppable": {
+          "title": "Stoppable",
+          "type": "boolean"
+        },
+        "why": {
+          "default": "",
+          "title": "Why",
+          "type": "string"
+        }
+      },
+      "required": [
+        "pid",
+        "started",
+        "here",
+        "stoppable",
+        "why"
+      ],
+      "title": "SessionProcess",
       "type": "object"
     },
     "SetupPane": {
@@ -7462,6 +8078,14 @@
         "reviews": {
           "$ref": "#/$defs/ReviewSnapshot"
         },
+        "served": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/Feature"
+          },
+          "title": "Served",
+          "type": "array"
+        },
         "sessions": {
           "items": {
             "$ref": "#/$defs/LiveSession"
@@ -7474,6 +8098,14 @@
           "default": "snapshot",
           "title": "Type",
           "type": "string"
+        },
+        "users": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/UserRow"
+          },
+          "title": "Users",
+          "type": "array"
         }
       },
       "required": [
@@ -7484,6 +8116,8 @@
         "extents",
         "reviews",
         "code",
+        "users",
+        "served",
         "keys"
       ],
       "title": "SnapshotEvent",
@@ -7737,6 +8371,30 @@
       "title": "StepView",
       "type": "object"
     },
+    "Stopped": {
+      "additionalProperties": false,
+      "properties": {
+        "detail": {
+          "title": "Detail",
+          "type": "string"
+        },
+        "pid": {
+          "title": "Pid",
+          "type": "integer"
+        },
+        "session": {
+          "title": "Session",
+          "type": "string"
+        }
+      },
+      "required": [
+        "session",
+        "pid",
+        "detail"
+      ],
+      "title": "Stopped",
+      "type": "object"
+    },
     "StoredDocument": {
       "additionalProperties": false,
       "description": "A document the relay keeps once, in the store beside its log, named by the SHA-256 of its UTF-8 text.",
@@ -7866,6 +8524,21 @@
       "title": "SupervisorState",
       "type": "object"
     },
+    "TextRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "text": {
+          "minLength": 1,
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "text"
+      ],
+      "title": "TextRequest",
+      "type": "object"
+    },
     "ThreadEntry": {
       "additionalProperties": false,
       "description": "One thing said on a review, as a reader of its thread sees it.\n\n``kind`` says who could have said it: the operator remarking or\nanswering, or the requester replying. ``approved`` is the answer's\nverdict, and nothing on the other two.",
@@ -7923,6 +8596,147 @@
         "approved"
       ],
       "title": "ThreadEntry",
+      "type": "object"
+    },
+    "TranscriptEntry": {
+      "additionalProperties": false,
+      "description": "One thing a transcript recorded: words said, a call made, or what a call returned.\n\nPlaced by the byte its line starts at and its place among that line's\nblocks, which nothing later moves, so a reader holding entries from one\nread and from a frame after it keeps each once.",
+      "properties": {
+        "arguments": {
+          "$ref": "#/$defs/JsonObject",
+          "default": {}
+        },
+        "at": {
+          "title": "At",
+          "type": "integer"
+        },
+        "block": {
+          "default": 0,
+          "title": "Block",
+          "type": "integer"
+        },
+        "call": {
+          "default": "",
+          "title": "Call",
+          "type": "string"
+        },
+        "error": {
+          "default": false,
+          "title": "Error",
+          "type": "boolean"
+        },
+        "kind": {
+          "$ref": "#/$defs/EntryKind"
+        },
+        "role": {
+          "title": "Role",
+          "type": "string"
+        },
+        "text": {
+          "default": "",
+          "title": "Text",
+          "type": "string"
+        },
+        "time": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Time"
+        },
+        "tool": {
+          "default": "",
+          "title": "Tool",
+          "type": "string"
+        }
+      },
+      "required": [
+        "at",
+        "block",
+        "time",
+        "role",
+        "kind",
+        "text",
+        "tool",
+        "arguments",
+        "call",
+        "error"
+      ],
+      "title": "TranscriptEntry",
+      "type": "object"
+    },
+    "TranscriptEvent": {
+      "additionalProperties": false,
+      "description": "What one followed transcript recorded since, while a tab follows it.\n\nNot state: a tab handed the whole state again reads the transcript's\npage anew, and these carry on from where that page ends.",
+      "properties": {
+        "end": {
+          "title": "End",
+          "type": "integer"
+        },
+        "entries": {
+          "items": {
+            "$ref": "#/$defs/TranscriptEntry"
+          },
+          "title": "Entries",
+          "type": "array"
+        },
+        "session": {
+          "title": "Session",
+          "type": "string"
+        },
+        "type": {
+          "const": "transcript",
+          "default": "transcript",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "type",
+        "session",
+        "entries",
+        "end"
+      ],
+      "title": "TranscriptEvent",
+      "type": "object"
+    },
+    "TranscriptPage": {
+      "additionalProperties": false,
+      "description": "One run of a transcript's entries, oldest first, and where it sits in the file.",
+      "properties": {
+        "earlier": {
+          "title": "Earlier",
+          "type": "integer"
+        },
+        "end": {
+          "title": "End",
+          "type": "integer"
+        },
+        "entries": {
+          "items": {
+            "$ref": "#/$defs/TranscriptEntry"
+          },
+          "title": "Entries",
+          "type": "array"
+        },
+        "session": {
+          "title": "Session",
+          "type": "string"
+        }
+      },
+      "required": [
+        "session",
+        "entries",
+        "earlier",
+        "end"
+      ],
+      "title": "TranscriptPage",
       "type": "object"
     },
     "TurnCompletedEvent": {
@@ -8281,6 +9095,86 @@
       "title": "UnpreviewedStep",
       "type": "object"
     },
+    "UserEvent": {
+      "additionalProperties": false,
+      "description": "The person's own row in one repository, first seen or changed.",
+      "properties": {
+        "type": {
+          "const": "user",
+          "default": "user",
+          "title": "Type",
+          "type": "string"
+        },
+        "user": {
+          "$ref": "#/$defs/UserRow"
+        }
+      },
+      "required": [
+        "type",
+        "user"
+      ],
+      "title": "UserEvent",
+      "type": "object"
+    },
+    "UserRow": {
+      "additionalProperties": false,
+      "description": "The person's own row in one repository, as every agent there reads it.",
+      "properties": {
+        "contested": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Contested",
+          "type": "array"
+        },
+        "description": {
+          "default": "",
+          "title": "Description",
+          "type": "string"
+        },
+        "holding": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Holding",
+          "type": "array"
+        },
+        "key": {
+          "title": "Key",
+          "type": "string"
+        },
+        "notices": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/LiveNotice"
+          },
+          "title": "Notices",
+          "type": "array"
+        },
+        "repository": {
+          "title": "Repository",
+          "type": "string"
+        },
+        "unread": {
+          "default": 0,
+          "title": "Unread",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "key",
+        "repository",
+        "description",
+        "holding",
+        "contested",
+        "notices",
+        "unread"
+      ],
+      "title": "UserRow",
+      "type": "object"
+    },
     "VerificationFailedEvent": {
       "additionalProperties": false,
       "description": "What one gate saw at the moment it decided a concern's round.\n\nUnjournalled, a check runs, produces a verdict that decides a concern's\nfate, and leaves nothing behind in the run's record. Journalling it puts\nwhat the gate saw beside the turns it\ndecided about, which is the one place a later session can read it \u2014 the\nlease worktree the check ran in is usually still held by the run.",
@@ -8359,6 +9253,32 @@
         "output"
       ],
       "title": "VerificationRecord",
+      "type": "object"
+    },
+    "WakePriority": {
+      "enum": [
+        "next",
+        "now"
+      ],
+      "type": "string"
+    },
+    "Withdrawn": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "withdrawn": {
+          "title": "Withdrawn",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "id",
+        "withdrawn"
+      ],
+      "title": "Withdrawn",
       "type": "object"
     },
     "WizardView": {

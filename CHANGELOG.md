@@ -20,6 +20,63 @@ push` in another worktree failed sixteen bystander tests.
   or on a detached head still fails the run. So does a pop or drop by
   anyone: git records where an entry was made, but not who removed it.
 
+### The dashboard supervises agents, and the person is a peer among them
+
+- The dashboard's stream says, for every agent, the runtime it runs in, the
+  session that spawned it, its runtime process and whether the dashboard
+  could stop it, and its latest twelve calls with what became of each. The
+  person's own row in each repository rides it as a `user` event, and the
+  whole state names the supervision this server serves.
+- An agent's transcript reads a page at a time from its end
+  (`GET …/sessions/<member>/transcript`), and one a tab follows
+  (`POST /api/transcripts/follow`) streams in `transcript` frames.
+- The message route takes `in_reply_to`, `redirect` and `priority: "now"`.
+  `now` stops the agent's turn for the message. On Claude Code 2.1.285,
+  measured, a generating turn ends at once and a running tool call finishes
+  first. On Codex 0.159.2, measured, the turn is stopped through its home's
+  app-server (`turn/interrupt`), even mid-command, and its queue takes the
+  message as the next turn (`lup.providers.codex.interrupt`).
+- New routes, each behind the page's capability and origin check: wake an
+  agent, rename it, stop its runtime (only in the dashboard's own pid
+  namespace, with its pid and start time checked), broadcast to a
+  repository, post and withdraw notices, say what you are on, hold and give
+  back paths, mark your inbox read, and post into a discussion to everyone
+  in it. A `DELETE` is held to the origin check a `POST` is.
+- Every message names its post and its thread. `coordination_send` takes
+  `thread` and `in_reply_to`, so an agent answers a discussion to everyone in
+  it; its output is `{post, thread, reached, refused}`, where it was
+  `{address, delivery, outstanding}`. What an agent is handed names the post,
+  and a discussion's messages are headed `[discussion «…» · with … · thread …]`.
+- The person's holds count: an agent writing under one is asked, told `held
+  by user — the operator locked this path`, and `coordination_peers` lists
+  the person's row last.
+- `lup-devtools coordination mailbox --id user` reads the person's own
+  mailbox, each message headed with its sender and post as an agent's hook
+  heads it, and `--take` takes them as read. `coordination send` takes
+  `--as user` to sign an answer so the reply comes back to the person, and
+  `--reply-to <post>` to put it in that post's thread; it prints the post id.
+- The page supervises through those routes. Beside an agent: wake it
+  (`Space a w`), interrupt its turn (`Space a n`, or **Interrupt** by the box),
+  redirect its next call, answer its last message in its thread
+  (`Space a r`, `r` on any message), rename it, stop its runtime (asked
+  twice), and read its whole transcript live (`T`). The operator's verbs
+  (`:describe`, `:notice`/`:unnotice`, `:lock`/`:release`, `:read`, `X` in the
+  inbox) reach theirs, a post into a discussion goes to its thread, and a
+  broadcast is one post. Threads group by post and thread ids. The page reads
+  the stream's `served` and refuses, naming the route, what a dashboard running
+  older code does not serve. The keymap catalog's actions say which piece of
+  supervision each needs (`needs`) where they said `server="new"`.
+- A fork's row names the subagent that spawned it, read from the runtime's
+  own record (Claude Code's `parentAgentId`, Codex's `parent_thread_id`),
+  where it was a plain sibling with an empty `spawned_by`. A member writes
+  what its own descendants hold without being asked, a session included
+  under its subagents; the hold still shows, and a sibling or anyone outside
+  the family is still asked. The writer is told beside the call's result,
+  the same on both runtimes: `<file>: your subagent <name> holds this file
+  and is still running`, saying "still running" only where it is.
+- A redirect a wake carried still refuses the agent's next tool call. A wake
+  that reached used to hand the redirect over with everything else, so the
+  delivery hook never saw it and the next call went through.
 ### Files, locks and per-person state are each spelled once in the library
 
 The same file chores were hand-rolled at dozens of sites, each a little

@@ -250,6 +250,11 @@ button.seg { cursor: pointer; }
 .kr .tag { text-align: right; }
 .tag.decided { color: var(--ok); } .tag.new { color: var(--info); } .tag.changed { color: var(--warn); } .tag.yours { color: var(--ok); font-weight: 700; }
 .logl { white-space: pre-wrap; overflow-wrap: anywhere; }
+/* A transcript reads whole: what was said, each call with its arguments, and what it returned. */
+.tr { margin: 4px 0; overflow-wrap: anywhere; }
+.tr pre, .tr code { white-space: pre-wrap; overflow-wrap: anywhere; margin: 0; }
+.tr.result pre { padding-left: 2ch; color: var(--muted); }
+.tr.result.err pre { color: var(--err); }
 .float table { border-collapse: collapse; width: 100%; }
 .float td, .float th { border-bottom: 1px solid var(--border); padding: 0 1ch; text-align: left; vertical-align: top; }
 .sw { display: inline-block; width: 3ch; height: 1em; vertical-align: middle; border: 1px solid var(--border); }

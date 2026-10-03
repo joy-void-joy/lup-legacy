@@ -1,14 +1,15 @@
 // The command line: `:` runs a command, Tab completes its name and its
 // argument, ↑ and ↓ recall earlier ones; `/` searches the focused window on the
-// same line. Every command that needs new server work says so and names it,
-// the way a key bound to it does.
+// same line. A command whose supervision this dashboard's server does not
+// serve says so and names the route, the way a key bound to it does.
 import type { Dashboard } from "./dashboard";
-import { cancelSearch, confirmSearch, copyLink, gotoLine, memberHere, moveReview, previewSearch, quit, repositoryHere, setPaneView, split, toggleFull, toggleWhole } from "./editor";
+import type { LiveSession } from "../generated/views";
+import { cancelSearch, confirmSearch, copyLink, gotoLine, memberHere, moveReview, previewSearch, quit, replyHere, repositoryHere, rowHere, setPaneView, split, toggleFull, toggleWhole } from "./editor";
 import { openFinder, PICKERS } from "./finder";
 import { CATALOG } from "./keys";
-import { unserved, type Feature } from "./served";
+import type { Feature } from "./served";
 import { VIEWS, type View } from "./state";
-import { parentOf } from "./supervision";
+import { counterpart, inboxOf, parentOf } from "./supervision";
 
 export type Command = {
   name: string;
@@ -18,7 +19,7 @@ export type Command = {
   /** Whether it takes free text after the name. */
   takes?: boolean;
   alias?: string[];
-  /** The server work it waits on, where it does. */
+  /** The supervision it needs from the dashboard's server, where it needs any. */
   needs?: Feature;
   run: (d: Dashboard, arg: string, bang: boolean) => void;
 };
@@ -107,7 +108,41 @@ async function unmap(d: Dashboard, arg: string): Promise<void> {
   d.say(`${keys} no longer runs what it did, in this tab`);
 }
 
-const refuse = (feature: Feature) => (d: Dashboard) => d.say(unserved(feature), "err");
+/** Act on the agent a command names, or the one in view. */
+function onAgent(d: Dashboard, arg: string, act: (session: LiveSession) => void): void {
+  const session = resolveMember(d, arg.trim());
+  if (session === undefined) { d.say(`E: no agent answers to ${arg.trim() || "nothing in view"}`, "err"); return; }
+  act(session);
+}
+
+/** `:reply <text>`: answer the message or post under the cursor with the text, or open its box where none is given. */
+function replyHereWith(d: Dashboard, text: string): void {
+  const row = rowHere(d);
+  if (text.trim() === "") { replyHere(d); return; }
+  if (row?.t === "post") {
+    const discussion = d.discussion();
+    if (discussion !== undefined) { d.set({ threadReply: row.post.id }); void d.post(discussion, text); }
+    return;
+  }
+  if (row?.t !== "mail") { d.say("E: :reply answers the message under the cursor; put it on one first", "err"); return; }
+  const live = d.state.live;
+  const session = live === null ? undefined : counterpart(live, row.m);
+  if (session === undefined) { d.say("E: whoever wrote it is not on the roster this page holds", "err"); return; }
+  void d.sendTo(session, text, { in_reply_to: row.m.post || row.m.id });
+}
+
+/** `:read`: the message to you under the cursor; `:read all`: every one waiting. */
+function readWith(d: Dashboard, arg: string): void {
+  const live = d.state.live;
+  if (live === null) return;
+  if (arg === "all") { void d.markRead(inboxOf(live)); return; }
+  const row = rowHere(d);
+  if (row?.t === "mail") void d.markRead([row.m]);
+  else d.say("E: :read marks the message under the cursor; :read all marks every one", "err");
+}
+
+/** The ids of the notices standing over the repository here, for Tab. */
+const noticeIds = (d: Dashboard) => [...(d.state.live?.users.values() ?? [])].filter((row) => row.repository === repositoryHere(d)).flatMap((row) => row.notices.map((notice) => notice.id));
 
 export const COMMANDS: Command[] = [
   { name: "approve", description: "approve the open review (Ctrl+Enter)", run: (d) => d.answer("approve") },
@@ -131,7 +166,7 @@ export const COMMANDS: Command[] = [
   { name: "post", description: "post to everyone in the discussion here: :post <text>", takes: true, needs: "thread-post", run: (d, arg) => {
     const discussion = d.discussion();
     if (d.centerKind() !== "thread" || discussion === undefined) { d.say("E: :post writes into a discussion; open one first (:threads)", "err"); return; }
-    d.post(discussion, arg);
+    void d.post(discussion, arg);
   } },
   { name: "setup", description: "each repository's setup", run: (d) => d.setView("setup") },
   { name: "tree", description: "the tree shows every agent, those that need you, or only reviews", args: () => ["all", "attention", "reviews"], run: (d, arg) => set(d, `tree=${arg || "all"}`) },
@@ -144,19 +179,29 @@ export const COMMANDS: Command[] = [
     if (session === undefined || parent === undefined) { d.say("E: :ask-parent <subagent> [text]: it needs a parent session on the roster", "err"); return; }
     void d.sendTo(parent, text !== "" ? text : `What is ${session.name || session.id} doing?`);
   } },
-  { name: "wake", description: "wake an agent to read its mailbox: today, a message wakes it", args: agentNames, run: (d) => { d.focusWin("composer"); d.say("today a wake rides a message: write it, then Alt+Enter. A bare wake needs new server work."); } },
-  { name: "reply", description: "reply in the thread of the message under the cursor", takes: true, needs: "reply-thread", run: refuse("reply-thread") },
-  { name: "notice", description: "a standing notice every session here reads at the head of each prompt", takes: true, needs: "notices", run: refuse("notices") },
-  { name: "redirect", description: "refuse an agent's next tool call with your words: :redirect <agent> <text>", args: agentNames, takes: true, needs: "redirect", run: refuse("redirect") },
-  { name: "describe", description: "say what you are on; agents read it in coordination_peers", takes: true, needs: "describe", run: refuse("describe") },
-  { name: "lock", description: "hold a path as the operator: agents writing under it park a review for you", takes: true, needs: "claims", run: refuse("claims") },
-  { name: "release", description: "give back a path you hold", takes: true, needs: "claims", run: refuse("claims") },
-  { name: "rename", description: "rename an agent: :rename [agent] <name>", args: agentNames, takes: true, needs: "rename", run: refuse("rename") },
-  { name: "read", description: "mark the message under the cursor read; :read all for every one", args: () => ["all"], needs: "inbox-read", run: refuse("inbox-read") },
-  { name: "nudge", description: "interrupt an agent's turn with a message: :nudge [agent] <text>", args: agentNames, takes: true, needs: "interrupt", run: refuse("interrupt") },
-  { name: "interrupt", description: "interrupt an agent's turn with the standard words", args: agentNames, needs: "interrupt", run: refuse("interrupt") },
-  { name: "transcript", description: "an agent's whole transcript, live (T)", args: agentNames, needs: "transcript", run: refuse("transcript") },
-  { name: "stop", description: "stop an agent's runtime; :stop! confirms", args: agentNames, needs: "stop", run: refuse("stop") },
+  { name: "wake", description: "wake an agent to read its mailbox, or to look where nothing waits", args: agentNames, needs: "bare-wake", run: (d, arg) => onAgent(d, arg, (session) => void d.wake(session)) },
+  { name: "reply", description: "reply in the thread of the message under the cursor: :reply <text>", takes: true, needs: "reply-thread", run: (d, arg) => replyHereWith(d, arg) },
+  { name: "notice", description: "a standing notice every session here reads at the head of each prompt: :notice <text>", takes: true, needs: "notices", run: (d, arg) => void d.notice(repositoryHere(d), arg) },
+  { name: "unnotice", description: "take a standing notice down: :unnotice <id>", args: noticeIds, needs: "notices", run: (d, arg) => void d.withdraw(repositoryHere(d), arg.trim()) },
+  { name: "redirect", description: "refuse an agent's next tool call with your words: :redirect <agent> <text>", args: agentNames, takes: true, needs: "redirect", run: (d, arg) => {
+    const { session, text } = agentAndText(d, arg);
+    if (session === undefined) d.say("E: :redirect <agent> <text>", "err"); else void d.sendTo(session, text, { redirect: true });
+  } },
+  { name: "describe", description: "say what you are on; agents read it in coordination_peers", takes: true, needs: "describe", run: (d, arg) => void d.describe(arg.trim()) },
+  { name: "lock", description: "hold a path as the operator: agents writing under it park a review for you", takes: true, needs: "claims", run: (d, arg) => void d.claim(repositoryHere(d), arg, true) },
+  { name: "release", description: "give back a path you hold", takes: true, needs: "claims", run: (d, arg) => void d.claim(repositoryHere(d), arg, false) },
+  { name: "rename", description: "rename an agent: :rename [agent] <name>", args: agentNames, takes: true, needs: "rename", run: (d, arg) => {
+    const { session, text } = agentAndText(d, arg);
+    if (session === undefined) d.say("E: :rename [agent] <name>", "err"); else void d.rename(session, text);
+  } },
+  { name: "read", description: "mark the message under the cursor read; :read all for every one", args: () => ["all"], needs: "inbox-read", run: (d, arg) => readWith(d, arg.trim()) },
+  { name: "nudge", description: "interrupt an agent's turn with a message: :nudge [agent] <text>", args: agentNames, takes: true, needs: "interrupt", run: (d, arg) => {
+    const { session, text } = agentAndText(d, arg);
+    if (session === undefined) d.say("E: :nudge [agent] <text>", "err"); else void d.interrupt(session, text);
+  } },
+  { name: "interrupt", description: "interrupt an agent's turn with the standard words", args: agentNames, needs: "interrupt", run: (d, arg) => onAgent(d, arg, (session) => void d.interrupt(session, "")) },
+  { name: "transcript", description: "an agent's whole transcript, live (T)", args: agentNames, needs: "transcript", run: (d, arg) => onAgent(d, arg, (session) => void d.openTranscript(session)) },
+  { name: "stop", description: "stop an agent's runtime; :stop! confirms", args: agentNames, needs: "stop", run: (d, arg, bang) => onAgent(d, arg, (session) => void d.stopRuntime(session, bang)) },
   { name: "older", description: "load older requests into History", run: (d) => void d.loadOlder() },
   { name: "earlier", description: "load earlier messages: an older page of the mail record here", alias: ["ea"], run: (d) => void d.loadEarlier(repositoryHere(d)) },
   { name: "map", description: "your keys: :map lists them; :map {action} {keys} tries one in this tab", args: () => CATALOG.actions.map((action) => action.name), takes: true, run: (d, arg) => void map(d, arg) },

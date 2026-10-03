@@ -27,6 +27,7 @@ from typing import Literal
 
 from pydantic import BaseModel
 
+from lup.devtools.dashboard.live import Feature
 from lup.formats.banner import COMMENT_FREE, REGENERATE_COMMAND
 from lup.harness.materialization import write_generated_file
 from lup.harness.models import Artifact
@@ -56,10 +57,6 @@ type KeyStanding = Literal["decided", "changed", "new"]
 """How lup's key stands against the page before the revamp: one the operator
 chose, one that moved, or one that is new."""
 
-type KeyServer = Literal["today", "new"]
-"""Whether the dashboard's server serves what the action does, or it waits on
-new server work and the page refuses it, naming that work."""
-
 type KeyOrigin = Literal["config", "tab"]
 """Where a binding came from: the person's config, or one tab's ``:map``."""
 
@@ -81,7 +78,11 @@ class DashboardAction(BaseModel, frozen=True):
     scope: KeyScope = "anywhere"
     focus: KeyFocus = "any"
     stands: KeyStanding = "new"
-    server: KeyServer = "today"
+    needs: Feature | None = None
+    """The supervision the dashboard's server must serve for it to run, which
+    the stream says it does (``served``); a page meeting a server that does
+    not refuses it, naming the route."""
+
     also: list[str] = []
     """Actions shown on this one's help row, as a pair or a set of directions."""
 
@@ -238,22 +239,22 @@ class KeymapCatalog(BaseModel, frozen=True):
         action("search.previous", ",", "previous match of the last search", "search", hidden=True),
         # acting on an agent
         action("agent.write", "<leader>am", "write to it (c does the same beside it)", "agent"),
-        action("agent.reply", "<leader>ar", "reply in the thread of its last message", "agent", server="new"),
-        action("agent.wake", "<leader>aw", "wake it to read its mailbox", "agent", note="today as a message; a bare wake is new"),
-        action("agent.nudge", "<leader>an", "interrupt its turn with the box's words (or the standard ones)", "agent", server="new"),
+        action("agent.reply", "<leader>ar", "reply in the thread of its last message", "agent", needs="reply-thread"),
+        action("agent.wake", "<leader>aw", "wake it to read its mailbox", "agent", needs="bare-wake"),
+        action("agent.nudge", "<leader>an", "interrupt its turn with the box's words (or the standard ones)", "agent", needs="interrupt"),
         action("agent.parent", "<leader>ap", "ask its parent session about it", "agent"),
-        action("agent.transcript", ["T", "<leader>at"], "its whole transcript, live", "agent", scope="notreview", server="new"),
-        action("agent.rename", "<leader>aR", "rename it", "agent", server="new"),
-        action("agent.stop", "<leader>ax", "stop it (twice confirms)", "agent", server="new"),
-        action("message.reply", "r", "reply in the thread of the message under the cursor", "agent", scope="buffer", server="new"),
+        action("agent.transcript", ["T", "<leader>at"], "its whole transcript, live", "agent", scope="notreview", needs="transcript"),
+        action("agent.rename", "<leader>aR", "rename it", "agent", needs="rename"),
+        action("agent.stop", "<leader>ax", "stop it (twice confirms)", "agent", needs="stop"),
+        action("message.reply", "r", "reply in the thread of the message under the cursor", "agent", scope="buffer", needs="reply-thread"),
         action("messages.earlier", "E", "load earlier messages (an older page of the mail record)", "agent", scope="buffer", stands="changed", note="was the Load earlier messages button"),
         # the operator as a peer
-        action("peer.describe", "<leader>pd", "describe yourself: what you are on (:describe)", "you", server="new"),
-        action("peer.lock", "<leader>pl", "lock the file under the cursor, or a path you type (:lock)", "you", server="new"),
-        action("peer.release", "<leader>pL", "release a path you hold (:release)", "you", server="new"),
-        action("peer.notice", "<leader>pn", "post a standing notice (:notice)", "you", server="new"),
+        action("peer.describe", "<leader>pd", "describe yourself: what you are on (:describe)", "you", needs="describe"),
+        action("peer.lock", "<leader>pl", "lock the file under the cursor, or a path you type (:lock)", "you", needs="claims"),
+        action("peer.release", "<leader>pL", "release a path you hold (:release)", "you", needs="claims"),
+        action("peer.notice", "<leader>pn", "post a standing notice (:notice)", "you", needs="notices"),
         action("peer.broadcast", "<leader>pb", "broadcast to every working member (:broadcast)", "you"),
-        action("peer.redirect", "<leader>pr", "redirect an agent: refuse its next call with your words (:redirect)", "you", server="new"),
+        action("peer.redirect", "<leader>pr", "redirect an agent: refuse its next call with your words (:redirect)", "you", needs="redirect"),
         # windows, views and tabs
         action("tree.all", "<leader>ta", "tree: every agent, only those that need you, or only the reviews waiting (as the old queue)", "view", also=["tree.attention", "tree.reviews"]),
         action("tree.attention", "<leader>tt", "tree: only the agents that need you", "view", hidden=True),
@@ -278,7 +279,7 @@ class KeymapCatalog(BaseModel, frozen=True):
         action("close", "q", "close the float or the split", "view"),
         # comment and write
         action("delete", "x", "delete the draft comment here; beside an agent or in the inbox, mark read, release a hold, or withdraw a notice", "comment", scope="notsetup"),
-        action("inbox.readall", "X", "mark every message to you read", "comment", scope="inbox", server="new"),
+        action("inbox.readall", "X", "mark every message to you read", "comment", scope="inbox", needs="inbox-read"),
         action("box", "c", "back into the box: the note on a review, the message box beside an agent", "comment", stands="decided"),
         action("escape", "<Esc>", "leave the box (Ctrl+[ too), cancel visual mode, close a float", "comment", stands="decided"),
         action("comment.line", ["i", "a", "o"], "comment on this line (a draft comment, GitHub-style)", "comment", scope="review"),
