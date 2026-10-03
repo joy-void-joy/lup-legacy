@@ -15,9 +15,11 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, Discriminator, Field
 
+from lup.policy.kernel.diagnostic import devtools, spelled
+
 # lup: ignore[constant-declaration] — the command a reader types, whose words are
 # the CLI's own rather than a preference this module holds
-REGENERATE_COMMAND = "uv run lup-devtools harness generate all"
+REGENERATE_COMMAND = spelled(devtools("harness", "generate", "all"))
 """The devtools command that rebuilds every native harness tree."""
 
 PROVENANCE_RECORD = "docs/harness.md"
