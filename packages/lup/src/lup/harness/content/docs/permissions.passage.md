@@ -1335,6 +1335,22 @@ devtools module — on both enforcement paths whatever a project declares, and
 no adopter has to know to list them. A record there claiming an answer is
 ignored, and a parked record whose fields no longer hash to its fingerprint
 — one rewritten to show another call — can be neither answered nor spent.
+The fingerprint covers what the record holds: the call and where it runs,
+each file's preimage and where its path resolved, the verdict's reason,
+rule, purpose and reviewer, the policy identity, and each file verdict,
+command and unpreviewed step with the fields it carries. Every reader checks
+it with the hook's own function (`lup.policy.assets.host.recorded_fingerprint`)
+over the record as it holds it (`QuestionRecord.held`), so a field a later
+version adds to those rows, with a default, is no part of a record parked
+before it, and that record stays answerable; a field it does carry, changed,
+removed or written in since, unbinds it. A field added to them is therefore
+optional with a default; renaming, removing or retyping one strands every
+review parked before. Where a record does not hash to its fingerprint, the
+reader says it changed after it was parked or was parked by code writing it
+another way, names the compiled hook script that parked it where its policy
+identity records one, and offers the checkout's own review commands only
+where they run other code than the reader's; otherwise `review cancel <id>`
+withdraws it, and the session that asked asks again.
 Nested command paths are declared with `ShellOperationRule.parents`, and the
 deepest matching path decides.
 
