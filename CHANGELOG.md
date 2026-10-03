@@ -121,6 +121,7 @@ push` in another worktree failed sixteen bystander tests.
 - A redirect a wake carried still refuses the agent's next tool call. A wake
   that reached used to hand the redirect over with everything else, so the
   delivery hook never saw it and the next call went through.
+
 ### The dashboard highlights a conflicted file's code through its merge markers
 
 A file a merge left conflicted no longer throws the dashboard's syntax
@@ -137,6 +138,7 @@ conflict left unterminated, or with its markers out of order, is highlighted
 as the file stands. The markers are read by `conflicts.ts` in the dashboard
 page, which accepts git's longer markers too (`conflict-marker-size`, and the
 inner conflicts a merge of merge bases writes).
+
 ### An agent that spawns an unnamed subagent is told to name its next one
 
 On Claude Code, a subagent spawned without a `name` goes out under one read
@@ -289,6 +291,7 @@ two paths it named, so both trees stay protected whichever runtime a session
 runs. An adopter's own `NativeSpellings` implements `protected_tree`, and a
 hook set that listed `.claude` and `.codex` by hand can spread
 `runtime_trees()` instead.
+
 ### A script `uv run` is handed beside an unread word is no longer refused as a bare interpreter
 
 `cd tmp && T=/a; uv run python s.py $T` was refused as a bare interpreter,
@@ -2123,6 +2126,7 @@ quietly stopped firing.
 -   Import `RosterMember` from `lup.coordination.roster` where `SpawnedActor` was imported. Every field keeps its name and its meaning; only the type is spelled for what it folds, which is `store.Member`.
 - Claim, Claim.at, Claim.covers, Claim.held, Claim.holders, Claim.path, Claim.prefix, Claim.subject, folded_claim — `Claim` named two shapes one import apart: a member's own record of a path it holds, and the cross-member row derived from every member claiming one path. The first is `store.Holding` and the second is this, so each says which it is
 -   Import `HeldPath` from `lup.coordination.touches` where `Claim` was imported, and `folded_held_path` where `folded_claim` was. The fields are unchanged: a path, whether it is a prefix, and the members holding it. A caller that meant one member's own record wants `lup.coordination.bare.store.Holding` instead.
+
 ## 0.2.0 — 2026-07-23
 
 Breaking capability-composition and semantic-policy release. A clean break:
