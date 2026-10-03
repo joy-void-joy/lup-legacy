@@ -4,7 +4,6 @@ Loads Claude Code OAuth credentials, fetches the live usage API at
 api.anthropic.com, and parses stats-cache.json into typed models.
 """
 
-import json
 import random
 from collections.abc import Callable
 from datetime import UTC, date, datetime, timedelta
@@ -13,6 +12,7 @@ from pathlib import Path
 
 import httpx
 from pydantic import BaseModel, Field
+from pydantic.alias_generators import to_camel
 
 from lup.channels.models import write_atomic
 from lup.execution.locks import exclusive
@@ -194,17 +194,39 @@ class DailyBreakdown(BaseModel):
 # ── API ────────────────────────────────────────────────────
 
 
+class StoredOAuth(BaseModel, extra="ignore", alias_generator=to_camel):
+    access_token: str
+
+
+class StoredLogin(BaseModel, extra="ignore", alias_generator=to_camel):
+    """A stored Claude login, as far as asking the usage endpoint goes."""
+
+    claude_ai_oauth: StoredOAuth
+
+
+def access_token(stored: bytes, where: str) -> str:
+    """The access token a stored login holds; ``RuntimeError`` naming *where* when it holds none."""
+    try:
+        return StoredLogin.model_validate_json(stored).claude_ai_oauth.access_token
+    except ValueError as unreadable:
+        raise RuntimeError(
+            f"Bad credentials file at {where}: {unreadable}"
+        ) from unreadable
+
+
 def fetch_usage(config_dir: Path) -> UsageResponse:
     """Call the live usage API using the profile's OAuth credentials."""
     creds_file = creds_path(config_dir)
     try:
-        creds = json.loads(creds_file.read_text())
-        oauth = creds["claudeAiOauth"]
-        token: str = oauth["accessToken"]
-    except (json.JSONDecodeError, KeyError, OSError) as e:
+        stored = creds_file.read_bytes()
+    except OSError as e:
         msg = f"Bad credentials file at {creds_file}: {e}"
         raise RuntimeError(msg) from e
+    return fetch_usage_as(access_token(stored, str(creds_file)))
 
+
+def fetch_usage_as(token: str) -> UsageResponse:
+    """Call the live usage API bearing one access token, wherever the login holding it is kept."""
     resp = httpx.get(
         USAGE_API_URL,
         headers={
@@ -260,6 +282,16 @@ def usage_record(home: Path, directories: UserDirectories | None = None) -> Path
     """Where the readings of the account whose login *home* keeps are shared."""
     named = digest.text(str(home.expanduser().resolve()))[:16]
     return (directories or UserDirectories()).state() / "usage" / f"claude-{named}.json"
+
+
+def account_record(account: str, directories: UserDirectories | None = None) -> Path:
+    """Where the readings of one account are shared, by its id: every copy of its login reads one."""
+    named = digest.text(account)[:16]
+    return (
+        (directories or UserDirectories()).state()
+        / "usage"
+        / f"claude-account-{named}.json"
+    )
 
 
 def asked_again(response: httpx.Response, now: datetime) -> datetime | None:

@@ -798,8 +798,13 @@ against a slot; their subagents, and the sessions an agent opens, are.
 An account is one runtime's login under one profile — `claude:work`,
 `codex:default`, `default` naming the home no profile selects — and the
 dashboard reads every one the served repositories can launch on — each
-profile's, and the one each repository's container volume was last handed,
-which its contained sessions draw on. Its windows are what the provider
+profile's, and whoever is signed in to each repository's container volume
+now, which its contained sessions draw on: read from the volume, with the
+volume's own login, through a helper container. Every account is named and
+told apart by who it is — the email and account id Claude Code writes at
+sign-in — never by the home it came from, so the home no profile selects
+shows as its account's email, and a volume someone signed in to another
+account from is that other account's. Its windows are what the provider
 meters it in, and most come with no request at all: every Claude session's
 status line hands the dashboard its account's 5-hour and weekly windows as
 its own last request heard them (Claude Code 2.1.285's `rate_limits`), and

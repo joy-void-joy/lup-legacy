@@ -32,6 +32,10 @@ CLAUDE_LOGIN = ProviderLogin(
     home_subdir="claude-config",
     state_volume="claude",
     trust_document=".claude.json",
+    # Written at sign-in, read from the documents of Claude Code 2.1.285: the
+    # login itself (.credentials.json) names no account.
+    account_id=["oauthAccount", "accountUuid"],
+    account_name=["oauthAccount", "emailAddress"],
     # Read off a home Claude Code 2.1.282 wrote, and off the shared volume a
     # contained session had filled beside Codex. `cache`, `history.jsonl`,
     # `plugins`, `sessions` and `skills` are names both runtimes write.

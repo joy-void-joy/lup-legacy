@@ -1,0 +1,22 @@
+subjects = [
+    "VolumeOwner",
+    "VolumeOwner.checkout",
+    "VolumeOwner.runtime",
+    "VolumeOwner.home",
+    "volume_owners",
+]
+reason = """
+the account a repository's volume holds was read from lup's record of the \
+login it handed the volume, which stops being true the moment someone signs \
+in to another account from a session; the volume is read now, through a \
+helper container, and its account named by who it is"""
+
+[[steps]]
+instruction = """
+Where you called volume_owners(checkouts, volumes) from \
+lup.devtools.dashboard.budget, call volume_accounts(checkouts): it answers \
+an AccountHome per volume, with the account's id in identity, the volume in \
+volume and the checkout as home, read from the volume itself. held_homes \
+takes a VolumeCopy in place of VolumeLogins, and launched_on takes \
+LaunchedAccounts in place of VolumeLogins."""
+command = ["uv", "run", "lup-devtools", "dev", "py", "text", "volume_owners", "."]

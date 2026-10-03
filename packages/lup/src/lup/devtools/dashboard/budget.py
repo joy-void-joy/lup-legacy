@@ -43,9 +43,15 @@ from lup.devtools.coordination.pausing import continued_with
 from lup.devtools.dashboard.companion import KnownRepository
 from lup.devtools.dashboard.live import Feature, RunningAgent
 from lup.devtools.harness.launch import SwitchOutcome, switch_repository_login
-from lup.launch.config_volume import VolumeLogins
-from lup.launch.container import drawn_account, state_volume_name
+from lup.launch.config_volume import LaunchedAccounts
+from lup.launch.container import (
+    VolumeLoginCopy,
+    VolumeUnreachable,
+    offered_login,
+    state_volume_name,
+)
 from lup.execution.git import GitError
+from lup.harness.image import Image
 from lup.providers.harness import AdapterName
 from lup.devtools.dashboard.telemetry import RequestSpend, TelemetryJoin
 from lup.observability.usage.models import PacingWindow, UsageReader, UsageUnavailable
@@ -57,6 +63,7 @@ from lup.providers.accounts import (
     transcript_spend,
 )
 from lup.providers.login import ProviderLogin
+from lup.providers.login_sync import LoginPlace, bytes_at, identity_of
 from lup.providers.user_config import UserConfigFile
 from lup.sessions.budget import AgentLedger, Charge, LedgerState, SpendLedger
 from lup.sessions.limits import (
@@ -460,77 +467,126 @@ class AccountWatch:
             )
 
 
-class VolumeOwner(BaseModel, frozen=True):
-    """The account a served repository's volume of one runtime was last handed."""
-
-    checkout: Path
-    runtime: str
-    home: AccountHome
+type VolumeCopy = Callable[[Path, ProviderLogin], LoginPlace]
+"""The copy of a runtime's login a checkout's repository volume keeps."""
 
 
-def volume_owners(
-    checkouts: list[Path], volumes: VolumeLogins | None = None
-) -> list[VolumeOwner]:
-    """Whose login each served repository's volume holds, as lup recorded handing it.
+def volume_copy(checkout: Path, login: ProviderLogin) -> LoginPlace:
+    """The volume's copy, reached through a helper container from the image a session there runs."""
+    volume = state_volume_name(checkout, login)
+    return VolumeLoginCopy(checkout, login, Image().config_home, offered_login(volume))
 
-    What every contained session of that repository and runtime draws on, so
-    the account the budget has to read for them, whatever profile it is.
+
+def volume_accounts(
+    checkouts: list[Path], copy: VolumeCopy = volume_copy
+) -> list[AccountHome]:
+    """Whose login each served repository's volume holds now, read from the volume itself.
+
+    What every contained session of that repository and runtime draws on:
+    whoever signed in last inside it, which lup's record of what it handed
+    the volume stops saying once someone signs in to another account from a
+    session. Named as the account names itself, its *home* the checkout. A
+    volume no helper container reaches, or whose login says no account, is
+    left out.
     """
-    record = volumes or VolumeLogins()
 
-    def held(checkout: Path, runtime: str, login: ProviderLogin) -> VolumeOwner | None:
+    def held(checkout: Path, runtime: str, login: ProviderLogin) -> AccountHome | None:
         try:
             volume = state_volume_name(checkout, login)
-        except (GitError, OSError):
+            read = copy(checkout, login).read()
+        except (GitError, OSError, VolumeUnreachable):
             return None
-        handed = record.held(volume)
-        if handed is None:
+        who = identity_of(login, read.account)
+        if read.login is None or who is None:
             return None
-        owner = handed.owner
-        return VolumeOwner(
-            checkout=checkout,
-            runtime=runtime,
-            home=AccountHome(
-                account=Account(
-                    runtime=runtime, profile=owner.profile or str(owner.home)
-                ),
-                home=owner.home,
-                signed_in=login.credentials_path(owner.home).is_file(),
-            ),
+        return AccountHome(
+            account=Account(runtime=runtime, profile=who.name or who.id),
+            home=checkout,
+            signed_in=True,
+            identity=who.id,
+            volume=volume,
         )
 
     return [
-        owner
+        found
         for checkout in checkouts
         for each in runtime_logins()
-        if each.login.state_volume
-        for owner in [held(checkout, each.runtime, each.login)]
-        if owner is not None
+        if each.login.state_volume and each.login.account_id
+        for found in [held(checkout, each.runtime, each.login)]
+        if found is not None
     ]
+
+
+def identified(home: AccountHome) -> AccountHome:
+    """A home's account with whose login it keeps, as the account document beside it says.
+
+    The home no profile selects is named as its account names itself, since
+    "default" says which home and not who.
+    """
+    login = next(
+        (
+            each.login
+            for each in runtime_logins()
+            if each.runtime == home.account.runtime
+        ),
+        None,
+    )
+    if login is None or not login.account_id:
+        return home
+    who = identity_of(login, bytes_at(login.account_document(home.home)))
+    if who is None:
+        return home
+    named = (
+        home.account.model_copy(update={"profile": who.name or who.id})
+        if home.account.profile == "default"
+        else home.account
+    )
+    return home.model_copy(update={"identity": who.id, "account": named})
 
 
 def held_homes(
-    checkouts: list[Path], volumes: VolumeLogins | None = None
+    checkouts: list[Path], copy: VolumeCopy = volume_copy
 ) -> list[AccountHome]:
-    """Every account the profiles hold, and every one a served repository's volume holds.
+    """Every account the served repositories' sessions can draw on, each once, by who it is.
 
-    A volume may hold the login of a home no profile names, and its contained
-    sessions draw on that account all the same; one already among the
-    profiles is read once.
+    Each volume's account first, read with the volume's own login, which its
+    contained sessions keep renewed; then every profile and the home no
+    profile selects, leaving out one whose account a volume already reads.
     """
-    found = account_homes(checkouts)
-    handed = [owner.home for owner in volume_owners(checkouts, volumes)]
+    volumes = volume_accounts(checkouts, copy)
+    seen = [each.identity for each in volumes]
+    homes = [identified(each) for each in account_homes(checkouts)]
     return [
-        *found,
-        *(
-            each
-            for index, each in enumerate(handed)
-            if all(
-                other.home.resolve() != each.home.resolve()
-                for other in [*found, *handed[:index]]
-            )
-        ),
+        *volumes,
+        *(each for each in homes if not each.identity or each.identity not in seen),
     ]
+
+
+def drawn_reader(account: AccountHome, copy: VolumeCopy = volume_copy) -> UsageReader:
+    """The reader of one account's windows, asked with the login a volume keeps where it is kept in one.
+
+    The volume's login is read through a helper container only when the
+    provider is asked, which the reading every reader of the account shares
+    keeps rare.
+    """
+    login = next(
+        (
+            each.login
+            for each in runtime_logins()
+            if each.runtime == account.account.runtime
+        ),
+        None,
+    )
+    if not account.volume or login is None:
+        return account_reader(account)
+
+    def stored() -> bytes | None:
+        try:
+            return copy(account.home, login).read().login
+        except VolumeUnreachable as unreachable:
+            raise UsageUnavailable(str(unreachable)) from unreachable
+
+    return account_reader(account, stored)
 
 
 class AccountPoller:
@@ -542,7 +598,7 @@ class AccountPoller:
         ledger: SpendLedger,
         config: UserConfigFile,
         homes: Callable[[list[Path]], list[AccountHome]] = held_homes,
-        reader: Callable[[AccountHome], UsageReader] = account_reader,
+        reader: Callable[[AccountHome], UsageReader] = drawn_reader,
     ) -> None:
         self.checkouts = checkouts
         self.ledger = ledger
@@ -633,7 +689,20 @@ class AccountPoller:
                 (
                     watch.home.account
                     for watch in self.watches.values()
-                    if watch.home.home.resolve() == home.resolve()
+                    if not watch.home.volume
+                    and watch.home.home.resolve() == home.resolve()
+                ),
+                None,
+            )
+
+    def account_of_volume(self, volume: str) -> Account | None:
+        """The account signed in to a repository volume, where one being read is."""
+        with self.lock:
+            return next(
+                (
+                    watch.home.account
+                    for watch in self.watches.values()
+                    if watch.home.volume == volume
                 ),
                 None,
             )
@@ -693,34 +762,39 @@ def unrecorded(known: KnownRepository, agent: RunningAgent) -> Account:
 
 
 def launched_on(
-    poller: AccountPoller, volumes: VolumeLogins | None = None
+    poller: AccountPoller, accounts: LaunchedAccounts | None = None
 ) -> AccountOf:
-    """Which account a session draws on, as its launch recorded it and a switch since moved it.
+    """Which account a session draws on: who its repository's volume holds, else what its launch recorded.
 
-    Read by the home its login is kept in, so it names the account the
-    poller reads. A session whose launch recorded nothing -- one opened
-    before launches recorded their account -- draws on what its repository's
-    volume of its runtime holds, where lup handed that volume a login, and
-    else on the home no profile selects.
+    A contained session -- and one whose launch recorded nothing, opened
+    before launches recorded their account -- draws on whoever is signed in
+    to its repository's volume of its runtime now, as the poller reads it,
+    whatever lup first handed the volume. A host session draws on the home
+    its launch recorded, read by that home; one with no record at all, on
+    the home no profile selects.
     """
 
     def drawn(known: KnownRepository, agent: RunningAgent) -> Account:
-        owner = drawn_account(agent.id)
-        if owner is not None:
-            return poller.account_at(owner.home) or Account(
-                runtime=agent.runtime, profile=owner.profile or "default"
-            )
-        handed = next(
-            (
-                each.home
-                for each in volume_owners([known.checkout], volumes)
-                if each.runtime == agent.runtime
-            ),
+        launched = (accounts or LaunchedAccounts()).launched(agent.id)
+        login = next(
+            (each.login for each in runtime_logins() if each.runtime == agent.runtime),
             None,
         )
-        if handed is None:
+        contained = launched is None or launched.contained
+        if login is not None and login.state_volume and contained:
+            try:
+                volume = state_volume_name(known.checkout, login)
+            except (GitError, OSError):
+                volume = ""
+            held = poller.account_of_volume(volume) if volume else None
+            if held is not None:
+                return held
+        if launched is None:
             return unrecorded(known, agent)
-        return poller.account_at(handed.home) or handed.account
+        owner = launched.owner
+        return poller.account_at(owner.home) or Account(
+            runtime=agent.runtime, profile=owner.profile or "default"
+        )
 
     return drawn
 

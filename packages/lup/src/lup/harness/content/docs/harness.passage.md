@@ -1030,7 +1030,12 @@ dashboard every launch holds carries it: every 30 seconds it reads each
 account's copies — the profile's own login, every home derived from it in a
 served checkout, and every served repository's volume lup last handed it, the
 volumes through a helper container every fourth pass — and writes the newest
-into the rest, the profile's included. Newest is the copy whose access token
+into the rest, the profile's included. Only copies of the profile's own
+account take part, told by the account id Claude Code writes beside the login
+at sign-in (`oauthAccount.accountUuid` in `.claude.json`): a copy someone
+signed in to another account from inside a session is that other account's
+now and is left alone, and a profile whose account cannot be told carries
+nothing. Newest is the copy whose access token
 expires last, since a refresh moves that forward; a copy that can no longer
 renew never wins. A file is replaced only where it still holds the bytes it was
 read with, so a session renewing it meanwhile keeps its renewal for the next
