@@ -491,13 +491,13 @@ describe("dashboard page", () => {
     await until(() => (page.root.querySelector("#composer")?.textContent ?? "").includes("answering scout: Three of them."), "the post r chose");
     await write(one<HTMLTextAreaElement>(page.root, "#reply"), "Take the newest.");
     await key("Enter", { altKey: true }, one(page.root, "#reply"));
-    await until(() => (page.root.querySelector("#cmdline")?.textContent ?? "").includes("threads/<thread>/posts"), "the refusal naming the route");
+    await until(() => (page.root.querySelector("#notify")?.textContent ?? "").includes("threads/<thread>/posts"), "the refusal naming the route");
     expect(posted().filter((request) => request.path.includes("/messages"))).toEqual([]);
   });
 
 
   const supervisedPosts = () => requests.filter((request) => request.method !== "GET" && request.path !== "api/stream");
-  const said = () => [...document.querySelectorAll("#cmdline, .notice-card, [role=status]")].map((node) => node.textContent ?? "").join(" ");
+  const said = () => [...document.querySelectorAll("#cmdline, #notify, [role=status]")].map((node) => node.textContent ?? "").join(" ");
 
   test("an agent is woken, interrupted, renamed and stopped from its keys, each through its route", async () => {
     sessions = [session("lead", { process: { pid: 4242, started: "1", here: true, stoppable: true, why: "" } }), session("lead-a1", { parent: "lead", kind: "subagent", name: "scout" })];

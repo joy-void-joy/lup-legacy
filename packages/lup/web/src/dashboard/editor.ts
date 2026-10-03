@@ -851,6 +851,7 @@ export function replyHere(d: Dashboard): void {
 export function transcriptHere(d: Dashboard): void {
   const row = rowHere(d);
   const live = d.state.live;
+  if (row?.t === "post" && row.post.sender === "user") { d.say("that post is yours; T opens an agent's transcript"); return; }
   const author = row?.t === "post" && live !== null ? memberById(live, row.post.repository, row.post.sender) : memberHere(d);
   if (author === undefined) { d.say("choose an agent first (on the left, or Space fa)"); return; }
   void d.openTranscript(author);

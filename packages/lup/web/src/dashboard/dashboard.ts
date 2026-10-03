@@ -610,7 +610,7 @@ export class Dashboard {
       ...(sending.priority === "now" ? ["interrupt" as const] : []),
     ];
     const refused = needed.map((feature) => this.lacks(feature)).find((reason) => reason !== "");
-    if (refused !== undefined) { this.say(refused, "err"); return false; }
+    if (refused !== undefined) { this.told(`writing to ${session.name || session.id}`, refused, "err"); return false; }
     const key = session.key;
     this.set((state) => ({ replyOutcome: { ...state.replyOutcome, [key]: { text: "Sending…", error: false } } }));
     try {
@@ -621,12 +621,22 @@ export class Dashboard {
         replyOutcome: { ...state.replyOutcome, [key]: { text: outcome.detail, error: false } },
         log: [...state.log, { at: new Date().toISOString(), repository: session.repository, text: `you → ${session.name || session.id}: ${outcome.detail}` }],
       }));
+      this.told(`to ${session.name || session.id}`, outcome.detail, "ok");
       return true;
     } catch (failure) {
       const reason = failure instanceof Error ? failure.message : String(failure);
       this.set((state) => ({ replyOutcome: { ...state.replyOutcome, [key]: { text: reason, error: true } } }));
+      this.told(`to ${session.name || session.id}`, reason, "err");
       return false;
     }
+  }
+
+  /**
+   * What came of a supervising action, as a notice: an outcome closes on its own, and a refusal
+   * stands until dismissed, the way an answer's does — on a phone as on a desktop.
+   */
+  private told(heading: string, detail: string, tone: Tone): void {
+    this.notify(heading, "", detail, tone, { sticky: tone === "err" });
   }
 
   /** What this dashboard's server says it serves of supervising, from the stream's whole state. */
@@ -645,13 +655,13 @@ export class Dashboard {
    */
   private async supervise<Reply>(feature: Feature | null, doing: string, write: () => Promise<Reply>, said: (reply: Reply) => string): Promise<Reply | null> {
     const refused = feature === null ? "" : this.lacks(feature);
-    if (refused !== "") { this.say(`${doing}: ${refused}`, "err"); return null; }
+    if (refused !== "") { this.told(doing, refused, "err"); return null; }
     try {
       const reply = await write();
-      this.say(said(reply), "ok");
+      this.told(said(reply), "", "ok");
       return reply;
     } catch (failure) {
-      this.say(`${doing}: ${failure instanceof Error ? failure.message : String(failure)}`, "err");
+      this.told(doing, failure instanceof Error ? failure.message : String(failure), "err");
       return null;
     }
   }
@@ -686,7 +696,7 @@ export class Dashboard {
       const which = process === null ? "its row records no runtime process" : process.stoppable ? `pid ${process.pid}` : `this dashboard cannot stop it: ${process.why}`;
       this.stopArmedAt = Date.now();
       this.set({ stopArmed: session.key });
-      this.say(`stop ${named}'s runtime (${which})? press again, or :stop!, within ten seconds`, "warn");
+      this.told(`stop ${named}'s runtime?`, `${which}: press again, or :stop!, within ten seconds`, "warn");
       return;
     }
     this.set({ stopArmed: "" });
@@ -720,6 +730,7 @@ export class Dashboard {
         replyDrafts: { ...state.replyDrafts, [key]: "" },
         replyOutcome: { ...state.replyOutcome, [key]: { text: `Sent to ${plural(sent.outcomes.length, "working member")} as one post; ${woken} woken.`, error: false } },
       }));
+      this.told(`broadcast to ${plural(sent.outcomes.length, "working member")}`, `one post; ${woken} woken`, "ok");
     } catch (failure) {
       const reason = failure instanceof Error ? failure.message : String(failure);
       this.set((state) => ({ replyOutcome: { ...state.replyOutcome, [key]: { text: reason, error: true } } }));
@@ -768,7 +779,7 @@ export class Dashboard {
   async openTranscript(session: LiveSession): Promise<void> {
     const refused = this.lacks("transcript");
     const named = session.name || session.id;
-    if (refused !== "") { this.say(`${named}'s transcript: ${refused}`, "err"); return; }
+    if (refused !== "") { this.told(`${named}'s transcript`, refused, "err"); return; }
     this.set({ float: { kind: "transcript" }, transcript: { session: session.key, repository: session.repository, member: session.id, name: named, entries: [], earlier: 0, end: 0, loading: true, error: "" } });
     try {
       const page = await readTranscript(session.repository, session.id, this.state.access.token);
