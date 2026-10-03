@@ -32,6 +32,11 @@
 - The person's holds count: an agent writing under one is asked, told `held
   by user — the operator locked this path`, and `coordination_peers` lists
   the person's row last.
+- `lup-devtools coordination mailbox --id user` reads the person's own
+  mailbox, each message headed with its sender and post as an agent's hook
+  heads it, and `--take` takes them as read. `coordination send` takes
+  `--as user` to sign an answer so the reply comes back to the person, and
+  `--reply-to <post>` to put it in that post's thread; it prints the post id.
 - A fork's row names the subagent that spawned it, read from the runtime's
   own record (Claude Code's `parentAgentId`, Codex's `parent_thread_id`),
   where it was a plain sibling with an empty `spawned_by`. A member writes

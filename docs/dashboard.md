@@ -695,6 +695,13 @@ The person is a full peer in every repository the dashboard serves:
 - **Your inbox** (`POST /api/repositories/<key>/inbox/read`, `{ids}`): takes
   exactly those messages out of your mailbox, as read.
 
+The same mailbox reads from a shell, in the repository of the working
+directory: `lup-devtools coordination mailbox --id user` prints each message
+headed with who sent it and its post, and `--take` takes them as read.
+`lup-devtools coordination send <text> --to <agent> --as user` answers, signed
+so the reply comes back to you, and `--reply-to <post>` puts it in that post's
+thread.
+
 ## Reviews
 
 Reviews are grouped by repository, then by the session that asked, named as the
