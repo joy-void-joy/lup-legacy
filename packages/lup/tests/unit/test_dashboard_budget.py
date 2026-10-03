@@ -9,6 +9,7 @@ from lup.devtools.dashboard.budget import (
     AccountWatch,
     BudgetGovernor,
     HeldAgent,
+    HeldCalls,
     HoldDoor,
     RepositoryAgents,
     WaitingCall,
@@ -40,9 +41,8 @@ CLAUDE = Account(runtime="claude")
 class Door(HoldDoor):
     """A hold store in memory: what the governor placed and lifted, per store."""
 
-    def __init__(self, waiting: list[WaitingCall] | None = None) -> None:
+    def __init__(self) -> None:
         self.held: dict[Path, list[HeldAgent]] = {}
-        self.calls = waiting or []
         self.lifted: list[HeldAgent] = []
 
     def holding(self, root: Path) -> list[HeldAgent]:
@@ -59,6 +59,13 @@ class Door(HoldDoor):
     def lift(self, root: Path, held: HeldAgent) -> None:
         self.held[root] = [each for each in self.holding(root) if each != held]
         self.lifted.append(held)
+
+
+class Calls(HeldCalls):
+    """The calls a hook holds, as the test says they are."""
+
+    def __init__(self, waiting: list[WaitingCall]) -> None:
+        self.calls = waiting
 
     def waiting(self, root: Path) -> list[WaitingCall]:
         del root
@@ -96,10 +103,18 @@ def config(tmp_path: Path, budget: str = "") -> UserConfigFile:
 
 
 def governor(
-    tmp_path: Path, door: Door, budget: str = "", join: TelemetryJoin | None = None
+    tmp_path: Path,
+    door: Door,
+    budget: str = "",
+    join: TelemetryJoin | None = None,
+    calls: Calls | None = None,
 ) -> BudgetGovernor:
     return BudgetGovernor(
-        SpendLedger(tmp_path / "ledger.json"), config(tmp_path, budget), door, join=join
+        SpendLedger(tmp_path / "ledger.json"),
+        config(tmp_path, budget),
+        door,
+        join=join,
+        calls=calls,
     )
 
 
@@ -209,8 +224,9 @@ def test_slots_go_first_come_and_pass_on_once_the_holder_stops(tmp_path: Path) -
 
 
 def test_a_held_call_keeps_its_place_in_the_queue(tmp_path: Path) -> None:
-    door = Door(waiting=[WaitingCall(member="second", since=NOW - timedelta(hours=1))])
-    governing = governor(tmp_path, door, "[budget]\nmax_active = 1\n")
+    door = Door()
+    held = Calls([WaitingCall(member="second", since=NOW - timedelta(hours=1))])
+    governing = governor(tmp_path, door, "[budget]\nmax_active = 1\n", calls=held)
     first = session("first", calling="Bash", at=NOW - timedelta(minutes=5))
     second = session("second", calling="Edit", at=NOW)
     seen = repository(tmp_path, first, second)

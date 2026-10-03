@@ -66,9 +66,6 @@ from lup.workspace.user_directories import UserDirectories
 
 logger = logging.getLogger(__name__)
 
-BUDGETED: tuple[Feature, ...] = ("budgets",)
-"""What the budget's routes serve, which the stream tells the page."""
-
 
 class AccountMeter(BaseModel, frozen=True):
     """One account as the page's meter shows it."""
@@ -162,6 +159,10 @@ class HoldDoor(ABC):
     @abstractmethod
     def lift(self, root: Path, held: HeldAgent) -> None:
         """Let one agent go from one of the budget's holds."""
+
+
+class HeldCalls(ABC):
+    """Which calls the hooks of one repository are holding now, whoever placed the hold."""
 
     @abstractmethod
     def waiting(self, root: Path) -> list[WaitingCall]:
@@ -457,7 +458,9 @@ class BudgetGovernor:
     ``stick`` is how long an agent that stopped calling keeps the slot it
     worked in, so one thinking between two calls is not overtaken by every
     agent at the door; ``unplaced`` how long spend from a session no roster
-    lists yet is kept for one to.
+    lists yet is kept for one to. ``door`` is where holds are placed and
+    ``calls`` says which calls the hooks hold now; without a door the
+    governor judges and shows, and nothing waits.
     """
 
     def __init__(
@@ -467,6 +470,7 @@ class BudgetGovernor:
         door: HoldDoor | None = None,
         poller: AccountPoller | None = None,
         join: TelemetryJoin | None = None,
+        calls: HeldCalls | None = None,
         account_of: AccountOf = unrecorded,
         notify: Callable[[str, str], bool] = notified_nowhere,
         stick: timedelta = timedelta(seconds=90),
@@ -477,6 +481,7 @@ class BudgetGovernor:
         self.door = door
         self.poller = poller
         self.join = join
+        self.calls = calls
         self.account_of = account_of
         self.notify = notify
         self.stick = stick
@@ -640,12 +645,12 @@ class BudgetGovernor:
         except ValueError as unreadable:
             config = BudgetConfig()
             refused = str(unreadable)
-        door = self.door
+        calls = self.calls
         found = self.placed(repositories)
         waiting = [
             call
             for root in {each.store for each in found}
-            for call in (door.waiting(root) if door is not None else [])
+            for call in (calls.waiting(root) if calls is not None else [])
         ]
         agents = [
             each.model_copy(update={"wanting": self.wanting(each, moment, waiting)})
@@ -883,9 +888,13 @@ def budget_routes(
     app: FastAPI,
     serves: Callable[[tuple[Feature, ...]], None],
     governor: BudgetGovernor,
+    served: tuple[Feature, ...] = ("budgets",),
 ) -> None:
-    """Serve the budget's writes on *app*: the turtle, and one agent's limits."""
-    serves(BUDGETED)
+    """Serve the budget's writes on *app*: the turtle, and one agent's limits.
+
+    *served* is what these routes serve, which the stream tells the page.
+    """
+    serves(served)
 
     @app.post("/api/budget/turtle")
     def turtle(asked: TurtleRequest) -> TurtleState:

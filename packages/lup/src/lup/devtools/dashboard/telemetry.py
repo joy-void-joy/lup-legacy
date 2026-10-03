@@ -33,7 +33,6 @@ logger = logging.getLogger(__name__)
 # lup: ignore[constant-declaration] — Claude Code's own event and span names,
 # fixed by the runtime that emits them
 REQUEST_EVENT = "api_request"
-REQUEST_SPAN = "claude_code.llm_request"
 
 
 class Wire(
@@ -174,7 +173,9 @@ class RequestAgent(BaseModel, frozen=True):
     agent: str = ""
 
 
-def agents(export: TracesExport) -> list[RequestAgent]:
+def agents(
+    export: TracesExport, span_name: str = "claude_code.llm_request"
+) -> list[RequestAgent]:
     """Each request an export of spans says the maker of, by its ``llm_request`` span."""
     return [
         RequestAgent(
@@ -184,7 +185,7 @@ def agents(export: TracesExport) -> list[RequestAgent]:
         for resource in export.resource_spans
         for scope in resource.scope_spans
         for span in scope.spans
-        if span.name == REQUEST_SPAN and span.value("request_id").text()
+        if span.name == span_name and span.value("request_id").text()
     ]
 
 
