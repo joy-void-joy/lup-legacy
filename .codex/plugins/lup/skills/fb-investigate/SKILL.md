@@ -11,7 +11,7 @@ Build first-hand understanding of what happened in each target session.
 
 For the deep pass (the 5-10 selected target sessions), read the traces directly — first-hand reading is the point of this phase. When the session list is larger, or you need cross-cutting patterns over many sessions, delegate the bulk reading to the `trace-explorer` agent instead of reading every trace in this conversation: it reads traces in its own context window and returns a compact pattern report.
 
-Delegate to the lup:trace-explorer custom agent, naming the task 'trace-patterns', with this task: Analyze traces for sessions <ids>; report tool failures, capability gaps, reasoning quality
+Delegate to the lup:trace-explorer custom agent, naming the task 'trace_patterns', with this task: Analyze traces for sessions <ids>; report tool failures, capability gaps, reasoning quality
 
 Use its report to pick which sessions deserve the direct deep read below.
 
@@ -19,7 +19,7 @@ Use its report to pick which sessions deserve the direct deep read below.
 
 One delegation per session, launched in parallel when investigating several:
 
-Delegate to the lup:trace-explorer custom agent, naming the task 'session-<session_id>', with this task: Investigate session <session_id> following the per-session steps below. Report: tool call inventory, errors with quoted output, workflow assessment, outcome classification, counterfactuals.
+Delegate to the lup:trace-explorer custom agent, naming the task 'session_<session_id>', with this task: Investigate session <session_id> following the per-session steps below. Report: tool call inventory, errors with quoted output, workflow assessment, outcome classification, counterfactuals.
 
 Before presenting findings, spot-check each report against the trace itself (`uv run lup-devtools trace show <session_id>`) — quoted errors must appear verbatim in the trace, not paraphrased from a truncated read.
 

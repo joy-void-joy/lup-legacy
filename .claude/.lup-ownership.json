@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "generator_version": "0.2.0",
-  "source_digest": "b07016f9ff96c198c507a3eddf45c79627811df99a7856f60289dd3110b0b02b",
+  "source_digest": "1a401119387e91c248ffc292309f343ce89f8bc8755a2a1d6f223f064ddcc497",
   "target_requirements": [
     "claude-code"
   ],
@@ -135,7 +135,7 @@
     {
       "path": ".claude/plugins/lup/commands/fb-analyze.md",
       "category": "generated",
-      "sha256": "6e6718414546041f7b23461da362c946a03751117af418e18d73b6543e5668aa",
+      "sha256": "f1e3c0f6e8eec96786dbb249e3b3425de5a0fe9a9ca54aa8fbc056fd375519bc",
       "semantic_id": "skill.fb-analyze",
       "executable": false
     },
@@ -149,7 +149,7 @@
     {
       "path": ".claude/plugins/lup/commands/fb-investigate.md",
       "category": "generated",
-      "sha256": "6a6510891809df91081a06ddbf80eaf6455df86842d5c249d9ee7a84407c65b6",
+      "sha256": "728696c1c49e30f56538170d232cf6562aa8e2d3103c19bf56a0ba4e9cc34ba2",
       "semantic_id": "skill.fb-investigate",
       "executable": false
     },
