@@ -2,13 +2,16 @@
 // its two sign columns, its line numbers and its text. The first sign column
 // says the change (+, −, ~), the second what is attached to the line (? the
 // policy asks about it, X a rule exception, N/D/S/T a `# lup:` marker), so no
-// state is told by colour alone.
+// state is told by colour alone: a line inside a conflict a merge left is
+// barred by its side — ours solid, the ancestor dotted, theirs double — and
+// each marker line names the side it opens or closes after it.
 import { memo, useEffect, useLayoutEffect, useRef, type ReactNode } from "react";
 import type { ReviewFile } from "../generated/views";
 import { caretAt, columnAt, lastColumn, lineText } from "./caret";
+import { standingWords } from "./conflicts";
 import type { Dashboard } from "./dashboard";
 import { fold, pickLine, placeCursor, setCursor } from "./editor";
-import { highlightedLines, languageFor, type Token } from "./highlight";
+import { highlightedLines, languageFor, type Line, type Token } from "./highlight";
 import { EFFECT_SIGN, exceptionRules, MARKER_LETTER, markerLabel, plural, relative, reviewLabel, type DraftComment, type Row, type RowOf, type SentComment, type Side } from "./review";
 import { clock, GLYPH, mailHeads, standing } from "./supervision";
 import type { LiveState } from "./live";
@@ -16,7 +19,7 @@ import { memberById } from "./supervision";
 import { memberName } from "./threads";
 import { Clamp } from "./Touch";
 
-const TOKENS = new WeakMap<ReviewFile, Partial<Record<Side, Token[][]>>>();
+const LINES = new WeakMap<ReviewFile, Partial<Record<Side, Line[]>>>();
 
 /** Scrolling the view carries the cursor, as Neovim's does, so the next live update never scrolls back to where it was left. */
 function followScroll(d: Dashboard, pane: 0 | 1, scroller: HTMLElement | null): void {
@@ -31,9 +34,9 @@ function followScroll(d: Dashboard, pane: 0 | 1, scroller: HTMLElement | null): 
 }
 
 /** A file side's lines as the grammar coloured them, read once per file. */
-function tokensFor(file: ReviewFile, side: Side): Token[][] {
-  const held = TOKENS.get(file) ?? {};
-  TOKENS.set(file, held);
+function linesFor(file: ReviewFile, side: Side): Line[] {
+  const held = LINES.get(file) ?? {};
+  LINES.set(file, held);
   const known = held[side];
   if (known !== undefined) return known;
   const made = highlightedLines(file[side] ?? "", languageFor(file.path));
@@ -94,7 +97,9 @@ function LineRow({ row, d, pane, cur, vis, pattern, files, judgedRule }: RowProp
   const kind = row.kind === "add" ? "add" : row.kind === "remove" ? "del" : row.kind === "meta" ? "meta" : "ctx";
   const file = files[row.fi];
   const number = row.tokenSide === "before" ? row.old : row.new;
-  const tokens = row.kind === "meta" || file === undefined || number === null ? undefined : tokensFor(file, row.tokenSide)[number - 1];
+  const coloured = row.kind === "meta" || file === undefined || number === null ? undefined : linesFor(file, row.tokenSide)[number - 1];
+  const conflict = coloured?.conflict ?? null;
+  const conflictClass = conflict === null ? "" : ` cf cf-${conflict.side}${conflict.marker === null ? "" : " cf-at"}`;
   const sign = row.kind === "add" ? row.chg ? <b className="dg-c" title="changed line">~</b> : <b className="dg-a" title="added line">+</b>
     : row.kind === "remove" ? <b className="dg-r" title="removed line">−</b> : <b> </b>;
   const number_ = (side: Side, line: number | null) => <span className="ln" data-side={side} onClick={(event) => {
@@ -104,10 +109,11 @@ function LineRow({ row, d, pane, cur, vis, pattern, files, judgedRule }: RowProp
     setCursor(d, pane, row.i);
     pickLine(d, side, line, event.shiftKey, row.fi);
   }}>{line ?? ""}</span>;
-  return <div className={`r ${kind}${row.single ? " one" : ""}${row.jg === true ? " jg" : ""}${row.rng ? " rng" : ""}${cur ? " cur" : ""}${vis ? " vis" : ""}`} data-i={row.i}>
+  return <div className={`r ${kind}${conflictClass}${row.single ? " one" : ""}${row.jg === true ? " jg" : ""}${row.rng ? " rng" : ""}${cur ? " cur" : ""}${vis ? " vis" : ""}`} data-i={row.i}>
     <span className="sg">{sign}<Annotation row={row} /></span>
     {row.single ? number_(row.side, row.num) : <>{number_("before", row.old)}{number_("after", row.new)}</>}
-    <span className="tx">{tokens === undefined ? lit(row.text, pattern) : <Toks tokens={tokens} pattern={pattern} />}
+    <span className="tx">{coloured === undefined ? lit(row.text, pattern) : <Toks tokens={coloured.tokens} pattern={pattern} />}
+      {conflict !== null && conflict.marker !== null && <span className={`vt cfs-${conflict.side}`}>◂ {standingWords(conflict)}</span>}
       {row.jgFirst && <span className="vt jq">◂ the policy asks about this{judgedRule !== "" ? ` · ${judgedRule}` : ""}</span>}
       {row.exception !== null && <span className="vt ex">◂ exception · {exceptionRules(row.exception)}{row.exception.introduced ? " · added here" : ""}</span>}
       {row.markerStart && row.marker !== null && row.exception === null && <span className={`vt mk-${row.marker.kind}`}>◂ {markerLabel(row.marker)}</span>}

@@ -852,7 +852,11 @@ diff, its syntax highlighted by the file's extension; `Space v` shows the file
 before or after instead, or the unified diff as text, and `Space w v` splits
 before | after side by side. The lines a diff leaves out fold into one row per
 gap, which `Enter` or `za` opens, and `f` shows the whole file with the
-changes marked in place.
+changes marked in place. A file a merge left conflicted is highlighted one
+version at a time — ours, theirs, and the common ancestor where diff3 records
+it — so a string or comment opened on one side never runs into the other, each
+side barred in its own colour and line (ours solid, the ancestor dotted,
+theirs double) and each marker naming the side and branch it opens or closes.
 
 Every `# lup:` marker is marked where it stands, in its own colour and
 labelled with its kind: an open note, parked work (`defer:`, and

@@ -20,7 +20,7 @@ import { memberName } from "./threads";
 /** A value as pretty-printed JSON, coloured, every string's `\n` followed by a real line break so a document reads by its lines and stays exact JSON. */
 export function Json({ value }: { value: unknown }) {
   const lines = useMemo(() => highlightedLines(JSON.stringify(value, null, 2) ?? "null", "json"), [value]);
-  return <pre className="json">{lines.map((tokens, index) => <span key={index}>{tokens.map((token, at) => <span key={at} className={token.classes === "" ? undefined : token.classes}>{token.text.replaceAll("\\n", "\\n\n")}</span>)}{"\n"}</span>)}</pre>;
+  return <pre className="json">{lines.map((line, index) => <span key={index}>{line.tokens.map((token, at) => <span key={at} className={token.classes === "" ? undefined : token.classes}>{token.text.replaceAll("\\n", "\\n\n")}</span>)}{"\n"}</span>)}</pre>;
 }
 
 function Shell({ d, title, hint, label, children }: { d: Dashboard; title: string; hint: string; label: string; children: ReactNode }) {
