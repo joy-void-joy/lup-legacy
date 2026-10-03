@@ -111,9 +111,12 @@ class LoginKeeper:
             else []
         )
         return [
-            LoginFile(login.credentials_path(account.home)),
+            LoginFile(
+                login.credentials_path(account.home),
+                login.account_document(account.home),
+            ),
             *(
-                LoginFile(path)
+                LoginFile(path, path.parent / login.trust_document)
                 for checkout in checkouts
                 for path in derived_copies(checkout, login, account.home)
             ),
@@ -162,6 +165,11 @@ class LoginKeeper:
                         profile_lock(login, account.home),
                     )
                 )
+        for each in passes:
+            for switched in each.switched:
+                logger.info("%s holds another account's login; left as it is", switched)
+            if each.unknown:
+                logger.info("Logins not kept in step: %s", each.unknown)
         return passes
 
     def keeping(self) -> None:

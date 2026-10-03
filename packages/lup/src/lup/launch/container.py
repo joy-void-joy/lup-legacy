@@ -70,7 +70,7 @@ from lup.coordination.bare.store import STORE_DIR
 from lup.workspace.shared_directory import ARCHIVE_DIRECTORY_NAME, SLOT_DIRECTORY
 from lup.harness.terminal import host_timezone
 from lup.providers.login import ProviderLogin
-from lup.providers.login_sync import LoginPlace
+from lup.providers.login_sync import LoginCopy, LoginPlace
 from lup.providers.runtime_homes import runtime_logins
 from lup.launch.superseded import SupersededFile
 from lup.launch.environments import (
@@ -2253,16 +2253,22 @@ class VolumeLoginCopy(LoginPlace):
     def named(self) -> str:
         return f"volume {self.volume}"
 
-    def read(self) -> bytes | None:
+    def read(self) -> LoginCopy:
+        """The volume's login and its account document, through one helper container."""
         helper = volume_helper(self.root, self.volume, self.config_home)
+        names = [self.login.credentials_file, self.login.trust_document]
         try:
-            files = helper.read(self.volume, [self.login.credentials_file])
+            files = helper.read(self.volume, [name for name in names if name])
         except (sh.CommandNotFound, sh.ErrorReturnCode) as failed:
             raise VolumeUnreachable(
                 f"a helper container could not read {self.volume}: {failed}"
             ) from failed
         held = named_file(files, self.login.credentials_file)
-        return held.content if held is not None else None
+        account = named_file(files, self.login.trust_document)
+        return LoginCopy(
+            login=held.content if held is not None else None,
+            account=account.content if account is not None else None,
+        )
 
     def write(self, content: bytes, expected: bytes | None) -> None:
         del expected

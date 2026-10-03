@@ -188,6 +188,22 @@ class ProviderLogin(BaseModel, frozen=True):
     somewhere a launch writes itself, so its home gains no stray file.
     """
 
+    account_id: list[str] = []
+    """The keys in :attr:`trust_document` down to the id of the account signed in.
+
+    Who a login is, as opposed to which home it is kept in: two copies of
+    one login share it, and a home someone signed in to another account
+    from changes it. Empty where the runtime records no such id."""
+
+    account_name: list[str] = []
+    """The keys in :attr:`trust_document` down to how a person names that account."""
+
+    def account_document(self, home: Path) -> Path:
+        """The document saying whose login *home* keeps: beside the runtime's own default, inside any other."""
+        if not self.ambient_home_nameable and home.expanduser() == self.ambient_home:
+            return home.expanduser().parent / self.trust_document
+        return home / self.trust_document
+
     home_subdir: str
     """Subdirectory this runtime's configuration home takes inside a profile.
 
