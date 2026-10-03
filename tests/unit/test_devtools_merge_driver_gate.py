@@ -73,13 +73,9 @@ def confine(repo: Path) -> None:
 
 
 def register(repo: Path) -> None:
-    """Register the driver as a clone's first setup does, on the host."""
-    sh.Command("git")(
-        "-C", str(repo), "config", "merge.lup-ownership.driver", "true", _tty_out=False
-    )
-    sh.Command("git")(
-        "-C", str(repo), "config", "merge.lup-ownership.name", "keep", _tty_out=False
-    )
+    """Register the drivers as a clone's first setup does, on the host."""
+    assert Path.cwd() == repo
+    worktree.register_merge_driver()
 
 
 def test_a_registered_clone_is_not_asked_about_a_config_it_cannot_write(
@@ -163,7 +159,7 @@ def test_an_unregistered_clone_that_cannot_register_still_gets_its_worktree(
     assert (tree_dir / "topic").is_dir()
     said = capsys.readouterr()
     assert "git merge-driver" in said.err
-    assert "Without the lup-ownership merge driver" in said.out
+    assert "Without the lup-ownership and lup-changelog merge drivers" in said.out
 
 
 def test_a_worktree_is_still_removed_where_only_the_config_is_held(
