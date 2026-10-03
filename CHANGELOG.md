@@ -131,6 +131,7 @@ conflict left unterminated, or with its markers out of order, is highlighted
 as the file stands. The markers are read by `conflicts.ts` in the dashboard
 page, which accepts git's longer markers too (`conflict-marker-size`, and the
 inner conflicts a merge of merge bases writes).
+
 ### An agent that spawns an unnamed subagent is told to name its next one
 
 On Claude Code, a subagent spawned without a `name` goes out under one read
@@ -283,6 +284,7 @@ two paths it named, so both trees stay protected whichever runtime a session
 runs. An adopter's own `NativeSpellings` implements `protected_tree`, and a
 hook set that listed `.claude` and `.codex` by hand can spread
 `runtime_trees()` instead.
+
 ### A script `uv run` is handed beside an unread word is no longer refused as a bare interpreter
 
 `cd tmp && T=/a; uv run python s.py $T` was refused as a bare interpreter,
