@@ -12,6 +12,7 @@ running flat out does not delay a console reading it, and a console cannot
 wedge a session.
 """
 
+import uuid
 from pathlib import Path
 from typing import Annotated
 
@@ -19,6 +20,13 @@ import typer
 
 from lup.channels.models import Door
 from lup.coordination.bare.mail import new_post_id
+from lup.coordination.holds import (
+    Hold,
+    HoldScope,
+    held_calls,
+    operator_pause,
+    standing,
+)
 from lup.coordination.identity import NameTakenError, mint_member_id, session_member_id
 from lup.coordination.mail import Posting
 from lup.coordination.peers import USER_ADDRESS
@@ -29,6 +37,7 @@ from lup.coordination.repository import (
     nested,
 )
 from lup.coordination.roster import Delivery
+from lup.devtools.coordination.pausing import pause, resume
 from lup.coordination.touches import HeldPath
 from lup.coordination.watch import Watcher
 from lup.coordination.watcher import watcher_pipeline
@@ -357,6 +366,172 @@ def create_coordination_app() -> typer.Typer:
         delivery = found.take(member_id) if take else found.waiting(member_id)
         for message in delivery.messages:
             typer.echo(f"{message.heading()} {message.text}")
+
+    def operator_only(verb: str) -> None:
+        """Refuse a shell an agent's runtime started: pausing and resuming are the operator's.
+
+        A launch exports the session's member id into everything its runtime
+        starts, every shell an agent runs included, so its presence is an
+        agent's shell; the operator's own terminal carries none.
+        """
+        if session_member_id():
+            raise typer.BadParameter(
+                f"an agent's shell cannot {verb} any agent, itself included: the "
+                "operator does, on the dashboard or from a terminal outside "
+                "every agent session"
+            )
+
+    def scoped(
+        known: RepositoryPeers, member: str, tree: bool, repository: bool
+    ) -> Hold:
+        """The pause a pause or resume names: an agent's, its tree's, or the repository's."""
+        if repository:
+            if member or tree:
+                raise typer.BadParameter("--repository names no agent and no tree")
+            return operator_pause(HoldScope.REPOSITORY)
+        if not member:
+            raise typer.BadParameter(
+                "name an agent by its name or id, or pass --repository or --everything"
+            )
+        found = known.address(member)
+        if found is None:
+            raise typer.BadParameter(
+                f"no agent answers to {member!r}; `coordination roster` lists who is here"
+            )
+        return operator_pause(HoldScope.TREE if tree else HoldScope.AGENT, found.id)
+
+    def everywhere() -> list[RepositoryPeers]:
+        """This repository and every other one the operator's dashboard serves."""
+        from lup.devtools.dashboard.companion import Dashboard, DashboardRegistry
+
+        root = project_root()
+        state = Dashboard().standing(root).place.state
+        checkouts = [
+            known.checkout
+            for known in DashboardRegistry(directory=state).repositories()
+        ]
+        found = {
+            peers.root: peers for peers in map(RepositoryPeers, [root, *checkouts])
+        }
+        return list(found.values())
+
+    @app.command("pause")
+    def pause_cmd(
+        member: Annotated[
+            str, typer.Argument(help="The agent to pause: a name, an id, or an address")
+        ] = "",
+        tree: Annotated[
+            bool,
+            typer.Option("--tree", help="It and everything it spawned, at any remove"),
+        ] = False,
+        repository: Annotated[
+            bool, typer.Option("--repository", help="Every agent of this repository")
+        ] = False,
+        everything: Annotated[
+            bool,
+            typer.Option(
+                "--everything",
+                help="Every agent of every repository the dashboard serves",
+            ),
+        ] = False,
+        freeze: Annotated[
+            bool,
+            typer.Option(
+                "--freeze",
+                help="Also stop its running commands and interrupt its turn now",
+            ),
+        ] = False,
+    ) -> None:
+        """Hold an agent at its next tool call until it is resumed.
+
+        The agent is told nothing: its next call simply waits, and goes on the
+        moment it is resumed, a call already running finishing first. A
+        session's subagents are paused with it. `--freeze` also stops the
+        commands its tools are running and interrupts a turn that is
+        generating, and says what it could not freeze and why. Messages to a
+        paused agent wait without waking it. Only the operator pauses, from
+        here or the dashboard: an agent's own shell is refused.
+        """
+        operator_only("pause")
+        if everything:
+            group = uuid.uuid4().hex[:12]
+            for found in everywhere():
+                outcome = pause(found, HoldScope.REPOSITORY, freeze=freeze, group=group)
+                typer.echo(f"{found.root.parents[1].name}: {outcome.detail}")
+            return
+        known = peers()
+        named = scoped(known, member, tree, repository)
+        try:
+            outcome = pause(known, named.scope, named.member, freeze=freeze)
+        except (LookupError, PeerDepartedError) as missing:
+            raise typer.BadParameter(str(missing)) from missing
+        typer.echo(outcome.detail)
+
+    @app.command("resume")
+    def resume_cmd(
+        member: Annotated[
+            str,
+            typer.Argument(help="The agent to resume: a name, an id, or an address"),
+        ] = "",
+        tree: Annotated[
+            bool,
+            typer.Option("--tree", help="Lift the pause of it and what it spawned"),
+        ] = False,
+        repository: Annotated[
+            bool, typer.Option("--repository", help="Lift this repository's pause")
+        ] = False,
+        everything: Annotated[
+            bool,
+            typer.Option(
+                "--everything",
+                help="Lift every repository's pause the dashboard serves",
+            ),
+        ] = False,
+    ) -> None:
+        """Let a paused agent's next tool call go, and wake it where it stopped.
+
+        Lifts the pause named -- an agent's own, its tree's, the repository's
+        -- and no other: an agent paused through its session is resumed
+        there, which the refusal names. What a freeze stopped is continued, and
+        a session that ended its turn because of the pause is woken with a
+        bare "continue". A hold the budget placed is not lifted by a resume.
+        """
+        operator_only("resume")
+        if everything:
+            for found in everywhere():
+                try:
+                    outcome = resume(found, HoldScope.REPOSITORY)
+                except LookupError as missing:
+                    typer.echo(f"{found.root.parents[1].name}: {missing}")
+                    continue
+                typer.echo(f"{found.root.parents[1].name}: {outcome.detail}")
+            return
+        known = peers()
+        named = scoped(known, member, tree, repository)
+        try:
+            outcome = resume(known, named.scope, named.member)
+        except LookupError as missing:
+            raise typer.BadParameter(str(missing)) from missing
+        typer.echo(outcome.detail)
+
+    @app.command("held")
+    def held_cmd() -> None:
+        """List every hold standing in this repository, and every call a hook is holding now."""
+        known = peers()
+        holds = standing(known.root)
+        if not holds:
+            typer.echo("Nothing is held in this repository.")
+        for hold in holds:
+            whom = known.called(hold.member) or hold.member or "the whole repository"
+            frozen = ", frozen" if hold.freeze else ""
+            typer.echo(
+                f"{hold.owner.value} {hold.scope.value} hold on {whom}{frozen}: "
+                f"{hold.said} (since {hold.placed:%Y-%m-%d %H:%M:%S} UTC)"
+            )
+        for call in held_calls(known.root):
+            since = f" since {call.since:%H:%M:%S} UTC" if call.since else ""
+            whom = known.called(call.member) or call.member
+            typer.echo(f"  holding {whom}'s {call.tool or 'call'}{since}")
 
     @app.command("holdings")
     def holdings_cmd() -> None:
