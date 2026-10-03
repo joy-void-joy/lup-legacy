@@ -18,6 +18,7 @@ import sh
 import typer
 from pydantic import BaseModel
 
+from lup.execution.git import Repository
 from lup.providers.settings_schema import unclassified_settings
 from lup.providers.harness import (
     claude_prompt_renderer,
@@ -1149,7 +1150,7 @@ def change_base(named: str | None, integration: str) -> ChangeBase:
             commit=named_gate_base(named, "--since"),
             reached=f"the merge base with {named}",
         )
-    current = git.out("branch", "--show-current")
+    current = Repository(Path.cwd()).branch()
     siblings = [
         branch
         for branch in git.lines("branch", "--format=%(refname:short)")

@@ -333,7 +333,7 @@ def test_a_launch_refuses_a_stored_default_home_as_a_bad_parameter(
     with pytest.raises(Refusal) as refused:
         launch.launch_claude(
             composition(root, "claude"),
-            launch.LaunchRequest(sandbox=LaunchSandbox.INNER),
+            launch.LaunchArguments(sandbox=LaunchSandbox.INNER),
             registered,
             False,
         )

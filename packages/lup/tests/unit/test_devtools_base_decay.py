@@ -14,7 +14,7 @@ from pathlib import Path
 import pytest
 
 from lup.devtools.dev.branches import decayed_base_complaint, detect_base_branch
-from lup.harness.process import LaunchRequest, LocalProcessLauncher
+from lup.execution.process import LaunchRequest, LocalProcessLauncher
 
 
 def build_history(root: Path) -> Path:

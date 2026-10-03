@@ -550,19 +550,97 @@ def read_observable_events(path: Path) -> list[ObservableEvent]:
     return Stream(path, EVENT_ADAPTER).read_all()
 
 
-def verify_event_chain(events: list[ObservableEvent]) -> bool:
-    """Check sequence, prior-hash linkage, and every event digest."""
+type ChainFault = Literal["schema", "restart", "sequence", "link", "digest"]
+"""How a transcript's chain fails at one record.
+
+``schema`` is a record written under another :data:`TRACE_SCHEMA_VERSION`,
+whose digest rules are not these, so it cannot be checked rather than failing
+a check. ``restart`` is a second chain beginning mid-file — sequence zero,
+nothing before it — which a writer that lost its own head leaves as surely
+as an edit does. ``sequence`` is a record missing before this one: removed,
+reordered, or unreadable and skipped. ``link`` is a record whose predecessor
+is not the one it was chained onto. ``digest`` is a record whose content is
+not the content it was hashed over: edited in place.
+"""
+
+
+class ChainBreak(BaseModel, frozen=True):
+    """The first record at which a transcript stops verifying, and how.
+
+    Only the first, because nothing after a break is vouched for by what
+    came before it: a reader takes the records up to ``position`` as
+    evidence and the rest as text.
+    """
+
+    position: int
+    """Where the record sits among the transcript's readable records."""
+
+    seq: int
+    """The sequence number the record carries."""
+
+    fault: ChainFault
+
+    def explained(self) -> str:
+        """What the fault means at this record, in words."""
+        match self.fault:
+            case "schema":
+                return (
+                    f"record {self.position} was written under another record "
+                    "shape, whose chain this reader cannot check"
+                )
+            case "restart":
+                return (
+                    f"a second chain starts at record {self.position}: the "
+                    "writer lost its place, or the file was spliced"
+                )
+            case "sequence":
+                return (
+                    f"record {self.position} carries seq {self.seq}: a record "
+                    "before it is missing, moved, or unreadable"
+                )
+            case "link":
+                return (
+                    f"record {self.position} was chained onto a record that "
+                    "is not the one before it"
+                )
+            case "digest":
+                return (
+                    f"record {self.position} is not what was hashed: its "
+                    "content changed after it was written"
+                )
+
+
+def chain_break(events: Sequence[ObservableEvent]) -> ChainBreak | None:
+    """Where a transcript's chain first fails, or nothing where it holds.
+
+    Each record is checked against its own place, against the record before
+    it, and against its own digest — which together make an edit, a removal,
+    an insertion or a reordering anywhere but the very end visible. What it
+    cannot see is a tail cut off cleanly, or a whole chain rewritten; a
+    ledger record that pinned the file's digest when the session closed is
+    what answers for those.
+    """
     prior: str | None = None
-    for sequence, event in enumerate(events):
-        if event.seq != sequence or event.previous_hash != prior:
-            return False
+    for position, event in enumerate(events):
         draft = ObservableEventDraft.model_validate(
             event.model_dump(exclude={"event_hash"})
         )
-        if event.event_hash != draft.digest():
-            return False
+        # Checked in this order, so the first fault named is the most telling:
+        # a restart also fails the sequence, and a missing record the link.
+        failing: dict[ChainFault, bool] = {
+            "schema": event.schema_version != TRACE_SCHEMA_VERSION,
+            "restart": position > 0 and event.seq == 0 and event.previous_hash is None,
+            "sequence": event.seq != position,
+            "link": event.previous_hash != prior,
+            "digest": event.event_hash != draft.digest(),
+        }
+        fault: ChainFault | None = next(
+            (named for named, failed in failing.items() if failed), None
+        )
+        if fault is not None:
+            return ChainBreak(position=position, seq=event.seq, fault=fault)
         prior = event.event_hash
-    return True
+    return None
 
 
 def block_event_kind(block_type: str) -> ObservableEventKind:

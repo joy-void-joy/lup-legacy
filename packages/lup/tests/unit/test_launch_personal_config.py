@@ -89,7 +89,7 @@ def claude(
     """``harness claude`` in the fresh project, over the person's accounts."""
     launch.launch_claude(
         composition(project, "claude"),
-        launch.LaunchRequest(
+        launch.LaunchArguments(
             model=model, effort=effort, profile=profile, sandbox=sandbox
         ),
         accounts or profile_directory(CLAUDE_LOGIN, config),
@@ -101,7 +101,7 @@ def codex(project: Path) -> None:
     """``harness codex`` in the fresh project."""
     launch.launch_codex(
         composition(project, "codex"),
-        launch.LaunchRequest(sandbox=LaunchSandbox.INNER),
+        launch.LaunchArguments(sandbox=LaunchSandbox.INNER),
         None,
         False,
         False,

@@ -207,18 +207,31 @@ def carried_words(command: Command) -> list[Word]:
 
 
 class Placed(TypedDict):
-    """One command a list runs directly, and whether its assignments stand."""
+    """One command a list runs directly, and how far its assignments hold."""
 
     command: Command
     standing: bool
+    """An assignment here holds for every word after it in the list."""
+    chained: bool
+    """An assignment here holds for the rest of its `&&` chain, and no further."""
+    opens: bool
+    """What a chain before this command bound stops holding here."""
 
 
 def placed_commands(script: Script, standing: bool) -> list[Placed]:
-    """Each command a list runs directly, and whether its assignments stand.
+    """Each command a list runs directly, and how far its assignments hold.
 
     An assignment stands when nothing between it and the words after it can
     keep it from holding: not beside a pipe or `&`, which put it in a process
     of its own, and not after `&&` or `||`, which may skip it.
+
+    One reached through nothing but `&&` holds for less, and exactly: every
+    command joined to it by `&&` alone runs only once everything before it in
+    the chain ran and succeeded, so `cd w && F=x && sed -i … $F` rewrites `x`
+    whatever `F` held before. An `||` runs what follows where something
+    before it failed or was skipped, and the next item runs either way, so
+    the chain ends at the first of them, and past it the name holds whichever
+    value ran.
     """
     return [
         Placed(
@@ -227,10 +240,17 @@ def placed_commands(script: Script, standing: bool) -> list[Placed]:
             and item["terminator"] != "&"
             and index == 0
             and len(pipeline["commands"]) == 1,
+            chained=standing
+            and item["terminator"] != "&"
+            and index > 0
+            and len(pipeline["commands"]) == 1
+            and all(operator == "&&" for operator in operators[:index]),
+            opens=position == 0 and (index == 0 or operators[index - 1] == "||"),
         )
         for item in script["items"]
+        for operators in [item["andor"]["operators"]]
         for index, pipeline in enumerate(item["andor"]["pipelines"])
-        for command in pipeline["commands"]
+        for position, command in enumerate(pipeline["commands"])
     ]
 
 
@@ -238,8 +258,10 @@ def unsettled_names(script: Script, standing: bool = True) -> list[str] | None:
     """Every name a list assigns where the assignment may not stand.
 
     Inside a loop, a branch, a case arm or a subshell, beside a pipe, after
-    `&&`, through a builtin or a ``${NAME:=…}`` default, what a later
+    an `||`, through a builtin or a ``${NAME:=…}`` default, what a later
     reference expands to depends on what ran, and nothing here decides that.
+    A plain assignment in a `&&` chain is settled for the rest of the chain,
+    which :func:`bound_list` binds and releases where the chain ends.
     ``None`` means an ``eval`` or ``source`` could assign any name at all.
     What a substitution assigns stays inside it, so it is not read here.
     """
@@ -256,7 +278,7 @@ def unsettled_names(script: Script, standing: bool = True) -> list[str] | None:
             found = unsettled_assignments(
                 texts,
                 effective_command(texts)["words"],
-                placed["standing"] and not command["redirects"],
+                (placed["standing"] or placed["chained"]) and not command["redirects"],
             )
             if found is None:
                 return None
@@ -480,25 +502,44 @@ def bound_list(
     unsettled: list[str],
     standing: bool,
 ) -> BoundList:
-    """Expand one list in order, letting each standing assignment rebind."""
-    stands = iter([placed["standing"] for placed in placed_commands(script, standing)])
+    """Expand one list in order, letting each standing assignment rebind.
+
+    An assignment in a `&&` chain rebinds for the rest of that chain, and
+    where the chain ends its name holds whichever value ran, which nothing
+    here names.
+    """
+    placements = iter(placed_commands(script, standing))
+    chained: list[str] = []
+
+    def released(held: tuple[ShellBinding, ...]) -> tuple[ShellBinding, ...]:
+        for name in chained:
+            held = bind_name(held, name, None)
+        return held
 
     def rebuild(command: Command) -> Command:
-        nonlocal bindings
-        here = next(stands)
+        nonlocal bindings, chained
+        placed = next(placements)
+        if placed["opens"]:
+            bindings = released(bindings)
+            chained = []
         expanded = expanded_command(command, bindings, settle=True)
         match command["kind"]:
             case "simple":
                 assigned = pure_assignment_names(
                     [word_text(word) for word in expanded["words"]]
                 )
-                if here and not command["redirects"] and assigned is not None:
+                binds = placed["standing"] or placed["chained"]
+                if binds and not command["redirects"] and assigned is not None:
                     for pair in assigned:
                         if pair["name"] not in unsettled:
                             bindings = bind_name(bindings, pair["name"], pair["value"])
+                            if placed["chained"]:
+                                chained.append(pair["name"])
                 return expanded
             case "brace":
-                inner = bound_list(command["body"], bindings, unsettled, here)
+                inner = bound_list(
+                    command["body"], bindings, unsettled, placed["standing"]
+                )
                 bindings = inner["bindings"]
                 return rebuilt_lists(expanded, lambda _body: inner["script"])
             case "for" if unrollable(expanded):
@@ -515,7 +556,8 @@ def bound_list(
                     lambda body: bound_list(body, scope, unsettled, False)["script"],
                 )
 
-    return BoundList(script=mapped_commands(script, rebuild), bindings=bindings)
+    rebuilt = mapped_commands(script, rebuild)
+    return BoundList(script=rebuilt, bindings=released(bindings))
 
 
 def bind_script(script: Script, inherited: tuple[ShellBinding, ...] = ()) -> Script:
@@ -527,7 +569,8 @@ def bind_script(script: Script, inherited: tuple[ShellBinding, ...] = ()) -> Scr
     take their words from the tree this returns, so none of them can
     disagree about what `$S` names.
 
-    Only a standing assignment binds (:func:`placed_commands`). `VAR=x cmd`
+    Only a standing assignment binds, and one in a `&&` chain for the rest of
+    its chain (:func:`placed_commands`). `VAR=x cmd`
     sets `VAR` for that one command's environment, and the shell expands the
     command's words from the value it already held. A name assigned anywhere
     it may not stand (:func:`unsettled_names`) is left unexpanded for the

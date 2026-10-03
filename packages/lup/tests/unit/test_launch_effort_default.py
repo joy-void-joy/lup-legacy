@@ -36,7 +36,7 @@ def claude_effort(
     """What ``harness claude --model <model>`` hands the CLI as its effort."""
     launch.launch_claude(
         composition(root, "claude"),
-        launch.LaunchRequest(model=model, effort=effort, sandbox=LaunchSandbox.INNER),
+        launch.LaunchArguments(model=model, effort=effort, sandbox=LaunchSandbox.INNER),
         profiles(),
         False,
     )
@@ -89,7 +89,7 @@ def test_codex_with_no_effort_flag_passes_the_models_default(
 ) -> None:
     launch.launch_codex(
         composition(root, "codex"),
-        launch.LaunchRequest(model="gpt-5.5", sandbox=LaunchSandbox.INNER),
+        launch.LaunchArguments(model="gpt-5.5", sandbox=LaunchSandbox.INNER),
         None,
         False,
         False,

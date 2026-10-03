@@ -21,6 +21,7 @@ from pydantic import AnyHttpUrl, BaseModel
 
 from lup.devtools.utils import output_json, refuse
 from lup.harness.enforcement import semantic_policy_for
+from lup.harness.environment import Placement
 from lup.harness.models import HookSet
 from lup.policy.kernel.fetch import scope_text
 from lup.policy.assets.host import (
@@ -31,7 +32,6 @@ from lup.policy.assets.host import (
     delivers,
     measured_boundary,
     opened_deadline,
-    sandbox_active,
     text_at,
 )
 from lup.policy.bundle import hook_deadline
@@ -56,7 +56,7 @@ EFFECT_STYLES: StringMap = {
 """How each verdict reads at a glance, for a caller that does not say."""
 
 
-class Placement(BaseModel, frozen=True):
+class PolicyPlacement(BaseModel, frozen=True):
     """One placement a subject is read under, named as the launcher spells it.
 
     The two walls a launch can stand up are different facts and are set
@@ -80,10 +80,16 @@ class Placement(BaseModel, frozen=True):
     """Whether a host executor carries what has to run outside the boundary."""
 
 
-PLACEMENTS: list[Placement] = [
-    Placement(name="none", sandboxed=False, contained=False, inside_placement=False),
-    Placement(name="inner", sandboxed=True, contained=False, inside_placement=False),
-    Placement(name="outer", sandboxed=False, contained=True, inside_placement=True),
+PLACEMENTS: list[PolicyPlacement] = [
+    PolicyPlacement(
+        name="none", sandboxed=False, contained=False, inside_placement=False
+    ),
+    PolicyPlacement(
+        name="inner", sandboxed=True, contained=False, inside_placement=False
+    ),
+    PolicyPlacement(
+        name="outer", sandboxed=False, contained=True, inside_placement=True
+    ),
 ]
 """Every placement a launch can stand up, whichever this process is in.
 
@@ -94,7 +100,7 @@ asking about a session they have not launched names the one they mean.
 """
 
 
-def session_placement(cwd: Path) -> Placement:
+def session_placement(cwd: Path) -> PolicyPlacement:
     """The placement this session runs in, measured as its dispatcher measures it.
 
     The ledger its launch wrote says whether a container stands around it and
@@ -106,9 +112,9 @@ def session_placement(cwd: Path) -> Placement:
     fact about the session, and is not read.
     """
     measured = measured_boundary(cwd)
-    return Placement(
+    return PolicyPlacement(
         name="session",
-        sandboxed=sandbox_active(),
+        sandboxed=Placement.here().sandboxed,
         contained=contained(measured),
         inside_placement=delivers(measured, "inside_placement"),
         unjudged="defer" if defers_unjudged(measured) else "ask",
@@ -201,7 +207,7 @@ def concrete_edit_batch(document: Path, cwd: Path) -> EditBatch:
 def read_under(
     subject: str,
     kind: str,
-    placement: Placement,
+    placement: PolicyPlacement,
     autonomous: bool,
     cwd: Path,
     hooks: HookSet,
@@ -282,7 +288,7 @@ def verdict_for(
     autonomous: bool,
     cwd: Path,
     hooks: HookSet,
-    placements: list[Placement] = PLACEMENTS,
+    placements: list[PolicyPlacement] = PLACEMENTS,
 ) -> PolicyVerdict:
     """Classify one input under each placement given, every named one unless told.
 
@@ -343,8 +349,8 @@ def declared_scopes(kind: str, hooks: HookSet) -> list[str]:
 
 
 def chosen_placements(
-    name: str | None, cwd: Path, placements: list[Placement] = PLACEMENTS
-) -> list[Placement]:
+    name: str | None, cwd: Path, placements: list[PolicyPlacement] = PLACEMENTS
+) -> list[PolicyPlacement]:
     """Which placement to read, given a caller who may have named one.
 
     ``None`` is this session's own, measured from the ledger its dispatcher

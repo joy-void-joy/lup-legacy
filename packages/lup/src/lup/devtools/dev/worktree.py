@@ -9,6 +9,7 @@ import sh
 import typer
 from pydantic import BaseModel, ValidationError
 
+from lup.execution.git import GitError, Repository, Worktree
 import lup.devtools.dev.records as records
 from lup.coordination.identity import session_member_id
 from lup.coordination.repository import RepositoryPeers
@@ -99,20 +100,13 @@ def sync_dependencies(worktree_path: Path) -> None:
 
 def branch_exists(branch: str) -> bool:
     """Check if a git branch exists (local only)."""
-    try:
-        git("rev-parse", "--verify", f"refs/heads/{branch}")
-        return True
-    except sh.ErrorReturnCode:
-        return False
+    return Repository(Path.cwd()).resolves(f"refs/heads/{branch}") is not None
 
 
 def worktree_is_registered(path: Path) -> bool:
     """Check if a path is registered as a git worktree (even if dir is missing)."""
-    resolved = str(path.resolve())
-    return any(
-        line == f"worktree {resolved}"
-        for line in git.lines("worktree", "list", "--porcelain")
-    )
+    resolved = path.resolve()
+    return any(listed.path == resolved for listed in Repository(Path.cwd()).worktrees())
 
 
 def adopt_records() -> None:
@@ -416,8 +410,8 @@ def commits_ahead(branch: str, other: str) -> int:
     if not branch:
         return 0
     try:
-        return int(git.out("rev-list", "--count", f"{other}..{branch}"))
-    except sh.ErrorReturnCode:
+        return Repository(Path.cwd()).count(f"{other}..{branch}")
+    except GitError:
         return 0
 
 
@@ -826,15 +820,6 @@ def finish(steps: Sequence[SetupStep]) -> Iterator[SetupStep]:
             yield setting
 
 
-def descends_from(branch: str, base: str) -> bool:
-    """Whether `base` is already in `branch`'s history."""
-    try:
-        git("merge-base", "--is-ancestor", base, branch)
-        return True
-    except sh.ErrorReturnCode:
-        return False
-
-
 def register_worktree(name: str, worktree_path: Path, base_branch: str | None) -> None:
     """Register the worktree itself, the one step nothing else can precede."""
     git("worktree", "prune")
@@ -845,7 +830,11 @@ def register_worktree(name: str, worktree_path: Path, base_branch: str | None) -
     # is, so the flag reaches nothing -- and the caller then writes against a
     # tree they did not ask for, which is the expensive way to find out. The
     # branch is never moved to answer this: whatever sits on it would go.
-    if already_exists and base_branch and not descends_from(name, base_branch):
+    if (
+        already_exists
+        and base_branch
+        and not Repository(Path.cwd()).is_ancestor(base_branch, name)
+    ):
         refuse(
             f"already exists and does not descend from {base_branch}, so"
             f" --base {base_branch} would reach nothing: re-attaching takes a"
@@ -958,7 +947,7 @@ def create(
     # which is why `sync base` reports "Base guessed" long afterwards, on a
     # topology that has since moved. A base nobody can name is refused here
     # instead, where the answer is a flag rather than archaeology.
-    current = git.out("branch", "--show-current")
+    current = Repository(Path.cwd()).branch()
     integration = get_integration_branch()
     base = BranchBase(
         branch=name,
@@ -1083,56 +1072,29 @@ def worktree_status(path: str) -> str:
         return "?"
 
 
-class WorktreeEntry(BaseModel):
-    """One record of ``git worktree list --porcelain``."""
-
-    path: str = ""
-    head: str = ""
-    branch: str = ""
-    bare: bool = False
-    prunable: bool = False
-
-
 def list_worktrees() -> None:
     """List all git worktrees with branch and status info."""
     refuse_redirected_pointers()
-    entries: list[WorktreeEntry] = []  # lup: ignore[empty-collection] — record fold
-    current = WorktreeEntry()
-
-    for line in git.lines("worktree", "list", "--porcelain"):
-        if not line:
-            if current.path:
-                entries.append(current)
-                current = WorktreeEntry()
-            continue
-        match line.split(maxsplit=1):
-            case ["worktree", path]:
-                current.path = path
-            case ["HEAD", sha]:
-                current.head = short_sha(sha)
-            case ["branch", ref]:
-                current.branch = ref.removeprefix("refs/heads/")
-            case ["bare"]:
-                current.bare = True
-            case ["prunable", *_]:
-                current.prunable = True
-
-    if current.path:
-        entries.append(current)
+    entries = Repository(Path.cwd()).worktrees()
 
     if not entries:
         typer.echo("No worktrees found")
         return
 
-    cwd = str(Path.cwd().resolve())
+    cwd = Path.cwd().resolve()
 
-    def row(entry: WorktreeEntry) -> list[str]:
+    def row(entry: Worktree) -> list[str]:
         branch = entry.branch or ("(bare)" if entry.bare else "(detached)")
         marker = "* " if entry.path == cwd else "  "
-        in_dir = not entry.bare and Path(entry.path).is_dir()
-        dirtiness = worktree_status(entry.path) if in_dir else ""
+        in_dir = not entry.bare and entry.path.is_dir()
+        dirtiness = worktree_status(str(entry.path)) if in_dir else ""
         flag = " [prunable]" if entry.prunable else ""
-        return [f"{marker}{branch}", entry.head, dirtiness, f"{entry.path}{flag}"]
+        return [
+            f"{marker}{branch}",
+            short_sha(entry.head),
+            dirtiness,
+            f"{entry.path}{flag}",
+        ]
 
     typer.echo(f"\n=== Worktrees ({len(entries)}) ===\n")
     typer.echo(

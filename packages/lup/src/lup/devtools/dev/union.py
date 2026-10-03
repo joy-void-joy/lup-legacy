@@ -26,6 +26,7 @@ import typer
 from pydantic import BaseModel, Field
 
 from lup.devtools.utils import decode_stderr, output_json, refuse
+from lup.execution.git import Repository
 from lup.execution.shell import git
 
 Side = Literal["ours", "theirs"]
@@ -201,7 +202,7 @@ def staged(path: str, stage: int) -> list[str]:
 
 def union_file(path: Path, first: Side, dry_run: bool) -> UnionResult:
     """Merge one conflicted file from its stages and, unless dry, write and stage it."""
-    root = Path(git.out("rev-parse", "--show-toplevel"))
+    root = Repository(Path.cwd()).top()
     named = path.resolve().relative_to(root).as_posix()
     try:
         versions = {name: staged(named, stage) for name, stage in STAGES.items()}

@@ -21,7 +21,7 @@ from lup.devtools.dev.branches import created_from
 from lup.devtools.dev.records import log_ref_updates
 from lup.devtools.harness.launch import relocation_hint
 from lup.devtools.sync import clone_bare
-from lup.harness.process import LaunchRequest, LocalProcessLauncher
+from lup.execution.process import LaunchRequest, LocalProcessLauncher
 
 
 def run_git(cwd: Path, *arguments: str) -> None:

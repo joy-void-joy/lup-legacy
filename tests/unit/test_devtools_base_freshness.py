@@ -25,7 +25,7 @@ from lup.devtools.dev.branches import (
     sync_upstream,
 )
 from lup.devtools.utils import Refusal
-from lup.harness.process import LocalProcessLauncher
+from lup.execution.process import LocalProcessLauncher
 from tests.unit.repos import TEST_IDENTITY, commit_file, initialized_repo
 
 

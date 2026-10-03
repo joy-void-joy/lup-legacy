@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from lup.harness.process import LocalProcessLauncher
+from lup.execution.process import LocalProcessLauncher
 from lup.resolver.models import VerificationCommand, VerificationRecord
 from lup.resolver.verification import (
     Verifier,

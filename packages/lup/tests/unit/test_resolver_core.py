@@ -11,7 +11,7 @@ from pydantic import BaseModel
 from lup.harness.contracts import SkillInvocationRenderer
 from lup.harness.models import ResolveSpec, SkillInvocation
 from lup.harness.ownership import GeneratedArtifacts, OwnedArtifact
-from lup.harness.process import (
+from lup.execution.process import (
     LaunchRequest,
     LocalProcessLauncher,
     ProcessLauncher,
@@ -5880,7 +5880,7 @@ def shadowed_admin(tmp_path: Path, shadow: bool) -> ScriptedLauncher:
     return ScriptedLauncher(
         {
             "worktree add": out(code=128, stderr="fatal: config.lock: File exists"),
-            "rev-parse --git-dir": out(stdout=f"{admin}\n{admin}\n"),
+            "rev-parse --path-format=absolute": out(stdout=f"{admin}\n{admin}\n"),
         }
     )
 

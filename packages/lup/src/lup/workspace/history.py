@@ -354,6 +354,15 @@ def iter_session_dirs(
     yield from reversed(unique.values())
 
 
+def run_transcript(run_directory: Path) -> Path:
+    """The hash-chained observable journal a launch writes in its run directory.
+
+    Named here beside the layout it sits in, so the launcher writing it and
+    every reader looking for it spell it once.
+    """
+    return run_directory / "observable.jsonl"
+
+
 def iter_run_dirs(
     run_id: str | None = None,
     roots: Sequence[Path] | None = None,

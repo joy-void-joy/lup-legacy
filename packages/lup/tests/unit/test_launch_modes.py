@@ -73,14 +73,14 @@ def root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 
 
 def claude(root: Path, **named: object) -> Claude:
-    request = launch.LaunchRequest.model_validate(
+    request = launch.LaunchArguments.model_validate(
         {"sandbox": LaunchSandbox.OUTER, **named}
     )
     return launch.claude_declaration(composition(root, "claude"), request, profiles())
 
 
 def codex(root: Path, **named: object) -> Codex:
-    request = launch.LaunchRequest.model_validate(
+    request = launch.LaunchArguments.model_validate(
         {"sandbox": LaunchSandbox.OUTER, **named}
     )
     return launch.codex_declaration(composition(root, "codex"), request, None)

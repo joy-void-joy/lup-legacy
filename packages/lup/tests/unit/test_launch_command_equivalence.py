@@ -62,7 +62,7 @@ def test_claude_command_is_what_the_harness_runs(
     resumption: Resumption,
     effort: str | None,
 ) -> None:
-    request = launch.LaunchRequest(
+    request = launch.LaunchArguments(
         words=["--verbose"],
         model="opus",
         effort=effort,
@@ -83,7 +83,7 @@ def test_claude_command_is_what_the_harness_runs(
 def test_codex_command_is_what_the_harness_runs(
     caught: Caught, root: Path, posture: LaunchSandbox, resumption: Resumption
 ) -> None:
-    request = launch.LaunchRequest(
+    request = launch.LaunchArguments(
         words=["--search"], model="gpt-5.5", resume=resumption, sandbox=posture
     )
     launch.launch_codex(composition(root, "codex"), request, None, False, False)
@@ -101,7 +101,7 @@ def test_the_harness_declares_the_servers_a_session_carries(
     """Strict MCP config drops a plugin's servers, so the launch names every one."""
     launch.launch_claude(
         composition(root, "claude"),
-        launch.LaunchRequest(sandbox=LaunchSandbox.INNER),
+        launch.LaunchArguments(sandbox=LaunchSandbox.INNER),
         profiles(),
         False,
     )

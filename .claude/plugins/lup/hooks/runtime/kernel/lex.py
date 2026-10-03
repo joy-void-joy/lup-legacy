@@ -18,8 +18,8 @@ from .bindings import (
     carried_words,
     command_lists,
     literal_loop_word,
-    mapped_commands,
     rebuilt_lists,
+    unrollable,
 )
 from .decision import KernelDecision, unjudged
 from .diagnostic import step
@@ -34,7 +34,10 @@ from .rows import (
     ShellRuleRow,
 )
 from .syntax import (
+    AndOr,
+    Clause,
     Command,
+    Item,
     Pipeline,
     Redirect,
     Script,
@@ -156,11 +159,19 @@ def joined_directory(directory: str | None, operand: str) -> str | None:
     return posixpath.normpath(posixpath.join(directory, operand))
 
 
+# lup: ignore[library-default] — bash's builtins that run the builtin named after them, in this shell
+RUNNING_BUILTINS = ("builtin", "command")
+
+
 def chdir_move(words: list[Word], directory: str | None) -> Move | None:
     """Where this segment leaves the shell, or None where it moves it nowhere.
 
-    Each of these is a shell builtin, so it is the first word or it is not one
-    at all -- no wrapper reaches a builtin, and no path spells one.
+    Each of these is a shell builtin, so it is the first word, or the word
+    after ``builtin`` or ``command``, which run it in this same shell; no
+    other wrapper reaches a builtin, and no path spells one. Bash's ``time``
+    keyword times it in this shell too, while a ``time`` program on the path
+    would run it in a child, so a ``cd`` behind ``time`` lands somewhere
+    nothing here can name.
 
     Only the one-operand ``cd`` naming a word the grammar calls literal is
     read as a move to a named directory. ``cd`` with no operand goes to a home
@@ -172,6 +183,19 @@ def chdir_move(words: list[Word], directory: str | None) -> Move | None:
     which is what makes a path word after one unresolvable rather than
     resolved against a directory the command never entered.
     """
+    spelled = [word_text(word) for word in words]
+    if spelled[:1] == ["time"] and any(text in CHDIR_VERBS for text in spelled):
+        return Move(directory=None)
+    if spelled[:1] and spelled[0] in RUNNING_BUILTINS:
+        lead = next(
+            (
+                index
+                for index, text in enumerate(spelled)
+                if text not in (*RUNNING_BUILTINS, "-p")
+            ),
+            len(spelled),
+        )
+        words = words[lead:]
     if not words or word_text(words[0]) not in CHDIR_VERBS:
         return None
     operands = [word for word in words[1:] if not word_text(word).startswith("-")]
@@ -181,6 +205,12 @@ def chdir_move(words: list[Word], directory: str | None) -> Move | None:
         or not literal_loop_word(operands[0])
     ):
         return Move(directory=None)
+    # lup: defer: a relative operand not opening on `./` or `../` is searched
+    # through `$CDPATH` first, so `cd lup` lands in `packages/lup` under a
+    # shell holding `CDPATH=packages`. Assigning it on the line already asks
+    # (a security-sensitive name), but a CDPATH the session's shell inherited
+    # is read by nothing here; the host could hand the dispatcher's own
+    # CDPATH in as a fact, and a set one leave such a move unnamed.
     return Move(directory=joined_directory(directory, word_text(operands[0])))
 
 
@@ -213,56 +243,277 @@ def placed_parts(parts: list[WordPart], directory: str | None) -> list[WordPart]
     ]
 
 
-class Reach(TypedDict):
-    """How far a move this command makes reaches, if it makes one.
+class Outcome(TypedDict):
+    """Where the shell stands once something has run, by how it ended.
 
-    Two distances, because a ``cd`` in a chain answers two different questions.
-    ``here`` is the rest of its own ``&&`` chain, which a move reaches whenever
-    everything joining it to what precedes it is ``&&``: reaching the move at
-    all means it ran, and what follows it in the chain runs only if it
-    succeeded. ``escapes`` is the commands after the chain, which only an
-    unconditional move reaches -- ``x && cd a; rm y`` runs the ``rm`` whether
-    or not ``x`` let the ``cd`` happen, so where that one runs is not settled
-    here. ``first`` and ``last`` bound the chain the two are read across.
+    ``ok`` where it succeeded and ``failed`` where it did not, because the
+    shell's own operators choose what runs next by exactly that: `&&` runs
+    the next command where the last one succeeded, `||` where it failed. A
+    ``cd`` that fails leaves the shell where it was, so `cd a || rm x` removes
+    `x` from the directory the `cd` never left. ``None`` in either is a
+    directory nothing here can name.
     """
 
-    first: bool
-    here: bool
-    escapes: bool
-    last: bool
+    ok: str | None
+    failed: str | None
 
 
-def command_reach(script: Script, standing: bool) -> list[Reach]:
-    """How far each command's move would reach, in the order they are walked.
+def merged(first: str | None, second: str | None) -> str | None:
+    """Where the shell stands when it could have come by either of two ways.
 
-    The order :func:`~lup.policy.kernel.bindings.placed_commands` walks, so
-    the two can be read off one iteration of the same list.
+    One directory where both ways lead there, and one nothing here can name
+    where they part: a word after `true && cd a; …` is read in `a` if the
+    `true` succeeded and where the shell already stood if it did not, and
+    naming either would judge a file the command may not reach.
     """
-    return [
-        Reach(
-            first=index == 0 and position == 0,
-            here=standing
-            and item["terminator"] != "&"
-            and len(pipeline["commands"]) == 1
-            and all(
-                operator == "&&" for operator in item["andor"]["operators"][:index]
-            ),
-            escapes=standing
-            and item["terminator"] != "&"
-            and len(pipeline["commands"]) == 1
-            and index == 0,
-            last=index == len(item["andor"]["pipelines"]) - 1
-            and position == len(pipeline["commands"]) - 1,
+    return first if first == second else None
+
+
+def steady(directory: str | None) -> Outcome:
+    """The outcome of something that moves the shell nowhere, however it ends."""
+    return Outcome(ok=directory, failed=directory)
+
+
+class PlacedCommand(TypedDict):
+    """One command stamped with where it runs, and where it leaves the shell."""
+
+    command: Command
+    outcome: Outcome
+
+
+def placed_command(command: Command, directory: str | None) -> PlacedCommand:
+    """One command stamped with ``directory``, its lists placed where they run.
+
+    A simple command moves the shell only where it is a ``cd`` that
+    succeeded. An ``if`` runs each body where its condition succeeded and
+    tries the next condition, or the ``else``, where it failed, so `if cd a;
+    then rm x; fi` removes `a/x`. A loop may run its lists any number of
+    times, each pass starting where the last one left the shell, so one
+    that moves the shell anywhere places none of them where a later pass
+    would run. A function's body runs wherever the function is called, which
+    nothing here follows. A subshell is entered at the top of a list of its
+    own and leaves nothing behind it; a brace group runs in this shell, and
+    leaves the shell where its last command did. After any other construct
+    that could have moved the shell, where it stands is not known.
+    """
+    within = Command(
+        kind=command["kind"],
+        words=[
+            Word(parts=placed_parts(word["parts"], directory))
+            for word in command["words"]
+        ],
+        redirects=[
+            Redirect(
+                operator=redirect["operator"],
+                target=[
+                    Word(parts=placed_parts(target["parts"], directory))
+                    for target in redirect["target"]
+                ],
+                heredoc=redirect["heredoc"],
+            )
+            for redirect in command["redirects"]
+        ],
+        name=command["name"],
+        listed=command["listed"],
+        clauses=command["clauses"],
+        body=command["body"],
+        arms=command["arms"],
+        directory=directory,
+    )
+    moves = chdir_within(command)
+    after = steady(None if moves else directory)
+    match command["kind"]:
+        case "simple" | "test":
+            move = chdir_move(command["words"], directory)
+            if move is None:
+                return PlacedCommand(command=within, outcome=steady(directory))
+            return PlacedCommand(
+                command=within,
+                outcome=Outcome(ok=move["directory"], failed=directory),
+            )
+        case "subshell":
+            return PlacedCommand(
+                command=rebuilt_lists(
+                    within, lambda inner: place_script(inner, directory)
+                ),
+                outcome=steady(directory),
+            )
+        case "brace":
+            body = placed_list(command["body"], directory)
+            return PlacedCommand(
+                command=rebuilt_lists(within, lambda _inner: body["script"]),
+                outcome=body["outcome"],
+            )
+        case "if":
+            clauses: list[Clause] = []
+            unmet = directory
+            for clause in command["clauses"]:
+                condition = placed_list(clause["condition"], unmet)
+                body = placed_list(clause["body"], condition["outcome"]["ok"])
+                clauses.append(
+                    Clause(condition=condition["script"], body=body["script"])
+                )
+                unmet = condition["outcome"]["failed"]
+            otherwise = placed_list(command["body"], unmet)
+            return PlacedCommand(
+                command=Command(
+                    kind=within["kind"],
+                    words=within["words"],
+                    redirects=within["redirects"],
+                    name=within["name"],
+                    listed=within["listed"],
+                    clauses=clauses,
+                    body=otherwise["script"],
+                    arms=within["arms"],
+                    directory=directory,
+                ),
+                outcome=after,
+            )
+        case "for" if unrollable(command):
+            # The binding pass laid every pass out in order already, so the
+            # body is read once, each pass where the last one left the shell.
+            return PlacedCommand(
+                command=rebuilt_lists(
+                    within, lambda inner: place_script(inner, directory)
+                ),
+                outcome=after,
+            )
+        case "for" | "select" | "while" | "until" | "function":
+            start = None if moves or command["kind"] == "function" else directory
+            return PlacedCommand(
+                command=rebuilt_lists(within, lambda inner: place_script(inner, start)),
+                outcome=after,
+            )
+        case _:
+            return PlacedCommand(
+                command=rebuilt_lists(
+                    within, lambda inner: place_script(inner, directory)
+                ),
+                outcome=after,
+            )
+
+
+class PlacedList(TypedDict):
+    """A list with every command stamped, and where its last one leaves the shell."""
+
+    script: Script
+    outcome: Outcome
+
+
+def chained(joined: str, ended: Outcome, before: Outcome) -> Outcome:
+    """Where a chain stands once one more pipeline has run, or been skipped.
+
+    `&&` runs it where the chain succeeded, and a failure before it passes
+    by untouched; `||` the other way round.
+    """
+    match joined:
+        case "&&":
+            return Outcome(
+                ok=ended["ok"], failed=merged(ended["failed"], before["failed"])
+            )
+        case "||":
+            return Outcome(ok=merged(ended["ok"], before["ok"]), failed=ended["failed"])
+        case _:
+            return ended
+
+
+class PlacedAndOr(TypedDict):
+    """One chain placed, where it leaves the shell by how it ended, and after it.
+
+    ``outcome`` routes what the operators run next; ``after`` is where the
+    next item starts, which takes each literal `cd` to have succeeded
+    (:func:`placed_andor`).
+    """
+
+    andor: AndOr
+    outcome: Outcome
+    after: str | None
+
+
+def placed_andor(andor: AndOr, directory: str | None) -> PlacedAndOr:
+    """One `&&`/`||` chain placed, and where it leaves the shell.
+
+    Each pipeline runs where the one before it left the shell by the ending
+    its operator asks for, and one it skips passes the other ending on
+    untouched. A pipeline of several commands runs each in a process of its
+    own, so none of them moves this shell, and `!` swaps the two endings.
+
+    Where the next item starts is read the same way with one assumption: a
+    `cd` naming a directory the line spells is taken to have succeeded. Its
+    failure is followed where the line routes on it -- `cd a || rm x` removes
+    the `x` beside it -- and not past a `;`, where `cd /abs/wt && make; date
+    > tmp/log` writes the log in the tree the `cd` names.
+    """
+
+    # lup: defer: a `cd` into a directory that does not exist leaves the shell
+    # where it stood, so `cd tmp/missing; rm README.md` removes the human-owned
+    # file while it is judged as `tmp/missing/README.md`. Reading every `;`
+    # after a `cd` as reaching neither directory closes it and asks about the
+    # scratch logs sessions write after `cd /abs/wt && …;` -- 249 of the
+    # 16,424 recorded commands, and 57 read-only lines refused in a measured
+    # container, where the unknown directory names a landing nobody can
+    # place. Carrying both directories on the command and judging a write at
+    # each would close it without those questions; every reader of a
+    # command's directory would read a list of them.
+    def assumed(pipeline: Pipeline, lands: str | None) -> Outcome:
+        if len(pipeline["commands"]) != 1:
+            return steady(lands)
+        (command,) = pipeline["commands"]
+        if command["kind"] == "simple":
+            move = chdir_move(command["words"], lands)
+            if move is not None:
+                return steady(move["directory"])
+        ended = placed_command(command, lands)["outcome"]
+        if pipeline["negated"]:
+            return Outcome(ok=ended["failed"], failed=ended["ok"])
+        return ended
+
+    pipelines: list[Pipeline] = []
+    outcome = steady(directory)
+    settled = steady(directory)
+    for index, pipeline in enumerate(andor["pipelines"]):
+        joined = andor["operators"][index - 1] if index else ""
+        runs = outcome["failed"] if joined == "||" else outcome["ok"]
+        placed = [placed_command(command, runs) for command in pipeline["commands"]]
+        ended = placed[0]["outcome"] if len(placed) == 1 else steady(runs)
+        if pipeline["negated"]:
+            ended = Outcome(ok=ended["failed"], failed=ended["ok"])
+        pipelines.append(
+            Pipeline(
+                commands=[each["command"] for each in placed],
+                operators=pipeline["operators"],
+                negated=pipeline["negated"],
+            )
         )
-        for item in script["items"]
-        for index, pipeline in enumerate(item["andor"]["pipelines"])
-        for position, _command in enumerate(pipeline["commands"])
-    ]
+        lands = settled["failed"] if joined == "||" else settled["ok"]
+        outcome = chained(joined, ended, outcome)
+        settled = chained(joined, assumed(pipeline, lands), settled)
+    return PlacedAndOr(
+        andor=AndOr(pipelines=pipelines, operators=andor["operators"]),
+        outcome=outcome,
+        after=merged(settled["ok"], settled["failed"]),
+    )
 
 
-def place_script(
-    script: Script, directory: str | None = "", standing: bool = True
-) -> Script:
+def placed_list(script: Script, directory: str | None) -> PlacedList:
+    """A list placed in order, each item starting where the last one left the shell.
+
+    An item run in the background with `&` runs in a process of its own, so
+    it leaves the shell where it found it. Any other item leaves it where its
+    chain does (:func:`placed_andor`), and the list ends as its last item does.
+    """
+    items: list[Item] = []
+    outcome = steady(directory)
+    for item in script["items"]:
+        placed = placed_andor(item["andor"], directory)
+        items.append(Item(andor=placed["andor"], terminator=item["terminator"]))
+        backgrounded = item["terminator"] == "&"
+        outcome = steady(directory) if backgrounded else placed["outcome"]
+        directory = directory if backgrounded else placed["after"]
+    return PlacedList(script=Script(items=items), outcome=outcome)
+
+
+def place_script(script: Script, directory: str | None = "") -> Script:
     """Every command in a list stamped with the directory the shell runs it in.
 
     What :func:`~lup.policy.kernel.bindings.bind_script` is for variables,
@@ -272,63 +523,13 @@ def place_script(
     it -- rather than each joining the word to a launch directory the command
     had already left.
 
-    Both passes answer to the same structure, and a move is read across it by
-    :class:`Reach`: it holds for the rest of its own ``&&`` chain, and past
-    the chain only if nothing could have skipped it. A subshell is entered at
-    the top of a list of its own, so a ``cd`` inside one stands for the rest
-    of it and reaches nothing after it; a construct that may or may not have
-    run leaves the directory unknown rather than either answer, because the
-    words after it resolve against a directory nothing here decided.
+    A move is followed the way the shell follows it, by :class:`Outcome`:
+    through `&&`, `||` and `!`, and into a branch its condition chose. A
+    construct that may or may not have moved the shell leaves the directory
+    unknown rather than either answer, because the words after it resolve
+    against a directory nothing here decided.
     """
-    reaches = iter(command_reach(script, standing))
-    carried = directory
-
-    def rebuild(command: Command) -> Command:
-        nonlocal directory, carried
-        reach = next(reaches)
-        if reach["first"]:
-            carried = directory
-        within = Command(
-            kind=command["kind"],
-            words=[
-                Word(parts=placed_parts(word["parts"], directory))
-                for word in command["words"]
-            ],
-            redirects=[
-                Redirect(
-                    operator=redirect["operator"],
-                    target=[
-                        Word(parts=placed_parts(target["parts"], directory))
-                        for target in redirect["target"]
-                    ],
-                    heredoc=redirect["heredoc"],
-                )
-                for redirect in command["redirects"]
-            ],
-            name=command["name"],
-            listed=command["listed"],
-            clauses=command["clauses"],
-            body=command["body"],
-            arms=command["arms"],
-            directory=directory,
-        )
-        if command["kind"] in ("simple", "test"):
-            move = chdir_move(command["words"], directory)
-            if move is not None:
-                directory = move["directory"] if reach["here"] else None
-                carried = directory if reach["escapes"] else None
-            if reach["last"]:
-                directory = carried
-            return within
-        rebuilt = rebuilt_lists(within, lambda inner: place_script(inner, directory))
-        if command["kind"] != "subshell" and chdir_within(command):
-            directory = None
-            carried = None
-        if reach["last"]:
-            directory = carried
-        return rebuilt
-
-    return mapped_commands(script, rebuild)
+    return placed_list(script, directory)["script"]
 
 
 def placed_path(word: str, directory: str | None) -> str | None:
@@ -351,6 +552,27 @@ def placed_path(word: str, directory: str | None) -> str | None:
     if not directory:
         return word
     return posixpath.normpath(posixpath.join(directory, word))
+
+
+# lup: ignore[constant-declaration] — the shell's own name for where it stands, not a choice
+UNPLACED_ROOT = "$PWD"
+"""How a path named from a directory nothing here can name is spelled.
+
+Where the shell stands is exactly what ``$PWD`` holds, and a word opening on
+an expansion is one every rule reads as a path only the run resolves: a write
+to one asks, whatever it would have been written as."""
+
+
+def landed_path(word: str, directory: str | None) -> str:
+    """Where a path operand lands, spelled under :data:`UNPLACED_ROOT` where unknown.
+
+    :func:`placed_path` for a reader that has to judge the write rather than
+    stat it: a path named from a directory a `cd` left unknown is still a
+    write, to a file only the run can name, and a reader that dropped it
+    left the write to whatever judged the rest of the command.
+    """
+    placed = placed_path(word, directory)
+    return placed if placed is not None else posixpath.join(UNPLACED_ROOT, word)
 
 
 class Placement(TypedDict):
@@ -1010,11 +1232,16 @@ def resolve_redirection(
         return None
     placed = placed_path(spelled, directory)
     if placed is None:
-        return unjudged(
-            f"the redirection target {spelled} is named from a directory a `cd`"
-            " left unreadable"
-        ).advising(
-            (step("spell the path in full, or run the command in its own call"),)
+        # Wherever the `cd` left the shell, a protected file among the places
+        # it could be: asked about as a path only the run resolves, which no
+        # boundary settles, rather than handed to one that confines the call
+        # and not the checkout it writes in.
+        return unlocated_write(
+            f"the redirection target {landed_path(spelled, directory)}"
+        ).revised(
+            recovery=(
+                step("spell the path in full, or run the command in its own call"),
+            )
         )
     return written_path_verdict(
         placed,
@@ -1133,10 +1360,11 @@ def tee_targets(script: Script) -> list[str]:
     Only the operands the command itself names. A `tee` handed operands by
     `xargs` or `find -exec` writes files no word here spells, so it is not
     read here and keeps its own row's question. An operand whose directory a
-    `cd` left unreadable is not placed, and the segment reading answers it.
+    `cd` left unreadable is a file only the run can name (:func:`landed_path`),
+    and is judged as one, as `> f` after the same `cd` is.
     """
     return [
-        placed
+        landed_path(path, command["directory"])
         for command in simple_commands(script)
         if command["kind"] == "simple"
         for tee in [
@@ -1148,8 +1376,6 @@ def tee_targets(script: Script) -> list[str]:
         ]
         if tee is not None
         for path in tee["paths"]
-        for placed in [placed_path(path, command["directory"])]
-        if placed is not None
     ]
 
 
@@ -1595,9 +1821,20 @@ def read_segment(spelled: Placement, rows: list[ShellRuleRow]) -> ReadSegment | 
     )
 
 
+class PlacedWords(TypedDict):
+    """One segment's words with every path spelled where it lands.
+
+    ``unplaced`` where at least one path was named from a directory nothing
+    here can name, and so spelled under :data:`UNPLACED_ROOT`.
+    """
+
+    words: list[str]
+    unplaced: bool
+
+
 def placed_words(
     words: list[str], directory: str | None, rows: list[ShellRuleRow]
-) -> list[str] | None:
+) -> PlacedWords:
     """This segment as it would read with nothing standing between its words.
 
     Two things stand between them, and both make a rule answer about a file
@@ -1609,35 +1846,38 @@ def placed_words(
     together, and every rule below reads one spelling of one command without
     being handed a directory of its own to remember.
 
-    ``None`` where that directory is unknown *and* the segment names a file by
-    it: the words name something, but nothing this can resolve, and a rule
-    matched against an unresolvable path answers about the wrong file. Both
-    halves are needed. A command naming no path is not made unjudgeable by an
-    unreadable directory -- ``git -C "$W" add -A`` stages whatever is in a
-    checkout nobody here can name, and staging is reversible wherever it
-    happens, so the verb behind the flag answers as it always did.
+    Where that directory is unknown and a relative path is named from it, the
+    path is spelled under :data:`UNPLACED_ROOT`: the words name something,
+    but nothing this can resolve, so a rule reads it as the path only the run
+    knows that it is, and a write to it asks, rather than answering about
+    whichever file the spelling happens to name here. An absolute path names
+    its own file wherever the shell stands. A command naming no path is not
+    made unjudgeable by an unreadable directory -- ``git -C "$W" add -A``
+    stages whatever is in a checkout nobody here can name, and staging is
+    reversible wherever it happens, so the verb behind the flag answers as it
+    always did.
     """
     if not words:
-        return words
+        return PlacedWords(words=words, unplaced=False)
     read = command_words_read(words, rows)
     named = path_words(read, rows)
-    if not named:
-        return read
     carried = command_directory(words, rows)
-    if carried is None:
-        return None
-    here = directory if not carried else joined_directory(directory, carried)
-    if here is None:
-        return None
-    if not here:
-        return read
+    here = (
+        None
+        if carried is None
+        else directory
+        if not carried
+        else joined_directory(directory, carried)
+    )
+    if not named or here == "":
+        return PlacedWords(words=read, unplaced=False)
     placed = {
-        row["at"]: f"{row['prefix']}{spelled}"
-        for row in named
-        for spelled in [placed_path(row["path"], here)]
-        if spelled is not None
+        row["at"]: f"{row['prefix']}{landed_path(row['path'], here)}" for row in named
     }
-    return [placed.get(index, word) for index, word in enumerate(read)]
+    return PlacedWords(
+        words=[placed.get(index, word) for index, word in enumerate(read)],
+        unplaced=any(placed_path(row["path"], here) is None for row in named),
+    )
 
 
 def verb_path_words(words: list[str], rows: list[ShellRuleRow]) -> list[PathWord]:

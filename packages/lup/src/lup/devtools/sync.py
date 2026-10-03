@@ -120,10 +120,11 @@ from pydantic import (
     with_config,
 )
 
+from lup.execution.git import Repository
 from lup.workspace.paths import is_template_scaffold, project_root
 from lup.devtools import sync_state, sync_usage
 from lup.devtools.dev.records import log_ref_updates
-from lup.harness.credential import remote_url, same_repository
+from lup.harness.credential import same_repository
 import lup.harness.content.docs.upstream_reports as upstream_reports
 from lup.launch.preflight import reopened
 from lup.devtools.subapps import subapp
@@ -666,7 +667,9 @@ def review_branch(proj: ProjectEntry, repository: Path) -> str:
     # The library's own registration never disagrees with the pin here: it
     # takes its url from it (see `completed`). What is left is any other
     # registration of the same repository, which follows the consumed branch.
-    registered_url = registered_repository(proj) or remote_url(repository, "origin")
+    registered_url = registered_repository(proj) or (
+        Repository(repository).remote_url("origin") or ""
+    )
     if not registered_url or not same_repository(registered_url, source.url):
         return declared
     if declared and declared != source.ref:
@@ -713,7 +716,7 @@ def registered_upstream(
     branch = clone_branch(proj, path)
     attached = path / "tree" / branch
     remote = proj.get("review_from", "remote") == "remote" and bool(
-        remote_url(path, "origin")
+        (Repository(path).remote_url("origin") or "")
     )
     prefix = "refs/remotes/origin" if remote else "refs/heads"
     return Upstream(
@@ -729,18 +732,17 @@ def registered_upstream(
 def checkpoint_identity(found: Upstream) -> sync_state.ReviewSource:
     """A remote URL or local repository identity, paired with the reviewed ref."""
     remote = (
-        remote_url(found.checkout, "origin")
+        (Repository(found.checkout).remote_url("origin") or "")
         if found.tip.startswith("refs/remotes/")
         else ""
     )
-    repository = remote or git_in(
-        str(found.checkout), "rev-parse", "--path-format=absolute", "--git-common-dir"
-    )
+    checkout = Repository(found.checkout)
+    repository = remote or str(checkout.common_dir())
     ref = found.tip
     if ref == "HEAD":
         ref = (
             git.out("-C", str(found.checkout), "symbolic-ref", "HEAD", _ok_code=[0, 1])
-            or f"detached:{git_in(str(found.checkout), 'rev-parse', 'HEAD')}"
+            or f"detached:{checkout.answer('rev-parse', 'HEAD')}"
         )
     return sync_state.ReviewSource(repository=repository, ref=ref)
 
@@ -948,7 +950,7 @@ def exemption(proj: ProjectEntry) -> str:
     machine's and is owed here like any other.
     """
     declared = registered_repository(proj)
-    own = remote_url(project_root(), "origin")
+    own = Repository(project_root()).remote_url("origin") or ""
     if declared and own and same_repository(declared, own):
         return "this checkout is that repository"
     tracked = load_json(sync_file()).get("projects", [])
@@ -1319,10 +1321,8 @@ def registered_elsewhere(repository: Path, url: str) -> str:
     """
     if not url:
         return ""
-    found = git.out(
-        "-C", str(repository), "remote", "get-url", "origin", _ok_code=[0, 1]
-    )
-    return "" if not found or same_repository(found, url) else found
+    found = Repository(repository).remote_url("origin")
+    return "" if found is None or same_repository(found, url) else found
 
 
 def declaring_file(name: str, key: str) -> Path:
@@ -1461,7 +1461,9 @@ def ensure_local(
         found = registered_upstream(
             proj, refuse_redirected_location(kept, report), report
         )
-        if proj.get("review_from", "remote") == "remote" and remote_url(kept, "origin"):
+        if proj.get("review_from", "remote") == "remote" and (
+            Repository(kept).remote_url("origin") or ""
+        ):
             refresh(name, kept, report)
         ensure_ref_symlink(name, str(found.checkout))
         return found
@@ -1487,16 +1489,9 @@ def ensure_local(
     return found
 
 
-def git_in(path: str, *args: str) -> str:
-    """Run git command in a specific directory."""
-    return git.out("-C", path, *args)
-
-
 def commit_count(path: str, since: str, tip: str = "HEAD") -> int:
     """Count the commits on ``tip`` a checkpoint has not reached."""
-    return int(
-        git_in(path, "rev-list", "--count", tip if not since else f"{since}..{tip}")
-    )
+    return Repository(Path(path)).count(tip if not since else f"{since}..{tip}")
 
 
 def resolved_checkpoint(path: str, ref: str, tip: str = "HEAD") -> str:
@@ -1513,12 +1508,13 @@ def resolved_checkpoint(path: str, ref: str, tip: str = "HEAD") -> str:
     sessions work in — as the point every upstream commit up to it was
     considered.
     """
+    repository = Repository(Path(path))
     if not ref:
-        return git_in(path, "rev-parse", tip)
-    try:
-        return git_in(path, "rev-parse", "--verify", f"{ref}^{{commit}}")
-    except sh.ErrorReturnCode:
+        return repository.answer("rev-parse", tip)
+    resolved = repository.resolves(ref)
+    if resolved is None:
         refuse(f"names no commit in {path}", what=ref, code=2)
+    return resolved
 
 
 @app.command("usage")
@@ -1770,7 +1766,7 @@ def show_log(
         args.append("--stat")
     args.append(range_spec)
 
-    output = git_in(str(found.checkout), *args)
+    output = Repository(found.checkout).answer(*args)
     if output:
         typer.echo(output)
     else:
@@ -1785,7 +1781,7 @@ def show_diff(
     """Show full diff for a specific commit."""
     proj = find_project(project)
     found = ensure_local(proj)
-    output = git_in(str(found.checkout), "show", commit)
+    output = Repository(found.checkout).answer("show", commit)
     typer.echo(output)
 
 

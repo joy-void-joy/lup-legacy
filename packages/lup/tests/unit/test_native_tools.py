@@ -254,7 +254,7 @@ def test_dynamic_tool_names_cannot_shadow_another_explicit_handler(
     )
     with pytest.raises(ValueError, match="collide"):
         codex_serving(hosted_servers(shadowing.mcp, needs))
-    with pytest.raises(ValueError, match="uniquely"):
+    with pytest.raises(ValueError, match="named apart"):
         CodexTools(mcp=[Toolset([first], name="a"), Toolset([second], name="a")])
     with pytest.raises(ValueError, match="names a tool twice"):
         Toolset([first, first])

@@ -94,7 +94,7 @@ def opened(
     generate_only: bool = False,
 ) -> None:
     """Launch one runtime; ``None`` is what the command line hands on for no flag."""
-    request = launch.LaunchRequest(sandbox=sandbox)
+    request = launch.LaunchArguments(sandbox=sandbox)
     match runtime:
         case "claude":
             launch_claude(

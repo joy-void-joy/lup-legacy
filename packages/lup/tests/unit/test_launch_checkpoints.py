@@ -43,7 +43,7 @@ def checkpoint(caught: Caught) -> launch.LaunchCheckpoint:
 def harnessed(
     runtime: str,
     root: Path,
-    request: launch.LaunchRequest,
+    request: launch.LaunchArguments,
     generate_only: bool,
     caught: Caught | None = None,
 ) -> None:
@@ -74,7 +74,7 @@ def test_the_workflow_wraps_the_session_its_checkpoint_outermost(
     root: Path, caught: Caught, runtime: str, sandbox: LaunchSandbox
 ) -> None:
     """Checkpointed first and last; the pointers, the base and the trees before the host."""
-    harnessed(runtime, root, launch.LaunchRequest(sandbox=sandbox), False, caught)
+    harnessed(runtime, root, launch.LaunchArguments(sandbox=sandbox), False, caught)
 
     assert [event for event in caught.events if event != "installed"] == [
         f"checkpoint:{runtime}",
@@ -93,7 +93,7 @@ def test_the_workflow_wraps_the_session_its_checkpoint_outermost(
 def test_generate_only_regenerates_and_readies_without_a_checkpoint(
     root: Path, caught: Caught, runtime: str
 ) -> None:
-    harnessed(runtime, root, launch.LaunchRequest(), True, caught)
+    harnessed(runtime, root, launch.LaunchArguments(), True, caught)
 
     assert caught.events == [
         "generated:reported",
@@ -146,7 +146,7 @@ def test_a_launch_names_the_waits_it_spends_silent(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     """One line before each quiet stretch, and none when only generation was asked."""
-    request = launch.LaunchRequest(sandbox=LaunchSandbox.INNER)
+    request = launch.LaunchArguments(sandbox=LaunchSandbox.INNER)
     harnessed(runtime, root, request, True)
     assert "checking the host" not in capsys.readouterr().out
 

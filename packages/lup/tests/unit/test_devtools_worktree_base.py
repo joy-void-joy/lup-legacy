@@ -27,14 +27,14 @@ from pathlib import Path
 import pytest
 import typer
 
+from lup.execution.git import Repository
 from lup.devtools.dev.worktree import (
     BranchBase,
     commits_ahead,
-    descends_from,
     register_worktree,
 )
 from lup.devtools.utils import Refusal
-from lup.harness.process import LaunchRequest, LocalProcessLauncher
+from lup.execution.process import LaunchRequest, LocalProcessLauncher
 
 
 def run_git(cwd: Path, *arguments: str) -> None:
@@ -99,8 +99,8 @@ def test_a_base_the_existing_branch_already_carries_is_not_worth_refusing(
     work = build_history(tmp_path)
     monkeypatch.chdir(work)
 
-    assert descends_from("feature", "dev")
-    assert not descends_from("dev", "feature")
+    assert Repository(work).is_ancestor("dev", "feature")
+    assert not Repository(work).is_ancestor("feature", "dev")
 
 
 def test_a_branch_ahead_of_the_integration_branch_is_counted(

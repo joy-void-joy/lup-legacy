@@ -10,7 +10,7 @@ from pydantic import BaseModel
 
 from lup.harness.contracts import SkillInvocationRenderer
 from lup.harness.models import ResolveSpec
-from lup.harness.process import ProcessLauncher
+from lup.execution.process import ProcessLauncher
 from lup.resolver.admissions import (
     AdmissionMailbox,
     AdmissionReceipt,

@@ -183,24 +183,27 @@ KERNEL_IMPORT_ALLOWLIST = (
 # The ones below are reasons, ways through and one sentinel the kernel's own
 # decisions carry: each is declared beside the verdict that returns it, so a
 # caller passing different words would be returning a different verdict.
-# lup: ignore[library-default] — refusal wording, declared with its verdict
-ESCALATE_HINT = (
-    step("change the command to one the policy allows"),
-    step(
-        "or resubmit it with a first line `# lup: escalate[decision]: <why>`,"
-        " which puts it to a reviewer"
-    ),
-)
 # lup: ignore[constant-declaration] — refusal wording
-RESHAPE_HINT = (step("change the command to one the policy allows"),)
-# lup: ignore[library-default] — refusal wording, declared with its verdict
-RELAY_HINT = (
-    step("change the command to one the policy allows"),
-    step(
-        "or ask for the gate with `request_allowance`, which reaches whoever is"
-        " watching this run"
-    ),
+RESHAPE = step("change the command to one the policy allows")
+"""The way through every refusal has, said only where no other is.
+
+See :func:`offered`: beside a rule's own way through it says nothing the
+agent did not already know.
+"""
+# lup: ignore[constant-declaration] — it quotes the marker's own spelling
+ESCALATE = step(
+    "or resubmit it with a first line `# lup: escalate[decision]: <why>`,"
+    " which puts it to a reviewer"
 )
+RELAY = step(  # lup: ignore[constant-declaration] — refusal wording
+    "or ask for the gate with `request_allowance`, which reaches whoever is"
+    " watching this run"
+)
+# lup: ignore[library-default] — refusal wording, declared with its verdict
+ESCALATE_HINT = (RESHAPE, ESCALATE)
+RESHAPE_HINT = (RESHAPE,)  # lup: ignore[constant-declaration] — refusal wording
+# lup: ignore[library-default] — refusal wording, declared with its verdict
+RELAY_HINT = (RESHAPE, RELAY)
 """What a reviewed worker is told, which is not what a headless run is told.
 
 Both are non-interactive and only one of them is alone. A resolver worker
@@ -774,7 +777,7 @@ class KernelDecision:
             verdict,
             self.reason,
             what=self.subject,
-            steps=self.recovery,
+            steps=offered(self.recovery),
             rule=self.rule,
             see=self.see,
         )
@@ -792,7 +795,7 @@ class KernelDecision:
 
     def beside(self) -> str:
         """The ways through as the agent reads them beside a question, one a line."""
-        return "\n".join(way(through) for through in self.recovery)
+        return "\n".join(way(through) for through in offered(self.recovery))
 
     def addressed(self) -> str:
         """The verdict line with each way through after it: the whole of what an agent reads.
@@ -802,6 +805,20 @@ class KernelDecision:
         line and the agent's ways through arrive as one text.
         """
         return rendered(self.diagnostic())
+
+
+def offered(steps: Sequence[Step]) -> tuple[Step, ...]:
+    """The ways through as a reader is offered them, in the order they were given.
+
+    "Change the command" is the way past every refusal, so it is said only
+    where nothing more particular is: beside a rule's own way through it
+    tells the agent nothing it did not know, and pushes the step that does
+    down a line. An escalation or a relay stays either way, because it is a
+    route past the verdict that no rule's own step names.
+    """
+    if all(through in (RESHAPE, ESCALATE, RELAY) for through in steps):
+        return tuple(steps)
+    return tuple(through for through in steps if through != RESHAPE)
 
 
 def unjudged(reason: str) -> KernelDecision:

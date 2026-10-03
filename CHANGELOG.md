@@ -41,6 +41,119 @@ A project's own shell rules, refused tools and paths declare `recovery` as a
 list of `step(...)` from `lup.policy.kernel.diagnostic`; `dev migrate pending`
 names the change. The edit-evaluator protocol is version 2.
 
+### A write reached through a variable, a substitution or a `cd` asks as the path it names would
+
+`cd w && F=<protected path> && sed -i … $F` rewrote a protected file with no
+question inside the runtime's own sandbox, while the same `sed` naming the
+path asked (#529). The assignment after `&&` was left unread, and a command
+referencing a name bound to something unread was answered by a floor the
+sandbox settles — a sandbox that confines the call, not the checkout it
+writes in. The same floor answered many other spellings of one write.
+
+- A variable the line settles is judged as the literal it holds: one
+  assigned in a `&&` chain holds for the rest of that chain, so the line
+  above asks as `sed -i … <protected path>` does. Past an `||` or the end of
+  the chain the name is unread.
+- A write through a word nothing on the line can read — a `read`, a
+  substitution's output, an assignment an `||` may skip, a loop over a glob,
+  `while read` — asks as `sed -i 1d $F` does for a name the line never
+  assigned, on every placement. A reference that could also become a flag
+  still earns its floor where the command asks nothing, and no longer hides
+  every command after it on the line: `read F; git status $F; git push
+  --force origin main` left the push unjudged.
+- A `cd` is followed the way the shell follows it: through `&&`, `||`, `!`
+  and into the `if` branch its condition chose, so `cd a || rm x` and `if cd
+  packages; then rm lup/…; fi` are judged where they run. Where the line
+  may have skipped or undone a move, and after a `cd` nothing can read, a
+  relative path written is one only the run can name, and asks instead of
+  being carried by a boundary. `command cd` and `builtin cd` move the shell
+  as `cd` does.
+- `find -exec`'s `{}` is a path only the run names beneath each starting
+  point: `find packages -exec rm {} +` asks where it was read as `rm ./x`.
+- A `select`, an arithmetic command and a construct nested past the depth
+  the walk opens no longer hide the commands inside and after them.
+
+What changes for a session: a write through a glob loop, a `read`, a
+substitution or `find -exec` asks even into scratch — spell the paths, or
+run a script under `tmp/`. Where no boundary runs, those writes ask where
+they used to be refused. Still open: a `cd` into a directory that is not
+there, followed by `;`, is taken to have succeeded, so what runs after it is
+judged in a directory the shell never entered (recorded in
+`lup.policy.kernel.lex.placed_andor`); an unclassified command, or a write
+after an array or a function definition, is still carried by the runtime's
+own sandbox into a protected path (#531); and a write through a hard link,
+or a link the same line makes, still lands on the file it links to unasked
+(#532).
+
+### One way to ask git, one liveness record, one placement
+
+- `lup.execution.git.Repository(root, runner)` asks a repository each of
+  the questions the library kept asking it — the top, the git and shared
+  directories (always absolute), the branch, whether a ref resolves,
+  ancestry, a commit count, the conflicted paths, a merge in progress, a
+  remote's URL, and the worktrees, read once from `--porcelain -z` — with
+  one failure answer per question. It runs git through a `ProcessLauncher`,
+  so the resolver, the base-freshness probe and every devtools command ask
+  it the same way, and `git_line`, `git_ran`, `git_in`, `resolver_git` and
+  `lup.harness.credential.remote_url` are gone. The launcher seam itself
+  moved from `lup.harness.process` to `lup.execution.process`.
+- The resolver no longer takes a worktree whose path holds a space for a
+  leftover directory: it read `git worktree list` by its first word, and
+  removed the checkout it could not match.
+- A host companion and the dashboard's setup panes start through one
+  `DetachedProcess.start`; the panes now choose their ports under the lock
+  companions choose under, so neither is given the other's port.
+- `LiveProcess` is a view of the roster's bare `Runtime` record, which
+  knows a pid means nothing outside the namespace that numbered it: a
+  process recorded elsewhere is not signalled, and a sandbox's owner is
+  judged the same way. A companion already running — the dashboard among
+  them — is joined as before: its kept record is adopted where its pid and
+  start time still name it, and written back with the scope.
+- `lup.harness.environment.Placement` answers where a process runs —
+  contained, under the runtime's sandbox, inside a session — replacing four
+  predicates that were not each other's negation; which runtime's session
+  it is, `lup.providers.runtime_homes.selected_runtime` answers.
+- The template's environment CLI commits through the library's shared
+  `git`; the CLI's `LaunchRequest` is `LaunchArguments`; `named_apart` and
+  `uniquely_named` are one `distinct_names`; `lup.harness.messaging` is
+  `lup.harness.wake_sockets`.
+- `lup.devtools.subapps.compose` installs the root callback that names the
+  launcher to use while `pyproject.toml` holds conflict markers, so a
+  project's composed CLI no longer carries its own copy of it: drop
+  `report_a_conflicted_manifest` and the `callback()` line wiring it from
+  your `devtools/main.py`.
+
+### What a session's tools did, and whether its transcript holds, have readers
+
+- `uv run lup-devtools tools metrics` shows each tool's calls, errors, error
+  rate and average, fastest and slowest call, per server, over the sessions
+  launched in this checkout — or one session opened in process with
+  `--session`, one launched session with `--member <roster id>`, the
+  processes that recorded a call after a moment with `--since`, the report
+  whole with `--json`.
+- Every tool-server process writes those metrics to a snapshot of its own
+  under its session directory's `metrics/`. The one `metrics.json` every
+  process used to overwrite held whichever of a session's servers wrote
+  last, and nothing read it; it is no longer written, and an old one can be
+  deleted. The directory keeps 30 days and at most 1000 snapshots, pruned as
+  each server starts.
+- A session opened in process records the same tool metrics whichever
+  backend ran it: where a backend runs its tools in subprocesses, the session
+  result now folds in what they wrote, where it used to record none.
+- `uv run lup-devtools trace verify` checks the hash chain of every launch's
+  transcript (`notes/harness/<runtime>/<run>/observable.jsonl`), or the runs
+  named, says where each breaks and how, and exits 1 on a break.
+  `trace events <run>` reads one record by record, `--kind` to narrow it,
+  with the chain's standing first and a line at the record it breaks on.
+- A launched session's transcript is verified as it closes, Claude's and
+  Codex's alike, and a chain that does not hold is said at the terminal.
+- A transcript no longer restarts its chain mid-file after a record longer
+  than 256 KiB: the writer looked only that far back for the last record,
+  found none whole, and read the file as empty. Transcripts written before this that break
+  that way read in `trace verify` as "a second chain starts at record N".
+- `lup.observability.audit.chain_break` replaces `verify_event_chain`,
+  answering where a chain first fails and why rather than whether.
+
 ### Containers starting at once on one config home no longer tear or drop what the others wrote
 
 Several contained sessions of one repository start on its config volume at

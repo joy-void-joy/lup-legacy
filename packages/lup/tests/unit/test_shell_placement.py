@@ -22,8 +22,6 @@ from lup.policy.vocabulary import default_vocabulary
 
 SCRATCH = [PathRoleRow(root="tmp", role="scratch")]
 
-UNREADABLE = "this segment names a file from a directory a `cd` left unreadable"
-
 
 VOCABULARY = erase_shell_rules(default_vocabulary())
 
@@ -87,15 +85,19 @@ def test_a_cd_nothing_here_can_read_leaves_the_words_after_it_unjudged() -> None
             move
         )
     # `pushd` and `popd` are themselves unclassified, so the command already
-    # asks on its own terms; the `cd` spellings are the ones whose refusal has
-    # to come from the directory they left behind.
+    # asks on its own terms; the `cd` spellings are the ones whose question has
+    # to come from the directory they left behind: the path is one only the
+    # run can name, and a deletion of it asks wherever the session runs.
     for move in ("cd $TARGET", "cd ~/work", "cd -", "cd"):
-        verdict = decide_shell(
-            f"{move} && rm -rf tmp/x",
-            erase_shell_rules(default_vocabulary()),
-            path_roles=SCRATCH,
-        )
-        assert UNREADABLE in verdict.reason, move
+        for sandboxed in (False, True):
+            verdict = decide_shell(
+                f"{move} && rm -rf tmp/x",
+                erase_shell_rules(default_vocabulary()),
+                path_roles=SCRATCH,
+                sandboxed=sandboxed,
+            )
+            assert verdict.effect == "ask", (move, sandboxed)
+            assert verdict.headline() == "asks: `rm` — deleting files requires approval", move
 
 
 def test_a_subshell_move_reaches_nothing_after_it() -> None:
@@ -113,8 +115,70 @@ def test_a_move_that_may_not_have_run_leaves_the_directory_unknown() -> None:
         "for n in 1; do cd src; done; rm -rf tmp/x",
         erase_shell_rules(default_vocabulary()),
         path_roles=SCRATCH,
+        sandboxed=True,
     )
-    assert UNREADABLE in verdict.reason
+    assert verdict.effect == "ask"
+    assert verdict.headline() == "asks: `rm` — deleting files requires approval"
+
+
+def test_a_cd_that_failed_left_the_shell_where_it_stood() -> None:
+    """What runs where a `cd` failed runs where the shell already was.
+
+    `||` runs what follows where the command before it failed, `!` swaps the
+    two, and an `if` runs its `else` where its condition failed: a failed
+    `cd` moved nothing, so `cd a || rm x` removes the `x` beside it, which
+    was read as `a/x` -- a scratch file standing in for a protected one.
+    """
+    assert shell_path_verb_targets("cd src || rm a", VOCABULARY) == ["a"]
+    assert shell_path_verb_targets("! cd src && rm a", VOCABULARY) == ["a"]
+    assert shell_path_verb_targets("true && cd src || rm a", VOCABULARY) == ["a"]
+    assert shell_path_verb_targets(
+        "if cd src; then rm a; else rm b; fi", VOCABULARY
+    ) == ["src/a", "b"]
+    assert shell_path_verb_targets("if ! cd src; then rm a; fi", VOCABULARY) == ["a"]
+
+
+def test_a_cd_the_line_passes_unconditionally_is_taken_to_have_succeeded() -> None:
+    """Past a `;`, a `cd` naming its directory is where the shell stands.
+
+    Its failure is followed only where the line routes on it; the
+    `# lup: defer:` note in `placed_andor` says what that leaves open.
+    """
+    assert shell_path_verb_targets("cd src; rm a", VOCABULARY) == ["src/a"]
+    assert shell_path_verb_targets("cd src && true; rm a", VOCABULARY) == ["src/a"]
+    assert shell_path_verb_targets("true && cd src; rm a", VOCABULARY) == []
+
+
+def test_a_move_that_may_or_may_not_have_happened_leaves_the_directory_unknown() -> (
+    None
+):
+    """Where the line itself may have skipped or undone a move, no directory is named.
+
+    A chain whose later command failed after its `cd` ran routes `||` to
+    either place, `time` may run the `cd` in a child, and a loop's second
+    pass starts where its first left the shell. Each path after one is a
+    path only the run can name, and a write to it asks.
+    """
+    for command in (
+        "cd src && true || rm a",
+        "time cd src && rm a",
+        "while true; do cd src; rm a; done",
+    ):
+        assert shell_path_verb_targets(command, VOCABULARY) == [], command
+        verdict = decide_shell(command, VOCABULARY, path_roles=SCRATCH, sandboxed=True)
+        assert verdict.effect == "ask", command
+
+
+def test_a_cd_in_a_process_of_its_own_moves_nothing() -> None:
+    """A pipeline's commands and a backgrounded list each run in a child."""
+    assert shell_path_verb_targets("cd src | rm a", VOCABULARY) == ["a"]
+    assert shell_path_verb_targets("cd src & rm a", VOCABULARY) == ["a"]
+
+
+def test_a_cd_run_through_command_or_builtin_moves_the_shell() -> None:
+    """Both run the builtin in this same shell, so the move is the `cd`'s own."""
+    assert shell_path_verb_targets("command cd src && rm a", VOCABULARY) == ["src/a"]
+    assert shell_path_verb_targets("builtin cd src && rm a", VOCABULARY) == ["src/a"]
 
 
 def test_a_move_inside_a_substitution_stays_inside_it() -> None:

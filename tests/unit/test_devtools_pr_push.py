@@ -18,7 +18,7 @@ import sh
 import typer
 
 from lup.devtools.dev import branches, pr, records
-from lup.harness.process import LocalProcessLauncher
+from lup.execution.process import LocalProcessLauncher
 from tests.unit.repos import commit_file, git_in, initialized_repo
 
 

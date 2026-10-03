@@ -28,6 +28,7 @@ from typing import NoReturn
 import sh
 from pydantic import BaseModel
 
+from lup.execution.git import Repository
 import lup.devtools.dev.library as library
 import lup.devtools.dev.scaffold as scaffold
 from lup.devtools.utils import format_table, refuse, short_sha
@@ -181,16 +182,8 @@ def resolved(repository: Path, revision: str) -> str:
     is about: a short sha, a tag or a branch all become the full commit the
     compile measures and the adoption trailer records.
     """
-    found = git.out(
-        "-C",
-        str(repository),
-        "rev-parse",
-        "--verify",
-        "--quiet",
-        f"{revision}^{{commit}}",
-        _ok_code=[0, 1],
-    )
-    if not found:
+    found = Repository(repository).resolves(revision)
+    if found is None:
         refuse(
             f"names no commit in this project's upstream clone ({repository})",
             what=revision,

@@ -24,12 +24,14 @@ decides the order a sweep lands them in.
 import hashlib
 from collections.abc import Iterator
 from itertools import combinations
+from pathlib import Path
 
 import sh
 import typer
 from pydantic import BaseModel, Field
 
 from lup.devtools.utils import decode_stderr, output_json, refuse, short_sha
+from lup.execution.git import Repository
 from lup.execution.shell import git
 
 # lup: ignore[dict-str-payload] — subject → commit; subjects are open text
@@ -199,11 +201,11 @@ def landing(branch: str, into: str, twins: SubjectTwins) -> Landing:
     )
     tree, conflicted = merged[0], [name for name in merged[1:] if name]
     unique = list(unique_commits(branch, into, twins))
-    listed = git.out("rev-list", "--count", "--no-merges", f"{into}..{branch}")
+    listed = Repository(Path.cwd()).count("--no-merges", f"{into}..{branch}")
     return Landing(
         branch=branch,
         into=into,
-        matched=int(listed) - len(unique),
+        matched=listed - len(unique),
         unique=unique,
         conflicts=conflicted,
         changes=numstat(f"{into}^{{tree}}", tree),

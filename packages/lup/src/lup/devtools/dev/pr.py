@@ -24,6 +24,7 @@ import sh
 import typer
 from pydantic import BaseModel, Field
 
+from lup.execution.git import Repository
 import lup.devtools.dev.records as records
 from lup.devtools.dev.branches import (
     delete_branch,
@@ -91,7 +92,8 @@ class ChecksState(StrEnum):
 
 
 def current_branch() -> str:
-    return git.out("branch", "--show-current")
+    """The branch this checkout stands on, empty on a detached head."""
+    return Repository(Path.cwd()).branch()
 
 
 class ReviewInfo(BaseModel):
@@ -755,8 +757,7 @@ def sync_base(
             sync_complaint=complaint,
         )
     except sh.ErrorReturnCode:
-        unmerged = git.lines("diff", "--name-only", "--diff-filter=U", _ok_code=[0, 1])
-        conflicts = [f for f in unmerged if f]
+        conflicts = [str(path) for path in Repository(Path.cwd()).conflicted()]
         result = SyncBaseResult(
             feature_branch=feature,
             base_branch=base_branch,

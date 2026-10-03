@@ -149,7 +149,7 @@ def opened_with(
         '"source": {"path": "./.codex/plugins/lup", "source": "local"}}]}',
         encoding="utf-8",
     )
-    request = launch.LaunchRequest(sandbox=LaunchSandbox.OUTER, hold_generated=hold)
+    request = launch.LaunchArguments(sandbox=LaunchSandbox.OUTER, hold_generated=hold)
     if runtime == "claude":
         launch.launch_claude(composition(root, "claude"), request, profiles(), False)
     else:

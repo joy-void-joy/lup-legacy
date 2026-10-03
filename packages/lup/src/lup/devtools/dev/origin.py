@@ -39,12 +39,12 @@ import sh
 import typer
 from pydantic import BaseModel
 
+from lup.execution.git import Repository
 from lup.devtools import sync
 from lup.devtools.utils import decode_stderr, gh, short_sha, slug_from_remote
 from lup.execution.shell import git
 from lup.harness.credential import (
     parse_remote,
-    remote_url,
     resolved_host,
     same_repository,
 )
@@ -115,7 +115,7 @@ def point_at_template(root: Path, name: str, dry_run: bool) -> bool:
         typer.echo(f"No '{name}' registration in sync.json, so none to point.")
         return False
     current = sync.registered_repository(registration)
-    found = template_origin(remote_url(root, "origin"))
+    found = template_origin((Repository(root).remote_url("origin") or ""))
     if found.unanswered:
         typer.echo(
             f"Could not ask which template this repository was generated from: "
@@ -174,7 +174,7 @@ def point_at_template(root: Path, name: str, dry_run: bool) -> bool:
         "the next launch materializes and mounts it."
     )
     cached = sync.cached_clone(name)
-    held = remote_url(cached, "origin") if cached is not None else ""
+    held = (Repository(cached).remote_url("origin") or "") if cached is not None else ""
     if cached is not None and held and not same_repository(held, found.repository):
         typer.echo(
             f"  {cached} holds a clone of {held}, which is refused under this "
@@ -534,9 +534,7 @@ def read_base(found: sync.Upstream, stamp: Stamp) -> Base:
         BranchStanding(
             name=ref.removeprefix(f"{namespace}/"),
             tip=git.out("-C", checkout, "rev-parse", ref),
-            past=int(
-                git.out("-C", checkout, "rev-list", "--count", f"{stamp.commit}..{ref}")
-            ),
+            past=Repository(Path(checkout)).count(f"{stamp.commit}..{ref}"),
             default=ref == default,
         )
         for ref in refs
@@ -545,7 +543,7 @@ def read_base(found: sync.Upstream, stamp: Stamp) -> Base:
     return Base(
         stamp=stamp,
         subject=git.out("-C", checkout, "log", "-1", "--format=%s", stamp.commit),
-        repository=remote_url(found.checkout, "origin") or checkout,
+        repository=(Repository(found.checkout).remote_url("origin") or "") or checkout,
         branches=sorted(branches, key=lambda branch: not branch.default),
         default=default.removeprefix(f"{namespace}/"),
     )
@@ -570,7 +568,7 @@ def report_base(
         report(f"No '{name}' registration in sync.json, so no repository to read from.")
         return False
     registered = sync.registered_repository(registration)
-    template = template_origin(remote_url(root, "origin"))
+    template = template_origin((Repository(root).remote_url("origin") or ""))
     if template.repository and not same_repository(template.repository, registered):
         report(
             f"This repository was generated from {template.repository}, while "

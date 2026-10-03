@@ -29,8 +29,8 @@ import lup.devtools.dev.worktree as worktree
 from lup.devtools.dev.conflict_app import create_conflict_app
 from lup.devtools.dev.declarations import DevDeclarations
 from lup.devtools.harness.launch import relocation_hint
-from lup.harness.process import LocalProcessLauncher
 from lup.policy.kernel.diagnostic import devtools, step
+from lup.execution.process import LocalProcessLauncher
 from lup.policy.vocabulary import protected_branches
 from lup.workspace.paths import project_root
 from lup.devtools.git.prepare import prepare

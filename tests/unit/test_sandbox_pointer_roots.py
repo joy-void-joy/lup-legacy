@@ -19,7 +19,7 @@ import typer
 from lup.launch.pointer_trust import judged_roots, launcher_state_exposure
 from lup.launch.refusal import LaunchRefused
 from lup.execution.shell import git
-from lup.harness.process import ExitStatus, LaunchRequest, ProcessLauncher
+from lup.execution.process import ExitStatus, LaunchRequest, ProcessLauncher
 from lup.sandbox.checked import PointerCheckedLauncher, RedirectedPointer
 from lup.sandbox.known import known_repositories, remember, store_directory
 from lup.sandbox.pointers import pointer_drift, tree_checkouts, verdict

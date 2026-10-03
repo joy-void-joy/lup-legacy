@@ -8,6 +8,7 @@ import sh
 import typer
 
 from lup.devtools import sync
+from lup.execution.git import Repository
 from tests.unit.repos import commit_file, git_in, initialized_repo
 
 
@@ -58,8 +59,8 @@ def test_fetch_reads_remote_tip_without_moving_registered_checkout(
     found = sync.existing_upstream(sync.find_project("lib"))
 
     assert found is not None
-    assert sync.git_in(str(found.checkout), "rev-parse", found.tip) == after
-    assert sync.git_in(str(work), "rev-parse", "HEAD") == before
+    assert Repository(Path(str(found.checkout))).answer("rev-parse", found.tip) == after
+    assert Repository(Path(str(work))).answer("rev-parse", "HEAD") == before
     assert (work / "dirty").read_text() == "keep me"
     sync.status_cmd()
     assert "refs/remotes/origin/dev" in capsys.readouterr().out

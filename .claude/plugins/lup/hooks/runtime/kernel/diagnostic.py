@@ -9,7 +9,7 @@ a check can ask the CLI that serves it whether it exists.
 
 As text, a diagnostic reads:
 
-    refused: `pip install` — changes packages outside this project's lockfile
+    refused: `pip` — changes packages outside this project's lockfile
     → `uv add requests`
     → or resubmit it with a first line `# lup: escalate[decision]: <why>`
     see docs/permissions.md

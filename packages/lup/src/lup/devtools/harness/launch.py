@@ -37,7 +37,7 @@ from lup.harness.generate import NativeHarnessComposition
 from lup.harness.image import Image, MemoryLimit
 from lup.harness.models import Harness, NativeName, Plugin, Resumption
 from lup.harness.notice import Notice
-from lup.harness.process import LocalProcessLauncher
+from lup.execution.process import LocalProcessLauncher
 from lup.launch.companions import HostCompanion
 from lup.launch.declaration import (
     InnerSandbox,
@@ -60,6 +60,7 @@ from lup.launch.refusal import LaunchRefused
 from lup.launch.session import StandingGrants, personal_config
 from lup.observability.sessions import SessionRecorder
 from lup.policy.kernel.diagnostic import devtools, step
+from lup.providers.runtime_homes import selected_runtime
 from lup.providers.claude import Claude, ClaudeTools
 from lup.providers.claude.harness import ClaudeSpellings
 from lup.providers.claude.launch import companion_plugin_directories
@@ -166,17 +167,19 @@ def relocation_hint(worktree_path: Path) -> RelocationHint:
     environ = os.environ  # lup: ignore[os-environ]
     move = f"cd /; cd {worktree_path}"
     here = "the path above"
-    if "CLAUDE_CONFIG_DIR" in environ:
-        return RelocationHint(
-            agent=ClaudeSpellings().relocate_session(here),
-            shell=f"{move}; claude",
-        )
-    if "CODEX_HOME" in environ:
-        return RelocationHint(
-            agent=CodexSpellings().relocate_session(here),
-            shell=f"{move}; codex",
-        )
-    return RelocationHint(agent="", shell=move)
+    match selected_runtime(dict(environ)):
+        case "claude":
+            return RelocationHint(
+                agent=ClaudeSpellings().relocate_session(here),
+                shell=f"{move}; claude",
+            )
+        case "codex":
+            return RelocationHint(
+                agent=CodexSpellings().relocate_session(here),
+                shell=f"{move}; codex",
+            )
+        case None:
+            return RelocationHint(agent="", shell=move)
 
 
 class LaunchMode(BaseModel, frozen=True, arbitrary_types_allowed=True):
@@ -386,7 +389,7 @@ class StatedLaunch(TypedDict, total=False):
     record: Recording
 
 
-class LaunchRequest(BaseModel, frozen=True, arbitrary_types_allowed=True):
+class LaunchArguments(BaseModel, frozen=True, arbitrary_types_allowed=True):
     """What one `harness claude|codex` command line asked for, before it is a declaration."""
 
     words: list[str] = []
@@ -707,7 +710,7 @@ def held_services(harness: Harness) -> list[HostCompanion]:
 
 def claude_declaration(
     composition: NativeHarnessComposition,
-    request: LaunchRequest,
+    request: LaunchArguments,
     profiles: ProfileDirectory,
     settle: bool = True,
 ) -> Claude:
@@ -781,7 +784,7 @@ def claude_declaration(
 
 def codex_declaration(
     composition: NativeHarnessComposition,
-    request: LaunchRequest,
+    request: LaunchArguments,
     home: Path | None,
     settle: bool = True,
 ) -> Codex:
@@ -935,7 +938,7 @@ def exited(status: int) -> None:
 @usage_refusals()
 def launch_claude(
     composition: NativeHarnessComposition,
-    request: LaunchRequest,
+    request: LaunchArguments,
     profiles: ProfileDirectory,
     generate_only: bool,
     checkpoint: LaunchCheckpoint | None = None,
@@ -963,7 +966,7 @@ def launch_claude(
 @usage_refusals()
 def launch_codex(
     composition: NativeHarnessComposition,
-    request: LaunchRequest,
+    request: LaunchArguments,
     codex_home: Path | None,
     generate_only: bool,
     force_install: bool,

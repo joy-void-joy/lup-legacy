@@ -444,6 +444,13 @@ PATH_RULES: list[PathRuleRow] = [
     },
     {
         "kind": "subtree",
+        "value": "packages/lup/src/lup/formats/banner.py",
+        "reason": "protected path requires approval",
+        "recovery": [],
+        "allow_autonomous": False,
+    },
+    {
+        "kind": "subtree",
         "value": "packages/lup/src/lup/harness/models.py",
         "reason": "protected path requires approval",
         "recovery": [],
