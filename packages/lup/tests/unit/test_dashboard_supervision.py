@@ -157,6 +157,25 @@ def test_a_redirect_is_left_for_the_next_tool_call_it_refuses(
     assert left.redirect and left.carried
 
 
+def test_a_redirect_to_a_member_with_no_delivery_hook_says_nothing_will_refuse_for_it(
+    tmp_path: Path,
+) -> None:
+    """Queued all the same, and the operator is told it will not stop that member's next call."""
+    peers = RepositoryPeers(tmp_path)
+    member = mint_member_id()
+    peers.join(member, tmp_path / "bare", cli_name="bare")
+
+    outcome = reply(
+        known(tmp_path),
+        member,
+        MessageRequest(text="stop: wrong branch", redirect=True),
+    )
+
+    assert not outcome.woken
+    assert outcome.detail.startswith("Queued as a redirect in its mailbox, though it")
+    assert [message.redirect for message in peers.waiting(member).messages] == [True]
+
+
 def test_now_asks_a_claude_turn_to_stop_for_the_message(
     tmp_path: Path, woken: Wakes
 ) -> None:

@@ -262,9 +262,13 @@ def handed(
             else "Queued in its mailbox; it is handed over before its next tool call."
         )
         return queued.model_copy(update={"detail": said})
-    return queued.model_copy(
-        update={"detail": f"Queued in its mailbox. {woken.reason}"}
+    kept = (
+        "Queued as a redirect in its mailbox, though it declared no delivery hook "
+        "to refuse its next tool call with it."
+        if redirected
+        else "Queued in its mailbox."
     )
+    return queued.model_copy(update={"detail": f"{kept} {woken.reason}"})
 
 
 def interruptible(peers: RepositoryPeers, row: RosterMember) -> RosterMember:
