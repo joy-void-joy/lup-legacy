@@ -19,12 +19,14 @@ corrupted file.
 bundles; only somebody changing frontend code needs the toolchain. Bun has no
 verb that restores the workspace and then runs, the way `uv run` syncs before
 running, so the build restores it itself: where `node_modules` is missing or
-behind `bun.lock`, :func:`restore_dependencies` runs the frozen install first
-— every package pinned by integrity hash, nothing resolved anew — and the
-gate's `bun test` row does the same before it runs.
+is not what `bun.lock` lays down, :func:`restore_dependencies` lays it down
+afresh with the frozen install — every package pinned by integrity hash,
+nothing resolved anew, nothing left from an earlier install — and the gate's
+`bun test` row does the same before it runs. A bundle is then a function of
+the sources its proof digests, whichever checkout and directory built it.
 """
 
-import os
+import shutil
 from importlib.metadata import version
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -33,6 +35,8 @@ import sh
 from pydantic import BaseModel
 
 from lup.devtools.dev.library import DISTRIBUTION
+from lup.devtools.dev.tracked import tracked_files
+from lup.execution.locks import exclusive
 from lup.execution.shell import LazyCommand
 from lup.formats.banner import REGENERATE_COMMAND, VERBATIM_COPY
 from lup.harness.materialization import AtomicMaterializer
@@ -73,6 +77,7 @@ def source_files(
     globs: tuple[str, ...] = (
         "package.json",
         "bun.lock",
+        "bunfig.toml",
         "tsconfig.json",
         "vite.config.ts",
         "schema/**/*",
@@ -82,15 +87,24 @@ def source_files(
     """Every file the bundles are built from, in one stable order.
 
     The globs are what a bundle is compiled from, and therefore what its proof
-    digests; a workspace laid out differently names its own. `src/generated/`
+    digests; a workspace laid out differently names its own. `bunfig.toml` is
+    one, since every bun command the build runs reads it, down to which
+    runtime runs the build script. Only what a clone
+    of the checkout holds counts — tracked, or new and not ignored. A file git
+    ignores under `src/` is a tool's state or a build's scratch that no import
+    reaches, and digesting it would make the proof hold only in the checkout
+    holding that file, so every other checkout would rebuild. `src/generated/`
     is left out whatever the globs say: it is compiled from the schema at
     build time, so the schema already stands for it.
     """
+    held = {workspace / path for path in tracked_files(others=True, root=workspace)}
     found = {
         path
         for pattern in globs
         for path in workspace.glob(pattern)
-        if path.is_file() and "generated" not in path.relative_to(workspace).parts
+        if path in held
+        and path.is_file()
+        and "generated" not in path.relative_to(workspace).parts
     }
     return sorted(found)
 
@@ -114,47 +128,86 @@ def toolchain_output(failed: sh.ErrorReturnCode) -> str:
     )
 
 
-def dependencies_behind(workspace: Path, lockfile: str = "bun.lock") -> bool:
-    """Whether the workspace's dependencies are missing or older than its lockfile.
+def restored_from(
+    workspace: Path, lockfile: str = "bun.lock", record: str = ".lup-restored"
+) -> bool:
+    """Whether a restore's record in `node_modules` names the lockfile as it stands.
+
+    The record is the lockfile's digest, or empty for a workspace that has
+    none, which is what :func:`restore_dependencies` writes once bun is done.
+    """
+    restored = workspace / "node_modules" / record
+    locked = digest.file(workspace / lockfile) or ""
+    return restored.is_file() and restored.read_text(encoding="utf-8") == locked
+
+
+def dependencies_behind(
+    workspace: Path, lockfile: str = "bun.lock", record: str = ".lup-restored"
+) -> bool:
+    """Whether the workspace's dependencies are missing or not what its lockfile lays down.
 
     Bun writes nothing under `node_modules` saying which lockfile it
-    restored, so the directory's own timestamp stands for that record:
-    :func:`restore_dependencies` dates a restore after the lockfile it read,
-    and a lockfile that moved since — a checkout, a merge, a `bun add` — is
-    newer than the tree it describes. A workspace with no lockfile has
+    restored, so :func:`restore_dependencies` writes that record itself, as
+    ``record`` inside `node_modules`: the digest of the lockfile it laid the
+    tree down from. A tree whose record is missing or names another lockfile
+    is behind — a checkout, a merge or a `bun add` moved the lockfile since,
+    or nothing here laid the tree down. A workspace with no lockfile has
     nothing to be behind, so its dependencies are behind only while absent.
     """
-    installed = workspace / "node_modules"
-    if not installed.is_dir():
+    if not (workspace / "node_modules").is_dir():
         return True
-    locked = workspace / lockfile
-    return locked.is_file() and locked.stat().st_mtime > installed.stat().st_mtime
+    return (workspace / lockfile).is_file() and not restored_from(
+        workspace, lockfile, record
+    )
 
 
-def restore_dependencies(workspace: Path) -> bool:
-    """Restore the workspace's dependencies from its lockfile where they are behind it.
+def restore_dependencies(
+    workspace: Path, lockfile: str = "bun.lock", record: str = ".lup-restored"
+) -> bool:
+    """Lay the workspace's dependencies down afresh from its lockfile where they are behind it.
 
     What `uv run` does before running anything, for a toolchain that has no
     verb for it: `bun test` and `bun run build` assume `node_modules`, so
     whatever runs them restores it first — from the lockfile as frozen, every
     package pinned by integrity hash and nothing resolved anew, which is the
-    restore the policy allows unasked. A restore that fails raises naming the
-    command with bun's own output, so the row or generation reporting it says
-    what to run by hand. Returns whether a restore ran, for a caller that
-    reports its work.
+    restore the policy allows unasked.
+
+    Afresh, because bun installing over a tree already there adds and
+    replaces what the lockfile names and removes nothing it does not. A
+    package one lockfile nested under its dependent and the next hoists
+    keeps its nested copy, the bundler resolves that copy, and a checkout
+    holding one builds a different bundle from the same commit as every
+    other. So every entry of `node_modules` goes first, the record with them,
+    and the frozen install lays down the lockfile's tree and nothing else;
+    the record is written once bun is done, so a restore cut short is still
+    behind. A lock beside the record has two restorers of one checkout take
+    turns, and the second finds the tree current.
+
+    A restore that fails raises naming the command with bun's own output, so
+    the row or generation reporting it says what to run by hand. Returns
+    whether a restore ran, for a caller that reports its work.
     """
-    if not dependencies_behind(workspace):
+    if not dependencies_behind(workspace, lockfile, record):
         return False
-    try:
-        BUN("install", "--frozen-lockfile", _cwd=str(workspace))
-    except sh.ErrorReturnCode as failed:
-        raise RuntimeError(
-            f"`bun install --frozen-lockfile` in {workspace} failed:\n"
-            f"{toolchain_output(failed)}"
-        ) from failed
-    # Dated after the lockfile it read, so the next reading finds nothing
-    # behind whether or not bun itself touched the directory.
-    os.utime(workspace / "node_modules")
+    installed = workspace / "node_modules"
+    lock = installed / f"{record}.lock"
+    with exclusive(lock):
+        if restored_from(workspace, lockfile, record):
+            return False
+        for entry in (path for path in installed.iterdir() if path != lock):
+            if entry.is_dir() and not entry.is_symlink():
+                shutil.rmtree(entry)
+            else:
+                entry.unlink()
+        try:
+            BUN("install", "--frozen-lockfile", _cwd=str(workspace))
+        except sh.ErrorReturnCode as failed:
+            raise RuntimeError(
+                f"`bun install --frozen-lockfile` in {workspace} failed:\n"
+                f"{toolchain_output(failed)}"
+            ) from failed
+        locked = digest.file(workspace / lockfile)
+        (installed / record).write_text(locked or "", encoding="utf-8")
     return True
 
 

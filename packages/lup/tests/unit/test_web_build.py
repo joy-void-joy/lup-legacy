@@ -7,7 +7,6 @@ the rest is exercised over a bundle written by hand.
 """
 
 import json
-import os
 import shutil
 import threading
 import tomllib
@@ -18,12 +17,17 @@ import sh
 from fastapi.testclient import TestClient
 
 from lup.devtools.surfaces import EXPLORER, LIBRARY_SURFACES
+from lup.execution.shell import git
+from lup.formats import digest
 from lup.harness.ownership import OWNERSHIP_FILENAME, load_manifest
 from lup.web.build import (
+    BUN,
     Surface,
     dependencies_behind,
+    proof_holds,
     restore_dependencies,
     source_digest,
+    source_files,
     write_web_bundles,
 )
 from lup.web.schema import view_schema, write_view_schema
@@ -184,9 +188,17 @@ def test_a_missing_bundle_is_refused_naming_the_command(tmp_path: Path) -> None:
         bundle_app("Explorer", "http://127.0.0.1:1", "explorer", tmp_path / "none")
 
 
+def repository(root: Path) -> Path:
+    """``root`` as a checkout of its own, which is what tells a source from scratch."""
+    root.mkdir(parents=True, exist_ok=True)
+    git("init", "-q", "-b", "main", str(root))
+    return root
+
+
 def test_source_digest_moves_with_the_sources_and_not_with_generated_types(
     tmp_path: Path,
 ) -> None:
+    repository(tmp_path)
     (tmp_path / "src" / "explorer").mkdir(parents=True)
     (tmp_path / "src" / "generated").mkdir()
     (tmp_path / "package.json").write_text("{}\n", encoding="utf-8")
@@ -196,6 +208,25 @@ def test_source_digest_moves_with_the_sources_and_not_with_generated_types(
     (tmp_path / "src" / "generated" / "views.d.ts").write_text("t", encoding="utf-8")
     assert source_digest(tmp_path) == before
     (tmp_path / "src" / "explorer" / "App.tsx").write_text("two", encoding="utf-8")
+    assert source_digest(tmp_path) != before
+
+
+def test_source_digest_reads_what_a_clone_holds_and_nothing_git_ignores(
+    tmp_path: Path,
+) -> None:
+    """A tool's state dropped under `src/` is no source, or the proof would
+    hold only in the checkout holding it and every other checkout rebuild."""
+    repository(tmp_path)
+    (tmp_path / ".gitignore").write_text(".lup/\n", encoding="utf-8")
+    (tmp_path / "src" / "dashboard").mkdir(parents=True)
+    (tmp_path / "src" / "dashboard" / "App.tsx").write_text("one", encoding="utf-8")
+    before = source_digest(tmp_path)
+
+    state = tmp_path / "src" / "dashboard" / ".lup" / "script-runs.json"
+    state.parent.mkdir()
+    state.write_text("{}", encoding="utf-8")
+    assert source_digest(tmp_path) == before
+    (tmp_path / "src" / "dashboard" / "Fresh.tsx").write_text("new", encoding="utf-8")
     assert source_digest(tmp_path) != before
 
 
@@ -221,6 +252,73 @@ def test_write_web_bundles_builds_owns_and_verifies(tmp_path: Path) -> None:
     (landed / "explorer" / "index.html").write_text("edited\n", encoding="utf-8")
     with pytest.raises(RuntimeError, match="behind"):
         write_web_bundles(WORKSPACE, bundles, [EXPLORER], tmp_path, check=True)
+
+
+def stray_state(workspace: Path) -> None:
+    """What a checkout collects beside its sources and the proof never reads.
+
+    A tool's state under `src/` and an env file setting `NODE_ENV`, both
+    ignored, and a tree bun itself laid down holding a package copy an
+    earlier install nested where the current lockfile nests none. Bun reads
+    that tree as current and leaves the copy, and the copy is a stub, so no
+    build resolving it matches the committed one.
+    """
+    (workspace / ".gitignore").write_text(".lup/\n.env\n", encoding="utf-8")
+    BUN("install", "--frozen-lockfile", _cwd=str(workspace))
+    state = workspace / "src" / "dashboard" / ".lup" / "script-runs.json"
+    state.parent.mkdir(parents=True)
+    state.write_text('{"tmp/x.py": 7}\n', encoding="utf-8")
+    (workspace / "src" / "explorer" / ".env").write_text(
+        "NODE_ENV=development\n", encoding="utf-8"
+    )
+    nested = "node_modules/@tanstack/react-table/node_modules/@tanstack/react-store"
+    (workspace / nested).mkdir(parents=True)
+    (workspace / nested / "package.json").write_text(
+        '{"name": "@tanstack/react-store", "version": "0.0.0", "main": "index.js"}\n',
+        encoding="utf-8",
+    )
+    (workspace / nested / "index.js").write_text("export {};\n", encoding="utf-8")
+
+
+@pytest.mark.skipif(
+    shutil.which("bun") is None or not (WORKSPACE / "node_modules").is_dir(),
+    reason="the frontend toolchain is not installed here",
+)
+def test_the_committed_bundles_are_what_their_sources_build_anywhere(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A bundle is a function of the sources its proof digests, and of nothing else.
+
+    The sources alone, copied to a directory no checkout uses, beside the
+    stray state a checkout collects and under a caller whose environment asks
+    for a development build, build every surface's committed tree byte for
+    byte, the proof with it. That is what lets a holding proof stand for a
+    build: where it fails, two checkouts of one commit build two bundles, and
+    whichever regenerates leaves its tree dirty.
+    """
+    top = PACKAGE.parents[1]
+    workspace = WORKSPACE.relative_to(top)
+    bundles = PACKAGE.relative_to(top) / "src" / "lup" / "web" / "bundles"
+    prior = load_manifest(top / bundles / OWNERSHIP_FILENAME)
+    if prior is None or not proof_holds(prior, top, WORKSPACE):
+        pytest.skip(
+            "the bundles are behind their sources, which the drift check reports"
+        )
+    elsewhere = repository(tmp_path / "elsewhere" / "deeper")
+    for source in source_files(WORKSPACE):
+        copy = elsewhere / workspace / source.relative_to(WORKSPACE)
+        copy.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, copy)
+    stray_state(elsewhere / workspace)
+    monkeypatch.setenv("NODE_ENV", "development")
+
+    write_web_bundles(workspace, bundles, LIBRARY_SURFACES, elsewhere)
+
+    def tree(root: Path) -> dict[str, str | None]:
+        files = sorted(path for path in root.rglob("*") if path.is_file())
+        return {path.relative_to(root).as_posix(): digest.file(path) for path in files}
+
+    assert tree(elsewhere / bundles) == tree(top / bundles)
 
 
 def recorded_restores(
@@ -259,25 +357,49 @@ def test_missing_dependencies_are_restored_and_current_ones_left_alone(
     assert len(restores) == 1
 
 
-def test_dependencies_older_than_the_lockfile_are_restored_once(
+def test_a_lockfile_that_moved_since_the_restore_is_restored_once(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A lockfile that moved after the install — a checkout, a merge — is what
-    a copied `node_modules` is behind; the restore dates it current again."""
+    """A checkout, a merge or a `bun add` moves the lockfile under a tree laid
+    down from the last one; the record names that one, so the tree is behind."""
     workspace = tmp_path / "web"
-    installed = workspace / "node_modules"
-    installed.mkdir(parents=True)
+    workspace.mkdir()
     lockfile = workspace / "bun.lock"
     lockfile.write_text("{}\n", encoding="utf-8")
-    earlier = lockfile.stat().st_mtime - 60
-    os.utime(installed, (earlier, earlier))
     restores = recorded_restores(monkeypatch)
+    restore_dependencies(workspace)
 
+    lockfile.write_text('{"lockfileVersion": 1}\n', encoding="utf-8")
     assert dependencies_behind(workspace)
     assert restore_dependencies(workspace)
     assert not dependencies_behind(workspace)
     assert not restore_dependencies(workspace)
-    assert len(restores) == 1
+    assert len(restores) == 2
+
+
+def test_a_restore_leaves_nothing_an_earlier_install_left(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Bun installing over a tree keeps a nested copy its lockfile no longer
+    names, and the bundler resolves it: a checkout holding one built another
+    bundle from the same commit. A tree nothing here laid down is behind, and
+    its restore starts from nothing."""
+    workspace = tmp_path / "web"
+    lockfile = workspace / "bun.lock"
+    stray = workspace / "node_modules/@tanstack/react-table/node_modules/@tanstack"
+    (stray / "react-store").mkdir(parents=True)
+    (stray / "react-store" / "package.json").write_text("{}\n", encoding="utf-8")
+    (workspace / "node_modules" / ".bin").mkdir()
+    (workspace / "node_modules" / ".bin" / "vite").symlink_to("../vite/bin/vite.js")
+    lockfile.write_text("{}\n", encoding="utf-8")
+    recorded_restores(monkeypatch)
+
+    assert dependencies_behind(workspace)
+    assert restore_dependencies(workspace)
+
+    left = [path.name for path in (workspace / "node_modules").iterdir()]
+    assert sorted(left) == [".lup-restored", ".lup-restored.lock"]
+    assert not dependencies_behind(workspace)
 
 
 def test_a_workspace_without_a_lockfile_is_behind_only_while_bare(
@@ -310,7 +432,7 @@ def test_a_failed_restore_names_the_command_and_carries_buns_output(
 def test_the_build_restores_a_workspace_without_dependencies_first(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    workspace = tmp_path / "web"
+    workspace = repository(tmp_path) / "web"
     (workspace / "src" / "explorer").mkdir(parents=True)
     (workspace / "package.json").write_text("{}\n", encoding="utf-8")
     restores = recorded_restores(monkeypatch)
@@ -334,7 +456,7 @@ def test_the_build_runs_where_the_proof_no_longer_holds_and_nowhere_else(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """A holding proof is current in either mode; a check never builds."""
-    workspace = tmp_path / "web"
+    workspace = repository(tmp_path) / "web"
     (workspace / "node_modules").mkdir(parents=True)
     (workspace / "src" / "explorer").mkdir(parents=True)
     (workspace / "package.json").write_text("{}\n", encoding="utf-8")

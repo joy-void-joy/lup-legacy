@@ -94,14 +94,14 @@ reads_stdin = false
 command = "uv run lup-devtools git settle"
 hook = "post-merge"
 standdown = {kind = "lup.devtools.dev.git_guards:NoMergeCommit"}
-refusal = "Refuses nothing, since the merge commit is already made: what regeneration writes over it was not folded in, so its generated trees may be stale until `uv run lup-devtools git settle` does."
+refusal = "Refuses nothing, since the merge is already made, but its generated trees may not match their source: a merge commit this checkout made stays so until `uv run lup-devtools git settle` folds regeneration in, and one it fast-forwarded onto is for the branch that made it to regenerate."
 reads_stdin = false
 
 [[tool.lup.git-guards]]
 command = "uv run lup-devtools git settle"
 hook = "post-commit"
 standdown = {kind = "lup.devtools.dev.git_guards:NoMergeCommit"}
-refusal = "Refuses nothing, since the merge commit is already made: what regeneration writes over it was not folded in, so its generated trees may be stale until `uv run lup-devtools git settle` does."
+refusal = "Refuses nothing, since the merge is already made, but its generated trees may not match their source: a merge commit this checkout made stays so until `uv run lup-devtools git settle` folds regeneration in, and one it fast-forwarded onto is for the branch that made it to regenerate."
 reads_stdin = false
 
 [tool.uv]
