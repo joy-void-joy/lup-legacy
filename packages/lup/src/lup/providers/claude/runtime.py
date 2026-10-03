@@ -45,6 +45,7 @@ from lup.coordination.repository import launched_member
 from lup.launch.companions import CompanionLaunch, Joined, held_around
 from lup.launch.compilation import (
     allowance_environment,
+    held_hooks,
     inherited_environment,
     kept_record,
     semantic_hooks,
@@ -842,19 +843,28 @@ class ClaudeSessionOpener:
             )
         config = compiled_claude(declared)
         policy = declared.enforced_policy()
+        root = declared.cwd or Path.cwd()
+        launched = (
+            launched_member(root, declared.identity.name)
+            if declared.identity is not None
+            else None
+        )
         if policy is not None:
             judged = semantic_hooks(policy, declared.sandbox, CLAUDE_SEMANTICS)
+            # A session on the roster is held before anything judges its call,
+            # as the plugin holds a launched one.
+            if launched is not None:
+                judged = merge_hooks(
+                    held_hooks(policy, root, launched.member_id), judged
+                )
             hooks = (
                 judged if config.hooks is None else merge_hooks(judged, config.hooks)
             )
             config = config.model_copy(update={"hooks": hooks})
-        if declared.identity is None:
+        if launched is None:
             return config
-        member = launched_member(
-            declared.cwd or Path.cwd(), declared.identity.name
-        ).environment()
         return config.model_copy(
-            update={"environment": {**config.environment, **member}}
+            update={"environment": {**config.environment, **launched.environment()}}
         )
 
     @asynccontextmanager

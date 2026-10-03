@@ -41,6 +41,7 @@ from kernel.documents import (
 )
 from kernel.policy_protocol import read_response, routing_failure
 from coordination import store
+from coordination.holds import Waiting, covering, held_call, holds_placed, refusal
 from coordination.runtime import stdin_runtime
 from kernel.edit import (
     awaits_resolution,
@@ -100,6 +101,7 @@ from policy_data import (
     RESOLUTION_COMMAND,
     DENIED_FETCH_SCOPES,
     EDIT_RULES,
+    HOLD_SECONDS,
     IMPORT_BOUNDARIES,
     KNOWN_ALLOWANCES,
     MAXIMUM_ADDED_LINES,
@@ -406,10 +408,23 @@ def opened_deadline(seconds: float, grace: float = 2.0) -> str:
     return previous
 
 
+def judgement_opened() -> None:
+    """Start the judgement's own window now, as a hold lets a call go.
+
+    A judgement is bounded from the moment it may begin. A held call was
+    never being judged, so the hold's minutes are no part of the judgement's
+    seconds: every deadline after this counts from this stamp, as it counts
+    from the guard's where nothing held the call.
+    """
+    environ = os.environ  # lup: ignore[os-environ]
+    environ["LUP_HOOK_STARTED"] = repr(time.time())
+
+
 def answered_in_time(
     seconds: float,
     judged: Callable[[bytes], None],
     unanswered: Callable[[bytes, BaseException | None], None],
+    held: Callable[[bytes], bool | None],
 ) -> None:
     """Answer within ``seconds`` of the hook starting, whatever the judgement does.
 
@@ -437,6 +452,15 @@ def answered_in_time(
     event reads, in the words :func:`unjudged_reason` and
     :func:`unjudged_recovery` give it. The input is whatever arrived, which
     is nothing where it did not all arrive in time.
+
+    ``held`` comes first, before anything is judged: it keeps the call
+    waiting for as long as a hold covers its caller, and says how that
+    ended. True is a call it refused itself, still held at the hold's own
+    limit, and nothing more is written; False is a call a hold kept waiting
+    and then let go, whose judgement gets its whole ``seconds`` from that
+    moment -- which is how a call the operator held for an hour is never
+    refused as one nobody judged in time; None is a call nothing held, or
+    an event no hold reaches, whose bound stays where the guard started it.
     """
     limit = hook_started() + seconds
 
@@ -480,6 +504,14 @@ def answered_in_time(
     except TimeoutError:
         unanswered(b"", None)
         return
+    match held(given):
+        case True:
+            return
+        case False:
+            judgement_opened()
+            limit = hook_started() + seconds
+        case None:
+            pass
     sys.stdout.flush()
     sys.stderr.flush()
     said_out, said_in = os.pipe()
@@ -5373,6 +5405,48 @@ def answering_member(directory: Path | None) -> str:
     if directory is None:
         return launched
     return store.own_member(directory, launched, stdin_runtime())
+
+
+def held_refusal(
+    tool_name: str,
+    call: str,
+    cwd: Path | None,
+    caller_of: Callable[[], store.Caller],
+    began: float,
+) -> str | None:
+    """Hold one call while a hold covers its caller; how the hold ended.
+
+    None where nothing covers the caller, which is nearly always: the call
+    was never held. Otherwise this waits, reading the store each second, so
+    a resume lets the call go within one, and answers "" once it does. A
+    call still held :data:`HOLD_SECONDS` after *began* -- the hook's start,
+    on the monotonic clock -- is answered the one sentence its refusal says,
+    short of the runtime's own timeout, which would let it run. A caller this
+    repository's roster cannot name -- no store, nothing launched it -- is
+    never held. Which conversation made the call is asked of *caller_of*
+    only where some hold is placed, so a call nothing holds reads no more
+    than the store's hold directory.
+    """
+    directory = peer_directory(cwd)
+    if directory is None or not holds_placed(directory):
+        return None
+    session = answering_member(directory)
+    if not session:
+        return None
+    caller = caller_of()
+    member = store.acting_id(session, caller)
+    parent = session if store.text(caller.get("agent_id")) else ""
+    if not covering(directory, member, parent):
+        return None
+    holds = held_call(
+        directory,
+        member,
+        Waiting(tool=tool_name, call=call),
+        began,
+        HOLD_SECONDS,
+        parent=parent,
+    )
+    return refusal(holds) if holds else ""
 
 
 def peer_send_decision(values: list[str], cwd: Path | None) -> KernelDecision:

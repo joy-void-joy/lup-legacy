@@ -1872,6 +1872,23 @@ class HookSet(BaseModel, frozen=True):
             "refuses, each derived from this so it answers inside it"
         ),
     )
+    hold_seconds: int = Field(
+        default=86400,
+        ge=60,
+        description=(
+            "Seconds a hook keeps one tool call waiting while the operator's "
+            "pause or a budget holds the agent making it, before refusing it "
+            "with the hold's words and a request to retry, which is held "
+            "afresh. Both runtimes let a call run once its hook overruns the "
+            "timeout its plugin declares, so a holding hook declares this "
+            "plus `policy_timeout` and refuses at this mark, never reaching "
+            "that timeout. Measured on Claude Code 2.1.285: a declared "
+            "timeout up to 10^16 seconds is honoured, and a call held 65 "
+            "minutes ran cleanly once let go; Codex 0.159.2 bounds no hook's "
+            "timeout. A day, so an agent paused overnight is asked to retry "
+            "no more than once"
+        ),
+    )
     sandbox: HookSandbox | None = None
     unjudged_ambient: UnjudgedAmbient = Field(
         default="ask",
