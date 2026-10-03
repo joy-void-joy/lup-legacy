@@ -40,6 +40,7 @@ from lup.harness.models import (
     Harness,
     Skill,
 )
+from lup.harness.ownership import GeneratedArtifacts, generated_artifacts
 from lup.harness.validation import validated_tree
 from lup.policy.models import ProtectedRoot
 from lup.policy.review import ReviewedFile
@@ -60,6 +61,20 @@ class AdapterName(StrEnum):
     CODEX = "codex"
 
 
+def spellings_of(adapter: AdapterName) -> NativeSpellings:
+    """One runtime's whole vocabulary, by the name a caller means it by.
+
+    The one place a runtime's name is matched to the adapter that spells it,
+    so a module needing one runtime's tree reads it here rather than writing
+    the path down.
+    """
+    match adapter:
+        case AdapterName.CLAUDE:
+            return ClaudeSpellings()
+        case AdapterName.CODEX:
+            return CodexSpellings()
+
+
 def every_runtime() -> list[NativeSpellings]:
     """Every runtime this library supports, in the order prose names them.
 
@@ -67,7 +82,17 @@ def every_runtime() -> list[NativeSpellings]:
     the others: prompts that teach every tree name them in this order, and
     the policy protects each one's own tree.
     """
-    return [ClaudeSpellings(), CodexSpellings()]
+    return [spellings_of(adapter) for adapter in AdapterName]
+
+
+def runtime_plugin_directories() -> list[Path]:
+    """Where every supported runtime renders its plugin trees, as each adapter says.
+
+    All of them, whichever runtime a session runs, for the reason
+    :func:`runtime_trees` gives: a hand edit in one runtime's generated tree
+    is no less a build product edited because the other runtime is running.
+    """
+    return [Path(runtime.plugins_directory) for runtime in every_runtime()]
 
 
 def runtime_trees() -> list[ProtectedRoot]:
@@ -79,6 +104,17 @@ def runtime_trees() -> list[ProtectedRoot]:
     about the session that reads them.
     """
     return [runtime.protected_tree for runtime in every_runtime()]
+
+
+def runtime_generated(root: Path) -> GeneratedArtifacts:
+    """What every supported runtime's ownership proof under ``root`` records as generated.
+
+    Each runtime keeps its proof where its own tree says, so the set of
+    manifests is read off the runtimes rather than listed beside them.
+    """
+    return generated_artifacts(
+        root, [runtime.tree("ownership_manifest") for runtime in every_runtime()]
+    )
 
 
 def prompt_renderer(own: NativeSpellings) -> SpelledPromptRenderer:
@@ -255,7 +291,7 @@ def claude_machine_overlay(source: Harness, profiles: Sequence[str]) -> Artifact
         return ArtifactTree(artifacts=[])
     plugin = source.plugins[0]
     manifest = Artifact(
-        path=CLAUDE_OVERLAY / ".claude-plugin" / "plugin.json",
+        path=Path(ClaudeSpellings().plugin(CLAUDE_OVERLAY.name, "manifest", None)),
         content=json.dumps(
             {
                 "name": plugin.name,

@@ -41,6 +41,49 @@ nothing on the page said what a name was.
   (`$/cancelRequest`) without leaving the stream half read, the server's own
   requests are answered, a document can be re-sent as changed, and a session
   names its `languageId` and capabilities.
+### A runtime's tree is spelled by its adapter, and read off it everywhere else
+
+`.claude` and `.codex` were spelled by hand outside their adapters: in the
+ownership reader's default homes, in the generator's two per-runtime
+recipes, in the policy kernel's generated-plugin refusal, and in the
+devtools that rename the marketplace, render Claude's settings, copy local
+settings into a worktree and count unlanded lines. Each place now asks the
+adapter.
+
+- `NativeSpellings.plugins_directory` names where a runtime's plugin trees
+  sit. Each adapter's `plugin()` spells under it.
+- `lup.providers.harness.spellings_of(AdapterName)` returns one runtime's
+  spellings. `every_runtime()` is built from it, and
+  `runtime_plugin_directories()` and `runtime_generated(root)` read every
+  runtime's plugin directory and ownership proof.
+- `claude_generation_recipe` and `codex_generation_recipe` now live in each
+  adapter's `composition.py`, and every path they write comes from that
+  adapter's spellings. `lup.harness.generate` imports no runtime.
+- `generated_artifacts(root, manifests)` takes the manifests to read.
+  `ADAPTER_HOMES` is gone.
+- The kernel's `GENERATED_PLUGIN_ROOTS` constant is gone. `HookSet` declares
+  `generated_plugin_roots`, the policy data renders them, and every gate
+  refusing a hand edit in a generated plugin tree is handed them
+  (`plugin_roots`). A hook set that declares none refuses nothing there,
+  but the protected-tree rows still ask.
+- The native-spelling rule now also refuses a neutral module that spells a
+  runtime's own tree as a path. The tree names come from the runtimes through
+  `ApplicationRoots.runtime_trees`, so the rule names no runtime itself.
+  Prose naming a tree for a reader is not a path, and is left alone.
+- The rule now also reads inside a path joined with `/` and an f-string with
+  variables, which it used to skip. That turned up two older spellings. The
+  wake transports move into their adapters: Codex's queue wake, which spells
+  its home, to `lup.providers.codex.wake`, and Claude's socket wake to
+  `lup.providers.claude.wake`. `lup.providers.wake.wake` picks one by the wake
+  path's runtime, and `lup.coordination.wake` keeps the contract (`WakePath`,
+  `Woken`). The other spelling, a review page's heading, now reads
+  `lup:resolve` with no runtime's prefix.
+- `dev worktree create` copies every runtime's personal settings. The
+  unlanded-lines count reads every runtime's tree, so `.codex/` now counts
+  beside `.claude/`.
+
+The generated trees are byte-identical except for the kernel copies and the
+policy data, which carry the plugin roots as data.
 
 ### Another session's stash no longer fails the test suite
 

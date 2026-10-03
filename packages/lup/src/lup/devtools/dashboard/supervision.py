@@ -32,7 +32,8 @@ from lup.coordination.mail import ActorDelivery, Posting
 from lup.coordination.peers import USER_ADDRESS, join_user
 from lup.coordination.repository import NotReached, PeerDepartedError, RepositoryPeers
 from lup.coordination.roster import Delivery, RosterMember
-from lup.coordination.wake import WakePriority, wake
+from lup.coordination.wake import WakePriority
+from lup.providers.wake import wake
 from lup.coordination.watch import roused
 from lup.devtools.dashboard.companion import KnownRepository
 from lup.devtools.dashboard.live import (

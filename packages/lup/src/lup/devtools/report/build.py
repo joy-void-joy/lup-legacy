@@ -28,7 +28,8 @@ from lup.devtools.dev.branches import (
 from lup.devtools.dev.comments import FoundComment, scan_tracked
 from lup.devtools.harness.drift import RepositoryWriter, inspect_drift
 from lup.harness.generate import NativeHarnessComposition
-from lup.harness.ownership import GeneratedArtifacts, generated_artifacts
+from lup.harness.ownership import GeneratedArtifacts
+from lup.providers.harness import runtime_generated
 from lup.devtools.report.models import (
     CLAIMS,
     DEFERRALS,
@@ -163,7 +164,7 @@ def build_report(
     note is a field on what came back.
     """
     found = scan_tracked(find_feedback)
-    owned = generated_artifacts(root)
+    owned = runtime_generated(root)
     return Report(
         parts=[
             ReportPart(topic=NOTES, items=note_items(found, NoteKind.note, owned)),
