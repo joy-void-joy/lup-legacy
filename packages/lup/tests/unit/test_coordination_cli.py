@@ -101,3 +101,70 @@ def test_a_sweep_retires_the_lapsed_once(
     [recorded] = [one for one in peers.cohort.live() if one.actor.id == member]
     assert not recorded.running
     assert recorded.error.startswith("unheard since ")
+
+
+def test_the_person_reads_their_own_mailbox_and_takes_it_when_asked(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`--id user` is the person's mailbox, headed with who wrote and the post to answer."""
+    monkeypatch.setattr(coordination_app, "project_root", lambda: tmp_path)
+    peers = RepositoryPeers(tmp_path)
+    member = mint_member_id()
+    peers.join(member, tmp_path / "tree", cli_name="builder")
+    peers.send("user", "the store half is done", sender=member)
+    [sent] = peers.waiting("user").messages
+    app = coordination_app.create_coordination_app()
+
+    peeked = CliRunner().invoke(app, ["mailbox", "--id", "user"])
+    taken = CliRunner().invoke(app, ["mailbox", "--id", "user", "--take"])
+
+    heading = f"[message from {member} by agent · post {sent.post}]"
+    assert peeked.exit_code == 0, peeked.output
+    assert peeked.output == f"{heading} the store half is done\n"
+    assert taken.output == peeked.output
+    assert peers.waiting("user").messages == []
+
+
+def test_the_person_answers_from_the_console_into_the_post_s_thread(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`--as user` signs it so the answer comes back to the person's mailbox."""
+    monkeypatch.setattr(coordination_app, "project_root", lambda: tmp_path)
+    peers = RepositoryPeers(tmp_path)
+    member = mint_member_id()
+    peers.join(member, tmp_path / "tree", cli_name="builder")
+    peers.send("user", "rebase or merge?", sender=member)
+    [asked] = peers.waiting("user").messages
+
+    answered = CliRunner().invoke(
+        coordination_app.create_coordination_app(),
+        ["send", "merge", "--to", "builder", "--as", "user", "--reply-to", asked.post],
+    )
+
+    assert answered.exit_code == 0, answered.output
+    [reply] = peers.waiting(member).messages
+    assert f"queued for session:{member}#1 as post {reply.post}, " in answered.output
+    assert (reply.sender, reply.in_reply_to, reply.thread) == (
+        "user",
+        asked.post,
+        asked.thread,
+    )
+    assert reply.heading().startswith("[message from user by console")
+
+
+def test_a_send_signed_by_nobody_here_is_refused(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(coordination_app, "project_root", lambda: tmp_path)
+    peers = RepositoryPeers(tmp_path)
+    member = mint_member_id()
+    peers.join(member, tmp_path / "tree", cli_name="builder")
+
+    refused = CliRunner().invoke(
+        coordination_app.create_coordination_app(),
+        ["send", "hi", "--to", "builder", "--as", "somebody"],
+    )
+
+    assert refused.exit_code != 0
+    assert "`--as` takes `user`" in refused.output
+    assert peers.waiting(member).messages == []

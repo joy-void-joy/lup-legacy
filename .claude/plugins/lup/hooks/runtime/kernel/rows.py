@@ -164,12 +164,17 @@ class SpawnNameRow(TypedDict):
     judgement, because which spellings are safe is a property of the runtimes
     a project runs on, and a project running on one of them may widen what a
     project running on several cannot.
+
+    ``notice`` opens what a caller is told, once in its conversation, after a
+    spawn of its went out under the name read from its description, and is
+    blank where the project says nothing then.
     """
 
     reason: str
     recovery: list[Step]
     punctuation: str
     limit: int
+    notice: str
 
 
 class AcceptanceGuardRow(TypedDict):
@@ -849,6 +854,8 @@ class PeerPolicyRow(TypedDict):
     surface reaching the same peer durably, so a sender is never only refused.
     ``claim_reason`` is what an approver of a write into a held path reads, and
     ``claim_recovery`` what the writing agent can do about the holder.
+    ``operator`` is the holder name the person watching is held under, and
+    ``operator_reason`` what an approver reads where they hold the path.
     ``listing_note`` frames the roster attached to a listing that speaks for a
     wider population, so a reader can tell the two apart.
 
@@ -865,6 +872,8 @@ class PeerPolicyRow(TypedDict):
     listing_note: str
     claim_reason: str
     claim_recovery: list[Step]
+    operator: str
+    operator_reason: str
 
 
 class PathWord(TypedDict):

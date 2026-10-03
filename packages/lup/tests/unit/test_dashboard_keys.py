@@ -31,6 +31,7 @@ from lup.devtools.dashboard.reviews import (
     create_operator_dashboard_app,
     dashboard_app,
 )
+from lup.devtools.dashboard.supervision import SUPERVISED
 from lup.devtools.dashboard.stream import KeysEvent, LiveFeed, Observation
 from lup.providers.user_config import UserConfig, UserConfigFile
 
@@ -321,3 +322,11 @@ def test_dashboard_keys_prints_the_keys_in_effect_and_every_refusal(
 
 def test_the_keymap_the_page_compiles_in_is_the_catalog_whole() -> None:
     assert KeymapCatalog.model_validate_json(keymap_json()) == CATALOG
+
+
+def test_every_supervising_action_needs_what_the_routes_serve() -> None:
+    """A page meeting this dashboard runs every action the catalog marks as needing supervision."""
+    needed = {action.needs for action in CATALOG.actions if action.needs is not None}
+
+    # A post into a discussion is the box's own send there, no action of its own.
+    assert needed == set(SUPERVISED) - {"thread-post"}

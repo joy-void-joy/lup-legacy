@@ -5,7 +5,11 @@
 // is selected, which window has focus, and the cursor in each pane. The keymap
 // and the `:` commands call into it; React draws what it holds.
 import type { KeyLine, LiveMessage, LiveSession, ReviewDecision, ReviewDetail, ReviewRoot, ReviewSummary } from "../generated/views";
-import { answerReview, followDashboard, readHistory, readMessages, readReview, readReviewLink, readSetupPanes, remarkReview, reviewLink, ReviewError, sendReply, takeToken, tryKeys, writeKeys } from "./api";
+import {
+  answerReview, broadcastTo, describeYou, followDashboard, followTranscripts, holdPath, postInto, postNotice, readHistory, readInbox, readMessages, readReview, readReviewLink,
+  readSetupPanes, readTranscript, releasePath, remarkReview, renameAgent, reviewLink, ReviewError, sendReply, stopAgent, takeToken, tryKeys, wakeAgent, withdrawNotice, writeKeys,
+  type Sending,
+} from "./api";
 import { Keymap, Sequencer, type Where } from "./keys";
 import { discussions, threadBuffer, type Discussion } from "./threads";
 import { applied, codeNotice, moved, NO_KEYS, paged, type LiveState } from "./live";
@@ -13,7 +17,10 @@ import { askedBy, CLOSED_UI, EMPTY_DRAFT, headOf, headShort, headText, plural, r
 import { checkoutLabel } from "./review";
 import { inboxBuffer, memberBuffer, memberById, memberOfReview, repoBuffer, repositoryOf, treeItems, youBuffer, type TreeItem, holdersOf, parentOf, counterpart, inboxOf } from "./supervision";
 import { initialState, Store, type Float, type Notice, type PageState, type Tone, type View, type Win } from "./state";
-import { unserved } from "./served";
+import { unserved, type Feature } from "./served";
+
+/** What an interrupt says where the operator wrote nothing of their own. */
+export const INTERRUPTING = "The person watching interrupts your turn: stop what you are doing, read your mailbox, and say where you are with `coordination_describe` before carrying on.";
 
 /** What the operator can do to a waiting review. */
 export type Answer = "approve" | "decline" | "remark";
@@ -106,6 +113,8 @@ export class Dashboard {
   private retryTimer: ReturnType<typeof setTimeout> | undefined;
   private messageTimer: ReturnType<typeof setTimeout> | undefined;
   private clockTimer: ReturnType<typeof setInterval> | undefined;
+  private followTimer: ReturnType<typeof setTimeout> | undefined;
+  private stopArmedAt = 0;
   private cursor = "";
   private routedAddress = "";
   private noticeSeq = 0;
@@ -160,6 +169,7 @@ export class Dashboard {
     clearTimeout(this.keyTimer);
     clearTimeout(this.whichTimer);
     clearInterval(this.clockTimer);
+    clearTimeout(this.followTimer);
   }
 
   private resized(): void {
@@ -240,6 +250,15 @@ export class Dashboard {
     this.set((state) => ({ live: next, log: [...state.log, ...lines].slice(-400) }));
     if (previous === null || next.keys !== previous.keys) this.keysArrived(previous === null);
     if (previous === null || next.code !== previous.code) this.codeNotices(next);
+    // A followed transcript is not state: what it recorded since joins the open one, from where that ends.
+    if (event.type === "transcript") {
+      this.set((state) => {
+        const shown = state.transcript;
+        if (shown === null || shown.session !== event.session) return {};
+        const fresh = event.entries.filter((entry) => entry.at >= shown.end);
+        return fresh.length === 0 ? {} : { transcript: { ...shown, entries: [...shown.entries, ...fresh], end: Math.max(shown.end, event.end) } };
+      });
+    }
     if (event.type === "message" && event.message.recipient === "user" && event.message.waiting && previous !== null && !previous.messages.has(event.message.key)) {
       const sender = memberById(next, event.message.repository, event.message.sender);
       this.notify(`${sender?.name || event.message.sender || event.message.door} wrote to you`, "", "gi opens your inbox.", "info");
@@ -573,54 +592,230 @@ export class Dashboard {
     if (target.kind === "none") { this.say("choose an agent, a repository or a message to write to"); return; }
     const text = this.state.replyDrafts[target.key] ?? "";
     if (target.kind === "repo") { void this.broadcast(target.repository, text); return; }
-    if (target.kind === "thread") { this.post(target.discussion, text); return; }
-    void this.sendTo(target.session, text);
+    if (target.kind === "thread") { void this.post(target.discussion, text); return; }
+    void this.sendTo(target.session, text, { in_reply_to: this.state.replyTo[target.key] ?? "" });
   }
 
-  async sendTo(session: LiveSession, text: string): Promise<boolean> {
+  /**
+   * Write to one agent the way the message route does, and say what came of it in the server's words.
+   * *sending* names the post it answers, whether it redirects the agent's next call, and whether it
+   * interrupts the turn; each is refused, the draft kept, where this dashboard's server does not serve it.
+   */
+  async sendTo(session: LiveSession, text: string, sending: Sending = {}): Promise<boolean> {
     if (text.trim() === "") { this.say("write something first: c opens the box"); return false; }
     if (!session.running) { this.say(`${session.name || session.id} has stopped; nothing would read a message to it`, "err"); return false; }
+    const needed: Feature[] = [
+      ...((sending.in_reply_to ?? "") !== "" ? ["reply-thread" as const] : []),
+      ...(sending.redirect === true ? ["redirect" as const] : []),
+      ...(sending.priority === "now" ? ["interrupt" as const] : []),
+    ];
+    const refused = needed.map((feature) => this.lacks(feature)).find((reason) => reason !== "");
+    if (refused !== undefined) { this.told(`writing to ${session.name || session.id}`, refused, "err"); return false; }
     const key = session.key;
     this.set((state) => ({ replyOutcome: { ...state.replyOutcome, [key]: { text: "Sending…", error: false } } }));
     try {
-      const outcome = await sendReply(session.repository, session.id, text, this.state.access.token);
-      this.set((state) => ({ replyDrafts: { ...state.replyDrafts, [key]: "" }, replyOutcome: { ...state.replyOutcome, [key]: { text: outcome.detail, error: false } } }));
-      this.set((state) => ({ log: [...state.log, { at: new Date().toISOString(), repository: session.repository, text: `you → ${session.name || session.id}: ${outcome.detail}` }] }));
+      const outcome = await sendReply(session.repository, session.id, text, this.state.access.token, sending);
+      this.set((state) => ({
+        replyDrafts: { ...state.replyDrafts, [key]: "" },
+        replyTo: { ...state.replyTo, [key]: "" },
+        replyOutcome: { ...state.replyOutcome, [key]: { text: outcome.detail, error: false } },
+        log: [...state.log, { at: new Date().toISOString(), repository: session.repository, text: `you → ${session.name || session.id}: ${outcome.detail}` }],
+      }));
+      this.told(`to ${session.name || session.id}`, outcome.detail, "ok");
       return true;
     } catch (failure) {
       const reason = failure instanceof Error ? failure.message : String(failure);
       this.set((state) => ({ replyOutcome: { ...state.replyOutcome, [key]: { text: reason, error: true } } }));
+      this.told(`to ${session.name || session.id}`, reason, "err");
       return false;
     }
   }
 
   /**
-   * A post into a discussion reaches everyone in it, as one send replying to
-   * its last post or the one `r` chose. That is a route the dashboard's server
-   * does not serve yet (decision 116), so the draft stays and the refusal names
-   * the route; one message per member through today's route would split the
-   * post and drop the thread.
+   * What came of a supervising action, as a notice: an outcome closes on its own, and a refusal
+   * stands until dismissed, the way an answer's does — on a phone as on a desktop.
    */
-  post(discussion: Discussion, text: string): void {
-    if (text.trim() === "") { this.say("write something first: c opens the box"); return; }
-    const refused = unserved("thread-post");
-    if (refused !== "") { this.say(`posting into “${discussion.title}” ${refused}`, "err"); return; }
+  private told(heading: string, detail: string, tone: Tone): void {
+    this.notify(heading, "", detail, tone, { sticky: tone === "err" });
   }
 
-  /** One message to every working member of a repository: today, one send each. */
-  async broadcast(repository: string, text: string): Promise<void> {
-    const live = this.state.live;
-    if (live === null) return;
+  /** What this dashboard's server says it serves of supervising, from the stream's whole state. */
+  served(): readonly Feature[] {
+    return this.state.live?.served ?? [];
+  }
+
+  /** Why an action needing *feature* cannot run against this server, or nothing where it can. */
+  lacks(feature: Feature): string {
+    return unserved(this.served(), feature);
+  }
+
+  /**
+   * One supervising write: refused naming its route where the server does not serve it, else sent,
+   * its answer said in the server's words and its refusal as the server gave it.
+   */
+  private async supervise<Reply>(feature: Feature | null, doing: string, write: () => Promise<Reply>, said: (reply: Reply) => string): Promise<Reply | null> {
+    const refused = feature === null ? "" : this.lacks(feature);
+    if (refused !== "") { this.told(doing, refused, "err"); return null; }
+    try {
+      const reply = await write();
+      this.told(said(reply), "", "ok");
+      return reply;
+    } catch (failure) {
+      this.told(doing, failure instanceof Error ? failure.message : String(failure), "err");
+      return null;
+    }
+  }
+
+  /** Make an agent look: whatever waits for it, or a line saying the person asked it to. */
+  async wake(session: LiveSession): Promise<void> {
+    const named = session.name || session.id;
+    await this.supervise("bare-wake", `waking ${named}`, () => wakeAgent(session.repository, session.id, this.state.access.token), (outcome) => `${named}: ${outcome.detail}`);
+  }
+
+  /** Interrupt an agent's turn with these words, or the standard ones where none are given. */
+  async interrupt(session: LiveSession, text: string): Promise<boolean> {
+    return this.sendTo(session, text.trim() !== "" ? text : INTERRUPTING, { priority: "now" });
+  }
+
+  /** What an agent is called from now on. */
+  async rename(session: LiveSession, name: string): Promise<void> {
+    if (name.trim() === "") { this.say("E: :rename [agent] <name>", "err"); return; }
+    const named = session.name || session.id;
+    await this.supervise("rename", `renaming ${named}`, () => renameAgent(session.repository, session.id, name.trim(), this.state.access.token), (renamed) => `${named} is ${renamed.name} from now on`);
+  }
+
+  /**
+   * Stop an agent's runtime. Asked twice: the first asks for the second, saying which process it
+   * would signal, and only a second within ten seconds sends it; *confirmed* is `:stop!`, which is the second.
+   */
+  async stopRuntime(session: LiveSession, confirmed = false): Promise<void> {
+    const named = session.name || session.id;
+    const armed = this.state.stopArmed === session.key && Date.now() - this.stopArmedAt < 10_000;
+    if (!confirmed && !armed) {
+      const process = session.process;
+      const which = process === null ? "its row records no runtime process" : process.stoppable ? `pid ${process.pid}` : `this dashboard cannot stop it: ${process.why}`;
+      this.stopArmedAt = Date.now();
+      this.set({ stopArmed: session.key });
+      this.told(`stop ${named}'s runtime?`, `${which}: press again, or :stop!, within ten seconds`, "warn");
+      return;
+    }
+    this.set({ stopArmed: "" });
+    await this.supervise("stop", `stopping ${named}`, () => stopAgent(session.repository, session.id, this.state.access.token), (stopped) => stopped.detail);
+  }
+
+  /**
+   * A post into a discussion reaches everyone in it, as one post replying to the one `r` chose or
+   * its latest, every copy sharing its id and its thread.
+   */
+  async post(discussion: Discussion, text: string): Promise<void> {
     if (text.trim() === "") { this.say("write something first: c opens the box"); return; }
-    const working = [...live.sessions.values()].filter((each) => each.repository === repository && each.running);
+    const key = `thread:${discussion.key}`;
+    const answering = this.state.threadReply;
+    const thread = discussion.posts.find((each) => each.id === answering)?.thread || discussion.thread;
+    const outcome = await this.supervise("thread-post", `posting into “${discussion.title}”`,
+      () => postInto(discussion.repository, thread, { text, in_reply_to: answering, to: [] }, this.state.access.token),
+      (posted) => `posted to ${plural(posted.deliveries.length, "member")}${posted.refused.length > 0 ? `; not to ${posted.refused.map((each) => `${each.address} (${each.reason})`).join(", ")}` : ""}`);
+    if (outcome !== null) this.set((state) => ({ replyDrafts: { ...state.replyDrafts, [key]: "" }, threadReply: "" }));
+  }
+
+  /** One post to every working member of a repository, each woken as a message is. */
+  async broadcast(repository: string, text: string): Promise<void> {
+    if (text.trim() === "") { this.say("write something first: c opens the box"); return; }
     const key = `repo:${repository}`;
-    this.set((state) => ({ replyOutcome: { ...state.replyOutcome, [key]: { text: `Sending to ${plural(working.length, "working member")}…`, error: false } } }));
-    const sent = await Promise.all(working.map((session) => sendReply(session.repository, session.id, text, this.state.access.token).then(() => true, () => false)));
-    const delivered = sent.filter(Boolean).length;
-    this.set((state) => ({
-      replyDrafts: delivered === working.length ? { ...state.replyDrafts, [key]: "" } : state.replyDrafts,
-      replyOutcome: { ...state.replyOutcome, [key]: { text: `Sent to ${delivered} of ${plural(working.length, "working member")}.`, error: delivered !== working.length } },
-    }));
+    this.set((state) => ({ replyOutcome: { ...state.replyOutcome, [key]: { text: "Sending to every working member…", error: false } } }));
+    try {
+      const sent = await broadcastTo(repository, text, this.state.access.token);
+      const woken = sent.outcomes.filter((each) => each.woken).length;
+      this.set((state) => ({
+        replyDrafts: { ...state.replyDrafts, [key]: "" },
+        replyOutcome: { ...state.replyOutcome, [key]: { text: `Sent to ${plural(sent.outcomes.length, "working member")} as one post; ${woken} woken.`, error: false } },
+      }));
+      this.told(`broadcast to ${plural(sent.outcomes.length, "working member")}`, `one post; ${woken} woken`, "ok");
+    } catch (failure) {
+      const reason = failure instanceof Error ? failure.message : String(failure);
+      this.set((state) => ({ replyOutcome: { ...state.replyOutcome, [key]: { text: reason, error: true } } }));
+    }
+  }
+
+  /** A standing notice every session of a repository reads at the head of each prompt, until withdrawn. */
+  async notice(repository: string, text: string): Promise<void> {
+    if (repository === "" || text.trim() === "") { this.say("E: :notice <text>, in a repository", "err"); return; }
+    await this.supervise("notices", "posting a notice", () => postNotice(repository, text, this.state.access.token), (posted) => `notice ${posted.id} stands over ${this.state.live?.repositories.get(repository)?.name ?? repository}`);
+  }
+
+  /** Take one standing notice down. */
+  async withdraw(repository: string, id: string): Promise<void> {
+    await this.supervise("notices", `withdrawing notice ${id}`, () => withdrawNotice(repository, id, this.state.access.token), (gone) => gone.withdrawn ? `notice ${gone.id} withdrawn` : `notice ${gone.id} was not standing`);
+  }
+
+  /** What the operator is on, said on their row in every repository served. */
+  async describe(text: string): Promise<void> {
+    await this.supervise("describe", "saying what you are on", () => describeYou(text, this.state.access.token), (described) => `your row says it in ${plural(described.repositories.length, "repository")}`);
+  }
+
+  /** Hold a path as the operator, or give one back: a relative path is the repository's checkout's. */
+  async claim(repository: string, typed: string, holding: boolean): Promise<void> {
+    const checkout = this.state.live?.repositories.get(repository)?.checkout ?? "";
+    if (repository === "" || typed.trim() === "") { this.say(`E: :${holding ? "lock" : "release"} <path>, in a repository`, "err"); return; }
+    const path = typed.trim().startsWith("/") ? typed.trim() : `${checkout.replace(/\/$/, "")}/${typed.trim()}`;
+    const token = this.state.access.token;
+    await this.supervise("claims", `${holding ? "holding" : "giving back"} ${path}`,
+      () => holding ? holdPath(repository, path, token) : releasePath(repository, path, token),
+      (claim) => claim.holders.length === 0 ? `nobody holds ${claim.path} now` : `${claim.path} is held by ${claim.holders.join(", ")}`);
+  }
+
+  /** Take these messages to the operator out of their mailbox, as read, each in its own repository. */
+  async markRead(messages: LiveMessage[]): Promise<void> {
+    const unread = messages.filter((message) => message.recipient === "user" && message.waiting);
+    if (unread.length === 0) { this.say("nothing unread to mark"); return; }
+    for (const repository of new Set(unread.map((message) => message.repository))) {
+      const [first, ...rest] = unread.filter((message) => message.repository === repository).map((message) => message.id);
+      if (first === undefined) continue;
+      await this.supervise("inbox-read", "marking your mail read", () => readInbox(repository, [first, ...rest], this.state.access.token), (read) => `${plural(read.read.length, "message")} marked read`);
+    }
+  }
+
+  /** Open an agent's whole transcript, at its latest page, and follow it while it shows. */
+  async openTranscript(session: LiveSession): Promise<void> {
+    const refused = this.lacks("transcript");
+    const named = session.name || session.id;
+    if (refused !== "") { this.told(`${named}'s transcript`, refused, "err"); return; }
+    this.set({ float: { kind: "transcript" }, transcript: { session: session.key, repository: session.repository, member: session.id, name: named, entries: [], earlier: 0, end: 0, loading: true, error: "" } });
+    try {
+      const page = await readTranscript(session.repository, session.id, this.state.access.token);
+      this.set((state) => state.transcript?.session !== session.key ? {} : { transcript: { ...state.transcript, entries: page.entries, earlier: page.earlier, end: page.end, loading: false } });
+      await this.renewTranscript();
+    } catch (failure) {
+      const reason = failure instanceof Error ? failure.message : String(failure);
+      this.set((state) => state.transcript?.session !== session.key ? {} : { transcript: { ...state.transcript, loading: false, error: reason } });
+    }
+  }
+
+  /** The page before the earliest the open transcript holds. */
+  async transcriptEarlier(): Promise<void> {
+    const shown = this.state.transcript;
+    if (shown === null || shown.earlier === 0) return;
+    try {
+      const page = await readTranscript(shown.repository, shown.member, this.state.access.token, shown.earlier);
+      this.set((state) => state.transcript?.session !== shown.session ? {} : { transcript: { ...state.transcript, entries: [...page.entries, ...state.transcript.entries], earlier: page.earlier } });
+    } catch (failure) {
+      this.say(`${shown.name}'s transcript: ${failure instanceof Error ? failure.message : String(failure)}`, "err");
+    }
+  }
+
+  /** Ask the stream to carry the open transcript on from where it stands, renewed while it shows. */
+  private async renewTranscript(): Promise<void> {
+    clearTimeout(this.followTimer);
+    const shown = this.state.transcript;
+    if (shown === null || this.state.float?.kind !== "transcript") return;
+    try {
+      const outcome = await followTranscripts([{ repository: shown.repository, member: shown.member, after: shown.end }], this.state.access.token);
+      const refused = outcome.refused.find((each) => each.session === shown.session);
+      if (refused !== undefined) { this.set((state) => ({ transcript: state.transcript === null ? null : { ...state.transcript, error: refused.reason } })); return; }
+      this.followTimer = setTimeout(() => void this.renewTranscript(), Math.max(5, outcome.seconds / 2) * 1000);
+    } catch (failure) {
+      this.set((state) => ({ transcript: state.transcript === null ? null : { ...state.transcript, error: failure instanceof Error ? failure.message : String(failure) } }));
+    }
   }
 
   // ───────────────────────────── where the page is ─────────────────────────────

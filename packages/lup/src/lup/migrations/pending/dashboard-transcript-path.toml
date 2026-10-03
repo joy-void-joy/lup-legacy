@@ -1,0 +1,13 @@
+subjects = ["RepositoryWatch.transcript"]
+reason = """
+a session's transcript is found the same way by the dashboard's stream, its \
+transcript route and a tab following one, so the lookup is a function of the \
+rows rather than a method of one watch"""
+
+[[steps]]
+instruction = """
+Call lup.devtools.dashboard.live.transcript_path(view, rows) where \
+RepositoryWatch.transcript(view, rows) was called; it takes the same row and \
+the same rows by member id. member_transcript(known, member_id) finds one \
+member's transcript in a repository by its id, refusing an id nothing \
+answers to."""

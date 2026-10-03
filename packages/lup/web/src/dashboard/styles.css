@@ -250,6 +250,11 @@ button.seg { cursor: pointer; }
 .kr .tag { text-align: right; }
 .tag.decided { color: var(--ok); } .tag.new { color: var(--info); } .tag.changed { color: var(--warn); } .tag.yours { color: var(--ok); font-weight: 700; }
 .logl { white-space: pre-wrap; overflow-wrap: anywhere; }
+/* A transcript reads whole: what was said, each call with its arguments, and what it returned. */
+.tr { margin: 4px 0; overflow-wrap: anywhere; }
+.tr pre, .tr code { white-space: pre-wrap; overflow-wrap: anywhere; margin: 0; }
+.tr.result pre { padding-left: 2ch; color: var(--muted); }
+.tr.result.err pre { color: var(--err); }
 .float table { border-collapse: collapse; width: 100%; }
 .float td, .float th { border-bottom: 1px solid var(--border); padding: 0 1ch; text-align: left; vertical-align: top; }
 .sw { display: inline-block; width: 3ch; height: 1em; vertical-align: middle; border: 1px solid var(--border); }
@@ -395,3 +400,9 @@ button.seg { cursor: pointer; }
 .clamp.open { display: inline; -webkit-line-clamp: unset; overflow: visible; }
 p.clamp.open { display: block; }
 .more { display: block; min-height: 44px; min-width: 64px; margin: 2px 0; border: 1px solid var(--border); background: none; color: var(--link); font: inherit; cursor: pointer; }
+/* A conflict a merge left: each side barred in the line number's padding, so its text keeps its column, in the side's colour and line — ours solid, the ancestor dotted, theirs double. */
+.r.cf .tx { margin-left: -3px; }
+.r.cf-ours .tx { border-left: 3px solid var(--ok); } .r.cf-base .tx { border-left: 3px dotted var(--purple); } .r.cf-theirs .tx { border-left: 3px double var(--orange); }
+/* Each marker line bold in its side's colour, and what it names after it in the same colour. */
+.cfm { font-weight: 700; font-style: normal; }
+.cfs-ours { color: var(--ok); } .cfs-base { color: var(--purple); } .cfs-theirs { color: var(--orange); }

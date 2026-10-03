@@ -3,9 +3,15 @@
 // A diff shows lines out of their document, so each document is highlighted
 // whole — a docstring or a template string spanning lines is coloured as the
 // language reads it — and then cut at its newlines, every token carried onto
-// the lines it spans. Only the grammars registered here are bundled; a file
-// whose name none of them claims is shown as plain text.
-import type { ReactNode } from "react";
+// the lines it spans. A document a merge left conflicted is no program a
+// grammar can read whole: a string or a comment opened on one side runs on
+// across the markers into the other side and past it. So each version of it —
+// ours, theirs, and the common ancestor's where the conflict records it — is
+// highlighted whole as the file it would be, and every line takes its tokens
+// from the version it belongs to: a common line from ours, a side's line from
+// its own, and a marker line is drawn as the marker it is. Only the grammars
+// registered here are bundled; a file whose name none of them claims is shown
+// as plain text.
 import { createLowlight } from "lowlight";
 import bash from "highlight.js/lib/languages/bash";
 import css from "highlight.js/lib/languages/css";
@@ -22,6 +28,7 @@ import rust from "highlight.js/lib/languages/rust";
 import typescript from "highlight.js/lib/languages/typescript";
 import xml from "highlight.js/lib/languages/xml";
 import yaml from "highlight.js/lib/languages/yaml";
+import { hasBase, parseConflicts, placed, VERSIONS, versionLines, type Standing } from "./conflicts";
 
 const lowlight = createLowlight({ bash, css, diff, dockerfile, go, ini, javascript, json, makefile, markdown, python, rust, typescript, xml, yaml });
 
@@ -45,8 +52,8 @@ const EXTENSIONS: Record<string, string> = {
 /** The grammar each whole file name is read with, where its extension says nothing. */
 const NAMES: Record<string, string> = { Dockerfile: "dockerfile", Makefile: "makefile", makefile: "makefile" };
 
-/** Past this many characters a document is shown plain: highlighting it would stall the page. */
-const HIGHLIGHT_LIMIT = 400_000;
+/** Past this many characters a document — a conflicted one's longest version — is shown plain: highlighting it would stall the page. */
+export const HIGHLIGHT_LIMIT = 400_000;
 
 /** The grammar a path is read with, or null where none is registered for it. */
 export function languageFor(path: string): string | null {
@@ -62,15 +69,19 @@ type Content = Tree["children"][number];
 /** One run of text on one line, and the grammar classes it carries. */
 export type Token = { text: string; classes: string };
 
+/** One line of a document: its tokens, and where it stands in a conflict a merge left, null outside one. */
+export type Line = { tokens: Token[]; conflict: Standing | null };
+
 /**
- * A document cut into lines of tokens. The tree the grammar produced is
- * walked once, each text node split at its newlines, and every piece
- * carries the classes of every element it sits inside, so a token opened
- * on one line keeps its colour on the next.
+ * A text cut into lines of tokens, read whole by a grammar, or plain where
+ * none is given or none is registered by that name. The tree the grammar
+ * produced is walked once, each text node split at its newlines, and every
+ * piece carries the classes of every element it sits inside, so a token
+ * opened on one line keeps its colour on the next.
  */
-export function highlightedLines(text: string, language: string | null): Token[][] {
+function tokenLines(text: string, language: string | null): Token[][] {
   const plain = () => text.split("\n").map((line) => [{ text: line, classes: "" }]);
-  if (language === null || text.length > HIGHLIGHT_LIMIT) return plain();
+  if (language === null) return plain();
   let tree: Tree;
   try {
     tree = lowlight.highlight(language, text);
@@ -93,7 +104,27 @@ export function highlightedLines(text: string, language: string | null): Token[]
     }
   }
   walk(tree.children, "");
-  return lines.map(marked);
+  return lines;
+}
+
+/**
+ * A document cut into lines of tokens, each `# lup:` marker drawn in its
+ * kind's colour. A conflicted document's versions are each read whole and
+ * every line takes the tokens of the one it belongs to; a marker line is one
+ * token in its side's classes. One whose conflicts cannot be read — left
+ * open, or markers out of order — is read whole as it stands.
+ */
+export function highlightedLines(text: string, language: string | null): Line[] {
+  const regions = parseConflicts(text);
+  if (regions === null) {
+    return tokenLines(text, text.length > HIGHLIGHT_LIMIT ? null : language).map((tokens) => ({ tokens: marked(tokens), conflict: null }));
+  }
+  const versions = VERSIONS.filter((version) => version !== "base" || hasBase(regions)).map((version) => ({ version, text: versionLines(regions, version).join("\n") }));
+  const grammar = Math.max(...versions.map((each) => each.text.length)) > HIGHLIGHT_LIMIT ? null : language;
+  const read = new Map(versions.map((each) => [each.version, tokenLines(each.text, grammar)]));
+  return placed(regions).map((place) => place.kind === "marker"
+    ? { tokens: [{ text: place.marker.text, classes: `cfm cfs-${place.standing.side}` }], conflict: place.standing }
+    : { tokens: marked(read.get(place.version)?.[place.at] ?? []), conflict: place.standing });
 }
 
 /** A `# lup:` marker's head, as the repository spells each kind. */
@@ -120,12 +151,4 @@ function marked(tokens: Token[]): Token[] {
       { text: token.text.slice(at + found[0].length), classes: token.classes },
     ].filter((piece) => piece.text !== "");
   });
-}
-
-/** One line's tokens as elements, or the raw text where no grammar read it. */
-export function Tokens({ tokens }: { tokens: Token[] | undefined }): ReactNode {
-  if (tokens === undefined) return null;
-  return tokens.map((token, index) => token.classes === ""
-    ? token.text
-    : <span key={index} className={token.classes}>{token.text}</span>);
 }

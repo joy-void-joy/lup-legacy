@@ -37,6 +37,7 @@ from decisions import (
     unconfined_by_declaration,
     bash_decision,
     edit_decision,
+    family_hold_report,
     claim_window_closed,
     claim_window_opened,
     fetch_decision,
@@ -499,12 +500,20 @@ def observe(payload):
         for target in changed:
             publish_edition(target, str(directory))
             named_claim_recorded(target, directory, caller_of(payload))
-        return reviewed_writes(changed, directory)
+        return merged(
+            [
+                family_hold_report(changed, directory, caller_of(payload)),
+                reviewed_writes(changed, directory),
+            ]
+        )
     # What the command changed, read against the snapshot its own PreToolUse
     # took, and contested where another session had a window open across it.
     changed = claim_window_closed(Path(root) if root else None, caller_of(payload))
     return merged(
         [
+            family_hold_report(
+                changed, Path(root) if root else None, caller_of(payload)
+            ),
             written_review(
                 command,
                 Path(root) if root else Path.cwd(),

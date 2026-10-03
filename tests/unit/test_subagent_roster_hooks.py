@@ -35,7 +35,7 @@ from lup.providers.roster_prompt import DEPARTURE_SCRIPT
 from lup.types import JsonObject
 from lup_template.harness.composition import claude_target, codex_target
 from tests.unit.repos import commit_file
-from tests.unit.test_in_process_parity import DISPATCHERS, Session, edited
+from tests.unit.test_in_process_parity import DISPATCHERS, Runtime, Session, edited
 from tests.unit.test_roster_prompt_hook import rendered, shipped
 
 SESSION = "abc123"
@@ -124,14 +124,15 @@ def repository(tmp_path: Path) -> tuple[Path, RepositoryPeers]:
     return work, peers
 
 
-def rollout_head(thread: str, agent_path: str) -> str:
-    """The first line of a Codex rollout, as far as a spawn's name is read from it.
+def rollout_head(thread: str, agent_path: str, parent: str = "01a0e915") -> str:
+    """The first line of a Codex rollout, as far as a spawn is read from it.
 
     Measured on 0.158.0: a subagent's rollout opens with its ``session_meta``,
     whose ``id`` is the ``agent_id`` its events carry and whose ``agent_path``
-    is ``/root/<task_name>`` under the name the spawn went out with.
+    is ``/root/<task_name>`` under the name the spawn went out with. *parent*
+    is the thread that spawned it.
     """
-    spawn = {"parent_thread_id": "01a0e915", "depth": 1, "agent_path": agent_path}
+    spawn = {"parent_thread_id": parent, "depth": 1, "agent_path": agent_path}
     meta = {"id": thread, "agent_path": agent_path, "agent_nickname": "Popper"}
     source = {"source": {"subagent": {"thread_spawn": spawn}}}
     return json.dumps({"type": "session_meta", "payload": {**meta, **source}}) + "\n"
@@ -250,6 +251,87 @@ def test_a_codex_subagent_is_named_from_its_own_rollout_alone(
 
     caller = json.loads(answer)["hookSpecificOutput"]["updatedInput"]
     assert caller[store.CALLER_FIELD].get("name", "") == named
+
+
+@pytest.mark.parametrize(
+    ("parent", "spawner"),
+    [
+        pytest.param("01a0e915", "", id="its-session"),
+        pytest.param("b1dbdbd6", "b1dbdbd6", id="another-subagent"),
+    ],
+)
+def test_a_codex_subagent_names_the_subagent_that_spawned_it(
+    tmp_path: Path, parent: str, spawner: str
+) -> None:
+    """Its rollout names the thread that spawned it; the session's own thread names nobody."""
+    guard = plugin_hooks(codex_target, ".codex", tmp_path / "plugin")
+    work = tmp_path / "work"
+    work.mkdir()
+    rollout = tmp_path / "rollout-a0cacac5.jsonl"
+    rollout.write_text(
+        rollout_head("a0cacac5", "/root/lead/builder", parent), encoding="utf-8"
+    )
+    payload: JsonObject = {
+        "hook_event_name": "PreToolUse",
+        "session_id": "01a0e915",
+        "transcript_path": str(rollout),
+        "cwd": str(work),
+        "tool_name": f"{CODEX_TOOLS}coordination_describe",
+        "tool_input": {"description": "building the CLI"},
+        "agent_id": "a0cacac5",
+        "agent_type": "default",
+    }
+
+    answer = ran(guard / coordination_caller.GUARD_SCRIPT, work, payload)
+
+    caller = json.loads(answer)["hookSpecificOutput"]["updatedInput"]
+    assert caller[store.CALLER_FIELD].get("spawned_by", "") == spawner
+
+
+@pytest.mark.parametrize(
+    ("meta", "spawner"),
+    [
+        pytest.param({"name": "builder", "spawnDepth": 1}, "", id="its-session"),
+        pytest.param(
+            {
+                "agentType": "fork",
+                "isFork": True,
+                "name": "sweep",
+                "parentAgentId": "b1dbdbd6",
+                "spawnDepth": 2,
+            },
+            "b1dbdbd6",
+            id="a-fork-of-another-subagent",
+        ),
+    ],
+)
+def test_a_claude_subagent_names_the_subagent_that_spawned_it(
+    tmp_path: Path, meta: JsonObject, spawner: str
+) -> None:
+    """A fork's record beside the session's transcript names the subagent it forked from."""
+    guard = plugin_hooks(claude_target, ".claude", tmp_path / "plugin")
+    work = tmp_path / "work"
+    work.mkdir()
+    transcript = tmp_path / "session.jsonl"
+    transcript.write_text("", encoding="utf-8")
+    spawned = transcript.with_suffix("") / "subagents" / "agent-a0cacac5.meta.json"
+    spawned.parent.mkdir(parents=True)
+    spawned.write_text(json.dumps(meta), encoding="utf-8")
+    payload: JsonObject = {
+        "hook_event_name": "PreToolUse",
+        "session_id": "native",
+        "transcript_path": str(transcript),
+        "cwd": str(work),
+        "tool_name": f"{CLAUDE_TOOLS}coordination_describe",
+        "tool_input": {"description": "sweeping"},
+        "agent_id": "a0cacac5",
+        "agent_type": "fork",
+    }
+
+    answer = ran(guard / coordination_caller.GUARD_SCRIPT, work, payload)
+
+    caller = json.loads(answer)["hookSpecificOutput"]["updatedInput"]
+    assert caller[store.CALLER_FIELD].get("spawned_by", "") == spawner
 
 
 @RUNTIMES
@@ -371,20 +453,26 @@ def session(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Session:
 @pytest.mark.parametrize(
     ("holder", "effect"),
     [
-        pytest.param("sibling", "ask", id="its-sibling-holds-it"),
-        pytest.param("session", "allow", id="its-session-holds-it"),
+        pytest.param("b1dbdbd6", "ask", id="its-sibling-holds-it"),
+        pytest.param("e2e2e2e2", "ask", id="its-sibling-s-fork-holds-it"),
+        pytest.param("", "allow", id="its-session-holds-it"),
+        pytest.param("f0f0f0f0", "allow", id="its-own-fork-holds-it"),
     ],
 )
 def test_a_subagents_edit_is_judged_against_its_own_row_everywhere(
     session: Session, holder: str, effect: str
 ) -> None:
-    """A lock holds a file for one subagent against its sibling, on both runtimes."""
+    """A lock holds a file for one subagent against its sibling's family, on both
+    runtimes, and not against its session or what it spawned itself."""
     commit_file(session.git, session.checkout, "cli.py", "value = 1\n", "seed")
     peers = RepositoryPeers(session.checkout)
     member = mint_member_id()
     peers.join(member, session.checkout, cli_name="orchestrator")
-    sibling = peers.join_subagent(member, store.Caller(agent_id="b1dbdbd6"))
-    peers.lock(sibling.id if holder == "sibling" else member, session.checkout)
+    peers.join_subagent(member, store.Caller(agent_id="b1dbdbd6"))
+    for fork, spawner in [("f0f0f0f0", "a0cacac5"), ("e2e2e2e2", "b1dbdbd6")]:
+        peers.join_subagent(member, store.Caller(agent_id=fork, spawned_by=spawner))
+    held = store.subagent_id(member, holder) if holder else member
+    peers.lock(held, session.checkout)
     session.environment[MEMBER_ENV] = member
     target = session.checkout / "cli.py"
 
@@ -395,6 +483,71 @@ def test_a_subagents_edit_is_judged_against_its_own_row_everywhere(
             "agent_type": "general-purpose",
         }
         assert session.dispatched(runtime, call) == effect
+
+
+def after_the_call(session: Session, runtime: Runtime, call: JsonObject) -> str:
+    """What the writer is told beside the call's result, as its runtime's post-tool hook says it."""
+    result = sh.Command(sys.executable)(
+        "-I",
+        "-S",
+        str(DISPATCHERS[runtime].resolve()),
+        _in=json.dumps(
+            {
+                "session_id": "parity",
+                "hook_event_name": "PostToolUse",
+                "cwd": str(session.checkout),
+                "tool_response": "",
+                **call,
+            }
+        ),
+        _ok_code=[0, 2],
+        _return_cmd=True,
+        _env=session.environment,
+    )
+    assert isinstance(result, sh.RunningCommand)
+    assert result.exit_code == 0, result.stderr.decode()
+    rendered = json.loads(str(result) or "{}")
+    specific = (
+        rendered["hookSpecificOutput"] if "hookSpecificOutput" in rendered else {}
+    )
+    return str(specific["additionalContext"]) if "additionalContext" in specific else ""
+
+
+@pytest.mark.parametrize("runtime", ["claude", "codex"])
+def test_a_writer_is_told_its_own_fork_holds_what_it_wrote(
+    session: Session, runtime: Runtime
+) -> None:
+    """Its own fork's hold lets the write through, and is said beside the result in
+    the same words on both runtimes. A sibling's fork asks before the write instead
+    (test_a_subagents_edit_is_judged_against_its_own_row_everywhere)."""
+    commit_file(session.git, session.checkout, "cli.py", "value = 1\n", "seed")
+    peers = RepositoryPeers(session.checkout)
+    member = mint_member_id()
+    peers.join(member, session.checkout, cli_name="orchestrator")
+    fork = peers.join_subagent(
+        member, store.Caller(agent_id="f0f0f0f0", spawned_by="a0cacac5", name="sweep")
+    )
+    target = session.checkout / "cli.py"
+    peers.lock(fork.id, target)
+    session.environment[MEMBER_ENV] = member
+    # Where Codex keeps the before-image its post-tool hook reads the patch against.
+    session.environment["PLUGIN_DATA"] = str(session.base / "plugin-data")
+    call = {
+        **edited(runtime, target, "value = 1\n", "value = 2\n"),
+        "agent_id": "a0cacac5",
+        "agent_type": "general-purpose",
+        "tool_use_id": "family-call",
+    }
+
+    asked = session.dispatched(runtime, call)
+    target.write_text("value = 2\n", encoding="utf-8")
+    said = after_the_call(session, runtime, call)
+
+    assert asked == "allow"
+    assert said.splitlines() == [
+        "warning: `cli.py` — your subagent sweep holds this file and is still running",
+        "→ tell it what you wrote, before it writes over your change",
+    ]
 
 
 def test_what_a_subagent_writes_is_held_on_its_own_row(session: Session) -> None:
@@ -445,12 +598,14 @@ def test_dev_policy_from_a_subagent_s_shell_reads_its_own_claim_as_its_own(
     peers = RepositoryPeers(session.checkout)
     member = mint_member_id()
     peers.join(member, session.checkout, cli_name="orchestrator")
-    child = peers.join_subagent(member, store.Caller(agent_id="a0cacac5"))
-    peers.lock(child.id, session.checkout)
+    peers.join_subagent(member, store.Caller(agent_id="a0cacac5"))
+    sibling = peers.join_subagent(member, store.Caller(agent_id="b1dbdbd6"))
+    peers.lock(sibling.id, session.checkout)
     session.environment[MEMBER_ENV] = member
     edit = session.edit(session.checkout / "cli.py", "value = 1\n", "value = 2\n")
 
-    assert session.judged(monkeypatch, edit).effect == "ask"
+    # The session spawned the holder; its sibling did not.
+    assert session.judged(monkeypatch, edit).effect == "allow"
 
     session.dispatched(
         "claude",
@@ -464,4 +619,4 @@ def test_dev_policy_from_a_subagent_s_shell_reads_its_own_claim_as_its_own(
         },
     )
 
-    assert session.judged(monkeypatch, edit).effect == "allow"
+    assert session.judged(monkeypatch, edit).effect == "ask"

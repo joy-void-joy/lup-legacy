@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "generator_version": "0.2.0",
-  "source_digest": "8c4b5886bbb1bd7b06eb1b3a3c3019fbbc9bc2cee10a2e2c04aae080856061ba",
+  "source_digest": "5b38f29349471c364a98e044eaa46a87bb35cf0379115314d768f841f9f03cd0",
   "target_requirements": [
     "codex-cli>=0.144"
   ],
@@ -72,7 +72,7 @@
     {
       "path": ".codex/plugins/lup/hooks/runtime/caller_payload.py",
       "category": "generated",
-      "sha256": "94b1112812a84f991a5cc34e6b1373ff5feacff95ae84ebbf282e1f6fb4129e2",
+      "sha256": "6178fd8f8e1b02742b905477f1496d451a8b8df57b32fc18265bab6f0e340ee4",
       "semantic_id": "hooks.lup-policy",
       "executable": false
     },
@@ -128,7 +128,7 @@
     {
       "path": ".codex/plugins/lup/hooks/runtime/coordination/mail.py",
       "category": "generated",
-      "sha256": "9f70e3e5e22242d4340c6ae61e12178887ec86804bd915b1279968e9cea4c58e",
+      "sha256": "94d770ca47736566df7c8e219f00a37e98b769de52738766c9780b22940dc4d8",
       "semantic_id": "hooks.lup-policy",
       "executable": false
     },
@@ -156,7 +156,7 @@
     {
       "path": ".codex/plugins/lup/hooks/runtime/coordination/store.py",
       "category": "generated",
-      "sha256": "f54934783a91109a3c048d3588e952deac14b856b814fc64fdf035a9d77dd2c0",
+      "sha256": "187a62f11d49fe9bdd49a7aede5c1e2a1b621e312762c51f354f012c1ab1b9b0",
       "semantic_id": "hooks.lup-policy",
       "executable": false
     },
@@ -310,7 +310,7 @@
     {
       "path": ".codex/plugins/lup/hooks/runtime/kernel/peers.py",
       "category": "generated",
-      "sha256": "b0b5ef5f9041e7ad372364c4481eb6eec787077dbde048f7445275a87baa6439",
+      "sha256": "c356beab9dc92e8f98f869f7704993e2b3c492c7ecd5e08c1b20cb87f968fa96",
       "semantic_id": "hooks.lup-policy",
       "executable": false
     },
@@ -345,7 +345,7 @@
     {
       "path": ".codex/plugins/lup/hooks/runtime/kernel/rows.py",
       "category": "generated",
-      "sha256": "e4367f748e73fb39b7be337593fcb622b7502cf52dee095b1167586b53ad3229",
+      "sha256": "366d966267f441c5c0ae196602407a43736a1a4b708ddebf13cb4c1dec1a89bf",
       "semantic_id": "hooks.lup-policy",
       "executable": false
     },
@@ -373,7 +373,7 @@
     {
       "path": ".codex/plugins/lup/hooks/runtime/kernel/spawns.py",
       "category": "generated",
-      "sha256": "f8382cd505824ee7df912fd031157546902ce54622143b2c79c2f6afccd16b66",
+      "sha256": "9c7b132b8f19320ec01c80d8486eefb7f5dcfa2e7834b64d0804ad5ea8429c9d",
       "semantic_id": "hooks.lup-policy",
       "executable": false
     },
@@ -429,7 +429,7 @@
     {
       "path": ".codex/plugins/lup/hooks/runtime/policy_data.py",
       "category": "generated",
-      "sha256": "e9e6c1e1212dc56ad4bcc503360feb48e65fc1464aa96323a9601d99f07b246b",
+      "sha256": "a96245cd07745b7ba85b3420e71895297d8a937d41322ca43cd53df978da1c7f",
       "semantic_id": "hooks.lup-policy",
       "executable": false
     },
@@ -492,7 +492,7 @@
     {
       "path": ".codex/plugins/lup/hooks/scripts/policy.py",
       "category": "generated",
-      "sha256": "1f47c818c0c3ccd4202d6d5b9c6bb0aa425b4961017d3d848c02180f908c64c6",
+      "sha256": "e810593bf9a29f6aaa6bfbe1c88756add251ab734f3f4955f3c336dec68d50ce",
       "semantic_id": "hooks.lup-policy",
       "executable": true
     },
@@ -506,7 +506,7 @@
     {
       "path": ".codex/plugins/lup/hooks/scripts/policy_evaluator.py",
       "category": "generated",
-      "sha256": "ad9f9a686d73a04e7274d1e0611d840f142f514cd4d48ece12c4aafa44277188",
+      "sha256": "6dd7311af09f7cc74652cc335cc8defc6f751d7f5a0d233bd1e47b8c28e5ca76",
       "semantic_id": "hooks.lup-policy",
       "executable": false
     },
@@ -604,7 +604,7 @@
     {
       "path": ".codex/plugins/lup/skills/fb-analyze/SKILL.md",
       "category": "generated",
-      "sha256": "8f7dc77e6c8e917dc3a5819e738539820908a2761a8afc70f1f8076a3f01bf60",
+      "sha256": "54ace9e072a749c19ee09fcfe2d166a243aceb4ae9bf4aa64d4c75c0e87ab559",
       "semantic_id": "skill.fb-analyze",
       "executable": false
     },
@@ -618,7 +618,7 @@
     {
       "path": ".codex/plugins/lup/skills/fb-investigate/SKILL.md",
       "category": "generated",
-      "sha256": "6b134a844d1d4a28aa71e14d5d5f7fbe831c4ec4517cd665bed396cc3817b1e2",
+      "sha256": "e699712e490522f913b6eaf05298c5039bc05af7fc823c2e7793add41a722a02",
       "semantic_id": "skill.fb-investigate",
       "executable": false
     },
@@ -807,7 +807,7 @@
     {
       "path": "AGENTS.md",
       "category": "generated",
-      "sha256": "929711388f4959ab30f1af0fab1ea7562b4fa120749e0be53c3fe9020c9d0c4b",
+      "sha256": "7b91bf49a7b3a421c5e012b0d06a5178fd7add2f0baaf98b85ffea77c2197d05",
       "semantic_id": "harness.guidance",
       "executable": false
     }

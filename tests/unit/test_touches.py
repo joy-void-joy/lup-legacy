@@ -12,7 +12,8 @@ from pathlib import Path
 import sh
 
 from lup.coordination.identity import mint_member_id
-from lup.coordination.policy import peer_policy
+from lup.coordination.peers import USER_ADDRESS, join_user
+from lup.coordination.policy import CLAIM_HELD, OPERATOR_HELD, peer_policy
 from lup.coordination.repository import RepositoryPeers
 from lup.policy.kernel.decision import KernelDecision, captured_edit_decision
 from lup.policy.kernel.peers import decide_foreign_claim, settled_with_claim
@@ -133,6 +134,42 @@ def test_an_edit_under_another_session_s_claim_asks_and_names_the_holder(
     assert specific["permissionDecision"] == "ask"
     assert "feat-rewriting" in str(specific["permissionDecisionReason"])
     assert QuestionRelay(work / ".lup/questions.jsonl").pending() == []
+
+
+def test_an_edit_under_the_operator_s_hold_asks_saying_it_is_theirs(
+    tmp_path: Path,
+) -> None:
+    """The person holds a path the way a session does, and never stops holding it unasked."""
+    work = tmp_path / "work"
+    git = initialized_repo(work, tmp_path / "hooks")
+    commit_file(git, work, "a.py", "value = 1\n", "seed the file under the hold")
+    peers = RepositoryPeers(work)
+    mine = mint_member_id()
+    peers.join(mine, work, cli_name="feat-transducer")
+    join_user(peers.roster)
+    peers.lock(USER_ADDRESS, work)
+
+    decision = decide(edit_payload(work / "a.py", "value = 1", "value = 2", work), mine)
+
+    specific = decision["hookSpecificOutput"]
+    assert isinstance(specific, dict)
+    assert specific["permissionDecision"] == "ask"
+    reason = str(specific["permissionDecisionReason"])
+    assert f"— is held by user: {OPERATOR_HELD}" in reason
+    assert CLAIM_HELD not in reason
+
+
+def test_a_path_the_operator_and_a_session_both_hold_says_both() -> None:
+    assert DECLARED is not None
+    alone = decide_foreign_claim("/tmp/a.py", ["user"], DECLARED)
+    both = decide_foreign_claim("/tmp/a.py", ["feat-rewriting", "user"], DECLARED)
+
+    assert alone is not None and both is not None
+    assert alone.headline() == f"asks: `/tmp/a.py` — is held by user: {OPERATOR_HELD}"
+    assert both.headline() == (
+        f"asks: `/tmp/a.py` — is held by feat-rewriting, user: {OPERATOR_HELD};"
+        f" {CLAIM_HELD}"
+    )
 
 
 def test_a_session_is_not_asked_about_a_path_it_holds_itself(tmp_path: Path) -> None:

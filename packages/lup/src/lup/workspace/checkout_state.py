@@ -82,9 +82,9 @@ class CheckoutState(BaseModel, frozen=True):
         """How often each scratch script has run, to say when one became a tool."""
         return self.directory() / "script-runs.json"
 
-    def referrals(self) -> Path:
-        """Which repositories each session was already referred to."""
-        return self.directory() / "referrals.json"
+    def notices(self) -> Path:
+        """What each conversation was already told once, such as a referral."""
+        return self.directory() / "notices.json"
 
     def resolve(self) -> Path:
         """Every resolver run: its state, journal, leases and offers."""

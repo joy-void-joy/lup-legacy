@@ -2910,6 +2910,7 @@ SPAWN_NAMES: SpawnNameRow | None = {
     ],
     "punctuation": "_",
     "limit": 64,
+    "notice": "name each subagent you spawn after the work it does",
 }
 
 VERIFICATION: VerificationRow = {
@@ -30709,6 +30710,8 @@ PEER_POLICY: PeerPolicyRow | None = {
             "run": [],
         },
     ],
+    "operator": "user",
+    "operator_reason": "the operator locked this path",
 }
 
 AUTONOMOUS_AGENT_IDENTITIES: list[str] = [

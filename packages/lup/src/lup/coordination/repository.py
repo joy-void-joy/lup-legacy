@@ -51,9 +51,10 @@ from lup.coordination.identity import (
     mint_member_id,
     session_cli_name,
 )
-from lup.coordination.mail import ActorDelivery
+from lup.coordination.bare.mail import new_post_id
+from lup.coordination.mail import ActorDelivery, Posting, StandingNotice
 from lup.coordination.meeting import coordination_root
-from lup.coordination.peers import USER_KIND, user_peer
+from lup.coordination.peers import USER_ADDRESS, USER_KIND, USER_TASK, user_peer
 from lup.coordination.pulse import Pulse
 from lup.coordination.refs import ActorRef
 from lup.coordination.roster import (
@@ -140,6 +141,22 @@ class PeerDepartedError(LookupError):
         )
         self.member = member
         self.cli_name = cli_name
+
+
+class NotReached(BaseModel, frozen=True):
+    """One member a post was meant for and did not reach, and why."""
+
+    address: str
+    reason: str
+
+
+class ThreadPost(BaseModel, frozen=True):
+    """One post into a discussion: the id every copy shares, and whom it reached."""
+
+    post: str
+    thread: str
+    reached: list[ActorRef] = []
+    refused: list[NotReached] = []
 
 
 class PeerView(BaseModel, frozen=True):
@@ -374,8 +391,11 @@ class RepositoryPeers:
 
         Resolved rather than assumed, so every verb taking an id — a console's
         `--id`, a handoff's lock — reaches a subagent's row by the id the
-        roster prints for it.
+        roster prints for it. `user` is the person, whose row is the one no
+        session or subagent can be.
         """
+        if member_id == USER_ADDRESS:
+            return user_peer()
         found = store.actor_named(self.root, member_id)
         return ActorRef(kind=store.actor_kind(found), id=store.actor_id(found))
 
@@ -539,6 +559,31 @@ class RepositoryPeers:
 
         return [row(member) for member in self.present() if told(member)]
 
+    def person(self) -> PeerView:
+        """The person's own row: what they say they are on, and what they hold.
+
+        Read like any session's, from their own file, and addressed at `user`
+        in every repository. They hold a path the way a session does, and
+        never stop, so what they lock stands until they release it.
+        """
+        found = store.member_of(self.root, member_identity(user_peer()))
+        member = (
+            folded_member(found)
+            if found is not None
+            else RosterMember(actor=user_peer(), task=USER_TASK, running=True)
+        )
+        held = [
+            claim
+            for claim in self.held()
+            if any(holder.id == USER_ADDRESS for holder in claim.holders)
+        ]
+        return PeerView(
+            member=member,
+            cli_name=USER_ADDRESS,
+            holding=[claim.subject() for claim in held],
+            contested=[claim.subject() for claim in held if len(claim.holders) > 1],
+        )
+
     def recent(self, now: datetime | None = None) -> list[PeerView]:
         """The listing a reader with no arrival of its own gets: the retention window."""
         return self.listing(since=self.retention.since(now or utc_now()))
@@ -629,6 +674,7 @@ class RepositoryPeers:
         door: Door = Door.AGENT,
         in_reply_to: str = "",
         sender: str = "",
+        posting: Posting = Posting(),
     ) -> ActorRef | None:
         """Post one message to whatever a sender spelled, or say it reached nobody.
 
@@ -642,7 +688,9 @@ class RepositoryPeers:
         tell the sender nothing while the message waits for nobody.
 
         *sender* signs it with the address a reply reaches: the sending
-        member's id, or `user` for the person.
+        member's id, or `user` for the person. A reply names the post it
+        answers in *in_reply_to*, and goes into that post's thread unless
+        *posting* names one.
         """
         member = self.address(to)
         if member is None:
@@ -657,18 +705,106 @@ class RepositoryPeers:
             door=door,
             in_reply_to=in_reply_to,
             sender=sender,
+            posting=posting
+            if posting.thread or not in_reply_to
+            else posting.model_copy(update={"thread": self.thread_of(in_reply_to)}),
         )
         return member
 
-    def notify(self, text: str, door: Door = Door.AGENT, by: str = "") -> None:
+    def thread_of(self, post: str) -> str:
+        """The thread one post is in, which a reply to it goes into; the post itself where the record has no thread for it."""
+        found = self.cohort.mail.found(post)
+        if found is None:
+            return post
+        return found.message.thread or found.message.post or found.message.id
+
+    def post_into(
+        self,
+        thread: str,
+        text: str,
+        sender: str,
+        door: Door = Door.AGENT,
+        in_reply_to: str = "",
+        joining: tuple[str, ...] = (),
+    ) -> ThreadPost:
+        """Post once into a discussion: one copy to everyone in it but the sender, sharing a post.
+
+        Everyone is whoever wrote in the thread or was written to, and whoever
+        *joining* names, who is in it from then on. Each copy answers
+        *in_reply_to*, or the thread's latest post, and carries the thread's
+        title and everyone else in it, so its reader can answer them all.
+        A member that has stopped is left out and said so, rather than
+        failing the post for everyone still here.
+        """
+        found = self.cohort.mail.discussion(thread)
+        if found is None:
+            raise LookupError(
+                f"no post on this repository's record began a thread {thread!r}"
+            )
+        joined = [self.address(each) for each in joining]
+        missing = [
+            each for each, ref in zip(joining, joined, strict=True) if ref is None
+        ]
+        if missing:
+            raise LookupError(f"nobody here answers to {', '.join(missing)}")
+        everyone = list(
+            dict.fromkeys(
+                [
+                    *found.participants,
+                    sender,
+                    *(ref.id for ref in joined if ref is not None),
+                ]
+            )
+        )
+        named = {each: self.called(each) or each for each in everyone}
+        post = new_post_id()
+        reached: list[ActorRef] = []
+        refused: list[NotReached] = []
+        for reader in [each for each in everyone if each != sender]:
+            posting = Posting(
+                post=post,
+                thread=thread,
+                title=found.title,
+                participants=[named[each] for each in everyone if each != reader],
+            )
+            try:
+                landed = self.send(
+                    reader,
+                    text,
+                    door=door,
+                    in_reply_to=in_reply_to or found.last,
+                    sender=sender,
+                    posting=posting,
+                )
+            except PeerDepartedError as departed:
+                refused.append(NotReached(address=named[reader], reason=str(departed)))
+                continue
+            if landed is None:
+                refused.append(
+                    NotReached(
+                        address=named[reader], reason="nobody here answers to it"
+                    )
+                )
+            else:
+                reached.append(landed)
+        return ThreadPost(post=post, thread=thread, reached=reached, refused=refused)
+
+    def notify(
+        self, text: str, door: Door = Door.AGENT, by: str = ""
+    ) -> StandingNotice:
         """State something true for every session here, and for whoever starts next.
 
         A notice is state rather than mail: it is read at the head of every
         prompt for as long as it stands, so a session opened tomorrow reads it
         at its first. Whoever is working is told now as well, because a fact
         worth stating is worth hearing before the turn they are in ends.
+        Hands back the notice, whose id takes it down again.
         """
-        self.cohort.notify(text, door=door, by=by)
+        return self.cohort.notify(text, door=door, by=by)
+
+    def withdraw(self, notice_id: str) -> bool:
+        """Take one standing notice down, saying whether it was there to take down."""
+        return self.cohort.mail.retract(notice_id)
 
     def waiting(self, member_id: str) -> ActorDelivery:
         """What is queued for this session, consuming none of it."""
@@ -697,27 +833,41 @@ class RepositoryPeers:
         """
         self.cohort.mailbox(self.actor(member_id)).commit(delivery)
 
-    def live_ids(self) -> list[str]:
-        """Every member still working here, by id, which is what expires a claim.
+    def carried(self, member_id: str, delivery: ActorDelivery) -> None:
+        """Record that a wake carried these messages to this member, leaving them for its hook.
 
-        The store's own reading, asked for the kinds this layer counts: the
-        person is on the roster, holds nothing, and would otherwise be live
-        for a claim check here and not for the addressing read the compiled
-        dispatcher takes through the same function.
+        What a redirect a wake carried needs: the member has read it, and its
+        next tool call has still to be refused with it, which only its hook
+        handing it over does; a wake does not carry it again.
         """
+        self.cohort.mail.carried(self.actor(member_id), delivery)
+
+    def live_ids(self) -> list[str]:
+        """Every member still working here, by id; the person is not one."""
         return store.live_ids(
             self.root, window=self.pulse.stale_after_seconds, without=USER_KIND
         )
 
+    def claiming_ids(self) -> list[str]:
+        """Every member whose claims stand, by id, which is what expires a claim.
+
+        The live members and the person, who is never finished: what they lock
+        stands until they release it, as the compiled dispatcher asking who
+        holds a path reads it.
+        """
+        return store.live_ids(self.root, window=self.pulse.stale_after_seconds)
+
     def held(self) -> list[HeldPath]:
-        """Every claim a live session is holding, newest first."""
-        return [folded_held_path(row) for row in store.held(self.root, self.live_ids())]
+        """Every claim a live member or the person is holding, newest first."""
+        return [
+            folded_held_path(row) for row in store.held(self.root, self.claiming_ids())
+        ]
 
     def holding(self, path: Path) -> list[HeldPath]:
         """Every live claim a write to this path would land under."""
         return [
             folded_held_path(row)
-            for row in store.covering(self.root, path, self.live_ids())
+            for row in store.covering(self.root, path, self.claiming_ids())
         ]
 
     def revise(

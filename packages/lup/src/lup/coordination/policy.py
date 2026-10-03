@@ -17,6 +17,7 @@ from pathlib import PurePosixPath
 
 from lup.coordination.bare.store import COORDINATION_DIR, STORE_DIR, WINDOWS_DIR
 from lup.coordination.identity import MEMBER_ENV
+from lup.coordination.peers import USER_ADDRESS
 from lup.policy.kernel.diagnostic import Step, step
 from lup.policy.peer_policy import PeerPolicy
 from lup.policy.refused_paths import RefusedPaths
@@ -90,6 +91,14 @@ CLAIM_RECOVERY = (
 """What the writing agent can do about the holder, beside the question."""
 
 
+OPERATOR_HELD = "the operator locked this path"
+"""What the approver of a write into a path the person watching holds reads.
+
+Apart from :data:`CLAIM_HELD` because it is a different fact: not two
+sessions meeting in one file, but the person having said they are in it.
+"""
+
+
 def peer_policy(
     send_reason: str = SEND_REDIRECT,
     listing_note: str = LISTING_NOTE,
@@ -97,6 +106,7 @@ def peer_policy(
     send_recovery: tuple[Step, ...] = SEND_RECOVERY,
     claim_recovery: tuple[Step, ...] = CLAIM_RECOVERY,
     server: str = COORDINATION_SERVER,
+    operator_reason: str = OPERATOR_HELD,
 ) -> PeerPolicy:
     """This repository's sessions, as the compiled permission hook reads them."""
     return PeerPolicy(
@@ -109,6 +119,8 @@ def peer_policy(
         listing_note=listing_note,
         claim_reason=claim_reason,
         claim_recovery=list(claim_recovery),
+        operator=USER_ADDRESS,
+        operator_reason=operator_reason,
     )
 
 

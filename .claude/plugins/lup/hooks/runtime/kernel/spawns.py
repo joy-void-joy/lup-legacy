@@ -22,10 +22,15 @@ deferred rather than allowed, because this kernel grants nothing it was not
 asked to grant: the runtime's own permissions still settle a call it says
 nothing more about, and the name rides beside that deferral as a rewrite of
 the call's arguments.
+
+A name read out of a description is a summary of what was asked, not what
+anybody would call the work, so the caller is told afterwards to choose its
+own: once the spawn has gone out, rather than as a refusal before it, which
+was the friction the reading exists to spare.
 """
 
 from .decision import KernelDecision
-from .diagnostic import step
+from .diagnostic import Step, diagnostic, rendered, step
 from .rows import SpawnNameRow
 from .tools import TOOL_ESCALATE_HINT, escalated_reason
 
@@ -93,6 +98,59 @@ def spawn_name(given: str, description: str, row: SpawnNameRow | None) -> str:
     return normalized(given) or normalized(description)
 
 
+def passing(field: str, row: SpawnNameRow) -> tuple[Step, ...]:
+    """How a caller passes a name, opening with the key it goes under.
+
+    ``field`` is the key the runtime reads the name from, passed by the host
+    half that read it: one declaration serves every runtime and each spells
+    the key its own way, and the schema a runtime shows the model may not
+    list it at all — Claude Code 2.1.280 and 2.1.285 show an `Agent` tool
+    with no `name` and take one regardless — so a sentence that only says
+    "pass a name" leaves the caller to guess which argument, and the guess it
+    makes is the description.
+    """
+    return (
+        step(
+            f"pass the name as `{field}` in the same call, beside the agent type;"
+            " the runtime takes that key whether or not the tool schema it showed"
+            " lists it"
+        ),
+        *row["recovery"],
+    )
+
+
+def spawn_notice(
+    named: str, description: str, row: SpawnNameRow | None, field: str
+) -> str:
+    """What a spawn's caller is told once it has gone out, or ``""`` for nothing.
+
+    Said where the spawn went out under the name its description reads into,
+    which is the name a spawn given none takes. Whether one was given is no
+    longer on the call by then: the runtime hands the hook the call as it
+    ran, rewrite included — measured on Claude Code 2.1.285, a spawn the
+    model sent with no name reached `PostToolUse` carrying the one its
+    `PreToolUse` rewrite gave it. A caller who passed the description's own
+    words chose nothing the reading would not have, so the same sentence
+    serves them.
+
+    A runtime whose spawn carries no description reads no name out of one,
+    so nothing a caller sends there is told anything; ``None`` for the row,
+    or a blank notice, is a project that says nothing.
+    """
+    if row is None or not row["notice"] or not named:
+        return ""
+    if named != spawn_name("", description, row):
+        return ""
+    return rendered(
+        diagnostic(
+            "warning",
+            "went out under the name read from its description",
+            what=named,
+            steps=(step(row["notice"]), *passing(field, row)),
+        )
+    )
+
+
 def decide_spawn(
     given: str,
     description: str,
@@ -105,29 +163,15 @@ def decide_spawn(
     ``None`` for the row is a project that requires no name, which leaves the
     call to the runtime. An escalation marker among the call's inputs turns
     the refusal into the approval question the caller asked for, the way a
-    refused tool's does.
-
-    ``field`` is the key the runtime reads the name from, passed by the host
-    half that read it, and the recovery opens with it: one declaration serves
-    every runtime and each spells the key its own way, and the schema a
-    runtime shows the model may not list it at all — Claude Code 2.1.280
-    shows an `Agent` tool with no `name` and takes one regardless — so a
-    recovery that only says "pass a name" leaves the caller to guess which
-    argument, and the guess it makes is the description.
+    refused tool's does. The recovery opens with ``field``, the key the
+    runtime reads the name from (:func:`passing`).
     """
     if row is None:
         return KernelDecision("defer", "no spawn name is required here")
     named = spawn_name(given, description, row)
     if named:
         return KernelDecision("defer", f"the spawn goes out named {named!r}")
-    recovery = (
-        step(
-            f"pass the name as `{field}` in the same call, beside the agent type;"
-            " the runtime takes that key whether or not the tool schema it showed"
-            " lists it"
-        ),
-        *row["recovery"],
-    )
+    recovery = passing(field, row)
     why = escalated_reason(values)
     if why:
         return KernelDecision(

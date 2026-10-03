@@ -18,7 +18,10 @@ from typing import Annotated
 import typer
 
 from lup.channels.models import Door
+from lup.coordination.bare.mail import new_post_id
 from lup.coordination.identity import NameTakenError, mint_member_id, session_member_id
+from lup.coordination.mail import Posting
+from lup.coordination.peers import USER_ADDRESS
 from lup.coordination.repository import (
     PeerDepartedError,
     PeerView,
@@ -236,6 +239,21 @@ def create_coordination_app() -> typer.Typer:
             bool,
             typer.Option("--redirect", help="Stop the peer rather than inform it"),
         ] = False,
+        sender: Annotated[
+            str,
+            typer.Option(
+                "--as",
+                help="Who signs it, which is where a reply goes: `user` for you, "
+                "or a member's id",
+            ),
+        ] = "",
+        in_reply_to: Annotated[
+            str,
+            typer.Option(
+                "--reply-to",
+                help="The post it answers, as its mailbox heading names it",
+            ),
+        ] = "",
     ) -> None:
         """Send one message to a peer, and say what will carry it there.
 
@@ -243,9 +261,28 @@ def create_coordination_app() -> typer.Typer:
         different claims and only the first is knowable here: the mailbox
         accepting a message says nothing about anyone reading it, and a sender
         told "sent" goes on believing a peer was informed.
+
+        Signed with `--as`, a reply comes back to that mailbox — `user` is the
+        person's, which `mailbox --id user` reads. A reply names the post it
+        answers with `--reply-to` and joins that post's thread.
         """
+        known = peers()
+        if sender and sender != USER_ADDRESS and known.row(sender) is None:
+            raise typer.BadParameter(
+                f"nobody here signs as {sender!r}: `--as` takes `user` or a "
+                "member's id, which `dev coordination roster` lists"
+            )
+        post = new_post_id()
         try:
-            found = peers().send(to, text, redirect=redirect, door=Door.CONSOLE)
+            found = known.send(
+                to,
+                text,
+                redirect=redirect,
+                door=Door.CONSOLE,
+                in_reply_to=in_reply_to,
+                sender=sender,
+                posting=Posting(post=post),
+            )
         except PeerDepartedError as departed:
             refuse(
                 str(departed),
@@ -259,8 +296,8 @@ def create_coordination_app() -> typer.Typer:
                 steps=[step("see who is here", devtools("coordination", "roster"))],
                 code=2,
             )
-        carries = peers().cohort.delivery(found)
-        typer.echo(f"queued for {found.label()}, carried by {carries}")
+        carries = known.cohort.delivery(found)
+        typer.echo(f"queued for {found.label()} as post {post}, carried by {carries}")
 
     @app.command("notice")
     def notice_cmd(
@@ -322,7 +359,10 @@ def create_coordination_app() -> typer.Typer:
     @app.command("mailbox")
     def mailbox_cmd(
         member_id: Annotated[
-            str, typer.Option("--id", help="Which session's mailbox to read")
+            str,
+            typer.Option(
+                "--id", help="Whose mailbox to read: a member's id, or `user` for yours"
+            ),
         ],
         take: Annotated[
             bool,
@@ -333,13 +373,14 @@ def create_coordination_app() -> typer.Typer:
 
         Peeking by default, because reading a mailbox is how a person finds out
         whether a peer has been reached — and a read that consumed would be a
-        read that stopped the peer ever seeing it.
+        read that stopped the peer ever seeing it. Each message is headed as
+        its reader's hook heads it: who sent it, which is where a reply goes,
+        and the post a reply names (`send --reply-to`).
         """
         found = peers()
         delivery = found.take(member_id) if take else found.waiting(member_id)
         for message in delivery.messages:
-            kind = "redirect" if message.redirect else "message"
-            typer.echo(f"[{kind} by {message.door}] {message.text}")
+            typer.echo(f"{message.heading()} {message.text}")
 
     @app.command("holdings")
     def holdings_cmd() -> None:

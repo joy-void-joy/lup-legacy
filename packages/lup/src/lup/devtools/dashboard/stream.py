@@ -20,6 +20,7 @@ rather than one journal.
 
 import asyncio
 import logging
+import threading
 import time
 from abc import ABC, abstractmethod
 from collections import deque
@@ -32,11 +33,16 @@ from pydantic import BaseModel, Field, ValidationError
 from lup.devtools.dashboard.companion import KnownRepository
 from lup.devtools.dashboard.keys import KeyBindings
 from lup.devtools.dashboard.live import (
+    Feature,
     LiveMessage,
     LiveRepository,
     LiveSession,
     MailExtent,
     RepositoryWatch,
+    TranscriptEntry,
+    TranscriptTail,
+    UserRow,
+    member_transcript,
 )
 from lup.devtools.dashboard.pulse import RunningCode
 from lup.devtools.dashboard.reviews import ReviewError, ReviewSnapshot, ReviewStore
@@ -86,11 +92,44 @@ class SnapshotEvent(StreamEvent, frozen=True):
 
     reviews: ReviewSnapshot
     code: RunningCode = RunningCode()
+    users: list[UserRow] = []
+    """The person's own row in each repository."""
+
+    served: list[Feature] = []
+    """What supervision this server serves, as the page names each piece."""
     keys: KeyBindings = KeyBindings()
     """The person's own keys in effect, and what their table refused."""
 
     def moves(self, state: "LiveState") -> None:
         """Nothing: a snapshot is read off the state, never applied to it."""
+        del state
+
+
+class UserEvent(StreamEvent, frozen=True):
+    """The person's own row in one repository, first seen or changed."""
+
+    type: Literal["user"] = "user"
+    user: UserRow
+
+    def moves(self, state: "LiveState") -> None:
+        state.users[self.user.key] = self.user
+
+
+class TranscriptEvent(StreamEvent, frozen=True):
+    """What one followed transcript recorded since, while a tab follows it.
+
+    Not state: a tab handed the whole state again reads the transcript's
+    page anew, and these carry on from where that page ends.
+    """
+
+    type: Literal["transcript"] = "transcript"
+    session: str
+    entries: list[TranscriptEntry]
+    end: int
+    """The byte just past the last whole line read."""
+
+    def moves(self, state: "LiveState") -> None:
+        """Nothing: a transcript is followed, never held."""
         del state
 
 
@@ -216,6 +255,8 @@ type DashboardEvent = Annotated[
     | ReviewGoneEvent
     | ReviewScopeEvent
     | ServiceEvent
+    | UserEvent
+    | TranscriptEvent
     | KeysEvent,
     Field(discriminator="type"),
 ]
@@ -260,6 +301,51 @@ def sse(frame: StreamFrame) -> str:
     return f"id: {frame.cursor}\ndata: {frame.model_dump_json()}\n\n"
 
 
+FOLLOW_SECONDS = 60.0
+"""How long a tab's ask to follow a transcript lasts before it must renew it."""
+
+
+class FollowedFrom(BaseModel, frozen=True, extra="forbid"):
+    """One transcript a tab follows: whose, and the byte it has read to."""
+
+    repository: str
+    member: str
+    after: int = Field(default=0, ge=0)
+    """Where the page it holds ends, which frames carry on from."""
+
+
+class FollowRequest(BaseModel, frozen=True, extra="forbid"):
+    """Every transcript one tab follows now; one it leaves out lapses with its lease."""
+
+    sessions: list[FollowedFrom]
+
+
+class FollowRefused(BaseModel, frozen=True):
+    """One transcript a tab asked to follow that nothing here could follow, and why."""
+
+    session: str
+    reason: str
+
+
+class FollowOutcome(BaseModel, frozen=True):
+    """What a tab now follows, by session key, and for how long without renewing."""
+
+    sessions: list[str]
+    refused: list[FollowRefused] = []
+    seconds: float
+
+
+class FollowedTranscript:
+    """One transcript some tab follows: read on from where it stands, until its lease lapses.
+
+    Mutable, and moved only under the feed's lock.
+    """
+
+    def __init__(self, tail: TranscriptTail, until: float) -> None:
+        self.tail = tail
+        self.until = until
+
+
 class Observation(BaseModel, frozen=True):
     """What every source says now; reviews only on the looks that read them."""
 
@@ -269,6 +355,9 @@ class Observation(BaseModel, frozen=True):
     extents: list[MailExtent] = []
     reviews: ReviewSnapshot | None = None
     code: RunningCode = RunningCode()
+    users: list[UserRow] = []
+    transcripts: list[TranscriptEvent] = []
+    """What each followed transcript recorded since the last look."""
     keys: KeyBindings = KeyBindings()
 
 
@@ -276,9 +365,13 @@ class LiveState:
     """The state every tab is converging on, and the differences that move it.
 
     Mutable, and moved only by the producer on the event loop's thread.
+    *served* is what supervision this dashboard serves, which every whole
+    state it hands a tab says.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, served: tuple[Feature, ...] = ()) -> None:
+        self.served = served
+        self.users: dict[str, UserRow] = {}
         self.repositories: dict[str, LiveRepository] = {}
         self.sessions: dict[str, LiveSession] = {}
         self.messages: dict[str, LiveMessage] = {}
@@ -318,10 +411,21 @@ class LiveState:
             *[MessageEvent(message=each) for each in seen.messages],
             *(self.reviewed(seen.reviews) if seen.reviews is not None else []),
             *([ServiceEvent(code=seen.code)] if seen.code != self.code else []),
+            *[
+                UserEvent(user=each)
+                for each in seen.users
+                if self.users.get(each.key) != each
+            ],
+            *seen.transcripts,
             *([KeysEvent(keys=seen.keys)] if seen.keys != self.keys else []),
         ]
         for event in events:
             event.moves(self)
+        self.users = {
+            key: row
+            for key, row in self.users.items()
+            if row.repository in self.repositories
+        }
         self.extents = {extent.repository: extent for extent in seen.extents}
         self.messages = {
             key: message
@@ -384,6 +488,8 @@ class LiveState:
                 history=self.history,
             ),
             code=self.code,
+            users=list(self.users.values()),
+            served=list(self.served),
             keys=self.keys,
         )
 
@@ -397,7 +503,9 @@ class LiveFeed:
     expiring those no session waits on every ``sweep_every``. What differs is
     numbered and kept for replay; the last ``kept`` of them are replayable.
     ``code`` says which code the dashboard runs, where it knows, and
-    ``keys`` the person's own keys, as their config says on each look.
+    ``keys`` the person's own keys, as their config says on each look. A
+    transcript a tab follows is read on every look for as long as some tab
+    renews it within ``lease`` seconds.
     """
 
     def __init__(
@@ -410,6 +518,7 @@ class LiveFeed:
         kept: int = KEPT_FRAMES,
         heartbeat: float = HEARTBEAT_SECONDS,
         code: Callable[[], RunningCode] = RunningCode,
+        lease: float = FOLLOW_SECONDS,
         keys: Callable[[], KeyBindings] = KeyBindings,
     ) -> None:
         self.repositories = repositories
@@ -420,10 +529,13 @@ class LiveFeed:
         self.review_every = review_every
         self.sweep_every = sweep_every
         self.heartbeat = heartbeat
+        self.lease = lease
         self.epoch = uuid4().hex[:12]
         self.seq = 0
         self.sent: deque[Sent] = deque(maxlen=kept)
         self.state = LiveState()
+        self.followed: dict[str, FollowedTranscript] = {}
+        self.following = threading.Lock()
         self.watches: dict[str, RepositoryWatch] = {}
         self.looks = 0
         self.followers = 0
@@ -435,6 +547,14 @@ class LiveFeed:
     def served(self) -> list[KnownRepository]:
         """Every repository this dashboard serves now, once each."""
         return list({each.key(): each for each in self.repositories()}.values())
+
+    def serves(self, features: tuple[Feature, ...]) -> None:
+        """Say on every whole state a tab is handed that this dashboard serves *features*.
+
+        Called by what registers the routes serving them, so a page is told
+        of a piece of supervision exactly where a route answers for it.
+        """
+        self.state.served = features
 
     def cursor(self) -> str:
         """Where this dashboard's numbering stands now, spelled for a tab to send back."""
@@ -467,8 +587,58 @@ class LiveFeed:
             extents=[watch.extent() for watch in self.watches.values()],
             reviews=reviews,
             code=self.code(),
+            users=[watch.user(now) for watch in self.watches.values()],
+            transcripts=self.transcribed(now),
             keys=self.keys(),
         )
+
+    def follow_transcripts(
+        self, asked: list[FollowedFrom], now: float | None = None
+    ) -> FollowOutcome:
+        """Follow each transcript asked for from the byte its tab has read to, for ``lease`` more seconds.
+
+        Called by a tab renewing what it follows, on a thread of the
+        server's: a transcript followed already goes on from the earlier of
+        where it stands and where this tab asks, so no tab misses a line and
+        each keeps an entry once by where it sits. A session nothing here
+        answers to, or one with no transcript on record, is refused by name.
+        """
+        moment = time.monotonic() if now is None else now
+        known = {each.key(): each for each in self.served()}
+        followed: list[str] = []
+        refused: list[FollowRefused] = []
+        for each in asked:
+            key = f"{each.repository}/{each.member}"
+            try:
+                if each.repository not in known:
+                    raise LookupError("no repository has that key")
+                path = member_transcript(known[each.repository], each.member)
+            except LookupError as missing:
+                refused.append(FollowRefused(session=key, reason=str(missing)))
+                continue
+            with self.following:
+                held = self.followed[key] if key in self.followed else None
+                if held is None or held.tail.path != path:
+                    self.followed[key] = FollowedTranscript(
+                        TranscriptTail(path, each.after), moment + self.lease
+                    )
+                else:
+                    held.tail.offset = min(held.tail.offset, each.after)
+                    held.until = moment + self.lease
+            followed.append(key)
+        return FollowOutcome(sessions=followed, refused=refused, seconds=self.lease)
+
+    def transcribed(self, now: float) -> list[TranscriptEvent]:
+        """What every transcript a tab follows recorded since the last look, letting go of lapsed leases."""
+        with self.following:
+            self.followed = {
+                key: each for key, each in self.followed.items() if each.until > now
+            }
+            return [
+                TranscriptEvent(session=key, entries=found, end=each.tail.offset)
+                for key, each in self.followed.items()
+                if (found := each.tail.fresh())
+            ]
 
     def publish(self, observation: Observation) -> None:
         """Number every difference the look found, and wake every tab following.

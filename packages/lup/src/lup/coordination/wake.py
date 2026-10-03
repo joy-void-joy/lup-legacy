@@ -45,6 +45,17 @@ from lup.coordination.bare.scope import execution_scope
 # lup: ignore[constant-declaration] — env overlays the target home while retaining native process discovery settings
 QUEUE_COMMAND = LazyCommand("env")
 
+type WakePriority = Literal["next", "now"]
+"""When a woken session takes what the wake carries: at its next chance, or at once.
+
+`now` is Claude's own frame priority, and what it does was measured on Claude
+Code 2.1.285 in an interactive session, with the runtime's debug log as
+witness: while the model is generating, the turn ends within milliseconds and
+the frame's message is taken as the next turn; while a tool call runs, the call
+runs to its end and the message is taken right after it, as `next` would be
+taken at that boundary. `next` lets a generating turn finish first.
+"""
+
 type WakeRuntime = Literal["", "claude", "codex"]
 """Which runtimes a member can declare a wake path for, named once.
 
@@ -148,6 +159,7 @@ def wake(
     cwd: Path | None = None,
     *,
     queue_timeout_seconds: float = 20.0,
+    priority: WakePriority = "next",
 ) -> Woken:
     """Make one member look at what is waiting.
 
@@ -156,12 +168,15 @@ def wake(
     exited, or a handle that no longer resolves all leave the record intact and
     the peer merely un-nudged — which is the state a member with no wake path
     is in permanently and which the system is built to tolerate.
+
+    *priority* `now` interrupts a Claude turn that is generating; Codex's
+    queue takes a message for its next turn whatever is asked.
     """
     match path.runtime:
         case "codex" if path.handle:
             return queued(path, message, cwd, queue_timeout_seconds)
         case "claude" if path.handle:
-            return injected(Path(path.handle), message, path.session)
+            return injected(Path(path.handle), message, path.session, priority=priority)
         case _:
             return Woken(
                 reached=False,
@@ -173,7 +188,11 @@ def wake(
 
 
 def injected(
-    address: Path, message: str, session: str = "", patience: float = 3.0
+    address: Path,
+    message: str,
+    session: str = "",
+    patience: float = 3.0,
+    priority: WakePriority = "next",
 ) -> Woken:
     """Write one message into a Claude session's own wake socket at *address*.
 
@@ -200,11 +219,15 @@ def injected(
     the socket itself is refused with EPERM before any address is tried, and
     reporting that as nobody listening sent the reader looking for a dead
     peer rather than at the boundary the call ran inside.
+
+    *priority* rides the frame where it is `now`; a frame naming none is
+    taken as `next`, the runtime's own default.
     """
     frame = {
         "type": "user",
         "message": {"role": "user", "content": message},
         **({"session_id": session} if session else {}),
+        **({"priority": priority} if priority == "now" else {}),
     }
     try:
         peer = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)

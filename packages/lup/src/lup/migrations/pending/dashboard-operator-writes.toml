@@ -1,0 +1,13 @@
+subjects = ["reply", "ReplyRequest", "ReplyRequest.text", "ReplyOutcome"]
+reason = """
+everything the operator does to an agent from the dashboard — write to it, \
+wake it, rename it, stop it, and act as a peer among them — is one module's, \
+lup.devtools.dashboard.supervision, which serves its routes too"""
+
+[[steps]]
+instruction = """
+Import reply and ReplyOutcome from lup.devtools.dashboard.supervision where \
+they came from lup.devtools.dashboard.live. reply(known, member_id, said) \
+takes a MessageRequest {text, in_reply_to, redirect, priority} where it took \
+the text; ReplyRequest is MessageRequest. ReplyOutcome adds interrupted, post \
+and thread."""

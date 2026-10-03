@@ -491,6 +491,7 @@ def spawn_names_literal(row: SpawnNameRow | None) -> str:
         f'"recovery": {steps_literal(row["recovery"], "    ")}',
         f'"punctuation": {json.dumps(row["punctuation"])}',
         f'"limit": {json.dumps(row["limit"])}',
+        f'"notice": {json.dumps(row["notice"])}',
     ]
     return "{\n" + "".join(f"    {entry},\n" for entry in entries) + "}"
 
@@ -514,6 +515,8 @@ def peer_policy_literal(redirect: PeerPolicyRow | None) -> str:
         f'"listing_note": {json.dumps(redirect["listing_note"])}',
         f'"claim_reason": {json.dumps(redirect["claim_reason"])}',
         f'"claim_recovery": {steps_literal(redirect["claim_recovery"], "    ")}',
+        f'"operator": {json.dumps(redirect["operator"])}',
+        f'"operator_reason": {json.dumps(redirect["operator_reason"])}',
     ]
     return "{\n" + "".join(f"    {entry},\n" for entry in entries) + "}"
 
