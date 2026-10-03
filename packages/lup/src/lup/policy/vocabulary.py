@@ -1113,6 +1113,46 @@ def devtools_rules() -> list[ShellSubcommandRule]:
                         ),
                     ],
                 ),
+                # The budget's limits are the operator's: a session that could
+                # lift the turtle or raise an agent's priority or caps would
+                # spend what they kept back. `dashboard budget` only reads.
+                *[
+                    ShellOperationRule(
+                        name=verb,
+                        operator_only=True,
+                        reason="a requesting agent cannot change the operator's budget",
+                        recovery=[
+                            step(
+                                "the operator sets it on the dashboard or from a"
+                                " terminal outside the agent session"
+                            ),
+                            step(
+                                "read what holds now", devtools("dashboard", "budget")
+                            ),
+                        ],
+                    )
+                    for verb in ("turtle", "priority", "cap")
+                ],
+            ],
+        ),
+        # A pause is the operator's say over an agent's next call, and one an
+        # agent could place or lift is no say at all: a session pausing a peer
+        # takes the operator's place, and one resuming itself undoes it.
+        ShellSubcommandRule(
+            name="coordination",
+            operations=[
+                ShellOperationRule(
+                    name=action,
+                    operator_only=True,
+                    reason=f"a requesting agent cannot {action} an agent, itself included",
+                    recovery=[
+                        step(
+                            "the operator pauses and resumes agents on the dashboard,"
+                            " or from a terminal outside the agent session"
+                        ),
+                    ],
+                )
+                for action in ("pause", "resume")
             ],
         ),
         ShellSubcommandRule(
@@ -1293,6 +1333,34 @@ def devtools_rules() -> list[ShellSubcommandRule]:
                         step(
                             "the operator refreshes it from a terminal outside the agent session"
                         )
+                    ],
+                ),
+                # Moving a repository's sessions onto another account is the
+                # operator's to choose, each time: one an agent made on its
+                # own when its account ran out would be the automatic
+                # failover the providers' terms rule out. Asked rather than
+                # refused, so a session the person told to switch puts it to
+                # them and carries it out once they approve.
+                ShellOperationRule(
+                    name="switch",
+                    parents=["profile"],
+                    effects=[
+                        declare(
+                            "mutates_environment",
+                            scope="repository sessions' account",
+                            reach="credential",
+                        )
+                    ],
+                    reason=(
+                        "it moves every contained session of the repository onto "
+                        "another account's login"
+                    ),
+                    recovery=[
+                        step("the operator approves it"),
+                        step(
+                            "or switches on the dashboard (`:switch`), or from"
+                            " their own terminal"
+                        ),
                     ],
                 ),
                 # A launch from inside a session opens a session of its own, and

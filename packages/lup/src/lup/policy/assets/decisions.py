@@ -103,6 +103,7 @@ from kernel.documents import (
 )
 from kernel.policy_protocol import read_response, routing_failure
 from coordination import store
+from coordination.holds import Waiting, covering, held_call, holds_placed, refusal
 from coordination.runtime import stdin_runtime
 from kernel.edit import (
     awaits_resolution,
@@ -165,6 +166,7 @@ from policy_data import (
     RESOLUTION_COMMAND,
     DENIED_FETCH_SCOPES,
     EDIT_RULES,
+    HOLD_SECONDS,
     IMPORT_BOUNDARIES,
     KNOWN_ALLOWANCES,
     MAXIMUM_ADDED_LINES,
@@ -879,6 +881,52 @@ def answering_member(directory: Path | None) -> str:
     if directory is None:
         return launched
     return store.own_member(directory, launched, stdin_runtime())
+
+
+def held_refusal(
+    tool_name: str,
+    call: str,
+    cwd: Path | None,
+    caller_of: Callable[[], store.Caller],
+    began: float,
+) -> str | None:
+    """Hold one call while a hold covers its caller; how the hold ended.
+
+    None where nothing covers the caller, which is nearly always: the call
+    was never held. Otherwise this waits, reading the store each second, so
+    a resume lets the call go within one, and answers "" once it does. A
+    call still held :data:`HOLD_SECONDS` after *began* -- the hook's start,
+    on the monotonic clock -- is answered the one sentence its refusal says,
+    short of the runtime's own timeout, which would let it run. A caller this
+    repository's roster cannot name -- no store, nothing launched it -- is
+    never held. Which conversation made the call is asked of *caller_of*
+    only where some hold is placed, so a call nothing holds reads no more
+    than the store's hold directory.
+    """
+    directory = peer_directory(cwd)
+    if directory is None or not holds_placed(directory):
+        return None
+    session = answering_member(directory)
+    if not session:
+        return None
+    caller = caller_of()
+    member = store.acting_id(session, caller)
+    parent = session if store.text(caller.get("agent_id")) else ""
+    if not covering(directory, member, parent):
+        return None
+    holds = held_call(
+        directory,
+        member,
+        Waiting(tool=tool_name, call=call),
+        began,
+        HOLD_SECONDS,
+        parent=parent,
+    )
+    if not holds:
+        return ""
+    return rendered_said(
+        diagnostic("refused", refusal(holds), steps=[step(says=store.RETRY)])
+    )
 
 
 def peer_send_decision(values: list[str], cwd: Path | None) -> KernelDecision:

@@ -306,6 +306,13 @@ class Codex(
     up; unset, the profile's home, the one this process already runs under,
     or a launch's home for its worktree."""
 
+    move_sessions: bool = False
+    """Whether a contained launch may hand its account's login to its
+    repository's config volume while running contained sessions there use
+    another account's. Each keeps its own until it is opened again, and opens
+    on this one when it is. Unset, such a launch is refused, saying how many
+    sessions it would reach."""
+
     sandbox: SessionSandbox = NoSandbox()
     """Which wall every session opens behind; ``NoSandbox()`` is none, the policy alone.
 

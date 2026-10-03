@@ -1850,6 +1850,31 @@ raised rather than handing the error to a runtime that would run the call
 anyway; [platform-differentiation.md](platform-differentiation.md) says
 what each runtime does on its own.
 
+A call can also be held before it is judged at all: while the operator's
+pause or a budget covers the agent making it — a hold, a file in the
+repository's coordination store — its
+hooks say nothing, and to the agent the call only takes long. Holding is its
+own state, ahead of the judgement and outside its time: the dispatcher's
+first step (`held`, which the compiler hands `host.answered_in_time`) waits
+while a hold covers the caller, reading the store each second, and a call it
+let go is judged from that moment with the whole of `policy_timeout`
+(`host.judgement_opened`), so a call the operator held for an hour is never
+refused as one nobody judged in time. A call nothing holds costs one
+directory listing and keeps the guard's start. Because a runtime runs a call
+once its hook overruns, a holding hook declares `HookSet.hold_seconds` plus
+`policy_timeout` (`lup.policy.bundle.held_hook_timeout`; a day and thirty
+seconds by default) and gives up at `hold_seconds`, refusing the call in the
+hold's own words and the diagnostic shape every refusal speaks — "refused:
+paused by the operator; this call didn't run", its way through "retry it"
+— and the retry is held afresh. The policy hook holds the calls it judges; a
+second hook, `coordination_hold.sh`, holds every other tool's, since a
+paused agent reading files is held at its next read too. Its guard starts no
+interpreter where no hold file exists, and where one does it refuses the
+call on any failure rather than letting a call that might be held run. The
+`PostToolUse` and `PermissionRequest` entries keep `policy_timeout` alone:
+nothing is held there. A session opened in process is held the same way,
+ahead of its policy's hooks (`create_hold_hooks`).
+
 Plugin hooks receive a writable data directory: `PLUGIN_DATA` under Codex and
 `CLAUDE_PLUGIN_DATA` under Claude Code. Each dispatcher appends
 `hook-events.jsonl` there as it runs: a `started` record after input parsing,

@@ -32,7 +32,7 @@
           {
             "command": "sh \"$PLUGIN_ROOT/hooks/scripts/policy.sh\" || exit 2",
             "statusMessage": "Checking Lup policy",
-            "timeout": 30,
+            "timeout": 86430,
             "type": "command"
           }
         ],
@@ -43,6 +43,16 @@
           {
             "command": "sh \"$PLUGIN_ROOT/hooks/scripts/coordination_delivery.sh\" || exit 0",
             "timeout": 10,
+            "type": "command"
+          }
+        ],
+        "matcher": ""
+      },
+      {
+        "hooks": [
+          {
+            "command": "sh \"$PLUGIN_ROOT/hooks/scripts/coordination_hold.sh\" || exit 2",
+            "timeout": 86430,
             "type": "command"
           }
         ],

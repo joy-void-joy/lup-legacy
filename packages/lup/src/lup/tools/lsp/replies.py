@@ -7,7 +7,15 @@ one place and degrades to "no evidence" — the same answer as a genuinely
 unresolvable symbol — instead of raising somewhere further along.
 """
 
+from pathlib import Path
+from urllib.parse import unquote, urlparse
+
 from pydantic import BaseModel, Field, TypeAdapter
+
+
+def path_of(uri: str) -> str:
+    """The filesystem path a `file:` URI names."""
+    return Path(unquote(urlparse(uri).path)).as_posix()
 
 
 class Position(BaseModel):
@@ -32,6 +40,31 @@ class Location(BaseModel):
 
 LOCATIONS = TypeAdapter(list[Location] | Location | None)
 """Every shape a location-answering request is specified to reply with."""
+
+
+class SemanticLegend(BaseModel):
+    """The names a server's semantic tokens are numbered by, as it declared them."""
+
+    types: list[str] = Field(default=[], alias="tokenTypes")
+    modifiers: list[str] = Field(default=[], alias="tokenModifiers")
+
+
+class SemanticProvider(BaseModel):
+    """What a server declared it serves of semantic tokens: its legend."""
+
+    legend: SemanticLegend
+
+
+SEMANTIC_PROVIDER = TypeAdapter(SemanticProvider | None)
+
+
+class SemanticTokens(BaseModel):
+    """A `semanticTokens/full` reply: five numbers a token, each placed relative to the one before."""
+
+    data: list[int] = []
+
+
+SEMANTIC_TOKENS = TypeAdapter(SemanticTokens | None)
 
 
 class MarkupContent(BaseModel):

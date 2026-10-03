@@ -26,6 +26,12 @@ class PacingWindow(BaseModel, frozen=True):
     resets_at: datetime
     window_hours: float
 
+    def even_pct(self, now: datetime) -> float:
+        """How much of the window would be spent by ``now`` at even pace: the share of it gone."""
+        total = self.window_hours * 3600
+        left = (self.resets_at - now).total_seconds()
+        return min(max((total - left) / total * 100, 0.0), 100.0) if total > 0 else 0.0
+
 
 class SpendWindow(BaseModel, frozen=True):
     """Metered spend past the plan, in whatever the account is billed in."""
@@ -88,6 +94,14 @@ class UsageReport(BaseModel, frozen=True):
     the figures end lets the display mark the shortfall instead of drawing a
     quiet day that was never measured.
     """
+
+    read_at: datetime | None = None
+    """When the windows were read, where that was not just now: a reading
+    another reader made of the same account, or the last good one standing
+    while the provider refuses to be asked again."""
+
+    stale: str = ""
+    """Why the windows are not fresher, where they are not."""
 
 
 class UsageUnavailable(RuntimeError):

@@ -50,7 +50,7 @@ home is kept in lup's state, `~/.local/state/lup/homes/` (or under
 `$XDG_STATE_HOME`), never in the checkout, since it holds a copy of the login.
 `lup-devtools dev usage codex` reports this backend's usage and
 `lup-devtools dev usage claude` the other's; profiles, one name per account on
-both runtimes, are managed with `lup-devtools setup profile`.
+both runtimes, are managed with `lup-devtools harness profile`.
 `--codex-home` or an inherited `CODEX_HOME` selects an explicit home instead.
 
 Each repo names its plugin **marketplace** after the project — the plugin entry stays `lup`, so `{{ skill_pattern }}` is identical everywhere. Codex resolves the marketplace from the repository's `.agents/plugins/marketplace.json` and installs the plugin into its own cache, verifying the digest before every launch; `lup-devtools dev plugin name` (run by `{{ init_skill }}` and `{{ install_skill }}`) wires the per-project name.

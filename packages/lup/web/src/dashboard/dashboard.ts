@@ -4,20 +4,24 @@
 // back where an answer is refused, and owns where the page is — the view, what
 // is selected, which window has focus, and the cursor in each pane. The keymap
 // and the `:` commands call into it; React draws what it holds.
-import type { KeyLine, LiveMessage, LiveSession, ReviewDecision, ReviewDetail, ReviewRoot, ReviewSummary } from "../generated/views";
+import type { AgentBudgetRequest, CodeSource, KeyLine, LiveMessage, LiveSession, ReviewDecision, ReviewDetail, ReviewRoot, ReviewSummary } from "../generated/views";
 import {
-  answerReview, broadcastTo, describeYou, followDashboard, followTranscripts, holdPath, postInto, postNotice, readHistory, readInbox, readMessages, readReview, readReviewLink,
-  readSetupPanes, readTranscript, releasePath, remarkReview, renameAgent, reviewLink, ReviewError, sendReply, stopAgent, takeToken, tryKeys, wakeAgent, withdrawNotice, writeKeys,
-  type Sending,
+  answerReview, askTokens, broadcastTo, describeYou, followDashboard, followTranscripts, holdPath, pauseAt, postInto, postNotice, readHistory, readInbox, readMessages,
+  readReview, readReviewLink, readSetupPanes, readTranscript, releasePath, remarkReview, renameAgent, resumeAt, reviewLink, ReviewError, sendReply, setTurtle, settleBudget,
+  stopAgent, switchProfile, takeToken, tryKeys, wakeAgent, withdrawNotice, writeKeys, type Reach, type Sending,
 } from "./api";
 import { Keymap, Sequencer, type Where } from "./keys";
 import { discussions, threadBuffer, type Discussion } from "./threads";
 import { applied, codeNotice, moved, NO_KEYS, paged, type LiveState } from "./live";
-import { askedBy, CLOSED_UI, EMPTY_DRAFT, headOf, headShort, headText, plural, reviewBuffer, type Buffer, type Draft, type Entry, type ReviewUi } from "./review";
+import { askedBy, CLOSED_UI, codeBuffer, EMPTY_DRAFT, headOf, headShort, headText, plural, reviewBuffer, type Buffer, type Draft, type Entry, type ReviewUi } from "./review";
 import { checkoutLabel } from "./review";
-import { inboxBuffer, memberBuffer, memberById, memberOfReview, repoBuffer, repositoryOf, treeItems, youBuffer, type TreeItem, holdersOf, parentOf, counterpart, inboxOf } from "./supervision";
-import { initialState, Store, type Float, type Notice, type PageState, type Tone, type View, type Win } from "./state";
+import { HIGHLIGHT_LIMIT, languageFor, semanticPaint } from "./highlight";
+import { capsText, fullest, inboxBuffer, memberBuffer, memberById, memberOfReview, repoBuffer, repositoryOf, treeItems, youBuffer, type TreeItem, holdersOf, parentOf, counterpart, inboxOf } from "./supervision";
+import { initialState, Store, type Float, type Notice, type PageState, type Peek, type Tone, type View, type Win } from "./state";
 import { unserved, type Feature } from "./served";
+
+/** One document a question about code names, as a key: the review and side, or the checkout, and the path. */
+export const semanticKey = (source: CodeSource) => JSON.stringify([source.review, source.side, source.checkout, source.path]);
 
 /** What an interrupt says where the operator wrote nothing of their own. */
 export const INTERRUPTING = "The person watching interrupts your turn: stop what you are doing, read your mailbox, and say where you are with `coordination_describe` before carrying on.";
@@ -250,6 +254,7 @@ export class Dashboard {
     this.set((state) => ({ live: next, log: [...state.log, ...lines].slice(-400) }));
     if (previous === null || next.keys !== previous.keys) this.keysArrived(previous === null);
     if (previous === null || next.code !== previous.code) this.codeNotices(next);
+    if (previous === null || next.budget !== previous.budget) this.budgetNotices(previous, next);
     // A followed transcript is not state: what it recorded since joins the open one, from where that ends.
     if (event.type === "transcript") {
       this.set((state) => {
@@ -703,6 +708,34 @@ export class Dashboard {
     await this.supervise("stop", `stopping ${named}`, () => stopAgent(session.repository, session.id, this.state.access.token), (stopped) => stopped.detail);
   }
 
+  /** What a pause or a resume reaches, in the words a notice says it with. */
+  private reachWords(reach: Reach): string {
+    const live = this.state.live;
+    switch (reach.kind) {
+      case "agent": {
+        const named = (live === null ? undefined : memberById(live, reach.repository, reach.member))?.name || reach.member;
+        return reach.tree ? `${named} and everything it spawned` : named;
+      }
+      case "repository": return `every agent of ${live?.repositories.get(reach.repository)?.name ?? reach.repository}`;
+      case "all": return "every agent of every repository";
+    }
+  }
+
+  /**
+   * Hold what *reach* names at its next tool call; a freeze also stops the commands its tools run
+   * and interrupts its turn. What came of it is said in the server's words, whom it could not freeze included.
+   */
+  async pause(reach: Reach, freeze: boolean): Promise<void> {
+    if (reach.kind === "repository" && reach.repository === "") { this.say(`E: :${freeze ? "freeze" : "pause"} repo, in a repository`, "err"); return; }
+    await this.supervise("pause", `${freeze ? "freezing" : "pausing"} ${this.reachWords(reach)}`, () => pauseAt(reach, freeze, this.state.access.token), (outcome) => outcome.detail);
+  }
+
+  /** Lift the pause placed on what *reach* names; a pause placed elsewhere is refused naming it, in the server's words. */
+  async resume(reach: Reach): Promise<void> {
+    if (reach.kind === "repository" && reach.repository === "") { this.say("E: :resume repo, in a repository", "err"); return; }
+    await this.supervise("pause", `resuming ${this.reachWords(reach)}`, () => resumeAt(reach, this.state.access.token), (outcome) => outcome.detail);
+  }
+
   /**
    * A post into a discussion reaches everyone in it, as one post replying to the one `r` chose or
    * its latest, every copy sharing its id and its thread.
@@ -862,6 +895,39 @@ export class Dashboard {
     return "normal";
   }
 
+  /** The document a window shows in place of the open review after `gd`, where it does. */
+  peek(pane: 0 | 1, state = this.state): Peek | null {
+    const peek = state.peeks[pane];
+    return peek !== null && state.sel.kind === "review" && peek.owner === state.sel.key ? peek : null;
+  }
+
+  /** When each document was last asked about, by its key. */
+  private readonly tokensAsked = new Map<string, number>();
+
+  /**
+   * Ask the language server reading a document what every name in it is,
+   * once a document: its paint lands in `semantic` and the document is drawn
+   * again over it. A document no server reads, or one past the highlighting
+   * limit, is not asked about. One whose server did not answer — still
+   * starting, too slow, or the request failed — is asked again once `retry`
+   * has passed, the next time it is drawn, and never sooner.
+   */
+  askSemantic(source: CodeSource, text: string, retry = 30_000): void {
+    const key = semanticKey(source);
+    const asked = this.tokensAsked.get(key);
+    if ((asked !== undefined && (asked < 0 || Date.now() - asked < retry)) || text.length > HIGHLIGHT_LIMIT || languageFor(source.path) === null) return;
+    this.tokensAsked.set(key, Date.now());
+    askTokens(source, this.state.access.token).then((tokens) => {
+      if (!tokens.served && tokens.server !== "") return;
+      this.tokensAsked.set(key, -1);
+      if (!tokens.served || tokens.data.length === 0) return;
+      const paint = semanticPaint(text, tokens);
+      this.set((state) => ({ semantic: new Map(state.semantic).set(key, paint) }));
+    }, (failure: unknown) => {
+      console.warn(`no semantic tokens for ${source.path} yet: ${failure instanceof Error ? failure.message : String(failure)}`);
+    });
+  }
+
   /** One pane's buffer: the open review's rows, or the agent, your row, the repository or the inbox. */
   buffer(pane: 0 | 1, state = this.state): Buffer {
     const live = state.live;
@@ -873,6 +939,12 @@ export class Dashboard {
       case "review": {
         const entry = this.current(state);
         if (entry === null || entry.detail === null) return empty;
+        const peek = this.peek(pane, state);
+        if (peek !== null) {
+          const shown = this.buffers.get(peek) ?? new Map([["code", codeBuffer(peek.text)]]);
+          this.buffers.set(peek, shown);
+          return shown.get("code") ?? empty;
+        }
         const detail = entry.detail;
         const ui = this.ui(entry.row.key, state);
         const drafts = this.draft(entry.row.key, state).comments;
@@ -965,7 +1037,7 @@ export class Dashboard {
       linked: options.keepLink === true ? state.linked : null,
       visual: null, editing: null, ctxCur: -1, judgedAt: -1, exceptionAt: -1, markerAt: -1,
       editor: [{ ...state.editor[0], cur: 0, want: 0 }, { ...state.editor[1], cur: 0, want: 0 }],
-      touch: { drawer: "", sheet: "" },
+      touch: { drawer: "", sheet: "" }, peeks: [null, null], jumps: [[], []], refs: state.refs?.owner === key ? state.refs : null,
     }));
     this.syncTree();
     this.landOnJudged();
@@ -1162,6 +1234,50 @@ export class Dashboard {
 
   dismiss(id: number): void {
     this.set((state) => ({ notes: state.notes.filter((note) => note.id !== id) }));
+  }
+
+  /**
+   * A notice for each account whose window is newly used up, standing until it clears, which says
+   * when, and that its sessions can be moved to another profile with room by `:switch`.
+   */
+  private budgetNotices(previous: LiveState | null, live: LiveState): void {
+    const was = (key: string) => previous?.budget.accounts.find((each) => each.key === key)?.exhausted ?? "";
+    const exhausted = live.budget.accounts.filter((each) => each.exhausted !== "");
+    this.set((state) => ({ notes: state.notes.filter((note) => !note.key.startsWith("budget:") || exhausted.some((each) => note.key === `budget:${each.key}`)) }));
+    for (const account of exhausted) {
+      if (was(account.key) === account.exhausted) continue;
+      const room = live.budget.accounts.filter((each) => each.account.runtime === account.account.runtime && each.key !== account.key && each.signed_in && each.exhausted === "")
+        .sort((left, right) => (fullest(left)?.window.utilization_pct ?? 0) - (fullest(right)?.window.utilization_pct ?? 0));
+      const switching = room.length === 0 ? "No other profile of this runtime has room."
+        : this.lacks("profiles") !== "" ? `${room.map((each) => each.account.profile).join(", ")} ${room.length === 1 ? "has" : "have"} room; this dashboard cannot move sessions.`
+          : `:switch ${room[0]?.account.profile ?? ""} moves a repository's contained sessions to it (${room.map((each) => each.account.profile).join(", ")} ${room.length === 1 ? "has" : "have"} room).`;
+      this.notify(`${account.key}: ${account.exhausted}`, "", `Its agents wait until it clears. ${switching}`, "warn", { key: `budget:${account.key}`, sticky: true });
+    }
+  }
+
+  /** One agent's priority or caps, as the operator sets them. */
+  async settleBudget(session: LiveSession, request: AgentBudgetRequest): Promise<void> {
+    const named = session.name || session.id;
+    await this.supervise("budgets", `setting ${named}'s limits`, () => settleBudget(session.repository, session.id, request, this.state.access.token),
+      (meter) => `${named}: ${meter.priority} priority, ${capsText(meter.caps) === "" ? "no caps" : `caps ${capsText(meter.caps)}`}`);
+  }
+
+  /**
+   * Move a repository's sessions of one runtime onto a profile. Its contained sessions take the
+   * login at their next request where the runtime rereads it; each other one is answered with the
+   * command that opens it again there, and why — every line kept in `:messages`.
+   */
+  async switchProfile(repository: string, profile: string, runtime: "claude" | "codex"): Promise<void> {
+    const reply = await this.supervise("profiles", `moving ${runtime} sessions to ${profile}`, () => switchProfile(repository, { profile, runtime }, this.state.access.token),
+      (switched) => switched.said[0] ?? `moved to ${profile}`);
+    if (reply !== null && reply.said.length > 1) this.notify(`${runtime} sessions and ${profile}`, "", reply.said.slice(1).join("\n"), reply.outcome.held === null ? "warn" : "info", { sticky: true });
+  }
+
+  /** Put the turtle's slower limits in place, or take them away; flips it where *on* is not said. */
+  async turtle(on?: boolean): Promise<void> {
+    const wanted = on ?? !(this.state.live?.budget.turtle ?? false);
+    await this.supervise("budgets", wanted ? "turning the turtle on" : "turning the turtle off", () => setTurtle(wanted, this.state.access.token),
+      (turned) => turned.on ? "🐢 turtle on: every account is under its slower limits" : "turtle off: every account is under its usual limits");
   }
 
   /** The dashboard's own word on the code it runs: sticky while it stands, gone once the server stops saying it. */

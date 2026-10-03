@@ -342,6 +342,12 @@ class Claude(
     up, and the profile then only names the account; unset, the profile's home
     or the one this process already runs under."""
 
+    move_sessions: bool = False
+    """Whether a contained launch may hand its account's login to its
+    repository's config volume while running contained sessions there use
+    another account's, moving each of them onto it at its next request.
+    Unset, such a launch is refused, saying how many sessions it would move."""
+
     endpoint: ClaudeCompatibleEndpoint | None = None
     """An Anthropic-compatible endpoint the sessions talk to instead of Anthropic's."""
 

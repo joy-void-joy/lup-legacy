@@ -23,14 +23,22 @@ declares it keeps, and records them for removal.
 """
 
 import io
+import json
 from datetime import datetime, timedelta
 import tarfile
 from fnmatch import fnmatch
-from pathlib import Path
+from pathlib import Path, PurePosixPath
+from typing import Literal
 
 import sh
-from pydantic import BaseModel
+from pydantic import BaseModel, TypeAdapter, ValidationError
 
+from lup.channels.models import write_atomic
+from lup.harness.assets.credential_seed import (
+    chosen_login,
+    login_fingerprint,
+    stamp_of,
+)
 from lup.harness.assets.home_seed import (
     RECORD,
     SeedFile,
@@ -40,12 +48,15 @@ from lup.harness.assets.home_seed import (
     text_of,
     write,
 )
+from lup.launch.refusal import LaunchRefused
 from lup.launch.superseded import SupersededFile
-from lup.harness.image import ContainerEngine
+from lup.harness.image import CREDENTIAL_SEED_PROGRAM, ContainerEngine
 from lup.harness.notice import Notice
 from lup.providers.login import ProviderLogin
 from lup.providers.user_config import UserConfigFile
 from lup.sandbox.rail import repository_layout, sibling_worktrees
+from lup.types import JsonObject
+from lup.workspace.user_directories import UserDirectories
 
 # lup: ignore[constant-declaration] — where a split reads the old volume from
 # inside its helper container, a path no image holds and nothing else mounts
@@ -253,6 +264,41 @@ class HomeHelper(BaseModel, frozen=True):
                 if member.isfile() and (extracted := held.extractfile(member))
             ]
 
+    def seed_login(
+        self,
+        volume: str,
+        credential: Path,
+        login: ProviderLogin,
+        offered_at: str = "/lup-seed-from",
+    ) -> str:
+        """Apply a host login to a volume as a session's start does, answering the stamp left.
+
+        The image's own seed program, with the volume mounted where a session
+        mounts it and the login offered read-only at ``offered_at``, so the
+        volume ends as a session starting now would have left it: the login
+        applied once, renewals and unrelated records kept. The stamp is read
+        back from the volume, which is how a caller tells a login the volume
+        now holds from one the program declined, being unreadable or past
+        renewing; empty where the volume holds none.
+        """
+        stored = PurePosixPath(self.config_home) / login.credentials_file
+        self.run(
+            "python3",
+            [f"{volume}:{self.config_home}", f"{credential}:{offered_at}:ro"],
+            [
+                CREDENTIAL_SEED_PROGRAM,
+                offered_at,
+                str(stored),
+                "--keys",
+                json.dumps(login.credential_fields),
+                "--renewable",
+                login.renewable,
+            ],
+        )
+        stamp = stamp_of(PurePosixPath(login.credentials_file)).name
+        held = named_file(self.read(volume, [stamp]), stamp)
+        return held.text() if held is not None else ""
+
 
 class HomeFile(BaseModel, frozen=True):
     """One file read out of a configuration-home volume."""
@@ -326,6 +372,329 @@ class RuntimeVolume(BaseModel, frozen=True):
 
     login: ProviderLogin
     volume: str
+
+
+type SessionsMove = Literal["refuse", "move", "keep"]
+"""What a container start does where its login would replace the one running sessions use.
+
+``refuse`` stops it, saying how many sessions it would move and the ways
+through: a launch nobody asked to move anything. ``move`` hands the login
+anyway and moves them: a launch passed ``--move-sessions``, or a switch.
+``keep`` hands nothing and opens on the login the volume already holds: a
+probe, which checks what a session would find rather than choosing an account.
+"""
+
+
+class LoginOwner(BaseModel, frozen=True):
+    """Whose login a container start hands its repository's volume."""
+
+    home: Path
+    """The account's own configuration home: its profile's, the one named
+    outright, or the runtime's default, compared resolved."""
+
+    profile: str | None = None
+    """The profile naming that account, ``None`` where none is selected."""
+
+    def named(self) -> str:
+        """The account as a sentence names it."""
+        if self.profile is not None:
+            return self.profile
+        return f"the account at {self.home}"
+
+    def same_account(self, other: "LoginOwner") -> bool:
+        """Whether both name one account, by the home each resolves to."""
+        return self.home.expanduser().resolve() == other.home.expanduser().resolve()
+
+
+class HandedLogin(BaseModel, frozen=True):
+    """A host login a container start offers its repository's volume, and whose it is."""
+
+    credential: Path
+    """The file the entrypoint applies, offered read-only."""
+
+    owner: LoginOwner
+    moving: SessionsMove = "refuse"
+
+    def fingerprint(self, login: ProviderLogin) -> str:
+        """What the volume's stamp records once this login is applied, empty where unreadable."""
+        try:
+            incoming = TypeAdapter(JsonObject).validate_json(
+                self.credential.read_bytes()
+            )
+        except (OSError, ValidationError):
+            return ""
+        chosen = chosen_login(incoming, login.credential_fields)
+        return login_fingerprint(chosen) if chosen else ""
+
+
+class VolumeLogin(BaseModel, frozen=True):
+    """The login lup last handed one configuration-home volume: whose, and when."""
+
+    volume: str
+    runtime: str
+    """The runtime's word for its volume, as its login declares it."""
+
+    owner: LoginOwner
+    fingerprint: str = ""
+    """What the volume's stamp records for that login, empty where it was unreadable."""
+
+    handed_at: datetime
+
+
+class VolumeLogins:
+    """Whose login lup last handed each configuration-home volume, kept on the host.
+
+    A volume is read only by starting a container, and its labels are fixed
+    when it is made, so what it was handed is recorded where lup keeps the
+    person's state, a file per volume: every launch, probe, run worker and
+    switch that hands one a login writes it. It says what the volume holds
+    unless a session inside signed in to another account since, or the seed
+    program declined a login nothing could renew.
+    """
+
+    def __init__(self, home: Path | None = None) -> None:
+        self.home = (
+            home if home is not None else UserDirectories().state() / "volume-logins"
+        )
+
+    def path(self, volume: str) -> Path:
+        """The file one volume's record is kept in."""
+        return self.home / f"{volume}.json"
+
+    def held(self, volume: str) -> VolumeLogin | None:
+        """What that volume was last handed, ``None`` where lup never recorded a handoff."""
+        path = self.path(volume)
+        if not path.is_file():
+            return None
+        return VolumeLogin.model_validate_json(path.read_text(encoding="utf-8"))
+
+    def record(self, handed: VolumeLogin) -> None:
+        """Keep what a volume was just handed, so no reader catches it half-written."""
+        write_atomic(
+            self.path(handed.volume), handed.model_dump_json(indent=2).encode("utf-8")
+        )
+
+
+class LaunchedAccount(BaseModel, frozen=True):
+    """The account one launched session opened on, kept beside its volume's record."""
+
+    member: str
+    """Its roster id, as the launch minted it."""
+
+    runtime: str
+    """The runtime's word, as its login declares it."""
+
+    owner: LoginOwner
+    checkout: Path
+    """The checkout it opened in, whose repository names its volume."""
+
+    contained: bool
+    """Whether it runs in its repository's container, on that repository's
+    volume, rather than on the host in its account's own home."""
+
+    at: datetime
+
+
+class LaunchedAccounts:
+    """The account each launched session opened on, a file per member under lup's state.
+
+    The roster says who a session is and never which account it draws on, so
+    the launch that chose the account records it beside the volume records.
+    A contained session on a runtime that rereads its login draws on whatever
+    its volume was handed since, which
+    :func:`~lup.launch.container.drawn_account` answers.
+    """
+
+    def __init__(self, home: Path | None = None) -> None:
+        self.home = (
+            home
+            if home is not None
+            else UserDirectories().state() / "launched-accounts"
+        )
+
+    def path(self, member: str) -> Path:
+        """The file one member's record is kept in."""
+        return self.home / f"{member}.json"
+
+    def record(self, launched: LaunchedAccount) -> None:
+        """Keep the account a session was just launched on."""
+        write_atomic(
+            self.path(launched.member),
+            launched.model_dump_json(indent=2).encode("utf-8"),
+        )
+
+    def launched(self, member: str) -> LaunchedAccount | None:
+        """The account that member was launched on, ``None`` where no launch recorded one."""
+        path = self.path(member)
+        if not path.is_file():
+            return None
+        return LaunchedAccount.model_validate_json(path.read_text(encoding="utf-8"))
+
+    def every(self) -> list[LaunchedAccount]:
+        """Every recorded launch, oldest first, for a sweep to judge."""
+        if not self.home.is_dir():
+            return []
+        found = [
+            LaunchedAccount.model_validate_json(path.read_text(encoding="utf-8"))
+            for path in self.home.glob("*.json")
+        ]
+        return sorted(found, key=lambda launched: launched.at)
+
+    def forget(self, member: str) -> None:
+        """Drop one member's record, as a sweep does once its session is gone."""
+        self.path(member).unlink(missing_ok=True)
+
+
+def running_containers(volume: str, engine: ContainerEngine) -> list[str]:
+    """Every running container holding a volume, by name; none where the engine cannot be asked."""
+    try:
+        listed = sh.Command(engine.binary)(
+            "ps", "--filter", f"volume={volume}", "--format", "{{.Names}}"
+        )
+    except (sh.CommandNotFound, sh.ErrorReturnCode):
+        return []
+    return str(listed).split()
+
+
+def volume_image(volume: str, engine: ContainerEngine) -> str | None:
+    """The image a running container holding a volume runs, where one does."""
+    try:
+        listed = sh.Command(engine.binary)(
+            "ps", "--filter", f"volume={volume}", "--format", "{{.Image}}"
+        )
+    except (sh.CommandNotFound, sh.ErrorReturnCode):
+        return None
+    return next(iter(str(listed).split()), None)
+
+
+class Handoff(BaseModel, frozen=True):
+    """What one container start hands its volume, settled before anything starts."""
+
+    credential: Path | None = None
+    """The file offered for the entrypoint to apply, ``None`` where nothing is."""
+
+    record: VolumeLogin | None = None
+    """What to record once the container's argv stands, ``None`` where nothing is handed."""
+
+    notices: list[Notice] = []
+
+
+def moving_refusal(
+    handed: HandedLogin, held: VolumeLogin, running: list[str], login: ProviderLogin
+) -> str:
+    """Why a container start would move running sessions, and the ways through, as one diagnostic."""
+    count = len(running)
+    sessions = f"{count} running contained {login.state_volume} session" + (
+        "" if count == 1 else "s"
+    )
+    new, old = handed.owner.named(), held.owner.named()
+    consequence = (
+        f"moves each onto {new}'s at its next request"
+        if login.rereads_login
+        else (
+            f"replaces it under each: each keeps {old}'s until it is opened "
+            f"again, and opens on {new}'s"
+        )
+    )
+    ways = [
+        "→ move them with this launch: pass `--move-sessions`",
+        *(
+            [
+                "→ or move them first, opening nothing: `uv run lup-devtools "
+                f"harness profile switch {handed.owner.profile} --runtime "
+                f"{login.state_volume}`"
+            ]
+            if handed.owner.profile is not None
+            else []
+        ),
+        *(
+            [
+                "→ or open this session on the login they use: pass "
+                f"`--profile {held.owner.profile}`"
+            ]
+            if held.owner.profile is not None
+            else []
+        ),
+    ]
+    return "\n".join(
+        [
+            f"refused: `{new}` — {sessions} of this repository use {old}'s "
+            f"login, and handing {held.volume} {new}'s {consequence}",
+            *ways,
+        ]
+    )
+
+
+def settle_handoff(
+    handed: HandedLogin,
+    login: ProviderLogin,
+    volume: str,
+    engine: ContainerEngine,
+    logins: VolumeLogins,
+    now: datetime,
+) -> Handoff:
+    """Settle the login a container start hands its repository's volume, before anything starts.
+
+    The entrypoint applies whatever login it is offered, and every session
+    running on the volume shares the file it lands in, so offering another
+    account's login is a choice made for each of them. Where the volume was
+    last handed another account's and a container holding it still runs,
+    the start answers as ``handed.moving`` says: refused, saying how many
+    it would move and how else to go; handed anyway, saying it moved them;
+    or offered nothing, opening on the login the volume holds. Where nothing
+    runs there, the volume's login is nobody's but the next session's, and
+    where lup never recorded what it holds there is nothing to compare, so
+    either hands the login as every start always has.
+    """
+    record = VolumeLogin(
+        volume=volume,
+        runtime=login.state_volume,
+        owner=handed.owner,
+        fingerprint=handed.fingerprint(login),
+        handed_at=now,
+    )
+    held = logins.held(volume)
+    if held is None or held.owner.same_account(handed.owner):
+        return Handoff(credential=handed.credential, record=record)
+    running = running_containers(volume, engine)
+    if not running:
+        return Handoff(credential=handed.credential, record=record)
+    match handed.moving:
+        case "refuse":
+            raise LaunchRefused(moving_refusal(handed, held, running, login))
+        case "keep":
+            return Handoff(
+                notices=[
+                    Notice(
+                        text=(
+                            f"Login: {volume} keeps {held.owner.named()}'s, which "
+                            f"{len(running)} running session(s) use; this opens on "
+                            f"it rather than handing {handed.owner.named()}'s."
+                        ),
+                        urgency="detail",
+                    )
+                ]
+            )
+        case "move":
+            return Handoff(
+                credential=handed.credential,
+                record=record,
+                notices=[
+                    Notice(
+                        text=(
+                            f"Login: {volume} now holds {handed.owner.named()}'s, "
+                            f"in place of {held.owner.named()}'s that "
+                            f"{len(running)} running session(s) use"
+                            + (
+                                "; each takes it at its next request."
+                                if login.rereads_login
+                                else "; each keeps its own until it is opened again."
+                            )
+                        ),
+                        urgency="warning",
+                    )
+                ],
+            )
 
 
 def remove_volume(name: str, engine: ContainerEngine) -> bool:

@@ -13,6 +13,7 @@ from lup.providers.codex.model_choice import codex_model_arguments, codex_model_
 from lup.providers.codex.native import CODEX_SPAWN_TOOLS
 from lup.providers.codex.subagents import CodexModelTiers
 from lup.providers.drift_prompt import drift_hook
+from lup.providers.hold_guard import hold_artifacts, hold_command
 from lup.providers.peer_delivery import delivery_artifacts, delivery_command
 from lup.providers.session_naming import NamingSpelling, ResumeEvent, naming_hook
 from lup.providers.roster_prompt import (
@@ -71,6 +72,7 @@ from lup.harness.models import (
 )
 from lup.policy.bundle import (
     POLICY_DATA_BANNER,
+    held_hook_timeout,
     policy_kernel_modules,
     render_policy_data,
     verification_row,
@@ -835,6 +837,11 @@ class CodexHookRenderer(ArtifactRenderer[HookSet]):
             "statusMessage": "Checking Lup policy",
             "timeout": source.policy_timeout,
         }
+        # Before a call the policy hook may hold it while the operator's pause
+        # or a budget covers its caller, and judges it only once let go, so
+        # it is given the hold's time and then its own. A permission request
+        # comes for a call already let go, and keeps the judgement's alone.
+        holding = held_hook_timeout(source.policy_timeout, source.hold_seconds)
         decided: list[JsonValue] = [
             {
                 "matcher": "|".join(
@@ -845,6 +852,21 @@ class CodexHookRenderer(ArtifactRenderer[HookSet]):
                     )
                 ),
                 "hooks": [policy_hook],
+            }
+        ]
+        held: list[JsonValue] = [
+            {
+                "matcher": "|".join(
+                    routed_for(CODEX_DISPATCHER.routed_tools, source.refused_tools)
+                ),
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": guarded_hook_command("PLUGIN_ROOT"),
+                        "statusMessage": "Checking Lup policy",
+                        "timeout": holding,
+                    }
+                ],
             }
         ]
         observed: list[JsonValue] = [
@@ -861,6 +883,21 @@ class CodexHookRenderer(ArtifactRenderer[HookSet]):
                         "type": "command",
                         "command": delivery_command("PLUGIN_ROOT"),
                         "timeout": 10,
+                    }
+                ],
+            }
+        ]
+        # Every tool again, for the hold: a paused agent is held at its next
+        # call whatever the tool, and the policy hook holds only the ones it
+        # judges. Both wait on the same holds and let a call go together.
+        hold: list[JsonValue] = [
+            {
+                "matcher": "",
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": hold_command("PLUGIN_ROOT"),
+                        "timeout": holding,
                     }
                 ],
             }
@@ -961,7 +998,7 @@ class CodexHookRenderer(ArtifactRenderer[HookSet]):
                         event: (
                             observed
                             if event == CODEX_DISPATCHER.observation_event
-                            else [*decided, *delivery]
+                            else [*held, *delivery, *hold]
                             if event == "PreToolUse"
                             else decided
                         )
@@ -1019,6 +1056,7 @@ class CodexHookRenderer(ArtifactRenderer[HookSet]):
                 *delivery_artifacts(
                     Path(f".codex/plugins/{self.plugin_name}"), source.id
                 ),
+                *hold_artifacts(Path(f".codex/plugins/{self.plugin_name}"), source.id),
                 *departure.artifacts,
                 *cleanup.artifacts,
                 *caller.artifacts,
@@ -1112,6 +1150,7 @@ class CodexHookRenderer(ArtifactRenderer[HookSet]):
                         resolution_command=source.resolution_command,
                         repair_command=source.repair_command,
                         hook_timeout=source.policy_timeout,
+                        hold_seconds=source.hold_seconds,
                         rules=rule_set_for(
                             self.spellings.read_document(DOCUMENT_IN_HAND),
                             source.rules,

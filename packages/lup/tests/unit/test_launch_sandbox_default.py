@@ -34,10 +34,19 @@ from lup.diagnostics import Refusal
 from lup.harness.codescan.common import RuleSelection
 from lup.harness.generate import NativeHarnessComposition
 from lup.harness.image import ContainerClient
+from lup.launch.config_volume import HandedLogin, LaunchedAccounts
 from lup.launch.declaration import LaunchSandbox, LaunchStep
 from lup.providers.claude import Claude
 from lup.providers.codex import Codex
-from tests.unit.harness_launch import Caught, checkout, composition, profiles, stub_host
+from tests.unit.harness_launch import (
+    CONTAINER,
+    MEMBER,
+    Caught,
+    checkout,
+    composition,
+    profiles,
+    stub_host,
+)
 
 
 def host(monkeypatch: pytest.MonkeyPatch, client: ContainerClient | None) -> None:
@@ -208,6 +217,73 @@ def test_an_explicit_sandbox_is_taken_as_said_without_asking_the_host(
 
     assert opened_under(seen) is asked
     assert "Docker or Podman" not in capsys.readouterr().out
+
+
+@RUNTIMES
+@pytest.mark.parametrize("asked", [LaunchSandbox.OUTER, LaunchSandbox.INNER])
+def test_every_launch_records_the_account_it_opened_on(
+    runtime: str,
+    asked: LaunchSandbox,
+    seen: Opened,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Keyed by the member it minted, so which account a session draws on has an answer."""
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
+    unprobed(monkeypatch)
+
+    opened(seen, runtime, sandbox=asked)
+
+    recorded = LaunchedAccounts().launched(MEMBER.member_id)
+    assert recorded is not None
+    assert (recorded.runtime, recorded.contained, recorded.checkout) == (
+        runtime,
+        asked.contained(),
+        seen.root,
+    )
+
+
+@RUNTIMES
+def test_move_sessions_reaches_the_volume_handoff_as_a_move(
+    runtime: str, seen: Opened, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Unasked, the handoff refuses to move running sessions; asked, it moves them."""
+    unprobed(monkeypatch)
+    account = tmp_path / "account"
+    account.mkdir()
+    (account / ".credentials.json").write_text("{}", encoding="utf-8")
+    (seen.root / "codex-home").mkdir()
+    (seen.root / "codex-home" / "auth.json").write_text("{}", encoding="utf-8")
+    handed: list[HandedLogin] = []
+
+    def argv(*arguments: object, **_keywords: object) -> list[str]:
+        offered = arguments[4]
+        assert isinstance(offered, HandedLogin)
+        handed.append(offered)
+        return list(CONTAINER)
+
+    monkeypatch.setattr(launch_session, "contained_argv", argv)
+
+    for moving in (False, True):
+        request = launch.LaunchArguments(
+            sandbox=LaunchSandbox.OUTER, move_sessions=moving
+        )
+        if runtime == "claude":
+            launch_claude(
+                composition(seen.root, runtime),
+                request,
+                profiles(account, "work"),
+                False,
+            )
+        else:
+            launch_codex(composition(seen.root, runtime), request, None, False, False)
+
+    assert [offered.moving for offered in handed] == ["refuse", "move"]
+    owner = handed[0].owner
+    if runtime == "claude":
+        assert (owner.home, owner.profile) == (account, "work")
+    else:
+        assert owner.home == seen.root / "codex-home"
 
 
 @RUNTIMES

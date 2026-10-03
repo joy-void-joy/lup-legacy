@@ -1,7 +1,9 @@
 import type {
+  AgentBudgetRequest, AgentMeter, CodeHover, CodeLocations, CodeQuestion, CodeSource, CodeText, CodeTokens,
   Broadcast, Claimed, ClaimRequest, Described, DescriptionRequest, FollowedFrom, FollowOutcome, FollowRequest, InboxRead, InboxReadRequest, KeyBindings, KeyLine, KeyTry,
-  LiveNotice, MessagePage, MessageRequest, NameRequest, PostOutcome, PostRequest, Released, Renamed, ReplyOutcome, ReviewAnswer, ReviewDecision, ReviewDetail,
-  ReviewHistory, ReviewRemarkRequest, ReviewSnapshot, SetupPane, Stopped, StreamFrame, TextRequest, TranscriptPage, Withdrawn,
+  LiveNotice, MessagePage, MessageRequest, NameRequest, Nothing, PauseOutcome, PauseRequest, PostOutcome, PostRequest, Released, Renamed, ReplyOutcome, ResumeRequest, ReviewAnswer,
+  ReviewDecision, ReviewDetail, ReviewHistory, ReviewRemarkRequest, ReviewSnapshot, SetupPane, Stopped, StreamFrame, SwitchReply, SwitchRequest, TextRequest, TranscriptPage, TurtleRequest,
+  TurtleState, Withdrawn,
 } from "../generated/views";
 
 /** Where this origin keeps the operator's capability, and the key a storage event names. */
@@ -126,9 +128,55 @@ export async function renameAgent(repository: string, member: string, name: stri
   return posted(`${agent(repository, member)}/name`, request, token);
 }
 
+/** One agent's priority or caps, as the operator sets them; a field left out stays as it was. */
+export async function settleBudget(repository: string, member: string, request: AgentBudgetRequest, token: string): Promise<AgentMeter> {
+  return posted(`${agent(repository, member)}/budget`, request, token);
+}
+
+/** Move a repository's sessions of one runtime onto a profile: its contained ones at their next request, the rest at relaunch. */
+export async function switchProfile(repository: string, request: SwitchRequest, token: string): Promise<SwitchReply> {
+  return posted(`${repo(repository)}/profile`, request, token);
+}
+
+/** Put the turtle's slower limits in place, or take them away, for every account. */
+export async function setTurtle(on: boolean, token: string): Promise<TurtleState> {
+  const request: TurtleRequest = { on };
+  return posted("api/budget/turtle", request, token);
+}
+
 /** End an agent's runtime, where the dashboard can be sure which process it is. */
 export async function stopAgent(repository: string, member: string, token: string): Promise<Stopped> {
   return posted(`${agent(repository, member)}/stop`, {}, token);
+}
+
+/**
+ * What a pause or a resume reaches: one agent — with its subagents, or with everything it spawned
+ * where `tree` — every agent of one repository, or every agent of every repository served.
+ */
+export type Reach =
+  | { kind: "agent"; repository: string; member: string; tree: boolean }
+  | { kind: "repository"; repository: string }
+  | { kind: "all" };
+
+/** Where a pause or a resume of *reach* is posted, before its verb. */
+function reached(reach: Reach): string {
+  switch (reach.kind) {
+    case "agent": return agent(reach.repository, reach.member);
+    case "repository": return repo(reach.repository);
+    case "all": return "api";
+  }
+}
+
+/** Hold what *reach* names at its next tool call; freezing also stops its running commands and interrupts its turn. */
+export async function pauseAt(reach: Reach, freeze: boolean, token: string): Promise<PauseOutcome> {
+  const request: PauseRequest = { tree: reach.kind === "agent" && reach.tree, freeze };
+  return posted(`${reached(reach)}/pause`, request, token);
+}
+
+/** Lift the pause placed on what *reach* names, continue what it froze, and wake who stopped for it. */
+export async function resumeAt(reach: Reach, token: string): Promise<PauseOutcome> {
+  const request: ResumeRequest | Nothing = reach.kind === "agent" ? { tree: reach.tree } : {};
+  return posted(`${reached(reach)}/resume`, request, token);
 }
 
 /** One post to every working member of a repository, each woken as a message is. */
@@ -285,4 +333,29 @@ export async function tryKeys(lines: KeyLine[], token: string): Promise<KeyBindi
 export async function writeKeys(lines: KeyLine[], token: string): Promise<KeyBindings> {
   const tried: KeyTry = { lines };
   return posted("api/keys", tried, token);
+}
+
+/** What the language server reading a document says of the symbol at one place in it. */
+export async function askHover(question: CodeQuestion, token: string): Promise<CodeHover> {
+  return posted("api/code/hover", question, token);
+}
+
+/** Where the symbol at one place is defined. */
+export async function askDefinition(question: CodeQuestion, token: string): Promise<CodeLocations> {
+  return posted("api/code/definition", question, token);
+}
+
+/** Every place the symbol at one place is used. */
+export async function askReferences(question: CodeQuestion, token: string): Promise<CodeLocations> {
+  return posted("api/code/references", question, token);
+}
+
+/** What the language server reading a document calls every name in it. */
+export async function askTokens(source: CodeSource, token: string): Promise<CodeTokens> {
+  return posted("api/code/tokens", source, token);
+}
+
+/** A document whole, where a definition or a use the server named lies. */
+export async function readCode(source: CodeSource, token: string): Promise<CodeText> {
+  return posted("api/code/text", source, token);
 }
