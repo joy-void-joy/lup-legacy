@@ -18,6 +18,7 @@ subjects = [
     "fit_refusal",
     "BranchBase.refusal",
     "missing_run_refusal",
+    "unjudged_recovery",
 ]
 reason = """
 every message read at an event takes one shape, lup.policy.kernel.diagnostic: \
@@ -64,3 +65,9 @@ RemoteMeasure.update_command returns the command as words, \
 refuse_inside_a_container takes the command as words, and \
 refused_on_the_host_only takes no argument: its caller names the host \
 command as a step."""
+
+[[steps]]
+instruction = """
+unjudged_recovery is lup.policy.kernel.decision's and returns steps: call \
+unjudged_recovery(ran_out(error)), with ran_out from lup.policy.assets.host, \
+where lup.policy.assets.host.unjudged_recovery(error) returned a sentence."""
