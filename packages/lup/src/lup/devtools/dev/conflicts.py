@@ -172,8 +172,7 @@ def get_branch_files(state: str) -> BranchScope:
         case "merge":
             merge_head = repository.merging()
             if merge_head is None:
-                typer.echo("No merge is in progress", err=True)
-                raise typer.Exit(1)
+                refuse("no merge is in progress here")
             base = git.out("merge-base", "HEAD", merge_head)
             tip = "HEAD"
 

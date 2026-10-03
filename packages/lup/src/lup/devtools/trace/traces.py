@@ -720,15 +720,16 @@ def transcript_of(reference: str) -> Path:
         case [path] if path.is_file():
             return path
         case [path]:
-            refusal = f"run {reference} wrote no transcript at {path}"
+            refuse(f"wrote no transcript at {path}", what=reference)
         case _:
-            refusal = (
-                f"no launch run named {reference} under {harness_runs_path()}; "
-                "`trace verify` lists every run there, and a run kept elsewhere "
-                "is named by its path"
+            refuse(
+                f"names no launch run under {harness_runs_path()}",
+                what=reference,
+                steps=[
+                    step("check every run there", devtools("trace", "verify")),
+                    step("or name a run kept elsewhere by its path"),
+                ],
             )
-    typer.echo(refusal, err=True)
-    raise typer.Exit(1)
 
 
 def verify_transcripts(references: Sequence[str], as_json: bool) -> None:

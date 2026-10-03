@@ -97,7 +97,9 @@ def test_a_cd_nothing_here_can_read_leaves_the_words_after_it_unjudged() -> None
                 sandboxed=sandboxed,
             )
             assert verdict.effect == "ask", (move, sandboxed)
-            assert verdict.headline() == "asks: `rm` — deleting files requires approval", move
+            assert (
+                verdict.headline() == "asks: `rm` — deleting files requires approval"
+            ), move
 
 
 def test_a_subshell_move_reaches_nothing_after_it() -> None:
