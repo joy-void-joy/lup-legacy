@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { LiveMessage, LiveSession, ReviewSummary } from "../generated/views";
-import { applied, NO_KEYS, UNSAID } from "./live";
+import { applied, NO_BUDGET, NO_KEYS, UNSAID } from "./live";
 import { activityBrief, attention, callSummary, inboxOf, inRepository, standing, treeItems, unreadCount } from "./supervision";
 
 const now = Date.parse("2026-09-29T12:00:00Z");
@@ -29,7 +29,7 @@ function message(id: string, fields: Partial<LiveMessage> = {}): LiveMessage {
 
 const state = (sessions: LiveSession[], messages: LiveMessage[] = [], reviews: ReviewSummary[] = []) => applied(null, {
   cursor: "c",
-  event: { type: "snapshot", repositories: [repository], sessions, messages, extents: [], reviews: { roots: [root], reviews, errors: [], history: 0 }, code: UNSAID, keys: NO_KEYS, users: [], served: [] },
+  event: { type: "snapshot", repositories: [repository], sessions, messages, extents: [], reviews: { roots: [root], reviews, errors: [], history: 0 }, code: UNSAID, keys: NO_KEYS, users: [], served: [], budget: NO_BUDGET },
 });
 
 describe("who is here, and what each needs", () => {

@@ -95,6 +95,8 @@ type Feature = Literal[
     "claims",
     "inbox-read",
     "thread-post",
+    "budgets",
+    "profiles",
 ]
 """A piece of supervision the page can ask this server for, as the page names it."""
 

@@ -105,7 +105,7 @@ function sse(frame: StreamFrame): string {
 
 const whole: StreamFrame = {
   cursor: '{"epoch":"e1","seq":0}',
-  event: { type: "snapshot", repositories: [], sessions: [], messages: [], extents: [], reviews: snapshot, code: { source: "", root: "", since: null, older: false, failing: "", restarted: "" }, users: [], served: [], keys: { source: "", unread: "", changed: [], report: { applied: [], refused: [], waits: [] } } },
+  event: { type: "snapshot", repositories: [], sessions: [], messages: [], extents: [], reviews: snapshot, code: { source: "", root: "", since: null, older: false, failing: "", restarted: "" }, users: [], served: [], keys: { source: "", unread: "", changed: [], report: { applied: [], refused: [], waits: [] } }, budget: { accounts: [], agents: [], turtle: false, telemetry: false, refused: "", holds: false } },
 };
 
 const gone: StreamFrame = { cursor: '{"epoch":"e1","seq":1}', event: { type: "session_gone", key: "r/é-session" } };

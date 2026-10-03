@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { DashboardEvent, LiveMessage, LiveSession, ReviewSummary, StreamFrame } from "../generated/views";
-import { applied, called, codeNotice, conversation, moved, NO_KEYS, paged, repositoryMessages, UNSAID, type LiveState } from "./live";
+import { applied, called, codeNotice, conversation, moved, NO_BUDGET, NO_KEYS, paged, repositoryMessages, UNSAID, type LiveState } from "./live";
 
 const repository = { key: "r1", name: "lup", repository: "/src/lup.git", checkout: "/src/lup.git/tree/dev" };
 
@@ -48,6 +48,7 @@ function snapshot(): LiveState {
     users: [],
     served: [],
     keys: NO_KEYS,
+    budget: NO_BUDGET,
   }));
 }
 

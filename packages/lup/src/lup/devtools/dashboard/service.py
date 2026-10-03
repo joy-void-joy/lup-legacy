@@ -42,6 +42,7 @@ from datetime import UTC, datetime, timedelta
 from importlib import resources
 from itertools import count
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import sh
 from pydantic import BaseModel
@@ -72,6 +73,9 @@ from lup.launch.companions import CompanionSlot, lent_directory
 from lup.policy.relay import RecordedQuestion
 from lup.providers.user_config import UserConfigFile
 
+if TYPE_CHECKING:
+    from lup.devtools.dashboard.budget import BudgetGovernor
+
 logger = logging.getLogger(__name__)
 
 
@@ -81,6 +85,9 @@ class ServiceArguments(BaseModel, frozen=True):
     state: Path
     port: int
     revision: str
+    telemetry: int = 0
+    """The port sessions' telemetry is received on; none for a dashboard that receives none."""
+
     host: str = "127.0.0.1"
     shared: bool = True
     """The dashboard every launch holds, which also tells the operator of
@@ -102,16 +109,28 @@ class ServiceArguments(BaseModel, frozen=True):
                 )
             case [state, port, revision]:
                 return cls(state=Path(state), port=int(port), revision=revision)
+            case [state, port, revision, telemetry]:
+                return cls(
+                    state=Path(state),
+                    port=int(port),
+                    revision=revision,
+                    telemetry=int(telemetry),
+                )
             case _:
                 raise ValueError(
-                    "expected <state> <port> <revision>, or --terminal <state> "
-                    f"<host> <port> <revision>; got {words}"
+                    "expected <state> <port> <revision> [<telemetry port>], or "
+                    f"--terminal <state> <host> <port> <revision>; got {words}"
                 )
 
     def words(self) -> list[str]:
         """The arguments that serve this dashboard again, as a restart in place passes them."""
         if self.shared:
-            return [str(self.state), str(self.port), self.revision]
+            return [
+                str(self.state),
+                str(self.port),
+                self.revision,
+                *([str(self.telemetry)] if self.telemetry else []),
+            ]
         return ["--terminal", str(self.state), self.host, str(self.port), self.revision]
 
     def url(self) -> str:
@@ -300,6 +319,7 @@ class Herald:
         restarts: Callable[[], int] = lambda: 0,
         store: ReviewStore | None = None,
         silent: timedelta = timedelta(minutes=10),
+        governor: BudgetGovernor | None = None,
     ) -> None:
         self.record_path = directory / "herald.json"
         self.pulse = PulseFile.of(lent_directory(directory))
@@ -322,6 +342,7 @@ class Herald:
         self.crowd = crowd
         self.heartbeat = heartbeat
         self.silent = silent
+        self.governor = governor
         self.watches: dict[str, RepositoryWatch] = {}
         self.published: DashboardPulse | None = None
         self.unheard = False
@@ -358,6 +379,25 @@ class Herald:
         if updated != record:
             publish_atomic(self.record_path, updated)
         needs = self.needs(moment)
+        if self.governor is not None:
+            from lup.devtools.dashboard.budget import RepositoryAgents
+
+            try:
+                self.governor.look(
+                    [
+                        RepositoryAgents(
+                            key=key,
+                            known=self.watches[key].known,
+                            store=self.watches[key].peers.root,
+                            agents=need.agents,
+                        )
+                        for key, need in needs.items()
+                        if key in self.watches
+                    ],
+                    moment,
+                )
+            except Exception:
+                logger.exception("the budget could not judge its agents this time")
 
         def repository_of(root: Path) -> str:
             anchor = scan.repositories[root] if root in scan.repositories else root
@@ -494,6 +534,9 @@ class Herald:
             unread=sum(each.unread for each in needs),
             quiet=sum(each.quiet for each in needs),
             contested=sum(len(each.contested) for each in needs),
+            turtle=self.governor.current().turtle
+            if self.governor is not None
+            else False,
         )
         last = self.published
         if (
@@ -536,8 +579,16 @@ def serve_dashboard(arguments: ServiceArguments) -> None:
     import uvicorn
     from fastapi import FastAPI
 
+    from lup.devtools.dashboard.budget import (
+        AccountPoller,
+        BudgetGovernor,
+        BudgetView,
+        budget_ledger,
+        budget_routes,
+    )
     from lup.devtools.dashboard.reviews import dashboard_app
     from lup.devtools.dashboard.stream import LiveFeed
+    from lup.devtools.dashboard.telemetry import TelemetryJoin, TelemetryReceiver
 
     token = DashboardToken(directory=arguments.state).read()
     registry = DashboardRegistry(directory=arguments.state)
@@ -562,7 +613,46 @@ def serve_dashboard(arguments: ServiceArguments) -> None:
         registry=registry,
         restarting=lambda: bool(refresh.refusal()),
     )
-    feed = LiveFeed(registry.repositories, store, code=code)
+    ledger = budget_ledger()
+    join = TelemetryJoin() if arguments.telemetry else None
+    receiver = (
+        TelemetryReceiver(
+            arguments.telemetry,
+            DashboardToken(directory=arguments.state, name="telemetry-token")
+            .minted()
+            .value,
+            join,
+        ).start()
+        if join is not None
+        else None
+    )
+    person = UserConfigFile()
+    poller = (
+        AccountPoller(
+            lambda: [each.checkout for each in registry.repositories()], ledger, person
+        ).start()
+        if arguments.shared
+        else None
+    )
+    governor = (
+        BudgetGovernor(
+            ledger,
+            person,
+            poller=poller,
+            join=join,
+            notify=lambda summary, body: desktop_notified(
+                DesktopNotice(summary=summary, body=body)
+            ),
+        )
+        if arguments.shared
+        else None
+    )
+    feed = LiveFeed(
+        registry.repositories,
+        store,
+        code=code,
+        budget=governor.current if governor is not None else BudgetView,
+    )
     # Taken before the page is read, so a bundle rebuilt while it is read
     # moves the dashboard onto the new one rather than past it unseen.
     refresh.source.taken()
@@ -587,10 +677,13 @@ def serve_dashboard(arguments: ServiceArguments) -> None:
             code=code,
             restarts=recovery.restarts,
             store=store,
+            governor=governor,
         )
         if arguments.shared
         else None
     )
+    if governor is not None:
+        budget_routes(app, feed.serves, governor)
     refresh.source.taken()
     gate = WriteGate(app, refresh.refusal)
 
@@ -699,6 +792,10 @@ def serve_dashboard(arguments: ServiceArguments) -> None:
     finally:
         if herald is not None and not refresh.due:
             herald.retired()
+        if receiver is not None:
+            receiver.stop()
+        if poller is not None:
+            poller.stop()
         panes.close()
         if not arguments.shared and not refresh.due:
             shutil.rmtree(arguments.state)

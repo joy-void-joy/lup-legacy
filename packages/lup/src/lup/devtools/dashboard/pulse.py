@@ -193,6 +193,9 @@ class DashboardPulse(BaseModel, frozen=True):
     contested: int = 0
     """Paths two sessions hold at once, each counted with its subagents."""
 
+    turtle: bool = False
+    """Whether the budget's slower limits are on, which every status line shows."""
+
     def current(self, now: datetime, within: timedelta = timedelta(seconds=30)) -> bool:
         """Whether the service wrote it recently enough to still be running."""
         return now - self.beat <= within
@@ -555,6 +558,7 @@ class LineFacts(BaseModel, frozen=True):
                 restarted = pulse.code.restarted
                 return joined(
                     [
+                        [Piece(text="🐢 turtle", tone="warn")] if pulse.turtle else [],
                         self.serving(pulse, reached),
                         [
                             Piece(
