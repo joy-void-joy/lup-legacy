@@ -25,6 +25,10 @@
       "title": "you as a peer (Space p): one level down"
     },
     {
+      "id": "budget",
+      "title": "the budget (Space b): the turtle, and an agent's priority and caps"
+    },
+    {
       "id": "view",
       "title": "windows, views and tabs"
     },
@@ -771,6 +775,57 @@
       "focus": "any",
       "stands": "new",
       "needs": "stop",
+      "also": [],
+      "hidden": false,
+      "note": "",
+      "was": ""
+    },
+    {
+      "name": "budget.turtle",
+      "keys": [
+        "<leader>bt"
+      ],
+      "description": "the turtle: every account under its slower limits, or back under its usual ones (:turtle)",
+      "group": "budget",
+      "mode": "normal",
+      "scope": "anywhere",
+      "focus": "any",
+      "stands": "new",
+      "needs": "budgets",
+      "also": [],
+      "hidden": false,
+      "note": "",
+      "was": ""
+    },
+    {
+      "name": "budget.priority",
+      "keys": [
+        "<leader>bp"
+      ],
+      "description": "its priority under its account's limits: high, normal or low (:priority)",
+      "group": "budget",
+      "mode": "normal",
+      "scope": "anywhere",
+      "focus": "any",
+      "stands": "new",
+      "needs": "budgets",
+      "also": [],
+      "hidden": false,
+      "note": "",
+      "was": ""
+    },
+    {
+      "name": "budget.cap",
+      "keys": [
+        "<leader>bc"
+      ],
+      "description": "its caps: a rate per hour and a total, in dollars or tokens (:cap)",
+      "group": "budget",
+      "mode": "normal",
+      "scope": "anywhere",
+      "focus": "any",
+      "stands": "new",
+      "needs": "budgets",
       "also": [],
       "hidden": false,
       "note": "",

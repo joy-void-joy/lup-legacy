@@ -15,6 +15,25 @@ import tempfile
 from pathlib import Path
 
 
+def chosen_login(incoming, keys=None):
+    """The records of a login that are applied: the named keys, or the whole file."""
+    if not keys:
+        return incoming
+    return {key: incoming[key] for key in keys if key in incoming}
+
+
+def login_fingerprint(login):
+    """What a stamp records of one applied login, so the same login is applied once."""
+    return hashlib.sha256(
+        json.dumps(login, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+
+
+def stamp_of(stored):
+    """The file beside a stored login recording the fingerprint last applied to it."""
+    return stored.with_name(f".lup-seeded-{stored.name}.sha256")
+
+
 def seed_login(seed, stored, keys=None, renewable=""):
     """Copy a changed login while preserving other records in a shared file."""
     keys = keys or []
@@ -63,18 +82,12 @@ def seed_login(seed, stored, keys=None, renewable=""):
     with (stored.parent / ".lup-login-handoff.lock").open("a") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
         incoming, raw = read(seed)
-        login = (
-            {key: incoming[key] for key in keys if key in incoming}
-            if keys
-            else incoming
-        )
+        login = chosen_login(incoming, keys)
         if not login or not usable(incoming, raw):
             return False
         current, current_raw = read(stored)
-        fingerprint = hashlib.sha256(
-            json.dumps(login, sort_keys=True, separators=(",", ":")).encode("utf-8")
-        ).hexdigest()
-        stamp = stored.with_name(f".lup-seeded-{stored.name}.sha256")
+        fingerprint = login_fingerprint(login)
+        stamp = stamp_of(stored)
         if (
             stamp.exists()
             and stamp.read_text() == fingerprint

@@ -16,6 +16,7 @@ from lup.devtools.dashboard.reviews import (
     ReviewRemarkRequest,
     ReviewSnapshot,
 )
+from lup.devtools.dashboard.budget import budget_models
 from lup.devtools.dashboard.keys import KeyBindings, KeymapCatalog, KeyTry
 from lup.devtools.dashboard.live import MessagePage
 from lup.devtools.dashboard.supervision import supervision_models
@@ -85,6 +86,7 @@ DASHBOARD = Surface(
         CodeTokens,
         CodeText,
         *supervision_models(),
+        *budget_models(),
     ],
 )
 """The operator's dashboard: the live stream, parked reviews, captured changes, exact

@@ -12,7 +12,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import sh
-from pydantic import ValidationError
+from pydantic import BaseModel, ValidationError
 
 from lup.harness.environment import inherited
 from lup.providers.codex.harness import CodexSpellings
@@ -23,8 +23,9 @@ from lup.providers.codex.usage.api import (
     AccountUsage,
     CodexAccountClient,
     RateLimitWindow,
+    RolloutEvent,
 )
-from lup.types import EnvVars
+from lup.types import EnvVars, JsonObject
 from lup.observability.usage.app import UsageEntry
 from lup.observability.usage.models import (
     DayUsage,
@@ -81,6 +82,39 @@ def windows_from(usage: AccountUsage) -> list[PacingWindow]:
         pacing_window(snapshot.primary, "5-hour"),
     ]
     return [window for window in reported if window is not None]
+
+
+class RolloutSpend(BaseModel, frozen=True):
+    """What one rollout token count says: the tokens its request moved, and the windows then."""
+
+    tokens: int = 0
+    windows: list[PacingWindow] = []
+
+
+def rollout_spend(record: JsonObject) -> RolloutSpend | None:
+    """One rollout line's token count, where the line is one; nothing for any other line."""
+    try:
+        line = RolloutEvent.model_validate(record)
+    except ValidationError:
+        return None
+    payload = line.payload
+    if line.type != "event_msg" or payload is None or payload.type != "token_count":
+        return None
+    limits = payload.rate_limits
+    reported = (
+        [
+            pacing_window(
+                limits.secondary.read() if limits.secondary else None, "weekly"
+            ),
+            pacing_window(limits.primary.read() if limits.primary else None, "5-hour"),
+        ]
+        if limits is not None
+        else []
+    )
+    return RolloutSpend(
+        tokens=payload.info.last_token_usage.total_tokens if payload.info else 0,
+        windows=[window for window in reported if window is not None],
+    )
 
 
 def days_from(

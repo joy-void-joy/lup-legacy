@@ -242,6 +242,10 @@ class TestAPayloadThatDriftsCostsOnlyWhatItNames:
 
         assert windows_from(usage) == []
 
+    def test_overage_the_endpoint_leaves_null_reads_as_none(self) -> None:
+        unset = {"is_enabled": True, "monthly_limit": None, "used_credits": None}
+        assert spend_from(UsageResponse.model_validate({"extra_usage": unset})) is None
+
 
 class RefusingServer(CodexAppServer):
     """An app-server that answers the daily read with one chosen error."""

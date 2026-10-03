@@ -32,6 +32,7 @@ from ipaddress import IPv4Address
 from pathlib import Path
 
 import sh
+from lup.channels.models import write_atomic
 from lup.execution.shell import git
 from lup.policy.identity import POLICY_ROOT_ENV
 from pydantic import BaseModel, Field
@@ -69,6 +70,7 @@ from lup.coordination.bare.store import STORE_DIR
 from lup.workspace.shared_directory import ARCHIVE_DIRECTORY_NAME, SLOT_DIRECTORY
 from lup.harness.terminal import host_timezone
 from lup.providers.login import ProviderLogin
+from lup.providers.login_sync import LoginPlace
 from lup.providers.runtime_homes import runtime_logins
 from lup.launch.superseded import SupersededFile
 from lup.launch.environments import (
@@ -77,20 +79,30 @@ from lup.launch.environments import (
     sweep_environments,
 )
 from lup.launch.config_volume import (
+    HandedLogin,
+    Handoff,
     HomeFile,
     HomeHelper,
     HomeSeedPlaces,
+    LaunchedAccounts,
+    LoginOwner,
     RuntimeVolume,
+    VolumeLogin,
+    VolumeLogins,
     kept_for_superseded,
+    named_file,
+    settle_handoff,
     settle_home_seed,
     split_config_volumes,
     sweep_superseded,
+    volume_image,
     swept_superseded_notice,
 )
 from lup.sandbox.attribution import WRITE_REFUSAL_MARKERS
 from lup.launch.pointer_trust import judged_roots, launcher_state_exposure
 from lup.sandbox.pointers import pointer_drift, refusal
 from lup.launch.refusal import LaunchRefused
+from lup.workspace.user_directories import UserDirectories
 from lup.sandbox.rail import (
     AccessibleRoot,
     Lease,
@@ -1792,7 +1804,7 @@ def contained_argv(
     manifest: Manifest,
     root: Path,
     editor_rendezvous: Path | None,
-    credential: Path | None,
+    credential: HandedLogin | None,
     login: ProviderLogin,
     engine: ContainerEngine | None = None,
     streams: SessionStreams = "terminal",
@@ -1810,6 +1822,14 @@ def contained_argv(
     overlays: Mapping[Path, str] | None = None,
 ) -> list[str]:
     """The argv that opens a session in this project's container.
+
+    ``credential`` is the host login offered to the repository's config
+    volume, and whose it is. Every session running on that volume shares
+    the file it lands in, so one whose account differs from the one the
+    volume was last handed, while a container holding the volume runs, is
+    settled before anything is built: refused, handed anyway, or withheld,
+    as :func:`~lup.launch.config_volume.settle_handoff` says. What was handed
+    is recorded for the next start to compare against.
 
     Refuses rather than degrades when no container client answers: a launch
     that asked for the boundary and silently ran without one is exactly the
@@ -1913,6 +1933,23 @@ def contained_argv(
                 )
             ]
         )
+    # Before anything is built or started, so a start that would move the
+    # sessions running on this repository's volume is refused with nothing of
+    # its own left to undo.
+    logins = VolumeLogins()
+    handoff = (
+        settle_handoff(
+            credential,
+            login,
+            state_volume_name(root, login),
+            client,
+            logins,
+            datetime.now(UTC),
+        )
+        if credential is not None
+        else Handoff()
+    )
+    said.add(handoff.notices)
     bounded = held_memory(memory, client)
     said.add(bounded.notices)
     # Every root this launch mounts, before host git reads any of them -- the
@@ -2090,6 +2127,10 @@ def contained_argv(
                 )
             ]
         )
+    # Recorded once the argv stands, since every argv this returns is run and
+    # its entrypoint applies the login the moment the container starts.
+    if handoff.record is not None:
+        logins.record(handoff.record)
     return image.session_arguments(
         tag=tag,
         checkout=root,
@@ -2102,7 +2143,7 @@ def contained_argv(
         credential_file=login.credentials_file,
         credential_renewable=login.renewable,
         credential_fields=login.credential_fields,
-        credential=credential,
+        credential=handoff.credential,
         editor_rendezvous=editor_rendezvous,
         engine=client,
         forge=forge,
@@ -2151,6 +2192,168 @@ def read_config_home(
         return helper.read(state_volume_name(root, login), names)
     except (sh.CommandNotFound, sh.ErrorReturnCode):
         return []
+
+
+class VolumeSeeding(BaseModel, frozen=True):
+    """What handing a repository's volume a login, outside any session, came to."""
+
+    held: VolumeLogin | None = None
+    """What the volume holds now, as recorded; ``None`` where the login did not take."""
+
+    why: str = ""
+    """Why it did not take, empty where it did."""
+
+
+class VolumeUnreachable(RuntimeError):
+    """No container client here can reach a repository's volume, and why."""
+
+
+def volume_helper(root: Path, volume: str, config_home: str) -> HomeHelper:
+    """A helper container reaching one of this repository's volumes, mounted at ``config_home``.
+
+    Run from the image a container on the volume runs, else the one this
+    checkout last ran, and as the checkout's owner, as a session there is.
+    """
+    found = detected_client()
+    if found is None:
+        raise VolumeUnreachable(
+            "no Docker or Podman client answers here, so the volume cannot be reached"
+        )
+    if not found.drives_its_server():
+        raise VolumeUnreachable(found.consequence())
+    engine = found.engine()
+    return HomeHelper(
+        engine=engine,
+        tag=volume_image(volume, engine) or checkout_tag(root),
+        uid=root.stat().st_uid,
+        gid=root.stat().st_gid,
+        config_home=config_home,
+    )
+
+
+class VolumeLoginCopy(LoginPlace):
+    """A repository volume's copy of a login, which its contained sessions share.
+
+    Read and replaced through a helper container. Replaced by the image's own
+    seed program, as a start or a switch hands the volume a login, so the
+    volume's stamp records what it holds; the program offers no
+    compare-and-swap, so a renewal a session makes inside the volume between
+    a pass's read and its write is replaced by the newer login written.
+    """
+
+    def __init__(
+        self, root: Path, login: ProviderLogin, config_home: str, offered: Path
+    ) -> None:
+        self.root = root
+        self.login = login
+        self.config_home = config_home
+        self.offered = offered
+        self.volume = state_volume_name(root, login)
+
+    def named(self) -> str:
+        return f"volume {self.volume}"
+
+    def read(self) -> bytes | None:
+        helper = volume_helper(self.root, self.volume, self.config_home)
+        try:
+            files = helper.read(self.volume, [self.login.credentials_file])
+        except (sh.CommandNotFound, sh.ErrorReturnCode) as failed:
+            raise VolumeUnreachable(
+                f"a helper container could not read {self.volume}: {failed}"
+            ) from failed
+        held = named_file(files, self.login.credentials_file)
+        return held.content if held is not None else None
+
+    def write(self, content: bytes, expected: bytes | None) -> None:
+        del expected
+        helper = volume_helper(self.root, self.volume, self.config_home)
+        write_atomic(self.offered, content, mode=0o600)
+        try:
+            helper.seed_login(self.volume, self.offered, self.login)
+        except (sh.CommandNotFound, sh.ErrorReturnCode) as failed:
+            raise VolumeUnreachable(
+                f"a helper container could not write {self.volume}: {failed}"
+            ) from failed
+        finally:
+            self.offered.unlink(missing_ok=True)
+
+
+def offered_login(volume: str, directories: UserDirectories | None = None) -> Path:
+    """Where a login is staged, private to this person, while a helper hands it to *volume*."""
+    return (directories or UserDirectories()).state() / "logins" / f".{volume}.json"
+
+
+def seed_volume_login(
+    root: Path,
+    login: ProviderLogin,
+    handed: HandedLogin,
+    config_home: str,
+    logins: VolumeLogins,
+    now: datetime,
+) -> VolumeSeeding:
+    """Hand one runtime's volume of this repository a host login now, as a session's start would.
+
+    Through a helper container running the image's own seed program, so the
+    merge a session's entrypoint applies is the one applied here: from the
+    image a container running on the volume runs, else the one this checkout
+    last ran, with the volume mounted at ``config_home``. Recorded once the
+    volume's stamp says it holds that login, so a login the program declined
+    is said rather than recorded.
+    """
+    volume = state_volume_name(root, login)
+    try:
+        helper = volume_helper(root, volume, config_home)
+    except VolumeUnreachable as unreachable:
+        return VolumeSeeding(why=str(unreachable))
+    try:
+        stamp = helper.seed_login(volume, handed.credential, login)
+    except (sh.CommandNotFound, sh.ErrorReturnCode) as error:
+        return VolumeSeeding(
+            why=f"a helper container could not apply it to {volume}: {error}"
+        )
+    fingerprint = handed.fingerprint(login)
+    if not fingerprint or stamp != fingerprint:
+        return VolumeSeeding(
+            why=(
+                f"{volume} did not take {handed.owner.named()}'s login: it cannot "
+                "be read, or nothing can renew it any more, so sign that profile "
+                "in again"
+            )
+        )
+    held = VolumeLogin(
+        volume=volume,
+        runtime=login.state_volume,
+        owner=handed.owner,
+        fingerprint=fingerprint,
+        handed_at=now,
+    )
+    logins.record(held)
+    return VolumeSeeding(held=held)
+
+
+def drawn_account(
+    member: str,
+    accounts: LaunchedAccounts | None = None,
+    logins: VolumeLogins | None = None,
+) -> LoginOwner | None:
+    """The account one launched session draws on now, ``None`` where its launch recorded none.
+
+    A host session draws on the account it was launched on, and so does a
+    contained one whose runtime keeps the login it started with. One whose
+    runtime rereads its login draws on whatever its repository's volume was
+    last handed, which a later launch or a switch may have moved it to.
+    """
+    launched = (accounts or LaunchedAccounts()).launched(member)
+    if launched is None:
+        return None
+    login = next(
+        (each for each in runtime_logins() if each.state_volume == launched.runtime),
+        None,
+    )
+    if login is None or not launched.contained or not login.rereads_login:
+        return launched.owner
+    held = (logins or VolumeLogins()).held(state_volume_name(launched.checkout, login))
+    return held.owner if held is not None else launched.owner
 
 
 def engine_absence() -> str | None:
@@ -2228,7 +2431,7 @@ def contained_cli(
     program: str,
     login: ProviderLogin,
     lease: Lease | None = None,
-    credential: Path | None = None,
+    credential: HandedLogin | None = None,
     editor_rendezvous: Path | None = None,
     sentinels: LaunchSentinels = LaunchSentinels(),
     accessible: list[AccessibleRoot] = [],
@@ -2288,7 +2491,7 @@ def worker_cli(
     manifest: Manifest,
     lease_root: Path,
     editor_rendezvous: Path | None,
-    credential: Path | None,
+    credential: HandedLogin | None,
     login: ProviderLogin,
     program: str,
     read_only: bool = False,

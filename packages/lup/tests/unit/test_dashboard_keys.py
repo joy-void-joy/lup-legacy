@@ -329,5 +329,6 @@ def test_every_supervising_action_needs_what_the_routes_serve() -> None:
     """A page meeting this dashboard runs every action the catalog marks as needing supervision."""
     needed = {action.needs for action in CATALOG.actions if action.needs is not None}
 
-    # A post into a discussion is the box's own send there, no action of its own.
-    assert needed == set(SUPERVISED) - {"thread-post"}
+    # A post into a discussion is the box's own send there, no action of its own;
+    # the budget's actions need what the budget's own routes serve.
+    assert needed == (set(SUPERVISED) - {"thread-post"}) | {"budgets"}

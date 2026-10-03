@@ -58,6 +58,10 @@ Run any of them with `uv run lup-devtools <command>`, and add `--help` for its a
 | `dashboard keys` | Print the dashboard&#x27;s keys as your `[dashboard.keys]` leaves them, and every entry it refused. |
 | `dashboard restart` | Restart the running dashboard onto its checkout&#x27;s code, keeping its address. |
 | `dashboard stop` | Stop the running dashboard; it stays stopped until a restart or a launch. |
+| `dashboard budget` | Print each account&#x27;s windows as the budget last read them, its limits, and what this repository&#x27;s agents spent. |
+| `dashboard turtle` | Put every account under the turtle&#x27;s slower limits, or back under its usual ones. |
+| `dashboard priority` | Set an agent&#x27;s priority under its account&#x27;s limits: low holds first, high last. |
+| `dashboard cap` | Set an agent&#x27;s caps, every one at once: a cap left out is cleared, and none clears them all. |
 
 ## `dev`
 
@@ -211,6 +215,7 @@ Run any of them with `uv run lup-devtools <command>`, and add `--help` for its a
 | `harness profile use` | Select the profile a launch uses when none is named, in this checkout. |
 | `harness profile remove` | Forget a profile in this checkout, leaving its configuration home on disk. |
 | `harness profile migrate` | Move this checkout&#x27;s profiles, and the ~/.lup registry&#x27;s, to global. |
+| `harness profile switch` | Move this repository&#x27;s contained sessions of one runtime onto a profile&#x27;s login. |
 | `harness codex-plugin install` | Install the declared plugin and verify native discovery in the selected home. |
 | `harness codex-home migrate` | Move each worktree&#x27;s Codex home out of the checkout, into lup&#x27;s state. |
 
@@ -296,11 +301,6 @@ Run any of them with `uv run lup-devtools <command>`, and add `--help` for its a
 | `setup codex` | Set Codex/OpenAI per-MTok pricing (enables budget caps). |
 | `setup timezone` | Set timezone. |
 | `setup secret` | Set a key in this project&#x27;s host store, which only host companions are handed. |
-| `setup profile list` | Show every profile, local and global, and which one a launch selects. |
-| `setup profile add` | Register a runtime configuration home under a name, in this checkout. |
-| `setup profile use` | Select the profile a launch uses when none is named, in this checkout. |
-| `setup profile remove` | Forget a profile in this checkout, leaving its configuration home on disk. |
-| `setup profile migrate` | Move this checkout&#x27;s profiles, and the ~/.lup registry&#x27;s, to global. |
 
 ## `sync`
 

@@ -1,9 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import type { HeldBy, LiveMessage, LiveSession, ReviewSummary } from "../generated/views";
-import { applied, NO_KEYS, UNSAID } from "./live";
+import type { AccountMeter, AgentMeter, BudgetView, HeldBy, LiveMessage, LiveSession, ReviewSummary } from "../generated/views";
+import { applied, NO_BUDGET, NO_KEYS, UNSAID } from "./live";
 import {
-  activityBrief, attention, callSummary, heldCall, heldCount, heldWord, holdOwner, holdReach, holdTitle, inboxOf, inRepository, mailHeads, ownPause, repoBuffer, standing, treeItems,
-  unreadCount, youBuffer,
+  activityBrief, attention, callSummary, capsText, fullest, heldCall, heldCount, heldWord, holdOwner, holdReach, holdTitle, inboxOf, inRepository, mailHeads, metered, money, NO_CAPS,
+  ownPause, parseCaps, repoBuffer, spendLine, standing, tokenCount, treeItems, unreadCount, windowAt, wouldHold, youBuffer,
 } from "./supervision";
 import type { Row } from "./review";
 
@@ -33,7 +33,7 @@ function message(id: string, fields: Partial<LiveMessage> = {}): LiveMessage {
 
 const state = (sessions: LiveSession[], messages: LiveMessage[] = [], reviews: ReviewSummary[] = []) => applied(null, {
   cursor: "c",
-  event: { type: "snapshot", repositories: [repository], sessions, messages, extents: [], reviews: { roots: [root], reviews, errors: [], history: 0 }, code: UNSAID, keys: NO_KEYS, users: [], served: [] },
+  event: { type: "snapshot", repositories: [repository], sessions, messages, extents: [], reviews: { roots: [root], reviews, errors: [], history: 0 }, code: UNSAID, keys: NO_KEYS, users: [], served: [], budget: NO_BUDGET },
 });
 
 describe("who is here, and what each needs", () => {
@@ -110,5 +110,51 @@ describe("who is here, and what each needs", () => {
   test("a path reads relative to its repository's checkouts", () => {
     expect(inRepository("/src/lup.git/tree/dev/a.py", repository)).toBe("tree/dev/a.py");
     expect(inRepository("/elsewhere/a.py", repository)).toBe("/elsewhere/a.py");
+  });
+});
+
+describe("the budget's words", () => {
+  const meter = (fields: Partial<AgentMeter> = {}): AgentMeter => ({
+    session: "r1/lead", account: "claude:work", hour: { usd: 0.42, tokens: 9000 }, total: { usd: 3.1, tokens: 80000 },
+    priority: "normal", caps: NO_CAPS, exempt: false, held: null, ...fields,
+  });
+
+  test("caps read as the operator types them, and say why where they do not", () => {
+    expect(parseCaps("$2/h $10")).toEqual({ ...NO_CAPS, rate_usd: 2, total_usd: 10 });
+    expect(parseCaps("500k/h, 2M")).toEqual({ ...NO_CAPS, rate_tokens: 500_000, total_tokens: 2_000_000 });
+    expect(parseCaps("")).toEqual(NO_CAPS);
+    expect(parseCaps("ten dollars")).toContain("neither a dollar amount");
+    expect(parseCaps("$2k")).toContain("mixes dollars");
+    expect(capsText({ ...NO_CAPS, rate_usd: 2, total_tokens: 2_000_000 })).toBe("$2.00/h · 2.0M");
+  });
+
+  test("an agent's spend says its rate and total, in tokens where nothing priced it", () => {
+    expect(spendLine(meter())).toBe("$0.42/h · $3.10");
+    expect(spendLine(meter({ hour: { usd: 0, tokens: 12_000 }, total: { usd: 0, tokens: 1_400_000 } }))).toBe("12k tok/h · 1.4M tok");
+    expect(spendLine(meter({ hour: { usd: 0, tokens: 0 }, total: { usd: 0, tokens: 0 } }))).toBe("");
+    expect(money(250)).toBe("$250");
+    expect(tokenCount(950)).toBe("950");
+  });
+
+  test("a verdict says what would hold the agent only where this dashboard places no holds", () => {
+    const verdict = { key: "r1/lead", cause: "slot" as const, said: "waiting for a slot", until: null };
+    expect(wouldHold({ ...NO_BUDGET, holds: true }, verdict)).toBe("");
+    expect(wouldHold(NO_BUDGET, verdict)).toBe("would hold: waiting for a slot");
+    expect(wouldHold(NO_BUDGET, null)).toBe("");
+  });
+
+  test("a window says where even pace stands, and the meter shows the accounts in use first", () => {
+    const now = Date.parse("2026-10-05T12:00:00Z");
+    const window = { window: { label: "5-hour", utilization_pct: 70, resets_at: "2026-10-05T14:00:00Z", window_hours: 5 }, per_hour: null };
+    const at = windowAt(window, now);
+    expect(at.even).toBeCloseTo(60);
+    expect(at.ahead).toBe(true);
+    const account = (key: string, agents: number, windows = [window]): AccountMeter => ({
+      account: { runtime: "claude", profile: key }, key, home: "", signed_in: true, windows, read_at: null, error: "",
+      limits: { window_ceiling: null, pace: null, ceilings: null, tolerance: null, reserve: null, max_active: null }, said: [], agents, held: 0, exhausted: "",
+    });
+    const budget: BudgetView = { accounts: [account("b", 0), account("a", 2), account("idle", 0, [])], agents: [], turtle: false, telemetry: true, refused: "", holds: true };
+    expect(metered(budget).map((each) => each.key)).toEqual(["a", "b"]);
+    expect(fullest(account("x", 0))?.window.utilization_pct).toBe(70);
   });
 });

@@ -193,6 +193,8 @@ class DashboardPulse(BaseModel, frozen=True):
     contested: int = 0
     """Paths two sessions hold at once, each counted with its subagents."""
 
+    turtle: bool = False
+    """Whether the budget's slower limits are on, which every status line shows."""
     held: int = 0
     """Running agents the operator's pause or a budget holds at their next
     tool call, across every repository it serves."""
@@ -488,7 +490,8 @@ class LineFacts(BaseModel, frozen=True):
             [Piece(text=f"✉{counted.unread}", tone="warn")] if counted.unread else []
         )
         paused = [Piece(text=f"⏸{counted.held}", tone="warn")] if counted.held else []
-        return joined([reviews, letters, paused])
+        turtle = [Piece(text="🐢 turtle", tone="warn")] if counted.turtle else []
+        return joined([reviews, letters, paused, turtle])
 
     def others(self) -> list[Piece]:
         """What other agents need of the operator: one gone quiet, a path held twice."""

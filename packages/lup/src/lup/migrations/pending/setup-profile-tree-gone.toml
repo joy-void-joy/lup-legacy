@@ -1,0 +1,20 @@
+subjects = [
+    "setup profile list",
+    "setup profile add",
+    "setup profile use",
+    "setup profile remove",
+    "setup profile migrate",
+    "setup profile switch",
+]
+reason = """
+`setup profile` was the same command tree as `harness profile`, mounted a \
+second time over the same roster; profiles are curated in one place, beside \
+the launchers that select them"""
+
+[[steps]]
+instruction = """
+Replace `lup-devtools setup profile <verb>` with `lup-devtools harness \
+profile <verb>` in scripts and operator instructions. Every verb, argument \
+and flag is unchanged, `--global` included, and both read and write the same \
+profiles. `setup status` still names the profile a launch selects."""
+command = ["uv", "run", "lup-devtools", "dev", "py", "text", "setup profile", "."]

@@ -10,7 +10,7 @@ import { openFinder, PICKERS } from "./finder";
 import { CATALOG } from "./keys";
 import type { Feature } from "./served";
 import { VIEWS, type View } from "./state";
-import { counterpart, inboxOf, ownPause, parentOf } from "./supervision";
+import { counterpart, inboxOf, ownPause, parentOf, parseCaps } from "./supervision";
 
 export type Command = {
   name: string;
@@ -236,6 +236,31 @@ export const COMMANDS: Command[] = [
   { name: "interrupt", description: "interrupt an agent's turn with the standard words", args: agentNames, needs: "interrupt", run: (d, arg) => onAgent(d, arg, (session) => void d.interrupt(session, "")) },
   { name: "transcript", description: "an agent's whole transcript, live (T)", args: agentNames, needs: "transcript", run: (d, arg) => onAgent(d, arg, (session) => void d.openTranscript(session)) },
   { name: "stop", description: "stop an agent's runtime; :stop! confirms", args: agentNames, needs: "stop", run: (d, arg, bang) => onAgent(d, arg, (session) => void d.stopRuntime(session, bang)) },
+  { name: "turtle", description: "the turtle: every account under its slower limits; :turtle on or off, or flip it", args: () => ["on", "off"], needs: "budgets", run: (d, arg) => {
+    const word = arg.trim();
+    if (word !== "" && word !== "on" && word !== "off") { d.say("E: :turtle [on|off]", "err"); return; }
+    void d.turtle(word === "" ? undefined : word === "on");
+  } },
+  { name: "priority", description: "an agent's priority under its account's limits: :priority [agent] high|normal|low", args: () => ["high", "normal", "low"], takes: true, needs: "budgets", run: (d, arg) => {
+    const { session, text } = agentAndText(d, arg);
+    const priority = text.trim();
+    if (session === undefined || (priority !== "high" && priority !== "normal" && priority !== "low")) { d.say("E: :priority [agent] high|normal|low", "err"); return; }
+    void d.settleBudget(session, { priority, caps: null });
+  } },
+  { name: "cap", description: "an agent's caps, a rate per hour and a total: :cap [agent] $2/h $10, 500k/h 2M; nothing clears them", args: agentNames, takes: true, needs: "budgets", run: (d, arg) => {
+    const { session, text } = agentAndText(d, arg);
+    if (session === undefined) { d.say("E: :cap [agent] <caps>", "err"); return; }
+    const caps = parseCaps(text);
+    if (typeof caps === "string") { d.say(`E: ${caps}`, "err"); return; }
+    void d.settleBudget(session, { priority: null, caps });
+  } },
+  { name: "switch", description: "move this repository's sessions onto a profile: :switch <profile> [claude|codex]", args: (d) => [...new Set((d.state.live?.budget.accounts ?? []).map((each) => each.account.profile))], takes: true, needs: "profiles", run: (d, arg) => {
+    const [profile = "", runtime = "claude"] = arg.trim().split(/\s+/);
+    if (profile === "" || (runtime !== "claude" && runtime !== "codex")) { d.say("E: :switch <profile> [claude|codex]", "err"); return; }
+    const repository = repositoryHere(d);
+    if (repository === "") { d.say("E: :switch acts on a repository: open one of its agents first", "err"); return; }
+    void d.switchProfile(repository, profile, runtime);
+  } },
   { name: "pause", description: "hold an agent at its next tool call, its subagents with it: :pause [agent] [tree], :pause repo, :pause all", args: pauseArgs, needs: "pause", run: (d, arg) => pausing(d, "pause", arg) },
   { name: "freeze", description: "pause, stop its running commands and interrupt its turn: :freeze [agent] [tree], :freeze repo, :freeze all", args: pauseArgs, needs: "pause", run: (d, arg) => pausing(d, "freeze", arg) },
   { name: "resume", description: "lift the pause placed on it, continuing what a freeze stopped: :resume [agent] [tree], :resume repo, :resume all", args: pauseArgs, needs: "pause", run: (d, arg) => pausing(d, "resume", arg) },

@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "generator_version": "0.2.0",
-  "source_digest": "c917b3a88ab97456308b1403e78b9d3d11587470aebc04a9322a99ae43f47c6f",
+  "source_digest": "cbf1e00a8423c2498feed82a28c2b040c8b148bfa1711af87324599ad6b9d572",
   "target_requirements": [
     "claude-code"
   ],
@@ -30,7 +30,7 @@
     {
       "path": ".claude/plugins/lup/TEMPLATE_CLAUDE.md",
       "category": "generated",
-      "sha256": "ee9faaab6ae7418b38c8bd6c356d676522ad616b804360f55f0c09341ffefa69",
+      "sha256": "61e7aeacc0090b29365ef1a810e4d30b616dab11a2aecfcc079d26f99979e4aa",
       "semantic_id": "harness.template-guidance",
       "executable": false
     },
@@ -695,7 +695,7 @@
     {
       "path": ".claude/plugins/lup/hooks/runtime/policy_data.py",
       "category": "generated",
-      "sha256": "4ebb72ae6899a6fda978033dec7725425b37b12eb101347ae265cc09c227bfbb",
+      "sha256": "91c1000e79e1e37bbf9100fcdb0604561b8f57e8342d2142b0b3ab118c6ef726",
       "semantic_id": "hooks.lup-policy",
       "executable": false
     },
@@ -856,7 +856,7 @@
     {
       "path": "docs/dashboard.md",
       "category": "generated",
-      "sha256": "bbba71a9aee0fd5e549664ffd6af0a916a3b74c615c821bc049084e3ec24d689",
+      "sha256": "74e4d6f32571d0020bcf002d8d7830017cca92ceab92df550d5469fb72e2bbc3",
       "semantic_id": "docs.dashboard",
       "executable": false
     },
@@ -870,7 +870,7 @@
     {
       "path": "docs/harness.md",
       "category": "generated",
-      "sha256": "6e98988102e2ca4dc6ff8e3aa25795380ecfd5dcff6541aab4a66368e9831754",
+      "sha256": "d8e8319a6671f3dde776efaa2f16677d25c0a5fb99a1e62aa32cfd80ed345d63",
       "semantic_id": "docs.harness",
       "executable": false
     },
@@ -919,7 +919,7 @@
     {
       "path": "docs/platform-differentiation.md",
       "category": "generated",
-      "sha256": "4396cf14015b05cb215d0b668a7a10df5715f4b6b03ca3a984d981dc7571ccd6",
+      "sha256": "edbde7b0a291087099520f949848911f8ee7e6d2d3e8c263adc5dda38ae7ba6d",
       "semantic_id": "docs.platform-differentiation",
       "executable": false
     },

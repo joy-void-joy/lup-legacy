@@ -1,22 +1,102 @@
 {
   "$defs": {
-    "Account": {
+    "AccountMeter": {
       "additionalProperties": false,
-      "description": "What the requester said a call is for, in its own words, and where the words were found.\n\nA claim by the agent and never a fact the policy checked, shown beside\nthe policy's own reason as the agent's: what it is for is the agent's to\nsay, why it asks is the policy's. Recorded when the call parks, so the\npage never reads a transcript, and kept whole.",
+      "description": "One account as the page's meter shows it.",
       "properties": {
-        "source": {
-          "$ref": "#/$defs/AccountSource"
+        "account": {
+          "$ref": "#/$defs/lup__sessions__limits__Account"
         },
-        "text": {
-          "title": "Text",
+        "agents": {
+          "default": 0,
+          "title": "Agents",
+          "type": "integer"
+        },
+        "error": {
+          "default": "",
+          "title": "Error",
           "type": "string"
+        },
+        "exhausted": {
+          "default": "",
+          "title": "Exhausted",
+          "type": "string"
+        },
+        "held": {
+          "default": 0,
+          "title": "Held",
+          "type": "integer"
+        },
+        "home": {
+          "default": "",
+          "title": "Home",
+          "type": "string"
+        },
+        "key": {
+          "title": "Key",
+          "type": "string"
+        },
+        "limits": {
+          "$ref": "#/$defs/Limits",
+          "default": {
+            "ceilings": null,
+            "max_active": null,
+            "pace": null,
+            "reserve": null,
+            "tolerance": null,
+            "window_ceiling": null
+          }
+        },
+        "read_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Read At"
+        },
+        "said": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Said",
+          "type": "array"
+        },
+        "signed_in": {
+          "default": true,
+          "title": "Signed In",
+          "type": "boolean"
+        },
+        "windows": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/MeteredWindow"
+          },
+          "title": "Windows",
+          "type": "array"
         }
       },
       "required": [
-        "source",
-        "text"
+        "account",
+        "key",
+        "home",
+        "signed_in",
+        "windows",
+        "read_at",
+        "error",
+        "limits",
+        "said",
+        "agents",
+        "held",
+        "exhausted"
       ],
-      "title": "Account",
+      "title": "AccountMeter",
       "type": "object"
     },
     "AccountSource": {
@@ -134,6 +214,184 @@
         "round"
       ],
       "title": "ActorRef",
+      "type": "object"
+    },
+    "AdapterName": {
+      "description": "Which native runtime a caller means, as a closed set.\n\nThe library ships exactly these adapter packages, so naming them is a\nfact about this library rather than a judgement an adopter could make\ndifferently \u2014 which is why it is a type and not a table of strings.\nCarrying it as one keeps a mistyped selector from resolving to whichever\nbranch a chain of string comparisons happened to end in.",
+      "enum": [
+        "claude",
+        "codex"
+      ],
+      "title": "AdapterName",
+      "type": "string"
+    },
+    "AgentBudgetRequest": {
+      "additionalProperties": false,
+      "description": "The operator's limits on one agent; a field left out stays as it was.",
+      "properties": {
+        "caps": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AgentCaps"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "priority": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Priority"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "priority",
+        "caps"
+      ],
+      "title": "AgentBudgetRequest",
+      "type": "object"
+    },
+    "AgentCaps": {
+      "additionalProperties": false,
+      "description": "One agent's own limits: a rate it may not pass in an hour, and a total.\n\nA rate slows the agent: it holds until its last hour's spend falls back\nunder the cap. A total stops it until the operator raises or clears it.",
+      "properties": {
+        "rate_tokens": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Rate Tokens"
+        },
+        "rate_usd": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Rate Usd"
+        },
+        "total_tokens": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Total Tokens"
+        },
+        "total_usd": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Total Usd"
+        }
+      },
+      "required": [
+        "rate_usd",
+        "rate_tokens",
+        "total_usd",
+        "total_tokens"
+      ],
+      "title": "AgentCaps",
+      "type": "object"
+    },
+    "AgentMeter": {
+      "additionalProperties": false,
+      "description": "One running agent's spend and the operator's limits on it, by its stream key.",
+      "properties": {
+        "account": {
+          "title": "Account",
+          "type": "string"
+        },
+        "caps": {
+          "$ref": "#/$defs/AgentCaps",
+          "default": {
+            "rate_tokens": null,
+            "rate_usd": null,
+            "total_tokens": null,
+            "total_usd": null
+          }
+        },
+        "exempt": {
+          "default": false,
+          "title": "Exempt",
+          "type": "boolean"
+        },
+        "held": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Verdict"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "hour": {
+          "$ref": "#/$defs/Spend",
+          "default": {
+            "tokens": 0,
+            "usd": 0.0
+          }
+        },
+        "priority": {
+          "$ref": "#/$defs/Priority",
+          "default": "normal"
+        },
+        "session": {
+          "title": "Session",
+          "type": "string"
+        },
+        "total": {
+          "$ref": "#/$defs/Spend",
+          "default": {
+            "tokens": 0,
+            "usd": 0.0
+          }
+        }
+      },
+      "required": [
+        "session",
+        "account",
+        "hour",
+        "total",
+        "priority",
+        "caps",
+        "exempt",
+        "held"
+      ],
+      "title": "AgentMeter",
       "type": "object"
     },
     "AnswerSettledEvent": {
@@ -330,6 +588,79 @@
       "title": "Broadcast",
       "type": "object"
     },
+    "BudgetEvent": {
+      "additionalProperties": false,
+      "description": "The budget moved: an account's windows, an agent's spend or limits, a hold, the turtle.",
+      "properties": {
+        "budget": {
+          "$ref": "#/$defs/BudgetView"
+        },
+        "type": {
+          "const": "budget",
+          "default": "budget",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "type",
+        "budget"
+      ],
+      "title": "BudgetEvent",
+      "type": "object"
+    },
+    "BudgetView": {
+      "additionalProperties": false,
+      "description": "Everything the page shows of the budget.",
+      "properties": {
+        "accounts": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/AccountMeter"
+          },
+          "title": "Accounts",
+          "type": "array"
+        },
+        "agents": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/AgentMeter"
+          },
+          "title": "Agents",
+          "type": "array"
+        },
+        "holds": {
+          "default": false,
+          "title": "Holds",
+          "type": "boolean"
+        },
+        "refused": {
+          "default": "",
+          "title": "Refused",
+          "type": "string"
+        },
+        "telemetry": {
+          "default": false,
+          "title": "Telemetry",
+          "type": "boolean"
+        },
+        "turtle": {
+          "default": false,
+          "title": "Turtle",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "accounts",
+        "agents",
+        "turtle",
+        "telemetry",
+        "refused",
+        "holds"
+      ],
+      "title": "BudgetView",
+      "type": "object"
+    },
     "CallState": {
       "enum": [
         "ok",
@@ -356,6 +687,37 @@
         "inside"
       ],
       "title": "CarriedParent",
+      "type": "object"
+    },
+    "Cause": {
+      "enum": [
+        "window",
+        "reserve",
+        "cap",
+        "rate",
+        "slot"
+      ],
+      "type": "string"
+    },
+    "Ceiling": {
+      "additionalProperties": false,
+      "description": "A speed limit on one window, by the label its runtime gives it: so many percent of it an hour.",
+      "properties": {
+        "per_hour": {
+          "exclusiveMinimum": 0,
+          "title": "Per Hour",
+          "type": "number"
+        },
+        "window": {
+          "title": "Window",
+          "type": "string"
+        }
+      },
+      "required": [
+        "window",
+        "per_hour"
+      ],
+      "title": "Ceiling",
       "type": "object"
     },
     "ClaimRequest": {
@@ -996,6 +1358,7 @@
     "DashboardEvent": {
       "discriminator": {
         "mapping": {
+          "budget": "#/$defs/BudgetEvent",
           "keys": "#/$defs/KeysEvent",
           "message": "#/$defs/MessageEvent",
           "repository": "#/$defs/RepositoryEvent",
@@ -1051,6 +1414,9 @@
         },
         {
           "$ref": "#/$defs/KeysEvent"
+        },
+        {
+          "$ref": "#/$defs/BudgetEvent"
         }
       ]
     },
@@ -1235,6 +1601,8 @@
         "claims",
         "inbox-read",
         "thread-post",
+        "budgets",
+        "profiles",
         "pause"
       ],
       "type": "string"
@@ -2589,6 +2957,57 @@
               "mode": "normal",
               "name": "agent.stop",
               "needs": "stop",
+              "note": "",
+              "scope": "anywhere",
+              "stands": "new",
+              "was": ""
+            },
+            {
+              "also": [],
+              "description": "the turtle: every account under its slower limits, or back under its usual ones (:turtle)",
+              "focus": "any",
+              "group": "budget",
+              "hidden": false,
+              "keys": [
+                "<leader>bt"
+              ],
+              "mode": "normal",
+              "name": "budget.turtle",
+              "needs": "budgets",
+              "note": "",
+              "scope": "anywhere",
+              "stands": "new",
+              "was": ""
+            },
+            {
+              "also": [],
+              "description": "its priority under its account's limits: high, normal or low (:priority)",
+              "focus": "any",
+              "group": "budget",
+              "hidden": false,
+              "keys": [
+                "<leader>bp"
+              ],
+              "mode": "normal",
+              "name": "budget.priority",
+              "needs": "budgets",
+              "note": "",
+              "scope": "anywhere",
+              "stands": "new",
+              "was": ""
+            },
+            {
+              "also": [],
+              "description": "its caps: a rate per hour and a total, in dollars or tokens (:cap)",
+              "focus": "any",
+              "group": "budget",
+              "hidden": false,
+              "keys": [
+                "<leader>bc"
+              ],
+              "mode": "normal",
+              "name": "budget.cap",
+              "needs": "budgets",
               "note": "",
               "scope": "anywhere",
               "stands": "new",
@@ -4254,6 +4673,10 @@
               "title": "you as a peer (Space p): one level down"
             },
             {
+              "id": "budget",
+              "title": "the budget (Space b): the turtle, and an agent's priority and caps"
+            },
+            {
               "id": "view",
               "title": "windows, views and tabs"
             },
@@ -4699,6 +5122,104 @@
       "title": "LeaseRefreshedEvent",
       "type": "object"
     },
+    "Limits": {
+      "additionalProperties": false,
+      "description": "One set of limits on an account; every limit left unset is no limit.\n\n``window_ceiling`` is how full a window may get: at it, every agent but\nthe operator's own sessions holds until the window clears, as though it\nwere used up -- the margin that keeps an agent from running into the\nprovider's own limit between two readings of the window.\n\n``pace`` is the speed limit: ``\"even\"`` keeps every window at or under\neven pace \u2014 no more of it spent than has gone by \u2014 and each of\n``ceilings`` caps one window at so many percent of it an hour. Past\neither, low-priority agents hold at once, normal ones once the account is\n``tolerance`` points over, high ones at twice that. ``reserve`` keeps the\nlast so many percent of every window for the operator: once a window\nreaches it, every agent but the operator's own sessions holds until it\nclears. ``max_active`` is how many agents may work at once.",
+      "properties": {
+        "ceilings": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/Ceiling"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Ceilings"
+        },
+        "max_active": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Active"
+        },
+        "pace": {
+          "anyOf": [
+            {
+              "const": "even",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Pace"
+        },
+        "reserve": {
+          "anyOf": [
+            {
+              "maximum": 100,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reserve"
+        },
+        "tolerance": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Tolerance"
+        },
+        "window_ceiling": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "maximum": 100,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Window Ceiling"
+        }
+      },
+      "required": [
+        "window_ceiling",
+        "pace",
+        "ceilings",
+        "tolerance",
+        "reserve",
+        "max_active"
+      ],
+      "title": "Limits",
+      "type": "object"
+    },
     "LineComment": {
       "additionalProperties": false,
       "description": "One comment the operator anchored to lines of one document a review shows.\n\nA pull request's line comment, kept as data rather than folded into the\nnote: the file, the first and last line, and which side of the change\nthose lines number -- ``before``, the file as the review recorded it, or\n``after``, as the call would leave it. The requester reads each back as\n``path:line[-end]: note``, which is where its editor takes it.",
@@ -5104,6 +5625,35 @@
       "title": "LiveSession",
       "type": "object"
     },
+    "LoginOwner": {
+      "additionalProperties": false,
+      "description": "Whose login a container start hands its repository's volume.",
+      "properties": {
+        "home": {
+          "format": "path",
+          "title": "Home",
+          "type": "string"
+        },
+        "profile": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Profile"
+        }
+      },
+      "required": [
+        "home",
+        "profile"
+      ],
+      "title": "LoginOwner",
+      "type": "object"
+    },
     "MailExtent": {
       "additionalProperties": false,
       "description": "Where the stream's messages of one repository start on its mail record.",
@@ -5427,6 +5977,33 @@
         "redirect"
       ],
       "title": "MessageSubmission",
+      "type": "object"
+    },
+    "MeteredWindow": {
+      "additionalProperties": false,
+      "description": "One window of an account as last read, and how fast it has been filling.",
+      "properties": {
+        "per_hour": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Per Hour"
+        },
+        "window": {
+          "$ref": "#/$defs/PacingWindow"
+        }
+      },
+      "required": [
+        "window",
+        "per_hour"
+      ],
+      "title": "MeteredWindow",
       "type": "object"
     },
     "Move": {
@@ -5905,6 +6482,37 @@
       ],
       "type": "string"
     },
+    "PacingWindow": {
+      "additionalProperties": false,
+      "description": "One metered window: how much of it is spent, and when it clears.\n\n``window_hours`` is what makes a bar say more than a percentage: knowing\nthe window's length places the reader against even pace inside it, which\nis the difference between \"62% used\" and \"62% used, and half way through\".",
+      "properties": {
+        "label": {
+          "title": "Label",
+          "type": "string"
+        },
+        "resets_at": {
+          "format": "date-time",
+          "title": "Resets At",
+          "type": "string"
+        },
+        "utilization_pct": {
+          "title": "Utilization Pct",
+          "type": "number"
+        },
+        "window_hours": {
+          "title": "Window Hours",
+          "type": "number"
+        }
+      },
+      "required": [
+        "label",
+        "utilization_pct",
+        "resets_at",
+        "window_hours"
+      ],
+      "title": "PacingWindow",
+      "type": "object"
+    },
     "ParkSubmission": {
       "additionalProperties": false,
       "description": "A door asking every open wait in this run to give up now.",
@@ -6150,6 +6758,14 @@
       ],
       "title": "PostRequest",
       "type": "object"
+    },
+    "Priority": {
+      "enum": [
+        "high",
+        "normal",
+        "low"
+      ],
+      "type": "string"
     },
     "ProtectedMatch": {
       "additionalProperties": false,
@@ -6492,7 +7108,7 @@
         "account": {
           "default": [],
           "items": {
-            "$ref": "#/$defs/Account"
+            "$ref": "#/$defs/lup__policy__relay__Account"
           },
           "title": "Account",
           "type": "array"
@@ -6813,6 +7429,34 @@
         "stored"
       ],
       "title": "RecordedQuestion",
+      "type": "object"
+    },
+    "Relaunch": {
+      "additionalProperties": false,
+      "description": "The command that opens one session again under another profile, and what it keeps.",
+      "properties": {
+        "resumes": {
+          "title": "Resumes",
+          "type": "boolean"
+        },
+        "why": {
+          "title": "Why",
+          "type": "string"
+        },
+        "words": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Words",
+          "type": "array"
+        }
+      },
+      "required": [
+        "words",
+        "resumes",
+        "why"
+      ],
+      "title": "Relaunch",
       "type": "object"
     },
     "Released": {
@@ -8537,6 +9181,53 @@
       "title": "SessionId",
       "type": "object"
     },
+    "SessionMove": {
+      "additionalProperties": false,
+      "description": "What switching a repository's login to a profile comes to for one running session.",
+      "properties": {
+        "contained": {
+          "title": "Contained",
+          "type": "boolean"
+        },
+        "member": {
+          "title": "Member",
+          "type": "string"
+        },
+        "moved": {
+          "title": "Moved",
+          "type": "boolean"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "relaunch": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Relaunch"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "why": {
+          "title": "Why",
+          "type": "string"
+        }
+      },
+      "required": [
+        "member",
+        "name",
+        "contained",
+        "moved",
+        "why",
+        "relaunch"
+      ],
+      "title": "SessionMove",
+      "type": "object"
+    },
     "SessionProcess": {
       "additionalProperties": false,
       "description": "The runtime process one row answers for, and whether this dashboard could stop it.",
@@ -8607,6 +9298,17 @@
       "additionalProperties": false,
       "description": "Everything the dashboard knows now, handed to a tab with nothing to resume from.",
       "properties": {
+        "budget": {
+          "$ref": "#/$defs/BudgetView",
+          "default": {
+            "accounts": [],
+            "agents": [],
+            "holds": false,
+            "refused": "",
+            "telemetry": false,
+            "turtle": false
+          }
+        },
         "code": {
           "$ref": "#/$defs/RunningCode",
           "default": {
@@ -8696,9 +9398,32 @@
         "code",
         "users",
         "served",
-        "keys"
+        "keys",
+        "budget"
       ],
       "title": "SnapshotEvent",
+      "type": "object"
+    },
+    "Spend": {
+      "additionalProperties": false,
+      "description": "What an agent spent: dollars where its runtime prices work, tokens always.",
+      "properties": {
+        "tokens": {
+          "default": 0,
+          "title": "Tokens",
+          "type": "integer"
+        },
+        "usd": {
+          "default": 0.0,
+          "title": "Usd",
+          "type": "number"
+        }
+      },
+      "required": [
+        "usd",
+        "tokens"
+      ],
+      "title": "Spend",
       "type": "object"
     },
     "SpokenKey": {
@@ -9100,6 +9825,118 @@
         "last_activity"
       ],
       "title": "SupervisorState",
+      "type": "object"
+    },
+    "SwitchOutcome": {
+      "additionalProperties": false,
+      "description": "What moving one repository's sessions of one runtime to a profile came to.",
+      "properties": {
+        "before": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/VolumeLogin"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "checkout": {
+          "format": "path",
+          "title": "Checkout",
+          "type": "string"
+        },
+        "held": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/VolumeLogin"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "profile": {
+          "title": "Profile",
+          "type": "string"
+        },
+        "runtime": {
+          "$ref": "#/$defs/AdapterName"
+        },
+        "sessions": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/SessionMove"
+          },
+          "title": "Sessions",
+          "type": "array"
+        },
+        "volume": {
+          "title": "Volume",
+          "type": "string"
+        },
+        "why": {
+          "default": "",
+          "title": "Why",
+          "type": "string"
+        }
+      },
+      "required": [
+        "checkout",
+        "runtime",
+        "profile",
+        "volume",
+        "before",
+        "held",
+        "why",
+        "sessions"
+      ],
+      "title": "SwitchOutcome",
+      "type": "object"
+    },
+    "SwitchReply": {
+      "additionalProperties": false,
+      "description": "What moving a repository's sessions came to, and the lines that say it.",
+      "properties": {
+        "outcome": {
+          "$ref": "#/$defs/SwitchOutcome"
+        },
+        "said": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Said",
+          "type": "array"
+        }
+      },
+      "required": [
+        "outcome",
+        "said"
+      ],
+      "title": "SwitchReply",
+      "type": "object"
+    },
+    "SwitchRequest": {
+      "additionalProperties": false,
+      "description": "Move a repository's sessions of one runtime onto a profile.",
+      "properties": {
+        "profile": {
+          "minLength": 1,
+          "title": "Profile",
+          "type": "string"
+        },
+        "runtime": {
+          "$ref": "#/$defs/AdapterName",
+          "default": "claude"
+        }
+      },
+      "required": [
+        "profile",
+        "runtime"
+      ],
+      "title": "SwitchRequest",
       "type": "object"
     },
     "TextRequest": {
@@ -9640,6 +10477,34 @@
       "title": "TurnToolResultBlock",
       "type": "object"
     },
+    "TurtleRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "on": {
+          "title": "On",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "on"
+      ],
+      "title": "TurtleRequest",
+      "type": "object"
+    },
+    "TurtleState": {
+      "additionalProperties": false,
+      "properties": {
+        "on": {
+          "title": "On",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "on"
+      ],
+      "title": "TurtleState",
+      "type": "object"
+    },
     "UnpreviewedStep": {
       "additionalProperties": false,
       "description": "One step of a parked command whose effect no document states.\n\n``cause`` is ``run`` where only running the step makes its result, and\n``unread`` where a file it leaves does not read as text; ``paths`` are\nthe files it leaves so, and none where it is a program that may write\nwherever it likes.",
@@ -9753,6 +10618,44 @@
       "title": "UserRow",
       "type": "object"
     },
+    "Verdict": {
+      "additionalProperties": false,
+      "description": "An agent the budget holds: why, in words its row and the agent read, and until when.",
+      "properties": {
+        "cause": {
+          "$ref": "#/$defs/Cause"
+        },
+        "key": {
+          "title": "Key",
+          "type": "string"
+        },
+        "said": {
+          "title": "Said",
+          "type": "string"
+        },
+        "until": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Until"
+        }
+      },
+      "required": [
+        "key",
+        "cause",
+        "said",
+        "until"
+      ],
+      "title": "Verdict",
+      "type": "object"
+    },
     "VerificationFailedEvent": {
       "additionalProperties": false,
       "description": "What one gate saw at the moment it decided a concern's round.\n\nUnjournalled, a check runs, produces a verdict that decides a concern's\nfate, and leaves nothing behind in the run's record. Journalling it puts\nwhat the gate saw beside the turns it\ndecided about, which is the one place a later session can read it \u2014 the\nlease worktree the check ran in is usually still held by the run.",
@@ -9831,6 +10734,42 @@
         "output"
       ],
       "title": "VerificationRecord",
+      "type": "object"
+    },
+    "VolumeLogin": {
+      "additionalProperties": false,
+      "description": "The login lup last handed one configuration-home volume: whose, and when.",
+      "properties": {
+        "fingerprint": {
+          "default": "",
+          "title": "Fingerprint",
+          "type": "string"
+        },
+        "handed_at": {
+          "format": "date-time",
+          "title": "Handed At",
+          "type": "string"
+        },
+        "owner": {
+          "$ref": "#/$defs/LoginOwner"
+        },
+        "runtime": {
+          "title": "Runtime",
+          "type": "string"
+        },
+        "volume": {
+          "title": "Volume",
+          "type": "string"
+        }
+      },
+      "required": [
+        "volume",
+        "runtime",
+        "owner",
+        "fingerprint",
+        "handed_at"
+      ],
+      "title": "VolumeLogin",
       "type": "object"
     },
     "WakePriority": {
@@ -9949,6 +10888,25 @@
       "title": "Answer",
       "type": "object"
     },
+    "lup__policy__relay__Account": {
+      "additionalProperties": false,
+      "description": "What the requester said a call is for, in its own words, and where the words were found.\n\nA claim by the agent and never a fact the policy checked, shown beside\nthe policy's own reason as the agent's: what it is for is the agent's to\nsay, why it asks is the policy's. Recorded when the call parks, so the\npage never reads a transcript, and kept whole.",
+      "properties": {
+        "source": {
+          "$ref": "#/$defs/AccountSource"
+        },
+        "text": {
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "source",
+        "text"
+      ],
+      "title": "Account",
+      "type": "object"
+    },
     "lup__policy__relay__Answer": {
       "additionalProperties": false,
       "description": "One decision about one question, and who made it.\n\n``note`` is how yes-plus-instructions and no-plus-instructions travel\nwithout a second message. It reaches the agent with the resumption or the\nrefusal, which is the moment it is worth reading. ``comments`` are the\noperator's line comments, which travel the same way.",
@@ -9999,6 +10957,28 @@
         "at"
       ],
       "title": "Answer",
+      "type": "object"
+    },
+    "lup__sessions__limits__Account": {
+      "additionalProperties": false,
+      "description": "One runtime's login under one profile: what a window meters and an agent draws on.",
+      "properties": {
+        "profile": {
+          "default": "default",
+          "title": "Profile",
+          "type": "string"
+        },
+        "runtime": {
+          "default": "",
+          "title": "Runtime",
+          "type": "string"
+        }
+      },
+      "required": [
+        "runtime",
+        "profile"
+      ],
+      "title": "Account",
       "type": "object"
     }
   },

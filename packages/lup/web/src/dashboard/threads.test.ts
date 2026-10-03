@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { LiveMessage, LiveSession } from "../generated/views";
-import { applied, NO_KEYS, UNSAID } from "./live";
+import { applied, NO_BUDGET, NO_KEYS, UNSAID } from "./live";
 import { discussions, reaches, threadBuffer } from "./threads";
 
 const repository = { key: "r1", name: "lup", repository: "/src/lup.git", checkout: "/src/lup.git/tree/dev" };
@@ -22,7 +22,7 @@ function message(id: string, sender: string, recipient: string, text: string, at
 const live = (messages: LiveMessage[]) => {
   const state = applied(null, {
     cursor: "c",
-    event: { type: "snapshot", repositories: [repository], sessions: [session("res", "research"), session("sum", "summarize_sources")], messages, extents: [], reviews: { roots: [], reviews: [], errors: [], history: 0 }, code: UNSAID, keys: NO_KEYS, users: [], served: [] },
+    event: { type: "snapshot", repositories: [repository], sessions: [session("res", "research"), session("sum", "summarize_sources")], messages, extents: [], reviews: { roots: [], reviews: [], errors: [], history: 0 }, code: UNSAID, keys: NO_KEYS, users: [], served: [], budget: NO_BUDGET },
   });
   if (state === null) throw new Error("a snapshot always applies");
   return state;

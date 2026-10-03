@@ -59,6 +59,7 @@ from lup.devtools.dashboard.companion import (
     restarted,
     refuse_inside_a_session,
 )
+from lup.devtools.dashboard.budget_commands import budget_commands
 from lup.devtools.dashboard.panes import SetupPane, SetupPanes
 from lup.devtools.dashboard.pulse import PulseFile, answered
 from lup.devtools.review.app import (
@@ -1235,15 +1236,7 @@ def review_roots(root: Path, additional: list[Path]) -> tuple[Path, ...]:
 
 def named_repositories(roots: tuple[Path, ...]) -> list[KnownRepository]:
     """The repositories an operator named on a command line, each with its checkout."""
-
-    def known(root: Path) -> KnownRepository:
-        try:
-            repository = repository_layout(root).common.resolve()
-        except (OSError, ValueError, GitError):
-            repository = root
-        return KnownRepository(repository=repository, checkout=root)
-
-    return [known(root) for root in roots]
+    return [KnownRepository.of(root) for root in roots]
 
 
 def create_operator_dashboard_app(root: Path) -> typer.Typer:
@@ -1432,4 +1425,5 @@ def create_operator_dashboard_app(root: Path) -> typer.Typer:
 
         refused("stop", stopped)
 
+    budget_commands(app, root, refused)
     return app

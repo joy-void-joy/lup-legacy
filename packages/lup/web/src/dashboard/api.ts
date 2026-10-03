@@ -1,8 +1,9 @@
 import type {
-  CodeHover, CodeLocations, CodeQuestion, CodeSource, CodeText, CodeTokens,
+  AgentBudgetRequest, AgentMeter, CodeHover, CodeLocations, CodeQuestion, CodeSource, CodeText, CodeTokens,
   Broadcast, Claimed, ClaimRequest, Described, DescriptionRequest, FollowedFrom, FollowOutcome, FollowRequest, InboxRead, InboxReadRequest, KeyBindings, KeyLine, KeyTry,
   LiveNotice, MessagePage, MessageRequest, NameRequest, Nothing, PauseOutcome, PauseRequest, PostOutcome, PostRequest, Released, Renamed, ReplyOutcome, ResumeRequest, ReviewAnswer,
-  ReviewDecision, ReviewDetail, ReviewHistory, ReviewRemarkRequest, ReviewSnapshot, SetupPane, Stopped, StreamFrame, TextRequest, TranscriptPage, Withdrawn,
+  ReviewDecision, ReviewDetail, ReviewHistory, ReviewRemarkRequest, ReviewSnapshot, SetupPane, Stopped, StreamFrame, SwitchReply, SwitchRequest, TextRequest, TranscriptPage, TurtleRequest,
+  TurtleState, Withdrawn,
 } from "../generated/views";
 
 /** Where this origin keeps the operator's capability, and the key a storage event names. */
@@ -125,6 +126,22 @@ export async function wakeAgent(repository: string, member: string, token: strin
 export async function renameAgent(repository: string, member: string, name: string, token: string): Promise<Renamed> {
   const request: NameRequest = { name };
   return posted(`${agent(repository, member)}/name`, request, token);
+}
+
+/** One agent's priority or caps, as the operator sets them; a field left out stays as it was. */
+export async function settleBudget(repository: string, member: string, request: AgentBudgetRequest, token: string): Promise<AgentMeter> {
+  return posted(`${agent(repository, member)}/budget`, request, token);
+}
+
+/** Move a repository's sessions of one runtime onto a profile: its contained ones at their next request, the rest at relaunch. */
+export async function switchProfile(repository: string, request: SwitchRequest, token: string): Promise<SwitchReply> {
+  return posted(`${repo(repository)}/profile`, request, token);
+}
+
+/** Put the turtle's slower limits in place, or take them away, for every account. */
+export async function setTurtle(on: boolean, token: string): Promise<TurtleState> {
+  const request: TurtleRequest = { on };
+  return posted("api/budget/turtle", request, token);
 }
 
 /** End an agent's runtime, where the dashboard can be sure which process it is. */

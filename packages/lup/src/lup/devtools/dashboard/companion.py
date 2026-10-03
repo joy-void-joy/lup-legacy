@@ -18,7 +18,9 @@ import hashlib
 import logging
 import os
 import secrets
+import shutil
 import sys
+import tempfile
 import uuid
 import webbrowser
 from collections.abc import Iterator, Sequence
@@ -58,18 +60,21 @@ from lup.launch.companions import (
     CompanionStanding,
     CompanionStop,
     Contribution,
+    RELAY_PREFIX,
     LiveProcess,
     PortName,
     PortNumber,
     SharedProcess,
     StatusLine,
     lent_directory,
+    relaying,
 )
 from lup.launch.compilation import inherited_environment
-from lup.launch.declaration import Mount
+from lup.launch.declaration import Loopback, Mount
 from lup.launch.preflight import NONCE_VARIABLE
 from lup.launch.refusal import LaunchRefused
 from lup.policy.identity import AGENT_IDENTITY_ENV, DASHBOARD_URL_ENV
+from lup.devtools.dashboard.telemetry import TelemetryEnvironment, telemetry_variables
 from lup.providers.user_config import UserConfigFile
 from lup.sandbox.rail import repository_layout, sibling_worktrees
 from lup.workspace.context import SESSION_DIR_ENV, SESSION_ID_ENV
@@ -120,12 +125,17 @@ class Capability(BaseModel, frozen=True):
 
 
 class DashboardToken(BaseModel, frozen=True):
-    """The capability that opens the dashboard, kept for as long as its state is."""
+    """The capability that opens the dashboard, kept for as long as its state is.
+
+    ``name`` is the file it is kept in: ``token`` for the page's; another
+    names a capability of its own, such as the one a session's telemetry bears.
+    """
 
     directory: Path
+    name: str = "token"
 
     def path(self) -> Path:
-        return self.directory / "token"
+        return self.directory / self.name
 
     def minted(self) -> Capability:
         """This dashboard's capability, minting it the first time it is asked for.
@@ -138,7 +148,7 @@ class DashboardToken(BaseModel, frozen=True):
         self.directory.chmod(0o700)
         if self.path().exists():
             return Capability(value=self.read())
-        staged = self.directory / f"token.{uuid.uuid4().hex}"
+        staged = self.directory / f"{self.name}.{uuid.uuid4().hex}"
         staged.touch(mode=0o600, exist_ok=False)
         staged.write_text(secrets.token_urlsafe(32), encoding="utf-8")
         try:
@@ -171,6 +181,15 @@ class KnownRepository(BaseModel, frozen=True):
     """Its shared git directory, which every worktree of it answers to."""
 
     checkout: Path
+
+    @classmethod
+    def of(cls, checkout: Path) -> "KnownRepository":
+        """The repository *checkout* is a worktree of; a directory in none answers for itself."""
+        try:
+            repository = repository_layout(checkout).common.resolve()
+        except (GitError, OSError, ValueError):
+            repository = checkout.resolve()
+        return cls(repository=repository, checkout=checkout.resolve())
 
     def key(self) -> str:
         """A name for it that stays the same across checkouts and restarts."""
@@ -212,13 +231,9 @@ class DashboardRegistry(BaseModel, frozen=True):
     @contextmanager
     def registered(self, checkout: Path) -> Iterator[None]:
         """Record one launch in ``checkout`` for as long as it holds the dashboard."""
-        try:
-            repository = repository_layout(checkout).common.resolve()
-        except (GitError, OSError):
-            repository = checkout.resolve()
-        known = KnownRepository(repository=repository, checkout=checkout.resolve())
+        known = KnownRepository.of(checkout)
         record = LaunchRecord(
-            repository=repository,
+            repository=known.repository,
             checkout=known.checkout,
             holder=LiveProcess.of(os.getpid()),
         )
@@ -449,7 +464,7 @@ class Dashboard(SharedProcess, frozen=True):
 
     name: CompanionName = "dashboard"
     scope: CompanionScope = CompanionScope.USER
-    ports: dict[PortName, PortNumber] = {"page": 8766}
+    ports: dict[PortName, PortNumber] = {"page": 8766, "telemetry": 8776}
     ready_within: float = Field(default=60.0, gt=0)
     """How long a start has to answer: long enough for a checkout whose
     environment compiles every module it imports the first time it starts,
@@ -468,6 +483,11 @@ class Dashboard(SharedProcess, frozen=True):
                 str(place.state),
                 str(place.ports["page"]),
                 self.revision,
+                *(
+                    [str(place.ports["telemetry"])]
+                    if "telemetry" in place.ports
+                    else []
+                ),
             ],
             cwd=place.state,
             unset=session_markers(),
@@ -492,6 +512,74 @@ class Dashboard(SharedProcess, frozen=True):
             ],
             status_line=pulse_status_line(root, pulse),
         )
+
+    @contextmanager
+    def telemetered(
+        self, launch: CompanionLaunch, state: Path, ports: dict[PortName, PortNumber]
+    ) -> Iterator[Contribution]:
+        """Point a Claude session's telemetry at this dashboard, which the budget charges from.
+
+        Over the host's loopback where the session shares it, and through a
+        relay of the telemetry port alone into a container on a network of
+        its own. A container on no network reaches no dashboard, and a
+        session whose person already exports telemetry somewhere keeps theirs;
+        either is told the budget sees no spend from it.
+        """
+        if launch.runtime != "claude" or "telemetry" not in ports:
+            yield Contribution()
+            return
+        port = ports["telemetry"]
+        token = DashboardToken(directory=state, name="telemetry-token").minted()
+        variables = TelemetryEnvironment(port=port, token=token.value).variables()
+        theirs = [
+            name
+            for name, value in variables.items()
+            if name in launch.environment and launch.environment[name] != value
+        ]
+        if theirs:
+            yield Contribution(
+                notices=[
+                    Notice(
+                        text=(
+                            "Telemetry goes where your environment already sends "
+                            "it, so the budget sees no spend from this session."
+                        ),
+                        urgency="detail",
+                    )
+                ]
+            )
+            return
+        match launch.loopback:
+            case Loopback.HOST:
+                yield Contribution(environment=variables)
+            case Loopback.SEALED:
+                yield Contribution(
+                    notices=[
+                        Notice(
+                            text=(
+                                "This session's container joins no network, so its "
+                                "telemetry reaches no dashboard and the budget sees "
+                                "no spend from it."
+                            ),
+                            urgency="detail",
+                        )
+                    ]
+                )
+            case Loopback.OWN:
+                directory = Path(tempfile.mkdtemp(prefix="lup-telemetry-"))
+                try:
+                    with relaying(directory / "telemetry.sock", port):
+                        yield Contribution(
+                            environment={
+                                **variables,
+                                f"{RELAY_PREFIX}DASHBOARD_TELEMETRY": (
+                                    f"{directory / 'telemetry.sock'}@{port}"
+                                ),
+                            },
+                            mounts=[Mount(path=directory, writable=True)],
+                        )
+                finally:
+                    shutil.rmtree(directory)
 
     def answers(self, place: CompanionPlace) -> bool:
         """Whether a dashboard serves there: its own health, behind its own capability."""
@@ -525,7 +613,11 @@ class Dashboard(SharedProcess, frozen=True):
             handed = launch.environment
             passed = {
                 name: handed[name]
-                for name in (DASHBOARD_URL_ENV, DASHBOARD_PULSE_ENV)
+                for name in (
+                    DASHBOARD_URL_ENV,
+                    DASHBOARD_PULSE_ENV,
+                    *(telemetry_variables() if launch.runtime == "claude" else []),
+                )
                 if name in handed
             }
             yield Contribution(
@@ -558,8 +650,16 @@ class Dashboard(SharedProcess, frozen=True):
         lent_directory(slot.directory).mkdir(mode=0o700, exist_ok=True)
         with (
             registry.registered(launch.root),
-            super().held(launch) as contribution,
+            super().held(launch) as held,
+            self.telemetered(launch, slot.directory, held.ports) as telemetry,
         ):
+            contribution = held.model_copy(
+                update={
+                    "environment": {**held.environment, **telemetry.environment},
+                    "mounts": [*held.mounts, *telemetry.mounts],
+                    "notices": [*held.notices, *telemetry.notices],
+                }
+            )
             operator = not Placement.of(launch.environment).in_session
             addresses = launch_urls(
                 contribution.environment[DASHBOARD_URL_ENV],

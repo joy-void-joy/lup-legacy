@@ -22,6 +22,8 @@ export const NEEDS: Record<Feature, string> = {
   claims: "POST and DELETE …/repositories/<key>/claims",
   "inbox-read": "POST …/repositories/<key>/inbox/read",
   "thread-post": "POST …/repositories/<key>/threads/<thread>/posts",
+  budgets: "POST /api/budget/turtle, POST …/sessions/<member>/budget and budget frames on the stream",
+  profiles: "POST …/repositories/<key>/profile",
   pause: "POST …/sessions/<member>/pause and …/resume, and a repository's …/pause and …/resume",
 };
 

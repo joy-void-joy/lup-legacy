@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "generator_version": "0.4.0",
-  "source_digest": "474185ba9da6e0b18b5d051961c4d9ca66ee2b3d1c492ab362d2d783fefa0d0a",
+  "source_digest": "7dd819b39452f964c4c4a00efea8e54c54451b52ed80e6be29331e761bb775d7",
   "target_requirements": [
     "bun"
   ],
@@ -161,24 +161,24 @@
       "executable": false
     },
     {
-      "path": "packages/lup/src/lup/web/bundles/dashboard/assets/index-DqN4KLiX.js",
+      "path": "packages/lup/src/lup/web/bundles/dashboard/assets/index-BYjLJk_-.js",
       "category": "generated",
-      "sha256": "af1e560e0c8367242eaa048e07750c499320cebcbe95514e7a0456af2611e857",
-      "semantic_id": "web.dashboard.assets/index-DqN4KLiX.js",
+      "sha256": "5d5d5cb45407b9faa6d8038b2eb89d226ae869d9c42d29bc06d2befa6cc4a241",
+      "semantic_id": "web.dashboard.assets/index-BYjLJk_-.js",
       "executable": false
     },
     {
-      "path": "packages/lup/src/lup/web/bundles/dashboard/assets/index-DyMoCfMg.css",
+      "path": "packages/lup/src/lup/web/bundles/dashboard/assets/index-C940-Pdu.css",
       "category": "generated",
-      "sha256": "295030d7b141961c34438054e97771a7ef09a5c943939077f90d5206f85f6531",
-      "semantic_id": "web.dashboard.assets/index-DyMoCfMg.css",
+      "sha256": "829bd1e5d9014d54bc01fc9326b38c21e358424230943ea9bf602fa20d73462d",
+      "semantic_id": "web.dashboard.assets/index-C940-Pdu.css",
       "executable": false
     },
     {
-      "path": "packages/lup/src/lup/web/bundles/dashboard/assets/react-markdown-Bg4axhIV.js",
+      "path": "packages/lup/src/lup/web/bundles/dashboard/assets/react-markdown-ChvrSV3H.js",
       "category": "generated",
-      "sha256": "58fc06d21519d9e08cc95d96c5c0dd74be8baf0729dfbba518b14d59c341649a",
-      "semantic_id": "web.dashboard.assets/react-markdown-Bg4axhIV.js",
+      "sha256": "b187e96c018d432d6cddfbee3e032f5c25f412ad79289504fbe9400a63138fca",
+      "semantic_id": "web.dashboard.assets/react-markdown-ChvrSV3H.js",
       "executable": false
     },
     {
@@ -322,10 +322,10 @@
       "executable": false
     },
     {
-      "path": "packages/lup/src/lup/web/bundles/dashboard/assets/web-tree-sitter-H0a7b017.js",
+      "path": "packages/lup/src/lup/web/bundles/dashboard/assets/web-tree-sitter-BlWMdZFJ.js",
       "category": "generated",
-      "sha256": "cf0df4ba319ecb2b6c4433b51cc13e4ee81a0e23ee2748af84e9c19d5d5a476d",
-      "semantic_id": "web.dashboard.assets/web-tree-sitter-H0a7b017.js",
+      "sha256": "194354fef028b370c409db6d3f405d016e2f28cc7667b3db6c0c8b7d0bc46aa1",
+      "semantic_id": "web.dashboard.assets/web-tree-sitter-BlWMdZFJ.js",
       "executable": false
     },
     {
@@ -338,7 +338,7 @@
     {
       "path": "packages/lup/src/lup/web/bundles/dashboard/index.html",
       "category": "generated",
-      "sha256": "46439a338bd4447320cf9282e875e4269d339357eefe72e21282eae034e02977",
+      "sha256": "df486dbb2e8ee0c601384271f41438975bda6c618427ba5343b017d5f734c375",
       "semantic_id": "web.dashboard.index.html",
       "executable": false
     },
