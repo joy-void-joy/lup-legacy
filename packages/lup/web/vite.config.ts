@@ -178,6 +178,11 @@ export default defineConfig(({ mode }) => {
     // Relative asset URLs, so a bundle serves from any prefix and an exported
     // single file needs no origin at all.
     base: "./",
+    // No `.env` file reaches a bundle. One is a checkout's own and usually
+    // ignored, so the bundles' proof never digests it, and a `NODE_ENV` in
+    // one turns the build into a development one: two checkouts of one
+    // commit would build two bundles with the proof holding in both.
+    envDir: false,
     plugins: [react(), inlineSafe(EXPORTED.includes(surface))],
     build: {
       outDir: resolve(__dirname, "out", surface),
