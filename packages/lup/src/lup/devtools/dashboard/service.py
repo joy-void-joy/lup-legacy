@@ -586,6 +586,7 @@ def serve_dashboard(arguments: ServiceArguments) -> None:
         budget_ledger,
         budget_routes,
         launched_on,
+        profile_routes,
     )
     from lup.devtools.dashboard.reviews import dashboard_app
     from lup.devtools.dashboard.stream import LiveFeed
@@ -686,6 +687,7 @@ def serve_dashboard(arguments: ServiceArguments) -> None:
     )
     if governor is not None:
         budget_routes(app, feed.serves, governor)
+        profile_routes(app, feed.serves, feed.served)
     refresh.source.taken()
     gate = WriteGate(app, refresh.refusal)
 

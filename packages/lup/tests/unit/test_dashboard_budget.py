@@ -5,7 +5,10 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
 
+from lup.devtools.dashboard import budget as budget_module
 from lup.devtools.dashboard.budget import (
     AccountPoller,
     AccountWatch,
@@ -16,8 +19,11 @@ from lup.devtools.dashboard.budget import (
     RepositoryAgents,
     WaitingCall,
     launched_on,
+    profile_routes,
 )
+from lup.devtools.harness.launch import SwitchOutcome
 from lup.launch.config_volume import LaunchedAccount, LaunchedAccounts, LoginOwner
+from lup.providers.harness import AdapterName
 from lup.devtools.dashboard.companion import KnownRepository
 from lup.devtools.dashboard.live import RunningAgent
 from lup.devtools.dashboard.telemetry import RequestAgent, RequestSpend, TelemetryJoin
@@ -408,3 +414,43 @@ def test_a_session_draws_on_the_account_its_launch_recorded(
     known = KnownRepository(repository=tmp_path / ".git", checkout=tmp_path)
     assert drawn(known, session("lead")) == work
     assert drawn(known, session("never-recorded")) == CLAUDE
+
+
+def test_the_switch_route_answers_what_each_session_does(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    known = KnownRepository(repository=tmp_path / ".git", checkout=tmp_path)
+    asked: list[str] = []
+
+    def switched(checkout: Path, runtime: AdapterName, profile: str) -> SwitchOutcome:
+        asked.append(f"{checkout} {runtime} {profile}")
+        if profile == "nobody":
+            raise KeyError("unknown profile 'nobody'")
+        return SwitchOutcome(
+            checkout=checkout,
+            runtime=runtime,
+            profile=profile,
+            volume="lup-claude-repo",
+        )
+
+    monkeypatch.setattr(budget_module, "switch_repository_login", switched)
+    served: list[tuple[str, ...]] = []
+    app = FastAPI()
+    profile_routes(app, served.append, lambda: [known])
+    client = TestClient(app)
+    reply = client.post(
+        f"/api/repositories/{known.key()}/profile", json={"profile": "work"}
+    )
+    assert reply.status_code == 200
+    assert reply.json()["outcome"]["volume"] == "lup-claude-repo"
+    assert reply.json()["said"][0].startswith("lup-claude-repo still holds its login")
+    assert asked == [f"{tmp_path} claude work"]
+    missing = client.post(
+        f"/api/repositories/{known.key()}/profile", json={"profile": "nobody"}
+    )
+    assert missing.status_code == 404
+    elsewhere = client.post(
+        "/api/repositories/elsewhere/profile", json={"profile": "a"}
+    )
+    assert elsewhere.status_code == 404
+    assert served == [("profiles",)]

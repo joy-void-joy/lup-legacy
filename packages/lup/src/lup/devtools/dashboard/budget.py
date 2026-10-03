@@ -31,12 +31,14 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from lup.coordination.bare import store
 from lup.devtools.dashboard.companion import KnownRepository
 from lup.devtools.dashboard.live import Feature, RunningAgent
+from lup.devtools.harness.launch import SwitchOutcome, switch_repository_login
 from lup.launch.container import drawn_account
+from lup.providers.harness import AdapterName
 from lup.devtools.dashboard.telemetry import RequestSpend, TelemetryJoin
 from lup.observability.usage.models import PacingWindow, UsageReader, UsageUnavailable
 from lup.providers.accounts import (
@@ -911,9 +913,64 @@ class AgentBudgetRequest(BaseModel, frozen=True, extra="forbid"):
     """Every cap at once: a cap left out of it is cleared."""
 
 
+class SwitchRequest(BaseModel, frozen=True, extra="forbid"):
+    """Move a repository's sessions of one runtime onto a profile."""
+
+    profile: str = Field(min_length=1)
+    runtime: AdapterName = AdapterName.CLAUDE
+
+
+class SwitchReply(BaseModel, frozen=True):
+    """What moving a repository's sessions came to, and the lines that say it."""
+
+    outcome: SwitchOutcome
+    said: list[str]
+
+
 def budget_models() -> list[type[BaseModel]]:
     """Every model the budget's routes and stream frames hand the page."""
-    return [BudgetView, TurtleRequest, TurtleState, AgentBudgetRequest, AgentMeter]
+    return [
+        BudgetView,
+        TurtleRequest,
+        TurtleState,
+        AgentBudgetRequest,
+        AgentMeter,
+        SwitchRequest,
+        SwitchReply,
+    ]
+
+
+def profile_routes(
+    app: FastAPI,
+    serves: Callable[[tuple[Feature, ...]], None],
+    served_repositories: Callable[[], list[KnownRepository]],
+    served: tuple[Feature, ...] = ("profiles",),
+) -> None:
+    """Serve the one action that moves a repository's sessions onto another profile.
+
+    Contained sessions of a runtime that rereads its login move at their next
+    request; every other session is answered with the command that opens it
+    again on that profile, and why.
+    """
+    serves(served)
+
+    @app.post("/api/repositories/{repository}/profile")
+    def switch(repository: str, asked: SwitchRequest) -> SwitchReply:
+        """Hand the repository's volume the profile's login, saying what each session does."""
+        known = next(
+            (each for each in served_repositories() if each.key() == repository), None
+        )
+        if known is None:
+            raise HTTPException(status_code=404, detail="No repository has that key")
+        try:
+            outcome = switch_repository_login(
+                known.checkout, asked.runtime, asked.profile
+            )
+        except KeyError as unknown:
+            raise HTTPException(status_code=404, detail=str(unknown)) from unknown
+        except ValueError as refused:
+            raise HTTPException(status_code=409, detail=str(refused)) from refused
+        return SwitchReply(outcome=outcome, said=outcome.lines())
 
 
 def budget_routes(
