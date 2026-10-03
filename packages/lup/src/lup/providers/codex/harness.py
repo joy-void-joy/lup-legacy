@@ -857,7 +857,11 @@ class CodexHookRenderer(ArtifactRenderer[HookSet]):
         held: list[JsonValue] = [
             {
                 "matcher": "|".join(
-                    routed_for(CODEX_DISPATCHER.routed_tools, source.refused_tools)
+                    routed_for(
+                        CODEX_DISPATCHER.routed_tools,
+                        source.refused_tools,
+                        CODEX_DISPATCHER.spawn_tools,
+                    )
                 ),
                 "hooks": [
                     {
