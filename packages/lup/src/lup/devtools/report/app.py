@@ -28,6 +28,8 @@ from lup.devtools.report.build import authored_headings, build_report
 from lup.devtools.report.models import DEFAULT_SCRATCH_ROOT, inside_scratch
 from lup.devtools.supervisor.doors import resolve_state_root
 from lup.devtools.utils import output_json
+from lup.diagnostics import refuse
+from lup.policy.kernel.diagnostic import devtools, step
 from lup.workspace.paths import project_root
 
 
@@ -66,16 +68,21 @@ def create_report_app(
         """Report everything left to implement, across every surface."""
         root = project_root()
         if write is not None and not inside_scratch(root, write, scratch_root):
-            typer.echo(
-                f"{write} is outside {scratch_root}/, which is where a report "
-                "has to be named: there it is gitignored, so it reaches no "
-                "diff, no reviewer, and no commit, and that is what lets one be "
-                "written at all. Anywhere else it lands in the next commit as a "
-                f"tracking file. Name it inside {scratch_root}/ after the work "
-                "it covers.",
-                err=True,
+            refuse(
+                f"is outside {scratch_root}/, where a report has to be named: "
+                "there it is gitignored, so it reaches no diff, no reviewer and no "
+                "commit, and anywhere else it lands in the next commit as a "
+                "tracking file",
+                what=str(write),
+                steps=[
+                    step(
+                        "name it after the work it covers",
+                        devtools(
+                            "dev", "report", "--write", f"{scratch_root}/<name>.md"
+                        ),
+                    )
+                ],
             )
-            raise typer.Exit(1)
         report = build_report(
             native_targets.resolve(native_targets.every, root),
             repository_writers,
@@ -87,18 +94,24 @@ def create_report_app(
             standing = written.read_text(encoding="utf-8") if written.is_file() else ""
             authored = authored_headings(standing)
             if authored and not force:
-                typer.echo(
-                    f"{written} carries {len(authored)} section(s) this command "
-                    f"did not write: {', '.join(authored)}. The walked half "
-                    "rebuilds from the tree in a second; that half is what one "
-                    "session knew and has no other copy, in a directory nothing "
-                    "versions. Replace the whole file with --force, which is "
-                    "what the report skill passes because rewriting whole is "
-                    "the point there — or read this off stdout without --write "
-                    "and compose the two halves yourself.",
-                    err=True,
+                refuse(
+                    f"carries {len(authored)} section(s) this command did not "
+                    f"write ({', '.join(authored)}): what one session knew, with "
+                    "no other copy in a directory nothing versions, where the "
+                    "walked half rebuilds from the tree in a second",
+                    what=str(written),
+                    steps=[
+                        step(
+                            "replace the whole file, as the report skill does",
+                            devtools("dev", "report", "--write", str(write), "--force"),
+                        ),
+                        step(
+                            "or read the report off stdout and compose the two "
+                            "halves yourself",
+                            devtools("dev", "report"),
+                        ),
+                    ],
                 )
-                raise typer.Exit(1)
             written.parent.mkdir(parents=True, exist_ok=True)
             written.write_text(report.markdown(), encoding="utf-8")
             typer.echo(f"{written}: {report.outstanding()} outstanding item(s)")

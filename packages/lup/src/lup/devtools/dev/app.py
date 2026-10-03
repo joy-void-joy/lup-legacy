@@ -57,10 +57,12 @@ from lup.devtools.hooks.app import create_hooks_app
 from lup.devtools.report.app import create_report_app
 from lup.observability.usage.app import UsageEntry, create_usage_app
 from lup.devtools.utils import decode_stderr, output_json, repository_slug
+from lup.diagnostics import refuse
 from lup.devtools.harness.composition import NativeTargets
 from lup.devtools.harness.drift import RepositoryWriter
 from lup.ledger.models import LedgerNode
 from lup.ledger.store import LedgerLayout
+from lup.policy.kernel.diagnostic import devtools, step
 from lup.policy.kernel.edit import SUPPRESSION_COLUMN_LIMIT
 from lup.policy.vocabulary import default_vocabulary
 from lup.workspace.paths import is_template_scaffold, project_root
@@ -188,20 +190,25 @@ def create_dev_app(
                 issues_mod.issue_arguments(verb, number, note), named=repository
             )
         except RuntimeError as refused:
-            typer.echo(str(refused), err=True)
-            raise typer.Exit(1) from refused
+            refuse(str(refused))
         if not target:
-            typer.echo(
-                "No repository to reach: origin names none and no tracker was"
-                " given. `--repo <owner/name>` names one this project declares.",
-                err=True,
+            refuse(
+                "origin names no repository and no tracker was named",
+                steps=[
+                    step(
+                        "name one with --repo <owner/name>; these are the ones"
+                        " this project declares",
+                        devtools("dev", "tracker", "list"),
+                    )
+                ],
             )
-            raise typer.Exit(1)
         try:
             typer.echo(issues_mod.act_on_issue(verb, number, target, note))
         except sh.ErrorReturnCode as failure:
-            typer.echo(decode_stderr(failure), err=True)
-            raise typer.Exit(1) from failure
+            refuse(
+                f"gh could not {verb} it: {decode_stderr(failure)}",
+                what=f"{target}#{number}",
+            )
 
     @tracker_app.command("comment")
     def tracker_comment_cmd(
@@ -478,13 +485,15 @@ def create_dev_app(
             mirrored = None
             if landing is not None:
                 if not path or len(path) != 1:
-                    raise typer.BadParameter(
-                        "--as judges one scratch copy: name it with one --path"
+                    refuse(
+                        "judges one scratch copy, so name it with exactly one --path",
+                        what="--as",
+                        code=2,
                     )
                 try:
                     mirrored = antipatterns_mod.mirrored_file(path[0], landing)
                 except ValueError as error:
-                    raise typer.BadParameter(str(error)) from error
+                    refuse(str(error), what="--as", code=2)
             scope = path if mirrored is None else [mirrored.judged_as]
             match (profiled, stats):
                 case (True, _):
@@ -650,16 +659,24 @@ def create_dev_app(
         reason is committed alongside the removal in its place.
         """
         if sum([clear, retire, restore, withdraw]) > 1:
-            typer.echo(
-                "--clear, --retire, --restore, and --withdraw are exclusive", err=True
+            refuse(
+                "each acts on the notes differently, so pass only one of them",
+                what="--clear, --retire, --restore, --withdraw",
+                code=2,
             )
-            raise typer.Exit(2)
         if narrow is not None and (not restore or len(targets or []) != 1):
-            typer.echo("--narrow needs --restore and exactly one target", err=True)
-            raise typer.Exit(2)
+            refuse(
+                "narrows one reopened claim, so it needs --restore and exactly one"
+                " target",
+                what="--narrow",
+                code=2,
+            )
         if (reason is not None) != withdraw:
-            typer.echo("--withdraw and --reason require each other", err=True)
-            raise typer.Exit(2)
+            refuse(
+                "go together: one retracts the notes and the other says why",
+                what="--withdraw, --reason",
+                code=2,
+            )
         if withdraw and reason is not None:
             comments.withdraw_notes(targets or [], reason)
             return
@@ -739,9 +756,11 @@ def create_dev_app(
                 typer.echo(line)
             return
         if catalog is None:
-            raise typer.BadParameter(
-                "this project declares no catalog path, so there is nothing to "
-                "write a seam into; name one on its `DevProject`"
+            refuse(
+                "this project declares no catalog path, so there is nothing to"
+                " write a seam into",
+                steps=[step("name one on the project's DevProject declaration")],
+                code=2,
             )
         # Every id the library ships, not every id this project still keeps:
         # retiring all of them has to name the ones already retired too, or
@@ -752,7 +771,7 @@ def create_dev_app(
         except ValueError as refused:
             # A seam that cannot be written into — never written down, or
             # naming a module that is not there — says why and where.
-            raise typer.BadParameter(str(refused)) from refused
+            refuse(str(refused), code=2)
         for line in settled:
             typer.echo(line)
 
@@ -868,14 +887,13 @@ def create_dev_app(
             state=state,
             recovery_cost=recovery_cost,
         )
-        given = ["uv", "run", "lup-devtools", "dev", "report-friction"]
+        given = devtools("dev", "report-friction")
         given += ["--summary", summary, "--component", component]
         given += ["--command", command, "--error", error]
         given += ["--state", state, "--recovery-cost", recovery_cost]
         elsewhere = routes.claimed_elsewhere(component, given)
         if elsewhere and issue is None and not repository:
-            typer.echo(elsewhere, err=True)
-            raise typer.Exit(1)
+            refuse(elsewhere)
         try:
             target = routes.chosen(
                 ["issue", "create", "--title", summary],
@@ -884,13 +902,13 @@ def create_dev_app(
             )
             url = report.file(repository=target, issue=issue)
         except RuntimeError as refused:
-            typer.echo(str(refused), err=True)
-            raise typer.Exit(1) from refused
+            refuse(str(refused))
         except sh.ErrorReturnCode as failure:
             spoken = decode_stderr(failure)
             advice = issues_mod.disabled_issues_advice(spoken, routes)
-            typer.echo(spoken if not advice else f"{spoken}\n{advice}", err=True)
-            raise typer.Exit(1) from failure
+            if advice:
+                typer.echo(advice, err=True)
+            refuse(f"gh could not file the report: {spoken}")
         typer.echo(url)
 
     @app.command("undo")
@@ -928,11 +946,16 @@ def create_dev_app(
                 for path in undo.repair_refs(root):
                     typer.echo(f"quarantined broken undo ref: {path}")
             except OSError as error:
-                typer.echo(
-                    f"Undo repair stopped: {error}. Check active ref locks and directory permissions before retrying.",
-                    err=True,
+                refuse(
+                    f"the repair stopped: {error}",
+                    steps=[
+                        step(
+                            "check for active ref locks and the directory's"
+                            " permissions, then run it again",
+                            devtools("dev", "undo", "--repair"),
+                        )
+                    ],
                 )
-                raise typer.Exit(1) from error
             return
         for damaged in undo.damaged_refs(root):
             typer.echo(
@@ -1026,16 +1049,10 @@ def create_dev_app(
         try:
             slug = routes.chosen(["issue", "list", "--state", "open"], named=repository)
         except RuntimeError as refused:
-            typer.echo(str(refused), err=True)
-            raise typer.Exit(1) from refused
+            refuse(str(refused))
         answered = issues_mod.read_open_issues(excluded, repository=slug)
         if not answered.reached:
-            typer.echo(
-                f"could not read the issues of {slug or 'this repository'}:"
-                f" {answered.why}",
-                err=True,
-            )
-            raise typer.Exit(1)
+            refuse(f"could not read the open issues: {answered.why}", what=slug)
         typer.echo(
             f"{len(answered.issues)} open issue(s) in {slug or 'this repository'}"
         )
@@ -1066,8 +1083,7 @@ def create_dev_app(
         try:
             destination = rules.write_rule_reference(check=True, selection=selection)
         except RuntimeError as error:
-            typer.echo(str(error), err=True)
-            raise typer.Exit(1) from error
+            refuse(str(error))
         typer.echo(f"Lup rule reference verified: {destination}")
 
     @app.command("models")
@@ -1089,8 +1105,10 @@ def create_dev_app(
         for line in (line for drift in drifts for line in drift.lines()):
             typer.echo(line)
         if check_only and not all(drift.settled() for drift in drifts):
-            typer.echo(f"Run `{model_catalog_mod.MODELS_COMMAND}`.", err=True)
-            raise typer.Exit(1)
+            refuse(
+                "a runtime's model lineup moved from the committed snapshot",
+                steps=[step("read the lineups again", devtools("dev", "models"))],
+            )
 
     @app.command("settings")
     def settings_cmd(
@@ -1116,8 +1134,10 @@ def create_dev_app(
         for line in moved:
             typer.echo(line)
         if check_only and moved:
-            typer.echo(f"Run `{settings_schema_mod.SETTINGS_COMMAND}`.", err=True)
-            raise typer.Exit(1)
+            refuse(
+                "the settings keys Claude Code takes moved from the committed snapshot",
+                steps=[step("read them again", devtools("dev", "settings"))],
+            )
 
     @app.command("modules")
     def modules_cmd(
@@ -1200,8 +1220,7 @@ def create_dev_app(
             old, separator, new = move.partition("=")  # lup: ignore[string-split]
             sides = [relocate_mod.name_parts(old), relocate_mod.name_parts(new)]
             if not separator or any(side is None for side in sides):
-                typer.echo(f"expected old.module=new.module; got {move!r}", err=True)
-                raise typer.Exit(2)
+                refuse("is not spelled old.module=new.module", what=move, code=2)
             return relocate_mod.Relocation(old=sides[0] or [], new=sides[1] or [])
 
         declared = [parsed(move) for move in moves]
@@ -1212,13 +1231,21 @@ def create_dev_app(
         taken = relocate_mod.occupied(roots, declared)
         for plan in taken:
             typer.echo(
-                f"{plan.new} already exists, so {plan.old} cannot move there; "
-                "nothing was moved or repointed. Merge the two modules by hand, "
-                "or relocate to a name no module holds.",
+                f"{plan.new} already exists, so {plan.old} cannot move there",
                 err=True,
             )
         if taken:
-            raise typer.Exit(2)
+            refuse(
+                "a module would land where one already stands, so nothing was"
+                " moved or repointed",
+                steps=[
+                    step(
+                        "merge the two modules by hand, or relocate to a name no"
+                        " module holds"
+                    )
+                ],
+                code=2,
+            )
         # The module's own file first, so every import repointed below is
         # pointed at something already there. Leaving this to the caller is
         # what made the command's name a lie: it reported success over a tree
@@ -1309,15 +1336,22 @@ def create_dev_app(
         """
         source = declared().scaffold
         if source is None:
-            raise typer.BadParameter(
-                "this project declares no scaffold source, so it has no copied "
-                "half to merge: nothing upstream stamped it out"
+            refuse(
+                "this project declares no scaffold source, so it has no copied"
+                " half to merge: nothing upstream stamped it out",
+                code=2,
             )
         if is_template_scaffold(project_root()):
-            raise typer.BadParameter(
-                "this checkout is the scaffold itself rather than a project "
-                "built on it, so there is nothing upstream of it to merge. "
-                "`dev init rename-package <project>` is what adopts it."
+            refuse(
+                "this checkout is the scaffold itself rather than a project built"
+                " on it, so nothing upstream of it is there to merge",
+                steps=[
+                    step(
+                        "make it a project of its own first",
+                        devtools("dev", "init", "rename-package", "<project>"),
+                    )
+                ],
+                code=2,
             )
         return source
 
@@ -1500,9 +1534,11 @@ def create_dev_app(
         # git's own range grammar, taken as given rather than invented here.
         base, separator, head = spelled.partition("..")  # lup: ignore[string-split]
         if not separator or not base:
-            raise typer.BadParameter(
-                f"expected <base>..<head>, or <base>.. for the working tree; "
-                f"got {spelled!r}"
+            refuse(
+                "is not a range: spell it <base>..<head>, or <base>.. for the"
+                " working tree",
+                what=spelled,
+                code=2,
             )
         return preservation.Span(base=base, head=head)
 
@@ -1627,12 +1663,11 @@ def create_dev_app(
         # somebody asks *while* the tree is dirty, to see what a release would
         # do before deciding what to do with the rest of it.
         if not dry_run and git.out("status", "--porcelain").strip():
-            typer.echo(
-                "the working tree has uncommitted changes — a release commit "
-                "holds the release, so land or discard them first",
-                err=True,
+            refuse(
+                "the working tree has uncommitted changes, and a release commit"
+                " holds only the release",
+                steps=[step("land or discard them first")],
             )
-            raise typer.Exit(1)
 
         declarations = declared()
         spec = declarations.release
@@ -1649,8 +1684,7 @@ def create_dev_app(
                 spec,
             )
         except ReleaseRefused as refused:
-            typer.echo(str(refused), err=True)
-            raise typer.Exit(1) from refused
+            refuse(str(refused))
 
         base = migrations.gate_base(get_integration_branch())
         undeclared = (
@@ -1661,12 +1695,10 @@ def create_dev_app(
         if undeclared:
             for capability in undeclared:
                 typer.echo(f"undeclared break: {capability.spelled()}", err=True)
-            typer.echo(
-                "a release cannot carry a break with nothing to read — "
-                f"{record.instruction(root)}",
-                err=True,
+            refuse(
+                "a release cannot carry a break with nothing to read",
+                steps=[step(record.instruction(root))],
             )
-            raise typer.Exit(1)
 
         if dry_run:
             if as_json:
@@ -1694,8 +1726,7 @@ def create_dev_app(
                 ),
             )
         except ReleaseRefused as refused:
-            typer.echo(str(refused), err=True)
-            raise typer.Exit(1) from refused
+            refuse(str(refused))
 
         if as_json:
             output_json(plan)
@@ -1742,15 +1773,17 @@ def create_dev_app(
         else:
             for capability in unnamed:
                 typer.echo(f"gone, undeclared: {capability.spelled()}", err=True)
-            if unnamed:
-                typer.echo(f"  {record.instruction(project_root())}", err=True)
             typer.echo(
                 f"{len(divergence.relocated)} moved, {len(divergence.arrived)} "
                 f"arrived, {len(divergence.disappeared)} gone "
                 f"({len(unnamed)} with no migration)"
             )
         if unnamed:
-            raise typer.Exit(1)
+            refuse(
+                "this range removes something with no migration saying what a"
+                " caller does about it",
+                steps=[step(record.instruction(project_root()))],
+            )
 
     @app.command("edit-prepare")
     def edit_prepare_cmd(
@@ -1831,11 +1864,11 @@ def create_dev_app(
     ) -> None:
         """Show what the declared permission policy decides about an input, and why."""
         if kind not in ("shell", "fetch", "edit", "edit-batch"):
-            typer.echo(
-                f"unknown kind {kind!r}: expected shell, fetch, edit, or edit-batch",
-                err=True,
+            refuse(
+                "is not a kind: pass shell, fetch, edit, or edit-batch",
+                what=kind,
+                code=2,
             )
-            raise typer.Exit(2)
         # This session's answer unless a placement is named: the guidance sends
         # a reader here before they spend a turn, and the turn they spend is
         # judged by the ledger their own dispatcher reads.

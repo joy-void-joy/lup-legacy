@@ -1,0 +1,73 @@
+subjects = [
+    "KernelDecision.recovery",
+    "Decision.recovery",
+    "ShellCommandRule.recovery",
+    "ShellSubcommandRule.recovery",
+    "ShellOperationRule.recovery",
+    "JudgedCommand.recovery",
+    "RefusedTool.recovery",
+    "RefusedPaths.recovery",
+    "PathRule.recovery",
+    "PeerPolicy.send_recovery",
+    "PeerPolicy.claim_recovery",
+    "SpawnNames.recovery",
+    "row_verdict.arguments",
+    "EscalationRequest.notice",
+    "borrowed_report",
+    "pin_refusal",
+    "fit_refusal",
+    "BranchBase.refusal",
+    "missing_run_refusal",
+    "unjudged_recovery",
+]
+reason = """
+every message read at an event takes one shape, lup.policy.kernel.diagnostic: \
+a verdict, the words that decided it, why, and the ways through. A way \
+through is data, plain words and the command as the words that run it, so a \
+command is spelled one way wherever it is shown and checked against the CLI \
+that serves it, and a reason no longer echoes the whole command, whose \
+operative words are the verdict's subject"""
+
+[[steps]]
+instruction = """
+Write each recovery as a list of steps: \
+recovery=[step("add the package through uv", ["uv", "add", "<package>"])], with \
+step from lup.policy.kernel.diagnostic. Plain words go in the first argument, \
+a command in the second as its words, and a lup-devtools command through \
+devtools("dev", "check") so it is spelled `uv run lup-devtools dev check`. A \
+recovery that said nothing is []. A string still passed is refused by \
+validation."""
+
+[[steps]]
+instruction = """
+Write a rule's reason as the clause that follows its subject: \
+reason="changes packages outside this project's lockfile" rather than \
+"pip changes …". A row's verdict is about its command and subcommand, and \
+row_verdict takes operative= (the flag or refspec that decided it) where it \
+took arguments=."""
+
+[[steps]]
+instruction = """
+End a command's error with refuse(why, what=..., steps=[...], code=...) \
+from lup.diagnostics, in place of typer.echo(..., err=True) followed by \
+raise typer.Exit(1) and in place of raise typer.BadParameter(...). Catch \
+lup.diagnostics.Refusal where a test caught typer.BadParameter."""
+
+[[steps]]
+instruction = """
+The CLI helpers that built a refusal's text now raise it, so call them where \
+the command stops: BranchBase.refusal() is refuse_guessing(), asked when \
+guessed() holds; pin_refusal and fit_refusal are refuse_the_pin and \
+refuse_a_poor_fit, with adopted_anyway as their shared way through; \
+missing_run_refusal is refuse_a_missing_run; and sync_environment refuses \
+on its own where borrowed_report returned lines to print. \
+RemoteMeasure.update_command returns the command as words, \
+refuse_inside_a_container takes the command as words, and \
+refused_on_the_host_only takes no argument: its caller names the host \
+command as a step."""
+
+[[steps]]
+instruction = """
+unjudged_recovery is lup.policy.kernel.decision's and returns steps: call \
+unjudged_recovery(ran_out(error)), with ran_out from lup.policy.assets.host, \
+where lup.policy.assets.host.unjudged_recovery(error) returned a sentence."""

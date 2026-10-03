@@ -8,6 +8,7 @@ import typer
 import sh
 from pydantic import BaseModel, TypeAdapter, ValidationError
 
+from lup.diagnostics import refuse
 from lup.channels.models import ChannelConflictError, write_atomic
 from lup.execution.git import GitError, Repository
 from lup.launch.preflight import NONCE_VARIABLE, ledger_path
@@ -130,7 +131,7 @@ def refresh_command(root: Path, nonce: str, repository: Path) -> None:
     try:
         accepted = refresh_destination_policy(root, nonce, repository)
     except (OSError, ValueError, ValidationError, sh.ErrorReturnCode) as error:
-        raise typer.BadParameter(str(error)) from error
+        refuse(str(error), what=str(repository), code=2)
     typer.echo(
         f"Accepted {accepted.checkout} policy {accepted.digest} for launch {nonce}"
     )

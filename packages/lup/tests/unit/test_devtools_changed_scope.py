@@ -20,6 +20,7 @@ import sh
 import typer
 
 import lup.devtools.dev.check as check
+from lup.diagnostics import Refusal
 from lup.devtools.dev import records
 from lup.devtools.dev.check import (
     ChangeBase,
@@ -148,8 +149,9 @@ def test_a_named_ref_nothing_resolves_refuses_by_the_flag_it_came_through(
     repo: Path,
 ) -> None:
     """A mistyped ref answering nothing would read as a branch that changed nothing."""
-    with pytest.raises(typer.BadParameter, match="--since 'no-such-ref'"):
+    with pytest.raises(Refusal) as refused:
         change_base("no-such-ref", "main")
+    assert refused.value.said["what"] == "--since no-such-ref"
 
 
 def test_the_integration_branch_answers_for_its_uncommitted_work(repo: Path) -> None:

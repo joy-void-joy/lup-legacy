@@ -7,6 +7,7 @@ from typing import Annotated
 import typer
 from pydantic import BaseModel, ValidationError
 
+from lup.diagnostics import refuse
 from lup.providers.codex.harness_runtime import CodexPluginInstaller, PluginCacheConfig
 from lup.providers.codex.home import (
     CodexWorktreeHomeStore,
@@ -78,15 +79,29 @@ def prepare(
     ] = False,
 ) -> None:
     """Prepare one native home from the installed library's implementation."""
-    if settings_stdin:
+
+    def settings_installed() -> bool:
+        """Whether the settings on stdin validated and installed.
+
+        Answered as a flag rather than refused where it is caught, so the
+        refusal carries no context: what failed to validate holds the
+        profile's settings, which are never logged.
+        """
         try:
             CodexAccountSettings.model_validate_json(sys.stdin.read()).install(
                 home, enforce_policy=CodexMarketplace.declared(root) is not None
             )
         except (ValidationError, ValueError):
-            raise typer.BadParameter(
-                "Cannot prepare the selected Codex profile; its settings were not logged."
-            ) from None
+            return False
+        return True
+
+    if settings_stdin and not settings_installed():
+        refuse(
+            "cannot prepare the selected Codex profile from these settings, "
+            "which are not logged",
+            what="--settings-stdin",
+            code=2,
+        )
     prepared = install_codex_plugin(root, home, force, trusted)
     if report:
         typer.echo(prepared.model_dump_json())

@@ -31,6 +31,8 @@ export type Post = {
   sent_at: string;
   in_reply_to: string;
   redirect: boolean;
+  /** A bare prompt its recipient's runtime was woken with, a resume's "continue", rather than a message. */
+  prompt: boolean;
   copies: LiveMessage[];
 };
 
@@ -73,7 +75,7 @@ export function discussions(live: LiveState): Discussion[] {
     const known = byIdentity.get(identity);
     const post = known ?? {
       id: message.post || message.id, thread: message.thread, repository: message.repository, sender: message.sender, door: message.door,
-      text: message.text, sent_at: message.sent_at, in_reply_to: message.in_reply_to, redirect: message.redirect, copies: [],
+      text: message.text, sent_at: message.sent_at, in_reply_to: message.in_reply_to, redirect: message.redirect, prompt: message.prompt, copies: [],
     };
     if (known === undefined) {
       byIdentity.set(identity, post);

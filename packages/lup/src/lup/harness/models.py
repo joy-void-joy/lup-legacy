@@ -43,6 +43,7 @@ from lup.harness.passages import passage_text, rendered
 from lup.formats.yaml import PlainData, YamlDocument
 from lup.tools.mcp import ToolDeclaration
 from lup.policy.boundary import BoundaryCapability
+from lup.policy.kernel.diagnostic import Step, devtools, spelled, step
 from lup.policy.kernel.rows import AcceptanceGuardRow, PathRoleName, SpawnNameRow
 from lup.policy.kernel.semantics import UnjudgedAmbient
 from lup.policy.models import PolicyId, ProtectedRoot, UrlScope
@@ -681,8 +682,13 @@ class CommandInvocation(SemanticPart, frozen=True):
     """Whatever follows the command — flags, operands, a placeholder."""
 
     def spelled(self) -> str:
-        """This invocation as a reader types it, executable and all."""
-        return " ".join(["uv run lup-devtools", *self.path, self.arguments]).strip()
+        """This invocation as a reader types it, executable and all.
+
+        Spelled through :func:`~lup.policy.kernel.diagnostic.devtools`, the one
+        place the executable's name is written, which every diagnostic naming
+        a command spells it through too.
+        """
+        return " ".join([spelled(devtools(*self.path)), self.arguments]).strip()
 
     def spell(self, renderer: "PromptRenderer") -> str:
         """The same words for every runtime, which all reach the same shell."""
@@ -1418,11 +1424,14 @@ class SpawnNames(BaseModel, frozen=True):
         "a subagent spawned without a name is listed, addressed and stopped"
         " by its type alone, which says nothing about what it is doing"
     )
-    recovery: str = (
-        "the task in two or three words, starting with a letter or digit and"
-        " carrying only letters, digits and underscores, at most 64 characters"
-        " — it is what the listing shows and what a message or a stop addresses"
-    )
+    recovery: list[Step] = [
+        step(
+            "name the task in two or three words, starting with a letter or digit"
+            " and carrying only letters, digits and underscores, at most 64"
+            " characters: it is what the listing shows and what a message or a"
+            " stop addresses"
+        )
+    ]
     """The shape of a name, and nothing about where it goes: the key a runtime
     reads it from is that runtime's, and the kernel opens the recovery with the
     one the dispatcher read, so the sentence a caller meets names the argument
@@ -1434,7 +1443,7 @@ class SpawnNames(BaseModel, frozen=True):
     words with."""
     limit: int = 64
     """The longest name accepted, which is the shorter of the two limits."""
-    notice: str | None = "Name each subagent you spawn after the work it does"
+    notice: str | None = "name each subagent you spawn after the work it does"
     """What a caller is told first, once in its conversation, after a spawn of
     its went out under the name read from its description; the kernel adds
     the name it went out as and how to pass one. ``None`` says nothing."""
@@ -1870,6 +1879,23 @@ class HookSet(BaseModel, frozen=True):
             "in-process session's callback is held to, the deadline every wait "
             "inside the hook shares, and the moment the hook stops waiting and "
             "refuses, each derived from this so it answers inside it"
+        ),
+    )
+    hold_seconds: int = Field(
+        default=86400,
+        ge=60,
+        description=(
+            "Seconds a hook keeps one tool call waiting while the operator's "
+            "pause or a budget holds the agent making it, before refusing it "
+            "with the hold's words and a request to retry, which is held "
+            "afresh. Both runtimes let a call run once its hook overruns the "
+            "timeout its plugin declares, so a holding hook declares this "
+            "plus `policy_timeout` and refuses at this mark, never reaching "
+            "that timeout. Measured on Claude Code 2.1.285: a declared "
+            "timeout up to 10^16 seconds is honoured, and a call held 65 "
+            "minutes ran cleanly once let go; Codex 0.159.2 bounds no hook's "
+            "timeout. A day, so an agent paused overnight is asked to retry "
+            "no more than once"
         ),
     )
     sandbox: HookSandbox | None = None

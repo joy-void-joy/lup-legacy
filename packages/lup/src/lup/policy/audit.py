@@ -27,6 +27,7 @@ from pydantic import BaseModel, Field
 from lup.policy.boundary import CapabilityEvidence
 from lup.policy.checkpoints import Checkpoint
 from lup.policy.hostexec import HostDispatch
+from lup.policy.kernel.diagnostic import stated
 from lup.policy.models import Decision
 from lup.policy.operations import Operation
 from lup.policy.relay import PersistentQuestion
@@ -101,7 +102,7 @@ class AuditRecord(BaseModel, frozen=True):
             f"{self.operation.summary()}"
             f" — {self.decision.effect}"
             f" ({self.decision.rule or 'unattributed'})",
-            f"  reason      {self.decision.reason}",
+            f"  reason      {stated(self.decision.subject, self.decision.reason)}",
         ]
         if self.decision.cause:
             lines.append(f"  refused as  {self.decision.cause}")

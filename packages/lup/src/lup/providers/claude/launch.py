@@ -4,6 +4,7 @@ import json
 import shlex
 import shutil
 from collections.abc import Sequence
+from datetime import UTC, datetime
 from pathlib import Path
 from tempfile import mkdtemp
 from typing import TYPE_CHECKING, Literal, TypedDict
@@ -24,7 +25,12 @@ from lup.harness.toolchain import bubblewrap_requirement, socat_requirement
 from lup.launch.boundary import apply_sandbox_environment
 from lup.launch.companions import CompanionLaunch, Joined, StatusLine, held_companions
 from lup.launch.compilation import allowance_environment, inherited_environment
-from lup.launch.config_volume import HomeSeedPlaces
+from lup.launch.config_volume import (
+    HomeSeedPlaces,
+    LaunchedAccount,
+    LaunchedAccounts,
+    LoginOwner,
+)
 from lup.launch.declaration import (
     LaunchCommand,
     LaunchStep,
@@ -746,6 +752,11 @@ def claude_opening(
         [bubblewrap_requirement(), socat_requirement()],
         sandbox=posture,
     )
+    # A Claude home is its account's own, so the home this opens in is the
+    # account it runs on, and the one it hands a contained session's volume.
+    owner = LoginOwner(
+        home=CLAUDE_LOGIN.selected_home(environment), profile=config.profile
+    )
     argv = session_argv(
         str(config.cli_path or "claude"),
         arguments,
@@ -777,6 +788,18 @@ def claude_opening(
             else []
         ),
         overlays=claude_guidance(root, config.sandbox),
+        owner=owner,
+        moving="move" if config.move_sessions else "refuse",
+    )
+    LaunchedAccounts().record(
+        LaunchedAccount(
+            member=member.member_id,
+            runtime=CLAUDE_LOGIN.state_volume,
+            owner=owner,
+            checkout=root,
+            contained=posture.contained(),
+            at=datetime.now(UTC),
+        )
     )
     return LaunchCommand(argv=argv, env=environment, cwd=root)
 

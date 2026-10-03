@@ -85,7 +85,7 @@ def test_document_replacement_waits_for_review_then_runs_once(
     }
     assert question.id in detail
     assert "not refused" in detail
-    assert "Don't change the command" in detail
+    assert "don't change the command" in detail
     assert f"review wait {question.id}" in detail
     assert denial(hook(root, command, tool=tool))
     assert len(store.pending()) == 1
@@ -279,7 +279,7 @@ def test_event_handoff_never_infers_a_missing_or_corrupt_primary_claim(
     response = hook(root, replacement(), event="PermissionRequest")
     decision = json.loads(response.stdout)["hookSpecificOutput"]["decision"]
     assert decision["behavior"] == "deny"
-    assert "Lup could not judge this call" in decision["message"]
+    assert "refused unjudged" in decision["message"]
 
 
 def test_rejection_does_not_create_another_question(root: Path) -> None:

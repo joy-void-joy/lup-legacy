@@ -8,6 +8,7 @@ from pathlib import Path
 from lup.providers.claude.login import CLAUDE_LOGIN
 from lup.providers.claude.model_choice import claude_model_arguments
 from lup.harness.codescan.antipatterns import DOCUMENT_IN_HAND, rule_set_for
+from lup.providers.hold_guard import hold_artifacts, hold_command
 from lup.providers.peer_delivery import delivery_artifacts, delivery_command
 from lup.providers.drift_prompt import drift_hook
 from lup.providers.session_naming import NamingSpelling, naming_hook
@@ -62,6 +63,7 @@ from lup.harness.models import (
 )
 from lup.policy.bundle import (
     POLICY_DATA_BANNER,
+    held_hook_timeout,
     policy_kernel_modules,
     render_policy_data,
     verification_row,
@@ -685,25 +687,35 @@ class ClaudeHookRenderer(ArtifactRenderer[HookSet]):
         self.spellings = spellings
 
     def render(self, source: HookSet) -> ArtifactTree:
-        command: list[JsonValue] = [
-            {
-                "type": "command",
-                "command": guarded_hook_command("CLAUDE_PLUGIN_ROOT"),
-                "timeout": source.policy_timeout,
-            }
-        ]
+        # Before a call the policy hook may hold it while the operator's pause
+        # or a budget covers its caller, and judges it only once let go, so
+        # it is given the hold's time and then its own; after a call there is
+        # nothing to hold, and it keeps the judgement's timeout alone.
+        holding = held_hook_timeout(source.policy_timeout, source.hold_seconds)
         decided: list[JsonValue] = [
             {
                 "matcher": "|".join(
                     routed_for(CLAUDE_DISPATCHER.routed_tools, source.refused_tools)
                 ),
-                "hooks": command,
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": guarded_hook_command("CLAUDE_PLUGIN_ROOT"),
+                        "timeout": holding,
+                    }
+                ],
             }
         ]
         observed: list[JsonValue] = [
             {
                 "matcher": "|".join(CLAUDE_DISPATCHER.observed_tools),
-                "hooks": command,
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": guarded_hook_command("CLAUDE_PLUGIN_ROOT"),
+                        "timeout": source.policy_timeout,
+                    }
+                ],
             }
         ]
         # An empty matcher is every tool, which is what delivery needs and the
@@ -721,6 +733,21 @@ class ClaudeHookRenderer(ArtifactRenderer[HookSet]):
                         "type": "command",
                         "command": delivery_command("CLAUDE_PLUGIN_ROOT"),
                         "timeout": 10,
+                    }
+                ],
+            }
+        ]
+        # Every tool again, for the hold: a paused agent is held at its next
+        # call whatever the tool, and the policy hook holds only the ones it
+        # judges. Both wait on the same holds and let a call go together.
+        hold: list[JsonValue] = [
+            {
+                "matcher": "",
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": hold_command("CLAUDE_PLUGIN_ROOT"),
+                        "timeout": holding,
                     }
                 ],
             }
@@ -812,7 +839,7 @@ class ClaudeHookRenderer(ArtifactRenderer[HookSet]):
                         event: (
                             observed
                             if event == CLAUDE_DISPATCHER.observation_event
-                            else [*decided, *delivery]
+                            else [*decided, *delivery, *hold]
                         )
                         for event in CLAUDE_DISPATCHER.hook_events
                     },
@@ -826,7 +853,8 @@ class ClaudeHookRenderer(ArtifactRenderer[HookSet]):
         )
         hooks = {
             "description": (
-                "Lup semantic permission policy, peer delivery, the calling "
+                "Lup semantic permission policy, peer delivery, the hold on a "
+                "paused or budget-held agent's next call, the calling "
                 "subagent on each coordination call, the roster's changes at "
                 "each prompt, this session's name for its work, a session's or "
                 "subagent's departure as it ends, and a subagent's report "
@@ -863,6 +891,7 @@ class ClaudeHookRenderer(ArtifactRenderer[HookSet]):
                 *delivery_artifacts(
                     Path(f".claude/plugins/{self.plugin_name}"), source.id
                 ),
+                *hold_artifacts(Path(f".claude/plugins/{self.plugin_name}"), source.id),
                 *roster.artifacts,
                 *departure.artifacts,
                 *cleanup.artifacts,
@@ -951,6 +980,7 @@ class ClaudeHookRenderer(ArtifactRenderer[HookSet]):
                         resolution_command=source.resolution_command,
                         repair_command=source.repair_command,
                         hook_timeout=source.policy_timeout,
+                        hold_seconds=source.hold_seconds,
                         rules=rule_set_for(
                             self.spellings.read_document(DOCUMENT_IN_HAND),
                             source.rules,

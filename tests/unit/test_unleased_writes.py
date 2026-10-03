@@ -100,8 +100,8 @@ def test_the_question_names_the_rule_and_the_path_it_is_about() -> None:
     assert verdict.rule == "unleased-write"
     # The path leads: the allow this row overrides says every segment is
     # safe, which is true and decides nothing for whoever reads the question.
-    assert verdict.reason.startswith("writes /repo/tree/other/tmp")
-    assert "/repo/tree/other/tmp" in verdict.reason
+    assert verdict.subject == "/repo/tree/other/tmp"
+    assert verdict.headline().startswith("asks: `/repo/tree/other/tmp` — ")
 
 
 def test_a_read_outside_the_lease_is_not_a_question() -> None:
@@ -278,8 +278,7 @@ def test_a_target_that_is_still_the_leases_business_asks_and_names_only_itself()
     )
 
     assert settled.effect == "ask"
-    assert "/repo/tree/other/x" in settled.reason
-    assert "/tmp/cs.txt" not in settled.reason
+    assert settled.subject == "/repo/tree/other/x"
 
 
 def test_the_temporary_root_is_read_after_normalizing_rather_than_by_its_prefix() -> (

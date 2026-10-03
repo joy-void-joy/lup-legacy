@@ -369,6 +369,43 @@ written out. A person gets a file. They differ in form and never in substance,
 and the inlining one earns its keep by proving the record stands alone: if it
 is not enough to work from, something was still living in the sender's head.
 
+## Holding a member's next call
+
+The operator can pause any member, and the budget governor holds members
+inside the limits the operator set. Either is a **hold**: one file under
+`holds/` in the store, named for its owner, reason, scope and member, and
+read by the hook of every member it covers before each tool call that member
+makes. While one covers the call the hook says nothing and the call waits;
+the moment none does, it goes on. Whom a hold covers is worked out from the
+roster at every check, so a member that arrives under a paused session is
+held too:
+
+- `self`: the one conversation named — a session's own, or one subagent's;
+- `agent`: that conversation and the native subagents inside its runtime,
+  which is what pausing a session holds;
+- `tree`: that member and everything its spawning reaches, subagents and the
+  runtimes started from its shell, at any remove;
+- `repository`: every member.
+
+A hold lasts until its owner lifts it, until its own `until` passes, or until
+the member it names leaves the roster. Each lift names its owner, so a
+budget's release never ends the operator's pause and a resume never ends a
+budget's hold. The hook marks each call it holds under `holds/waiting/`, so a
+reader tells a member held mid-call from one idle while paused, and a call
+refused at the hold's limit stays marked until its caller asks again or is
+told to continue.
+
+What a held member reads is nothing: it is not told, and nothing wakes it —
+a message to it waits in its mailbox and its hook hands it over at the first
+call let go, which `coordination_send` says in `held` beside what carries it.
+`coordination_peers` gives every held row a `held` list in each hold's words,
+"paused by the operator" for the operator's. Its reviews stay parked, and the
+commands it started in the background keep running unless the operator froze
+it. No member can place or lift a hold, its own included: the coordination
+tools have no verb for it, and `lup-devtools coordination pause` and `resume`
+refuse a shell an agent's runtime started and are refused by the policy for
+an agent; the operator pauses from the dashboard or a terminal of their own.
+
 ## Waking whoever it went to
 
 Mail is written first, always. A wake that cannot be made costs latency and

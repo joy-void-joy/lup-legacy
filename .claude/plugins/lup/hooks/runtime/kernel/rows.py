@@ -3,6 +3,7 @@
 from typing import Literal, TypedDict, NotRequired
 
 from .decision import CheckpointRequirement, SandboxPlacement, KernelDecision
+from .diagnostic import Step
 from .effects import EffectRow
 from .semantics import PathRuleKind, ReviewerRequirement
 
@@ -49,7 +50,7 @@ class PathRuleRow(TypedDict):
     kind: PathRuleKind
     value: str
     reason: str
-    recovery: str
+    recovery: list[Step]
     allow_autonomous: bool
     description: NotRequired[str]
 
@@ -105,7 +106,7 @@ class TargetLandingRow(TypedDict):
     lands: TargetLanding
 
 
-type PathRoleName = Literal["production", "test", "data", "scratch"]
+type PathRoleName = Literal["production", "test", "data", "scratch", "generated"]
 
 type PathRoleKind = Literal["subtree", "contains_part"]
 """The two directory shapes :func:`root_matches` tells apart.
@@ -170,7 +171,7 @@ class SpawnNameRow(TypedDict):
     """
 
     reason: str
-    recovery: str
+    recovery: list[Step]
     punctuation: str
     limit: int
     notice: str
@@ -290,6 +291,8 @@ class AntiPatternRow(TypedDict):
     id: str
     pattern: str
     message: str
+    remedy: str
+    """The one clause a denial quotes in place of ``message``, or ``""``."""
     context: str
     matcher: str
     """The AST selector this rule declares, or ``""`` where it declares none.
@@ -346,7 +349,7 @@ class RefusedToolRow(TypedDict):
     tool: str
     specifier: str
     reason: str
-    recovery: str
+    recovery: list[Step]
 
 
 class RefusedPathRow(TypedDict):
@@ -361,7 +364,7 @@ class RefusedPathRow(TypedDict):
     paths: list[str]
     exempt: list[str]
     reason: str
-    recovery: str
+    recovery: list[Step]
 
 
 class RunnerTargetRow(TypedDict):
@@ -389,7 +392,7 @@ class RunnerTargetRow(TypedDict):
     effects: list[EffectRow]
     refuses: str
     reason: str
-    recovery: str
+    recovery: list[Step]
 
 
 type RunnerTargetField = Literal[
@@ -405,7 +408,7 @@ a missing one is a permission that never happens.
 
 def runner_target_values(
     row: RunnerTargetRow,
-) -> dict[RunnerTargetField, str | list[EffectRow]]:
+) -> dict[RunnerTargetField, str | list[EffectRow] | list[Step]]:
     """Every field of one erased runner target, as a mapping, in order.
 
     The arrangement :func:`shell_row_values` makes for the row beside this one,
@@ -665,7 +668,7 @@ class ShellRuleRow(TypedDict):
     value_flags: list[str]
     directory_flags: list[str]
     reason: str
-    recovery: str
+    recovery: list[Step]
 
 
 type ShellRowField = Literal[
@@ -721,7 +724,7 @@ a hook — and a permission that never happens looks exactly like one granted.
 
 def shell_row_values(
     row: ShellRuleRow,
-) -> dict[ShellRowField, str | bool | int | list[str] | list[EffectRow]]:
+) -> dict[ShellRowField, str | bool | int | list[str] | list[EffectRow] | list[Step]]:
     """Every field of one erased row, as a mapping, in declaration order.
 
     Declared beside the shape rather than at the renderer that needs it, so a
@@ -865,10 +868,10 @@ class PeerPolicyRow(TypedDict):
     windows_dir: str
     member_env: str
     send_reason: str
-    send_recovery: str
+    send_recovery: list[Step]
     listing_note: str
     claim_reason: str
-    claim_recovery: str
+    claim_recovery: list[Step]
     operator: str
     operator_reason: str
 

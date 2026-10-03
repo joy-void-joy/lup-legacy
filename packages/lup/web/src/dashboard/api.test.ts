@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import type { StreamFrame } from "../generated/views";
 import {
-  answerReview, broadcastTo, describeYou, followDashboard, followTranscripts, holdPath, postInto, postNotice, readInbox, readReviewLink, readReviews,
-  readTranscript, releasePath, remarkReview, renameAgent, reviewLink, sendReply, stopAgent, takeToken, wakeAgent, withdrawNotice, type Followed,
+  answerReview, broadcastTo, describeYou, followDashboard, followTranscripts, holdPath, pauseAt, postInto, postNotice, readInbox, readReviewLink, readReviews,
+  readTranscript, releasePath, remarkReview, renameAgent, resumeAt, reviewLink, sendReply, stopAgent, takeToken, wakeAgent, withdrawNotice, type Followed,
 } from "./api";
 
 const originalFetch = globalThis.fetch;
@@ -105,7 +105,7 @@ function sse(frame: StreamFrame): string {
 
 const whole: StreamFrame = {
   cursor: '{"epoch":"e1","seq":0}',
-  event: { type: "snapshot", repositories: [], sessions: [], messages: [], extents: [], reviews: snapshot, code: { source: "", root: "", since: null, older: false, failing: "", restarted: "" }, users: [], served: [], keys: { source: "", unread: "", changed: [], report: { applied: [], refused: [], waits: [] } } },
+  event: { type: "snapshot", repositories: [], sessions: [], messages: [], extents: [], reviews: snapshot, code: { source: "", root: "", since: null, older: false, failing: "", restarted: "" }, users: [], served: [], keys: { source: "", unread: "", changed: [], report: { applied: [], refused: [], waits: [] } }, budget: { accounts: [], agents: [], turtle: false, telemetry: false, refused: "", holds: false } },
 };
 
 const gone: StreamFrame = { cursor: '{"epoch":"e1","seq":1}', event: { type: "session_gone", key: "r/é-session" } };
@@ -235,6 +235,13 @@ describe("supervising", () => {
     await postInto("r", "t1", { text: "all of you", in_reply_to: "", to: [] }, "secret");
     await readTranscript("r", "lead", "secret", 900);
     await followTranscripts([{ repository: "r", member: "lead", after: 120 }], "secret");
+    await pauseAt({ kind: "agent", repository: "r", member: "lead", tree: false }, false, "secret");
+    await pauseAt({ kind: "agent", repository: "r", member: "lead", tree: true }, true, "secret");
+    await resumeAt({ kind: "agent", repository: "r", member: "lead", tree: true }, "secret");
+    await pauseAt({ kind: "repository", repository: "r" }, true, "secret");
+    await resumeAt({ kind: "repository", repository: "r" }, "secret");
+    await pauseAt({ kind: "all" }, false, "secret");
+    await resumeAt({ kind: "all" }, "secret");
     expect(calls).toEqual([
       { url: "api/repositories/r/sessions/lead/messages", method: "POST", body: { text: "stop", in_reply_to: "p1", redirect: true, priority: "now" } },
       { url: "api/repositories/r/sessions/lead/wake", method: "POST", body: {} },
@@ -250,6 +257,13 @@ describe("supervising", () => {
       { url: "api/repositories/r/threads/t1/posts", method: "POST", body: { text: "all of you", in_reply_to: "", to: [] } },
       { url: "api/repositories/r/sessions/lead/transcript?before=900", method: "GET", body: null },
       { url: "api/transcripts/follow", method: "POST", body: { sessions: [{ repository: "r", member: "lead", after: 120 }] } },
+      { url: "api/repositories/r/sessions/lead/pause", method: "POST", body: { tree: false, freeze: false } },
+      { url: "api/repositories/r/sessions/lead/pause", method: "POST", body: { tree: true, freeze: true } },
+      { url: "api/repositories/r/sessions/lead/resume", method: "POST", body: { tree: true } },
+      { url: "api/repositories/r/pause", method: "POST", body: { tree: false, freeze: true } },
+      { url: "api/repositories/r/resume", method: "POST", body: {} },
+      { url: "api/pause", method: "POST", body: { tree: false, freeze: false } },
+      { url: "api/resume", method: "POST", body: {} },
     ]);
   });
 

@@ -241,4 +241,4 @@ def test_a_checker_that_spends_the_deadline_leaves_every_git_fact_standing(
     )
 
     assert decided.effect == "ask"
-    assert "src/app/module.py" in decided.reason
+    assert "src/app/module.py" in decided.addressed()

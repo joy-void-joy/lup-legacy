@@ -252,8 +252,9 @@ instead: stopped, and started from that checkout for the sessions holding it.
 
 `uv run lup-devtools dashboard status` says whether it serves, where, for how
 many sessions, over which repositories, how many reviews wait, how many
-messages agents sent the operator wait unread, how many agents are quiet and
-how many paths are held twice (as the status line counts them, below), how
+messages agents sent the operator wait unread, how many agents are quiet, how
+many paths are held twice and how many agents are held (as the status line
+counts them, below), how
 many tabs follow it, which code it runs, and how many times the sessions holding it
 started it again; from the operator's terminal it also gives the last exit
 (`exited`: when, how, and its last lines of output), the last stop lup made
@@ -322,6 +323,9 @@ to right:
   Nothing takes a message out of that mailbox yet: the page shows each, and
   nothing marks one read, so `✉` counts every message an agent sent the
   operator in a repository the dashboard serves;
+- **the agents held**, only while one is: `⏸2`, the running agents the
+  operator paused or a budget holds at their next tool call, across every
+  repository the dashboard serves;
 - **what other agents need**, only while one does: `⚠ 1 quiet`, an agent
   with a call outstanding and nothing new in its transcript for ten minutes,
   none of whose subagents runs (a session waiting on its subagent is waiting
@@ -528,7 +532,8 @@ standing — `●` working, `◌` idle, `◷` quiet (a call running ten minutes 
 nothing new), `○` stopped — its name, and what needs the operator: `?n`
 reviews waiting, `✎n` unread messages it sent the operator, `✉n` messages
 waiting in its own mailbox, `⌂n` paths its calls hold and `!n` paths another
-agent holds too, then how long since it was heard. Its second line is what it
+agent holds too, `⏸` where the operator paused it or a budget holds it — why
+on its hover — then how long since it was heard. Its second line is what it
 is doing: the call nothing has answered yet in one line, or what it last said.
 A repository's stopped agents fold into one row at the end of its tree, unless
 something under one still runs, waits on the operator, or wrote to them
@@ -688,6 +693,59 @@ cannot be done to it.
   ends with its session; both are refused saying so.
 - **Broadcast** (`POST /api/repositories/<key>/broadcast`, `{text}`): one post
   to every working agent of a repository, each woken as a message is.
+- **Pause** (`POST …/sessions/<member-id>/pause`, `{tree, freeze}`;
+  `POST /api/repositories/<key>/pause` and `POST /api/pause`, `{freeze}`):
+  holds an agent, a repository or everything at its next tool call (Pausing,
+  below).
+- **Resume** (`POST …/sessions/<member-id>/resume`, `{tree}`;
+  `POST /api/repositories/<key>/resume` and `POST /api/resume`, `{}`): lifts
+  the pause named. Lifting a pause nobody placed there is refused, naming
+  the pause that does hold the agent.
+
+## Pausing
+
+`Space a z` (`:pause`), on an agent's row, its context, or the phone's
+**Act**, holds it at its next tool call until it is resumed: its hook says
+nothing while the pause stands, so to the agent the call only takes long, and
+a call already running finishes. A session's subagents are paused with it;
+`:pause tree` takes everything it spawned too, `:pause repo` every agent of
+its repository, and `:pause all` every agent of every repository served. The
+row shows `⏸`, its hover and context say why and since when, and the
+statusline counts `⏸N`. While paused, a message to the agent waits in its
+mailbox and wakes nothing, its reviews stay parked, `coordination_peers`
+says "paused by the operator" on its row, and the commands it started in the
+background keep running. A pause is a file in the repository's coordination
+store, so it outlives a restart of the dashboard and lasts until it is
+resumed or the agent leaves. A pause
+lasting a day refuses the call it holds with "paused by the operator; this
+call didn't run", its way through "retry it", and the retry is held again.
+
+`Space a Z` (`:freeze`) is the second level: the pause, and the agent's
+running commands stopped too — every process group its runtime's tools run
+in, never the runtime itself — and a turn that is generating interrupted
+with one line telling it it is paused. Measured on Claude Code 2.1.285: a
+Bash command frozen inside its tool timeout finishes once continued; one
+frozen past it is moved to the background by the runtime, which stops a
+background command still running thirty minutes on, so a long freeze can
+cost a command but never the session; and an interrupt meeting a command
+already frozen is taken after the command ends, so the agent reads it once
+resumed and goes on at the "continue" that follows. What a freeze cannot
+reach is paused all the same, and the answer says why: a subagent, whose
+commands run in its session's runtime beside the session's own; a runtime in
+another pid namespace than the dashboard's; a Codex session, whose commands
+run under the app-server daemon every session of its configuration home
+shares, so stopping them could stop another session's.
+
+`Space a u` (`:resume`) lifts the pause placed on that agent — `:resume
+tree`, `:resume repo` and `:resume all` the others — continues what a freeze
+stopped, and wakes with a bare "continue" a session that stopped because of
+the pause: one frozen, or one whose call was refused at the day's end and
+has not asked again. The page shows that "continue" on the agent as the
+prompt it was. A hold a budget placed is not lifted by a resume, and an
+agent paused through its session is resumed there, which the refusal names.
+Only the operator pauses and resumes: from here, or with
+`lup-devtools coordination pause` and `resume` from a terminal outside every
+agent session, which refuse an agent's shell.
 
 ## Discussions
 
@@ -723,6 +781,195 @@ headed with who sent it and its post, and `--take` takes them as read.
 `lup-devtools coordination send <text> --to <agent> --as user` answers, signed
 so the reply comes back to you, and `--reply-to <post>` puts it in that post's
 thread.
+
+## Budgets
+
+The dashboard every launch holds also keeps a budget over the accounts its
+sessions draw on, the way a torrent client limits a link: a speed limit, a
+reserve kept back for the person's own use, a cap on how many agents work at
+once, priorities, per-agent caps, a schedule, and a slower set of limits one
+key turns on. It judges at every look of its herald, whether or not a page is
+open, so a limit holds with nobody watching. The person's own sessions —
+every session no other session's shell opened — are never held, nor counted
+against a slot; their subagents, and the sessions an agent opens, are.
+
+### What it meters
+
+An account is one runtime's login under one profile — `claude:work`,
+`codex:default`, `default` naming the home no profile selects — and the
+dashboard reads every one the served repositories can launch on — each
+profile's, and whoever is signed in to each repository's container volume
+now, which its contained sessions draw on: read from the volume, with the
+volume's own login, through a helper container. Every account is named and
+told apart by who it is — the email and account id Claude Code writes at
+sign-in — never by the home it came from, so the home no profile selects
+shows as its account's email, and a volume someone signed in to another
+account from is that other account's. Its windows are what the provider
+meters it in, and most come with no request at all: every Claude session's
+status line hands the dashboard its account's 5-hour and weekly windows as
+its own last request heard them (Claude Code 2.1.285's `rate_limits`), and
+every Codex session's rollout carries its account's two windows with every
+token count. Only an account no running session speaks for is asked —
+Claude's OAuth usage endpoint, Codex's app-server — every `poll_seconds`
+(300), and every `close_seconds` (90) once a window is within ten points of
+its ceiling. The endpoint is rate-limited per account, refusing readers that
+asked about one and a half times a minute between them on 2026-10-03, so
+every reader on a machine — the dashboard, `dev usage claude` — shares one
+reading per account, and a refusal is left alone until its `Retry-After`, or
+an exponential backoff with jitter, while the last good reading stands with
+its age. Each window shows how much of it is used, where even pace
+stands — as much of it used as has gone by — how fast it filled over the last
+hour of readings, and when it clears.
+
+What each agent spends comes from what its runtime emits. A Claude session
+launched with the dashboard sends its telemetry to the dashboard's own port
+(8776 where it is free), bearing a token of its own rather than the page's
+capability: each request's `api_request` event carries its cost and its token
+counts, and its `claude_code.llm_request` span names the subagent that made it,
+the two joined by the request id. That is what Claude Code 2.1.285 was
+measured to emit; its metrics name a subagent only by its type, so they are
+not exported, and the span needs `CLAUDE_CODE_ENHANCED_TELEMETRY_BETA`, which
+the launch sets. A Codex session's spend is the token counts its rollout
+records, and Codex prices nothing, so a Codex agent's rate and caps are in
+tokens.
+
+Every charge lands, once per request, in the budget's ledger at
+`$XDG_STATE_HOME/lup/budget/ledger.json` (`~/.local/state/lup/budget/` by
+default), beside each agent's priority and caps. A pipeline running in
+process charges and waits on the same ledger through
+`FinancialBudgetConfig(state_path=…, limits=…)`, so it shares one budget with
+every launched session.
+
+A launch says when the budget cannot see its session's spend: a container
+joining no network reaches no dashboard, and a person who already exports
+Claude Code telemetry somewhere keeps theirs. That session's account is still
+metered and its limits still hold; only its own spend reads as none, and the
+meter says `no telemetry` where the dashboard receives none at all.
+
+### Limits
+
+`[budget]` in the person's lup config sets them, never a project's:
+
+```toml
+# ~/.config/lup/config.toml
+[budget]
+pace = "even"        # hold agents spending a window faster than it passes
+tolerance = 5        # points past a speed limit normal agents still work
+reserve = 10         # the last 10% of every window is kept for you
+max_active = 3       # at most three agents work at once
+window_ceiling = 95  # how full a window gets before every agent holds; 95 unset
+poll_seconds = 300   # how often an account no session speaks for is asked
+close_seconds = 90   # how often, once a window is within ten points of its ceiling
+
+[[budget.ceilings]]  # a speed limit on one window, in percent of it an hour
+window = "5-hour"
+per_hour = 15
+
+[budget.accounts.work]  # every runtime's login of the work profile
+max_active = 6          # or name one: [budget.accounts."claude:work"]
+
+[[budget.schedule]]  # working hours, local to this machine
+days = ["mon", "tue", "wed", "thu", "fri"]
+from = "09:00"
+to = "18:00"
+reserve = 30
+
+[budget.turtle]      # the slower limits the turtle puts in place
+max_active = 1
+```
+
+The limits on an account are layered: the table's own, then its account's
+entry, then every schedule entry holding now — one whose `to` is before its
+`from` runs overnight, and `accounts` narrows one to the accounts it names —
+then the turtle's while it is on, each layer replacing only what it names.
+The turtle is even pace and one agent at a time unless `[budget.turtle]` says
+otherwise. A `[budget]` lup cannot read holds nothing but a window used up,
+and the meter says why.
+
+Each agent is weighed against its account's limits, and the first that
+applies holds it, saying why on its row and to the agent:
+
+1. **A window used up** — at `window_ceiling`, 95% with no configuration,
+   every agent drawing on it holds until it clears: `5-hour window used up
+   until 14:20`. The ceiling is the margin that keeps an agent from running
+   into the provider's own limit between two readings: at the provider's
+   limit a Claude subagent ends mid-step, its session told `Agent terminated
+   early due to an API error: You've hit your session limit`, measured on
+   Claude Code 2.1.283 and 2.1.285. `100` leaves it to the provider.
+2. **The reserve** — once a window reaches it, until it clears: `reserve
+   reached: …, the last 10% kept for you until 14:20`.
+3. **Its total cap** — until the operator raises or clears it; the operator is
+   told once, as a desktop notice.
+4. **Its rate cap** — until its last hour's spend falls back under it.
+5. **The speed limit** — even pace, or a window's ceiling: low-priority agents
+   hold as soon as the account passes it, normal ones once it is `tolerance`
+   points past, high ones at twice that.
+6. **A slot** — `max_active` working agents per account; the rest wait, high
+   priority first and then whoever wanted one first. An agent that stopped
+   calling keeps its slot for ninety seconds, so one thinking between two
+   calls is not overtaken.
+
+The hold is the pause's: the budget places it in the repository's hold
+store, owned by the budget and covering the one agent, and the agent waits at
+its next tool call, its row showing it held as any hold is. It lifts when the
+limit allows — at a window's reset by itself, since the hold lapses then — and
+the call goes on, unprompted. A session a limit stopped is told to go on: one
+whose hook refused a call held past the hold's limit, or one that ran into the
+provider's limit before a reading caught up, its transcript ending in the
+refusal; once nothing holds it, it is woken with a bare `continue`, recorded
+as a prompt. The operator's own sessions are neither held nor woken, since
+their runtime waits for the reset by itself. A window used up until more than
+six hours away is told to the operator once, as a desktop notice, as well as
+on the page: switching profile is theirs. A dashboard with no hold store to
+place its holds in judges and shows, and nothing waits: the stream's `holds`
+says which, the meter says `not holding`, and each row says what `would hold`
+its agent.
+
+### On the page
+
+The meter heads the page: each account's windows as bars with a mark where
+even pace stands, how fast each fills and when it clears, the limits in force,
+how many agents draw on it and how many are held, and the turtle. On a phone
+it folds into the top bar, one line an account, its fullest window. `Space b
+t` or `:turtle [on|off]` turns the turtle, kept in the person's config so it
+outlives the dashboard, and the status line shows `🐢 turtle` while it is on.
+
+An agent's tree row says what holds it and what it spends — `$1.84/h · $7.94`,
+or tokens where nothing priced it — and its priority where it is not normal.
+Its context says the same at length, with its priority and caps editable in
+place: `Space b p` or `:priority [agent] high|normal|low`, and `Space b c` or
+`:cap [agent] $2/h $10` — dollar amounts or token counts (`500k/h 2M`), `/h`
+making one a rate, every cap at once, nothing clearing them. The routes behind
+them are `POST /api/budget/turtle` (`{on}`) and `POST
+/api/repositories/<key>/sessions/<member-id>/budget` (`{priority, caps}`).
+
+From a terminal, `dashboard budget` prints the same accounts and what this
+repository's agents spent, and `dashboard turtle on|off`, `dashboard priority
+<agent> <level>` and `dashboard cap <agent> --rate-usd … --total-tokens …`
+set what the page sets, by an agent's name or id in the repository of the
+working directory. The three that change something are the operator's, from a
+terminal outside any agent session, as the page is.
+
+### Switching profile
+
+When an account's window is used up, the page says so once, sticky until it
+clears, and names the profiles of that runtime with room — `:switch home moves
+a repository's contained sessions to it`. It never moves anything by itself:
+the providers' terms rule out moving work to another account automatically
+when one runs out, so the switch is always the operator's.
+
+`:switch <profile> [claude|codex]` on an agent's repository, or `harness
+profile switch <profile> [--runtime codex]` in a checkout of it, hands the
+profile's login to the container volume every contained session of that
+runtime in the repository shares (`POST /api/repositories/<key>/profile`).
+Claude Code reads its login file at every request, measured on 2.1.285, so a
+contained Claude session runs on the new account from its next request. A
+Codex session keeps the login it started with until it is opened again, and a
+host session runs in its own account's home, which no volume reaches; each is
+answered with the command that opens it again on the profile, and the page
+keeps that answer in a notice. A contained launch on a profile other than
+the one the repository's volume holds would move every session running on it,
+so it refuses, saying how many, unless `--move-sessions` says that is meant.
 
 ## Reviews
 
@@ -848,7 +1095,7 @@ permissions. Approval still applies to the exact complete submission. Where
 recorded evidence cannot establish a file's status, it remains visible rather
 than being treated as automatically allowed. `[` and `]` move between files,
 and `Space f f` finds one by its path. Each file shows as a coloured, numbered
-diff, its syntax highlighted by the file's extension; `Space v` shows the file
+diff, its syntax highlighted as its language reads it (below); `Space v` shows the file
 before or after instead, or the unified diff as text, and `Space w v` splits
 before | after side by side. The lines a diff leaves out fold into one row per
 gap, which `Enter` or `za` opens, and `f` shows the whole file with the
@@ -866,6 +1113,66 @@ customization point (`template:`), and a rule exception (`ignore[<rule>]`).
 files, opening the whole file where a marker stands outside the diff's hunks.
 Rule exceptions are listed by rule in the context, with `n` and `p` to jump
 between them; existing exceptions appear only in the full operation.
+
+### Code: what a name is, where it is defined, where it is used
+
+A file's syntax is coloured the way Neovim colours it. Its language's
+tree-sitter grammar reads the document whole, and the grammar package's own
+highlights query colours it: a type, a constructor (a capitalized call), a
+function or method, a parameter, a module, a decorator, `self`, a keyword, a
+string, a number, a comment, each in the palette's syntax colours. Where
+several patterns capture one name the last of them wins, as tree-sitter and
+Neovim read a query; where a published query leaves out what nvim-treesitter
+reads — in Python a capitalized call, parameters, `self`, modules and
+decorators — the page adds the pattern after it. Each grammar is a
+WebAssembly module the page fetches the first time a file in its language is
+drawn, so the first paint waits on no grammar it does not need, and a file is
+drawn plain until its grammar arrives. Where a language server reads the
+file, its semantic tokens are laid over tree-sitter's, as Neovim lays them: a
+name the server calls a class, a function, a parameter or a module takes that
+colour, whatever its spelling suggests. pydantic's `Field` is a function, so
+once the server has answered it is drawn as one.
+
+`K` on a name in code opens a float with what its language server says of
+it: its type or signature, coloured as code, and its documentation. Resting
+the pointer on a name opens the same float after half a second, and a long
+press does on a phone. `gd` opens the name's definition in the window,
+read-only, its name and file in the window's bar; `Ctrl+o` or `q` comes back
+to where the window stood. `gr` lists every use of the name in the context,
+which takes focus: `j`/`k` walk them and `Enter` opens one. What the policy
+asks about is walked with `g?`. A question about a line of a review is about
+the version that line shows: a removed line asks about the file as it was
+recorded, any other about the after-document the approval would write. That
+document is handed to the language server as an unsaved buffer under the
+file's own name, so its imports resolve as the written file's would.
+
+The dashboard asks a language server through its own routes
+(`/api/code/hover`, `definition`, `references`, `tokens` and `text`), behind
+the same capability, Host and Origin checks as every route; the browser never
+reaches a server. One server runs per repository and language, started on the
+first question about it, each checkout of the repository a workspace folder
+of its own, so a worktree's imports resolve in that worktree; it stops after
+ten minutes unasked. Every question is bounded: five seconds for a hover or a
+definition, ten for references, twenty for a document's tokens. A server that
+does not answer in time is answered as not served, with why, and never hangs
+the page. Python is read by basedpyright, the fork of the pyright `dev check`
+runs, which serves the semantic tokens pyright does not; TypeScript and
+JavaScript by TypeScript 7's own compiler, `tsc --lsp`. A language no server
+reads, or a server the dashboard's environment does not have, is said
+plainly in the float: "no language server reads .md files", "basedpyright is
+not installed beside the dashboard's interpreter".
+
+A language server only reads code; it never runs the code it reads. The
+dashboard runs as the operator, outside every sandbox, so a server is started
+from the dashboard's own environment — basedpyright beside its own
+interpreter, TypeScript from lup's own web workspace or the operator's
+`PATH` — never from a checkout's `.venv`, whose interpreter would run whatever
+`.pth` file its site-packages hold. basedpyright is handed the dashboard's
+own interpreter, and a checkout's packages as the directories its
+environment's site-packages and `.pth` files name, read off the disk the way
+`site` reads them, an `import` line skipped. A file is shown whole — a
+definition, a use — only where it lies inside a checkout the dashboard
+serves, or where a language server named it.
 
 `i`, `a`, `o` or `Enter` on a line comments on it; `V`, then `j`/`k`, then `gc`
 comments on the range picked; a click on a line number comments on that line
@@ -905,8 +1212,9 @@ letter for agents, the inbox, discussions, History, a review's files, the
 buffer's lines, every message, the commands, the keys or the markers) filters
 as you type and previews what `Enter` opens. `Space` shows what the leader
 does after a moment, `?` lists every key with its action's name, and `K`
-shows what is attached to the line, file, step, message or tree row under the
-cursor.
+says what is under the cursor: on a name in code, what its language server
+says of it; anywhere else, what is attached to the line, file, step, message
+or tree row there.
 
 `Space y` copies a link to share a request without sharing a credential. Links use
 `#review=<question-id>`; copied links also name the checkout to distinguish
@@ -1013,8 +1321,9 @@ shows the whole file at the cursor until it reads `back to diff`. The editor's
 bar drops what the top bar already says and folds what the policy asks about
 to two lines, and a note, what an agent said, a message or a post folds to
 four lines with `more`. A sideways swipe over the buffer moves to the next or
-previous item, a long press on a line starts a range that taps stretch, and a
-tap on a line with something attached shows it. Notices sit under the top bar,
+previous item, a long press on a name in code shows what it is as `K` does,
+one on a line's numbers starts a range that taps stretch, and a tap on a line
+with something attached shows it. Notices sit under the top bar,
 never over its buttons.
 
 ## Behind a reverse proxy

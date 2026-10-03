@@ -2,11 +2,12 @@
 // the context's item; folds, the jumps between files, exceptions, markers and
 // what the policy asked about; line comments and visual ranges; splits; the
 // `/` search; hover. Each reads the controller's state and moves it.
-import type { LiveMessage, ReviewRoot } from "../generated/views";
+import type { CodeHover, CodeLocation, CodeLocations, CodeSource, LiveMessage, ReviewRoot } from "../generated/views";
+import { askDefinition as codeDefinition, askHover as codeHover, askReferences as codeReferences, readCode } from "./api";
 import { lastColumn, lineText, words } from "./caret";
 import { draftId, type Dashboard } from "./dashboard";
-import { basename, changeStop, exceptionRules, exceptionStops, judgedOf, lineCount, markerLabel, markerStops, needsReview, rowText, type PaneView, type Row, type Side } from "./review";
-import type { Win } from "./state";
+import { basename, changeStop, exceptionRules, exceptionStops, judgedOf, lineCount, markerLabel, markerStops, needsReview, plural, rowText, type PaneView, type Row, type Side } from "./review";
+import type { CodeAt, PageState, Peek, Win } from "./state";
 import { activityBrief, counterpart, inboxOf, memberById, type TreeItem } from "./supervision";
 import { discussionLine, type Post } from "./threads";
 
@@ -766,7 +767,11 @@ export function gotoLine(d: Dashboard, number: number): void {
 
 // ───────────────────────────── floats and small acts ─────────────────────────────
 
-/** `K`: what is attached to the cursor's line, file, step, message, agent or tree row, next to it. */
+/**
+ * `K`: what this is, decided by where the cursor stands. On a name in code,
+ * what its language server says of it; anywhere else what is attached to the
+ * line, file, step, message, agent or tree row, next to it.
+ */
 export function hover(d: Dashboard): void {
   if (d.state.float?.kind === "hover") { d.set({ float: null }); return; }
   const state = d.state;
@@ -776,8 +781,156 @@ export function hover(d: Dashboard): void {
   const rect = anchor?.getBoundingClientRect();
   const top = rect === undefined ? 80 : rect.bottom + 2;
   const left = rect === undefined ? 40 : rect.left + 24;
+  const at = state.focus === "editor" ? codeHere(d) : null;
+  if (at !== null && at.name !== "") { askHover(d, at, top, left, false); return; }
   if (state.narrow) d.set({ touch: { ...state.touch, sheet: "hover" } });
   d.set({ float: { kind: "hover", top, left } });
+}
+
+// ───────────────────────────── code: what a name is, where it is defined, where it is used ─────────────────────────────
+
+/** A name in code: a run of letters, digits, `_` and `$`. */
+const NAME = /[\p{L}\p{N}_$]+/gu;
+
+/** The name a column of a line stands on, or nothing where it stands on none. */
+export function nameAt(text: string, column: number): string {
+  return [...text.matchAll(NAME)].find((found) => found.index <= column && column < found.index + found[0].length)?.[0] ?? "";
+}
+
+/**
+ * Where a question about code would be asked from a row: a line of one of a
+ * review's files, as the side it shows — before for a removed line, after
+ * otherwise — or a line of a document `gd` opened. The checkout is the one
+ * the review changes, where a definition outside its files is read from.
+ */
+export function codeAt(d: Dashboard, pane: 0 | 1, cur: number, column: number): CodeAt | null {
+  const row = rowsOf(d, pane)[cur];
+  const peek = d.peek(pane);
+  if (row?.t === "code" && peek !== null) return { source: peek.source, line: row.n, column, name: nameAt(row.text, column) };
+  const entry = d.current();
+  if (row?.t !== "line" || row.kind === "meta" || entry === null || entry.detail === null) return null;
+  const file = entry.detail.files[row.fi];
+  const line = row.tokenSide === "before" ? row.old : row.new;
+  if (file === undefined || line === null) return null;
+  const checkout = entry.row.target || (d.roots().find((root) => root.id === entry.row.root_id)?.path ?? "");
+  return { source: { review: entry.row.key, side: row.tokenSide, checkout, path: file.path }, line, column, name: nameAt(row.text, column) };
+}
+
+/** Where the cursor stands, as a question about code would be asked from it. */
+export const codeHere = (d: Dashboard) => codeAt(d, d.state.pane, d.state.editor[d.state.pane].cur, columnOf(d));
+
+const question = (at: CodeAt) => ({ source: at.source, line: at.line, column: at.column });
+
+/** Why a question about code went unanswered, in words. */
+const failed = (failure: unknown) => failure instanceof Error ? failure.message : String(failure);
+
+/**
+ * The hover on code: the float opens at once saying what it asks, and the
+ * language server's answer — the name's type, signature and documentation —
+ * replaces that when it comes, unless the float was closed or moved on.
+ */
+export function askHover(d: Dashboard, at: CodeAt, top: number, left: number, pointer: boolean): void {
+  const asking = { at, hover: null, pointer };
+  if (d.state.narrow) d.set({ touch: { ...d.state.touch, sheet: "hover" } });
+  d.set({ float: { kind: "hover", top, left, code: asking } });
+  const landed = (hover: CodeHover) => d.set((state) => state.float?.kind === "hover" && state.float.code === asking ? { float: { ...state.float, code: { ...asking, hover } } } : {});
+  codeHover(question(at), d.state.access.token).then(landed, (failure: unknown) => landed({ served: false, server: "", why: failed(failure), markdown: "" }));
+}
+
+/** `gd`: the definition of the name under the cursor, opened read-only in this window; several also listed in the context. */
+export async function goDefinition(d: Dashboard): Promise<void> {
+  const at = codeHere(d);
+  if (at === null || at.name === "") { d.say("gd goes to the definition of a name in code: put the cursor on one"); return; }
+  d.say(`asking where ${at.name} is defined…`);
+  let found: CodeLocations;
+  try {
+    found = await codeDefinition(question(at), d.state.access.token);
+  } catch (failure) {
+    d.say(`E: the definition of ${at.name} could not be asked for: ${failed(failure)}`, "err");
+    return;
+  }
+  const [first] = found.locations;
+  if (!found.served || first === undefined) { d.say(`no definition of ${at.name}: ${found.why || "the server knows of none"}`, found.served ? "" : "warn"); return; }
+  if (found.locations.length > 1) d.set({ refs: { owner: d.state.sel.key, at, locations: found.locations, why: `${found.locations.length} definitions` } });
+  await openLocation(d, at, first);
+}
+
+/** `gr`: every use of the name under the cursor, listed in the context, which comes into view to show them. */
+export async function findReferences(d: Dashboard): Promise<void> {
+  const at = codeHere(d);
+  if (at === null || at.name === "") { d.say("gr lists the uses of a name in code: put the cursor on one"); return; }
+  const owner = d.state.sel.key;
+  d.set({ refs: { owner, at, locations: null, why: "" } });
+  if (d.state.narrow) d.set({ touch: { drawer: "context", sheet: "" } });
+  else if (!d.state.contextShown) toggleSide(d, "context");
+  let found: CodeLocations;
+  try {
+    found = await codeReferences(question(at), d.state.access.token);
+  } catch (failure) {
+    found = { served: false, server: "", why: failed(failure), locations: [] };
+  }
+  const why = !found.served ? found.why : found.locations.length === 0 ? `no uses of ${at.name}: ${found.why || "the server knows of none"}` : "";
+  if (d.state.refs?.at !== at) return;
+  d.set({ refs: { owner, at, locations: found.locations, why } });
+  d.say(found.served ? `${plural(found.locations.length, "use")} of ${at.name} · j/k walk them, Enter opens one` : found.why, found.served ? "" : "warn");
+  if (found.locations.length > 0 && !d.state.narrow) {
+    d.set({ ctxCur: 0 });
+    d.focusWin("context");
+  }
+}
+
+/**
+ * Show a place a language server named, read-only, in the window the cursor
+ * is in: one of the review's own files as the side the question came from,
+ * otherwise the file as it stands in the review's checkout. Where the window
+ * stood is kept, so `Ctrl+o` comes back to it.
+ */
+export async function openLocation(d: Dashboard, from: CodeAt, location: CodeLocation): Promise<void> {
+  const pane = d.state.pane;
+  const owner = d.state.sel.key;
+  const own = from.source.review === "" ? undefined : d.current()?.detail?.files.find((file) => file.path === location.path);
+  const side = own === undefined ? from.source.side : own[from.source.side] !== null ? from.source.side : own.after !== null ? "after" : "before";
+  const ownText = own === undefined ? null : own[side];
+  let source: CodeSource;
+  let text: string;
+  if (ownText !== null) {
+    source = { ...from.source, path: location.path, side };
+    text = ownText;
+  } else {
+    source = { review: "", side: "after", checkout: from.source.checkout, path: location.path };
+    try {
+      text = (await readCode(source, d.state.access.token)).text;
+    } catch (failure) {
+      d.say(`E: ${location.path} could not be read: ${failed(failure)}`, "err");
+      return;
+    }
+  }
+  const peek: Peek = { owner, source, text, name: from.name, line: location.line, column: location.column };
+  d.set((state) => {
+    const jumps: PageState["jumps"] = [state.jumps[0], state.jumps[1]];
+    jumps[pane] = [...state.jumps[pane], { peek: d.peek(pane, state), cur: state.editor[pane].cur, want: state.editor[pane].want }];
+    const peeks: PageState["peeks"] = [state.peeks[0], state.peeks[1]];
+    peeks[pane] = peek;
+    return { peeks, jumps, float: null, focus: "editor" };
+  });
+  d.askSemantic(source, text);
+  placeCursor(d, pane, location.line - 1, location.column, "center");
+  d.say(`${from.name} · ${basename(location.path)}:${location.line} · Ctrl+o comes back`);
+}
+
+/** `Ctrl+o`: back to where the window stood before its last jump. */
+export function jumpBack(d: Dashboard): void {
+  const pane = d.state.pane;
+  const jump = d.state.jumps[pane].at(-1);
+  if (jump === undefined) { d.say("nothing to go back to: gd and a reference jump, Ctrl+o comes back"); return; }
+  d.set((state) => {
+    const jumps: PageState["jumps"] = [state.jumps[0], state.jumps[1]];
+    jumps[pane] = state.jumps[pane].slice(0, -1);
+    const peeks: PageState["peeks"] = [state.peeks[0], state.peeks[1]];
+    peeks[pane] = jump.peek;
+    return { peeks, jumps };
+  });
+  placeCursor(d, pane, jump.cur, jump.want, "center");
 }
 
 /** `Esc` in Normal mode: close the top float, cancel visual mode or a sequence, or go back to the editor. */
@@ -790,10 +943,11 @@ export function escape(d: Dashboard): void {
   if (state.focus === "context" || state.focus === "queue") d.focusWin("editor");
 }
 
-/** `q`: close the top float, then the split. */
+/** `q`: close the top float, then go back from a definition, then close the split. */
 export function quit(d: Dashboard): void {
   const state = d.state;
   if (state.float !== null) { d.set({ float: null }); return; }
+  if (d.peek(state.pane) !== null) { jumpBack(d); return; }
   if (state.split !== "") { split(d, ""); return; }
   d.say("E: this page has no window to quit; close the tab to leave it");
 }

@@ -43,6 +43,7 @@ from lup.devtools.report.models import (
     ReportPart,
     ReportTopic,
 )
+from lup.policy.kernel.diagnostic import devtools, spelled
 from lup.resolver.state import live_lease_branches
 
 parser = MarkdownIt()
@@ -109,18 +110,19 @@ def drift_items(
     told which file is behind instead of being sent to look for it.
     """
     verdict = inspect_drift(compositions, writers)
+    regenerate = spelled(devtools("harness", "generate", "all"))
     return [
         *[
             ReportItem(
                 where=report.target,
-                what="generated tree is stale — `lup-devtools harness generate all`",
+                what=f"generated tree is stale — `{regenerate}`",
             )
             for report in verdict.stale_trees
         ],
         *[
             ReportItem(
                 where="repository artifacts",
-                what=f"{message} — `lup-devtools harness generate all`",
+                what=f"{message} — `{regenerate}`",
             )
             for message in verdict.stale_repository
         ],

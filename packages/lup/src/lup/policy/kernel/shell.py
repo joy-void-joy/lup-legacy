@@ -11,12 +11,14 @@ from .decision import (
     KernelDecision,
     RELAY_HINT,
     RESHAPE_HINT,
+    SCRIPT_RECOVERY,
     SUBSTITUTION_SENTINEL,
     joined_decision,
     judged_command,
     recovery_dischargeable,
     unjudged,
 )
+from .diagnostic import step
 from .settlement import SettlementFacts, settle
 from .rows import (
     AcceptanceGuardRow,
@@ -450,8 +452,9 @@ def decide_find_words(
         if word in ("-ok", "-okdir"):
             return KernelDecision(
                 "deny",
-                "find -ok waits for an answer on a terminal nobody is at",
-                recovery="Use -exec instead.",
+                "waits for an answer on a terminal nobody is at",
+                recovery=(step("use `-exec` instead"),),
+                subject=f"find {word}",
             )
         if word in ("-exec", "-execdir"):
             terminator = next(
@@ -513,8 +516,10 @@ def decide_xargs_words(
             "deny",
             "an xargs option this policy does not read could take the next word"
             " as its value, so the command xargs runs is unread",
-            recovery="Spell xargs's options as `xargs --help` lists them, or"
-            " attach an option's value (`-n1`, `--max-procs=4`).",
+            recovery=(
+                step("spell xargs's options as `xargs --help` lists them"),
+                step("or attach an option's value to it: `-n1`, `--max-procs=4`"),
+            ),
         )
     if not payload:
         return unjudged("xargs payload is not classified")
@@ -537,12 +542,17 @@ def decide_xargs_words(
         return verdict
     return KernelDecision(
         "ask",
-        f"xargs hands `{' '.join(payload)}` operands read from its input, so"
-        " what it changes is named nowhere in the command",
+        "hands it operands read from its input, so what it changes is named"
+        " nowhere in the command",
         checkpoint="unrecoverable",
         purpose="unrecovered_local_mutation",
-        recovery="Name the files in the command, or loop over a literal list"
-        " of them, so each one can be judged.",
+        recovery=(
+            step(
+                "name the files in the command, or loop over a literal list of"
+                " them, so each one can be judged"
+            ),
+        ),
+        subject=f"xargs {' '.join(payload)}",
     )
 
 
@@ -575,10 +585,15 @@ def decide_env_words(
     if payload is None:
         return KernelDecision(
             "deny",
-            "`env -S` re-splits the rest of the line by its own quoting rules,"
-            " so what it runs cannot be read here",
-            recovery="Write the command without `-S`, so the words that run"
-            " are the words in the command line.",
+            "re-splits the rest of the line by its own quoting rules, so what"
+            " it runs cannot be read here",
+            recovery=(
+                step(
+                    "write the command without `-S`, so the words that run are the"
+                    " words in the command line"
+                ),
+            ),
+            subject="env -S",
         )
     if not payload:
         return environment_dump()
@@ -591,7 +606,7 @@ def decide_env_words(
         if not moved or opaque_argument(moved) or expands(moved):
             return unjudged(
                 "`env -C` runs its command in a directory only the run resolves"
-            ).advising("Spell the directory literally, or `cd` there first.")
+            ).advising((step("spell the directory literally, or `cd` there first"),))
         here = joined_directory(here, moved)
     return decide_shell_segment(words[reading["payload"] :], context, here)
 
@@ -618,8 +633,12 @@ def decide_time_words(
         f"time writes its report into {', '.join(written)}, a file no"
         " redirection names, so nothing judged the write",
         purpose="unrecovered_local_mutation",
-        recovery="Redirect the report instead -- `{ time <command>; } 2> <file>`"
-        " -- so the file is judged as any redirection's is.",
+        recovery=(
+            step(
+                "redirect the report instead, so the file is judged as any"
+                " redirection's is: `{ time <command>; } 2> <file>`"
+            ),
+        ),
     )
     payload = words[reading["payload"] :]
     if not payload:
@@ -634,7 +653,7 @@ def environment_dump() -> KernelDecision:
         "deny",
         "the whole environment is a credential store, and printing it writes"
         " every secret in it into this transcript",
-        recovery="Name the variables you want: `printenv <NAME>`.",
+        recovery=(step("name the variables you want", ["printenv", "<NAME>"]),),
     )
 
 
@@ -697,11 +716,9 @@ def decide_interpreter_words(
         return KernelDecision("allow", "native-managed skill script")
     return KernelDecision(
         "deny",
-        f"{executable}: a bare interpreter or inline code leaves nothing"
-        " behind to review",
-        recovery="Write the code to a named script file and run it through"
-        " `uv run python <script>`; a bare interpreter is refused even"
-        " over a file.",
+        "a bare interpreter or inline code leaves nothing behind to review",
+        recovery=SCRIPT_RECOVERY,
+        subject=executable,
         # A subcommand is the tool's own, and reads its own `--help`.
         rule="" if reading["kind"] == "subcommand" else PROGRAM_RULE,
     )
@@ -804,10 +821,15 @@ def decide_segment_words(
     if executable.startswith("-"):
         return KernelDecision(
             "deny",
-            f"{executable!r} is an option rather than a command, so what this"
-            " would run was never read",
-            recovery="Write the command without the wrapper, or name the"
-            " wrapper's options so the command after them can be read.",
+            "is an option rather than a command, so what this would run was never read",
+            recovery=(
+                step("write the command without the wrapper"),
+                step(
+                    "or name the wrapper's options, so the command after them can"
+                    " be read"
+                ),
+            ),
+            subject=executable,
         )
     if executable in INTERPRETERS:
         interpreted = decide_interpreter_words(words, context)
@@ -1158,7 +1180,9 @@ def decide_shell_segment(
     return objection_or_floor(
         unjudged(
             "this segment names a file from a directory a `cd` left unreadable"
-        ).advising("Spell the path in full, or run the command in its own call."),
+        ).advising(
+            (step("spell the path in full, or run the command in its own call"),)
+        ),
         (verdict,),
     )
 
@@ -1212,7 +1236,7 @@ def decide_placed_words(
         # delete.
         floor = unjudged(
             "a command substitution result could become a guarded flag"
-        ).advising("Run it in its own call and splice the literal output.")
+        ).advising((step("run it in its own call and use its output as written"),))
         spelled = decide_segment_words(words, context, directory, operands_judged)
         return strictest_reading(
             objection_or_floor(floor, (spelled,)),
@@ -1363,10 +1387,17 @@ def gate_references(
             return standing_interpreter_refusal(effective, context) or unjudged(
                 "an opaquely bound variable could become a guarded flag"
             ).advising(
-                "Run what computes the value in its own call and write the"
-                " literal it printed into this one, or do the whole computation"
-                " in a script file (`uv run python tmp/<name>.py`), which is read"
-                " as the file it is."
+                (
+                    step(
+                        "run what computes the value in its own call, and write the"
+                        " literal it printed into this one"
+                    ),
+                    step(
+                        "or do the whole computation in a script file, which is read"
+                        " as the file it is",
+                        ["uv", "run", "python", "tmp/<name>.py"],
+                    ),
+                )
             )
     return None
 
@@ -1933,7 +1964,11 @@ def decide_shell(
     reading = read_escalation(command)
     if reading.refusal:
         return KernelDecision(
-            "deny", reading.refusal, cause="deliberate", hard=True, recovery=hint
+            "deny",
+            reading.refusal,
+            cause="deliberate",
+            hard=True,
+            recovery=reading.recovery or hint,
         )
     return settle(
         SettlementFacts(

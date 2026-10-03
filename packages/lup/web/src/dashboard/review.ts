@@ -331,6 +331,7 @@ export type Row = { i: number; key: string; jg?: boolean } & (
   | { t: "earlier"; repository: string; before: number }
   | { t: "verb"; command: string; what: string; server: string }
   | { t: "post"; post: import("./threads").Post; answered: import("./threads").Post | null; unread: boolean }
+  | { t: "code"; n: number; text: string }
 );
 
 export type RowOf<T extends Row["t"]> = Extract<Row, { t: T }>;
@@ -574,7 +575,15 @@ export function rowText(row: Row): string {
     case "earlier": return "Load earlier messages";
     case "verb": return `${row.command} ${row.what}`;
     case "post": return `${row.post.sender} ${row.post.text}`;
+    case "code": return row.text;
   }
+}
+
+/** A document a window shows read-only after `gd`, as rows: one a line, numbered from one. */
+export function codeBuffer(text: string): Buffer {
+  const out = new Rows();
+  text.replace(/\n$/, "").split("\n").forEach((line, at) => out.push({ t: "code", key: `code:${at + 1}`, n: at + 1, text: line }));
+  return out.buffer();
 }
 
 /** The row a change or step move `{`/`}` stops at: a hunk, a file, a step, or the first changed line after unchanged ones. */

@@ -81,13 +81,16 @@ TRUST_FIELD = "hasTrustDialogAccepted"
 """The field a project entry carries once its workspace has been trusted."""
 
 CLAUDE_HOME_LAYOUT = SessionHomeLayout(
-    private_files=[CLAUDE_LEGACY_DOCUMENT, CLAUDE_HOME_DOCUMENT, CLAUDE_OAUTH_DOCUMENT]
+    private_files=[CLAUDE_LEGACY_DOCUMENT, CLAUDE_HOME_DOCUMENT, CLAUDE_OAUTH_DOCUMENT],
+    login=CLAUDE_LOGIN,
 )
 """Claude keeps one document, which a startup rewrites, under any of these names.
 
 Every one of them is private: a derived home linking any back to the shared
 home would hand its sessions the shared document again, and a linked legacy
-one would be read ahead of the home's own."""
+one would be read ahead of the home's own. The login is the home's own too, a
+copy of the profile's: Claude replaces ``.credentials.json`` by rename at
+every refresh, which a link does not survive."""
 
 
 class ClaudeConfigUnreadable(RuntimeError):

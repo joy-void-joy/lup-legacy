@@ -31,7 +31,9 @@ from lup.coordination.bare.runtime import Runtime, runtime_of, stdin_runtime
 from lup.coordination.identity import MemberEnv, session_cli_name
 from lup.coordination.repository import runtime_member
 from lup.coordination.wake import WakePath
+from lup.diagnostics import refuse
 from lup.observability.metrics import configure_metrics, open_metrics_sink
+from lup.policy.kernel.diagnostic import step
 from lup.orchestration.reflection import ReviewGate
 from lup.providers.identity import native_session_id, native_wake
 from lup.tools.mcp import serve_stdio
@@ -226,13 +228,12 @@ def serve_command(
     )
     resolved = resolved_needs(session, runtime)
     if resolved is None:
-        typer.echo(
-            "no session context and no --session name, so there is nothing to "
-            "serve: an adapter relays a session in the environment and a native "
-            "runtime names one on the command line",
-            err=True,
+        refuse(
+            "no session context is relayed and no --session name is given, so "
+            "there is nothing to serve: an adapter relays a session in the "
+            "environment and a native runtime names one on the command line",
+            steps=[step("name the session to open with --session <name>")],
         )
-        raise typer.Exit(1)
     if needs is not None:
         hook = TypeAdapter(ImportString[NeedsHook]).validate_python(needs)
         resolved = hook(resolved, runtime)

@@ -26,7 +26,12 @@ from lup.harness.devices import Device
 from lup.harness.environment import inherited
 from lup.providers.login import ProviderLogin
 from lup.providers.user_config import UserConfig, UserConfigFile
-from lup.launch.config_volume import HomeSeedPlaces
+from lup.launch.config_volume import (
+    HandedLogin,
+    HomeSeedPlaces,
+    LoginOwner,
+    SessionsMove,
+)
 from lup.launch.container import contained_argv, held_lease, state_volume_name
 from lup.coordination.identity import MEMBER_ENV, NAME_ENV, LaunchedMember
 from lup.coordination.repository import RepositoryPeers, launched_member
@@ -625,7 +630,13 @@ def report_inside_requirements(
         requirements,
         root,
         editor_rendezvous(login),
-        credential if credential.exists() else None,
+        # A probe checks what a session would find, so where sessions running
+        # on the volume use another account's login it keeps theirs.
+        HandedLogin(
+            credential=credential, owner=LoginOwner(home=config_home), moving="keep"
+        )
+        if credential.exists()
+        else None,
         login,
         streams="captured",
         banner=banner,
@@ -837,8 +848,16 @@ def session_argv(
     memory: MemoryLimit | None = None,
     trees: Sequence[Path] = (),
     overlays: Mapping[Path, str] | None = None,
+    owner: LoginOwner | None = None,
+    moving: SessionsMove = "refuse",
 ) -> list[str]:
     """The argv that opens a session, inside the declared container or on the host.
+
+    ``owner`` is the account a contained session's login is handed to its
+    repository's volume as, its profile named where one is selected, and
+    ``config_home`` itself where none is given. ``moving`` is what the launch
+    does where that handoff would move the sessions running on the volume, as
+    :data:`~lup.launch.config_volume.SessionsMove` says.
 
     One place decides this for both runtimes, because "contained unless the
     operator said otherwise, or the host has no engine to contain it" is a
@@ -971,7 +990,13 @@ def session_argv(
         requirements,
         root,
         editor_rendezvous(login),
-        credential if credential.exists() else None,
+        HandedLogin(
+            credential=credential,
+            owner=owner if owner is not None else LoginOwner(home=config_home),
+            moving=moving,
+        )
+        if credential.exists()
+        else None,
         login,
         inherited_environment=[
             # By name, so the value crosses out of this process's environment

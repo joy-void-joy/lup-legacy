@@ -40,7 +40,7 @@ from pathlib import Path
 from pydantic import BaseModel, computed_field
 
 from lup.channels.models import Door, utc_now
-from lup.coordination.bare import store
+from lup.coordination.bare import holds, store
 from lup.coordination.bare.runtime import Runtime
 from lup.coordination.cohort import ActorCohort
 from lup.coordination.identity import (
@@ -189,6 +189,15 @@ class PeerView(BaseModel, frozen=True):
     have to itself — and a reader about to write needs the second only when it
     is not empty. A contested claim appears on both sessions' rows, which is
     the honest rendering of a path two members' own files both claim.
+    """
+
+    held: list[str] = []
+    """What keeps this member's next tool call waiting, in each hold's own words.
+
+    "paused by the operator" where the operator paused it -- itself, its
+    session, or the whole repository -- and what a budget says where one
+    holds it. Empty for a member nothing holds. A held member is told
+    nothing and woken by nothing: a message to it waits until it is let go.
     """
 
     subagents: list["PeerView"] = []
@@ -555,6 +564,14 @@ class RepositoryPeers:
                 cli_name=names.get(member.actor.id, ""),
                 holding=[claim.subject() for claim in held],
                 contested=[claim.subject() for claim in held if len(claim.holders) > 1],
+                held=[
+                    store.text(hold.get("said"))
+                    for hold in holds.covering(
+                        self.root, member.actor.id, member.parent
+                    )
+                ]
+                if member.running
+                else [],
             )
 
         return [row(member) for member in self.present() if told(member)]
@@ -656,6 +673,10 @@ class RepositoryPeers:
         retired = store.swept(self.root, moment, self.pulse.stale_after_seconds)
         for leftover in self.leftovers():
             cleared(leftover)
+        # A hold outlives nothing it names: one whose member left, or whose
+        # moment passed, holds nobody, and a held call whose member left
+        # waits for nobody.
+        holds.swept(self.root, moment)
         return [folded_member(member) for member in retired]
 
     def leftovers(self) -> list[Path]:

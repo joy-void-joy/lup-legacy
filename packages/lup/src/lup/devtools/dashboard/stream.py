@@ -30,6 +30,7 @@ from uuid import uuid4
 
 from pydantic import BaseModel, Field, ValidationError
 
+from lup.devtools.dashboard.budget import BudgetView
 from lup.devtools.dashboard.companion import KnownRepository
 from lup.devtools.dashboard.keys import KeyBindings
 from lup.devtools.dashboard.live import (
@@ -100,6 +101,9 @@ class SnapshotEvent(StreamEvent, frozen=True):
     keys: KeyBindings = KeyBindings()
     """The person's own keys in effect, and what their table refused."""
 
+    budget: BudgetView = BudgetView()
+    """Each account's meter and each agent's spend, where this server governs a budget."""
+
     def moves(self, state: "LiveState") -> None:
         """Nothing: a snapshot is read off the state, never applied to it."""
         del state
@@ -141,6 +145,16 @@ class KeysEvent(StreamEvent, frozen=True):
 
     def moves(self, state: "LiveState") -> None:
         state.keys = self.keys
+
+
+class BudgetEvent(StreamEvent, frozen=True):
+    """The budget moved: an account's windows, an agent's spend or limits, a hold, the turtle."""
+
+    type: Literal["budget"] = "budget"
+    budget: BudgetView
+
+    def moves(self, state: "LiveState") -> None:
+        state.budget = self.budget
 
 
 class ServiceEvent(StreamEvent, frozen=True):
@@ -257,7 +271,8 @@ type DashboardEvent = Annotated[
     | ServiceEvent
     | UserEvent
     | TranscriptEvent
-    | KeysEvent,
+    | KeysEvent
+    | BudgetEvent,
     Field(discriminator="type"),
 ]
 """Everything one frame of the stream can carry, told apart by its ``type``."""
@@ -359,6 +374,7 @@ class Observation(BaseModel, frozen=True):
     transcripts: list[TranscriptEvent] = []
     """What each followed transcript recorded since the last look."""
     keys: KeyBindings = KeyBindings()
+    budget: BudgetView = BudgetView()
 
 
 class LiveState:
@@ -382,6 +398,7 @@ class LiveState:
         self.history = 0
         self.code = RunningCode()
         self.keys = KeyBindings()
+        self.budget = BudgetView()
 
     def observed(self, seen: Observation) -> list[DashboardEvent]:
         """Every difference between what the sources say and this state, applied to it."""
@@ -418,6 +435,7 @@ class LiveState:
             ],
             *seen.transcripts,
             *([KeysEvent(keys=seen.keys)] if seen.keys != self.keys else []),
+            *([BudgetEvent(budget=seen.budget)] if seen.budget != self.budget else []),
         ]
         for event in events:
             event.moves(self)
@@ -491,6 +509,7 @@ class LiveState:
             users=list(self.users.values()),
             served=list(self.served),
             keys=self.keys,
+            budget=self.budget,
         )
 
 
@@ -520,8 +539,10 @@ class LiveFeed:
         code: Callable[[], RunningCode] = RunningCode,
         lease: float = FOLLOW_SECONDS,
         keys: Callable[[], KeyBindings] = KeyBindings,
+        budget: Callable[[], BudgetView] = BudgetView,
     ) -> None:
         self.repositories = repositories
+        self.budget = budget
         self.reviews = reviews
         self.code = code
         self.keys = keys
@@ -552,9 +573,13 @@ class LiveFeed:
         """Say on every whole state a tab is handed that this dashboard serves *features*.
 
         Called by what registers the routes serving them, so a page is told
-        of a piece of supervision exactly where a route answers for it.
+        of a piece of supervision exactly where a route answers for it; each
+        call adds to what earlier ones said.
         """
-        self.state.served = features
+        added: tuple[Feature, ...] = tuple(
+            each for each in features if each not in self.state.served
+        )
+        self.state.served = (*self.state.served, *added)
 
     def cursor(self) -> str:
         """Where this dashboard's numbering stands now, spelled for a tab to send back."""
@@ -590,6 +615,7 @@ class LiveFeed:
             users=[watch.user(now) for watch in self.watches.values()],
             transcripts=self.transcribed(now),
             keys=self.keys(),
+            budget=self.budget(),
         )
 
     def follow_transcripts(

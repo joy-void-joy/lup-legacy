@@ -54,6 +54,12 @@ from lup.harness.requirements import Manifest, Package, PackageManager
 from lup.harness.terminal import TerminalHandoff
 from lup.types import EnvVars, JsonObject
 
+# lup: ignore[constant-declaration] — an identity this repository defines: the
+# image installs the program here, and its entrypoint and a launch's helper
+# container both run it from here
+CREDENTIAL_SEED_PROGRAM = "/opt/lup/credential-seed.py"
+"""Where the image installs the program applying a host login to a config home."""
+
 
 class CacheVolume(BaseModel, frozen=True):
     """A directory whose contents outlive the container that filled it.
@@ -1042,7 +1048,7 @@ fi
 # A selected host login is applied once per change. Native renewal remains
 # container-private, and unrelated records in a shared credential file survive.
 if [ -n "${{LUP_CREDENTIAL_NAME:-}}" ]; then
-  python3 /opt/lup/credential-seed.py {self.credential_seed} "$config/$LUP_CREDENTIAL_NAME" \\
+  python3 {CREDENTIAL_SEED_PROGRAM} {self.credential_seed} "$config/$LUP_CREDENTIAL_NAME" \\
     --keys "${{LUP_CREDENTIAL_KEYS:-[]}}" --renewable "${{LUP_CREDENTIAL_RENEWABLE:-}}"
 fi
 # The person's settings, handed over at every start rather than once: a file
@@ -1218,7 +1224,7 @@ COPY <<'ENTRY' /usr/local/bin/lup-entrypoint
 {entrypoint}ENTRY
 ENTRYPOINT ["/usr/local/bin/lup-entrypoint"]
 
-COPY <<'CREDENTIAL' /opt/lup/credential-seed.py
+COPY <<'CREDENTIAL' {CREDENTIAL_SEED_PROGRAM}
 {seeding}
 CREDENTIAL
 COPY <<'HOMESEED' /opt/lup/home-seed.py

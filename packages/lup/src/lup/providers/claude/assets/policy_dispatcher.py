@@ -32,6 +32,7 @@ sys.path.insert(0, str(Path(__file__).parents[1] / "runtime"))
 from decisions import (
     bash_decision,
     dashboard_held,
+    held_refusal,
     edit_decision,
     claim_window_closed,
     claim_window_opened,
@@ -63,6 +64,7 @@ from host import (
     boundary_account,
     closed_deadline,
     declared_identity,
+    hook_started,
     note_ran,
     observe_hook_call,
     opened_deadline,
@@ -71,12 +73,14 @@ from host import (
     record_hook_evidence,
     sandbox_active,
     unjudged_reason,
-    unjudged_recovery,
+    ran_out,
     words_before,
 )
 from kernel.rows import PostToolReport
 from kernel.review import Said
 from kernel.decision import KernelDecision, sandbox_escaped
+from kernel.decision import unjudged_recovery
+from kernel.diagnostic import Step, devtools, spelled, stated, step
 from caller_payload import caller_of, spoken, transcript_of
 from policy_data import (
     AGENT_IDENTITY_ENV,
@@ -274,23 +278,34 @@ def waiting(command, payload):
     """
     if "agent_id" in payload:
         return (
-            f"Carry on with other work, and hold `{command} --timeout 7140` in the "
-            "background (run_in_background, with the longest timeout the tool "
-            "takes, 7200000 ms): nothing else wakes a subagent, and it wakes you "
-            "with the result. If it ends with the review still waiting, start it "
-            "again quietly, reporting that to nobody."
+            step(
+                "carry on with other work, and hold this in the background"
+                " (run_in_background, with the longest timeout the tool takes,"
+                " 7200000 ms): nothing else wakes a subagent, and it wakes you"
+                " with the result",
+                [*command, "--timeout", "7140"],
+            ),
+            step(
+                "if it ends with the review still waiting, start it again"
+                " quietly, reporting that to nobody"
+            ),
         )
     if declared_identity("CLAUDE_CODE_ENTRYPOINT") == "cli":
         return (
-            "Carry on with other work, or end your turn: the operator's answer "
-            f"wakes this session, and `{command}` then carries the call out at "
-            "once. Don't start a waiter."
+            step(
+                "carry on with other work, or end your turn: the operator's answer"
+                " wakes this session, so don't start a waiter"
+            ),
+            step("once it wakes you, carry the call out at once", command),
         )
     return (
-        "Carry on with other work. This run ends with its last turn and nothing "
-        "wakes it after, so once nothing else is left, run "
-        f"`{command} --timeout 540` in the foreground (the longest timeout the "
-        "tool takes there, 600000 ms), again each time it ends still waiting."
+        step(
+            "carry on with other work; this run ends with its last turn and"
+            " nothing wakes it after, so once nothing else is left, run this in"
+            " the foreground (the longest timeout the tool takes there, 600000"
+            " ms), again each time it ends still waiting",
+            [*command, "--timeout", "540"],
+        ),
     )
 
 
@@ -571,7 +586,7 @@ def rendered(decision, payload, placed, attached):
     )
     # The prompt is the approver's, so a question's recovery rides beside it
     # as the agent's context; a refusal reaches only the agent and says both.
-    beside = settled.recovery if settled.effect == "ask" else ""
+    beside = settled.beside() if settled.effect == "ask" else ""
     context = "\n\n".join(text for text in (attached, beside) if text)
 
     def carried(result):
@@ -610,13 +625,13 @@ def rendered(decision, payload, placed, attached):
         "hookEventName": "PreToolUse",
         "permissionDecision": settled.effect,
         "permissionDecisionReason": (
-            settled.addressed() if settled.effect == "deny" else settled.reason
+            settled.addressed() if settled.effect == "deny" else settled.headline()
         ),
     }
 
     def surfaced(result):
         """The same verdict, with what this runtime will not show it said."""
-        message = announced(settled.effect, payload["tool_name"], settled.reason)
+        message = announced(settled.effect, payload["tool_name"], settled.headline())
         return carried({**result, "systemMessage": message} if message else result)
 
     if placed is not None and settled.effect != "deny":
@@ -756,7 +771,7 @@ def unjudged_answer(event, error, read):
         failure = error if error is not None else "it did not finish in time"
         return {"decision": "block", "reason": f"Lup post-tool check failed: {failure}"}
     refusal = KernelDecision(
-        "deny", unjudged_reason(error, read), recovery=unjudged_recovery(error)
+        "deny", unjudged_reason(error, read), recovery=unjudged_recovery(ran_out(error))
     )
     return {
         "hookSpecificOutput": {
@@ -778,6 +793,62 @@ def unanswered(given, error):
         unjudged_answer(payload["hook_event_name"] if named else "", error, True),
         sys.stdout,
     )
+
+
+def held(given):
+    """Keep a call waiting while a hold covers its caller, before anything judges it.
+
+    Only a call about to run is held; the event watching one that ran has
+    nothing left to hold. True where the call was refused here -- still held
+    at the hold's limit, in the hold's own words, as a refusal this runtime
+    shows the agent -- False where a hold kept it waiting and then let it go
+    to be judged, and None where nothing held it or no hold reaches its
+    event. Input nothing can read is let go to the judgement, which refuses
+    it in its own words.
+
+    A hold this cannot read is let go to the judgement too, which meets the
+    same failure and refuses in its own words, or judges the call at once.
+    The call is not let through unheld for it: the hold hook registered
+    beside this one for every tool holds it as well, and refuses wherever it
+    cannot tell. What this adds is only that a held call is judged when let
+    go, not when it was made.
+    """
+    try:
+        payload = json.loads(given)
+    except ValueError:
+        return None
+    return held_input(payload) if isinstance(payload, dict) else None
+
+
+def held_input(payload):
+    """The hold of one decoded hook input, as :func:`held` answers it."""
+    if "hook_event_name" not in payload or payload["hook_event_name"] != "PreToolUse":
+        return None
+    try:
+        refused = held_refusal(
+            payload["tool_name"] if "tool_name" in payload else "",
+            payload["tool_use_id"] if "tool_use_id" in payload else "",
+            session_root(payload),
+            lambda: caller_of(payload),
+            hook_started(),
+        )
+    except Exception:
+        return None
+    if refused is None:
+        return None
+    if not refused:
+        return False
+    json.dump(
+        {
+            "hookSpecificOutput": {
+                "hookEventName": "PreToolUse",
+                "permissionDecision": "deny",
+                "permissionDecisionReason": refused,
+            }
+        },
+        sys.stdout,
+    )
+    return True
 
 
 def judged(given):

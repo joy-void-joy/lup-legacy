@@ -45,6 +45,7 @@ from lup.channels.models import write_atomic
 from lup.harness.models import NativeName
 from lup.launch.declaration import OuterContainer
 from lup.providers.claude.theme import ClaudeTheme
+from lup.sessions.limits import BudgetConfig
 from lup.types import JsonObject, JsonValue, ModelTier, SessionEffort
 from lup.workspace.user_directories import UserDirectories
 
@@ -177,6 +178,13 @@ class UserConfig(BaseModel, frozen=True, extra="forbid"):
     cleanup: UserCleanup = UserCleanup()
 
     dashboard: UserDashboard = UserDashboard()
+
+    budget: BudgetConfig = BudgetConfig()
+    """``[budget]``: how much of each account's windows agents may spend and
+    how fast — a speed limit, a reserve kept for the operator, how many agents
+    work at once — per account and by time of day, and the slower set the
+    turtle toggle puts in place. The dashboard holds a launched agent over a
+    limit at its next tool call, and lets it go once the limit allows."""
 
     container: OuterContainer = OuterContainer()
     """``[container]``: what every contained session this person launches is

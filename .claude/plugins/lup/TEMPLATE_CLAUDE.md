@@ -575,9 +575,8 @@ the local Lup plugin and the active profile's account (`CLAUDE_CONFIG_DIR`).
 `lup-devtools dev usage codex` reports the other backend's. Accounts, the
 theme and the default tier and effort are the person's, kept once in
 `~/.config/lup/` (`$XDG_CONFIG_HOME/lup`) for every repository: profiles as
-directories under `profiles/`, curated with either `lup-devtools harness
-profile` or `lup-devtools setup profile` — the same roster through both — and
-the rest in `config.toml`.
+directories under `profiles/`, curated with `lup-devtools harness profile`,
+and the rest in `config.toml`.
 
 Each repo names its plugin **marketplace** after the project — the plugin entry stays `lup`, so `/lup:*` is identical everywhere. Marketplace names share one global namespace (`~/.claude/plugins/known_marketplaces.json`), so a shared name like `lup`/`local` collides across repos and an install from one shadows the others; `lup-devtools dev plugin name` (run by `/lup:init` and `/lup:install`) wires the per-project name.
 

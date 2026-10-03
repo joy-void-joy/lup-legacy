@@ -30,6 +30,7 @@ was the friction the reading exists to spare.
 """
 
 from .decision import KernelDecision
+from .diagnostic import Step, diagnostic, rendered, step
 from .rows import SpawnNameRow
 from .tools import TOOL_ESCALATE_HINT, escalated_reason
 
@@ -97,7 +98,7 @@ def spawn_name(given: str, description: str, row: SpawnNameRow | None) -> str:
     return normalized(given) or normalized(description)
 
 
-def passing(field: str, row: SpawnNameRow) -> str:
+def passing(field: str, row: SpawnNameRow) -> tuple[Step, ...]:
     """How a caller passes a name, opening with the key it goes under.
 
     ``field`` is the key the runtime reads the name from, passed by the host
@@ -109,9 +110,12 @@ def passing(field: str, row: SpawnNameRow) -> str:
     makes is the description.
     """
     return (
-        f"pass the name as `{field}` in the same call, beside the agent type"
-        " — the runtime takes that key whether or not the tool schema it showed"
-        f" lists it: {row['recovery']}"
+        step(
+            f"pass the name as `{field}` in the same call, beside the agent type;"
+            " the runtime takes that key whether or not the tool schema it showed"
+            " lists it"
+        ),
+        *row["recovery"],
     )
 
 
@@ -137,9 +141,13 @@ def spawn_notice(
         return ""
     if named != spawn_name("", description, row):
         return ""
-    return (
-        f"{row['notice']}: this one went out as `{named}`, read from its"
-        f" description. Next time, {passing(field, row)}."
+    return rendered(
+        diagnostic(
+            "warning",
+            "went out under the name read from its description",
+            what=named,
+            steps=(step(row["notice"]), *passing(field, row)),
+        )
     )
 
 
@@ -170,5 +178,5 @@ def decide_spawn(
             "ask", f"escalated ({why}): {row['reason']}", recovery=recovery
         )
     return KernelDecision(
-        "deny", row["reason"], recovery=f"{recovery} {TOOL_ESCALATE_HINT}"
+        "deny", row["reason"], recovery=(*recovery, *TOOL_ESCALATE_HINT)
     )

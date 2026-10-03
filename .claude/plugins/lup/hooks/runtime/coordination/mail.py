@@ -83,6 +83,10 @@ class Message(TypedDict, total=False):
     """A wake has put this redirect in front of its reader already; it waits
     only for the hook to refuse the reader's next tool call with it."""
 
+    prompt: bool
+    """A bare prompt the reader's runtime was woken with, as its turn's own
+    words rather than as mail: on the record and never in a mailbox."""
+
 
 class Notice(TypedDict, total=False):
     """One standing fact about this population, true until it is retracted.
@@ -188,6 +192,21 @@ def post(root: Path, recipient: Actor, message: Message) -> bool:
         return False
     recorded(root, Posted(recipient=recipient, message=message))
     return True
+
+
+def prompted(root: Path, recipient: Actor, body: str, door: str = "page") -> bool:
+    """Record one bare prompt a member's runtime was woken with, saying whether it was.
+
+    On the mail record alone, never in a mailbox: the wake carried it as the
+    turn's prompt, so nothing is left for the member's hook to hand over,
+    and a reader of the history sees it as the prompt it was. From the
+    operator, who alone resumes a paused agent.
+    """
+    message = new_message(
+        sender="user", to=text(recipient.get("id")), body=body, door=door
+    )
+    message["prompt"] = True
+    return recorded(root, Posted(recipient=recipient, message=message))
 
 
 def recorded(root: Path, posted: Posted) -> bool:

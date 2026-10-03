@@ -81,8 +81,8 @@ def test_a_refused_checkout_walk_names_the_spellings_that_read_it(
     decision = policy.decide(ShellCommand(command="grep -r token .", cwd=checkout))
 
     assert decision.effect == "deny"
-    assert "`rg token .`" in decision.recovery
-    assert "`grep -r --exclude-dir=.lup token .`" in decision.recovery
+    assert "`rg token .`" in decision.addressed()
+    assert "`grep -r --exclude-dir=.lup token .`" in decision.addressed()
 
 
 @pytest.fixture(params=["claude", "codex"])

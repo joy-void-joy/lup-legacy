@@ -34,6 +34,7 @@ from lup.providers.claude import Claude
 from lup.providers.claude.launch import claude_settings
 from lup.providers.codex.launch import writable_root_arguments
 from lup.devtools.harness.policy_refresh import refresh_destination_policy
+from lup.policy.kernel.diagnostic import devtools, step
 from lup.launch.preflight import (
     NONCE_VARIABLE,
     ROOT_VARIABLE,
@@ -500,9 +501,17 @@ def test_the_library_registration_follows_its_git_pin(
 
     assert sync.find_project("lup").get("url") == pinned
     assert sync.declaring_file("lup", "url").name == "pyproject.toml"
-    assert sync.renaming("lup", "https://forge.example/other/lup") == (
-        "repoint the pin it follows: uv run lup-devtools dev library git "
-        "--url https://forge.example/other/lup --branch dev"
+    assert sync.renaming("lup", "https://forge.example/other/lup") == step(
+        "repoint the pin it follows",
+        devtools(
+            "dev",
+            "library",
+            "git",
+            "--url",
+            "https://forge.example/other/lup",
+            "--branch",
+            "dev",
+        ),
     )
 
 

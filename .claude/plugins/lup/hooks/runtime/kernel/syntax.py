@@ -28,6 +28,7 @@ from .decision import (
     SUBSTITUTION_SENTINEL,
     unjudged,
 )
+from .diagnostic import step
 
 WordPartKind = Literal[
     "literal",
@@ -633,10 +634,14 @@ class ShellLexer:
                 raise ShellSyntaxError(
                     KernelDecision(
                         "deny",
-                        f"the unquoted heredoc <<{delimiter} runs the commands its"
-                        " body substitutes",
-                        recovery=f"Quote the delimiter (<<'{delimiter}') to make the"
-                        " body literal.",
+                        "an unquoted heredoc runs the commands its body substitutes",
+                        recovery=(
+                            step(
+                                f"quote the delimiter, `<<'{delimiter}'`, to make the"
+                                " body literal"
+                            ),
+                        ),
+                        subject=f"<<{delimiter}",
                     )
                 )
             heredoc["body"] = body
