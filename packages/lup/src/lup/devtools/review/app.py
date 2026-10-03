@@ -1260,7 +1260,8 @@ def retire_settled(
     """Move each review settled longer ago than the retention window into the archive.
 
     Worked out from the fold already read, so a checkout with nothing past
-    the window costs nothing more. Each one's summary and thread are worked
+    the window costs nothing more, and from one read of it, so each archived
+    thread holds what that read held. Each one's summary and thread are worked
     out while its documents are still in the store, kept in the archive
     under the relay's lock, and only then dropped from the log, its
     documents with it (:meth:`~lup.policy.relay.QuestionRelay.retire`). At
@@ -1270,17 +1271,19 @@ def retire_settled(
     held = store if store is not None else relay(root)
     moment = now or datetime.now(UTC)
     window = timedelta(days=review_retention_days(root))
+    reading = held.read()
     due = [
         entry
-        for entry in held.questions()
+        for entry in reading.questions
         if at_rest(entry) and moment - entry.since() >= window
     ][:batch]
     if not due:
         return []
     kept_in = archive if archive is not None else ReviewArchive(held)
-    remarks, replies = held.remarks(), held.replies()
+    threads = reading.threads
     archived = [
-        ArchivedReview.of(root, held, entry, remarks, replies, moment) for entry in due
+        ArchivedReview.of(root, held, entry, threads.remarks, threads.replies, moment)
+        for entry in due
     ]
     held.retire([entry.id for entry in due], lambda: kept_in.keep(archived))
     return [entry.id for entry in due]

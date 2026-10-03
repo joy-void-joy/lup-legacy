@@ -116,8 +116,9 @@ class ReviewThread:
         ).reply
 
     def said(self, question: QuestionRecord) -> list[ThreadEntry]:
-        """Everything said on one review, read from this relay and its answers."""
-        return spoken_on(question, self.remarks(), self.replies())
+        """Everything said on one review, from one read of this relay and its answers."""
+        threads = self.relay.threads()
+        return spoken_on(question, threads.remarks, threads.replies)
 
 
 def spoken_on(

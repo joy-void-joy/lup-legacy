@@ -901,6 +901,53 @@ class AnswerFold(BaseModel):
     remarked: dict[str, list[RecordedRemark]] = {}
 
 
+class RelayThreads(BaseModel, frozen=True):
+    """What was said on each of one relay's reviews, from a single read of its log and its answers.
+
+    The operator's remarks are kept in the host's answers and the
+    requesters' replies in the log, so the two are read together: read one
+    at a time, a reply and the remark it answers can fall on either side of
+    a write. Each is what the read made, carried as it is rather than
+    checked again.
+    """
+
+    remarks: SkipValidation[dict[str, list[RecordedRemark]]]
+    """The operator's remarks on each review, by review id, oldest first."""
+
+    replies: SkipValidation[dict[str, list[Reply]]]
+    """The requester's replies on each review, by review id, oldest first."""
+
+    @classmethod
+    def of(cls, fold: QuestionFold, heard: AnswerFold) -> "RelayThreads":
+        """What a relay's two folds hold of each review's thread, copied out of them."""
+        return cls(
+            remarks={question: list(said) for question, said in heard.remarked.items()},
+            replies={
+                question: [each.reply for each in said]
+                for question, said in fold.replied.items()
+            },
+        )
+
+
+class RelayReading(BaseModel, frozen=True):
+    """Every question of one relay and what was said on each, from a single read of its log and its answers.
+
+    The questions and their threads are views of the same two files, so they
+    are read together. Read one at a time, a question parked between them
+    with a reply and a remark on it shows its reply and its remark beside a
+    queue that does not hold it, and an approval appended with a remark
+    leaves the remark on a question still read as waiting. The questions are
+    what the read made, carried as they are rather than checked again, since
+    a cold read of a relay holds thousands.
+    """
+
+    questions: SkipValidation[list[RecordedQuestion]]
+    """Every question, folded forward to its latest state, with the host's answer."""
+
+    threads: RelayThreads
+    """The operator's remarks and the requesters' replies on each review."""
+
+
 class QuestionRelay:
     """The durable store every final ask is written to before anybody sees it.
 
@@ -1064,8 +1111,12 @@ class QuestionRelay:
             finally:
                 self.holder = 0
 
-    def questions(self) -> list[RecordedQuestion]:
-        """Every question, folded forward to its latest state, with the host's answer.
+    def read(self) -> RelayReading:
+        """Every question, remark and reply, from one read of the log and of the host's answers.
+
+        What was appended to either since the last read is folded once, and
+        all three are made from that one fold: a record appended meanwhile
+        reaches all three on the next read, never some of them on this one.
 
         Malformed or unterminated lines remain inert evidence. Appenders
         preserve those bytes and frame later records separately, so a torn
@@ -1075,11 +1126,29 @@ class QuestionRelay:
         """
         with self.reading:
             self.refreshed()
-            return [
-                entry
-                for question in list(self.fold.entries)
-                if (entry := self.settled(question)) is not None
-            ]
+            return RelayReading(
+                questions=[
+                    entry
+                    for question in list(self.fold.entries)
+                    if (entry := self.settled(question)) is not None
+                ],
+                threads=RelayThreads.of(self.fold, self.heard),
+            )
+
+    def questions(self) -> list[RecordedQuestion]:
+        """Every question, folded forward to its latest state, with the host's answer."""
+        return self.read().questions
+
+    def threads(self) -> RelayThreads:
+        """Every remark and reply, from one read of the log and of the host's answers.
+
+        No question is made of the entries the log holds, which a reader of
+        what was said on one review has no use for and a cold relay holds
+        thousands of.
+        """
+        with self.reading:
+            self.refreshed()
+            return RelayThreads.of(self.fold, self.heard)
 
     def recorded(self) -> dict[str, RecordedAnswer]:
         """The operator's answer to each of this relay's reviews, by review id."""
@@ -1093,20 +1162,11 @@ class QuestionRelay:
 
     def remarks(self) -> dict[str, list[RecordedRemark]]:
         """Every remark the operator made on this relay's reviews, by review id, oldest first."""
-        with self.reading:
-            self.refreshed()
-            return {
-                question: list(said) for question, said in self.heard.remarked.items()
-            }
+        return self.threads().remarks
 
     def replies(self) -> dict[str, list[Reply]]:
         """Every reply a requester wrote on this relay's reviews, by review id, oldest first."""
-        with self.reading:
-            self.refreshed()
-            return {
-                question: [each.reply for each in said]
-                for question, said in self.fold.replied.items()
-            }
+        return self.threads().replies
 
     def find(self, question: str) -> RecordedQuestion | None:
         """One question as it stands, reading only what was appended since the last read."""
