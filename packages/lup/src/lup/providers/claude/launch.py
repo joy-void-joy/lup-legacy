@@ -15,9 +15,9 @@ from lup.coordination.repository import launched_member
 from lup.harness.generate import (
     ProjectContent,
     RuntimeReadiness,
-    claude_generation_recipe,
     generate,
 )
+from lup.providers.claude.composition import claude_generation_recipe
 from lup.harness.models import ArtifactTree, CapabilityEvidence, Harness, Resumption
 from lup.harness.requirements import Finding
 from lup.harness.toolchain import bubblewrap_requirement, socat_requirement

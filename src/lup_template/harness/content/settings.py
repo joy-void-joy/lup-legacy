@@ -12,13 +12,17 @@ from collections.abc import Sequence
 
 from lup.harness.models import Plugin
 from lup.mcp import ToolServer
+from lup.providers.claude.harness import ClaudeSpellings
 from lup.types import JsonObject
+
+CLAUDE = ClaudeSpellings()
+"""Where Claude Code keeps what these settings name in its tree."""
 
 DECLARED = Settings(
     base={
         "coauthorship": True,
         "fileSuggestion": {
-            "command": ".claude/plugins/lup/scripts/file_suggest.sh",
+            "command": f"{CLAUDE.plugin('lup', 'root', None)}scripts/file_suggest.sh",
             "type": "command",
         },
     },
@@ -55,7 +59,7 @@ DECLARED = Settings(
         # `discard_changes`, so the grant is trust in that refusal rather
         # than a second gate behind it.
         "ExitWorktree",
-        "Read(./.claude/settings.json.local*)",
+        f"Read(./{CLAUDE.tree('project_settings')}.local*)",
         "Read(./sync.json.local)",
     ],
     # `.env.local` and `.env.<mode>.local` are absent because they are withheld

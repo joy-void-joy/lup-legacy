@@ -182,6 +182,7 @@ def test_a_policy_invariant_produces_the_same_refusal_when_escalated() -> None:
         path_exists=True,
         path_rules=[],
         antipattern_rows=[],
+        plugin_roots=[".claude/plugins"],
     )
 
     assert (refused.effect, refused.hard) == ("deny", True)

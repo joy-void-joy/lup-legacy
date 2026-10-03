@@ -17,7 +17,8 @@ from lup.coordination.identity import member_ref, mint_member_id
 from lup.coordination.repository import RepositoryPeers
 from lup.coordination.roster import Delivery
 from lup.coordination import watch as watching
-from lup.coordination.wake import WakePath, Woken, injected
+from lup.coordination.wake import WakePath, Woken
+from lup.providers.claude.wake import injected
 from lup.coordination.watch import (
     Arrived,
     Departed,

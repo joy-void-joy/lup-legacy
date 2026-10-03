@@ -725,14 +725,17 @@ def test_codex_recipe_registers_semantic_permission_approval() -> None:
     assert artifacts[Path(".codex/plugins/lup/hooks/scripts/policy.sh")].executable
 
 
-def test_the_watching_event_is_registered_for_what_leaves_writes_behind() -> None:
+def test_the_watching_event_is_registered_for_what_leaves_something_to_read() -> None:
     """A narrow matcher, because this event records rather than judges.
 
-    Narrow means *what leaves a write behind*, not *what names a file*. The
-    editing tools and the shell tool both do, and both have a reading
-    afterwards — an edited file to check, a command's result to review and
-    attribute — while a fetch leaves nothing, so sharing the deciding events'
-    registration would spawn the script to find no write at all.
+    Narrow means *what leaves something to read afterwards*, not *what names
+    a file*. The editing tools and the shell tool leave a write — an edited
+    file to check, a command's result to review and attribute — and Claude
+    Code's spawn leaves the name it went out under, whose caller is told
+    once to choose its own when it chose none. A fetch leaves nothing, so
+    sharing the deciding events' registration would spawn the script to find
+    nothing at all. Codex's spawn is not watched: its schema requires the
+    name, so no spawn there goes out under one its caller did not choose.
 
     The shell tool is pinned here because leaving it out fails silently: the
     review of what a command wrote is wired into both dispatchers and
@@ -740,7 +743,7 @@ def test_the_watching_event_is_registered_for_what_leaves_writes_behind() -> Non
     the tools that carry a file path.
     """
     for target, plugin_root, edits in (
-        (claude_target, ".claude", "Edit|Write|Bash"),
+        (claude_target, ".claude", "Edit|Write|Bash|Agent"),
         (codex_target, ".codex", "apply_patch|Bash"),
     ):
         artifacts = {
@@ -2956,7 +2959,7 @@ def test_the_generator_owns_the_proof_it_writes_and_never_lists(
     # lookup names it, or every consumer asking who owns the proof is told
     # "the repository" about the one file materialization always writes.
     assert not [item for item in manifest.files if "ownership" in str(item.path)]
-    owned = generated_artifacts(tmp_path, homes=[".claude"])
+    owned = generated_artifacts(tmp_path, manifests=[".claude/.lup-ownership.json"])
     assert owned.owning(".claude/.lup-ownership.json") is not None
     assert owned.owning("packages/lup/src/lup/harness/ownership.py") is None
 

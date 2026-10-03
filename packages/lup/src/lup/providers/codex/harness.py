@@ -120,6 +120,10 @@ class CodexSpellings(NativeSpellings):
         return Atom("Codex")
 
     @property
+    def plugins_directory(self) -> Atom:
+        return Atom(".codex/plugins/")
+
+    @property
     def protected_tree(self) -> ProtectedRoot:
         return ProtectedRoot(
             path=Path(self.tree("tree_root")),
@@ -341,7 +345,7 @@ class CodexSpellings(NativeSpellings):
                 return Atom(".agents/plugins/marketplace.json")
 
     def plugin(self, plugin: str, location: PluginLocation, member: str | None) -> Atom:
-        root = f".codex/plugins/{plugin}"
+        root = f"{self.plugins_directory}{plugin}"
         match location:
             case "root":
                 return Atom(f"{root}/")
@@ -563,6 +567,9 @@ CODEX_DISPATCHER = DispatcherDeclaration(
     routed_tools=["Bash", "web_fetch", "apply_patch", "collaborationspawn_agent"],
     hook_events=["PermissionRequest", "PreToolUse", "PostToolUse"],
     observation_event="PostToolUse",
+    # No spawn, unlike Claude Code's: 0.159.2 lists `task_name` as required
+    # and refuses a spawn without one before any hook runs, so no spawn here
+    # goes out under a name its caller did not choose, and none needs telling.
     observed_tools=["apply_patch", "Bash"],
     failure="stderr_exit",
     runtime_modules=["caller_payload", "codex_patch", "policy_data"],
@@ -1084,6 +1091,9 @@ class CodexHookRenderer(ArtifactRenderer[HookSet]):
                         unscoped_fetch=source.unscoped_fetch,
                         refused_paths=list(source.refused_paths),
                         secret_variables=list(source.secret_variables),
+                        generated_plugin_roots=[
+                            root.as_posix() for root in source.generated_plugin_roots
+                        ],
                         runner_targets=list(source.runner_targets),
                         sandbox_excluded_commands=source.excluded_commands(),
                         auto_escape_prefixes=codex_allow_prefixes(

@@ -1,0 +1,58 @@
+subjects = [
+    "ADAPTER_HOMES",
+    "generated_artifacts",
+    "claude_generation_recipe",
+    "codex_generation_recipe",
+    "GENERATED_PLUGIN_ROOTS",
+    "is_generated_plugin_target",
+    "NativeSpellings.plugins_directory",
+    "SELF_PATH",
+    "wake",
+    "injected",
+    "queued",
+    "QUEUE_COMMAND",
+]
+reason = """
+`.claude` and `.codex` were spelled by hand outside their adapters, so a \
+third runtime meant a sweep through the library; each adapter now states its \
+tree, its plugin directory and each file in it, and the library reads them \
+off every supported runtime"""
+
+[[steps]]
+instruction = """
+Call `lup.providers.harness.runtime_generated(root)` where you called \
+`lup.harness.ownership.generated_artifacts(root)`, or pass the manifests you \
+mean as `generated_artifacts(root, manifests=[...])`; `ADAPTER_HOMES` is gone."""
+
+[[steps]]
+instruction = """
+Import `claude_generation_recipe` from `lup.providers.claude.composition` and \
+`codex_generation_recipe` from `lup.providers.codex.composition`, in place of \
+`lup.harness.generate`."""
+
+[[steps]]
+instruction = """
+Declare `generated_plugin_roots=runtime_plugin_directories()` \
+(`lup.providers.harness`) on your `HookSet`, beside `*runtime_trees()` in \
+`protected_edit_roots`: the kernel no longer names the runtimes' plugin \
+directories, and a hook set declaring none refuses no hand edit there. A \
+direct call to `decide_shell`, `decide_edit` or `is_generated_plugin_target` \
+takes them as `plugin_roots`."""
+
+[[steps]]
+instruction = """
+Answer `plugins_directory` (where your runtime's plugin trees sit, ending in \
+`/`) and `protected_tree` on your own `NativeSpellings`, and spell `plugin()` \
+under the former."""
+
+[[steps]]
+instruction = """
+Name `lup.devtools.harness.settings.MARKETPLACE_SOURCE` where you named \
+`lup.devtools.dev.plugin.SELF_PATH`."""
+
+[[steps]]
+instruction = """
+Import `wake` from `lup.providers.wake`, `injected` from \
+`lup.providers.claude.wake`, and `queued` and `QUEUE_COMMAND` from \
+`lup.providers.codex.wake`, in place of `lup.coordination.wake`; `WakePath`, \
+`Woken` and `declared_wake` stay where they were."""

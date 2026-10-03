@@ -80,7 +80,7 @@ from host import (
     undo_snapshot,
     worktree_path,
     worktree_root,
-    referral_noted,
+    noted_once,
     file_diagnostics,
     swept_files,
 )
@@ -140,7 +140,7 @@ from kernel.review import Reviewed
 # Its own statement, so the compiled script, which already carries the
 # dispatcher's import of it, drops this one rather than importing it twice.
 from kernel.review import Said
-from kernel.spawns import decide_spawn, spawn_name
+from kernel.spawns import decide_spawn, spawn_name, spawn_notice
 from kernel.words import INTERPRETERS
 from kernel.roles import displaced_targets, sibling_scratch_rows, unscratched
 from kernel.shell import decide_shell, sandbox_excluded, shell_posture_targets
@@ -154,6 +154,7 @@ from kernel.withheld import (
 )
 from policy_data import (
     ACCEPTANCE_GUARD,
+    GENERATED_PLUGIN_ROOTS,
     ALLOWANCE_GRANTS_ENV,
     ALLOWED_FETCH_SCOPES,
     ANTI_PATTERN_ROWS,
@@ -306,6 +307,7 @@ def bash_decision(
         trusted_script_roots=managed_script_roots(managed_root),
         path_roles=[*PATH_ROLES, *sibling_scratch_rows(siblings, PATH_ROLES)],
         path_rules=PATH_RULES,
+        plugin_roots=GENERATED_PLUGIN_ROOTS,
         existing_targets=existing_write_targets(
             [*shell_write_targets(command), *acted_on, *flagged], cwd
         ),
@@ -900,6 +902,32 @@ def spawn_named(name: str, description: str) -> str:
     return spawn_name(name, description, SPAWN_NAMES)
 
 
+def spawn_notice_report(
+    name: str,
+    description: str,
+    field: str,
+    cwd: Path | None,
+    session: str,
+    caller: store.Caller,
+) -> PostToolReport:
+    """What a finished spawn's caller is told about its name, the first time in its conversation.
+
+    The notice teaches a habit rather than correcting one call, so once is
+    what it is worth. Kept per conversation rather than per session, because
+    a subagent spawning one of its own never read what its session was told.
+    Nothing is noted for a spawn the notice is silent about, so a caller who
+    names its spawns never touches the ledger.
+    """
+    notice = spawn_notice(name, description, SPAWN_NAMES, field)
+    said = (
+        bool(notice)
+        and bool(session)
+        and cwd is not None
+        and noted_once(cwd, store.acting_id(session, caller), "spawn names")
+    )
+    return PostToolReport(blocking=[], context=[notice] if notice and not said else [])
+
+
 def peer_listing_attachment(cwd: Path | None) -> str:
     """This repository's roster, as a listing carries it, or nothing to carry.
 
@@ -1162,6 +1190,7 @@ def local_edit_decision(
         path_rules=PATH_RULES,
         antipattern_rows=rows,
         path_roles=PATH_ROLES,
+        plugin_roots=GENERATED_PLUGIN_ROOTS,
         maximum_added_lines=MAXIMUM_ADDED_LINES,
         autonomous=autonomous,
         allowances=(
@@ -1476,12 +1505,12 @@ def referred_once(
     every file in that repository and news only the first time. Printed on
     every edit, one agent reads it about 150 times in a session, which is the noise
     this project's own "say it once" refuses. So the verdict stands on every
-    edit and its recovery goes with the first (:func:`referral_noted`).
+    edit and its recovery goes with the first (:func:`noted_once`).
     """
     if verdict.rule != "edit:foreign-repository" or not session or cwd is None:
         return verdict
     repository = worktree_root(str((cwd / path_text).resolve())) or path_text
-    if referral_noted(cwd, session, repository):
+    if noted_once(cwd, session, repository):
         return verdict.revised(recovery="")
     return verdict
 

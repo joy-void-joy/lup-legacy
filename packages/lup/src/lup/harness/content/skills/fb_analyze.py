@@ -22,7 +22,7 @@ SKILL = models.Skill(
                 values={
                     "delegate": models.Delegate(
                         subagent_type="lup:version-explorer",
-                        name="version-comparison",
+                        name="version_comparison",
                         prompt="Compare vX.Y.Z and vA.B.C",
                     )
                 },

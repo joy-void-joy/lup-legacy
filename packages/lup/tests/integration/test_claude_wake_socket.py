@@ -25,7 +25,7 @@ import pytest
 from pydantic import BaseModel, Field
 
 from lup.coordination.identity import mint_member_id
-from lup.coordination.wake import injected
+from lup.providers.claude.wake import injected
 from lup.harness.wake_sockets import WakeSockets
 from lup.types import JsonObject, JsonValue
 

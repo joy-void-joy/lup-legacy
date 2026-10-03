@@ -2693,6 +2693,7 @@ SPAWN_NAMES: SpawnNameRow | None = {
     "recovery": "the task in two or three words, starting with a letter or digit and carrying only letters, digits and underscores, at most 64 characters \u2014 it is what the listing shows and what a message or a stop addresses",
     "punctuation": "_",
     "limit": 64,
+    "notice": "Name each subagent you spawn after the work it does",
 }
 
 VERIFICATION: VerificationRow = {
@@ -30078,6 +30079,11 @@ SECRET_VARIABLES: list[str] = [
     "*_PAT",
     "*AUTH",
     "*AUTHORIZATION*",
+]
+
+GENERATED_PLUGIN_ROOTS: list[str] = [
+    ".claude/plugins",
+    ".codex/plugins",
 ]
 
 PEER_POLICY: PeerPolicyRow | None = {
