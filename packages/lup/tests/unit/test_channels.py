@@ -17,6 +17,7 @@ from lup.channels.models import (
 )
 from lup.channels.slot import Slot, SlotSet
 from lup.channels.stream import Stream
+from lup.execution.locks import exclusive, try_exclusive
 
 
 class Decision(BaseModel):
@@ -216,3 +217,70 @@ def test_an_atomic_write_gets_the_mode_a_plain_one_would(tmp_path: Path) -> None
     write_atomic(tmp_path / "atomic", b"{}")
 
     assert (tmp_path / "atomic").stat().st_mode == plain.stat().st_mode
+
+
+def test_an_atomic_write_given_a_mode_lands_with_exactly_it(tmp_path: Path) -> None:
+    secret = tmp_path / "secret.env"
+    secret.write_bytes(b"OLD=1\n")
+    secret.chmod(0o644)
+
+    write_atomic(secret, b"NEW=1\n", mode=0o600)
+
+    assert secret.stat().st_mode & 0o777 == 0o600
+    assert secret.read_bytes() == b"NEW=1\n"
+
+
+def test_a_durable_atomic_write_lands_whole(tmp_path: Path) -> None:
+    write_atomic(tmp_path / "nested" / "login.json", b"{}", durable=True)
+
+    assert (tmp_path / "nested" / "login.json").read_bytes() == b"{}"
+    assert [held.name for held in (tmp_path / "nested").iterdir()] == ["login.json"]
+
+
+def test_a_compare_and_swap_replaces_only_what_it_read(tmp_path: Path) -> None:
+    ledger = tmp_path / "ledger.json"
+    ledger.write_bytes(b"read")
+
+    write_atomic(ledger, b"mine", expected=b"read")
+    with pytest.raises(ChannelConflictError, match="changed after it was read"):
+        write_atomic(ledger, b"stale", expected=b"read")
+
+    assert ledger.read_bytes() == b"mine"
+    assert [held.name for held in tmp_path.iterdir()] == ["ledger.json"]
+
+
+def test_a_held_section_is_refused_to_a_second_holder_and_free_after(
+    tmp_path: Path,
+) -> None:
+    """The file the writers agree on, beside what they write, made where it is missing."""
+    lock = tmp_path / "nested" / "state.lock"
+
+    with exclusive(lock):
+        with try_exclusive(lock) as second:
+            assert second is False
+    with try_exclusive(lock) as after:
+        assert after is True
+
+
+def test_a_section_waits_for_its_holder_rather_than_interleaving(
+    tmp_path: Path,
+) -> None:
+    lock = tmp_path / "state.lock"
+    order: list[str] = []
+    entered = threading.Event()
+
+    def holder() -> None:
+        with exclusive(lock):
+            order.append("held")
+            entered.set()
+            threading.Event().wait(0.2)
+            order.append("released")
+
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        held = pool.submit(holder)
+        entered.wait()
+        with exclusive(lock):
+            order.append("waited")
+        held.result()
+
+    assert order == ["held", "released", "waited"]

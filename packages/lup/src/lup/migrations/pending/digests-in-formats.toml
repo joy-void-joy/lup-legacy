@@ -1,0 +1,31 @@
+subjects = [
+    "content_digest",
+    "declaration_digest",
+    "file_digest",
+    "digest_of",
+]
+reason = """
+every sha256 the library keeps is taken through `lup.formats.digest`, one \
+function per kind of input — `text`, `file`, `tree`, `parts` — each hashing \
+the same bytes its copy did, so the five copies spread across ownership, \
+container launch, materialization, the ledger and the refutation cache go; \
+a file that is not there answers `None` everywhere, where the ledger's copy \
+answered an empty string"""
+
+[[steps]]
+instruction = """
+Call `digest.text(content)` (`from lup.formats import digest`) where you \
+called `content_digest` from `lup.harness.ownership` or `declaration_digest` \
+from `lup.launch.container`."""
+
+[[steps]]
+instruction = """
+Call `digest.file(path)` where you called `file_digest` from \
+`lup.harness.materialization`, and `digest.file(path) or ""` where you \
+called `digest_of(path)` from `lup.ledger.files` and stored the empty \
+string for a missing file."""
+
+[[steps]]
+instruction = """
+Call `digest.parts(values)` where you called `digest_of(values)` from \
+`lup.devtools.dev.refutations`."""

@@ -8,7 +8,6 @@ session runtime in to get them.
 from pathlib import Path
 
 from lup.providers.login import HomePreparation, ProviderLogin
-from lup.types import EnvVars
 
 # lup: ignore[constant-declaration] — the environment variable Codex reads
 CODEX_HOME = "CODEX_HOME"
@@ -17,6 +16,7 @@ CODEX_LOGIN = ProviderLogin(
     config_home_env=CODEX_HOME,
     credentials_file="auth.json",
     ambient_home=Path.home() / ".codex",
+    canonical_home=True,
     home_subdir="codex-home",
     home_preparation=HomePreparation(executable="lup-codex-plugin"),
     state_volume="codex",
@@ -80,20 +80,8 @@ directory as the module is imported and never onto a ``HOME`` a request hands
 its session: that session must still authenticate as the operator, so the
 login a worktree home is derived from stays the one this program was launched
 as. Codex left to choose would read the request's — its default is ``.codex``
-in the effective ``HOME``, as :func:`native_home` reads it — and a homed
-session is never left that choice, because homing names its home outright.
+in the effective ``HOME``, as :meth:`ProviderLogin.selected_home` reads it —
+and a homed session is never left that choice, because homing names its home
+outright. Codex ignores an empty ``CODEX_HOME`` and canonicalises the home it
+selects, which is what ``canonical_home`` declares.
 """
-
-
-def native_home(environment: EnvVars) -> Path:
-    """The home Codex selects from its effective process environment.
-
-    Codex ignores an empty CODEX_HOME and otherwise canonicalizes it. Its
-    default is the effective user's home with the adapter's declared suffix.
-    """
-    if configured := environment.get(CODEX_HOME):
-        return Path(configured).resolve()
-    # lup: ignore[dict-get] — HOME is an optional name in the process environment
-    user_home = environment.get("HOME")
-    base = Path(user_home) if user_home else Path.home()
-    return (base / CODEX_LOGIN.ambient_home.name).resolve()

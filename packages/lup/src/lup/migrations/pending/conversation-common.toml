@@ -1,0 +1,13 @@
+subjects = ["attachment_marker", "Attachment.label"]
+reason = """
+the ChatGPT and Claude retainers share what they each carried a copy of — \
+the null-tolerant payload base, the address reader, the attachment label \
+and the staged install — in `lup.devtools.conversation.common`, so the \
+per-service spellings of the attachment label go"""
+
+[[steps]]
+instruction = """
+Call `attachment_label(attachment.stored_name(), path)` from \
+`lup.devtools.conversation.common` where you called \
+`attachment_marker(attachment, path)` from the ChatGPT retainer or \
+`attachment.label(path)` on a Claude `Attachment`."""

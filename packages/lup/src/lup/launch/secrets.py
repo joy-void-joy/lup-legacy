@@ -23,14 +23,16 @@ one, and the store's values leave it only for the host companions naming them.
 
 from collections.abc import Callable, Iterable
 from pathlib import Path
-from tempfile import NamedTemporaryFile
+from tempfile import TemporaryDirectory
 
 from dotenv import dotenv_values, set_key, unset_key
 from pydantic import BaseModel, Field
 
+from lup.channels.models import write_atomic
 from lup.harness.environment import Placement
 from lup.types import EnvVars
 from lup.workspace.paths import read_project_name
+from lup.workspace.user_directories import UserDirectories
 
 
 class HostOnlyRefused(RuntimeError):
@@ -39,11 +41,7 @@ class HostOnlyRefused(RuntimeError):
 
 def secrets_directory() -> Path:
     """Where every project's host store lives: the person's lup config, beside their profiles."""
-    # Read where it is asked for: the person's config imports the agents,
-    # whose declarations hold the companions this store serves.
-    from lup.providers.user_config import UserConfigHome
-
-    return UserConfigHome().directory() / "secrets"
+    return UserDirectories().config() / "secrets"
 
 
 class HostSecrets(BaseModel, frozen=True):
@@ -111,21 +109,13 @@ class HostSecrets(BaseModel, frozen=True):
             )
         self.directory.mkdir(mode=0o700, parents=True, exist_ok=True)
         self.directory.chmod(0o700)
-        with NamedTemporaryFile(
-            dir=self.directory,
-            prefix=f".{self.path().name}.",
-            suffix=".partial",
-            delete=False,
-        ) as created:
-            staging = Path(created.name)
-        try:
-            if self.path().is_file():
-                staging.write_bytes(self.path().read_bytes())
+        with TemporaryDirectory(dir=self.directory, prefix=".editing-") as private:
+            staging = Path(private) / self.path().name
+            staging.write_bytes(
+                self.path().read_bytes() if self.path().is_file() else b""
+            )
             edit(staging)
-            staging.chmod(0o600)
-            staging.replace(self.path())
-        finally:
-            staging.unlink(missing_ok=True)
+            write_atomic(self.path(), staging.read_bytes(), mode=0o600)
 
 
 def withheld_secrets(environment: EnvVars, root: Path) -> EnvVars:

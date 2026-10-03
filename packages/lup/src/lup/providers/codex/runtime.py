@@ -19,8 +19,8 @@ from lup.providers.codex.app_server import (
     CodexAppServer,
     RpcMessage,
     RpcNotification,
-    native_environment,
 )
+from lup.harness.environment import inherited
 from lup.providers.codex.hooks import (
     APPROVAL_METHODS,
     CODEX_SEMANTICS,
@@ -28,7 +28,7 @@ from lup.providers.codex.hooks import (
     codex_hook_approval_policy,
 )
 from lup.providers.codex.home import CodexWorktreeHomeStore, install_declared_policy
-from lup.providers.codex.login import CODEX_HOME, native_home
+from lup.providers.codex.login import CODEX_HOME, CODEX_LOGIN
 from lup.coordination.repository import launched_member
 from lup.launch.companions import CompanionLaunch, Joined, held_around
 from lup.launch.compilation import (
@@ -1265,8 +1265,8 @@ class CodexSessionOpener:
         )
         policy_plugin = None
         if not config.sandbox.posture().contained():
-            effective = native_environment(config.environment)
-            home = native_home(effective)
+            effective = inherited(config.environment)
+            home = CODEX_LOGIN.selected_home(effective)
             if not effective.get(CODEX_HOME):
                 home.mkdir(mode=0o700, parents=True, exist_ok=True)
             policy_plugin = await run_sync(
@@ -1354,7 +1354,7 @@ class CodexSessionOpener:
                 )
                 kept = kept_record(
                     "codex",
-                    CodexTranscripts(native_home(config.environment)),
+                    CodexTranscripts(CODEX_LOGIN.selected_home(config.environment)),
                     config.workspace(),
                     config.record,
                     config.model_id(),
@@ -1514,9 +1514,12 @@ async def codex_sessions(config: Codex) -> list[SessionSummary]:
     listing is a read.
     """
     account = codex_account_environment(config)
-    environment = native_environment({**config.environment, **account})
+    environment = inherited({**config.environment, **account})
     if not config.sandbox.posture().contained():
-        environment = {**environment, CODEX_HOME: str(native_home(environment))}
+        environment = {
+            **environment,
+            CODEX_HOME: str(CODEX_LOGIN.selected_home(environment)),
+        }
     server = CodexAppServer(config.executable, environment=environment)
     await server.start()
 

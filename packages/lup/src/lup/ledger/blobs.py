@@ -15,6 +15,7 @@ present and wrong.
 from hashlib import sha256
 from pathlib import Path
 
+from lup.channels.models import write_atomic
 from lup.ledger.models import Placement
 from lup.ledger.store import BLOBS_DIR
 
@@ -53,10 +54,7 @@ class Blobs:
         landing = self.path(digest)
         if landing.exists():
             return digest
-        self.root.mkdir(parents=True, exist_ok=True)
-        staged = landing.with_suffix(".partial")
-        staged.write_bytes(content)
-        staged.replace(landing)
+        write_atomic(landing, content)
         return digest
 
     def read(self, digest: str) -> bytes | None:

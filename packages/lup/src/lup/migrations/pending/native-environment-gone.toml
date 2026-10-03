@@ -1,0 +1,11 @@
+subjects = ["native_environment"]
+reason = """
+a child process's environment — this process's own with a few names laid \
+over it — is built in one place, `lup.harness.environment.inherited`, the \
+library's only reader of its whole environment, rather than by a Codex copy \
+of the same two lines"""
+
+[[steps]]
+instruction = """
+Call `inherited(overrides)` from `lup.harness.environment` where you called \
+`native_environment(overrides)` from `lup.providers.codex.app_server`."""

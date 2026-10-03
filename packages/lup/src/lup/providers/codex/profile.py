@@ -10,6 +10,7 @@ import tomlkit
 from pydantic import BaseModel, Field, TypeAdapter
 from tomlkit.exceptions import ParseError
 
+from lup.channels.models import write_atomic
 from lup.providers.codex.app_server import CodexAppServer
 from lup.providers.codex.home import SEED_RECORD, seeded_codex_settings
 from lup.providers.codex.harness_runtime import codex_home_lock
@@ -210,10 +211,9 @@ class CodexAccountSettings(BaseModel, frozen=True):
                         selected_hooks["state"] = state.hooks.state
                     if existing == settings and destination.exists():
                         return
-                    prepared = Path(temporary) / "prepared.config.toml"
-                    prepared.touch(mode=0o600)
-                    prepared.write_text(tomlkit.dumps(settings), encoding="utf-8")
-                    prepared.replace(destination)
+                    write_atomic(
+                        destination, tomlkit.dumps(settings).encode("utf-8"), mode=0o600
+                    )
         except Exception:
             # Native configuration errors can quote arbitrary values, including secrets.
             raise ValueError(

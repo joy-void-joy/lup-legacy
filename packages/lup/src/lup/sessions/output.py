@@ -72,16 +72,7 @@ def record_attempt(store: SubmittedOutputStore, message: str) -> None:
         case FileSubmittedOutputStore():
             history = submission_history(store)
             document = AttemptDocument(attempts=[*history, attempt])
-            store.attempts_path.parent.mkdir(parents=True, exist_ok=True)
-            temporary = store.attempts_path.with_name(
-                f".{store.attempts_path.name}.tmp"
-            )
-            temporary.write_text(
-                document.model_dump_json(indent=2) + "\n",
-                encoding="utf-8",
-                newline="\n",
-            )
-            temporary.replace(store.attempts_path)
+            publish_atomic(store.attempts_path, document)
         case _:
             return
 

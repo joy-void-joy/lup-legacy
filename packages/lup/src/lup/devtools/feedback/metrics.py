@@ -4,8 +4,8 @@ This is a TEMPLATE script. Run ``/lup:init`` to customize it for your domain.
 """
 
 from collections import Counter, defaultdict
-from datetime import datetime
 
+from lup.channels.models import utc_now
 from lup.types import Usage
 from lup.devtools.feedback.models import (
     BackendCostRow,
@@ -29,7 +29,7 @@ def compute_metrics(results: list[SessionResult]) -> FeedbackMetrics:
     by_sdk = Counter(r.agent_sdk or "unknown" for r in results)
 
     return FeedbackMetrics(
-        collection_timestamp=datetime.now().isoformat(),
+        collection_timestamp=utc_now().isoformat(),
         total_sessions=len(results),
         sessions_with_outcomes=sessions_with_outcomes,
         sessions_by_sdk=dict(by_sdk),

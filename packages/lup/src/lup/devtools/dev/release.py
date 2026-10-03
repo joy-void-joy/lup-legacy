@@ -56,12 +56,15 @@ import tomlkit
 import tomlkit.items
 from packaging.version import InvalidVersion, Version
 from pydantic import BaseModel
+from tomlkit import TOMLDocument
 
 from lup.execution.git import Repository
 from lup.devtools.changelog import Candidate, Changelog
 from lup.devtools.utils import short_sha
 from lup.execution.shell import git
+from lup.formats.toml import edited_manifest
 from lup.workspace.history import parse_semver
+from lup.workspace.paths import manifest_table
 
 if TYPE_CHECKING:
     # Only for the annotation: the record's module reads the release commit
@@ -704,25 +707,23 @@ def read_state(spec: ReleaseSpec, root: Path, pending: Path) -> ReleaseState:
 
 def published_version(manifest: Path) -> str:
     """The version the named manifest declares, read structurally."""
-    match tomlkit.parse(manifest.read_text()).unwrap():
+    match manifest_table(manifest):
         case {"project": {"version": str(version)}}:
             return version
         case _:
             raise KeyError(f"{manifest} declares no [project] version")
 
 
-def with_version(text: str, version: str) -> str:
-    """That manifest's text with its ``[project] version`` moved.
+def with_version(manifest: Path, version: str) -> None:
+    """Move that manifest's ``[project] version``, and nothing else in it."""
 
-    Through ``tomlkit`` so the comments and the layout an author wrote survive
-    a change to one value, which a re-emit from a parsed table would not.
-    """
-    document = tomlkit.parse(text)
-    project = document["project"]
-    if not isinstance(project, tomlkit.items.Table):
-        raise KeyError("no [project] table to move a version in")
-    project["version"] = version
-    return tomlkit.dumps(document)
+    def moved(document: TOMLDocument) -> None:
+        project = document["project"]
+        if not isinstance(project, tomlkit.items.Table):
+            raise KeyError(f"{manifest} has no [project] table to move a version in")
+        project["version"] = version
+
+    edited_manifest(manifest, moved)
 
 
 def carry_out(
@@ -772,8 +773,7 @@ def prepare(
     that.
     """
     (root / spec.changelog).write_text(plan.written(log).render())
-    manifest = root / spec.version_file
-    manifest.write_text(with_version(manifest.read_text(), plan.version))
+    with_version(root / spec.version_file, plan.version)
     if plan.kind != "candidate":
         record.release(
             plan.version, root, plan.carried if plan.kind == "promotion" else None

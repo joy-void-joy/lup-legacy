@@ -7,6 +7,7 @@ from pathlib import Path
 
 import typer
 
+from lup.workspace.checkout_state import CheckoutState
 from lup.devtools.conversation.browser import (
     browser_context,
     cookie_header,
@@ -41,7 +42,7 @@ def browser_directory(
             raise typer.BadParameter(str(error), param_hint="--profile") from error
         if selected is not None:
             return selected
-    return root / ".lup" / "conversations" / f"{provider}-web"
+    return CheckoutState(root=root).conversations() / f"{provider}-web"
 
 
 type StateRun = Callable[

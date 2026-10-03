@@ -103,6 +103,15 @@ class ProviderLogin(BaseModel, frozen=True):
     environment selected" and this is not consulted.
     """
 
+    canonical_home: bool = False
+    """Whether the runtime canonicalises the home it selects before it uses it.
+
+    ``True`` where it resolves links and ``..`` in the variable's value and
+    in its own default alike, so the home it reads is the resolved path
+    rather than the spelling it was handed, and a caller comparing homes
+    has to compare that.
+    """
+
     ambient_home_nameable: bool = True
     """Whether naming ``ambient_home`` outright selects what naming nothing does.
 
@@ -170,17 +179,43 @@ class ProviderLogin(BaseModel, frozen=True):
         """The environment routing a spawned CLI at that configuration home."""
         return {self.config_home_env: str(home)}
 
+    def named_home(self, environ: StringMap) -> Path | None:
+        """The home that environment names outright, or ``None`` where it names none.
+
+        An exported-but-empty variable names none: it is how a shell says
+        nothing, and reading it as a path would name whatever directory the
+        reader happened to run in.
+        """
+        named = environ[self.config_home_env] if self.config_home_env in environ else ""
+        return Path(named).expanduser() if named else None
+
+    def default_home(self, environ: StringMap) -> Path:
+        """Where the runtime keeps its configuration under that environment when nothing names one.
+
+        Its own default directory, named as :attr:`ambient_home` is, in the
+        effective user's home: the environment's ``HOME`` where it carries
+        one, which is what the CLI itself reads, and :attr:`ambient_home` as
+        declared where it carries none.
+        """
+        user = environ["HOME"] if "HOME" in environ else ""
+        joined = Path(user) / self.ambient_home.name if user else self.ambient_home
+        return joined.resolve() if self.canonical_home else joined
+
     def selected_home(self, environ: StringMap) -> Path:
         """The home this runtime's CLI would use under that environment.
 
-        What a *sibling process* resolves, which is the question a mount
-        asks: the editor on the host and the CLI in the container are two
+        The one resolver from an environment to a configuration home: what a
+        spawned session will write to, where its transcripts are found, and
+        what a *sibling process* resolves, which is the question a mount asks
+        — the editor on the host and the CLI in the container are two
         programs reading the same variable, and bridging them means naming
         the directory the one outside is using rather than the one this
         launch chose.
         """
-        named = environ.get(self.config_home_env, "")
-        return Path(named) if named else self.ambient_home
+        named = self.named_home(environ)
+        if named is None:
+            return self.default_home(environ)
+        return named.resolve() if self.canonical_home else named
 
     def nameable(self, home: Path) -> bool:
         """Whether a profile may point this runtime at that home by name.

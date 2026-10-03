@@ -19,6 +19,7 @@ from pydantic import BaseModel, Field
 
 from lup.execution.git import GitError, Repository
 from lup.harness.environment import non_interactive_environment
+from lup.workspace.checkout_state import CheckoutState
 from lup.execution.process import ProcessLauncher
 import lup.devtools.dev.records as records
 import lup.devtools.dev.traces as traces
@@ -957,7 +958,7 @@ def unlanded_siblings(
     integration = get_integration_branch()
     worktrees = parse_worktrees()
     current = Repository(Path.cwd()).branch()
-    leased = live_lease_branches(project_root() / ".lup" / "resolve")
+    leased = live_lease_branches(CheckoutState(root=project_root()).resolve())
 
     def measure(name: str) -> UnlandedBranch | None:
         if name == current or name in protected or name in leased:
@@ -1918,7 +1919,7 @@ def survey(as_json: bool, scaffold: str = "") -> None:
     pr_named = branch_names + [row["name"] for row in remote_only]
     pr_map: dict[str, PRStatus] = fetch_pr_status(pr_named) if has_remote else {}
     leased = leased_on_disk(
-        live_lease_branches(project_root() / ".lup" / "resolve"), branch_names
+        live_lease_branches(CheckoutState(root=project_root()).resolve()), branch_names
     )
 
     def answerable(name: str) -> str:

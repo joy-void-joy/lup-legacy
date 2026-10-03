@@ -23,6 +23,7 @@ import pytest
 import sh
 from typer.testing import CliRunner
 
+from lup.channels.models import publish_atomic
 from lup.coordination.bare.changes import changes
 from lup.coordination.identity import MEMBER_ENV
 from lup.coordination.repository import RepositoryPeers
@@ -33,7 +34,6 @@ from lup.devtools.dashboard.companion import (
     LaunchRecord,
     dashboard_status,
     private_urls,
-    written,
 )
 from lup.harness.environment import Placement
 from lup.devtools.dashboard.pulse import (
@@ -366,7 +366,7 @@ def test_inside_a_session_the_dashboard_answers_from_what_it_publishes(
         quiet=1,
         contested=2,
     )
-    written(pulse.path, published.model_dump_json())
+    publish_atomic(pulse.path, published)
     monkeypatch.setenv(MEMBER_ENV, "a-session")
     monkeypatch.setenv(DASHBOARD_URL_ENV, url)
     monkeypatch.setenv(DASHBOARD_PULSE_ENV, str(pulse.path))
@@ -377,7 +377,7 @@ def test_inside_a_session_the_dashboard_answers_from_what_it_publishes(
     line = runner.invoke(create_operator_dashboard_app(tmp_path), ["line"])
     shown = status_line(pulse.path)
     stale = published.model_copy(update={"beat": beat - timedelta(minutes=5)})
-    written(pulse.path, stale.model_dump_json())
+    publish_atomic(pulse.path, stale)
     stopped = dashboard_status(dashboard, tmp_path)
     pulse.path.unlink()
     taken_down = dashboard_status(dashboard, tmp_path)

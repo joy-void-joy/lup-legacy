@@ -34,6 +34,7 @@ from pydantic import BaseModel, Field
 from lup.harness.image import Image
 from lup.harness.notice import Notice
 from lup.harness.requirements import Package
+from lup.workspace.user_directories import UserDirectories
 
 
 class CurrentRelease(BaseModel, frozen=True):
@@ -99,7 +100,7 @@ def ledger_path(cache: Path | None = None) -> Path:
     Under the same cache root the contained environments use, so one
     resolution serves every worktree of every repository on this machine.
     """
-    return cache or Path.home() / ".cache" / "lup" / "releases.json"
+    return cache or UserDirectories().cache() / "releases.json"
 
 
 def loaded_ledger(path: Path) -> ReleaseLedger:

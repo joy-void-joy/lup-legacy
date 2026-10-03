@@ -13,9 +13,10 @@ to the coordination tools alone writes the caller into the call's arguments
 before it goes out, and the server acts on that conversation's own roster row.
 
 Three things travel, registered only where a roster is declared: a shell
-guard, a generated entry that names the runtime directory as a search path
-and runs the host half, and the runtime's host half, shipped verbatim — the
-one module that reads that runtime's payload into a caller, which the
+guard, a generated entry that names the runtime directory as a search path,
+reads each event, asks the host half and prints its answer, and the
+runtime's host half, shipped verbatim — the one module that reads that
+runtime's payload into a caller, which the
 compiled permission dispatcher imports as well, so a claim is recorded
 against the row the tool server would act on.
 
@@ -35,7 +36,7 @@ from pathlib import Path
 
 from lup.formats.banner import REGENERATE_COMMAND, VERBATIM_COPY, GeneratedBanner
 from lup.harness.models import Artifact, HookSet
-from lup.providers.roster_prompt import PromptHook, entry_body, hook_entry
+from lup.providers.roster_prompt import PromptHook, answering_entry_body, hook_entry
 
 GUARD_SCRIPT = "coordination_caller.sh"
 RUNTIME_ENTRY = "coordination_caller.py"
@@ -101,7 +102,7 @@ def caller_hooks(
             ),
             Artifact.generated(
                 path=plugin_root / "hooks" / "runtime" / RUNTIME_ENTRY,
-                body=entry_body(HOST_MODULE),
+                body=answering_entry_body(HOST_MODULE),
                 semantic_id=source.id,
                 banner=GeneratedBanner(source=__name__, command=REGENERATE_COMMAND),
             ),

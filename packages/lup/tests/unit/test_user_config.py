@@ -11,7 +11,9 @@ from pathlib import Path
 
 import pytest
 
-from lup.providers.user_config import UserConfig, UserConfigFile, UserConfigHome
+from lup.providers.user_config import UserConfig, UserConfigFile
+from lup.launch.environments import environments_home
+from lup.workspace.user_directories import UserDirectories
 
 
 def written(home: Path, content: str) -> UserConfigFile:
@@ -27,7 +29,7 @@ def test_the_config_home_follows_an_absolute_xdg_config_home(
 ) -> None:
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
 
-    assert UserConfigHome().directory() == tmp_path / "xdg" / "lup"
+    assert UserDirectories().config() == tmp_path / "xdg" / "lup"
     assert UserConfigFile().path() == tmp_path / "xdg" / "lup" / "config.toml"
     assert UserConfigFile().profiles_root() == tmp_path / "xdg" / "lup" / "profiles"
 
@@ -40,7 +42,20 @@ def test_an_empty_or_relative_xdg_config_home_falls_back_to_dot_config(
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setenv("XDG_CONFIG_HOME", named)
 
-    assert UserConfigHome().directory() == tmp_path / ".config" / "lup"
+    assert UserDirectories().config() == tmp_path / ".config" / "lup"
+
+
+def test_the_cache_follows_xdg_cache_home_the_way_config_and_state_do(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Every cached thing lup keeps moves with the one variable that names caches."""
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "xdg-cache"))
+    monkeypatch.setenv("XDG_STATE_HOME", "relative/state")
+
+    assert UserDirectories().cache() == tmp_path / "xdg-cache" / "lup"
+    assert UserDirectories().state() == tmp_path / ".local" / "state" / "lup"
+    assert environments_home() == tmp_path / "xdg-cache" / "lup" / "environments"
 
 
 def test_a_person_who_wrote_nothing_gets_lups_defaults(tmp_path: Path) -> None:

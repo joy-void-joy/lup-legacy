@@ -25,7 +25,7 @@ from lup.observability.display import (
 from lup.observability.trace import (
     TraceLogger,
     format_block_markdown,
-    read_trace_events,
+    trace_events,
 )
 from lup.types import (
     LupTextBlock,
@@ -368,7 +368,7 @@ def test_sidecar_roundtrips_events(tmp_path: Path) -> None:
     trace.log_block(LupTextBlock(text="A tool that lints would be useful."))
 
     # Round-trip: read the sidecar back into typed events.
-    events = read_trace_events(trace.events_path)
+    events = trace_events(trace.events_path).read_all()
     assert events == trace.events
 
     by_kind = {e.kind for e in events}
@@ -389,7 +389,7 @@ def test_sidecar_appends_live_before_save(tmp_path: Path) -> None:
     trace.log_block(LupToolResultBlock(tool_use_id="a", content="done"))
 
     # No save() called — sidecar already has the line.
-    events = read_trace_events(trace.events_path)
+    events = trace_events(trace.events_path).read_all()
     assert [e.kind for e in events] == ["tool_call"]
 
 
@@ -401,4 +401,4 @@ def test_save_touches_empty_sidecar(tmp_path: Path) -> None:
     trace.save()
 
     assert trace.events_path.exists()
-    assert read_trace_events(trace.events_path) == []
+    assert trace_events(trace.events_path).read_all() == []

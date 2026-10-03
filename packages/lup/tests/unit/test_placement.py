@@ -72,6 +72,16 @@ def test_the_runtime_is_the_configuration_home_its_launcher_selected(
     environment: dict[str, str], runtime: str | None
 ) -> None:
     assert selected_runtime(environment) == runtime
+    assert Placement.of(environment).runtime == runtime
+
+
+def test_this_processs_runtime_is_read_from_the_environment_it_runs_under(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("CLAUDE_CONFIG_DIR", raising=False)
+    monkeypatch.setenv("CODEX_HOME", "/home/someone/.codex")
+
+    assert Placement.here().runtime == "codex"
 
 
 def test_a_launchs_environment_is_read_without_this_processs(

@@ -62,6 +62,7 @@ from .store import (
     own_member,
     parent_of,
     present,
+    published,
     session_actor,
     revised,
     text,
@@ -358,11 +359,12 @@ def last_look(cursor: Path) -> Look | None:
 
 
 def remember(cursor: Path, look: Look) -> None:
-    """Record this look atomically, so a crash re-baselines instead of tearing."""
-    cursor.parent.mkdir(parents=True, exist_ok=True)
-    temporary = cursor.with_suffix(".writing")
-    temporary.write_text(json.dumps(look), encoding="utf-8")
-    temporary.replace(cursor)
+    """Record this look atomically, so a crash re-baselines instead of tearing.
+
+    A look that cannot be written leaves the last one standing, so what this
+    look told is told once more at the next — a repeat, never a loss.
+    """
+    published(cursor, look)
 
 
 def pointer(others: int) -> str:

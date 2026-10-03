@@ -7,7 +7,6 @@ manifest recorded after each successful materialization.
 proof, and the devtools generation flow persists it.
 """
 
-import hashlib
 from collections.abc import Collection, Iterator
 from pathlib import Path
 from typing import Literal
@@ -15,6 +14,7 @@ from typing import Literal
 from pydantic import BaseModel, ValidationError
 
 from lup.channels.models import publish_atomic
+from lup.formats import digest
 from lup.harness.models import ArtifactTree, Harness
 
 type OwnershipCategory = Literal[
@@ -43,19 +43,13 @@ class OwnershipManifest(BaseModel, frozen=True):
     files: list[OwnedArtifact]
 
 
-def content_digest(content: str) -> str:
-    """Hash normalized UTF-8 artifact content."""
-    return hashlib.sha256(content.encode("utf-8")).hexdigest()
-
-
 class OwnershipManifestError(RuntimeError):
     """Persisted ownership proof cannot be decoded as its schema."""
 
 
 def source_digest(source: Harness) -> str:
     """Hash canonical declarations independently from rendered native output."""
-    encoded = source.model_dump_json(exclude_none=True)
-    return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+    return digest.text(source.model_dump_json(exclude_none=True))
 
 
 def build_manifest(
@@ -75,7 +69,7 @@ def build_manifest(
             OwnedArtifact(
                 path=artifact.path,
                 category="generated",
-                sha256=content_digest(artifact.content),
+                sha256=digest.text(artifact.content),
                 semantic_id=artifact.semantic_id,
                 executable=artifact.executable,
             )
@@ -133,7 +127,7 @@ def proof_artifact(root: Path, proof: Path) -> OwnedArtifact:
     return OwnedArtifact(
         path=proof,
         category="generated",
-        sha256=content_digest((root / proof).read_text(encoding="utf-8")),
+        sha256=digest.text((root / proof).read_text(encoding="utf-8")),
         semantic_id=f"ownership.{proof.parts[0]}",
     )
 

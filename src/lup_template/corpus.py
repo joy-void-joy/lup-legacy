@@ -39,7 +39,7 @@ from typing import Literal, Self
 
 from pydantic import BaseModel, Field, field_validator
 
-from lup.ledger.files import digest_of
+from lup.formats import digest
 from lup.ledger.models import LedgerEdge, LedgerNode, Standing, Surroundings
 
 
@@ -90,7 +90,7 @@ class Validation(BaseModel, frozen=True):
         return [
             scoped.path
             for scoped in self.scope
-            if digest_of(root / scoped.path) != scoped.digest
+            if (digest.file(root / scoped.path) or "") != scoped.digest
         ]
 
 
@@ -137,7 +137,7 @@ class Evidence(LedgerNode, frozen=True):
         pinned = [
             scoped
             if scoped.digest
-            else Scoped(path=scoped.path, digest=digest_of(root / scoped.path))
+            else Scoped(path=scoped.path, digest=digest.file(root / scoped.path) or "")
             for scoped in self.validation.scope
         ]
         return self.model_copy(

@@ -130,6 +130,7 @@ from lup.policy.models import (
     ShellCommand,
     UrlScope,
 )
+from lup.workspace.checkout_state import CheckoutState
 
 
 def pydantic_decision(decision: KernelDecision) -> Decision:
@@ -766,26 +767,15 @@ def protected_root_rule(root: str) -> PathRule:
 
 
 def invariant_path_rules(
-    hook_state: tuple[str, ...] = (
-        ".lup/preflight",
-        ".lup/policy-snapshots",
-        ".lup/questions.jsonl",
-        ".lup/reviews",
-        ".lup/review-claims",
-        ".lup/review-stage-claims",
-    ),
+    hook_state: tuple[str, ...] = tuple(CheckoutState.hook_state()),
 ) -> list[PathRule]:
     """The protected-path rules the library holds whatever a project declares.
 
     ``hook_state`` is what the library itself writes from outside the
-    session: a launch's measured ledger, the policy snapshots a capture
-    restores from, the review queue a hook parks a question in -- its log,
-    the documents the log names by digest, and the archive of settled
-    reviews -- and the claims that spend an approved answer once. A session writing one is the
-    confined thing recording what confines it -- its own measurement, its
-    own answer, a spent approval put back -- so each asks, and no adopter
-    has to know to declare it. An `.env` file and a new devtools module are
-    approvals on the same terms.
+    session, read off :meth:`CheckoutState.hook_state` rather than listed
+    again here, so a path that declaration moves is protected where it
+    moved to. Each asks, and no adopter has to know to declare it. An
+    `.env` file and a new devtools module are approvals on the same terms.
 
     Both enforcement paths read this one list: a session composed in process
     and the rows a generated dispatcher carries.

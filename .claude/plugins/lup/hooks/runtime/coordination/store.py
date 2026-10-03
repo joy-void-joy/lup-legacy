@@ -71,7 +71,7 @@ from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
 from itertools import count
 from pathlib import Path
-from typing import TypedDict
+from typing import TextIO, TypedDict
 from uuid import uuid4
 
 from .runtime import Runtime, beneath, process_scope, runtime_alive, same_runtime
@@ -417,14 +417,33 @@ def published[Record](path: Path, record: Record) -> Record | None:
     Hands back what landed rather than whether it did, so a caller that wants
     the written shape has it and one that wants the verdict reads it as one.
     """
+    writing = path.with_name(f"{path.name}.{uuid4().hex[:8]}.writing")
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
-        writing = path.with_name(f"{path.name}.{uuid4().hex[:8]}.writing")
         writing.write_text(json.dumps(record), encoding="utf-8")
         writing.replace(path)
     except OSError:
+        writing.unlink(missing_ok=True)
         return None
     return record
+
+
+@contextmanager
+def locked(path: Path) -> Iterator[TextIO]:
+    """Hold the exclusive lock on *path* for the body, and hand back the file.
+
+    Created where nothing is yet, and released whatever happens inside, so a
+    body that raises never leaves the lock standing for the next writer to
+    wait on. The handle is opened for append, so a lock that is also a record
+    — the mail record — is written through it while it is held.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8") as handle:
+        fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+        try:
+            yield handle
+        finally:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
 
 
 def listed(directory: Path, suffix: str = ".json") -> list[Path]:
@@ -666,19 +685,13 @@ def revised(
     Nothing is created for a member that has no file: a revision of nobody
     would put a row on the roster that never joined.
     """
-    lock = member_lock(root, member)
     try:
-        lock.parent.mkdir(parents=True, exist_ok=True)
-        with lock.open("a", encoding="utf-8") as handle:
-            fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
-            try:
-                found = read_member(member_path(root, member), running=True)
-                if found is None:
-                    return None
-                settled = revise(found)
-                return settled if write_member(root, settled) else None
-            finally:
-                fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+        with locked(member_lock(root, member)):
+            found = read_member(member_path(root, member), running=True)
+            if found is None:
+                return None
+            settled = revise(found)
+            return settled if write_member(root, settled) else None
     except OSError:
         return None
 
@@ -809,14 +822,8 @@ def naming_settled(root: Path) -> Iterator[None]:
     whatever happens inside: a refused name must not leave the store's lock
     standing for the next member to wait on.
     """
-    lock = root / ROSTER_LOCK
-    lock.parent.mkdir(parents=True, exist_ok=True)
-    with lock.open("a", encoding="utf-8") as handle:
-        fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
-        try:
-            yield
-        finally:
-            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+    with locked(root / ROSTER_LOCK):
+        yield
 
 
 def unique_cli_name(wanted: str, taken: Collection[str]) -> str:

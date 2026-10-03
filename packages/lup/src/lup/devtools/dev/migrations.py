@@ -52,6 +52,7 @@ from lup.devtools.dev.release import RELEASE_SUBJECT_PREFIX
 from lup.devtools.project import DevProject
 from lup.devtools.utils import output_json
 from lup.execution.shell import git
+from lup.formats.toml import edited_manifest
 from lup.workspace.history import parse_semver
 
 LIBRARY_MIGRATIONS = Path(__file__).resolve().parents[2] / "migrations"
@@ -347,20 +348,22 @@ def retire_pyright_environment(root: Path, *, dry_run: bool = False) -> list[str
     pair belongs to the adopter. An extending configuration may deliberately
     override its base with this pair, so it also stays untouched.
     """
-    manifest = root / "pyproject.toml"
-    document = tomlkit.parse(manifest.read_text(encoding="utf-8"))
-    match document.unwrap():
-        case {"tool": {"pyright": {"venvPath": ".", "venv": ".venv"} as config}} if (
-            "extends" not in config
-        ):
-            settings = document["tool"]["pyright"]
-            del settings["venvPath"]
-            del settings["venv"]
-        case _:
-            return []
-    if not dry_run:
-        manifest.write_text(tomlkit.dumps(document), encoding="utf-8")
-    return ["pyproject.toml: remove scaffold Pyright venvPath='.' and venv='.venv'"]
+
+    def retired(document: tomlkit.TOMLDocument) -> list[str]:
+        match document.unwrap():
+            case {
+                "tool": {"pyright": {"venvPath": ".", "venv": ".venv"} as config}
+            } if "extends" not in config:
+                settings = document["tool"]["pyright"]
+                del settings["venvPath"]
+                del settings["venv"]
+                return [
+                    "pyproject.toml: remove scaffold Pyright venvPath='.' and venv='.venv'"
+                ]
+            case _:
+                return []
+
+    return edited_manifest(root / "pyproject.toml", retired, write=not dry_run)
 
 
 def unapplied(

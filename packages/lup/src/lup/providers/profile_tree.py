@@ -27,6 +27,7 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 
 from lup.channels.models import write_atomic
+from lup.workspace.checkout_state import CheckoutState
 from lup.providers.login import ProviderLogin
 from lup.providers.profiles import (
     ProfileDirectory,
@@ -221,7 +222,7 @@ class TreeProfileStateLocations(ProfileStateLocations):
 
 def checkout_profiles(root: Path) -> Path:
     """Where a checkout keeps its own profiles."""
-    return root / ".lup" / "profiles"
+    return CheckoutState(root=root).profiles()
 
 
 def tree_registry(scope: ProfileScope, folders: ProfileFolders) -> ProfileRegistry:

@@ -1,7 +1,8 @@
 """Claude Code's half of the caller hook: which conversation made a tool call.
 
 Shipped verbatim into the plugin's ``hooks/runtime/``, where the caller hook's
-generated entry runs it and the compiled permission dispatcher imports it. It
+generated entry reads each event, asks :func:`decided` and prints its answer,
+and the compiled permission dispatcher imports it. It
 holds only what Claude Code spells for itself: the ``PreToolUse`` event, the
 payload's keys, where the runtime keeps what a spawn was called, and the
 output envelope. What a caller is and how it rides in a call are the store's.
@@ -39,8 +40,6 @@ Every failure is silence: a call left unstamped acts as the session, which is
 what every call did before there was anything to stamp.
 """
 
-import json
-import sys
 from pathlib import Path
 from typing import TypedDict
 
@@ -154,14 +153,3 @@ def decided(payload: Payload) -> Rewrite | None:
             updatedInput=called_by(payload.get("tool_input", {}), caller_of(payload)),
         )
     )
-
-
-def main() -> None:
-    """Answer the event on stdin, or say nothing and let the call through as it was."""
-    try:
-        payload: Payload = json.load(sys.stdin)
-        answer = decided(payload)
-    except Exception:
-        return
-    if answer is not None:
-        print(json.dumps(answer))

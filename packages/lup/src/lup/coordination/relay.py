@@ -16,7 +16,6 @@ with it; the mail record keeps what was said either way.
 """
 
 import asyncio
-import fcntl
 import hashlib
 import logging
 from pathlib import Path
@@ -24,6 +23,7 @@ from pathlib import Path
 from pydantic import Field
 
 from lup.coordination.repository import RepositoryPeers
+from lup.execution.locks import try_exclusive
 from lup.coordination.wake import Woken
 from lup.coordination.watch import roused
 from lup.tools.mcp import ServerCompanion
@@ -61,12 +61,8 @@ class MailboxRelay(ServerCompanion, frozen=True):
         row = peers.row(self.member_id)
         if row is None or not row.running or not row.wake.receiver_local:
             return None
-        lock = self.lock_path
-        lock.parent.mkdir(parents=True, exist_ok=True)
-        with lock.open("a", encoding="utf-8") as held:
-            try:
-                fcntl.flock(held.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-            except BlockingIOError:
+        with try_exclusive(self.lock_path) as held:
+            if not held:
                 return None
             # Binding and delivery can move before the lock is acquired.
             row = peers.row(self.member_id)

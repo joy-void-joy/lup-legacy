@@ -6,7 +6,6 @@ tokens cost against the plan, and how a model family is named and coloured.
 The display itself knows none of it.
 """
 
-import os
 from collections import Counter
 from collections.abc import Sequence
 from datetime import date, datetime, timedelta
@@ -16,6 +15,7 @@ from typing import Literal
 import httpx
 from pydantic import BaseModel, ValidationError
 
+from lup.harness.environment import inherited
 from lup.providers.claude.harness import ClaudeSpellings
 from lup.providers.claude.login import CLAUDE_LOGIN
 from lup.providers.profile_tree import profile_directory
@@ -332,9 +332,8 @@ def claude_usage_entry(profiles: ProfileDirectory | None = None) -> UsageEntry:
             home = directory.launch_home(profile)
         except (DefaultHomeProfile, UnknownProfile) as refusal:
             raise UsageUnavailable(str(refusal)) from refusal
-        # lup: ignore[os-environ] — the environment an unnamed profile inherits
-        inherited = directory.login.selected_home(dict(os.environ))
-        return ClaudeUsageReader(home if home is not None else inherited)
+        unnamed = directory.login.selected_home(inherited())
+        return ClaudeUsageReader(home if home is not None else unnamed)
 
     return UsageEntry(
         name="claude",
