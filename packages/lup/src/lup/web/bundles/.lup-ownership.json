@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "generator_version": "0.4.0",
-  "source_digest": "5c17735d32a1e9fa5c8310f6de28d037cc4e2dbabe62670f5458c300359d2a3d",
+  "source_digest": "c624887d9cb2e8d5a9484d5cc756aaedae85828d57e70730047f0923787caa22",
   "target_requirements": [
     "bun"
   ],
@@ -14,16 +14,16 @@
       "executable": false
     },
     {
-      "path": "packages/lup/src/lup/web/bundles/dashboard/assets/index-Dio4T02S.js",
+      "path": "packages/lup/src/lup/web/bundles/dashboard/assets/index-yoXIVUia.js",
       "category": "generated",
-      "sha256": "df107978a08eacfe778709331cf4bd2a74a8fc62a56a3e7b02a5ce6dde935032",
-      "semantic_id": "web.dashboard.assets/index-Dio4T02S.js",
+      "sha256": "0d5bd6785460adf3770ed6e31ded70ad15558ca061a15a3447ea71040640dae2",
+      "semantic_id": "web.dashboard.assets/index-yoXIVUia.js",
       "executable": false
     },
     {
       "path": "packages/lup/src/lup/web/bundles/dashboard/index.html",
       "category": "generated",
-      "sha256": "c7ee2ebd8d8bf30a2c11074d423c91b38753d13eec2681a0961867a3d859eec0",
+      "sha256": "d7ad44e9d2473a433903bf62c292eadb2635914bb3bab8119e015433291d8409",
       "semantic_id": "web.dashboard.index.html",
       "executable": false
     },

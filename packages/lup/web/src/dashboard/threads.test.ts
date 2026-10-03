@@ -9,14 +9,14 @@ function session(id: string, name = id): LiveSession {
   return {
     key: `r1/${id}`, repository: "r1", id, parent: "", kind: "session", name, doing: "", task: "", running: true, worktree: "", holding: [], contested: [],
     delivery: "hook", wake: "claude", arrived: null, heard: "2026-09-29T12:00:00Z", summary: "", error: "", waiting: 0, runtime: "claude", spawned_by: "", process: null,
-    activity: { said: "", calling: "", arguments: {}, at: null, transcript: "", recent: [] },
+    holds: [], held_since: null, activity: { said: "", calling: "", arguments: {}, at: null, transcript: "", recent: [] },
   };
 }
 
 let byte = 0;
 function message(id: string, sender: string, recipient: string, text: string, at: string, fields: Partial<LiveMessage> = {}): LiveMessage {
   byte += 100;
-  return { key: `r1/${id}`, repository: "r1", id, at: byte, sender, recipient, recipient_kind: recipient === "user" ? "user" : "session", text, door: "agent", redirect: false, in_reply_to: "", sent_at: at, waiting: false, post: id, thread: id, ...fields };
+  return { key: `r1/${id}`, repository: "r1", id, at: byte, sender, recipient, recipient_kind: recipient === "user" ? "user" : "session", text, door: "agent", redirect: false, in_reply_to: "", sent_at: at, waiting: false, post: id, thread: id, prompt: false, ...fields };
 }
 
 const live = (messages: LiveMessage[]) => {

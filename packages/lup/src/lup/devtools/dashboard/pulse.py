@@ -193,6 +193,10 @@ class DashboardPulse(BaseModel, frozen=True):
     contested: int = 0
     """Paths two sessions hold at once, each counted with its subagents."""
 
+    held: int = 0
+    """Running agents the operator's pause or a budget holds at their next
+    tool call, across every repository it serves."""
+
     def current(self, now: datetime, within: timedelta = timedelta(seconds=30)) -> bool:
         """Whether the service wrote it recently enough to still be running."""
         return now - self.beat <= within
@@ -483,7 +487,8 @@ class LineFacts(BaseModel, frozen=True):
         letters = (
             [Piece(text=f"✉{counted.unread}", tone="warn")] if counted.unread else []
         )
-        return joined([reviews, letters])
+        paused = [Piece(text=f"⏸{counted.held}", tone="warn")] if counted.held else []
+        return joined([reviews, letters, paused])
 
     def others(self) -> list[Piece]:
         """What other agents need of the operator: one gone quiet, a path held twice."""

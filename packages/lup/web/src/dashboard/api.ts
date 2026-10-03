@@ -1,7 +1,7 @@
 import type {
   Broadcast, Claimed, ClaimRequest, Described, DescriptionRequest, FollowedFrom, FollowOutcome, FollowRequest, InboxRead, InboxReadRequest, KeyBindings, KeyLine, KeyTry,
-  LiveNotice, MessagePage, MessageRequest, NameRequest, PostOutcome, PostRequest, Released, Renamed, ReplyOutcome, ReviewAnswer, ReviewDecision, ReviewDetail,
-  ReviewHistory, ReviewRemarkRequest, ReviewSnapshot, SetupPane, Stopped, StreamFrame, TextRequest, TranscriptPage, Withdrawn,
+  LiveNotice, MessagePage, MessageRequest, NameRequest, Nothing, PauseOutcome, PauseRequest, PostOutcome, PostRequest, Released, Renamed, ReplyOutcome, ResumeRequest, ReviewAnswer,
+  ReviewDecision, ReviewDetail, ReviewHistory, ReviewRemarkRequest, ReviewSnapshot, SetupPane, Stopped, StreamFrame, TextRequest, TranscriptPage, Withdrawn,
 } from "../generated/views";
 
 /** Where this origin keeps the operator's capability, and the key a storage event names. */
@@ -129,6 +129,36 @@ export async function renameAgent(repository: string, member: string, name: stri
 /** End an agent's runtime, where the dashboard can be sure which process it is. */
 export async function stopAgent(repository: string, member: string, token: string): Promise<Stopped> {
   return posted(`${agent(repository, member)}/stop`, {}, token);
+}
+
+/**
+ * What a pause or a resume reaches: one agent — with its subagents, or with everything it spawned
+ * where `tree` — every agent of one repository, or every agent of every repository served.
+ */
+export type Reach =
+  | { kind: "agent"; repository: string; member: string; tree: boolean }
+  | { kind: "repository"; repository: string }
+  | { kind: "all" };
+
+/** Where a pause or a resume of *reach* is posted, before its verb. */
+function reached(reach: Reach): string {
+  switch (reach.kind) {
+    case "agent": return agent(reach.repository, reach.member);
+    case "repository": return repo(reach.repository);
+    case "all": return "api";
+  }
+}
+
+/** Hold what *reach* names at its next tool call; freezing also stops its running commands and interrupts its turn. */
+export async function pauseAt(reach: Reach, freeze: boolean, token: string): Promise<PauseOutcome> {
+  const request: PauseRequest = { tree: reach.kind === "agent" && reach.tree, freeze };
+  return posted(`${reached(reach)}/pause`, request, token);
+}
+
+/** Lift the pause placed on what *reach* names, continue what it froze, and wake who stopped for it. */
+export async function resumeAt(reach: Reach, token: string): Promise<PauseOutcome> {
+  const request: ResumeRequest | Nothing = reach.kind === "agent" ? { tree: reach.tree } : {};
+  return posted(`${reached(reach)}/resume`, request, token);
 }
 
 /** One post to every working member of a repository, each woken as a message is. */

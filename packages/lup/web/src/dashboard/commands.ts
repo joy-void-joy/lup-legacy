@@ -2,6 +2,7 @@
 // argument, ↑ and ↓ recall earlier ones; `/` searches the focused window on the
 // same line. A command whose supervision this dashboard's server does not
 // serve says so and names the route, the way a key bound to it does.
+import type { Reach } from "./api";
 import type { Dashboard } from "./dashboard";
 import type { LiveSession } from "../generated/views";
 import { cancelSearch, confirmSearch, copyLink, gotoLine, memberHere, moveReview, previewSearch, quit, replyHere, repositoryHere, rowHere, setPaneView, split, toggleFull, toggleWhole } from "./editor";
@@ -9,7 +10,7 @@ import { openFinder, PICKERS } from "./finder";
 import { CATALOG } from "./keys";
 import type { Feature } from "./served";
 import { VIEWS, type View } from "./state";
-import { counterpart, inboxOf, parentOf } from "./supervision";
+import { counterpart, inboxOf, ownPause, parentOf } from "./supervision";
 
 export type Command = {
   name: string;
@@ -141,6 +142,39 @@ function readWith(d: Dashboard, arg: string): void {
   else d.say("E: :read marks the message under the cursor; :read all marks every one", "err");
 }
 
+type Pausing = "pause" | "freeze" | "resume";
+
+/**
+ * Where `:pause`, `:freeze` and `:resume` act: `repo` is the repository here and `all` every one;
+ * else the agent named, or the one in view, `tree` reaching everything it spawned. A resume with no
+ * `tree` lifts the pause placed on the agent, over its tree where that is how it was placed.
+ */
+function pauseReach(d: Dashboard, verb: Pausing, arg: string): Reach | string {
+  const words = arg.trim().split(/\s+/).filter((word) => word !== "");
+  const usage = `E: :${verb} [agent] [tree], :${verb} repo or :${verb} all`;
+  switch (words.join(" ")) {
+    case "all": return { kind: "all" };
+    case "repo": return { kind: "repository", repository: repositoryHere(d) };
+    default:
+  }
+  const tree = words.includes("tree");
+  const named = words.filter((word) => word !== "tree");
+  if (named.length > 1 || words.length - named.length > 1) return usage;
+  const session = resolveMember(d, named[0] ?? "");
+  if (session === undefined) return `E: no agent answers to ${named[0] ?? "nothing in view"}`;
+  if (verb === "resume" && !tree) return ownPause(session);
+  return { kind: "agent", repository: session.repository, member: session.id, tree };
+}
+
+function pausing(d: Dashboard, verb: Pausing, arg: string): void {
+  const reach = pauseReach(d, verb, arg);
+  if (typeof reach === "string") { d.say(reach, "err"); return; }
+  if (verb === "resume") void d.resume(reach);
+  else void d.pause(reach, verb === "freeze");
+}
+
+const pauseArgs = (d: Dashboard) => ["tree", "repo", "all", ...agentNames(d)];
+
 /** The ids of the notices standing over the repository here, for Tab. */
 const noticeIds = (d: Dashboard) => [...(d.state.live?.users.values() ?? [])].filter((row) => row.repository === repositoryHere(d)).flatMap((row) => row.notices.map((notice) => notice.id));
 
@@ -202,6 +236,9 @@ export const COMMANDS: Command[] = [
   { name: "interrupt", description: "interrupt an agent's turn with the standard words", args: agentNames, needs: "interrupt", run: (d, arg) => onAgent(d, arg, (session) => void d.interrupt(session, "")) },
   { name: "transcript", description: "an agent's whole transcript, live (T)", args: agentNames, needs: "transcript", run: (d, arg) => onAgent(d, arg, (session) => void d.openTranscript(session)) },
   { name: "stop", description: "stop an agent's runtime; :stop! confirms", args: agentNames, needs: "stop", run: (d, arg, bang) => onAgent(d, arg, (session) => void d.stopRuntime(session, bang)) },
+  { name: "pause", description: "hold an agent at its next tool call, its subagents with it: :pause [agent] [tree], :pause repo, :pause all", args: pauseArgs, needs: "pause", run: (d, arg) => pausing(d, "pause", arg) },
+  { name: "freeze", description: "pause, stop its running commands and interrupt its turn: :freeze [agent] [tree], :freeze repo, :freeze all", args: pauseArgs, needs: "pause", run: (d, arg) => pausing(d, "freeze", arg) },
+  { name: "resume", description: "lift the pause placed on it, continuing what a freeze stopped: :resume [agent] [tree], :resume repo, :resume all", args: pauseArgs, needs: "pause", run: (d, arg) => pausing(d, "resume", arg) },
   { name: "older", description: "load older requests into History", run: (d) => void d.loadOlder() },
   { name: "earlier", description: "load earlier messages: an older page of the mail record here", alias: ["ea"], run: (d) => void d.loadEarlier(repositoryHere(d)) },
   { name: "map", description: "your keys: :map lists them; :map {action} {keys} tries one in this tab", args: () => CATALOG.actions.map((action) => action.name), takes: true, run: (d, arg) => void map(d, arg) },

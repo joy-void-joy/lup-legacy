@@ -6,9 +6,9 @@
 // and the `:` commands call into it; React draws what it holds.
 import type { KeyLine, LiveMessage, LiveSession, ReviewDecision, ReviewDetail, ReviewRoot, ReviewSummary } from "../generated/views";
 import {
-  answerReview, broadcastTo, describeYou, followDashboard, followTranscripts, holdPath, postInto, postNotice, readHistory, readInbox, readMessages, readReview, readReviewLink,
-  readSetupPanes, readTranscript, releasePath, remarkReview, renameAgent, reviewLink, ReviewError, sendReply, stopAgent, takeToken, tryKeys, wakeAgent, withdrawNotice, writeKeys,
-  type Sending,
+  answerReview, broadcastTo, describeYou, followDashboard, followTranscripts, holdPath, pauseAt, postInto, postNotice, readHistory, readInbox, readMessages, readReview, readReviewLink,
+  readSetupPanes, readTranscript, releasePath, remarkReview, renameAgent, resumeAt, reviewLink, ReviewError, sendReply, stopAgent, takeToken, tryKeys, wakeAgent, withdrawNotice,
+  writeKeys, type Reach, type Sending,
 } from "./api";
 import { Keymap, Sequencer, type Where } from "./keys";
 import { discussions, threadBuffer, type Discussion } from "./threads";
@@ -701,6 +701,34 @@ export class Dashboard {
     }
     this.set({ stopArmed: "" });
     await this.supervise("stop", `stopping ${named}`, () => stopAgent(session.repository, session.id, this.state.access.token), (stopped) => stopped.detail);
+  }
+
+  /** What a pause or a resume reaches, in the words a notice says it with. */
+  private reachWords(reach: Reach): string {
+    const live = this.state.live;
+    switch (reach.kind) {
+      case "agent": {
+        const named = (live === null ? undefined : memberById(live, reach.repository, reach.member))?.name || reach.member;
+        return reach.tree ? `${named} and everything it spawned` : named;
+      }
+      case "repository": return `every agent of ${live?.repositories.get(reach.repository)?.name ?? reach.repository}`;
+      case "all": return "every agent of every repository";
+    }
+  }
+
+  /**
+   * Hold what *reach* names at its next tool call; a freeze also stops the commands its tools run
+   * and interrupts its turn. What came of it is said in the server's words, whom it could not freeze included.
+   */
+  async pause(reach: Reach, freeze: boolean): Promise<void> {
+    if (reach.kind === "repository" && reach.repository === "") { this.say(`E: :${freeze ? "freeze" : "pause"} repo, in a repository`, "err"); return; }
+    await this.supervise("pause", `${freeze ? "freezing" : "pausing"} ${this.reachWords(reach)}`, () => pauseAt(reach, freeze, this.state.access.token), (outcome) => outcome.detail);
+  }
+
+  /** Lift the pause placed on what *reach* names; a pause placed elsewhere is refused naming it, in the server's words. */
+  async resume(reach: Reach): Promise<void> {
+    if (reach.kind === "repository" && reach.repository === "") { this.say("E: :resume repo, in a repository", "err"); return; }
+    await this.supervise("pause", `resuming ${this.reachWords(reach)}`, () => resumeAt(reach, this.state.access.token), (outcome) => outcome.detail);
   }
 
   /**

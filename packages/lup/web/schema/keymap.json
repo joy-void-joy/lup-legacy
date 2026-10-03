@@ -777,6 +777,57 @@
       "was": ""
     },
     {
+      "name": "agent.pause",
+      "keys": [
+        "<leader>az"
+      ],
+      "description": "pause it at its next tool call, its subagents with it (:pause)",
+      "group": "agent",
+      "mode": "normal",
+      "scope": "anywhere",
+      "focus": "any",
+      "stands": "new",
+      "needs": "pause",
+      "also": [],
+      "hidden": false,
+      "note": "",
+      "was": ""
+    },
+    {
+      "name": "agent.freeze",
+      "keys": [
+        "<leader>aZ"
+      ],
+      "description": "freeze it: pause, stop its running commands and interrupt its turn (:freeze)",
+      "group": "agent",
+      "mode": "normal",
+      "scope": "anywhere",
+      "focus": "any",
+      "stands": "new",
+      "needs": "pause",
+      "also": [],
+      "hidden": false,
+      "note": "",
+      "was": ""
+    },
+    {
+      "name": "agent.resume",
+      "keys": [
+        "<leader>au"
+      ],
+      "description": "resume it: let its next call go, continue what a freeze stopped (:resume)",
+      "group": "agent",
+      "mode": "normal",
+      "scope": "anywhere",
+      "focus": "any",
+      "stands": "new",
+      "needs": "pause",
+      "also": [],
+      "hidden": false,
+      "note": "",
+      "was": ""
+    },
+    {
       "name": "message.reply",
       "keys": [
         "r"

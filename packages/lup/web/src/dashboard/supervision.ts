@@ -5,8 +5,9 @@
 // last words, holds and mailbox, the person's own row, and the mail between
 // members. What a server older than the page does not serve stays behind the
 // seam in `served.ts`.
-import type { LiveMessage, LiveRepository, LiveSession, ReviewRoot, ReviewSummary } from "../generated/views";
-import { called, conversation, type LiveState } from "./live";
+import type { HeldBy, LiveMessage, LiveRepository, LiveSession, ReviewRoot, ReviewSummary } from "../generated/views";
+import type { Reach } from "./api";
+import { called, conversation, repositoryMessages, type LiveState } from "./live";
 import { unserved, type Feature } from "./served";
 import { askedBy, claimCovers, plural, Rows, type Buffer, type Holder } from "./review";
 
@@ -108,11 +109,67 @@ export function activityBrief(session: LiveSession, now = Date.now()): string {
   return activity.said || session.doing || "";
 }
 
+/** The word an agent's row says while something holds its next tool call: `frozen`, `paused`, or `held` by a budget; nothing where nothing does. */
+export function heldWord(session: LiveSession): string {
+  const first = session.holds[0];
+  if (first === undefined) return "";
+  if (session.holds.some((hold) => hold.freeze)) return "frozen";
+  return first.owner === "operator" ? "paused" : "held";
+}
+
+/** Running agents something holds at their next tool call, in one repository or in every one. */
+export const heldCount = (live: LiveState, repository = "") =>
+  [...live.sessions.values()].filter((each) => each.running && each.holds.length > 0 && (repository === "" || each.repository === repository)).length;
+
+/** Whose a hold is, as the page says it to the operator: their pause or freeze, or a budget's hold and why. */
+export const holdOwner = (hold: HeldBy) => hold.owner === "operator" ? `your ${hold.freeze ? "freeze" : "pause"}` : `the budget's hold (${hold.reason})`;
+
+/** Whom a hold covers, its member named through the roster: `it`, where it was placed on this agent. */
+export function holdReach(live: LiveState, session: LiveSession, hold: HeldBy): string {
+  const on = hold.on === session.id ? "it" : called(live, session.repository, hold.on);
+  switch (hold.scope) {
+    case "self": return `${on} alone`;
+    case "agent": return `${on} and its subagents`;
+    case "tree": return `${on} and everything it spawned`;
+    default: return "every agent of the repository";
+  }
+}
+
+/** When a hold was placed and when it lifts by itself, where it does. */
+export const holdTimes = (hold: HeldBy, now = Date.now()) =>
+  [hold.since === null ? "" : `since ${clock(hold.since)} (${ago(hold.since, now)} ago)`, hold.until === null ? "" : `until ${clock(hold.until)}`].filter((each) => each !== "").join(" · ");
+
+/** Every hold over an agent, one line each, as its row's title reads them. */
+export function holdTitle(live: LiveState, session: LiveSession, now = Date.now()): string {
+  return session.holds.map((hold) => [hold.said, `${holdOwner(hold)} of ${holdReach(live, session, hold)}`, holdTimes(hold, now), hold.freeze ? "frozen: its commands stopped and its turn interrupted" : ""]
+    .filter((each) => each !== "").join(" · ")).join("\n");
+}
+
+/** Whether its hook holds a call it made now, a call it began before the hold runs on, or it is idle until it makes one. */
+export function heldCall(session: LiveSession, now = Date.now()): string {
+  if (session.held_since !== null) return `its hook holds the call it made at ${clock(session.held_since)} (${ago(session.held_since, now)} ago)`;
+  const calling = session.activity.calling;
+  if (calling !== "" && heldWord(session) === "frozen") return `the ${calling} call it was making is stopped with its commands until you resume it`;
+  if (calling !== "") return `the ${calling} call it began before the hold runs on to its end; its next one is held`;
+  return "no call of its waits now: it is idle, and its next one is held";
+}
+
+/** The pause a resume on this agent lifts: the one placed on it, over its tree where that is how it was placed. */
+export function ownPause(session: LiveSession): Reach {
+  const placed = session.holds.filter((hold) => hold.owner === "operator" && hold.on === session.id);
+  return { kind: "agent", repository: session.repository, member: session.id, tree: placed.length > 0 && placed.every((hold) => hold.scope === "tree") };
+}
+
 export type Flag = { key: string; text: string };
 
-/** What an agent needs from the operator: quiet, long idle, a review waiting, unread words to them, mail it has not taken, a contested hold. */
+/** What an agent needs from the operator: held at its next call, quiet, long idle, a review waiting, unread words to them, mail it has not taken, a contested hold. */
 export function attention(live: LiveState, roots: ReviewRoot[], rows: ReviewSummary[], session: LiveSession, now = Date.now()): Flag[] {
   const flags: Flag[] = [];
+  const held = session.holds[0];
+  if (session.running && held !== undefined) {
+    const more = session.holds.length > 1 ? ` · ${plural(session.holds.length - 1, "more hold")}` : "";
+    flags.push({ key: "held", text: `⏸ ${held.said}${held.since === null ? "" : ` for ${ago(held.since, now)}`}${heldWord(session) === "frozen" ? " · frozen" : ""}${more}` });
+  }
   const state = standing(session, now);
   if (state === "quiet") flags.push({ key: "quiet", text: `quiet ${Math.floor(minutesSince(session.activity.at, now))}m while calling ${session.activity.calling}` });
   const since = minutesSince(session.activity.at ?? session.heard, now);
@@ -226,6 +283,11 @@ export function memberBuffer(live: LiveState, session: LiveSession, now = Date.n
   const state = standing(session, now);
   out.push({ t: "sec", key: "now", text: "now", sub: session.running ? (activity.calling !== "" ? `calling ${activity.calling} · since ${clock(activity.at)} (${ago(activity.at, now)} ago)` : `${state} · last in its transcript ${ago(activity.at ?? session.heard, now)} ago`) : `stopped ${ago(session.heard, now)} ago` });
   if (!session.running && (session.summary !== "" || session.error !== "")) out.push({ t: "msg", key: "ended", tone: session.error !== "" ? "err" : "", text: session.summary || session.error });
+  for (const hold of session.running ? session.holds : []) {
+    const times = holdTimes(hold, now);
+    out.push({ t: "msg", key: `hold:${hold.owner}:${hold.reason}:${hold.scope}:${hold.on}`, tone: "warn", text: `⏸ ${hold.said}: ${holdOwner(hold)} of ${holdReach(live, session, hold)}${times !== "" ? ` · ${times}` : ""}${hold.freeze ? " · frozen: its commands stopped and its turn interrupted" : ""}` });
+  }
+  if (session.running && session.holds.length > 0) out.push({ t: "msg", key: "held-call", tone: "muted", text: `${heldCall(session, now)}; Space a u resumes it.` });
   if (activity.calling !== "") {
     out.push({ t: "kv", key: "calling", k: "calling", v: `${activity.calling} — the call nothing has answered yet` });
     json(activity.arguments).split("\n").forEach((text, at) => out.push({ t: "json", key: `args:${at}`, text }));
@@ -256,6 +318,7 @@ export const VERBS: { command: string; what: string; needs?: Feature }[] = [
   { command: ":lock <path>", what: "hold a path; an agent writing under it parks a review for you", needs: "claims" },
   { command: ":release <path>", what: "give a hold back; only what you hold", needs: "claims" },
   { command: ":rename <agent> <name>", what: "call a session or subagent something else; its id still reaches it", needs: "rename" },
+  { command: ":pause, :freeze, :resume [tree|repo|all]", what: "hold an agent, its tree, the repository or every one at the next tool call; a freeze also stops their commands", needs: "pause" },
   { command: ":read, x, X", what: "mark your inbox read, one or all", needs: "inbox-read" },
 ];
 
@@ -270,7 +333,7 @@ export function youBuffer(live: LiveState, repository: LiveRepository): Buffer {
   const inbox = inboxOf(live).filter((each) => each.repository === repository.key);
   out.push({ t: "sec", key: "to-you", text: `to you · ${inbox.filter((each) => each.waiting).length} unread of ${inbox.length}`, sub: "gi opens the inbox" });
   for (const each of inbox.slice(0, 6)) out.push({ t: "mail", key: `mail:${each.key}`, m: each, unread: each.waiting });
-  const sent = conversation(live, repository.key, "").filter((each) => each.sender === "user").slice(-5);
+  const sent = repositoryMessages(live, repository.key).filter((each) => each.sender === "user").slice(-5);
   out.push({ t: "sec", key: "sent", text: `what you sent lately · ${sent.length}`, sub: "" });
   for (const each of sent) out.push({ t: "mail", key: `mail:${each.key}`, m: each, unread: false });
   out.push({ t: "sec", key: "verbs", text: "your verbs", sub: "one level down: the command line, Space p, and the finder (Space fc)" });
@@ -285,10 +348,11 @@ export type LogLine = { at: string; text: string; repository: string };
 export function repoBuffer(live: LiveState, repository: LiveRepository, waiting: number, log: LogLine[]): Buffer {
   const out = new Rows();
   const here = membersOf(live, repository.key);
-  out.push({ t: "sec", key: "repo", text: repository.name, sub: `${here.filter((each) => each.running).length} working · ${here.filter((each) => !each.running).length} stopped · ${waiting} ${waiting === 1 ? "review waits" : "reviews wait"} on you` });
+  const held = heldCount(live, repository.key);
+  out.push({ t: "sec", key: "repo", text: repository.name, sub: `${here.filter((each) => each.running).length} working${held > 0 ? ` · ⏸${held} held` : ""} · ${here.filter((each) => !each.running).length} stopped · ${waiting} ${waiting === 1 ? "review waits" : "reviews wait"} on you` });
   out.push({ t: "kv", key: "repository", k: "repository", v: repository.repository });
   out.push({ t: "kv", key: "checkout", k: "checkout", v: repository.checkout });
-  const messages = conversation(live, repository.key, "");
+  const messages = repositoryMessages(live, repository.key);
   out.push({ t: "sec", key: "messages", text: `every message between its members · ${messages.length}`, sub: "c broadcasts to every working member" });
   mailTail(out, live, repository.key, messages, "No member here has written to another");
   out.push({ t: "sec", key: "log", text: "live · what the stream moved", sub: "newest last" });
@@ -313,9 +377,10 @@ export function inboxBuffer(live: LiveState): Buffer {
   return out.buffer();
 }
 
-/** A message's sender and recipient as a reader calls them. */
+/** A message's sender and recipient as a reader calls them; a bare prompt a runtime was woken with comes from `prompt`, not from whoever sent it. */
 export function mailHeads(live: LiveState, message: LiveMessage): { from: string; to: string } {
-  return { from: message.sender === "" ? message.door : called(live, message.repository, message.sender), to: called(live, message.repository, message.recipient) };
+  const from = message.prompt ? "prompt" : message.sender === "" ? message.door : called(live, message.repository, message.sender);
+  return { from, to: called(live, message.repository, message.recipient) };
 }
 
 /** The member a message's thread is with: its sender, or its recipient where the operator sent it. */

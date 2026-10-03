@@ -494,6 +494,7 @@ class Herald:
             unread=sum(each.unread for each in needs),
             quiet=sum(each.quiet for each in needs),
             contested=sum(len(each.contested) for each in needs),
+            held=sum(each.held for each in needs),
         )
         last = self.published
         if (

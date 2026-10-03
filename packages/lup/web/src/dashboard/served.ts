@@ -22,6 +22,7 @@ export const NEEDS: Record<Feature, string> = {
   claims: "POST and DELETE …/repositories/<key>/claims",
   "inbox-read": "POST …/repositories/<key>/inbox/read",
   "thread-post": "POST …/repositories/<key>/threads/<thread>/posts",
+  pause: "POST …/sessions/<member>/pause and …/resume, and a repository's …/pause and …/resume",
 };
 
 /** Why an action cannot run against a server serving *served*, or nothing where it serves what the action needs. */
