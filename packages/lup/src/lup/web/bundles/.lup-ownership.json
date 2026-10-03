@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "generator_version": "0.4.0",
-  "source_digest": "e3ffced8fefbb089c50156c26aaa6d27107320ce44b01354be11b2db278f198f",
+  "source_digest": "da1bca3fc7f26942ff4d471a904b44813468c3bd29cafd48d1e78c67f29ec619",
   "target_requirements": [
     "bun"
   ],

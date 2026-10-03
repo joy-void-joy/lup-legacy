@@ -90,7 +90,7 @@ def test_the_budget_prints_each_account_and_what_this_repositorys_agents_spent(
     lines = result.output.splitlines()
     assert lines[0] == "The turtle is off."
     assert lines[1].startswith("claude:work: 5-hour 40% (even pace 60%), clears ")
-    assert lines[2] == "  limits: keep 10% · ≤2 at once"
+    assert lines[2] == "  limits: hold at 95% · keep 10% · ≤2 at once"
     assert (
         "  lead: $1.50 in the last hour · $1.50 and 30,000 tokens in all · low"
         " · caps $20.00 in all"

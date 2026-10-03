@@ -779,6 +779,7 @@ origins = ["https://their.proxy.name"]   # also answered, where a reverse proxy
                             # serves the page: whole origins, no path
 
 [budget]                    # what the dashboard lets agents spend: docs/dashboard.md
+window_ceiling = 95         # every agent holds at 95% of a window: the default
 pace = "even"               # no window spent faster than it passes
 reserve = 10                # the last 10% of every window kept for you
 max_active = 3              # agents working at once, per account

@@ -34,10 +34,11 @@ type Priority = Literal["high", "normal", "low"]
 type Weekday = Literal["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
 """A day a schedule entry applies on, Monday first as :meth:`datetime.weekday` counts."""
 
-type Cause = Literal["window", "reserve", "cap", "rate", "pace", "slot"]
+type Cause = Literal["window", "reserve", "cap", "rate", "slot"]
 """Why the budget holds an agent: a window used up, the operator's reserve
-reached, the agent's spend cap reached, its own rate over its cap, the
-account ahead of its speed limit, or no free slot to work in."""
+reached, the agent's spend cap reached, spending faster than allowed -- its
+own rate over its cap, or its account ahead of its speed limit -- or no free
+slot to work in."""
 
 
 def rank(priority: Priority) -> int:
@@ -55,6 +56,11 @@ class Ceiling(BaseModel, frozen=True, extra="forbid"):
 class Limits(BaseModel, frozen=True, extra="forbid"):
     """One set of limits on an account; every limit left unset is no limit.
 
+    ``window_ceiling`` is how full a window may get: at it, every agent but
+    the operator's own sessions holds until the window clears, as though it
+    were used up -- the margin that keeps an agent from running into the
+    provider's own limit between two readings of the window.
+
     ``pace`` is the speed limit: ``"even"`` keeps every window at or under
     even pace — no more of it spent than has gone by — and each of
     ``ceilings`` caps one window at so many percent of it an hour. Past
@@ -65,6 +71,7 @@ class Limits(BaseModel, frozen=True, extra="forbid"):
     clears. ``max_active`` is how many agents may work at once.
     """
 
+    window_ceiling: float | None = Field(default=None, gt=0, le=100)
     pace: Literal["even"] | None = None
     ceilings: list[Ceiling] | None = None
     tolerance: float | None = Field(default=None, ge=0)
@@ -92,9 +99,19 @@ class Limits(BaseModel, frozen=True, extra="forbid"):
             None,
         )
 
+    def used_up(self, window: PacingWindow) -> bool:
+        """Whether *window* is as full as these limits let it get: its ceiling, else the provider's own."""
+        ceiling = self.window_ceiling if self.window_ceiling is not None else 100.0
+        return window.utilization_pct >= ceiling
+
     def said(self) -> list[str]:
         """Each limit set, in the words the meter and ``dashboard budget`` show it in."""
         return [
+            *(
+                [f"hold at {self.window_ceiling:g}%"]
+                if self.window_ceiling is not None and self.window_ceiling < 100
+                else []
+            ),
             *(["even pace"] if self.pace == "even" else []),
             *(f"{each.window} ≤{each.per_hour:g}%/h" for each in self.ceilings or []),
             *([f"keep {self.reserve:g}%"] if self.reserve else []),
@@ -165,13 +182,17 @@ class BudgetConfig(Limits, frozen=True, extra="forbid"):
     ``accounts`` overrides them for one account, named by its profile — every
     runtime's login of that profile — or as ``<runtime>:<profile>`` for one
     runtime's, ``default`` naming the home no profile selects.
-    ``poll_seconds`` is how often the dashboard reads each account's windows.
+    ``poll_seconds`` is how often the dashboard reads each account's windows,
+    and ``close_seconds`` how often once one of them is within ten points of
+    its ceiling. ``window_ceiling`` is on with no configuration at all, at 95.
     """
 
+    window_ceiling: float | None = Field(default=95, gt=0, le=100)
     accounts: dict[str, Limits] = {}
     schedule: list[ScheduledLimits] = []
     turtle: Turtle = Turtle()
     poll_seconds: int = Field(default=120, ge=30)
+    close_seconds: int = Field(default=30, ge=15)
 
     def limits(self, account: Account, moment: datetime) -> Limits:
         """The limits holding for *account* at *moment*, every layer applied."""
@@ -345,7 +366,7 @@ def judged(
                 )
                 return Verdict(
                     key=agent.key,
-                    cause="pace",
+                    cause="rate",
                     said=(
                         f"over its rate: {window.label} window "
                         f"{window.utilization_pct:.0f}% used with {even:.0f}% of it "
@@ -361,7 +382,7 @@ def judged(
             ):
                 return Verdict(
                     key=agent.key,
-                    cause="pace",
+                    cause="rate",
                     said=(
                         f"over its rate: {window.label} window filling at "
                         f"{each.per_hour:.1f}%/h, its limit {ceiling:.1f}%/h"
@@ -374,8 +395,7 @@ def judged(
         limits = config.limits(agent.account, now)
         windows = windows_of(agent)
         used = next(
-            (each.window for each in windows if each.window.utilization_pct >= 100),
-            None,
+            (each.window for each in windows if limits.used_up(each.window)), None
         )
         if used is not None:
             return Verdict(

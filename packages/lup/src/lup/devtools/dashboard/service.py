@@ -584,6 +584,9 @@ def serve_dashboard(arguments: ServiceArguments) -> None:
         AccountPoller,
         BudgetGovernor,
         BudgetView,
+        StoredCalls,
+        StoredHolds,
+        StoredResumption,
         budget_ledger,
         budget_routes,
         launched_on,
@@ -637,11 +640,14 @@ def serve_dashboard(arguments: ServiceArguments) -> None:
         if arguments.shared
         else None
     )
-    # lup: defer[branch:feat-agent-pause]: hand the governor the pause's hold store as its `door=` and `calls=` (place/lift with owner BUDGET, `held_calls` for the queue), so a verdict holds the agent at its next tool call; until then it judges and shows, and nothing waits
+    # lup: solved: hand the governor the pause's hold store as its `door=` and `calls=` (place/lift with owner BUDGET, `held_calls` for the queue), so a verdict holds the agent at its next tool call; until then it judges and shows, and nothing waits
     governor = (
         BudgetGovernor(
             ledger,
             person,
+            door=StoredHolds(),
+            calls=StoredCalls(),
+            resumption=StoredResumption(),
             poller=poller,
             join=join,
             account_of=launched_on(poller),

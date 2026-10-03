@@ -151,7 +151,7 @@ describe("the budget's words", () => {
     expect(at.ahead).toBe(true);
     const account = (key: string, agents: number, windows = [window]): AccountMeter => ({
       account: { runtime: "claude", profile: key }, key, home: "", signed_in: true, windows, read_at: null, error: "",
-      limits: { pace: null, ceilings: null, tolerance: null, reserve: null, max_active: null }, said: [], agents, held: 0, exhausted: "",
+      limits: { window_ceiling: null, pace: null, ceilings: null, tolerance: null, reserve: null, max_active: null }, said: [], agents, held: 0, exhausted: "",
     });
     const budget: BudgetView = { accounts: [account("b", 0), account("a", 2), account("idle", 0, [])], agents: [], turtle: false, telemetry: true, refused: "", holds: true };
     expect(metered(budget).map((each) => each.key)).toEqual(["a", "b"]);

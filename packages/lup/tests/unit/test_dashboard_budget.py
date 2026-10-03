@@ -8,6 +8,10 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from lup.coordination import holds
+from lup.coordination.holds import HoldOwner, HoldReason
+from lup.coordination.identity import mint_member_id
+from lup.coordination.repository import RepositoryPeers
 from lup.devtools.dashboard import budget as budget_module
 from lup.devtools.dashboard.budget import (
     AccountPoller,
@@ -16,9 +20,14 @@ from lup.devtools.dashboard.budget import (
     HeldAgent,
     HeldCalls,
     HoldDoor,
+    Placed,
     RepositoryAgents,
+    Resumption,
+    StoredCalls,
+    StoredHolds,
     WaitingCall,
     launched_on,
+    limit_reset,
     profile_routes,
 )
 from lup.devtools.harness.launch import SwitchOutcome
@@ -42,6 +51,7 @@ from lup.sessions.limits import (
     AgentCaps,
     MeteredWindow,
     Spend,
+    clock,
 )
 
 NOW = datetime(2026, 10, 5, 12, 0, tzinfo=UTC)
@@ -454,3 +464,157 @@ def test_the_switch_route_answers_what_each_session_does(
     )
     assert elsewhere.status_code == 404
     assert served == [("profiles",)]
+
+
+def test_a_window_at_its_ceiling_holds_through_the_store_and_its_reset_lets_go(
+    tmp_path: Path,
+) -> None:
+    checkout = tmp_path / "checkout"
+    checkout.mkdir()
+    peers = RepositoryPeers(checkout)
+    worker, helper = mint_member_id(), mint_member_id()
+    peers.join(worker, checkout, cli_name="worker")
+    peers.join(helper, checkout, cli_name="helper")
+    seen = RepositoryAgents(
+        key="repo",
+        known=KnownRepository(repository=checkout / ".git", checkout=checkout),
+        store=peers.root,
+        agents=[
+            session(worker, calling="Bash"),
+            session(helper),
+            session("mine", spawned_by=""),
+        ],
+    )
+    governing = BudgetGovernor(
+        SpendLedger(tmp_path / "ledger.json"),
+        config(tmp_path),
+        StoredHolds(),
+        calls=StoredCalls(),
+    )
+    governing.ledger.published([window(96)])
+    view = governing.look([seen], NOW)
+    standing = holds.standing(peers.root, now=NOW)
+    assert sorted(
+        (hold.member, hold.reason, hold.owner) for hold in standing
+    ) == sorted(
+        [
+            (worker, HoldReason.WINDOW, HoldOwner.BUDGET),
+            (helper, HoldReason.WINDOW, HoldOwner.BUDGET),
+        ]
+    )
+    assert all(hold.until == NOW + timedelta(hours=2) for hold in standing)
+    assert holds.holding(peers.root, worker)[0].said.startswith("5-hour window used up")
+    assert view.holds and view.accounts[0].exhausted.startswith("5-hour window used up")
+    placed = {hold.member: hold.placed for hold in standing}
+    governing.look([seen], NOW + timedelta(minutes=1))
+    again = holds.standing(peers.root, now=NOW)
+    assert {hold.member: hold.placed for hold in again} == placed
+    governing.ledger.published([window(2, hours_left=5)])
+    governing.look([seen], NOW + timedelta(hours=2, minutes=1))
+    assert holds.standing(peers.root, now=NOW) == []
+
+
+class Stopped(Resumption):
+    """Sessions a limit stopped, each until a moment, and who was told to continue."""
+
+    def __init__(self, until: dict[str, datetime]) -> None:
+        self.until = until
+        self.told: list[str] = []
+
+    def stopped(self, each: Placed) -> datetime | None:
+        return self.until[each.agent.id] if each.agent.id in self.until else None
+
+    def resume(self, each: Placed) -> bool:
+        self.told.append(each.agent.id)
+        return True
+
+
+def test_a_session_a_limit_stopped_is_told_to_continue_once_its_window_resets(
+    tmp_path: Path,
+) -> None:
+    resets = NOW + timedelta(hours=1)
+    stopped = Stopped({"worker": resets, "mine": resets, "scout": resets})
+    governing = BudgetGovernor(
+        SpendLedger(tmp_path / "ledger.json"),
+        config(tmp_path),
+        Door(),
+        resumption=stopped,
+    )
+    seen = repository(
+        tmp_path,
+        session("worker"),
+        session("mine", spawned_by=""),
+        session("scout", parent="worker"),
+        session("busy", calling="Bash"),
+    )
+    governing.look([seen], NOW)
+    assert stopped.told == []
+    governing.look([seen], resets + timedelta(minutes=1))
+    assert stopped.told == ["worker"]
+    governing.look([seen], resets + timedelta(minutes=2))
+    assert stopped.told == ["worker"]
+
+
+def test_a_transcript_says_when_the_limit_that_ended_its_turn_resets(
+    tmp_path: Path,
+) -> None:
+    transcript = tmp_path / "session.jsonl"
+    said = {"type": "assistant", "message": {"role": "assistant", "content": []}}
+    refused = {
+        "type": "assistant",
+        "isApiErrorMessage": True,
+        "error": "rate_limit",
+        "apiErrorStatus": 429,
+        "quotaLimits": {
+            "status": "rejected",
+            "resetsAt": 1790836200,
+            "rateLimitType": "five_hour",
+        },
+        "message": {"role": "assistant", "model": "<synthetic>", "content": []},
+    }
+    transcript.write_text(
+        "\n".join(json.dumps(each) for each in [said, refused]) + "\n"
+    )
+    assert limit_reset(transcript) == datetime.fromtimestamp(1790836200, UTC)
+    with transcript.open("a") as handle:
+        handle.write(
+            json.dumps({"type": "user", "message": {"content": "continue"}}) + "\n"
+        )
+    assert limit_reset(transcript) is None
+    assert limit_reset(tmp_path / "absent.jsonl") is None
+
+
+def test_a_window_used_up_for_days_tells_the_operator_once(tmp_path: Path) -> None:
+    told: list[str] = []
+    governing = BudgetGovernor(
+        SpendLedger(tmp_path / "ledger.json"),
+        config(tmp_path),
+        Door(),
+        notify=lambda summary, body: told.append(summary) or True,
+    )
+    seen = repository(tmp_path, session("worker"))
+    governing.ledger.published([window(96)])
+    governing.look([seen], NOW)
+    assert told == []
+    governing.ledger.published([window(97, hours_left=60)])
+    governing.look([seen], NOW)
+    governing.look([seen], NOW + timedelta(minutes=1))
+    assert told == [
+        f"claude:default: 5-hour window used up until {clock(NOW + timedelta(hours=60), NOW)}"
+    ]
+
+
+def test_the_poller_reads_more_often_near_a_ceiling(tmp_path: Path) -> None:
+    home = AccountHome(account=CLAUDE, home=tmp_path, signed_in=True)
+    reader = Reader([50.0, 88.0])
+    poller = AccountPoller(
+        lambda: [tmp_path],
+        SpendLedger(tmp_path / "ledger.json"),
+        config(tmp_path),
+        homes=lambda roots: [home],
+        reader=lambda each: reader,
+    )
+    poller.poll(NOW)
+    assert poller.interval(NOW) == 120
+    poller.poll(NOW)
+    assert poller.interval(NOW) == 30

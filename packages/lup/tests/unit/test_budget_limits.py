@@ -72,6 +72,39 @@ def test_a_used_up_window_holds_everyone_but_the_operator_until_it_clears() -> N
     assert "5-hour window used up until" in verdicts[0].said
 
 
+def test_a_window_at_its_ceiling_holds_every_agent_with_no_configuration() -> None:
+    weekly = window(96, 50, length=168).model_copy(
+        update={
+            "window": window(96, 50, length=168).window.model_copy(
+                update={"label": "weekly"}
+            )
+        }
+    )
+    for reading in (window(95, 2), weekly):
+        verdicts = judged(
+            [account(reading)],
+            [agent("a"), agent("b", priority="high"), agent("mine", exempt=True)],
+            BudgetConfig(),
+            NOW,
+        )
+        assert [(each.key, each.cause) for each in verdicts] == [
+            ("a", "window"),
+            ("b", "window"),
+        ]
+        assert verdicts[0].until == reading.window.resets_at
+        assert f"{reading.window.label} window used up until" in verdicts[0].said
+    assert causes(BudgetConfig(), [account(window(94, 2))], agent("a")) == {}
+
+
+def test_the_window_ceiling_is_the_persons_to_move() -> None:
+    lower = BudgetConfig(window_ceiling=80)
+    assert causes(lower, [account(window(81, 2))], agent("a")) == {"a": "window"}
+    provider = BudgetConfig(window_ceiling=100)
+    assert causes(provider, [account(window(99, 2))], agent("a")) == {}
+    assert BudgetConfig().said()[0] == "hold at 95%"
+    assert BudgetConfig(window_ceiling=100).said() == []
+
+
 def test_the_reserve_holds_once_a_window_reaches_it() -> None:
     config = BudgetConfig(reserve=10)
     assert causes(config, [account(window(89, 1))], agent("a")) == {}
@@ -90,15 +123,15 @@ def test_even_pace_holds_low_first_then_normal_then_high() -> None:
         agent("normal"),
         agent("high", priority="high"),
     ]
-    assert causes(config, [account(window(62, 2))], *agents) == {"low": "pace"}
+    assert causes(config, [account(window(62, 2))], *agents) == {"low": "rate"}
     assert causes(config, [account(window(66, 2))], *agents) == {
-        "low": "pace",
-        "normal": "pace",
+        "low": "rate",
+        "normal": "rate",
     }
     assert causes(config, [account(window(71, 2))], *agents) == {
-        "low": "pace",
-        "normal": "pace",
-        "high": "pace",
+        "low": "rate",
+        "normal": "rate",
+        "high": "rate",
     }
 
 
@@ -120,7 +153,7 @@ def test_a_ceiling_holds_by_how_fast_the_window_fills() -> None:
     )
     assert causes(
         config, [account(filling)], agent("low", priority="low"), agent("normal")
-    ) == {"low": "pace"}
+    ) == {"low": "rate"}
 
 
 def test_caps_hold_one_agent_alone() -> None:

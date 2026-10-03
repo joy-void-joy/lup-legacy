@@ -576,7 +576,7 @@ describe("dashboard page", () => {
     budget = {
       accounts: [{ account: { runtime: "claude", profile: "work" }, key: "claude:work", home: "/home/me/.config/lup/profiles/work/claude-config", signed_in: true,
         windows: [{ window: { label: "5-hour", utilization_pct: 100, resets_at: resets, window_hours: 5 }, per_hour: 12.5 }], read_at: null, error: "",
-        limits: { pace: "even", ceilings: null, tolerance: null, reserve: 10, max_active: 2 }, said: ["even pace", "keep 10%", "≤2 at once"], agents: 1, held: 1, exhausted: "5-hour window used up until 14:20" }],
+        limits: { window_ceiling: 95, pace: "even", ceilings: null, tolerance: null, reserve: 10, max_active: 2 }, said: ["even pace", "keep 10%", "≤2 at once"], agents: 1, held: 1, exhausted: "5-hour window used up until 14:20" }],
       agents: [{ session: "r1/lead", account: "claude:work", hour: { usd: 0.42, tokens: 9000 }, total: { usd: 3.1, tokens: 80000 }, priority: "low",
         caps: { rate_usd: null, rate_tokens: null, total_usd: 5, total_tokens: null }, exempt: false, held: { key: "r1/lead", cause: "window", said: "5-hour window used up until 14:20", until: resets } }],
       turtle: false, telemetry: true, refused: "", holds: false,

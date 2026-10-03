@@ -33,8 +33,15 @@ torrent client limits a link (`docs/dashboard.md`, Budgets).
   fast each fills and when it clears, and the turtle (`:turtle`, `dashboard
   turtle on|off`), which the status line shows as `🐢 turtle`. Each agent's
   row says what it spends and what holds it.
-- A held agent waits through the pause's hold; a dashboard with no hold store
-  shows what it would hold, says `not holding`, and holds nobody.
+- At 95% of any window — `window_ceiling`, on with no configuration — every
+  agent drawing on the account but your own sessions is held at its next tool
+  call through the pause's hold store, `window used up until HH:MM`, rather
+  than running into the provider's limit, where a Claude subagent ends
+  mid-step. The hold lapses at the reset, and a session the limit stopped —
+  its call refused after waiting past the hold's limit, or its turn ended by
+  the provider's refusal — is woken with a bare `continue`. The windows are
+  read every 30 seconds once one is within ten points of its ceiling, and a
+  window used up for more than six hours is told to you once.
 
 When an account runs out, the page names the profiles with room and leaves
 the switch to you. `:switch <profile>` on the page, or `harness profile switch

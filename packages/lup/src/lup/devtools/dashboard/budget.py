@@ -31,9 +31,15 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
+from pydantic.alias_generators import to_camel
 
+from lup.coordination import holds
+from lup.coordination.bare import holds as bare_holds
 from lup.coordination.bare import store
+from lup.coordination.holds import Hold, HoldOwner, HoldReason, HoldScope
+from lup.coordination.repository import RepositoryPeers
+from lup.devtools.coordination.pausing import continued_with
 from lup.devtools.dashboard.companion import KnownRepository
 from lup.devtools.dashboard.live import Feature, RunningAgent
 from lup.devtools.harness.launch import SwitchOutcome, switch_repository_login
@@ -175,6 +181,189 @@ class HeldCalls(ABC):
         """Every call a hook in the store at *root* is holding now."""
 
 
+def reason_of(cause: Cause) -> HoldReason:
+    """The hold store's reason for a budget's cause, which its hook and row read."""
+    match cause:
+        case "window":
+            return HoldReason.WINDOW
+        case "reserve":
+            return HoldReason.RESERVE
+        case "cap":
+            return HoldReason.CAP
+        case "rate":
+            return HoldReason.RATE
+        case "slot":
+            return HoldReason.SLOT
+
+
+def cause_of(reason: HoldReason) -> Cause | None:
+    """The budget's cause a hold's reason stands for; none for the operator's pause."""
+    match reason:
+        case HoldReason.WINDOW:
+            return "window"
+        case HoldReason.RESERVE:
+            return "reserve"
+        case HoldReason.CAP:
+            return "cap"
+        case HoldReason.RATE:
+            return "rate"
+        case HoldReason.SLOT:
+            return "slot"
+        case HoldReason.PAUSED:
+            return None
+
+
+class StoredHolds(HoldDoor):
+    """The budget's holds in each repository's coordination store: one per agent, owned by the budget.
+
+    Each covers the one conversation it names, since every subagent is judged
+    on its own, and lapses at its ``until`` without anybody lifting it. One
+    placed again keeps the moment it was first placed, so its row's "held
+    since" holds still while its words change.
+    """
+
+    def holding(self, root: Path) -> list[HeldAgent]:
+        return [
+            HeldAgent(member=hold.member, cause=cause, said=hold.said, until=hold.until)
+            for hold in holds.standing(root)
+            if hold.owner is HoldOwner.BUDGET
+            and hold.scope is HoldScope.SELF
+            and (cause := cause_of(hold.reason)) is not None
+        ]
+
+    def place(self, root: Path, held: HeldAgent) -> None:
+        reason = reason_of(held.cause)
+        hold = Hold(
+            scope=HoldScope.SELF,
+            member=held.member,
+            reason=reason,
+            owner=HoldOwner.BUDGET,
+            said=held.said,
+            until=held.until,
+        )
+        first = next(
+            (
+                each.placed
+                for each in holds.placed(root)
+                if (each.owner, each.reason, each.scope, each.member)
+                == (HoldOwner.BUDGET, reason, HoldScope.SELF, held.member)
+            ),
+            None,
+        )
+        holds.place(
+            root, hold if first is None else hold.model_copy(update={"placed": first})
+        )
+
+    def lift(self, root: Path, held: HeldAgent) -> None:
+        holds.lift(
+            root, HoldOwner.BUDGET, reason_of(held.cause), HoldScope.SELF, held.member
+        )
+
+
+class StoredCalls(HeldCalls):
+    """The calls each repository's hooks are holding, as the hold store's waiting markers say."""
+
+    def waiting(self, root: Path) -> list[WaitingCall]:
+        return [
+            WaitingCall(member=call.member, since=call.since)
+            for call in holds.held_calls(root)
+        ]
+
+
+class QuotaLimits(
+    BaseModel,
+    frozen=True,
+    extra="ignore",
+    alias_generator=to_camel,
+    populate_by_name=True,
+):
+    """What a usage-limit refusal says of the limit it met."""
+
+    resets_at: int | None = None
+    rate_limit_type: str = ""
+
+
+class TurnRecord(
+    BaseModel,
+    frozen=True,
+    extra="ignore",
+    alias_generator=to_camel,
+    populate_by_name=True,
+):
+    """One record of a Claude Code transcript, as far as whether a usage limit ended its turn.
+
+    Measured on Claude Code 2.1.283 and 2.1.285: a request refused at the
+    limit records a synthetic assistant message with ``isApiErrorMessage``,
+    ``error: "rate_limit"`` and ``quotaLimits`` naming the window and when it
+    resets, and the turn ends there.
+    """
+
+    type: str = ""
+    is_api_error_message: bool = False
+    error: str = ""
+    quota_limits: QuotaLimits | None = None
+
+
+def limit_reset(transcript: Path, tail: int = 65536) -> datetime | None:
+    """When the usage limit that ended a session's last turn resets, where one did; read off its transcript's end."""
+    try:
+        with transcript.open("rb") as handle:
+            handle.seek(max(transcript.stat().st_size - tail, 0))
+            lines = handle.read().decode("utf-8", "replace").splitlines()[1:]
+    except OSError:
+        return None
+    for line in reversed(lines):
+        try:
+            record = TurnRecord.model_validate_json(line)
+        except ValidationError:
+            continue
+        if record.type not in ("user", "assistant"):
+            continue
+        quota = record.quota_limits
+        if not (record.is_api_error_message and record.error == "rate_limit"):
+            return None
+        if quota is None or quota.resets_at is None:
+            return None
+        return datetime.fromtimestamp(quota.resets_at, UTC)
+    return None
+
+
+class Resumption(ABC):
+    """Which sessions a limit stopped, and how one is told to go on."""
+
+    @abstractmethod
+    def stopped(self, each: "Placed") -> datetime | None:
+        """When *each* may go on, where a limit ended its turn: nothing where none did, or something still holds it."""
+
+    @abstractmethod
+    def resume(self, each: "Placed") -> bool:
+        """Wake *each* with a bare "continue", recorded as the prompt it is; whether it reached."""
+
+
+class StoredResumption(Resumption):
+    """A session stops at a limit two ways: its hook refused a call held past the hold's limit, or it ran into the provider's own.
+
+    Either ended its turn, and it waits to be told to go on; one still held
+    by anything -- the operator's pause among them -- is left to what holds it.
+    """
+
+    def stopped(self, each: "Placed") -> datetime | None:
+        if holds.holding(each.store, each.agent.id, each.agent.parent):
+            return None
+        refused = {
+            store.text(call.get("member")) for call in bare_holds.refused(each.store)
+        }
+        if each.agent.id in refused:
+            return datetime.min.replace(tzinfo=UTC)
+        transcript = each.agent.transcript
+        return limit_reset(Path(transcript)) if transcript else None
+
+    def resume(self, each: "Placed") -> bool:
+        peers = RepositoryPeers(each.checkout)
+        row = peers.row(each.agent.id)
+        return row is not None and continued_with(peers, row, "continue")
+
+
 class WindowReading(BaseModel, frozen=True):
     at: datetime
     windows: list[PacingWindow]
@@ -282,12 +471,20 @@ class AccountPoller:
             target=self.polling, name="lup-budget-accounts", daemon=True
         )
 
-    def interval(self) -> float:
-        """How long between reads, as the person's config says now."""
+    def interval(self, now: datetime | None = None) -> float:
+        """How long between reads: ``close_seconds`` once a window is within ten points of its ceiling, else ``poll_seconds``."""
         try:
-            return float(self.config.load().budget.poll_seconds)
+            config = self.config.load().budget
         except ValueError:
-            return float(BudgetConfig().poll_seconds)
+            config = BudgetConfig()
+        moment = now or datetime.now(UTC)
+        close = any(
+            each.window.utilization_pct
+            >= (config.limits(watch.home.account, moment).window_ceiling or 100.0) - 10
+            for watch in self.standings(moment)
+            for each in watch.standing(moment).windows
+        )
+        return float(config.close_seconds if close else config.poll_seconds)
 
     def poll(self, now: datetime | None = None) -> None:
         """Read every account once, and publish what was read where every judgement reads it."""
@@ -449,12 +646,21 @@ class Placed(BaseModel, frozen=True):
 
     key: str
     repository: str
+    checkout: Path
     store: Path
     agent: RunningAgent
     account: Account
     exempt: bool
     wanting: datetime | None = None
     """Since when it has wanted to work, where it does."""
+
+
+class Warned(BaseModel, frozen=True):
+    """One used-up window the operator was told of: whose, which, and the reset it waits for."""
+
+    account: str
+    window: str
+    resets_at: datetime
 
 
 class Told(BaseModel, frozen=True):
@@ -477,6 +683,8 @@ class Remembered(BaseModel, frozen=True):
     """When the operator was told its spend cap stopped it, while it does."""
 
     account: Account | None = None
+    resumed: datetime | None = None
+    """When it was last told to continue after a limit stopped it."""
 
 
 def epoch_of(moment: datetime | None) -> float | None:
@@ -497,7 +705,10 @@ class BudgetGovernor:
     agent at the door; ``unplaced`` how long spend from a session no roster
     lists yet is kept for one to. ``door`` is where holds are placed and
     ``calls`` says which calls the hooks hold now; without a door the
-    governor judges and shows, and nothing waits.
+    governor judges and shows, and nothing waits. ``resumption`` finds the
+    sessions a limit stopped and tells each to continue once nothing holds
+    it, no more often than ``rewake``; ``far`` is how distant a used-up
+    window's reset must be for the operator to be told of it.
     """
 
     def __init__(
@@ -512,6 +723,9 @@ class BudgetGovernor:
         notify: Callable[[str, str], bool] = notified_nowhere,
         stick: timedelta = timedelta(seconds=90),
         unplaced: timedelta = timedelta(minutes=10),
+        resumption: Resumption | None = None,
+        rewake: timedelta = timedelta(minutes=10),
+        far: timedelta = timedelta(hours=6),
     ) -> None:
         self.ledger = ledger
         self.config = config
@@ -523,6 +737,10 @@ class BudgetGovernor:
         self.notify = notify
         self.stick = stick
         self.unplaced_for = unplaced
+        self.resumption = resumption
+        self.rewake = rewake
+        self.far = far
+        self.warned_of: list[Warned] = []
         self.remembered: dict[str, Remembered] = {}
         self.tails: dict[Path, RolloutTail] = {}
         self.unplaced: list[RequestSpend] = []
@@ -548,6 +766,7 @@ class BudgetGovernor:
                 Placed(
                     key=f"{repository.key}/{agent.id}",
                     repository=repository.key,
+                    checkout=repository.known.checkout,
                     store=repository.store,
                     agent=agent,
                     account=account(agent),
@@ -712,6 +931,8 @@ class BudgetGovernor:
         )
         self.hold(agents, verdicts)
         told = self.tell(agents, verdicts, moment)
+        woken = self.resumed(agents, verdicts, moment)
+        self.warned(config, accounts, moment)
         self.remembered = {
             each.key: Remembered(
                 since=each.wanting,
@@ -721,6 +942,7 @@ class BudgetGovernor:
                     None,
                 ),
                 account=each.account,
+                resumed=moment if each.key in woken else self.memory(each.key).resumed,
             )
             for each in agents
         }
@@ -798,6 +1020,63 @@ class BudgetGovernor:
                 self.notify(f"An agent reached its spend cap: {key}", verdict.said)
         return [Told(key=key, at=self.memory(key).told or moment) for key in capped]
 
+    def resumed(
+        self, agents: list[Placed], verdicts: list[Verdict], moment: datetime
+    ) -> list[str]:
+        """Tell each session a limit stopped to continue, once nothing holds it; the keys told.
+
+        A session's own, never a subagent's, which ends with its turn; and
+        never the operator's own session, whose runtime waits for the reset.
+        """
+        resumption = self.resumption
+        if resumption is None:
+            return []
+        held = {verdict.key for verdict in verdicts}
+
+        def due(each: Placed) -> bool:
+            last = self.memory(each.key).resumed
+            if (
+                each.exempt
+                or each.agent.parent
+                or each.agent.calling
+                or each.key in held
+            ):
+                return False
+            if last is not None and moment - last < self.rewake:
+                return False
+            clears = resumption.stopped(each)
+            return clears is not None and clears <= moment
+
+        return [each.key for each in agents if due(each) and resumption.resume(each)]
+
+    def warned(
+        self, config: BudgetConfig, accounts: list[AccountStanding], moment: datetime
+    ) -> None:
+        """Tell the operator once of each window used up for long: switching profile is theirs, never done for them."""
+        for standing in accounts:
+            limits = config.limits(standing.account, moment)
+            for each in standing.windows:
+                window = each.window
+                told = Warned(
+                    account=standing.account.key,
+                    window=window.label,
+                    resets_at=window.resets_at.replace(second=0, microsecond=0),
+                )
+                if (
+                    told in self.warned_of
+                    or not limits.used_up(window)
+                    or window.resets_at - moment < self.far
+                ):
+                    continue
+                self.warned_of.append(told)
+                self.notify(
+                    f"{standing.account.key}: {window.label} window used up until "
+                    f"{clock(window.resets_at, moment)}",
+                    "Its agents wait at their next tool call until it clears. Moving "
+                    "them to another profile is yours: :switch <profile> on the "
+                    "dashboard, or harness profile switch.",
+                )
+
     def viewed(
         self,
         config: BudgetConfig,
@@ -819,16 +1098,15 @@ class BudgetGovernor:
         def meter(standing: AccountStanding) -> AccountMeter:
             key = standing.account.key
             drawing = [each for each in agents if each.account.key == key]
+            limits = config.limits(standing.account, moment)
             used = next(
                 (
                     each.window
                     for each in standing.windows
-                    if each.window.utilization_pct >= 100
-                    and each.window.resets_at > moment
+                    if limits.used_up(each.window) and each.window.resets_at > moment
                 ),
                 None,
             )
-            limits = config.limits(standing.account, moment)
             return AccountMeter(
                 account=standing.account,
                 key=key,

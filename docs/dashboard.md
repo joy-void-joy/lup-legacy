@@ -800,7 +800,8 @@ against a slot; their subagents, and the sessions an agent opens, are.
 An account is one runtime's login under one profile — `claude:work`,
 `codex:default`, `default` naming the home no profile selects — and the
 dashboard reads every one the served repositories can launch on, each
-profile's included, every `poll_seconds`. Its windows are what the provider
+profile's included, every `poll_seconds`, and every `close_seconds` (30)
+once one of its windows is within ten points of its ceiling. Its windows are what the provider
 meters it in: Claude's 5-hour and weekly windows from the OAuth usage
 endpoint, Codex's two self-describing windows from the app-server, and between
 reads a Codex session's rollout, which carries its account's windows with
@@ -844,7 +845,9 @@ pace = "even"        # hold agents spending a window faster than it passes
 tolerance = 5        # points past a speed limit normal agents still work
 reserve = 10         # the last 10% of every window is kept for you
 max_active = 3       # at most three agents work at once
+window_ceiling = 95  # how full a window gets before every agent holds; 95 unset
 poll_seconds = 120   # how often each account's windows are read
+close_seconds = 30   # how often, once a window is within ten points of its ceiling
 
 [[budget.ceilings]]  # a speed limit on one window, in percent of it an hour
 window = "5-hour"
@@ -874,8 +877,13 @@ and the meter says why.
 Each agent is weighed against its account's limits, and the first that
 applies holds it, saying why on its row and to the agent:
 
-1. **A window used up** — every agent drawing on it, until it clears: `5-hour
-   window used up until 14:20`.
+1. **A window used up** — at `window_ceiling`, 95% with no configuration,
+   every agent drawing on it holds until it clears: `5-hour window used up
+   until 14:20`. The ceiling is the margin that keeps an agent from running
+   into the provider's own limit between two readings: at the provider's
+   limit a Claude subagent ends mid-step, its session told `Agent terminated
+   early due to an API error: You've hit your session limit`, measured on
+   Claude Code 2.1.283 and 2.1.285. `100` leaves it to the provider.
 2. **The reserve** — once a window reaches it, until it clears: `reserve
    reached: …, the last 10% kept for you until 14:20`.
 3. **Its total cap** — until the operator raises or clears it; the operator is
@@ -889,11 +897,21 @@ applies holds it, saying why on its row and to the agent:
    calling keeps its slot for ninety seconds, so one thinking between two
    calls is not overtaken.
 
-The hold is the pause's: an agent the budget holds waits at its next tool
-call and goes on, unprompted, once the limit allows. A dashboard with no hold
-store to place its holds in judges and shows, and nothing waits: the stream's
-`holds` says which, the meter says `not holding`, and each row says what
-`would hold` its agent.
+The hold is the pause's: the budget places it in the repository's hold
+store, owned by the budget and covering the one agent, and the agent waits at
+its next tool call, its row showing it held as any hold is. It lifts when the
+limit allows — at a window's reset by itself, since the hold lapses then — and
+the call goes on, unprompted. A session a limit stopped is told to go on: one
+whose hook refused a call held past the hold's limit, or one that ran into the
+provider's limit before a reading caught up, its transcript ending in the
+refusal; once nothing holds it, it is woken with a bare `continue`, recorded
+as a prompt. The operator's own sessions are neither held nor woken, since
+their runtime waits for the reset by itself. A window used up until more than
+six hours away is told to the operator once, as a desktop notice, as well as
+on the page: switching profile is theirs. A dashboard with no hold store to
+place its holds in judges and shows, and nothing waits: the stream's `holds`
+says which, the meter says `not holding`, and each row says what `would hold`
+its agent.
 
 ### On the page
 

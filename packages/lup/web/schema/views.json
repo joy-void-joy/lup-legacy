@@ -43,7 +43,8 @@
             "max_active": null,
             "pace": null,
             "reserve": null,
-            "tolerance": null
+            "tolerance": null,
+            "window_ceiling": null
           }
         },
         "read_at": {
@@ -694,7 +695,6 @@
         "reserve",
         "cap",
         "rate",
-        "pace",
         "slot"
       ],
       "type": "string"
@@ -4817,7 +4817,7 @@
     },
     "Limits": {
       "additionalProperties": false,
-      "description": "One set of limits on an account; every limit left unset is no limit.\n\n``pace`` is the speed limit: ``\"even\"`` keeps every window at or under\neven pace \u2014 no more of it spent than has gone by \u2014 and each of\n``ceilings`` caps one window at so many percent of it an hour. Past\neither, low-priority agents hold at once, normal ones once the account is\n``tolerance`` points over, high ones at twice that. ``reserve`` keeps the\nlast so many percent of every window for the operator: once a window\nreaches it, every agent but the operator's own sessions holds until it\nclears. ``max_active`` is how many agents may work at once.",
+      "description": "One set of limits on an account; every limit left unset is no limit.\n\n``window_ceiling`` is how full a window may get: at it, every agent but\nthe operator's own sessions holds until the window clears, as though it\nwere used up -- the margin that keeps an agent from running into the\nprovider's own limit between two readings of the window.\n\n``pace`` is the speed limit: ``\"even\"`` keeps every window at or under\neven pace \u2014 no more of it spent than has gone by \u2014 and each of\n``ceilings`` caps one window at so many percent of it an hour. Past\neither, low-priority agents hold at once, normal ones once the account is\n``tolerance`` points over, high ones at twice that. ``reserve`` keeps the\nlast so many percent of every window for the operator: once a window\nreaches it, every agent but the operator's own sessions holds until it\nclears. ``max_active`` is how many agents may work at once.",
       "properties": {
         "ceilings": {
           "anyOf": [
@@ -4886,9 +4886,24 @@
           ],
           "default": null,
           "title": "Tolerance"
+        },
+        "window_ceiling": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "maximum": 100,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Window Ceiling"
         }
       },
       "required": [
+        "window_ceiling",
         "pace",
         "ceilings",
         "tolerance",
