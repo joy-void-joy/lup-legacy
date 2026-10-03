@@ -8,6 +8,8 @@ with a surface of its own lists it beside these in its composition.
 """
 
 from lup.devtools.dashboard.reviews import (
+    CodeQuestion,
+    CodeSource,
     ReviewAnswer,
     ReviewDecision,
     ReviewHistory,
@@ -32,6 +34,7 @@ from lup.devtools.supervisor.projection import (
 )
 from lup.ledger.views import ExportView, GraphView, KindsView, NodeDetail
 from lup.resolver.record import JournalEntry
+from lup.tools.lsp.pool import CodeHover, CodeLocations, CodeText, CodeTokens
 from lup.web.build import Surface
 
 EXPLORER = Surface(
@@ -75,13 +78,19 @@ DASHBOARD = Surface(
         KeymapCatalog,
         KeyTry,
         KeyBindings,
+        CodeSource,
+        CodeQuestion,
+        CodeHover,
+        CodeLocations,
+        CodeTokens,
+        CodeText,
         *supervision_models(),
     ],
 )
 """The operator's dashboard: the live stream, parked reviews, captured changes, exact
 decisions, an older page of a repository's messages, setup panes, the keymap with a
-person's keys tried over it, and every write and read the operator supervises agents
-with."""
+person's keys tried over it, every write and read the operator supervises agents
+with, and what a language server says of the code a review shows."""
 
 
 # lup: ignore[library-default] — the surfaces this library authors, so the
