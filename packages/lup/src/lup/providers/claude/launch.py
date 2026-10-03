@@ -4,6 +4,7 @@ import json
 import shlex
 import shutil
 from collections.abc import Sequence
+from datetime import UTC, datetime
 from pathlib import Path
 from tempfile import mkdtemp
 from typing import TYPE_CHECKING, Literal, TypedDict
@@ -24,7 +25,12 @@ from lup.harness.toolchain import bubblewrap_requirement, socat_requirement
 from lup.launch.boundary import apply_sandbox_environment
 from lup.launch.companions import CompanionLaunch, Joined, StatusLine, held_companions
 from lup.launch.compilation import allowance_environment, inherited_environment
-from lup.launch.config_volume import HomeSeedPlaces, LoginOwner
+from lup.launch.config_volume import (
+    HomeSeedPlaces,
+    LaunchedAccount,
+    LaunchedAccounts,
+    LoginOwner,
+)
 from lup.launch.declaration import (
     LaunchCommand,
     LaunchStep,
@@ -784,6 +790,16 @@ def claude_opening(
         overlays=claude_guidance(root, config.sandbox),
         owner=owner,
         moving="move" if config.move_sessions else "refuse",
+    )
+    LaunchedAccounts().record(
+        LaunchedAccount(
+            member=member.member_id,
+            runtime=CLAUDE_LOGIN.state_volume,
+            owner=owner,
+            checkout=root,
+            contained=posture.contained(),
+            at=datetime.now(UTC),
+        )
     )
     return LaunchCommand(argv=argv, env=environment, cwd=root)
 

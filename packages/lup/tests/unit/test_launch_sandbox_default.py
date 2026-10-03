@@ -34,12 +34,13 @@ from lup.devtools.harness.launch import launch_claude, launch_codex
 from lup.harness.codescan.common import RuleSelection
 from lup.harness.generate import NativeHarnessComposition
 from lup.harness.image import ContainerClient
-from lup.launch.config_volume import HandedLogin
+from lup.launch.config_volume import HandedLogin, LaunchedAccounts
 from lup.launch.declaration import LaunchSandbox, LaunchStep
 from lup.providers.claude import Claude
 from lup.providers.codex import Codex
 from tests.unit.harness_launch import (
     CONTAINER,
+    MEMBER,
     Caught,
     checkout,
     composition,
@@ -217,6 +218,30 @@ def test_an_explicit_sandbox_is_taken_as_said_without_asking_the_host(
 
     assert opened_under(seen) is asked
     assert "Docker or Podman" not in capsys.readouterr().out
+
+
+@RUNTIMES
+@pytest.mark.parametrize("asked", [LaunchSandbox.OUTER, LaunchSandbox.INNER])
+def test_every_launch_records_the_account_it_opened_on(
+    runtime: str,
+    asked: LaunchSandbox,
+    seen: Opened,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Keyed by the member it minted, so which account a session draws on has an answer."""
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
+    unprobed(monkeypatch)
+
+    opened(seen, runtime, sandbox=asked)
+
+    recorded = LaunchedAccounts().launched(MEMBER.member_id)
+    assert recorded is not None
+    assert (recorded.runtime, recorded.contained, recorded.checkout) == (
+        runtime,
+        asked.contained(),
+        seen.root,
+    )
 
 
 @RUNTIMES

@@ -438,6 +438,76 @@ class VolumeLogins:
         )
 
 
+class LaunchedAccount(BaseModel, frozen=True):
+    """The account one launched session opened on, kept beside its volume's record."""
+
+    member: str
+    """Its roster id, as the launch minted it."""
+
+    runtime: str
+    """The runtime's word, as its login declares it."""
+
+    owner: LoginOwner
+    checkout: Path
+    """The checkout it opened in, whose repository names its volume."""
+
+    contained: bool
+    """Whether it runs in its repository's container, on that repository's
+    volume, rather than on the host in its account's own home."""
+
+    at: datetime
+
+
+class LaunchedAccounts:
+    """The account each launched session opened on, a file per member under lup's state.
+
+    The roster says who a session is and never which account it draws on, so
+    the launch that chose the account records it beside the volume records.
+    A contained session on a runtime that rereads its login draws on whatever
+    its volume was handed since, which
+    :func:`~lup.launch.container.drawn_account` answers.
+    """
+
+    def __init__(self, home: Path | None = None) -> None:
+        self.home = (
+            home
+            if home is not None
+            else UserDirectories().state() / "launched-accounts"
+        )
+
+    def path(self, member: str) -> Path:
+        """The file one member's record is kept in."""
+        return self.home / f"{member}.json"
+
+    def record(self, launched: LaunchedAccount) -> None:
+        """Keep the account a session was just launched on."""
+        write_atomic(
+            self.path(launched.member),
+            launched.model_dump_json(indent=2).encode("utf-8"),
+        )
+
+    def launched(self, member: str) -> LaunchedAccount | None:
+        """The account that member was launched on, ``None`` where no launch recorded one."""
+        path = self.path(member)
+        if not path.is_file():
+            return None
+        return LaunchedAccount.model_validate_json(path.read_text(encoding="utf-8"))
+
+    def every(self) -> list[LaunchedAccount]:
+        """Every recorded launch, oldest first, for a sweep to judge."""
+        if not self.home.is_dir():
+            return []
+        found = [
+            LaunchedAccount.model_validate_json(path.read_text(encoding="utf-8"))
+            for path in self.home.glob("*.json")
+        ]
+        return sorted(found, key=lambda launched: launched.at)
+
+    def forget(self, member: str) -> None:
+        """Drop one member's record, as a sweep does once its session is gone."""
+        self.path(member).unlink(missing_ok=True)
+
+
 def running_containers(volume: str, engine: ContainerEngine) -> list[str]:
     """Every running container holding a volume, by name; none where the engine cannot be asked."""
     try:

@@ -82,6 +82,8 @@ from lup.launch.config_volume import (
     HomeFile,
     HomeHelper,
     HomeSeedPlaces,
+    LaunchedAccounts,
+    LoginOwner,
     RuntimeVolume,
     VolumeLogins,
     kept_for_superseded,
@@ -2184,6 +2186,31 @@ def read_config_home(
         return helper.read(state_volume_name(root, login), names)
     except (sh.CommandNotFound, sh.ErrorReturnCode):
         return []
+
+
+def drawn_account(
+    member: str,
+    accounts: LaunchedAccounts | None = None,
+    logins: VolumeLogins | None = None,
+) -> LoginOwner | None:
+    """The account one launched session draws on now, ``None`` where its launch recorded none.
+
+    A host session draws on the account it was launched on, and so does a
+    contained one whose runtime keeps the login it started with. One whose
+    runtime rereads its login draws on whatever its repository's volume was
+    last handed, which a later launch or a switch may have moved it to.
+    """
+    launched = (accounts or LaunchedAccounts()).launched(member)
+    if launched is None:
+        return None
+    login = next(
+        (each for each in runtime_logins() if each.state_volume == launched.runtime),
+        None,
+    )
+    if login is None or not launched.contained or not login.rereads_login:
+        return launched.owner
+    held = (logins or VolumeLogins()).held(state_volume_name(launched.checkout, login))
+    return held.owner if held is not None else launched.owner
 
 
 def engine_absence() -> str | None:

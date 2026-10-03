@@ -2,6 +2,7 @@
 
 import json
 from collections.abc import Sequence
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -36,7 +37,7 @@ from lup.launch.declaration import (
     resumption,
     session_loopback,
 )
-from lup.launch.config_volume import LoginOwner
+from lup.launch.config_volume import LaunchedAccount, LaunchedAccounts, LoginOwner
 from lup.launch.environments import revisions_home
 from lup.launch.guidance import held_guidance
 from lup.launch.foreground import between_steps, run_in_foreground
@@ -843,6 +844,16 @@ def codex_opening(
         overlays=codex_guidance(root, config.sandbox),
         owner=home.owner(),
         moving="move" if config.move_sessions else "refuse",
+    )
+    LaunchedAccounts().record(
+        LaunchedAccount(
+            member=member.member_id,
+            runtime=CODEX_LOGIN.state_volume,
+            owner=home.owner(),
+            checkout=root,
+            contained=posture.contained(),
+            at=datetime.now(UTC),
+        )
     )
     return LaunchCommand(argv=argv, env=environment, cwd=root)
 

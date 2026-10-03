@@ -26,6 +26,8 @@ import lup.launch.config_volume as config_volume
 import lup.launch.container as container
 from lup.launch.config_volume import (
     HandedLogin,
+    LaunchedAccount,
+    LaunchedAccounts,
     LoginOwner,
     SessionsMove,
     VolumeLogin,
@@ -565,6 +567,56 @@ def test_what_a_volume_was_handed_reads_back_as_it_was_recorded(
     assert held.owner.named() == "work"
     assert LoginOwner(home=tmp_path / "x").named() == f"the account at {tmp_path / 'x'}"
     assert logins.held("lup-claude-other") is None
+
+
+def launched(
+    tmp_path: Path, member: str, runtime: str, contained: bool
+) -> LaunchedAccount:
+    """A launch of one runtime on ``personal``, contained or on the host."""
+    return LaunchedAccount(
+        member=member,
+        runtime=runtime,
+        owner=account(tmp_path, "personal"),
+        checkout=tmp_path / "dev",
+        contained=contained,
+        at=NOW,
+    )
+
+
+def test_a_session_draws_on_what_its_volume_holds_only_where_it_rereads_its_login(
+    tmp_path: Path, logins: VolumeLogins, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A contained Claude session follows its volume; Codex and host sessions do not."""
+    layout = Mock()
+    layout.name.return_value = "lup"
+    monkeypatch.setattr(container, "repository_layout", Mock(return_value=layout))
+    accounts = LaunchedAccounts(tmp_path / "launched")
+    for recorded in (
+        launched(tmp_path, "inside", "claude", contained=True),
+        launched(tmp_path, "codex", "codex", contained=True),
+        launched(tmp_path, "host", "claude", contained=False),
+    ):
+        accounts.record(recorded)
+    held_by(tmp_path, logins, "work")
+    held_by(tmp_path, logins, "work", volume="lup-codex-lup")
+
+    def drawn(member: str) -> str | None:
+        owner = container.drawn_account(member, accounts, logins)
+        return owner.profile if owner is not None else None
+
+    assert [drawn(member) for member in ("inside", "codex", "host", "gone")] == [
+        "work",
+        "personal",
+        "personal",
+        None,
+    ]
+    assert sorted(each.member for each in accounts.every()) == [
+        "codex",
+        "host",
+        "inside",
+    ]
+    accounts.forget("codex")
+    assert accounts.launched("codex") is None
 
 
 def test_a_launch_that_would_move_running_sessions_is_refused_before_anything_is_built(
