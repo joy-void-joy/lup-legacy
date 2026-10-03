@@ -170,7 +170,8 @@ def test_a_key_starting_a_longer_one_where_both_act_is_a_wait_not_a_refusal() ->
     read = effective({"file.whole": ["g"]})
     assert read.report.refused == []
     assert any(
-        "g (file.whole) also starts gd (judged)" in wait for wait in read.report.waits
+        "g (file.whole) also starts gd (definition)" in wait
+        for wait in read.report.waits
     )
 
 
