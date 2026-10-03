@@ -182,6 +182,15 @@ class KnownRepository(BaseModel, frozen=True):
 
     checkout: Path
 
+    @classmethod
+    def of(cls, checkout: Path) -> "KnownRepository":
+        """The repository *checkout* is a worktree of; a directory in none answers for itself."""
+        try:
+            repository = repository_layout(checkout).common.resolve()
+        except (GitError, OSError, ValueError):
+            repository = checkout.resolve()
+        return cls(repository=repository, checkout=checkout.resolve())
+
     def key(self) -> str:
         """A name for it that stays the same across checkouts and restarts."""
         return hashlib.sha256(str(self.repository).encode()).hexdigest()[:16]
@@ -222,13 +231,9 @@ class DashboardRegistry(BaseModel, frozen=True):
     @contextmanager
     def registered(self, checkout: Path) -> Iterator[None]:
         """Record one launch in ``checkout`` for as long as it holds the dashboard."""
-        try:
-            repository = repository_layout(checkout).common.resolve()
-        except (GitError, OSError):
-            repository = checkout.resolve()
-        known = KnownRepository(repository=repository, checkout=checkout.resolve())
+        known = KnownRepository.of(checkout)
         record = LaunchRecord(
-            repository=repository,
+            repository=known.repository,
             checkout=known.checkout,
             holder=LiveProcess.of(os.getpid()),
         )

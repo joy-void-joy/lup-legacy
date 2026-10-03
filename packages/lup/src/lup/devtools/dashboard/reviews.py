@@ -1088,15 +1088,7 @@ def review_roots(root: Path, additional: list[Path]) -> tuple[Path, ...]:
 
 def named_repositories(roots: tuple[Path, ...]) -> list[KnownRepository]:
     """The repositories an operator named on a command line, each with its checkout."""
-
-    def known(root: Path) -> KnownRepository:
-        try:
-            repository = repository_layout(root).common.resolve()
-        except (OSError, ValueError, GitError):
-            repository = root
-        return KnownRepository(repository=repository, checkout=root)
-
-    return [known(root) for root in roots]
+    return [KnownRepository.of(root) for root in roots]
 
 
 def create_operator_dashboard_app(root: Path) -> typer.Typer:
