@@ -251,7 +251,7 @@ def test_a_judgement_no_alarm_reaches_is_refused_before_the_runtime_limit(
     assert elapsed < 5
     assert effect == "deny"
     assert "could not judge this call in time" in detail
-    assert "Retry the same call once" in detail
+    assert "retry the same call once" in detail
 
 
 def test_a_hook_started_past_its_answer_limit_refuses_at_once(
@@ -477,7 +477,7 @@ async def test_an_sdk_callback_whose_judgement_raises_refuses_the_call() -> None
     assert answer["permissionDecision"] == "deny"
     assert "permissionDecisionReason" in answer
     assert answer["permissionDecisionReason"].startswith(
-        "Lup could not judge this call (KeyError"
+        "refused: the policy failed on this call, so it is refused unjudged (`KeyError"
     )
     assert "report-friction" in answer["permissionDecisionReason"]
 
@@ -507,7 +507,7 @@ async def test_a_codex_approval_nobody_judged_is_declined_with_the_refusal(
     assert (
         "could not judge this call in time"
         if isinstance(policy, StalledPolicy)
-        else "Lup could not judge this call (KeyError"
+        else "the policy failed on this call, so it is refused unjudged (`KeyError"
     ) in told[0]
 
 
