@@ -5,7 +5,7 @@
   "description": "The TypeScript surfaces lup serves locally, one Vite entry per surface, built into lup.web's package data.",
   "scripts": {
     "typegen": "json2ts --input schema/views.json --output src/generated/views.d.ts --unreachableDefinitions --bannerComment '/* Generated from lup.ledger.views by `bun run typegen`; edit the pydantic models, not this file. */'",
-    "build": "bun run typegen && tsc --noEmit && vite build",
+    "build": "bun run typegen && tsc --noEmit && NODE_ENV=production vite build",
     "test": "bun test"
   },
   "dependencies": {
