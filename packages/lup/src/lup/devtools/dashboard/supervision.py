@@ -47,7 +47,6 @@ from lup.devtools.dashboard.live import (
 from lup.devtools.dashboard.stream import FollowOutcome, FollowRequest, LiveFeed
 from lup.providers.interrupts import Interrupted, interrupted_turn
 
-# lup: ignore[constant-declaration] — what the routes below serve, as the page names each
 SUPERVISED: tuple[Feature, ...] = (
     "reply-thread",
     "redirect",
@@ -387,8 +386,10 @@ def reply(known: KnownRepository, member_id: str, said: MessageRequest) -> Reply
     )
 
 
-def wake_member(known: KnownRepository, member_id: str) -> ReplyOutcome:
-    """Make one session look, with whatever waits for it or, where nothing does, a line saying so.
+def wake_member(
+    known: KnownRepository, member_id: str, asked: str = BARE_WAKE
+) -> ReplyOutcome:
+    """Make one session look, with whatever waits for it or, where nothing does, *asked*.
 
     A subagent has no wake of its own: its mail is handed over at its next
     call, and it is its session a wake would reach.
@@ -406,7 +407,7 @@ def wake_member(known: KnownRepository, member_id: str) -> ReplyOutcome:
     ]
     if waiting:
         return handed(known, peers, member_id, Posting())
-    woken = wake(row.wake, BARE_WAKE, worktree_of(row))
+    woken = wake(row.wake, asked, worktree_of(row))
     return ReplyOutcome(
         session=session,
         queued=False,
