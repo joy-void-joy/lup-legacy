@@ -272,7 +272,13 @@ class SessionHomes:
             link = home / entry.name
             if entry.name in reserved or link.is_symlink() or link.exists():
                 continue
-            link.symlink_to(entry)
+            # A session of the same workspace deriving this home at once can
+            # link the entry between the look above and this write; the entry
+            # is then there, which is all this asked for.
+            try:
+                link.symlink_to(entry)
+            except FileExistsError:
+                continue
 
     def carry_login(self, home: Path) -> None:
         """Bring one derived home's copy of the login in step with the shared home's.

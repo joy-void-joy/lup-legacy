@@ -255,6 +255,22 @@ def test_seeds_racing_on_one_copy_apply_the_login_once(tmp_path: Path) -> None:
     assert login_in(stored.parent) == copied_from(shared)
 
 
+def test_one_workspace_s_sessions_starting_at_once_share_one_home(
+    tmp_path: Path,
+) -> None:
+    """A concern's sessions derive one home, and may derive it together."""
+    homes = homes_under(tmp_path)
+    workspace = tmp_path / "lease-a"
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        derived = set(pool.map(lambda _: homes.derive(workspace), range(8)))
+
+    assert len(derived) == 1
+    home = derived.pop()
+    assert (home / "settings.json").is_symlink()
+    assert login_in(home) == copied_from(homes.shared)
+
+
 @pytest.mark.parametrize(
     "document", [CLAUDE_LEGACY_DOCUMENT, CLAUDE_HOME_DOCUMENT, CLAUDE_OAUTH_DOCUMENT]
 )
