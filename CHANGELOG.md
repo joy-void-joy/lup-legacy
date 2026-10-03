@@ -27,6 +27,8 @@ for this project's CLI — and `dev check` confirms each one exists.
 - A parked review opens on `queued:`, not `refused:`.
 - `dev policy` prints a verdict exactly as the hook sends it, ways through
   included.
+- "Change the command to one the policy allows" is offered only where a
+  refusal names no way of its own; the escalation line stays either way.
 - The generated pages under `docs/` and `AGENTS.md` are refused alike to an
   edit tool and a shell `>`, naming `uv run lup-devtools harness generate all`;
   an edit tool used to be allowed there while `>` asked for an unrelated reason.

@@ -1526,7 +1526,10 @@ that trips several rules lists each survivor after the first on an `also:`
 line, because the answer is one decision over the whole operation.
 
 Each arrow line is one way through, read by the agent: under a refusal, or
-beside a question as context. A way through is data — what to do in plain
+beside a question as context. A rule's own ways come first, then the route
+past the verdict, escalating or asking the relay; "change the command to one
+the policy allows" is offered only where the rule names no way of its own,
+since beside one it tells the agent nothing. A way through is data — what to do in plain
 words, and the command that does it as the words a shell runs — so a command
 is spelled one way wherever it is shown, `uv run lup-devtools …` for this
 project's own CLI. The `documented commands` row of `dev check` resolves
