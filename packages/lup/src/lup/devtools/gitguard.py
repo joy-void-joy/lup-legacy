@@ -1,49 +1,43 @@
 # lup: ignore[dict-str-payload] — ref name to object id, keyed by whatever
 # refs a repository happens to hold; there is no closed set to model
-"""Catching a test suite that wrote into the repository it is running inside.
-
-A test that forgets to bind git to its throwaway repository inherits the
-process working directory instead, and nothing fails — git finds a repository,
-commits succeed, and the suite passes green while the developer's branch has
-moved. Found the slow way, by a `git pr sync-base` merging a `dev` whose tip
-had become a fixture's commit deleting the application source. The suite cannot
-be trusted to notice, because noticing is exactly what it failed at, so the
-refs are read around it.
+"""Catching a test suite writing into the repository it is running inside.
 
 A test that builds a throwaway repository binds git to it — `git -C <tmp>` —
 and one that forgets inherits the process working directory instead, which
 during a test run is a real checkout. Nothing about that fails: git finds a
 repository, commits succeed, and the suite passes green while the branch the
-developer is standing on has moved. It was found here the slow way, by a
-`git pr sync-base` merging a `dev` whose tip had become a fixture's `chore:
-base` commit deleting the entire application source, an hour after the fixture
+developer is standing on has moved. The damage surfaces late and elsewhere:
+a `git pr sync-base` merges a `dev` whose tip is a fixture's `chore: base`
+commit deleting the entire application source, an hour after the fixture
 ran.
 
 The suite cannot be trusted to notice, because noticing is exactly what it
-failed to do. So the check sits outside every test: the refs of the enclosing
-repository are read once before the session and once after, and a difference
-fails the run naming the refs that moved — except where the ref belongs to
-another worktree of the same repository, which is that worktree's to move and
-so is reported rather than failed on. Detection rather than prevention — a
-ceiling that stopped git discovering the enclosing repository would also stop
-the tests that legitimately read it, and a suite that cannot run is a worse
-trade than one that reports what it broke.
+fails at. So the check sits outside every test: the refs of the enclosing
+repository, and the config a fixture can leak into it, are read before the
+tests run and again after, and a difference fails the run naming what moved
+— except where a ref belongs to another worktree of the same repository,
+which is that worktree's to move and so is reported rather than failed on.
+Detection rather than prevention — a ceiling that stopped git discovering
+the enclosing repository would also stop the tests that legitimately read
+it, and a suite that cannot run is a worse trade than one that reports what
+it broke.
 
 Read around every test, and per worker, rather than once around the session.
 Under xdist each worker is a session of its own over one shared ref store, so
-a difference closed once per session lands on whichever test that worker ran
-last: a policy row about `gh pr create` was failed for a branch a sibling
-session cut forty seconds into the run. A :class:`RepositoryWatch` settles
-after each test against a baseline that moves with it, so a change is laid at
-the door of the test whose window saw it, naming the worker that saw it; and
-the sibling worktrees are re-read when something moved, so a worktree cut
-mid-run answers for its own branch instead of the suite.
+a difference closed once per session would land on whichever test that
+worker ran last — a policy row about `gh pr create`, failed for a branch a
+sibling session cut forty seconds into the run. A :class:`RepositoryWatch`
+settles after each test against a baseline that moves with it, so a change is
+laid at the door of the test whose window saw it, naming the worker that saw
+it; and the sibling worktrees are re-read when something moved, so a worktree
+cut mid-run answers for its own branch instead of the suite.
 
 Nothing here needs the repository to exist: a suite running outside a checkout
-gets an empty snapshot both times and never fails.
+gets an empty snapshot at every reading and never fails.
 """
 
 from collections.abc import Iterator
+from itertools import takewhile
 from pathlib import Path
 
 import sh
@@ -58,6 +52,9 @@ REF_FORMAT = "%(refname) %(objectname)"
 
 UPSTREAM_FORMAT = "%(refname) %(upstream)"
 """One ref per line against the remote-tracking ref it follows, where it follows one."""
+
+STASH_REF = "refs/stash"
+"""The stash stack: one ref, which every worktree of a repository pushes onto."""
 
 WATCHED_SETTINGS = ("user.name", "user.email", "core.hooksPath")
 """The config a fixture overwrites and never puts back.
@@ -172,9 +169,9 @@ def repository_state(root: Path, namespace: str = "") -> dict[str, str]:
     Minus the two namespaces this repository's own tooling *writes by design*
     while a suite runs. The permission dispatcher takes an undo snapshot in
     front of every command an agent is allowed, so a suite an agent starts has
-    refs appearing under that namespace throughout — measured, two dozen in
-    the ninety seconds around one `dev check`, each read as a teardown
-    failure by every xdist worker, naming refs no fixture touched. And
+    refs appearing under that namespace throughout — some two dozen in the
+    ninety seconds around one `dev check`, each of which every xdist worker
+    would report as a teardown failure, naming refs no fixture touched. And
     `dev check` runs its harness rows beside the two test suites, one of which
     probes the checkpoint store by writing a ref under the preflight namespace
     and deleting it again, which the worker running a test just then would
@@ -324,8 +321,8 @@ class Window(BaseModel, frozen=True):
     """Where a change was noticed: which worker, and the test it was running.
 
     Under xdist the suite is many sessions over one ref store, and a
-    comparison closed once per session lands on whichever test tore down
-    last on the worker that noticed — a policy row about `gh pr create` was
+    comparison closed once per session would land on whichever test tore
+    down last on the worker that noticed — a policy row about `gh pr create`,
     failed for a branch a sibling session cut forty seconds into the run.
     Naming the window says the one thing the evidence supports: the change
     appeared while this test ran here.
@@ -373,6 +370,13 @@ def guard_report(
     moved = moved_refs(before, after)
     if not moved:
         return ""
+    stash = [
+        "A `refs/stash` line is the stash every worktree shares, so it may",
+        "be another session's: a sibling's push is told rather than failed,",
+        "but a pop or drop by anyone fails, since git does not record who",
+        "removed an entry. `git stash list` shows what is left.",
+        "",
+    ]
     return "\n".join(
         [
             "This test run modified the repository it is running inside.",
@@ -395,6 +399,7 @@ def guard_report(
             "runs no hooks at all: unset it, then re-arm the guards, and read",
             "what landed while they were off.",
             "",
+            *(stash if before.get(STASH_REF) != after.get(STASH_REF) else []),
             "Then find the fixture: it is one that runs git without",
             "`-C <tmp_path>` or without `monkeypatch.chdir` into the",
             "repository it built.",
@@ -409,15 +414,123 @@ def guard_report(
     )
 
 
+class StashEntry(BaseModel, frozen=True):
+    """One entry on the shared stash stack, as git recorded where it was made.
+
+    The stash is a single ref every worktree cut from a repository pushes onto,
+    so a session stashing in its own worktree moves a ref this checkout's
+    guard is watching, and the move itself names no worktree. The entry
+    records two things about where it was made: the commit that checkout's
+    HEAD stood on, as the entry's first parent, and the branch it had checked
+    out, in the subject `git stash` writes.
+    """
+
+    parent: str
+    """The entry's first parent: the commit the stashing checkout stood on.
+
+    Empty where git could not read it, which leaves the subject to decide."""
+
+    subject: str
+    """The entry commit's subject, ``On <branch>: …`` or ``WIP on <branch>: …``.
+
+    The commit's rather than the reflog's: `git stash store -m` writes any
+    reflog message it is handed, while the commit keeps what `git stash`
+    wrote when it made the entry. A detached head is written ``(no branch)``.
+    """
+
+    def made_on(self, branch: str) -> bool:
+        """Whether `git stash` wrote this entry's subject on ``branch``.
+
+        Exact rather than approximate: a branch name holds neither a colon nor
+        a space (`git check-ref-format`), so the first ``: `` closes the name
+        and ``feat`` never matches an entry made on ``feat/x``.
+        """
+        return self.subject.startswith((f"On {branch}: ", f"WIP on {branch}: "))
+
+    def maker(
+        self, checkouts: list[Worktree], own: Path, holders: dict[str, str]
+    ) -> str | None:
+        """The sibling worktree that made this entry, or ``None`` where none did.
+
+        The first parent is asked first because it is an object id git copied
+        from HEAD, not prose. Where exactly one checkout stands on it, that
+        checkout made the entry. When that one is this checkout, or a detached
+        one holding no branch, nobody else answers for it, whatever the subject
+        says.
+
+        It cannot decide alone, and only where it cannot does the subject
+        decide. Worktrees cut from one tip share that commit until one of them
+        commits, which is every worktree just after `worktree create`, so
+        several checkouts can stand on the parent. And the checkout that
+        stashed may have committed since, so none may. The subject is second
+        because it is git's wording rather than a field, and a commit made by
+        hand can carry any wording. It is read against ``holders``, the
+        branches sibling worktrees hold, so a branch nobody holds, this
+        checkout's own, and ``(no branch)`` all name no maker.
+        """
+        standing = [
+            checkout
+            for checkout in checkouts
+            if self.parent and checkout.head == self.parent
+        ]
+        match standing:
+            case [single] if single.path.resolve() == own or not single.branch:
+                return None
+            case [single]:
+                return str(single.path.resolve())
+            case _:
+                return next(
+                    (
+                        at
+                        for ref, at in holders.items()
+                        if ref.startswith("refs/heads/")
+                        and self.made_on(ref.removeprefix("refs/heads/"))
+                    ),
+                    None,
+                )
+
+    @classmethod
+    def pushed(
+        cls, root: Path, before: str, stash: str = STASH_REF
+    ) -> list["StashEntry"]:
+        """Each entry stacked above ``before``, newest first.
+
+        Empty where ``before`` is no longer on the stack: an entry left it, by
+        a pop or a drop, and whatever was pushed after that cannot vouch for
+        the removal. An empty ``before`` is a stack that did not exist, so
+        every entry on it now was pushed since.
+
+        The stack is the stash's reflog, which `git stash list` reads too. A
+        stack git cannot read is empty, so the move stays unattributed.
+        """
+        repository = Repository(root)
+        try:
+            listed = repository.run("log", "-g", "--format=%H", stash)
+        except sh.CommandNotFound:
+            return []
+        stack = listed.stdout.splitlines() if listed.code == 0 else []
+        if before and before not in stack:
+            return []
+        return [
+            cls(
+                parent=repository.resolves(f"{entry}^1") or "",
+                subject=repository.run(
+                    "log", "-1", "--format=%s", entry
+                ).stdout.strip(),
+            )
+            for entry in takewhile(lambda entry: entry != before, stack)
+        ]
+
+
 class ForeignCheckouts(BaseModel, frozen=True):
     """Which refs a worktree other than the one under test answers for.
 
     Every worktree cut from a repository shares its ref store, so the guard
     reading `for-each-ref` in one of them sees every branch the repository
-    holds — twenty-five of them here, of which one is the checkout the suite
-    is running in. A commit landing in a sibling worktree while the suite runs
-    moves a ref for real, and from the refs alone that is indistinguishable
-    from a fixture escaping into the enclosing repository.
+    holds, of which one is the checkout the suite is running in. A commit
+    landing in a sibling worktree while the suite runs moves a ref for real,
+    and from the refs alone that is indistinguishable from a fixture
+    escaping into the enclosing repository.
 
     Asking git who holds each branch is what tells them apart. It is a
     narrower question than "did anything move", and deliberately so: a ref
@@ -431,7 +544,8 @@ class ForeignCheckouts(BaseModel, frozen=True):
 
     The branch it has checked out, and the remote-tracking ref that branch
     follows -- a push moves the second as routinely as a commit moves the
-    first, and neither is this run's doing.
+    first, and neither is this run's doing. The stash too, but only for the
+    one move :meth:`stashed` attributes.
     """
 
     def holder(self, key: str) -> str | None:
@@ -458,6 +572,46 @@ class ForeignCheckouts(BaseModel, frozen=True):
         """
         return ForeignCheckouts(holders=self.holders | other.holders)
 
+    def stashed(
+        self,
+        root: Path,
+        before: dict[str, str],
+        after: dict[str, str],
+        stash: str = STASH_REF,
+    ) -> "ForeignCheckouts":
+        """This map, plus the stash where a sibling's push alone moved it.
+
+        Decided for each move rather than joined like a branch, because the
+        stash has no standing holder. Whoever made the newest entry at one
+        reading moved the stash last time, not this time, so a map that kept
+        them would excuse this checkout stashing on top of a sibling's entry,
+        and every stash after it for the rest of the run. The branches the
+        entries are read against are this map's, read at both ends.
+
+        Only a push is attributed, and only when every entry it stacked was
+        made in a sibling (see :meth:`StashEntry.maker`). A pop or a drop
+        is not: git records where an entry was made, but it removes one by
+        rewriting the stash's reflog and leaves no line saying who did. A
+        sibling dropping its own entry and a fixture dropping that sibling's
+        entry leave the same refs behind, and the second destroys somebody's
+        work, so a removal stays on the failing side.
+        """
+        if before.get(stash, "") == after.get(stash, ""):
+            return self
+        try:
+            checkouts = Repository(root).worktrees()
+        except (GitError, sh.CommandNotFound):
+            return self
+        makers = [
+            entry.maker(checkouts, root.resolve(), self.holders)
+            for entry in StashEntry.pushed(root, before.get(stash, ""), stash)
+        ]
+        match makers:
+            case [str() as newest, *older] if None not in older:
+                return ForeignCheckouts(holders=self.holders | {stash: newest})
+            case _:
+                return self
+
     def verdict(
         self,
         before: dict[str, str],
@@ -472,7 +626,9 @@ class ForeignCheckouts(BaseModel, frozen=True):
         return GuardVerdict(
             failure=guard_report(self.ours(before), self.ours(after), window),
             notice=foreign_notice(
-                moved_refs(self.theirs(before), self.theirs(after)), window
+                moved_refs(self.theirs(before), self.theirs(after)),
+                window,
+                stashed=self.holder(STASH_REF) is not None,
             ),
         )
 
@@ -573,10 +729,25 @@ class GuardVerdict(BaseModel, frozen=True):
     """What moved in a sibling worktree: worth saying, not worth failing."""
 
 
-def foreign_notice(moved: list[str], window: Window | None = None) -> str:
-    """What to say about refs a sibling worktree moved under the suite's feet."""
+def foreign_notice(
+    moved: list[str], window: Window | None = None, stashed: bool = False
+) -> str:
+    """What to say about refs a sibling worktree moved under the suite's feet.
+
+    ``stashed`` adds why the stash among them is a sibling's, since that ref
+    is shared outright rather than held.
+    """
     if not moved:
         return ""
+    stash = [
+        "",
+        "Another session stashing in a sibling worktree is not this run",
+        "either: the stash is one ref every worktree pushes onto, and the",
+        "entry pushed was made on the branch that worktree holds. A stash",
+        "made here or on a branch nobody holds still fails the run, and so",
+        "does a pop or drop by anyone, since git records where an entry was",
+        "made but not who removed it.",
+    ]
     return "\n".join(
         [
             "Refs moved while this suite ran, in worktrees that own them:",
@@ -588,6 +759,7 @@ def foreign_notice(moved: list[str], window: Window | None = None) -> str:
             "writing into the checkout, so the suite is not failed for it. A",
             "ref this worktree owns, or one that appeared from nowhere, still",
             "is.",
+            *(stash if stashed else []),
         ]
     )
 
@@ -611,7 +783,10 @@ class RepositoryWatch(BaseModel):
     """Who is watching, for the report: the xdist worker, or the only one."""
 
     foreign: ForeignCheckouts
-    """Which refs sibling worktrees answer for, as last read."""
+    """Which refs sibling worktrees answer for, as last read.
+
+    Never the stash, which each settlement attributes for its own move alone
+    (see :meth:`ForeignCheckouts.stashed`)."""
 
     baseline: dict[str, str]
     """The state every later reading is compared against, moving with each."""
@@ -661,7 +836,7 @@ class RepositoryWatch(BaseModel):
         if current == self.baseline:
             return GuardVerdict()
         self.foreign = self.foreign.joined(ForeignCheckouts.beside(self.root))
-        verdict = self.foreign.verdict(
+        verdict = self.foreign.stashed(self.root, self.baseline, current).verdict(
             self.baseline, current, Window(worker=self.worker, test=test)
         )
         self.baseline = current
