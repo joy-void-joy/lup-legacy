@@ -85,12 +85,14 @@ from lup.launch.config_volume import (
     LaunchedAccounts,
     LoginOwner,
     RuntimeVolume,
+    VolumeLogin,
     VolumeLogins,
     kept_for_superseded,
     settle_handoff,
     settle_home_seed,
     split_config_volumes,
     sweep_superseded,
+    volume_image,
     swept_superseded_notice,
 )
 from lup.sandbox.attribution import WRITE_REFUSAL_MARKERS
@@ -2186,6 +2188,75 @@ def read_config_home(
         return helper.read(state_volume_name(root, login), names)
     except (sh.CommandNotFound, sh.ErrorReturnCode):
         return []
+
+
+class VolumeSeeding(BaseModel, frozen=True):
+    """What handing a repository's volume a login, outside any session, came to."""
+
+    held: VolumeLogin | None = None
+    """What the volume holds now, as recorded; ``None`` where the login did not take."""
+
+    why: str = ""
+    """Why it did not take, empty where it did."""
+
+
+def seed_volume_login(
+    root: Path,
+    login: ProviderLogin,
+    handed: HandedLogin,
+    config_home: str,
+    logins: VolumeLogins,
+    now: datetime,
+) -> VolumeSeeding:
+    """Hand one runtime's volume of this repository a host login now, as a session's start would.
+
+    Through a helper container running the image's own seed program, so the
+    merge a session's entrypoint applies is the one applied here: from the
+    image a container running on the volume runs, else the one this checkout
+    last ran, with the volume mounted at ``config_home``. Recorded once the
+    volume's stamp says it holds that login, so a login the program declined
+    is said rather than recorded.
+    """
+    found = detected_client()
+    if found is None:
+        return VolumeSeeding(
+            why="no Docker or Podman client answers here, so the volume cannot be reached"
+        )
+    if not found.drives_its_server():
+        return VolumeSeeding(why=found.consequence())
+    engine = found.engine()
+    volume = state_volume_name(root, login)
+    helper = HomeHelper(
+        engine=engine,
+        tag=volume_image(volume, engine) or checkout_tag(root),
+        uid=root.stat().st_uid,
+        gid=root.stat().st_gid,
+        config_home=config_home,
+    )
+    try:
+        stamp = helper.seed_login(volume, handed.credential, login)
+    except (sh.CommandNotFound, sh.ErrorReturnCode) as error:
+        return VolumeSeeding(
+            why=f"a helper container could not apply it to {volume}: {error}"
+        )
+    fingerprint = handed.fingerprint(login)
+    if not fingerprint or stamp != fingerprint:
+        return VolumeSeeding(
+            why=(
+                f"{volume} did not take {handed.owner.named()}'s login: it cannot "
+                "be read, or nothing can renew it any more, so sign that profile "
+                "in again"
+            )
+        )
+    held = VolumeLogin(
+        volume=volume,
+        runtime=login.state_volume,
+        owner=handed.owner,
+        fingerprint=fingerprint,
+        handed_at=now,
+    )
+    logins.record(held)
+    return VolumeSeeding(held=held)
 
 
 def drawn_account(

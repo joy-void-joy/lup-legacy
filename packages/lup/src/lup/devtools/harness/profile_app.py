@@ -15,6 +15,8 @@ from typing import Annotated
 
 import typer
 
+from lup.devtools.harness.launch import switch_repository_login
+from lup.providers.harness import AdapterName
 from lup.providers.profile_migration import migrate_profiles
 from lup.providers.profiles import Profile, ProfileDirectory, ProfileScope
 from lup.providers.user_config import UserConfigFile
@@ -37,7 +39,7 @@ def create_profile_app(directory: ProfileDirectory) -> typer.Typer:
         help="Inspect and curate the accounts a launch can select",
     )
 
-    def acting(act: Callable[[], Profile]) -> Profile:
+    def acting[Answer](act: Callable[[], Answer]) -> Answer:
         """Answer for what an origin refuses, rather than tracebacking.
 
         Every refusal arrives already worded: :class:`UnknownProfile` carries
@@ -165,5 +167,38 @@ def create_profile_app(directory: ProfileDirectory) -> typer.Typer:
         migration = migrate_profiles(checkout or project_root(), UserConfigFile())
         for line in migration.lines():
             typer.echo(line)
+
+    @app.command("switch")
+    def switch_command(
+        name: Annotated[str, typer.Argument(help="Profile to move the sessions onto")],
+        runtime: Annotated[
+            AdapterName,
+            typer.Option("--runtime", help="Whose sessions move: claude or codex"),
+        ] = AdapterName.CLAUDE,
+    ) -> None:
+        """Move this repository's contained sessions of one runtime onto a profile's login.
+
+        Hands the profile's login to the container volume every contained
+        session of this repository shares, through the image's own seed
+        program. A Claude session takes it at its next request; a Codex
+        session keeps its own until it is opened again, and the command that
+        reopens it is printed. A host session runs in its own account's home,
+        which no volume reaches, so it is answered with the command opening it
+        again on the profile. The launch that would otherwise refuse to move
+        running sessions — `harness claude|codex` without `--move-sessions` —
+        finds the volume on this profile already.
+        """
+        outcome = acting(
+            lambda: switch_repository_login(
+                project_root(),
+                runtime,
+                name,
+                directory if directory.login.state_volume == runtime else None,
+            )
+        )
+        for line in outcome.lines():
+            typer.echo(line)
+        if outcome.held is None:
+            raise typer.Exit(1)
 
     return app

@@ -23,10 +23,11 @@ declares it keeps, and records them for removal.
 """
 
 import io
+import json
 from datetime import datetime, timedelta
 import tarfile
 from fnmatch import fnmatch
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Literal
 
 import sh
@@ -36,6 +37,7 @@ from lup.channels.models import write_atomic
 from lup.harness.assets.credential_seed import (
     chosen_login,
     login_fingerprint,
+    stamp_of,
 )
 from lup.harness.assets.home_seed import (
     RECORD,
@@ -48,7 +50,7 @@ from lup.harness.assets.home_seed import (
 )
 from lup.launch.refusal import LaunchRefused
 from lup.launch.superseded import SupersededFile
-from lup.harness.image import ContainerEngine
+from lup.harness.image import CREDENTIAL_SEED_PROGRAM, ContainerEngine
 from lup.harness.notice import Notice
 from lup.providers.login import ProviderLogin
 from lup.providers.user_config import UserConfigFile
@@ -261,6 +263,41 @@ class HomeHelper(BaseModel, frozen=True):
                 for member in held.getmembers()
                 if member.isfile() and (extracted := held.extractfile(member))
             ]
+
+    def seed_login(
+        self,
+        volume: str,
+        credential: Path,
+        login: ProviderLogin,
+        offered_at: str = "/lup-seed-from",
+    ) -> str:
+        """Apply a host login to a volume as a session's start does, answering the stamp left.
+
+        The image's own seed program, with the volume mounted where a session
+        mounts it and the login offered read-only at ``offered_at``, so the
+        volume ends as a session starting now would have left it: the login
+        applied once, renewals and unrelated records kept. The stamp is read
+        back from the volume, which is how a caller tells a login the volume
+        now holds from one the program declined, being unreadable or past
+        renewing; empty where the volume holds none.
+        """
+        stored = PurePosixPath(self.config_home) / login.credentials_file
+        self.run(
+            "python3",
+            [f"{volume}:{self.config_home}", f"{credential}:{offered_at}:ro"],
+            [
+                CREDENTIAL_SEED_PROGRAM,
+                offered_at,
+                str(stored),
+                "--keys",
+                json.dumps(login.credential_fields),
+                "--renewable",
+                login.renewable,
+            ],
+        )
+        stamp = stamp_of(PurePosixPath(login.credentials_file)).name
+        held = named_file(self.read(volume, [stamp]), stamp)
+        return held.text() if held is not None else ""
 
 
 class HomeFile(BaseModel, frozen=True):
@@ -517,6 +554,17 @@ def running_containers(volume: str, engine: ContainerEngine) -> list[str]:
     except (sh.CommandNotFound, sh.ErrorReturnCode):
         return []
     return str(listed).split()
+
+
+def volume_image(volume: str, engine: ContainerEngine) -> str | None:
+    """The image a running container holding a volume runs, where one does."""
+    try:
+        listed = sh.Command(engine.binary)(
+            "ps", "--filter", f"volume={volume}", "--format", "{{.Image}}"
+        )
+    except (sh.CommandNotFound, sh.ErrorReturnCode):
+        return None
+    return next(iter(str(listed).split()), None)
 
 
 class Handoff(BaseModel, frozen=True):

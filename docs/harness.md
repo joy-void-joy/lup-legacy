@@ -897,6 +897,30 @@ file says otherwise) have passed — never while a container holds it.
 `harness clean` lists each with its size and that date, and
 `harness clean --yes` removes them sooner.
 
+Every contained session of a repository shares one login, the one its volume
+was last handed: a launch offers the selected profile's, and the container's
+entrypoint applies it. Claude Code rereads that file at every request, so
+another profile's login moves every Claude session running there at its next
+one; Codex keeps the login it started with and takes another only when it is
+opened again. lup records which profile it last handed each volume, and when,
+in `$XDG_STATE_HOME/lup/volume-logins/` — a volume cannot be read without
+starting a container. A contained launch whose profile differs from that
+record while containers holding the volume run is refused, saying how many
+and what happens to them; `--move-sessions` moves them with the launch.
+`harness profile switch NAME [--runtime claude|codex]` moves them without
+opening anything: it hands the volume the profile's login through the image's
+own seed program, says which sessions take it at their next request, and
+prints the command that reopens each one that needs opening again — a Codex
+session, and a host session, which runs in its own profile's home where no
+volume reaches. That command reopens the conversation where the new account
+still finds it: in the volume for a contained session, in the checkout's home
+for a Codex one on the host, and fresh for a Claude host session, whose
+conversation lives in its old profile's home. Each launch also records the
+profile and posture a session opened on, keyed by its roster id, in
+`launched-accounts/` beside that record. `harness requirements --inside`
+offers its login too, and where sessions run on another one it keeps theirs
+instead.
+
 Several containers start on one volume at once — a launch's probes, a run's
 workers, a second terminal — and each amends the documents its runtime reads
 there before the runtime starts. So every lup writer of them holds the home's

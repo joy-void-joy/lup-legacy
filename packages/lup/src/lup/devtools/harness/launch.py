@@ -11,14 +11,19 @@ generates regenerated. What it reads only here, the registrations in
 `sync.json.local`, becomes the declaration's mounts and devices.
 """
 
+import shlex
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Protocol, Self, TypedDict, runtime_checkable
 
 import typer
 from pydantic import BaseModel, Field, TypeAdapter, ValidationError, model_validator
 
+from lup.coordination.bare.runtime import process_scope
+from lup.coordination.repository import RepositoryPeers
+from lup.coordination.roster import RosterMember
 from lup.devtools.dashboard.companion import Dashboard
 from lup.devtools.review.answers import ReviewAnswers
 from lup.devtools.dev.branches import settle_base_freshness
@@ -37,6 +42,15 @@ from lup.harness.models import Harness, NativeName, Plugin, Resumption
 from lup.harness.notice import Notice
 from lup.execution.process import LocalProcessLauncher
 from lup.launch.companions import HostCompanion
+from lup.launch.config_volume import (
+    HandedLogin,
+    LaunchedAccount,
+    LaunchedAccounts,
+    LoginOwner,
+    VolumeLogin,
+    VolumeLogins,
+)
+from lup.launch.container import seed_volume_login, state_volume_name
 from lup.launch.declaration import (
     InnerSandbox,
     LaunchSandbox,
@@ -67,7 +81,11 @@ from lup.providers.codex.harness import CodexSpellings
 from lup.providers.codex.home import CodexWorktreeHomeStore, move_codex_homes
 from lup.providers.codex.model_choice import CodexModelChoice, codex_effort_named
 from lup.providers.codex.session import prepare_codex_plugin
-from lup.providers.profiles import DefaultHomeProfile, ProfileDirectory
+from lup.providers.harness import AdapterName
+from lup.providers.login import ProviderLogin
+from lup.providers.profile_tree import profile_directory
+from lup.providers.profiles import DefaultHomeProfile, ProfileDirectory, named_home
+from lup.providers.runtime_homes import runtime_logins
 from lup.providers.user_config import UserConfigFile
 from lup.sandbox.models import NetworkMode
 from lup.sessions.events import SessionId
@@ -961,4 +979,304 @@ def launch_codex(
             steps=workflow_steps("codex", generation, checkpoint),
             force=force_install,
         )
+    )
+
+
+def runtime_login(runtime: AdapterName) -> ProviderLogin:
+    """The configuration-home declaration of the runtime that word names."""
+    return next(login for login in runtime_logins() if login.state_volume == runtime)
+
+
+def runs_contained(
+    member: RosterMember, scope: str, launched: LaunchedAccount | None = None
+) -> bool:
+    """Whether a session runs in its repository's container, on its volume.
+
+    What its launch recorded where it recorded one; otherwise its row's
+    runtime process, read in another pid namespace than ``scope`` — the
+    host's, as :func:`~lup.coordination.bare.runtime.process_scope` reads it
+    there — which is what a contained session's is.
+    """
+    if launched is not None:
+        return launched.contained
+    recorded = member.process.scope
+    return bool(recorded) and bool(scope) and recorded != scope
+
+
+class Relaunch(BaseModel, frozen=True):
+    """The command that opens one session again under another profile, and what it keeps."""
+
+    words: list[str]
+    """The command, as the words a shell runs, from any directory."""
+
+    resumes: bool
+    """Whether it reopens the session's conversation rather than opening a fresh one."""
+
+    why: str
+    """Why it reopens the conversation, or cannot, in a clause."""
+
+    def spelled(self) -> str:
+        """The command as a person pastes it."""
+        return shlex.join(self.words)
+
+
+def relaunch_command(member: RosterMember, profile: str, contained: bool) -> Relaunch:
+    """The command that opens a session again on ``profile``, reopening its conversation where it can.
+
+    Spelled as `harness claude|codex` from the session's worktree, contained
+    or on the host as it ran, so the conversation is looked for where it is
+    kept. A contained session keeps it in its repository's volume and a
+    Codex host session in its checkout's home, whichever account either
+    runs on, so each reopens by the id its row records. A Claude host
+    session keeps it in its profile's own home, which another profile's does
+    not hold, so it opens fresh. A row naming no runtime has no command.
+    """
+    runtime = member.wake.runtime
+    if not runtime:
+        raise ValueError(
+            f"{member.address} declared no runtime, so no command opens it again"
+        )
+    session = member.wake.session or (member.wake.handle if runtime == "codex" else "")
+    match (bool(session), contained, runtime):
+        case (False, _, _):
+            why = "opens a fresh session: its row records no session id to reopen"
+        case (True, True, _):
+            why = (
+                "reopens its conversation from the repository's volume, which "
+                "keeps it whichever login runs it"
+            )
+        case (True, False, "codex"):
+            why = (
+                "reopens its conversation from the checkout's Codex home, which "
+                "keeps it whichever account's login it is handed"
+            )
+        case _:
+            why = (
+                "opens a fresh session: a host Claude session keeps its "
+                f"conversation in its profile's own home, which {profile}'s "
+                "does not hold"
+            )
+    resumes = bool(session) and (contained or runtime == "codex")
+    return Relaunch(
+        words=[
+            "uv",
+            "run",
+            *(["--directory", member.worktree] if member.worktree else []),
+            "lup-devtools",
+            "harness",
+            runtime,
+            "--profile",
+            profile,
+            *(["--session", session] if resumes else []),
+            *([] if contained else ["--sandbox", "inner"]),
+        ],
+        resumes=resumes,
+        why=why,
+    )
+
+
+class SessionMove(BaseModel, frozen=True):
+    """What switching a repository's login to a profile comes to for one running session."""
+
+    member: str
+    """Its roster id."""
+
+    name: str
+    """What the roster calls it."""
+
+    contained: bool
+    """Whether it runs in the repository's container, on the volume a switch hands."""
+
+    moved: bool
+    """Whether it is on the profile with nothing more to do: moved at its next
+    request, or on it already."""
+
+    why: str
+    """Why it moved, or what keeps it where it is, in a clause."""
+
+    relaunch: Relaunch | None = None
+    """The command that puts it on the profile, where opening it again is the way."""
+
+
+def session_moves(
+    members: list[RosterMember],
+    login: ProviderLogin,
+    owner: LoginOwner,
+    seeded: bool,
+    scope: str,
+    launched: LaunchedAccounts,
+) -> list[SessionMove]:
+    """What a switch of ``login``'s volume to ``owner`` comes to for each running session.
+
+    Each running session of that runtime, by the wake path its row declares;
+    a subagent rides with its session. A contained one moves at its next
+    request where its runtime rereads its login and the volume ``seeded``
+    took it; one whose runtime keeps the login it started with is opened
+    again. A host session runs in its own account's home, which the volume
+    never reaches, so it is opened again on the profile unless its launch
+    recorded it on that account already.
+    """
+    profile = owner.named()
+
+    def moved(member: RosterMember) -> SessionMove:
+        recorded = launched.launched(member.actor.id)
+        contained = runs_contained(member, scope, recorded)
+        already = recorded is not None and recorded.owner.same_account(owner)
+        relaunch: Relaunch | None = None
+        match (contained, seeded, login.rereads_login, already):
+            case (True, False, _, _):
+                done = False
+                why = "the volume did not take the login, so it stays where it is"
+            case (True, True, True, _):
+                done = True
+                why = f"takes {profile}'s login from the volume at its next request"
+            case (True, True, False, _):
+                done = False
+                why = (
+                    f"{login.state_volume} keeps the login it started with until "
+                    "it is opened again"
+                )
+                relaunch = relaunch_command(member, profile, contained=True)
+            case (False, _, _, True):
+                done = True
+                why = f"runs on {profile}'s account already"
+            case _:
+                done = False
+                why = (
+                    "runs on the host in its own account's home, which the volume "
+                    "never reaches"
+                )
+                relaunch = relaunch_command(member, profile, contained=False)
+        return SessionMove(
+            member=member.actor.id,
+            name=member.cli_name or member.address,
+            contained=contained,
+            moved=done,
+            why=why,
+            relaunch=relaunch,
+        )
+
+    return [
+        moved(member)
+        for member in members
+        if member.running
+        and not member.parent
+        and member.wake.runtime == login.state_volume
+    ]
+
+
+class SwitchOutcome(BaseModel, frozen=True):
+    """What moving one repository's sessions of one runtime to a profile came to."""
+
+    checkout: Path
+    runtime: AdapterName
+    profile: str
+    volume: str
+
+    before: VolumeLogin | None = None
+    """What the volume was last handed before, ``None`` where lup never recorded it."""
+
+    held: VolumeLogin | None = None
+    """What it holds now, ``None`` where the profile's login did not take."""
+
+    why: str = ""
+    """Why the login did not take, empty where it did."""
+
+    sessions: list[SessionMove] = []
+
+    def lines(self) -> list[str]:
+        """What the switch came to, one line a fact, as the command prints it."""
+        before = (
+            f" (it held {self.before.owner.named()}'s)"
+            if self.before is not None
+            else ""
+        )
+        headline = (
+            f"{self.volume} now holds {self.profile}'s {self.runtime} login{before}."
+            if self.held is not None
+            else f"{self.volume} still holds its login: {self.why}."
+        )
+        return [
+            headline,
+            *(
+                f"  {session.name}: {session.why}"
+                + (
+                    f" — {session.relaunch.why}: {session.relaunch.spelled()}"
+                    if session.relaunch is not None
+                    else ""
+                )
+                for session in self.sessions
+            ),
+        ]
+
+
+def switch_repository_login(
+    checkout: Path,
+    runtime: AdapterName,
+    profile: str,
+    profiles: ProfileDirectory | None = None,
+    image: Image = Image(),
+) -> SwitchOutcome:
+    """Move every contained session of one runtime in a repository onto a profile's login.
+
+    The whole of `harness profile switch`, and what the dashboard calls. The
+    profile's login is handed to the repository's volume for that runtime,
+    through the image's own seed program, so the sessions running there take
+    it as their runtime allows: at their next request where it rereads its
+    login, when opened again where it keeps the one it started with. A host
+    session runs in its own account's home and is answered with the command
+    opening it again on the profile. A name no profile answers to is refused
+    as a launch refuses it; anything else that stops the handoff is said in
+    the outcome.
+
+    ``profiles`` is where the name is looked up, this checkout's and the
+    person's own where none is given; ``image`` the one whose config home the
+    volume is mounted at.
+    """
+    login = runtime_login(runtime)
+    directory = profiles or profile_directory(login, checkout=checkout)
+    owner = LoginOwner(
+        home=named_home(login, profile, directory.resolve(profile)), profile=profile
+    )
+    logins = VolumeLogins()
+    volume = state_volume_name(checkout, login)
+    before = logins.held(volume)
+    credential = login.credentials_path(owner.home)
+    seeding = (
+        seed_volume_login(
+            checkout,
+            login,
+            HandedLogin(credential=credential, owner=owner, moving="move"),
+            image.config_home,
+            logins,
+            datetime.now(UTC),
+        )
+        if credential.is_file()
+        else None
+    )
+    why = (
+        seeding.why
+        if seeding is not None
+        else (
+            f"{profile} holds no {runtime} login yet; sign it in by starting the "
+            f"runtime with {login.config_home_env}={owner.home}"
+        )
+    )
+    held = seeding.held if seeding is not None else None
+    return SwitchOutcome(
+        checkout=checkout,
+        runtime=runtime,
+        profile=profile,
+        volume=volume,
+        before=before,
+        held=held,
+        why="" if held is not None else why,
+        sessions=session_moves(
+            RepositoryPeers(checkout).present(),
+            login,
+            owner,
+            held is not None,
+            process_scope(),
+            LaunchedAccounts(),
+        ),
     )

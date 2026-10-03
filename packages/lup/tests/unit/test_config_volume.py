@@ -24,8 +24,10 @@ import sh
 
 import lup.launch.config_volume as config_volume
 import lup.launch.container as container
+from lup.harness.assets.credential_seed import stamp_of
 from lup.launch.config_volume import (
     HandedLogin,
+    HomeFile,
     LaunchedAccount,
     LaunchedAccounts,
     LoginOwner,
@@ -43,7 +45,7 @@ from lup.launch.config_volume import (
     split_config_volumes,
 )
 from lup.launch.refusal import LaunchRefused
-from lup.harness.image import Image, Podman
+from lup.harness.image import CREDENTIAL_SEED_PROGRAM, Image, Podman
 from lup.harness.requirements import Manifest
 from lup.providers.login import ProviderLogin
 from lup.providers.claude.login import CLAUDE_LOGIN
@@ -567,6 +569,46 @@ def test_what_a_volume_was_handed_reads_back_as_it_was_recorded(
     assert held.owner.named() == "work"
     assert LoginOwner(home=tmp_path / "x").named() == f"the account at {tmp_path / 'x'}"
     assert logins.held("lup-claude-other") is None
+
+
+def test_the_helper_seeds_a_volume_with_the_images_own_program(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The entrypoint's merge, run through a helper, and the stamp it left read back."""
+    started: list[tuple[str, list[str], list[str]]] = []
+    stamp = stamp_of(Path(CLAUDE_LOGIN.credentials_file)).name
+    monkeypatch.setattr(
+        HomeHelper,
+        "run",
+        lambda _self, program, mounts, arguments: (
+            started.append((program, mounts, arguments)) or ""
+        ),
+    )
+    monkeypatch.setattr(
+        HomeHelper,
+        "read",
+        lambda _self, volume, names: (
+            [HomeFile(name=stamp, content=b"abc")] if names == [stamp] else []
+        ),
+    )
+    helper = HomeHelper(
+        engine=Podman(), tag="lup-agent:dev", uid=1000, gid=1000, config_home="/cfg"
+    )
+    credential = tmp_path / ".credentials.json"
+
+    said = helper.seed_login(VOLUME, credential, CLAUDE_LOGIN)
+
+    assert said == "abc"
+    [(program, mounts, arguments)] = started
+    assert program == "python3"
+    assert mounts == [f"{VOLUME}:/cfg", f"{credential}:/lup-seed-from:ro"]
+    assert arguments[:3] == [
+        CREDENTIAL_SEED_PROGRAM,
+        "/lup-seed-from",
+        "/cfg/.credentials.json",
+    ]
+    assert arguments[3:5] == ["--keys", '["claudeAiOauth"]']
+    assert arguments[5:] == ["--renewable", CLAUDE_LOGIN.renewable]
 
 
 def launched(
