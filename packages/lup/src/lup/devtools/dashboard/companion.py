@@ -120,12 +120,17 @@ class Capability(BaseModel, frozen=True):
 
 
 class DashboardToken(BaseModel, frozen=True):
-    """The capability that opens the dashboard, kept for as long as its state is."""
+    """The capability that opens the dashboard, kept for as long as its state is.
+
+    ``name`` is the file it is kept in: ``token`` for the page's; another
+    names a capability of its own, such as the one a session's telemetry bears.
+    """
 
     directory: Path
+    name: str = "token"
 
     def path(self) -> Path:
-        return self.directory / "token"
+        return self.directory / self.name
 
     def minted(self) -> Capability:
         """This dashboard's capability, minting it the first time it is asked for.
@@ -138,7 +143,7 @@ class DashboardToken(BaseModel, frozen=True):
         self.directory.chmod(0o700)
         if self.path().exists():
             return Capability(value=self.read())
-        staged = self.directory / f"token.{uuid.uuid4().hex}"
+        staged = self.directory / f"{self.name}.{uuid.uuid4().hex}"
         staged.touch(mode=0o600, exist_ok=False)
         staged.write_text(secrets.token_urlsafe(32), encoding="utf-8")
         try:
