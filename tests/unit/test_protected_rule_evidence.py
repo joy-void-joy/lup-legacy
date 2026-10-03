@@ -52,6 +52,16 @@ MATCHED = [
         id="codex-tree",
     ),
     pytest.param(
+        ".agents/plugins/marketplace.json",
+        ProtectedMatch(
+            kind="subtree",
+            root=".agents/plugins",
+            description="Codex's plugin marketplace, which decides the plugins "
+            "Codex loads",
+        ),
+        id="codex-marketplace",
+    ),
+    pytest.param(
         ".lup/reviews/note.md",
         ProtectedMatch(
             kind="subtree",
@@ -177,9 +187,12 @@ def test_every_supported_runtime_declares_its_own_tree_and_the_hooks_protect_eac
     """
     trees = runtime_trees()
 
-    assert [(tree.path, tree.description) for tree in trees] == [
-        (runtime.protected_tree.path, runtime.protected_tree.description)
-        for runtime in every_runtime()
+    assert trees == [
+        tree for runtime in every_runtime() for tree in runtime.protected_trees
     ]
-    assert {tree.path for tree in trees} == {Path(".claude"), Path(".codex")}
+    assert {tree.path for tree in trees} == {
+        Path(".claude"),
+        Path(".codex"),
+        Path(".agents/plugins"),
+    }
     assert set(trees) <= set(declared_hook_set().protected_roots())

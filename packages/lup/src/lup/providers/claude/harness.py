@@ -95,11 +95,14 @@ class ClaudeSpellings(NativeSpellings):
         return Atom(".claude/plugins/")
 
     @property
-    def protected_tree(self) -> ProtectedRoot:
-        return ProtectedRoot(
-            path=Path(self.tree("tree_root")),
-            description="Claude Code's settings, trust state and skills",
-        )
+    def protected_trees(self) -> list[ProtectedRoot]:
+        # The marketplace Claude Code reads sits inside its own tree.
+        return [
+            ProtectedRoot(
+                path=Path(self.tree("tree_root")),
+                description="Claude Code's settings, trust state and skills",
+            )
+        ]
 
     @property
     def native_identifiers(self) -> list[Atom]:

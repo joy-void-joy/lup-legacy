@@ -228,7 +228,16 @@ knows.** A variable the line settles is resolved before any rule reads a
 word: an assignment standing first in its chain holds for everything after
 it, and one reached through nothing but `&&` holds for the rest of that
 chain, so `cd w && F=<protected path> && sed -i … $F` asks exactly as the
-same `sed` naming the path does. Where the line cannot settle the value — a
+same `sed` naming the path does. Where nothing before it in the chain can
+fail — another literal assignment, a `cd` to one literal directory, which the
+placing pass already takes to succeed — it holds past the chain too:
+`cd w && S=/abs; git show A > $S/out` writes `/abs/out`. Behind anything that
+can fail, as in `false && S=/abs`, the assignment may be skipped, and past the
+chain `S` holds whatever it held before. A loop over literal words reads its
+body once per word, and an assignment standing in the body holds for the rest
+of that pass: `for v in a b; do W=tmp/$v; rm -rf $W; done` removes `tmp/a`,
+then `tmp/b`. A name the body assigns is unread as each pass begins and after
+the loop. Where the line cannot settle the value — a
 `read`, a substitution, an assignment an `||` or a branch may skip, a loop
 over a glob or over more words than it reads, `find`'s `{}`, a path named
 from a directory a `cd` may or may not have reached — the word is left as
@@ -1470,11 +1479,13 @@ manifest or lockfile wherever it sits), the `root` it names, and a
 description by declaring a `ProtectedRoot(path=…, description=…)` in
 `protected_edit_roots` beside the bare paths it already lists; a bare path
 is described by itself, and a review recorded before the field existed
-carries none. A runtime's own tree is the adapter's to declare
-(`NativeSpellings.protected_tree`: `.claude` and `.codex`, each with what it
-holds), and `lup.providers.harness.runtime_trees()` collects every supported
-runtime's, which the hook set spreads into `protected_edit_roots`, so each
-runtime's tree is protected whichever one a session runs. A step whose result exists only once it runs -- a program's output
+carries none. The trees a runtime reads its configuration from are its
+adapter's to declare (`NativeSpellings.protected_trees`, each with what it
+holds): `.claude` for Claude Code, and for Codex both `.codex` and
+`.agents/plugins`, the marketplace that decides which plugins Codex loads.
+`lup.providers.harness.runtime_trees()` collects every supported runtime's,
+and the hook set spreads them into `protected_edit_roots`, so each is
+protected whichever runtime a session runs. A step whose result exists only once it runs -- a program's output
 redirected into a file, `sort -o`, a formatter, a script, a loop, a word
 the shell expands into other words -- is listed as that, with the files it
 leaves so, and never run to find out; a file that does not read as text is

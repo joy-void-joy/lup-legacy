@@ -2,6 +2,35 @@
 
 ## Unreleased
 
+### Codex's plugin marketplace is protected like its own tree
+
+`.agents/plugins/marketplace.json` decides which plugins Codex loads, so an
+agent editing it could make Codex run code it chose, and editing it asked
+nothing. An adapter now declares every tree its runtime reads configuration
+from (`NativeSpellings.protected_trees`, in place of `protected_tree`). Codex
+declares `.codex` and `.agents/plugins`, the second described as "Codex's
+plugin marketplace, which decides the plugins Codex loads".
+`runtime_trees()` collects them all, so the marketplace is protected whichever
+runtime a session runs, and a review names it with that description.
+
+### A literal assignment holds past `;`, and a loop's assignment holds through its pass
+
+`cd X && S=/abs; git show A > $S/out.txt` asked as a write to a path only the
+run knows, and `for v in v1 v2; do W=<scratch>/codex-$v-named; rm -rf $W; done`
+asked as `rm -rf <checkout>/$W`. Both now resolve:
+
+- An assignment in a `&&` chain holds past the chain when nothing before it in
+  the chain can fail. That means other literal assignments, and a `cd` to one
+  literal directory, which the placing pass already assumes succeeds. Behind
+  anything that can fail (`false && S=/abs`, `test -f x && S=/abs`) the
+  assignment may be skipped, so past the chain `S` stays unread.
+- A loop over literal words binds an assignment standing in its body for the
+  rest of that pass. Nested loops and an outer pass's assignment used in an
+  inner loop resolve the same way.
+- A name the loop body assigns is unread as each pass begins and after the
+  loop. An assignment in a branch, a subshell, a pipeline stage, a
+  substitution or a function body still reaches nothing outside it.
+
 ### Two changelog entries added at one place merge whole and set off
 
 `.gitattributes` put the changelog on git's `union` driver, so two branches
