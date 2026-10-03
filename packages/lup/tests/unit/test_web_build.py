@@ -7,7 +7,6 @@ the rest is exercised over a bundle written by hand.
 """
 
 import json
-import os
 import shutil
 import threading
 import tomllib
@@ -287,25 +286,49 @@ def test_missing_dependencies_are_restored_and_current_ones_left_alone(
     assert len(restores) == 1
 
 
-def test_dependencies_older_than_the_lockfile_are_restored_once(
+def test_a_lockfile_that_moved_since_the_restore_is_restored_once(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A lockfile that moved after the install — a checkout, a merge — is what
-    a copied `node_modules` is behind; the restore dates it current again."""
+    """A checkout, a merge or a `bun add` moves the lockfile under a tree laid
+    down from the last one; the record names that one, so the tree is behind."""
     workspace = tmp_path / "web"
-    installed = workspace / "node_modules"
-    installed.mkdir(parents=True)
+    workspace.mkdir()
     lockfile = workspace / "bun.lock"
     lockfile.write_text("{}\n", encoding="utf-8")
-    earlier = lockfile.stat().st_mtime - 60
-    os.utime(installed, (earlier, earlier))
     restores = recorded_restores(monkeypatch)
+    restore_dependencies(workspace)
 
+    lockfile.write_text('{"lockfileVersion": 1}\n', encoding="utf-8")
     assert dependencies_behind(workspace)
     assert restore_dependencies(workspace)
     assert not dependencies_behind(workspace)
     assert not restore_dependencies(workspace)
-    assert len(restores) == 1
+    assert len(restores) == 2
+
+
+def test_a_restore_leaves_nothing_an_earlier_install_left(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Bun installing over a tree keeps a nested copy its lockfile no longer
+    names, and the bundler resolves it: a checkout holding one built another
+    bundle from the same commit. A tree nothing here laid down is behind, and
+    its restore starts from nothing."""
+    workspace = tmp_path / "web"
+    lockfile = workspace / "bun.lock"
+    stray = workspace / "node_modules/@tanstack/react-table/node_modules/@tanstack"
+    (stray / "react-store").mkdir(parents=True)
+    (stray / "react-store" / "package.json").write_text("{}\n", encoding="utf-8")
+    (workspace / "node_modules" / ".bin").mkdir()
+    (workspace / "node_modules" / ".bin" / "vite").symlink_to("../vite/bin/vite.js")
+    lockfile.write_text("{}\n", encoding="utf-8")
+    recorded_restores(monkeypatch)
+
+    assert dependencies_behind(workspace)
+    assert restore_dependencies(workspace)
+
+    left = [path.name for path in (workspace / "node_modules").iterdir()]
+    assert sorted(left) == [".lup-restored", ".lup-restored.lock"]
+    assert not dependencies_behind(workspace)
 
 
 def test_a_workspace_without_a_lockfile_is_behind_only_while_bare(
