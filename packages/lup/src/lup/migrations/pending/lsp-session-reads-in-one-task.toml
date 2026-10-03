@@ -1,0 +1,11 @@
+subjects = ["Answer.offset", "Answer.result"]
+reason = """
+an LSP session reads everything its server sends in one task, settling each \
+question's reply where it lands, so the model a batch paired replies with is \
+gone"""
+
+[[steps]]
+instruction = """
+Ask through LspSession.requests(calls), which still answers in the order \
+asked, or LspSession.ask(calls) for each question's id and reply future, \
+withdrawn with LspSession.withdraw(asked) when the caller stops waiting."""
