@@ -2,6 +2,24 @@
 
 ## Unreleased
 
+### Another session's stash no longer fails the test suite
+
+The suites' guard against a test writing into the real checkout
+(`lup.devtools.gitguard`) failed every test that was running when any
+session stashed, in any worktree of the repository. `refs/stash` is one ref
+that every worktree shares, and the guard attributed only branches and their
+remote-tracking refs to the sibling worktree holding them. One `git stash
+push` in another worktree failed sixteen bystander tests.
+
+- A stash pushed in a sibling worktree is now reported rather than failed.
+  The guard credits the entry to the worktree that made it: the one checkout
+  standing on the entry's first parent, or, where several checkouts or none
+  stand there, the sibling holding the branch that `git stash` named in the
+  entry's subject (`ForeignCheckouts.stashed`, `StashEntry`).
+- A stash pushed in the checkout under test, on a branch no sibling holds,
+  or on a detached head still fails the run. So does a pop or drop by
+  anyone: git records where an entry was made, but not who removed it.
+
 ### Files, locks and per-person state are each spelled once in the library
 
 The same file chores were hand-rolled at dozens of sites, each a little
