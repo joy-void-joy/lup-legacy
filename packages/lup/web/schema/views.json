@@ -59,6 +59,14 @@
           "default": null,
           "title": "Read At"
         },
+        "said": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Said",
+          "type": "array"
+        },
         "signed_in": {
           "default": true,
           "title": "Signed In",
@@ -82,6 +90,7 @@
         "read_at",
         "error",
         "limits",
+        "said",
         "agents",
         "held",
         "exhausted"

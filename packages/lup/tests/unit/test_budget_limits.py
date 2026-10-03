@@ -148,6 +148,17 @@ def test_caps_hold_one_agent_alone() -> None:
     assert "c" not in verdicts
 
 
+def test_limits_say_each_limit_set_and_nothing_else() -> None:
+    assert Limits().said() == []
+    assert Limits(
+        pace="even",
+        ceilings=[Ceiling(window="5h", per_hour=12.5)],
+        reserve=10,
+        max_active=0,
+    ).said() == ["even pace", "5h ≤12.5%/h", "keep 10%", "≤0 at once"]
+    assert Limits(reserve=0).said() == []
+
+
 def test_slots_go_by_priority_then_first_come() -> None:
     config = BudgetConfig(max_active=2)
     agents = [

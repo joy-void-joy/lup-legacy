@@ -65,13 +65,7 @@ function WindowBar({ metered: each, now, compact }: { metered: MeteredWindow; no
 /** One account's meter: its windows, the agents drawing on it, and what holds them. */
 function AccountBars({ account, now, compact }: { account: AccountMeter; now: number; compact: boolean }) {
   const shown = compact ? [fullest(account)].filter((each) => each !== undefined) : account.windows;
-  const reserve = account.limits.reserve;
-  const limits = [
-    account.limits.pace === "even" ? "even pace" : "",
-    ...(account.limits.ceilings ?? []).map((each) => `${each.window} ≤${each.per_hour}%/h`),
-    reserve !== null && reserve > 0 ? `keep ${reserve}%` : "",
-    account.limits.max_active !== null ? `≤${account.limits.max_active} at once` : "",
-  ].filter((each) => each !== "");
+  const limits = account.said;
   return <span className={`acct${account.exhausted !== "" ? " spent" : ""}`} title={[account.home, ...limits, account.error].filter((each) => each !== "").join(" · ")}>
     <span className="an">{account.key}</span>
     {shown.map((each) => <WindowBar key={each.window.label} metered={each} now={now} compact={compact} />)}

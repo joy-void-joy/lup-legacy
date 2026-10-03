@@ -85,6 +85,9 @@ class AccountMeter(BaseModel, frozen=True):
     limits: Limits = Limits()
     """The limits holding for it now, every layer applied."""
 
+    said: list[str] = []
+    """Those limits in words, each one set."""
+
     agents: int = 0
     """Running agents drawing on it."""
 
@@ -825,6 +828,7 @@ class BudgetGovernor:
                 ),
                 None,
             )
+            limits = config.limits(standing.account, moment)
             return AccountMeter(
                 account=standing.account,
                 key=key,
@@ -833,7 +837,8 @@ class BudgetGovernor:
                 windows=standing.windows,
                 read_at=standing.read_at,
                 error=standing.error,
-                limits=config.limits(standing.account, moment),
+                limits=limits,
+                said=limits.said(),
                 agents=len(drawing),
                 held=sum(1 for each in drawing if each.key in held),
                 exhausted=(

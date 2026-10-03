@@ -92,6 +92,15 @@ class Limits(BaseModel, frozen=True, extra="forbid"):
             None,
         )
 
+    def said(self) -> list[str]:
+        """Each limit set, in the words the meter and ``dashboard budget`` show it in."""
+        return [
+            *(["even pace"] if self.pace == "even" else []),
+            *(f"{each.window} ≤{each.per_hour:g}%/h" for each in self.ceilings or []),
+            *([f"keep {self.reserve:g}%"] if self.reserve else []),
+            *([f"≤{self.max_active} at once"] if self.max_active is not None else []),
+        ]
+
 
 class ScheduledLimits(Limits, frozen=True, extra="forbid", populate_by_name=True):
     """Limits that apply on some days between two times of day, local to this machine.
@@ -231,6 +240,23 @@ class AgentCaps(BaseModel, frozen=True, extra="forbid"):
         if self.total_tokens is not None and total.tokens >= self.total_tokens:
             return f"spent {total.tokens:,} tokens of its {self.total_tokens:,} cap"
         return ""
+
+    def said(self) -> list[str]:
+        """Each cap set, in words."""
+        return [
+            *([f"${self.rate_usd:.2f} an hour"] if self.rate_usd is not None else []),
+            *(
+                [f"{self.rate_tokens:,} tokens an hour"]
+                if self.rate_tokens is not None
+                else []
+            ),
+            *([f"${self.total_usd:.2f} in all"] if self.total_usd is not None else []),
+            *(
+                [f"{self.total_tokens:,} tokens in all"]
+                if self.total_tokens is not None
+                else []
+            ),
+        ]
 
 
 class AgentStanding(BaseModel, frozen=True):
