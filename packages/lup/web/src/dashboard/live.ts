@@ -1,4 +1,4 @@
-import type { KeyBindings, LiveMessage, LiveRepository, LiveSession, MessagePage, ReviewSnapshot, ReviewSummary, RunningCode, StreamFrame } from "../generated/views";
+import type { Feature, KeyBindings, LiveMessage, LiveRepository, LiveSession, MessagePage, ReviewSnapshot, ReviewSummary, RunningCode, StreamFrame, UserRow } from "../generated/views";
 
 /**
  * Everything live the page shows, as the stream has moved it so far.
@@ -7,7 +7,8 @@ import type { KeyBindings, LiveMessage, LiveRepository, LiveSession, MessagePage
  * `code` is which code the dashboard runs, and whether its checkout moved past it.
  * `earlier` is, per repository, the byte of its mail record its messages here
  * start at: older ones are read a page at a time from there back, and 0 is a
- * repository whose every message is here.
+ * repository whose every message is here. `users` is the person's own row in
+ * each repository, and `served` the supervision the dashboard serves.
  */
 export type LiveState = {
   cursor: string;
@@ -17,6 +18,8 @@ export type LiveState = {
   earlier: ReadonlyMap<string, number>;
   reviews: ReviewSnapshot;
   code: RunningCode;
+  users: ReadonlyMap<string, UserRow>;
+  served: readonly Feature[];
   keys: KeyBindings;
 };
 
@@ -114,10 +117,12 @@ export function applied(state: LiveState | null, frame: StreamFrame): LiveState 
       earlier: new Map(event.extents.map((extent) => [extent.repository, extent.earlier])),
       reviews: { ...event.reviews, reviews: newestFirst(event.reviews.reviews) },
       code: event.code,
+      users: keyed(event.users),
+      served: event.served,
       keys: event.keys,
     };
   }
-  const base: LiveState = { ...(state ?? { repositories: new Map(), sessions: new Map(), messages: new Map(), earlier: new Map(), reviews: { roots: [], reviews: [], errors: [], history: 0 }, code: UNSAID, keys: NO_KEYS }), cursor: frame.cursor };
+  const base: LiveState = { ...(state ?? { repositories: new Map(), sessions: new Map(), messages: new Map(), earlier: new Map(), reviews: { roots: [], reviews: [], errors: [], history: 0 }, code: UNSAID, users: new Map(), served: [], keys: NO_KEYS }), cursor: frame.cursor };
   switch (event.type) {
     case "repository": return { ...base, repositories: set(base.repositories, event.repository.key, event.repository) };
     case "repository_gone": return { ...base, repositories: without(base.repositories, event.key) };
@@ -131,6 +136,9 @@ export function applied(state: LiveState | null, frame: StreamFrame): LiveState 
     case "review_gone": return { ...base, reviews: { ...base.reviews, reviews: base.reviews.reviews.filter((row) => row.key !== event.key) } };
     case "review_scope": return { ...base, reviews: { ...base.reviews, roots: event.roots, errors: event.errors, history: event.history } };
     case "service": return { ...base, code: event.code };
+    case "user": return { ...base, users: set(base.users, event.user.key, event.user) };
+    // A followed transcript is read where it is shown, never held as state.
+    case "transcript": return base;
     case "keys": return { ...base, keys: event.keys };
   }
 }

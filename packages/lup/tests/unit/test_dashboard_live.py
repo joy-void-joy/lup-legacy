@@ -2,28 +2,28 @@
 
 Read off what already exists — the roster's rows, the transcript each row
 names, the mail record — as it changes, and nothing written for the
-dashboard's sake. A reply from the operator goes the way a session's own
-message to a peer goes, signed `user`.
+dashboard's sake. What the operator writes to them is the supervision tests'.
 """
 
 import json
+import os
 from pathlib import Path
 
-import pytest
 
 from lup.channels.models import Door
-from lup.coordination import watch as watching
 from lup.coordination.bare import store
 from lup.coordination.bare.changes import changes
+from lup.coordination.bare.runtime import Runtime, runtime_of
 from lup.coordination.identity import mint_member_id
-from lup.coordination.mail import ActorMail, MailCursor
-from lup.coordination.repository import PeerDepartedError, RepositoryPeers
-from lup.coordination.wake import WakePath, Woken
+from lup.coordination.peers import USER_ADDRESS
+from lup.coordination.repository import RepositoryPeers
+from lup.coordination.wake import WakePath
 from lup.devtools.dashboard.companion import KnownRepository
 from lup.devtools.dashboard.live import (
     RepositoryWatch,
     TranscriptFollower,
-    reply,
+    TranscriptTail,
+    transcript_page,
 )
 from lup.types import JsonObject
 
@@ -262,89 +262,197 @@ def test_a_session_counts_what_waits_for_it(tmp_path: Path) -> None:
     assert rows[lead].waiting == 2
 
 
-def waking(monkeypatch: pytest.MonkeyPatch, reached: bool) -> list[str]:
-    """Every wake a reply makes, answered *reached* rather than written anywhere."""
-    woken: list[str] = []
+def failed(call: str) -> JsonObject:
+    return {
+        "type": "user",
+        "uuid": f"{call}-failed",
+        "timestamp": "2026-09-29T10:00:11Z",
+        "message": {
+            "role": "user",
+            "content": [
+                {
+                    "type": "tool_result",
+                    "tool_use_id": call,
+                    "content": "no such file",
+                    "is_error": True,
+                }
+            ],
+        },
+    }
 
-    def nudged(
-        path: WakePath,
-        message: str,
-        cwd: Path | None = None,
-        *,
-        queue_timeout_seconds: float = 20.0,
-    ) -> Woken:
-        del path, cwd, queue_timeout_seconds
-        woken.append(message)
-        return Woken(reached=reached, reason="" if reached else "nobody listening")
 
-    monkeypatch.setattr(watching, "wake", nudged)
-    return woken
+def test_recent_calls_say_what_became_of_each(tmp_path: Path) -> None:
+    transcript = tmp_path / "t.jsonl"
+    appended(
+        transcript,
+        called("t1", "Read", {"file_path": "a.py"}),
+        answered("t1"),
+        called("t2", "Edit", {"file_path": "b.py", "old_string": "x"}),
+        failed("t2"),
+        called("t3", "Bash", {"command": "uv run pytest", "description": "Run tests"}),
+    )
+
+    recent = TranscriptFollower(transcript).advance().recent
+
+    assert [(each.call, each.tool, each.summary, each.state) for each in recent] == [
+        ("t1", "Read", "a.py", "ok"),
+        ("t2", "Edit", "b.py", "error"),
+        ("t3", "Bash", "Run tests", "pending"),
+    ]
+    assert recent[0].at is not None
 
 
-def test_a_reply_reaches_a_session_as_the_user_and_wakes_it(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+def test_recent_calls_keep_only_the_latest(tmp_path: Path) -> None:
+    transcript = tmp_path / "t.jsonl"
+    appended(
+        transcript,
+        *[
+            called(f"t{index}", "Read", {"file_path": f"{index}.py"})
+            for index in range(5)
+        ],
+    )
+
+    recent = TranscriptFollower(transcript, recent=2).advance().recent
+
+    assert [each.call for each in recent] == ["t3", "t4"]
+
+
+def test_a_row_names_its_runtime_who_spawned_it_and_its_process(
+    tmp_path: Path,
 ) -> None:
     peers = RepositoryPeers(tmp_path)
-    lead = session(peers, tmp_path, "lead")
-    woken = waking(monkeypatch, reached=True)
-
-    outcome = reply(known(tmp_path), lead, "stop and rebase onto staging")
-
-    posted = ActorMail(peers.root).posted(MailCursor()).messages
-    assert [(m.message.sender, m.message.door, m.message.text) for m in posted] == [
-        ("user", Door.PAGE, "stop and rebase onto staging")
-    ]
-    assert outcome.queued and outcome.woken
-    assert outcome.session == f"{known(tmp_path).key()}/{lead}"
-    assert len(woken) == 1
-    assert "from user by page —\nstop and rebase onto staging" in woken[0]
-    # The wake carried it whole, so the session's hook has nothing of it to
-    # hand over again at its next tool call.
-    assert peers.waiting(lead).messages == []
-
-
-def test_a_reply_nothing_woke_for_waits_for_the_next_call(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    peers = RepositoryPeers(tmp_path)
-    lead = session(peers, tmp_path, "lead")
-    waking(monkeypatch, reached=False)
-
-    outcome = reply(known(tmp_path), lead, "stop and rebase onto staging")
-
-    assert outcome.queued and not outcome.woken
-    assert [m.text for m in peers.waiting(lead).messages] == [
-        "stop and rebase onto staging"
-    ]
-
-
-def test_a_reply_to_a_subagent_waits_for_its_next_call(tmp_path: Path) -> None:
-    peers = RepositoryPeers(tmp_path)
-    lead = session(peers, tmp_path, "lead")
-    child = store.joined_subagent(
+    lead = mint_member_id()
+    peers.join(
+        lead,
+        tmp_path / "lead",
+        cli_name="lead",
+        wake=WakePath(runtime="claude", handle="/tmp/lead.sock"),
+    )
+    store.adopt(peers.root, store.session_actor(lead), runtime_of(os.getpid()))
+    spawned = mint_member_id()
+    peers.join(spawned, tmp_path / "lead", spawned_by=lead)
+    store.joined_subagent(
         peers.root,
         lead,
         store.Caller(
             agent_id="a1", agent_type="Explore", cwd=str(tmp_path), name="scout"
         ),
     )
-    assert child is not None
 
-    outcome = reply(known(tmp_path), store.subagent_id(lead, "a1"), "look at mail.py")
+    rows = {row.id: row for row in RepositoryWatch(known(tmp_path)).sessions(0.0)}
 
-    assert outcome.queued and not outcome.woken
-    assert "next tool call" in outcome.detail
-    assert [m.text for m in peers.waiting(store.subagent_id(lead, "a1")).messages] == [
-        "look at mail.py"
-    ]
+    assert rows[lead].runtime == "claude"
+    process = rows[lead].process
+    assert process is not None
+    assert process.pid == os.getpid()
+    assert process.here and process.stoppable
+    assert process.why == ""
+    assert rows[spawned].spawned_by == lead
+    child = rows[store.subagent_id(lead, "a1")]
+    assert child.runtime == "claude"
+    assert child.process is not None and not child.process.stoppable
+    assert "its session" in child.process.why
 
 
-def test_a_reply_to_nobody_or_to_a_session_that_left_is_refused(tmp_path: Path) -> None:
+def test_a_row_in_another_pid_namespace_cannot_be_stopped_from_here(
+    tmp_path: Path,
+) -> None:
     peers = RepositoryPeers(tmp_path)
     lead = session(peers, tmp_path, "lead")
-    peers.leave(lead, "done")
+    store.adopt(
+        peers.root,
+        store.session_actor(lead),
+        Runtime(pid=7, started="1234", scope="a-container-of-its-own"),
+    )
 
-    with pytest.raises(LookupError):
-        reply(known(tmp_path), "nobody-here", "hello")
-    with pytest.raises(PeerDepartedError):
-        reply(known(tmp_path), lead, "hello")
+    [row] = RepositoryWatch(known(tmp_path)).sessions(0.0)
+
+    assert row.process is not None
+    assert (row.process.pid, row.process.here, row.process.stoppable) == (
+        7,
+        False,
+        False,
+    )
+    assert "pid namespace" in row.process.why
+
+
+def test_the_person_s_row_says_what_they_said_hold_and_are_told(
+    tmp_path: Path,
+) -> None:
+    peers = RepositoryPeers(tmp_path)
+    lead = session(peers, tmp_path, "lead")
+    held = tmp_path / "relay"
+    held.mkdir()
+    peers.describe(USER_ADDRESS, "landing the relay")
+    peers.lock(USER_ADDRESS, held)
+    peers.notify("the base moved", door=Door.PAGE, by=USER_ADDRESS)
+    peers.send(USER_ADDRESS, "done with mail.py", sender=lead)
+    watch = RepositoryWatch(known(tmp_path))
+
+    row = watch.user(0.0)
+
+    assert row.key == f"{known(tmp_path).key()}/user"
+    assert row.repository == known(tmp_path).key()
+    assert row.description == "landing the relay"
+    assert row.holding == [f"under {held}"]
+    assert [(notice.text, notice.by) for notice in row.notices] == [
+        ("the base moved", "user")
+    ]
+    assert row.unread == 1
+    peers.take(USER_ADDRESS)
+    assert watch.user(0.0).unread == 0
+
+
+def test_a_message_names_its_post_and_thread(tmp_path: Path) -> None:
+    peers = RepositoryPeers(tmp_path)
+    lead = session(peers, tmp_path, "lead")
+    other = session(peers, tmp_path, "other")
+    peers.send(other, "your turn", sender=lead)
+    [asked] = peers.waiting(other).messages
+    peers.send(lead, "on it", sender=other, in_reply_to=asked.post)
+
+    first, answer = RepositoryWatch(known(tmp_path)).fresh_messages()
+
+    assert (first.post, first.thread) == (asked.post, asked.post)
+    assert (answer.in_reply_to, answer.thread) == (asked.post, asked.post)
+
+
+def test_a_transcript_page_is_its_latest_entries_and_where_it_starts(
+    tmp_path: Path,
+) -> None:
+    transcript = tmp_path / "t.jsonl"
+    appended(transcript, *[said(f"line {index}") for index in range(6)])
+    appended(transcript, called("t1", "Bash", {"command": "ls"}), answered("t1"))
+
+    latest = transcript_page("k/m", transcript, limit=3)
+    before = transcript_page("k/m", transcript, before=latest.earlier, limit=3)
+    first = transcript_page("k/m", transcript, before=before.earlier, limit=3)
+
+    assert [(each.kind, each.text) for each in latest.entries] == [
+        ("text", "line 5"),
+        ("call", "ls"),
+        ("result", "ok"),
+    ]
+    assert latest.entries[1].tool == "Bash" and latest.entries[1].call == "t1"
+    assert latest.end == transcript.stat().st_size
+    assert [each.text for each in before.entries] == ["line 2", "line 3", "line 4"]
+    assert [each.text for each in first.entries] == ["line 0", "line 1"]
+    assert first.earlier == 0
+
+
+def test_a_followed_transcript_carries_on_from_where_its_page_ended(
+    tmp_path: Path,
+) -> None:
+    transcript = tmp_path / "t.jsonl"
+    appended(transcript, said("before"))
+    page = transcript_page("k/m", transcript)
+    tail = TranscriptTail(transcript, page.end)
+
+    assert tail.fresh() == []
+    appended(transcript, said("after"))
+    with transcript.open("a", encoding="utf-8") as partial:
+        partial.write(json.dumps(said("half"))[:10])
+    fresh = tail.fresh()
+
+    assert [each.text for each in fresh] == ["after"]
+    assert fresh[0].at == page.end

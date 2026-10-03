@@ -224,12 +224,16 @@ class Caller(TypedDict, total=False):
     the id and the type in every tool hook payload fired inside a subagent,
     and leave them off the session's own. ``name`` is what the spawn called
     the subagent, blank where that runtime's hook cannot read it.
+    ``spawned_by`` is the runtime's own id for the subagent that spawned this
+    one — a fork's — blank where the session itself spawned it or the
+    runtime's record does not say.
     """
 
     agent_id: str
     agent_type: str
     cwd: str
     name: str
+    spawned_by: str
 
 
 class Claiming(TypedDict):
@@ -500,6 +504,34 @@ def parent_of(member: Member) -> str:
     if text(member.get("kind")) != SUBAGENT_KIND:
         return ""
     return text(member.get("parent"))
+
+
+def spawner_of(member: Member) -> str:
+    """The member that spawned this one, blank for one nobody here spawned.
+
+    The subagent a fork came from, a subagent's session, or the session whose
+    shell started a runtime. A subagent's row that does not record who
+    spawned it answers with its session, which spawned it or what did.
+    """
+    return text(member.get("spawned_by")) or parent_of(member)
+
+
+def descends_from(member_id: str, ancestor: str, members: dict[str, Member]) -> bool:
+    """Whether *ancestor* spawned *member_id*, at any remove, as *members* record it.
+
+    Walked up the spawners one member at a time, no further than there are
+    members, so a record naming itself or a loop ends the walk rather than it.
+    """
+    current = member_id
+    for _ in members:
+        found = members[current] if current in members else None
+        above = spawner_of(found) if found is not None else ""
+        if not above or above == current:
+            return False
+        if above == ancestor:
+            return True
+        current = above
+    return False
 
 
 def actor_named(root: Path, member_id: str) -> Actor:
@@ -839,6 +871,10 @@ def joined_subagent(root: Path, session: str, caller: Caller) -> Actor | None:
             if read_member(member_path(root, actor), running=True) is None:
                 member = blank_member(SUBAGENT_KIND, text(actor.get("id")))
                 member["parent"] = session
+                spawner = text(caller.get("spawned_by"))
+                member["spawned_by"] = (
+                    subagent_id(session, spawner) if spawner else session
+                )
                 kind = text(caller.get("agent_type")) or "native"
                 member["task"] = f"{kind} subagent of {current_name(parent) or session}"
                 member["delivery"] = SUBAGENT_DELIVERY
@@ -1304,20 +1340,62 @@ def claim_holders(
 
     *session* is the session *mine* runs in, where the asker is one of its
     subagents, and what it holds is not asked about either: the session
-    dispatched this subagent into that work. The other way round is asked —
-    a session writing under a subagent it has running is the one overwriting
-    work in progress — and so is one subagent writing under its sibling.
+    dispatched this subagent into that work. Nor is what the asker's own
+    descendants hold — a subagent or fork it spawned, at any remove, or a
+    runtime its shell started — since that is its own work further on. The
+    hold still shows; a sibling, and everyone outside the family, is asked.
     """
     live = live_ids(root, now)
     names = called(root, now)
+    members = {text(member.get("id")): member for member in present(root, now)}
     return sorted(
         {
             names.get(holder) or holder
             for row in covering(root, Path(target).resolve(), live, now)
             for holder in [actor_id(found) for found in row["holders"]]
-            if holder and holder not in (mine, session)
+            if holder
+            and holder not in (mine, session)
+            and not descends_from(holder, mine, members)
         }
     )
+
+
+def family_holds(
+    root: Path, target: str, mine: str, now: datetime | None = None
+) -> list[str]:
+    """What the writer is told of its own descendants' holds over the path it wrote.
+
+    The other half of :func:`claim_holders`: a member is not asked before
+    writing what a subagent it spawned holds, since that is its own work
+    further on, and is told instead, one line for each — who holds it, and
+    whether that one is still running — so it can tell them rather than
+    overwrite their work unawares.
+    """
+    live = live_ids(root, now)
+    names = called(root, now)
+    members = {text(member.get("id")): member for member in present(root, now)}
+    holders = sorted(
+        {
+            holder
+            for row in covering(root, Path(target).resolve(), live, now)
+            for holder in [actor_id(found) for found in row["holders"]]
+            if holder and holder != mine and descends_from(holder, mine, members)
+        }
+    )
+    return [
+        family_note(names.get(holder) or holder, members[holder]) for holder in holders
+    ]
+
+
+def family_note(name: str, member: Member) -> str:
+    """One descendant's hold, as the writer is told it, the same on every runtime."""
+    who = (
+        f"your subagent {name}"
+        if text(member.get("kind")) == SUBAGENT_KIND
+        else f"{name}, a runtime your shell started,"
+    )
+    running = " and is still running" if member.get("running") else ""
+    return f"{who} holds this file{running}"
 
 
 def claimed(member: Member, paths: list[str], prefix: bool) -> Member:

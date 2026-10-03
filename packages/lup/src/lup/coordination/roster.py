@@ -31,6 +31,7 @@ from pathlib import Path
 from pydantic import BaseModel, computed_field
 
 from lup.coordination.bare import store
+from lup.coordination.bare.runtime import Runtime
 from lup.coordination.refs import ActorRef
 from lup.coordination.wake import WakePath, declared_wake
 
@@ -69,6 +70,19 @@ def carried(spelled: str, fallback: Delivery) -> Delivery:
     stop an older one reading who is here.
     """
     return next((mode for mode in Delivery if mode.value == spelled), fallback)
+
+
+class RecordedProcess(BaseModel, frozen=True):
+    """The runtime process a row answers for, as the row recorded it.
+
+    Its id and its start time, which together name one process where the id
+    alone is reused, and the pid namespace both were read in: an id means
+    nothing to a reader in another namespace.
+    """
+
+    pid: int = 0
+    started: str = ""
+    scope: str = ""
 
 
 class RosterMember(BaseModel, frozen=True):
@@ -162,6 +176,9 @@ class RosterMember(BaseModel, frozen=True):
     somebody wrote down still resolves.
     """
 
+    process: RecordedProcess = RecordedProcess()
+    """The runtime process a session's row answers for, empty where it named none."""
+
     transcript: str = ""
     """The runtime's own transcript of this member's conversation, empty where none is known.
 
@@ -204,6 +221,8 @@ def folded_member(member: store.Member) -> RosterMember:
     """
     wake = member.get("wake") or store.Wake()
     conversation = member.get("conversation") or store.Conversation()
+    runtime = member.get("runtime") or Runtime()
+    pid = runtime.get("pid")
     return RosterMember(
         actor=ActorRef(
             kind=store.text(member.get("kind")),
@@ -230,6 +249,11 @@ def folded_member(member: store.Member) -> RosterMember:
         parent=store.parent_of(member),
         spawned_by=store.text(member.get("spawned_by")),
         cli_name=store.current_name(member),
+        process=RecordedProcess(
+            pid=pid if isinstance(pid, int) and pid > 0 else 0,
+            started=store.text(runtime.get("started")),
+            scope=store.text(runtime.get("scope")),
+        ),
         transcript=store.text(conversation.get("transcript")),
     )
 

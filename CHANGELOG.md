@@ -39,6 +39,98 @@ What changes for an adopter: a field added to `FileVerdict`, `CommandSegment`,
 optional with a default; renaming, removing or retyping one still strands
 every review parked before it.
 
+### Another session's stash no longer fails the test suite
+
+The suites' guard against a test writing into the real checkout
+(`lup.devtools.gitguard`) failed every test that was running when any
+session stashed, in any worktree of the repository. `refs/stash` is one ref
+that every worktree shares, and the guard attributed only branches and their
+remote-tracking refs to the sibling worktree holding them. One `git stash
+push` in another worktree failed sixteen bystander tests.
+
+- A stash pushed in a sibling worktree is now reported rather than failed.
+  The guard credits the entry to the worktree that made it: the one checkout
+  standing on the entry's first parent, or, where several checkouts or none
+  stand there, the sibling holding the branch that `git stash` named in the
+  entry's subject (`ForeignCheckouts.stashed`, `StashEntry`).
+- A stash pushed in the checkout under test, on a branch no sibling holds,
+  or on a detached head still fails the run. So does a pop or drop by
+  anyone: git records where an entry was made, but not who removed it.
+
+### The dashboard supervises agents, and the person is a peer among them
+
+- The dashboard's stream says, for every agent, the runtime it runs in, the
+  session that spawned it, its runtime process and whether the dashboard
+  could stop it, and its latest twelve calls with what became of each. The
+  person's own row in each repository rides it as a `user` event, and the
+  whole state names the supervision this server serves.
+- An agent's transcript reads a page at a time from its end
+  (`GET …/sessions/<member>/transcript`), and one a tab follows
+  (`POST /api/transcripts/follow`) streams in `transcript` frames.
+- The message route takes `in_reply_to`, `redirect` and `priority: "now"`.
+  `now` stops the agent's turn for the message. On Claude Code 2.1.285,
+  measured, a generating turn ends at once and a running tool call finishes
+  first. On Codex 0.159.2, measured, the turn is stopped through its home's
+  app-server (`turn/interrupt`), even mid-command, and its queue takes the
+  message as the next turn (`lup.providers.codex.interrupt`).
+- New routes, each behind the page's capability and origin check: wake an
+  agent, rename it, stop its runtime (only in the dashboard's own pid
+  namespace, with its pid and start time checked), broadcast to a
+  repository, post and withdraw notices, say what you are on, hold and give
+  back paths, mark your inbox read, and post into a discussion to everyone
+  in it. A `DELETE` is held to the origin check a `POST` is.
+- Every message names its post and its thread. `coordination_send` takes
+  `thread` and `in_reply_to`, so an agent answers a discussion to everyone in
+  it; its output is `{post, thread, reached, refused}`, where it was
+  `{address, delivery, outstanding}`. What an agent is handed names the post,
+  and a discussion's messages are headed `[discussion «…» · with … · thread …]`.
+- The person's holds count: an agent writing under one is asked, told `held
+  by user — the operator locked this path`, and `coordination_peers` lists
+  the person's row last.
+- `lup-devtools coordination mailbox --id user` reads the person's own
+  mailbox, each message headed with its sender and post as an agent's hook
+  heads it, and `--take` takes them as read. `coordination send` takes
+  `--as user` to sign an answer so the reply comes back to the person, and
+  `--reply-to <post>` to put it in that post's thread; it prints the post id.
+- The page supervises through those routes. Beside an agent: wake it
+  (`Space a w`), interrupt its turn (`Space a n`, or **Interrupt** by the box),
+  redirect its next call, answer its last message in its thread
+  (`Space a r`, `r` on any message), rename it, stop its runtime (asked
+  twice), and read its whole transcript live (`T`). The operator's verbs
+  (`:describe`, `:notice`/`:unnotice`, `:lock`/`:release`, `:read`, `X` in the
+  inbox) reach theirs, a post into a discussion goes to its thread, and a
+  broadcast is one post. Threads group by post and thread ids. The page reads
+  the stream's `served` and refuses, naming the route, what a dashboard running
+  older code does not serve. The keymap catalog's actions say which piece of
+  supervision each needs (`needs`) where they said `server="new"`.
+- A fork's row names the subagent that spawned it, read from the runtime's
+  own record (Claude Code's `parentAgentId`, Codex's `parent_thread_id`),
+  where it was a plain sibling with an empty `spawned_by`. A member writes
+  what its own descendants hold without being asked, a session included
+  under its subagents; the hold still shows, and a sibling or anyone outside
+  the family is still asked. The writer is told beside the call's result,
+  the same on both runtimes: `<file>: your subagent <name> holds this file
+  and is still running`, saying "still running" only where it is.
+- A redirect a wake carried still refuses the agent's next tool call. A wake
+  that reached used to hand the redirect over with everything else, so the
+  delivery hook never saw it and the next call went through.
+### The dashboard highlights a conflicted file's code through its merge markers
+
+A file a merge left conflicted no longer throws the dashboard's syntax
+highlighting off at its markers, where a string or comment opened on one side
+ran on into the other side and often the rest of the file. Each version of the
+file — ours, theirs, and the common ancestor where diff3 or zdiff3 records it —
+is highlighted whole as the file it would be, and every line takes the colours
+of the version it belongs to: a line both sides share as ours reads it, a
+side's line as its own side does. Each side is barred down its left edge in its
+own colour and line (ours solid, the ancestor dotted, theirs double), and each
+marker is bold in its side's colour and names the side and branch it opens or
+closes. A review proposing a resolution shows the same in both columns. A
+conflict left unterminated, or with its markers out of order, is highlighted
+as the file stands. The markers are read by `conflicts.ts` in the dashboard
+page, which accepts git's longer markers too (`conflict-marker-size`, and the
+inner conflicts a merge of merge bases writes).
+
 ### Files, locks and per-person state are each spelled once in the library
 
 The same file chores were hand-rolled at dozens of sites, each a little
@@ -171,6 +263,21 @@ two paths it named, so both trees stay protected whichever runtime a session
 runs. An adopter's own `NativeSpellings` implements `protected_tree`, and a
 hook set that listed `.claude` and `.codex` by hand can spread
 `runtime_trees()` instead.
+### A script `uv run` is handed beside an unread word is no longer refused as a bare interpreter
+
+`cd tmp && T=/a; uv run python s.py $T` was refused as a bare interpreter,
+on every placement, while the same line with `T` never assigned was allowed.
+The same refusal met `read T; uv run python s.py $T`,
+`uv run python s.py $(date)` and `uv run perl s.pl $T`. Any command that
+references an unreadable value is checked for a refusal the value could
+never lift. That check judged the program `uv run` runs as if it were run
+directly, and Python run directly is refused over any file, because
+`uv run python` is how it is meant to run. The check now reads the program as
+`uv run` reads it. A script with an unread argument after it gets the floor
+`uv run bash s.sh $T` always got: allowed inside a boundary, refused outside
+one. Inline code (`uv run python -c … $T`) and an unread program
+(`uv run python $T`) stay refused, now with `uv run`'s own reason, and
+`python s.py $T` run directly stays refused.
 
 ### A sibling worktree's scratch is scratch for every question, and a stream is no file
 

@@ -260,6 +260,9 @@ floor never stands in for what the command asks as spelled: a boundary
 settling it confines the call, not the checkout the call writes in, and a
 protected file there was rewritten unasked. `eval`, `source` and an
 interpreter's inline code stay refused, and `xargs` keeps its own question.
+What `uv run` hands an interpreter is read as `uv run` reads it, so
+`uv run python s.py $T` gets the same floor as `uv run bash s.sh $T`, while
+`uv run python -c … $T` and `uv run python $T` stay refused.
 
 Where the capture was actually *taken*, `RecoveredLoss` settles the question
 as a **permission**. Not a deferral: deferring would make the outcome depend
@@ -928,6 +931,17 @@ A deliberate send to a peer is not walled off. The `# lup: escalate[decision]:`
 marker in any of the call's own inputs turns the refusal into the approval
 question the sender asked for, carrying their stated reason — the valve every
 refusal has.
+
+A write under a path somebody else holds — a session that locked it or last
+changed it — is a question rather than a refusal, naming every holder:
+`<path> is held by <holders> — another live session has changed or locked
+this path`. The person watching holds a path too, from the dashboard, and an
+agent writing under it is asked with `held by user — the operator locked this
+path`; where a session holds it as well, both are said. Their hold stands until
+they give it back, since the person never stops. The kernel's
+`decide_foreign_claim` words it from the declared row's `operator` and
+`operator_reason`, so the compiled dispatcher and the in-process session say
+the same thing.
 ## Forge credentials
 
 A contained session reaches its forge on something the operator lent it,

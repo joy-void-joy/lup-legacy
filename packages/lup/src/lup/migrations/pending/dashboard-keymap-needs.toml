@@ -1,0 +1,13 @@
+subjects = ["KeyServer", "DashboardAction.server"]
+reason = """
+the dashboard's server serves the supervision the page's actions need, and \
+says which in the stream (`served`), so an action names the piece it needs \
+rather than a static mark that it waits on new server work"""
+
+[[steps]]
+instruction = """
+Spell an action that needs supervision from the server with \
+needs="<feature>" (a lup.devtools.dashboard.live.Feature) where it said \
+server="new", and drop server="today", the default. A page reads \
+DashboardAction.needs against the stream's `served` to tell whether it can \
+run."""

@@ -1,0 +1,12 @@
+subjects = ["spawned_name"]
+reason = """
+each runtime's caller hook reads the spawn's record once, for both what the \
+spawn called the subagent and which subagent spawned it"""
+
+[[steps]]
+instruction = """
+Read name and spawned_by off caller_of(payload) where \
+spawned_name(transcript, agent) was called. Claude Code's spawn_of(transcript, \
+agent) returns the spawn's whole meta record, name and parentAgentId among it; \
+Codex's own_thread(transcript, agent) returns the opening of the subagent's \
+own rollout, and spawning_thread(thread, session) the thread that spawned it."""

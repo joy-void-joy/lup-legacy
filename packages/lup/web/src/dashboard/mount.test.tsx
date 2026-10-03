@@ -10,6 +10,35 @@ import { CATALOG } from "./keys";
 import { click, mount, one, until, type Mounted } from "../testing";
 
 const originalFetch = globalThis.fetch;
+
+/** Every piece of supervising the dashboard's server serves, as its stream names them. */
+const SERVED_ALL = ["reply-thread", "redirect", "interrupt", "bare-wake", "rename", "stop", "transcript", "notices", "describe", "claims", "inbox-read", "thread-post"];
+
+const outcome = (member: string, detail: string, fields: object = {}) =>
+  ({ session: `r1/${member}`, queued: true, woken: true, interrupted: false, post: "p9", thread: "p9", detail, ...fields });
+
+/** What the fixture's server answers on each supervising route, as the dashboard's own does. */
+function supervised(path: string, method: string, body: unknown): Response | null {
+  const asked = (body ?? {}) as { name?: string; path?: string; ids?: string[]; text?: string };
+  const agent = path.match(/^api\/repositories\/r1\/sessions\/([^/]+)\/(wake|name|stop|transcript)/);
+  if (agent !== null) {
+    const [, member = "", verb] = agent;
+    if (verb === "wake") return Response.json(outcome(member, "Woken: nothing waited, so it was asked to look.", { queued: false }));
+    if (verb === "name") return Response.json({ session: `r1/${member}`, name: asked.name });
+    if (verb === "stop") return Response.json({ session: `r1/${member}`, pid: 4242, detail: "Sent SIGTERM to pid 4242, the runtime its row recorded." });
+    return Response.json({ session: `r1/${member}`, entries: [{ at: 0, block: 0, kind: "text", role: "assistant", text: "Reading the roster.", tool: "", call: "", arguments: {}, error: false, time: "2026-09-24T10:00:00Z" }], earlier: 0, end: 120 });
+  }
+  if (path === "api/transcripts/follow") return Response.json({ sessions: ["r1/lead"], refused: [], seconds: 60 });
+  if (path === "api/repositories/r1/broadcast") return Response.json({ post: "pb", outcomes: [outcome("lead", "Queued."), outcome("lead-a1", "Queued.", { woken: false })] });
+  if (path === "api/repositories/r1/notices") return Response.json({ id: "n1", text: asked.text, by: "user", door: "page", posted_at: "2026-09-24T10:00:00Z" });
+  if (path === "api/repositories/r1/notices/n1" && method === "DELETE") return Response.json({ id: "n1", withdrawn: true });
+  if (path === "api/user/description") return Response.json({ repositories: ["r1"] });
+  if (path === "api/repositories/r1/claims") return Response.json({ path: asked.path, holders: method === "POST" ? ["user"] : [] });
+  if (path === "api/repositories/r1/inbox/read") return Response.json({ read: asked.ids });
+  const thread = path.match(/^api\/repositories\/r1\/threads\/([^/]+)\/posts$/);
+  if (thread !== null) return Response.json({ post: "p9", thread: thread[1], deliveries: [outcome("lead", "Queued."), outcome("lead-a1", "Queued.")], refused: [] });
+  return null;
+}
 const root = { id: "tree", path: "/project/tree/feature", repository: "/project/lup.git", repository_name: "lup" };
 const repository = { key: "r1", name: "lup", repository: "/project/lup.git", checkout: "/project/lup.git/tree/feature" };
 const NONE: KeyBindings = { source: "", unread: "", changed: [], report: { applied: [], refused: [], waits: [] } };
@@ -59,7 +88,8 @@ function session(id: string, fields: object = {}) {
   return {
     key: `r1/${id}`, repository: "r1", id, parent: "", kind: "session", name: id, doing: `${id} is doing its part`, task: "", running: true,
     worktree: "/project/lup.git/tree/feature", holding: [], contested: [], delivery: "hook", wake: "claude", arrived: null, heard: new Date().toISOString(),
-    summary: "", error: "", waiting: 0, activity: { said: `${id} said something`, calling: "", arguments: {}, at: new Date().toISOString(), transcript: "" },
+    summary: "", error: "", waiting: 0, activity: { said: `${id} said something`, calling: "", arguments: {}, at: new Date().toISOString(), transcript: "", recent: [] },
+    runtime: "claude", spawned_by: "", process: null,
     ...fields,
   };
 }
@@ -81,9 +111,11 @@ describe("dashboard page", () => {
   let keys: KeyBindings = NONE;
   let tried: KeyBindings = NONE;
   let code = { source: "fixture", root: "/project/packages/lup/src/lup", since: null as string | null, older: false, failing: "", restarted: "" };
+  let served: string[] = [...SERVED_ALL];
+  let users: object[] = [];
   const settled = () => [...rows.filter((row) => row.state !== "pending"), ...older];
   const queue = () => ({ roots: [root], reviews: rows, errors: [], history: settled().length });
-  const snapshot = () => sent({ type: "snapshot", repositories: [repository], sessions, messages, extents, reviews: queue(), code, keys });
+  const snapshot = () => sent({ type: "snapshot", repositories: [repository], sessions, messages, extents, reviews: queue(), code, keys, users, served });
   const deliver = async (text: string) => { await act(async () => stream?.enqueue(new TextEncoder().encode(text))); };
   const posted = () => requests.filter((request) => request.method === "POST");
 
@@ -104,6 +136,8 @@ describe("dashboard page", () => {
     keys = NONE;
     tried = NONE;
     code = { source: "fixture", root: "/project/packages/lup/src/lup", since: null, older: false, failing: "", restarted: "" };
+    served = [...SERVED_ALL];
+    users = [];
     Object.defineProperty(window, "innerWidth", { value: 1920, configurable: true });
     localStorage.clear();
     window.history.replaceState(null, "", "/#token=browser-secret");
@@ -157,6 +191,8 @@ describe("dashboard page", () => {
       if (path.startsWith("api/repositories/") && path.endsWith("/messages")) {
         return Response.json({ session: "r1/lead", queued: true, woken: true, detail: "Queued in its mailbox, and its runtime accepted the wake." });
       }
+      const supervising = supervised(path, options?.method ?? "GET", body);
+      if (supervising !== null) return supervising;
       return Response.json({ detail: `Unknown fixture route ${path}` }, { status: 404 });
     }, { preconnect() {} });
   });
@@ -231,6 +267,31 @@ describe("dashboard page", () => {
     expect(one(page.root, "#context").textContent).toContain("agent's note");
     expect(one(page.root, "#context").textContent).toContain("Replace the file whole, so the old helper goes.");
     expect([...page.root.querySelectorAll(".pane .r.del .tx, .pane .r.add .tx")].map((line) => line.textContent?.slice(0, 5))).toEqual(["befor", "after"]);
+  });
+
+  test("a resolution of a conflicted file colours each side as its own, bars it, and names each marker's side and branch", async () => {
+    const [opening, split, closing] = ["<", "=", ">"].map((char) => char.repeat(7));
+    const lines = ["export function greet(name: string): string {", `${opening} HEAD`, "  /* kept short", split, "  const message = `Hey ${name}`;", `${closing} feat-x`, "     closed here */", "  return name;", "}"];
+    const kept = [0, 2, 6, 7, 8];
+    const resolution = review();
+    const [base] = resolution.files;
+    if (base === undefined) throw new Error("the fixture review has a file");
+    resolution.files = [{
+      ...base, path: "/project/greet.ts", before: `${lines.join("\n")}\n`, after: `${kept.map((at) => lines[at]).join("\n")}\n`, additions: 0, deletions: 4,
+      hunks: [{ header: "@@ -1,9 +1,5 @@", old_start: 1, old_end: 9, new_start: 1, new_end: 5, lines: lines.map((text, at) => ({
+        kind: kept.includes(at) ? "context" : "remove", text: `${text}\n`, old_line: at + 1 as number | null, new_line: kept.includes(at) ? kept.indexOf(at) + 1 as number | null : null, suppression: false,
+      })) }],
+    }];
+    details.set("tree-q1", resolution);
+    const page = await landed();
+    const markers = [...page.root.querySelectorAll(".pane .r.cf-at")];
+    expect(markers.map((row) => row.querySelector(".vt[class*='cfs-']")?.textContent)).toEqual(["◂ ours · HEAD", "◂ theirs · feat-x", "◂ end of theirs · feat-x"]);
+    expect(markers.every((row) => row.classList.contains("del"))).toBe(true);
+    const theirs = one(page.root, ".pane .r.cf-theirs:not(.cf-at)");
+    expect(theirs.querySelector(".hljs-keyword")?.textContent).toBe("const");
+    const shared = [...page.root.querySelectorAll(".pane .r.ctx")].find((row) => row.textContent?.includes("kept short"));
+    expect(shared?.classList.contains("cf")).toBe(false);
+    expect(shared?.querySelector(".hljs-comment")?.textContent).toContain("kept short");
   });
 
   test("Ctrl+Enter approves exactly what the page showed, comments included, and the next review opens in its box", async () => {
@@ -415,12 +476,12 @@ describe("dashboard page", () => {
     await key("Enter", { altKey: true }, one(page.root, "#reply"));
     await until(() => (page.root.querySelector("#composer")?.textContent ?? "").includes("accepted the wake"), "what came of it");
     expect(posted()[0]?.path).toBe("api/repositories/r1/sessions/lead-a1/messages");
-    expect(posted()[0]?.body).toEqual({ text: "How far along is it?" });
+    expect(posted()[0]?.body).toEqual({ text: "How far along is it?", in_reply_to: "", redirect: false, priority: "next" });
   });
 
   test("messages older than the stream carries are read back a page at a time", async () => {
     extents = [{ repository: "r1", earlier: 900 }];
-    olderMail = [{ before: 900, page: { messages: [{ key: "r1/m0", repository: "r1", id: "m0", at: 10, sender: "lead", recipient: "lead-a1", recipient_kind: "subagent", text: "The first word.", door: "agent", redirect: false, in_reply_to: "", sent_at: "2026-09-24T09:00:00Z", waiting: false }], earlier: 0 } }];
+    olderMail = [{ before: 900, page: { messages: [{ key: "r1/m0", repository: "r1", id: "m0", at: 10, sender: "lead", recipient: "lead-a1", recipient_kind: "subagent", text: "The first word.", door: "agent", redirect: false, in_reply_to: "", sent_at: "2026-09-24T09:00:00Z", waiting: false, post: "m0", thread: "m0" }], earlier: 0 } }];
     const page = await landed();
     await key("Escape", {}, note());
     await command("agent lead");
@@ -430,9 +491,10 @@ describe("dashboard page", () => {
     expect(one(page.root, ".pane").textContent).not.toContain("Load earlier messages");
   });
 
-  test("Threads reads the mail as discussions; r answers a post, and a post names the route it waits on", async () => {
+  test("Threads reads the mail as discussions; r answers a post, and a server that does not serve posting is named", async () => {
+    served = [];
     const mail = (id: string, sender: string, recipient: string, text: string, sentAt: string, fields: object = {}) =>
-      ({ key: `r1/${id}`, repository: "r1", id, at: Number(id.slice(1)) * 100, sender, recipient, recipient_kind: recipient === "user" ? "user" : "session", text, door: "agent", redirect: false, in_reply_to: "", sent_at: sentAt, waiting: false, ...fields });
+      ({ key: `r1/${id}`, repository: "r1", id, at: Number(id.slice(1)) * 100, sender, recipient, recipient_kind: recipient === "user" ? "user" : "session", text, door: "agent", redirect: false, in_reply_to: "", sent_at: sentAt, waiting: false, post: id, thread: id, ...fields });
     messages = [
       mail("m1", "lead", "lead-a1", "Which sources disagree?", "2026-09-24T10:00:00Z"),
       mail("m2", "lead-a1", "lead", "Three of them.", "2026-09-24T10:01:00Z", { in_reply_to: "m1" }),
@@ -454,8 +516,130 @@ describe("dashboard page", () => {
     await until(() => (page.root.querySelector("#composer")?.textContent ?? "").includes("answering scout: Three of them."), "the post r chose");
     await write(one<HTMLTextAreaElement>(page.root, "#reply"), "Take the newest.");
     await key("Enter", { altKey: true }, one(page.root, "#reply"));
-    await until(() => (page.root.querySelector("#cmdline")?.textContent ?? "").includes("threads/<thread>/posts"), "the refusal naming the route");
+    await until(() => (page.root.querySelector("#notify")?.textContent ?? "").includes("threads/<thread>/posts"), "the refusal naming the route");
     expect(posted().filter((request) => request.path.includes("/messages"))).toEqual([]);
+  });
+
+
+  const supervisedPosts = () => requests.filter((request) => request.method !== "GET" && request.path !== "api/stream");
+  const said = () => [...document.querySelectorAll("#cmdline, #notify, [role=status]")].map((node) => node.textContent ?? "").join(" ");
+
+  test("an agent is woken, interrupted, renamed and stopped from its keys, each through its route", async () => {
+    sessions = [session("lead", { process: { pid: 4242, started: "1", here: true, stoppable: true, why: "" } }), session("lead-a1", { parent: "lead", kind: "subagent", name: "scout" })];
+    const page = await landed();
+    await key("Escape", {}, note());
+    await command("agent lead");
+    await until(() => (page.root.querySelector("#ebar")?.textContent ?? "").includes("lead"), "the agent");
+    for (const sequence of [[" ", "a", "w"], [" ", "a", "n"], [" ", "a", "x"], [" ", "a", "x"]]) {
+      for (const each of sequence) await key(each, {}, document.body);
+    }
+    await command("rename lead chief");
+    await until(() => supervisedPosts().some((request) => request.path.endsWith("/name")), "the rename");
+    const paths = supervisedPosts().map((request) => `${request.method} ${request.path}`);
+    expect(paths).toEqual([
+      "POST api/repositories/r1/sessions/lead/wake",
+      "POST api/repositories/r1/sessions/lead/messages",
+      "POST api/repositories/r1/sessions/lead/stop",
+      "POST api/repositories/r1/sessions/lead/name",
+    ]);
+    const interrupt = supervisedPosts()[1]?.body as { priority: string; text: string };
+    expect(interrupt.priority).toBe("now");
+    expect(interrupt.text).toContain("interrupts your turn");
+    expect(supervisedPosts()[3]?.body).toEqual({ name: "chief" });
+  });
+
+  test("Space a r answers the last message between the agent and you, in its thread", async () => {
+    messages = [{ key: "r1/m3", repository: "r1", id: "m3", at: 300, sender: "lead", recipient: "user", recipient_kind: "user", text: "Rebase or merge?", door: "agent", redirect: false, in_reply_to: "", sent_at: "2026-09-24T10:02:00Z", waiting: true, post: "p3", thread: "p3" }];
+    const page = await landed();
+    await key("Escape", {}, note());
+    await command("agent lead");
+    for (const each of [" ", "a", "r"]) await key(each, {}, document.body);
+    await until(() => (page.root.querySelector("#composer")?.textContent ?? "").includes("answering lead: Rebase or merge?"), "the box answering it");
+    await write(one<HTMLTextAreaElement>(page.root, "#reply"), "Merge.");
+    await key("Enter", { altKey: true }, one(page.root, "#reply"));
+    await until(() => supervisedPosts().length > 0, "the reply");
+    expect(supervisedPosts()[0]?.body).toEqual({ text: "Merge.", in_reply_to: "p3", redirect: false, priority: "next" });
+  });
+
+  test("your verbs reach their routes: describe, notices, holds, broadcast and a redirect", async () => {
+    const page = await landed();
+    await key("Escape", {}, note());
+    await command("agent lead");
+    for (const line of ["describe landing the relay", "notice Freeze main until the relay lands", "unnotice n1", "lock src/relay.py", "release src/relay.py", "broadcast Rebase onto dev", "redirect lead Stop and rebase first"]) {
+      await command(line);
+      await until(() => supervisedPosts().length > 0 && !said().includes("…"), line);
+    }
+    await until(() => supervisedPosts().length === 7, "every verb");
+    expect(supervisedPosts().map((request) => [request.method, request.path, request.body])).toEqual([
+      ["POST", "api/user/description", { text: "landing the relay" }],
+      ["POST", "api/repositories/r1/notices", { text: "Freeze main until the relay lands" }],
+      ["DELETE", "api/repositories/r1/notices/n1", null],
+      ["POST", "api/repositories/r1/claims", { path: "/project/lup.git/tree/feature/src/relay.py" }],
+      ["DELETE", "api/repositories/r1/claims", { path: "/project/lup.git/tree/feature/src/relay.py" }],
+      ["POST", "api/repositories/r1/broadcast", { text: "Rebase onto dev" }],
+      ["POST", "api/repositories/r1/sessions/lead/messages", { text: "Stop and rebase first", in_reply_to: "", redirect: true, priority: "next" }],
+    ]);
+    expect(page.root.textContent).toBeDefined();
+  });
+
+  test("X in the inbox takes every message to you out of your mailbox, as read", async () => {
+    messages = [
+      { key: "r1/m3", repository: "r1", id: "m3", at: 300, sender: "lead", recipient: "user", recipient_kind: "user", text: "Rebase or merge?", door: "agent", redirect: false, in_reply_to: "", sent_at: "2026-09-24T10:02:00Z", waiting: true, post: "p3", thread: "p3" },
+      { key: "r1/m4", repository: "r1", id: "m4", at: 400, sender: "lead-a1", recipient: "user", recipient_kind: "user", text: "Done.", door: "agent", redirect: false, in_reply_to: "", sent_at: "2026-09-24T10:03:00Z", waiting: true, post: "p4", thread: "p4" },
+    ];
+    await landed();
+    await key("Escape", {}, note());
+    await command("inbox");
+    await until(() => status().includes("Inbox"), "the inbox");
+    await key("X", {}, document.body);
+    await until(() => supervisedPosts().length > 0, "the read");
+    expect(supervisedPosts()[0]?.path).toBe("api/repositories/r1/inbox/read");
+    expect((supervisedPosts()[0]?.body as { ids: string[] }).ids.sort()).toEqual(["m3", "m4"]);
+  });
+
+  test("a post into a discussion goes to its thread's route, answering the post r chose", async () => {
+    const mail = (id: string, sender: string, recipient: string, text: string, sentAt: string, fields: object = {}) =>
+      ({ key: `r1/${id}`, repository: "r1", id, at: Number(id.slice(1)) * 100, sender, recipient, recipient_kind: recipient === "user" ? "user" : "session", text, door: "agent", redirect: false, in_reply_to: "", sent_at: sentAt, waiting: false, post: id, thread: "m1", ...fields });
+    messages = [
+      mail("m1", "lead", "lead-a1", "Which sources disagree?", "2026-09-24T10:00:00Z"),
+      mail("m2", "lead-a1", "lead", "Three of them.", "2026-09-24T10:01:00Z", { in_reply_to: "m1" }),
+      mail("m3", "lead", "user", "Scout found three.", "2026-09-24T10:02:00Z", { in_reply_to: "m2", waiting: true }),
+    ];
+    const page = await landed();
+    await key("Escape", {}, note());
+    await command("threads");
+    await until(() => status().includes("Threads"), "the Threads view");
+    await key("j", {}, document.body);
+    await key("j", {}, document.body);
+    await key("r", {}, document.body);
+    await until(() => (page.root.querySelector("#composer")?.textContent ?? "").includes("answering scout: Three of them."), "the post r chose");
+    await write(one<HTMLTextAreaElement>(page.root, "#reply"), "Take the newest.");
+    await key("Enter", { altKey: true }, one(page.root, "#reply"));
+    await until(() => supervisedPosts().length > 0, "the post");
+    expect(supervisedPosts()[0]?.path).toBe("api/repositories/r1/threads/m1/posts");
+    expect(supervisedPosts()[0]?.body).toEqual({ text: "Take the newest.", in_reply_to: "m2", to: [] });
+  });
+
+  test("T reads an agent's transcript whole and follows it, frames from the stream carrying on from its end", async () => {
+    const page = await landed();
+    await key("Escape", {}, note());
+    await command("agent lead");
+    await key("T", {}, document.body);
+    await until(() => (page.root.querySelector("[aria-label=Transcript]")?.textContent ?? "").includes("Reading the roster."), "the transcript");
+    await until(() => requests.some((request) => request.path === "api/transcripts/follow"), "the follow");
+    expect(requests.find((request) => request.path === "api/transcripts/follow")?.body).toEqual({ sessions: [{ repository: "r1", member: "lead", after: 120 }] });
+    await deliver(sent({ type: "transcript", session: "r1/lead", entries: [{ at: 120, block: 0, kind: "call", role: "assistant", text: "", tool: "Bash", call: "c1", arguments: { command: "uv run pytest" }, error: false, time: "2026-09-24T10:01:00Z" }], end: 260 }));
+    await until(() => (page.root.querySelector("[aria-label=Transcript]")?.textContent ?? "").includes("uv run pytest"), "the frame carried on");
+  });
+
+  test("an action this dashboard's server does not serve is refused naming its route, and nothing is sent", async () => {
+    served = [];
+    await landed();
+    await key("Escape", {}, note());
+    await command("agent lead");
+    for (const each of [" ", "a", "w"]) await key(each, {}, document.body);
+    await until(() => said().includes("POST …/sessions/<member>/wake"), "the refusal");
+    expect(supervisedPosts()).toEqual([]);
   });
 
   test("the setup view lists each repository's pane and shows the one chosen", async () => {

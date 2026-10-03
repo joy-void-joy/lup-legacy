@@ -6122,6 +6122,31 @@ def named_claim_recorded(
     )
 
 
+def family_hold_report(
+    paths: list[str], cwd: Path | None, caller: store.Caller
+) -> PostToolReport:
+    """What the writer is told of its own descendants' holds over the files it wrote.
+
+    A member writes what a subagent it spawned holds without being asked —
+    the edit gate let it through — and is told so with the call's result,
+    one line a hold: whose it is, and whether that one is still running. The
+    same words on both runtimes, in the post-tool context each adds beside
+    the result.
+    """
+    directory = peer_directory(cwd)
+    if PEER_POLICY is None or directory is None:
+        return PostToolReport(blocking=[], context=[])
+    mine = store.acting_id(answering_member(directory), caller)
+    return PostToolReport(
+        blocking=[],
+        context=[
+            f"{worktree_path(str(Path(path).resolve()))}: {note}"
+            for path in paths
+            for note in store.family_holds(directory, path, mine)
+        ],
+    )
+
+
 def edit_claim_decision(
     verdict: KernelDecision, path_text: str, cwd: Path | None, caller: store.Caller
 ) -> KernelDecision:
@@ -6716,7 +6741,12 @@ def observe(payload):
         # The tier that needs no comparison: the call said which file, so the
         # claim it leaves is one another session can act on unqualified.
         named_claim_recorded(path, session_root(payload), caller_of(payload))
-        return reviewed_writes([path], session_root(payload))
+        return merged(
+            [
+                family_hold_report([path], session_root(payload), caller_of(payload)),
+                reviewed_writes([path], session_root(payload)),
+            ]
+        )
     command = tool_input["command"] if "command" in tool_input else ""
     if not command:
         return PostToolReport(blocking=[], context=[])
@@ -6725,6 +6755,7 @@ def observe(payload):
     changed = claim_window_closed(session_root(payload), caller_of(payload))
     return merged(
         [
+            family_hold_report(changed, session_root(payload), caller_of(payload)),
             written_review(
                 command,
                 session_root(payload) or Path.cwd(),

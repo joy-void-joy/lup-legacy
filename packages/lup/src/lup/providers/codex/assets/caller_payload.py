@@ -35,6 +35,11 @@ after whatever its own ``PreToolUse`` hook rewrote. The name is that path's
 last part. An opening naming another thread — the session's rollout, which
 ``SubagentStop`` hands as ``transcript_path`` — names nobody.
 
+The same opening says which thread spawned this one, under
+``source.subagent.thread_spawn.parent_thread_id``: the session's own thread
+where the session spawned it, which the event carries as ``session_id``, or
+the subagent that did, by the ``agent_id`` that subagent's own events carry.
+
 Every failure is silence: a call left unstamped acts as the session.
 """
 
@@ -52,9 +57,24 @@ class Payload(TypedDict, total=False):
     hook_event_name: str
     tool_input: dict[str, WireValue]
     transcript_path: str
+    session_id: str
     agent_id: str
     agent_type: str
     cwd: str
+
+
+class Spawn(TypedDict, total=False):
+    """How a subagent's thread was spawned, as far as this reads."""
+
+    parent_thread_id: str
+
+
+class Spawned(TypedDict, total=False):
+    thread_spawn: Spawn
+
+
+class Source(TypedDict, total=False):
+    subagent: Spawned
 
 
 class Thread(TypedDict, total=False):
@@ -62,6 +82,7 @@ class Thread(TypedDict, total=False):
 
     id: str
     agent_path: str
+    source: Source
 
 
 class Opening(TypedDict, total=False):
@@ -83,21 +104,30 @@ class Rewrite(TypedDict):
     hookSpecificOutput: Rewritten
 
 
-def spawned_name(transcript: str, agent: str) -> str:
-    """What the spawn called this subagent, blank where its own rollout does not say."""
+def own_thread(transcript: str, agent: str) -> Thread:
+    """What this subagent's own rollout opens with, empty where it does not say."""
     if not transcript or not agent:
-        return ""
+        return Thread()
     try:
         with open(transcript, encoding="utf-8") as rollout:
             opening: Opening = json.loads(rollout.readline())
     except (OSError, ValueError):
-        return ""
+        return Thread()
     if not isinstance(opening, dict) or opening.get("type") != "session_meta":
-        return ""
+        return Thread()
     thread = opening.get("payload")
     if not isinstance(thread, dict) or text(thread.get("id")) != agent:
-        return ""
-    return PurePosixPath(text(thread.get("agent_path"))).name
+        return Thread()
+    return thread
+
+
+def spawning_thread(thread: Thread, session: str) -> str:
+    """The subagent that spawned *thread*, by its own id; blank where the session did."""
+    source = thread.get("source")
+    subagent = source.get("subagent") if isinstance(source, dict) else None
+    spawn = subagent.get("thread_spawn") if isinstance(subagent, dict) else None
+    parent = text(spawn.get("parent_thread_id")) if isinstance(spawn, dict) else ""
+    return "" if parent == session else parent
 
 
 def transcript_of(payload: Payload) -> Path | None:
@@ -148,11 +178,13 @@ def spoken(record: dict[str, WireValue]) -> str | None:
 def caller_of(payload: Payload) -> Caller:
     """The conversation one tool event came from, blank for the session's own."""
     agent = text(payload.get("agent_id"))
+    thread = own_thread(text(payload.get("transcript_path")), agent)
     return Caller(
         agent_id=agent,
         agent_type=text(payload.get("agent_type")),
         cwd=text(payload.get("cwd")),
-        name=spawned_name(text(payload.get("transcript_path")), agent),
+        name=PurePosixPath(text(thread.get("agent_path"))).name,
+        spawned_by=spawning_thread(thread, text(payload.get("session_id"))),
     )
 
 

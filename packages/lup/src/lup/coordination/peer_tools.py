@@ -35,7 +35,10 @@ from lup.coordination.bare.runtime import (
 from lup.coordination.identity import NameTakenError, member_ref
 from lup.coordination.pulse import Pulse, PulseHold
 from lup.coordination.refs import ActorRef
+from lup.coordination.bare.mail import new_post_id
+from lup.coordination.mail import Posting
 from lup.coordination.repository import (
+    NotReached,
     PeerDepartedError,
     PeerView,
     RepositoryPeers,
@@ -256,17 +259,36 @@ class RenameOutput(BaseModel):
 
 class PeerSayInput(Called):
     address: str = Field(
+        default="",
         description=(
             "Which peer to reach: a subagent row's or a session's. Its id from "
             "the roster always reaches it, whatever anything is called; a name "
             "works too, including one somebody wrote down before that peer "
-            "renamed"
-        )
+            "renamed. With `thread`, a peer named here joins that discussion; "
+            "without one, it is required"
+        ),
     )
     text: str = Field(description="What the peer should read")
+    thread: str = Field(
+        default="",
+        description=(
+            "A discussion to post into, by the thread id a message you were "
+            "sent names: one copy goes to everyone in it but you"
+        ),
+    )
+    in_reply_to: str = Field(
+        default="",
+        description=(
+            "The post this answers, by the post id its heading names; it goes "
+            "into that post's thread. In a discussion it defaults to its "
+            "latest post"
+        ),
+    )
 
 
-class PeerSayOutput(BaseModel):
+class PeerReached(BaseModel):
+    """One peer a send was put in front of, and what carries it there."""
+
     address: str
     delivery: Delivery = Field(
         description=(
@@ -280,6 +302,16 @@ class PeerSayOutput(BaseModel):
             "How much is queued for that peer and not yet handed over, this "
             "message included"
         )
+    )
+
+
+class PeerSayOutput(BaseModel):
+    post: str = Field(description="What a reply names in `in_reply_to`")
+    thread: str = Field(description="The thread it went into")
+    reached: list[PeerReached]
+    refused: list[NotReached] = Field(
+        default=[],
+        description="Who in the discussion it did not reach, and why",
     )
 
 
@@ -416,9 +448,10 @@ def create_peer_tools(
         "read before writing. Anything in `contested` is held by more than one "
         "row already. A path under somebody's `holding` is not forbidden — say "
         "so with `coordination_send` first.\n\n"
-        "The person watching is not a row and needs no listing — they are "
-        "always reachable at `user`. Returns {peers: [{address, cli_name, "
-        "doing, holding, contested, member, subagents}]}.",
+        "The person watching is the last row, at `user`: what they say they "
+        "are on, and what they hold — a path they locked is theirs until they "
+        "release it, and writing under it asks them. Returns {peers: "
+        "[{address, cli_name, doing, holding, contested, member, subagents}]}.",
         name="coordination_peers",
     )
     async def coordination_peers(params: Called) -> PeerListOutput:
@@ -429,9 +462,14 @@ def create_peer_tools(
         peers.sweep(by=member_ref(member_id))
         standing = peers.row(member_id)
         return PeerListOutput(
-            peers=nested(
-                peers.listing(since=standing.arrived if standing is not None else None)
-            )
+            peers=[
+                *nested(
+                    peers.listing(
+                        since=standing.arrived if standing is not None else None
+                    )
+                ),
+                peers.person(),
+            ]
         )
 
     @lup_tool(
@@ -480,21 +518,65 @@ def create_peer_tools(
         "will wake that peer — it reads when it next looks. If what you need "
         "is a decision before you can continue, that is a question for the "
         "person, not a message to a peer.\n\n"
-        "Address `user` to reach whoever is watching. Returns {address, "
-        "delivery, outstanding}.",
+        "Address `user` to reach whoever is watching.\n\n"
+        "Every message you are sent names its post, and one posted into a "
+        "discussion names its thread too. Answer a post with `in_reply_to`; "
+        "answer a discussion with `thread`, which reaches everyone in it — "
+        "the person included — rather than whoever wrote last. Returns "
+        "{post, thread, reached: [{address, delivery, outstanding}], refused}.",
         name="coordination_send",
     )
     async def coordination_send(params: PeerSayInput) -> PeerSayOutput:
         acting = present(params.caller)
         spoken(acting)
-        addressed = peers.address(params.address)
+
+        def reached(member: ActorRef) -> PeerReached:
+            return PeerReached(
+                address=member.label(),
+                delivery=peers.cohort.delivery(member),
+                outstanding=peers.cohort.outstanding(member),
+            )
+
+        addressed = peers.address(params.address) if params.address else None
         if addressed is not None and addressed.id == acting.id:
             raise ToolError(
                 f"{params.address!r} is your own address; "
                 "`coordination_peers` lists the others"
             )
+        if params.thread:
+            try:
+                posted = peers.post_into(
+                    params.thread,
+                    params.text,
+                    sender=acting.id,
+                    door=door,
+                    in_reply_to=params.in_reply_to,
+                    joining=(params.address,) if params.address else (),
+                )
+            except LookupError as missing:
+                raise ToolError(
+                    f"{missing}; a thread is named by the `thread` a message's "
+                    "heading gives"
+                ) from missing
+            return PeerSayOutput(
+                post=posted.post,
+                thread=posted.thread,
+                reached=[reached(member) for member in posted.reached],
+                refused=posted.refused,
+            )
+        if not params.address:
+            raise ToolError("name the `address` to reach, or a `thread` to post into")
+        post = new_post_id()
+        thread = peers.thread_of(params.in_reply_to) if params.in_reply_to else post
         try:
-            found = peers.send(params.address, params.text, door=door, sender=acting.id)
+            found = peers.send(
+                params.address,
+                params.text,
+                door=door,
+                in_reply_to=params.in_reply_to,
+                sender=acting.id,
+                posting=Posting(post=post, thread=thread),
+            )
         except PeerDepartedError as departed:
             raise ToolError(
                 f"{departed}; `coordination_peers` lists who is here"
@@ -505,11 +587,7 @@ def create_peer_tools(
                 f"no session in this repository answers to {params.address!r}; "
                 f"present: {known}"
             )
-        return PeerSayOutput(
-            address=found.label(),
-            delivery=peers.cohort.delivery(found),
-            outstanding=peers.cohort.outstanding(found),
-        )
+        return PeerSayOutput(post=post, thread=thread, reached=[reached(found)])
 
     @lup_tool(
         "Read your mailbox: what other sessions have said to you. Use it when "

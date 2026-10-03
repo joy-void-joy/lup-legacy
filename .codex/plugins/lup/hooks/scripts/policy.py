@@ -6124,6 +6124,31 @@ def named_claim_recorded(
     )
 
 
+def family_hold_report(
+    paths: list[str], cwd: Path | None, caller: store.Caller
+) -> PostToolReport:
+    """What the writer is told of its own descendants' holds over the files it wrote.
+
+    A member writes what a subagent it spawned holds without being asked —
+    the edit gate let it through — and is told so with the call's result,
+    one line a hold: whose it is, and whether that one is still running. The
+    same words on both runtimes, in the post-tool context each adds beside
+    the result.
+    """
+    directory = peer_directory(cwd)
+    if PEER_POLICY is None or directory is None:
+        return PostToolReport(blocking=[], context=[])
+    mine = store.acting_id(answering_member(directory), caller)
+    return PostToolReport(
+        blocking=[],
+        context=[
+            f"{worktree_path(str(Path(path).resolve()))}: {note}"
+            for path in paths
+            for note in store.family_holds(directory, path, mine)
+        ],
+    )
+
+
 def edit_claim_decision(
     verdict: KernelDecision, path_text: str, cwd: Path | None, caller: store.Caller
 ) -> KernelDecision:
@@ -6541,12 +6566,20 @@ def observe(payload):
         for target in changed:
             publish_edition(target, str(directory))
             named_claim_recorded(target, directory, caller_of(payload))
-        return reviewed_writes(changed, directory)
+        return merged(
+            [
+                family_hold_report(changed, directory, caller_of(payload)),
+                reviewed_writes(changed, directory),
+            ]
+        )
     # What the command changed, read against the snapshot its own PreToolUse
     # took, and contested where another session had a window open across it.
     changed = claim_window_closed(Path(root) if root else None, caller_of(payload))
     return merged(
         [
+            family_hold_report(
+                changed, Path(root) if root else None, caller_of(payload)
+            ),
             written_review(
                 command,
                 Path(root) if root else Path.cwd(),

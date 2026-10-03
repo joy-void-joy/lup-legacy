@@ -49,6 +49,11 @@ class PeerPolicy(BaseModel, frozen=True):
     listing_note: str = Field(min_length=1)
     claim_reason: str = Field(min_length=1)
     claim_recovery: str = Field(min_length=1)
+    operator: str = Field(min_length=1)
+    """The holder name the person watching holds a path under."""
+
+    operator_reason: str = Field(min_length=1)
+    """What an approver of a write into a path the person holds reads."""
 
 
 def erase_peer_policy(declared: PeerPolicy | None) -> PeerPolicyRow | None:
@@ -64,4 +69,6 @@ def erase_peer_policy(declared: PeerPolicy | None) -> PeerPolicyRow | None:
         listing_note=declared.listing_note,
         claim_reason=declared.claim_reason,
         claim_recovery=declared.claim_recovery,
+        operator=declared.operator,
+        operator_reason=declared.operator_reason,
     )

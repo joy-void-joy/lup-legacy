@@ -146,7 +146,7 @@ export const PICKERS: Record<string, { title: string; items: (d: Dashboard) => F
   keys: {
     title: "keys",
     items: (d) => CATALOG.actions.filter((action) => !action.hidden).map((action) => ({
-      text: `${d.keymap.row(action)} · ${action.description} · ${action.name}${d.keymap.yours(action) ? " · yours" : ""}${action.server === "new" ? " · new server work" : ""}`,
+      text: `${d.keymap.row(action)} · ${action.description} · ${action.name}${d.keymap.yours(action) ? " · yours" : ""}${action.needs !== null && d.lacks(action.needs) !== "" ? " · not served here" : ""}`,
       run: () => undefined,
     })),
   },
