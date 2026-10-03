@@ -58,7 +58,7 @@ from lup.providers.profiles import ProfileDirectory
 from lup.providers.runtime_homes import runtime_logins
 from lup.devtools.harness.drift import RepositoryWriter
 from lup.diagnostics import refuse
-from lup.policy.kernel.diagnostic import devtools, step
+from lup.policy.kernel.diagnostic import devtools, spelled, step
 from lup.workspace.paths import project_root
 from lup.policy.assets.host import boundary_description
 from lup.sandbox.models import NetworkMode
@@ -74,7 +74,7 @@ def refuse_inside_a_container(command: Sequence[str], because: str) -> None:
     if Placement.here().contained:
         refuse(
             f"runs inside a lup container here, where {because}",
-            what=" ".join(command),
+            what=spelled(command),
             steps=[step("run it from a terminal on the host", devtools(*command))],
         )
 
