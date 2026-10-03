@@ -1,11 +1,14 @@
 """A session's telemetry, read the way Claude Code 2.1.285 was measured to export it, and joined per request."""
 
 import json
+from datetime import UTC, datetime
 
 import httpx
 
 
+from lup.devtools.dashboard.pulse import StatusInput, handed_windows
 from lup.devtools.dashboard.telemetry import (
+    HandedTelemetry,
     LogsExport,
     TelemetryEnvironment,
     TelemetryJoin,
@@ -174,3 +177,42 @@ def test_a_session_is_pointed_at_the_port_with_logs_and_traces_on() -> None:
     )
     assert variables["CLAUDE_CODE_ENHANCED_TELEMETRY_BETA"] == "1"
     assert sorted(telemetry_variables()) == sorted(variables)
+    handed = TelemetryEnvironment.handed(HandedTelemetry.model_validate(variables))
+    assert handed == TelemetryEnvironment(port=8776, token="t")
+    assert TelemetryEnvironment.handed(HandedTelemetry.model_validate({})) is None
+
+
+def test_a_status_line_hands_its_sessions_windows_to_the_dashboard() -> None:
+    join = TelemetryJoin()
+    receiver = TelemetryReceiver(0, "secret", join).start()
+    status = StatusInput.model_validate(
+        {
+            "session_id": SESSION,
+            "rate_limits": {
+                "five_hour": {"used_percentage": 61.5, "resets_at": 1790836200},
+                "seven_day": {"used_percentage": 82, "resets_at": 1791400000},
+            },
+        }
+    )
+    try:
+        took = handed_windows(
+            status, TelemetryEnvironment(port=receiver.port, token="secret")
+        )
+        refused = handed_windows(
+            status, TelemetryEnvironment(port=receiver.port, token="wrong")
+        )
+        silent = handed_windows(
+            StatusInput(session_id=SESSION),
+            TelemetryEnvironment(port=receiver.port, token="secret"),
+        )
+    finally:
+        receiver.stop()
+
+    assert took and not refused and not silent
+    [reading] = join.windows()
+    assert reading.session == SESSION
+    assert [
+        (each.label, each.utilization_pct, each.window_hours)
+        for each in reading.windows
+    ] == [("5-hour", 61.5, 5.0), ("weekly", 82.0, 168.0)]
+    assert reading.windows[0].resets_at == datetime.fromtimestamp(1790836200, UTC)

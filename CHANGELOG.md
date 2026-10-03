@@ -9,9 +9,17 @@ sessions draw on — each runtime's login under each profile — and holds an
 agent that would spend past your limits at its next tool call, the way a
 torrent client limits a link (`docs/dashboard.md`, Budgets).
 
-- Each account's windows are read every `poll_seconds`: Claude's 5-hour and
-  weekly windows from the OAuth usage endpoint, Codex's two from the
-  app-server, and between reads from each Codex rollout's token counts.
+- Each account's windows come mostly for free: every Claude session's status
+  line hands the dashboard its account's 5-hour and weekly windows from its
+  own last request, and every Codex rollout carries its account's two. An
+  account no session speaks for is asked every `poll_seconds` (300, and 90
+  near a ceiling) — the OAuth usage endpoint or the app-server — through one
+  reading per account shared by every reader on the machine, `dev usage
+  claude` included. A `429` is left alone until its `Retry-After`, or an
+  exponential backoff with jitter, while the last good reading stands with
+  its age. The dashboard also reads the account each repository's volume
+  was last handed, which its contained sessions draw on, and a session's
+  `dashboard budget` shows what the dashboard read, through the pulse.
 - Each agent's spend is charged to a ledger at
   `$XDG_STATE_HOME/lup/budget/ledger.json`, once per request. A Claude session
   sends its telemetry to a port of the dashboard's own (8776), bearing a token
@@ -39,9 +47,8 @@ torrent client limits a link (`docs/dashboard.md`, Budgets).
   than running into the provider's limit, where a Claude subagent ends
   mid-step. The hold lapses at the reset, and a session the limit stopped —
   its call refused after waiting past the hold's limit, or its turn ended by
-  the provider's refusal — is woken with a bare `continue`. The windows are
-  read every 30 seconds once one is within ten points of its ceiling, and a
-  window used up for more than six hours is told to you once.
+  the provider's refusal — is woken with a bare `continue`. A window used up
+  for more than six hours is told to you once.
 
 When an account runs out, the page names the profiles with room and leaves
 the switch to you. `:switch <profile>` on the page, or `harness profile switch

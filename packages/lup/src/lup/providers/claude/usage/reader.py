@@ -25,8 +25,8 @@ from lup.providers.claude.usage.api import (
     StatsCache,
     UsageBucket,
     UsageResponse,
+    cached_usage,
     creds_path,
-    fetch_usage,
     load_stats,
 )
 from lup.observability.usage.app import UsageEntry
@@ -265,10 +265,19 @@ def legend_from(daily: list[DayUsage]) -> list[ModelShare]:
 
 
 class ClaudeUsageReader(UsageReader):
-    """Read the live OAuth usage endpoint, and the local cache for detail."""
+    """Read the live OAuth usage endpoint, and the local cache for detail.
 
-    def __init__(self, config_dir: Path) -> None:
+    Through the reading every reader of the account on this machine shares
+    (:func:`cached_usage`): one no older than ``max_age`` answers without a
+    request, and while the endpoint refuses to be asked the last good one
+    stands, saying its age.
+    """
+
+    def __init__(
+        self, config_dir: Path, max_age: timedelta = timedelta(minutes=1)
+    ) -> None:
         self.config_dir = config_dir
+        self.max_age = max_age
 
     def read(self, detail: bool) -> UsageReport:
         credentials = creds_path(self.config_dir)
@@ -279,14 +288,17 @@ class ClaudeUsageReader(UsageReader):
                 "profile with --profile."
             )
         try:
-            usage = fetch_usage(self.config_dir)
+            reading = cached_usage(self.config_dir, self.max_age)
         except (httpx.HTTPError, RuntimeError, ValidationError) as error:
             raise UsageUnavailable(str(error)) from error
+        usage = reading.usage
 
         report = UsageReport(
             runtime_name=ClaudeSpellings().runtime_name,
             windows=windows_from(usage),
             spend=spend_from(usage),
+            read_at=reading.read_at,
+            stale=reading.stale,
         )
         stats = load_stats(self.config_dir) if detail else None
         if stats is None:

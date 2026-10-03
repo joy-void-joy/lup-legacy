@@ -72,6 +72,7 @@ from lup.devtools.review.app import RequesterPresence, ReviewSummary
 from lup.launch.companions import CompanionSlot, lent_directory
 from lup.policy.relay import RecordedQuestion
 from lup.providers.user_config import UserConfigFile
+from lup.sessions.limits import AccountStanding
 
 if TYPE_CHECKING:
     from lup.devtools.dashboard.budget import BudgetGovernor
@@ -349,6 +350,26 @@ class Herald:
         self.writing = threading.Lock()
         self.stopped = False
 
+    def metered(self) -> list[AccountStanding]:
+        """Every account the budget reads, as last read, for the pulse a session reads."""
+        if self.governor is None:
+            return []
+        return [
+            AccountStanding(
+                account=each.account,
+                windows=each.windows,
+                read_at=each.read_at,
+                error=each.error,
+            )
+            for each in self.governor.current().accounts
+        ]
+
+    def metering(self) -> str:
+        """Why the budget reads no account, where it reads none."""
+        if self.governor is None or self.governor.poller is None:
+            return "this dashboard meters no account: the one every launch holds does"
+        return self.governor.poller.failed
+
     def look(self, now: datetime | None = None) -> None:
         """Read every queue once: tell of what parked since, reopen where due, publish."""
         moment = now or datetime.now(UTC)
@@ -538,6 +559,8 @@ class Herald:
             if self.governor is not None
             else False,
             held=sum(each.held for each in needs),
+            accounts=self.metered(),
+            metering=self.metering(),
         )
         last = self.published
         if (

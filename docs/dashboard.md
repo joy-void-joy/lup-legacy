@@ -799,13 +799,22 @@ against a slot; their subagents, and the sessions an agent opens, are.
 
 An account is one runtime's login under one profile — `claude:work`,
 `codex:default`, `default` naming the home no profile selects — and the
-dashboard reads every one the served repositories can launch on, each
-profile's included, every `poll_seconds`, and every `close_seconds` (30)
-once one of its windows is within ten points of its ceiling. Its windows are what the provider
-meters it in: Claude's 5-hour and weekly windows from the OAuth usage
-endpoint, Codex's two self-describing windows from the app-server, and between
-reads a Codex session's rollout, which carries its account's windows with
-every token count. Each window shows how much of it is used, where even pace
+dashboard reads every one the served repositories can launch on — each
+profile's, and the one each repository's container volume was last handed,
+which its contained sessions draw on. Its windows are what the provider
+meters it in, and most come with no request at all: every Claude session's
+status line hands the dashboard its account's 5-hour and weekly windows as
+its own last request heard them (Claude Code 2.1.285's `rate_limits`), and
+every Codex session's rollout carries its account's two windows with every
+token count. Only an account no running session speaks for is asked —
+Claude's OAuth usage endpoint, Codex's app-server — every `poll_seconds`
+(300), and every `close_seconds` (90) once a window is within ten points of
+its ceiling. The endpoint is rate-limited per account, refusing readers that
+asked about one and a half times a minute between them on 2026-10-03, so
+every reader on a machine — the dashboard, `dev usage claude` — shares one
+reading per account, and a refusal is left alone until its `Retry-After`, or
+an exponential backoff with jitter, while the last good reading stands with
+its age. Each window shows how much of it is used, where even pace
 stands — as much of it used as has gone by — how fast it filled over the last
 hour of readings, and when it clears.
 
@@ -846,8 +855,8 @@ tolerance = 5        # points past a speed limit normal agents still work
 reserve = 10         # the last 10% of every window is kept for you
 max_active = 3       # at most three agents work at once
 window_ceiling = 95  # how full a window gets before every agent holds; 95 unset
-poll_seconds = 120   # how often each account's windows are read
-close_seconds = 30   # how often, once a window is within ten points of its ceiling
+poll_seconds = 300   # how often an account no session speaks for is asked
+close_seconds = 90   # how often, once a window is within ten points of its ceiling
 
 [[budget.ceilings]]  # a speed limit on one window, in percent of it an hour
 window = "5-hour"

@@ -26,16 +26,28 @@ from lup.devtools.dashboard.budget import (
     StoredCalls,
     StoredHolds,
     WaitingCall,
+    held_homes,
     launched_on,
     limit_reset,
     profile_routes,
 )
 from lup.devtools.harness.launch import SwitchOutcome
-from lup.launch.config_volume import LaunchedAccount, LaunchedAccounts, LoginOwner
+from lup.launch.config_volume import (
+    LaunchedAccount,
+    LaunchedAccounts,
+    LoginOwner,
+    VolumeLogin,
+    VolumeLogins,
+)
 from lup.providers.harness import AdapterName
 from lup.devtools.dashboard.companion import KnownRepository
 from lup.devtools.dashboard.live import RunningAgent
-from lup.devtools.dashboard.telemetry import RequestAgent, RequestSpend, TelemetryJoin
+from lup.devtools.dashboard.telemetry import (
+    HandedWindows,
+    RequestAgent,
+    RequestSpend,
+    TelemetryJoin,
+)
 from lup.observability.usage.models import (
     PacingWindow,
     UsageReader,
@@ -615,6 +627,97 @@ def test_the_poller_reads_more_often_near_a_ceiling(tmp_path: Path) -> None:
         reader=lambda each: reader,
     )
     poller.poll(NOW)
-    assert poller.interval(NOW) == 120
+    assert poller.interval(NOW) == 300
+    poller.poll(NOW + timedelta(minutes=1))
+    assert reader.used == [88.0], "a reading still fresh is not asked for again"
+    later = NOW + timedelta(minutes=6)
+    poller.poll(later)
+    assert poller.interval(later) == 90
+
+
+def test_a_session_s_status_line_reading_stands_in_for_the_provider(
+    tmp_path: Path,
+) -> None:
+    join = TelemetryJoin()
+    door = Door()
+    home = AccountHome(account=CLAUDE, home=tmp_path, signed_in=True)
+    reader = Reader([10.0, 20.0])
+    poller = AccountPoller(
+        lambda: [tmp_path],
+        SpendLedger(tmp_path / "ledger.json"),
+        config(tmp_path),
+        homes=lambda roots: [home],
+        reader=lambda each: reader,
+    )
     poller.poll(NOW)
-    assert poller.interval(NOW) == 30
+    governing = BudgetGovernor(
+        SpendLedger(tmp_path / "ledger.json"),
+        config(tmp_path),
+        door,
+        poller=poller,
+        join=join,
+    )
+    join.heard(
+        HandedWindows(
+            session="conversation-worker",
+            at=(NOW + timedelta(minutes=2)).timestamp(),
+            windows=[
+                PacingWindow(
+                    label="5-hour",
+                    utilization_pct=96,
+                    resets_at=NOW + timedelta(hours=2),
+                    window_hours=5,
+                )
+            ],
+        )
+    )
+    seen = repository(tmp_path, session("worker", calling="Bash"))
+    view = governing.look([seen], NOW + timedelta(minutes=3))
+    assert view.accounts[0].windows[0].window.utilization_pct == 96
+    assert [each.cause for each in door.holding(seen.store)] == ["window"]
+    poller.poll(NOW + timedelta(minutes=3))
+    assert reader.used == [20.0], "a session's fresh reading spares the provider"
+
+
+def test_the_account_a_repositorys_volume_holds_is_read_and_charged(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
+    monkeypatch.setattr(
+        budget_module,
+        "state_volume_name",
+        lambda root, login: f"lup-{login.state_volume}-lup",
+    )
+    volumes = VolumeLogins(tmp_path / "volume-logins")
+    second = tmp_path / "accounts" / "second"
+    second.mkdir(parents=True)
+    (second / ".credentials.json").write_text("{}")
+    volumes.record(
+        VolumeLogin(
+            volume="lup-claude-lup",
+            runtime="claude",
+            owner=LoginOwner(home=second),
+            handed_at=NOW,
+        )
+    )
+
+    held = [each for each in held_homes([tmp_path], volumes) if each.home == second]
+
+    assert len(held) == 1 and held[0].signed_in
+    assert held[0].account == Account(runtime="claude", profile=str(second))
+    poller = AccountPoller(
+        lambda: [tmp_path],
+        SpendLedger(tmp_path / "ledger.json"),
+        config(tmp_path),
+        homes=lambda roots: held_homes(roots, volumes),
+        reader=lambda each: Reader([60.0]),
+    )
+    poller.poll(NOW)
+    known = KnownRepository(repository=tmp_path / ".git", checkout=tmp_path)
+    assert launched_on(poller, volumes)(known, session("lead")) == held[0].account
+    standing = next(
+        watch.standing(NOW)
+        for watch in poller.standings(NOW)
+        if watch.home.home == second
+    )
+    assert standing.windows[0].window.utilization_pct == 60.0

@@ -182,17 +182,20 @@ class BudgetConfig(Limits, frozen=True, extra="forbid"):
     ``accounts`` overrides them for one account, named by its profile — every
     runtime's login of that profile — or as ``<runtime>:<profile>`` for one
     runtime's, ``default`` naming the home no profile selects.
-    ``poll_seconds`` is how often the dashboard reads each account's windows,
-    and ``close_seconds`` how often once one of them is within ten points of
-    its ceiling. ``window_ceiling`` is on with no configuration at all, at 95.
+    ``poll_seconds`` is how often the dashboard asks the provider for an
+    account's windows, and ``close_seconds`` how often once one of them is
+    within ten points of its ceiling -- where no session's status line handed
+    a fresher reading. The provider refused readers asking about one and a
+    half times a minute for one account, measured on 2026-10-03, so neither
+    asks that often. ``window_ceiling`` is on with no configuration, at 95.
     """
 
     window_ceiling: float | None = Field(default=95, gt=0, le=100)
     accounts: dict[str, Limits] = {}
     schedule: list[ScheduledLimits] = []
     turtle: Turtle = Turtle()
-    poll_seconds: int = Field(default=120, ge=30)
-    close_seconds: int = Field(default=30, ge=15)
+    poll_seconds: int = Field(default=300, ge=60)
+    close_seconds: int = Field(default=90, ge=60)
 
     def limits(self, account: Account, moment: datetime) -> Limits:
         """The limits holding for *account* at *moment*, every layer applied."""

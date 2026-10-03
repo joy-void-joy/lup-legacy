@@ -10,6 +10,7 @@ from typer.testing import CliRunner
 from lup.coordination.identity import MEMBER_ENV, mint_member_id
 from lup.coordination.repository import RepositoryPeers
 from lup.devtools.dashboard.companion import KnownRepository
+from lup.devtools.dashboard.pulse import DASHBOARD_PULSE_ENV, DashboardPulse
 from lup.devtools.dashboard.reviews import create_operator_dashboard_app
 from lup.observability.usage.models import PacingWindow
 from lup.providers.user_config import UserConfigFile
@@ -153,3 +154,46 @@ def test_the_turtle_is_the_operators_to_turn(
     assert asked.output.strip() == "The turtle is on."
     assert refused.exit_code == 2 and "is the operator's" in refused.output
     assert UserConfigFile().load().budget.turtle.on
+
+
+def test_a_session_reads_the_accounts_its_dashboard_lent_it(
+    checkout: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    now = datetime.now(UTC)
+    lent = checkout.parent / "lent" / "dashboard.json"
+    lent.parent.mkdir()
+    pulse = DashboardPulse(
+        url="http://127.0.0.1:8767",
+        pid=1,
+        beat=now,
+        accounts=[
+            AccountStanding(
+                account=WORK,
+                windows=[
+                    MeteredWindow(
+                        window=PacingWindow(
+                            label="weekly",
+                            utilization_pct=82,
+                            resets_at=now + timedelta(days=6),
+                            window_hours=168,
+                        )
+                    )
+                ],
+                read_at=now,
+            )
+        ],
+    )
+    lent.write_text(pulse.model_dump_json())
+    monkeypatch.setenv(DASHBOARD_PULSE_ENV, str(lent))
+
+    shown = runner.invoke(dashboard(checkout), ["dashboard", "budget"])
+    lent.write_text(
+        pulse.model_copy(
+            update={"accounts": [], "metering": "its last pass failed: boom"}
+        ).model_dump_json()
+    )
+    unread = runner.invoke(dashboard(checkout), ["dashboard", "budget"])
+
+    assert shown.exit_code == 0, shown.output
+    assert shown.output.splitlines()[1].startswith("claude:work: weekly 82%")
+    assert "No account read yet: its last pass failed: boom" in unread.output

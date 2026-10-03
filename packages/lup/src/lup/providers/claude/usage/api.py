@@ -5,13 +5,20 @@ api.anthropic.com, and parses stats-cache.json into typed models.
 """
 
 import json
-from datetime import date, datetime, timedelta
+import random
+from collections.abc import Callable
+from datetime import UTC, date, datetime, timedelta
+from email.utils import parsedate_to_datetime
 from pathlib import Path
 
 import httpx
 from pydantic import BaseModel, Field
 
+from lup.channels.models import write_atomic
+from lup.execution.locks import exclusive
+from lup.formats import digest
 from lup.providers.claude.login import CLAUDE_LOGIN
+from lup.workspace.user_directories import UserDirectories
 
 # ── constants ──────────────────────────────────────────────
 
@@ -209,6 +216,146 @@ def fetch_usage(config_dir: Path) -> UsageResponse:
     )
     resp.raise_for_status()
     return UsageResponse.model_validate(resp.json())
+
+
+# ── one reading per account ────────────────────────────────
+#
+# The endpoint is rate-limited per account. The dashboard's poller, `dev usage
+# claude` and a sampler each asking it for the same account were refused with
+# 429 Too Many Requests on 2026-10-03, at about one and a half calls a minute
+# between them, and a refused poller read no window at all. So every reader
+# asks through one record per account home, under lup's state: a reading
+# younger than the caller allows answers from it, and a refusal sets when the
+# endpoint may be asked again -- the Retry-After or RateLimit-Reset it names,
+# else an exponential backoff with jitter -- until which the last good reading
+# stands, with its age, rather than none. One reader asks at a time, under a
+# lock beside the record, so readers arriving together make one request.
+
+
+class UsageRecord(BaseModel, frozen=True):
+    """What one account's endpoint last answered, and when it may be asked again."""
+
+    usage: UsageResponse | None = None
+    read_at: datetime | None = None
+    refusals: int = 0
+    """Refusals in a row since the last good answer, which the backoff doubles on."""
+
+    retry_at: datetime | None = None
+    error: str = ""
+
+
+class CachedUsage(BaseModel, frozen=True):
+    """A reading of one account, when it was taken, and why it is not fresher where it is not."""
+
+    usage: UsageResponse
+    read_at: datetime
+    stale: str = ""
+
+
+class UsageRefused(RuntimeError):
+    """The endpoint answered nothing, and no earlier reading stands in."""
+
+
+def usage_record(home: Path, directories: UserDirectories | None = None) -> Path:
+    """Where the readings of the account whose login *home* keeps are shared."""
+    named = digest.text(str(home.expanduser().resolve()))[:16]
+    return (directories or UserDirectories()).state() / "usage" / f"claude-{named}.json"
+
+
+def asked_again(response: httpx.Response, now: datetime) -> datetime | None:
+    """When a refusal says the endpoint may be asked again, where its headers say."""
+    headers = response.headers
+    for name in ("retry-after", "ratelimit-reset", "x-ratelimit-reset"):
+        if name not in headers:
+            continue
+        value = headers[name].strip()
+        if value.isdigit():
+            return now + timedelta(seconds=int(value))
+        try:
+            return parsedate_to_datetime(value).astimezone(UTC)
+        except (TypeError, ValueError):
+            continue
+    return None
+
+
+def backoff(
+    refusals: int,
+    base: timedelta,
+    cap: timedelta,
+    jitter: Callable[[], float] = random.random,
+) -> timedelta:
+    """How long to leave the endpoint after so many refusals in a row: doubling, capped, jittered."""
+    doubled = min(base * (2 ** max(refusals - 1, 0)), cap)
+    return doubled * (0.5 + jitter() / 2)
+
+
+def stood(last: CachedUsage | None, held: UsageRecord, now: datetime) -> CachedUsage:
+    """The last good reading, saying why it stands; or why there is none."""
+    waiting = (
+        f"; asking again at {held.retry_at.astimezone().strftime('%H:%M:%S')}"
+        if held.retry_at is not None and held.retry_at > now
+        else ""
+    )
+    if last is None:
+        raise UsageRefused(f"{held.error}{waiting}")
+    age = int((now - last.read_at).total_seconds() // 60)
+    return last.model_copy(
+        update={"stale": f"read {age} min ago: {held.error}{waiting}"}
+    )
+
+
+def cached_usage(
+    home: Path,
+    max_age: timedelta,
+    now: datetime | None = None,
+    record: Path | None = None,
+    fetch: Callable[[Path], UsageResponse] = fetch_usage,
+    base: timedelta = timedelta(minutes=1),
+    cap: timedelta = timedelta(minutes=30),
+    jitter: Callable[[], float] = random.random,
+) -> CachedUsage:
+    """The account's usage no older than *max_age*, asking the endpoint only when it must and may.
+
+    Raises :class:`UsageRefused` only where no reading stands in for a refusal;
+    any other failure raises as :func:`fetch_usage` raised it.
+    """
+    moment = now or datetime.now(UTC)
+    path = record or usage_record(home)
+    with exclusive(path.with_name(f".{path.name}.lock")):
+        try:
+            held = UsageRecord.model_validate_json(path.read_bytes())
+        except (OSError, ValueError):
+            held = UsageRecord()
+        last = (
+            CachedUsage(usage=held.usage, read_at=held.read_at)
+            if held.usage is not None and held.read_at is not None
+            else None
+        )
+        if last is not None and moment - last.read_at <= max_age:
+            return last
+        if held.retry_at is not None and moment < held.retry_at:
+            return stood(last, held, moment)
+        try:
+            usage = fetch(home)
+        except httpx.HTTPStatusError as refused:
+            if refused.response.status_code != 429:
+                raise
+            refusals = held.refusals + 1
+            retry_at = asked_again(refused.response, moment) or moment + backoff(
+                refusals, base, cap, jitter
+            )
+            held = held.model_copy(
+                update={
+                    "refusals": refusals,
+                    "retry_at": retry_at,
+                    "error": str(refused),
+                }
+            )
+            write_atomic(path, held.model_dump_json().encode("utf-8"), mode=0o600)
+            return stood(last, held, moment)
+        held = UsageRecord(usage=usage, read_at=moment)
+        write_atomic(path, held.model_dump_json().encode("utf-8"), mode=0o600)
+        return CachedUsage(usage=usage, read_at=moment)
 
 
 # ── stats cache ────────────────────────────────────────────
