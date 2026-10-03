@@ -268,9 +268,13 @@ def create_coordination_app() -> typer.Typer:
         """
         known = peers()
         if sender and sender != USER_ADDRESS and known.row(sender) is None:
-            raise typer.BadParameter(
-                f"nobody here signs as {sender!r}: `--as` takes `user` or a "
-                "member's id, which `dev coordination roster` lists"
+            refuse(
+                "signs as nobody here: it takes `user` or a member's id",
+                what=f"--as {sender}",
+                steps=[
+                    step("see the members' ids", devtools("coordination", "roster"))
+                ],
+                code=2,
             )
         post = new_post_id()
         try:
