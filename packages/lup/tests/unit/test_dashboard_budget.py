@@ -26,12 +26,19 @@ from lup.devtools.dashboard.budget import (
     StoredCalls,
     StoredHolds,
     WaitingCall,
+    held_homes,
     launched_on,
     limit_reset,
     profile_routes,
 )
 from lup.devtools.harness.launch import SwitchOutcome
-from lup.launch.config_volume import LaunchedAccount, LaunchedAccounts, LoginOwner
+from lup.launch.config_volume import (
+    LaunchedAccount,
+    LaunchedAccounts,
+    LoginOwner,
+    VolumeLogin,
+    VolumeLogins,
+)
 from lup.providers.harness import AdapterName
 from lup.devtools.dashboard.companion import KnownRepository
 from lup.devtools.dashboard.live import RunningAgent
@@ -618,3 +625,47 @@ def test_the_poller_reads_more_often_near_a_ceiling(tmp_path: Path) -> None:
     assert poller.interval(NOW) == 120
     poller.poll(NOW)
     assert poller.interval(NOW) == 30
+
+
+def test_the_account_a_repositorys_volume_holds_is_read_and_charged(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
+    monkeypatch.setattr(
+        budget_module,
+        "state_volume_name",
+        lambda root, login: f"lup-{login.state_volume}-lup",
+    )
+    volumes = VolumeLogins(tmp_path / "volume-logins")
+    second = tmp_path / "accounts" / "second"
+    second.mkdir(parents=True)
+    (second / ".credentials.json").write_text("{}")
+    volumes.record(
+        VolumeLogin(
+            volume="lup-claude-lup",
+            runtime="claude",
+            owner=LoginOwner(home=second),
+            handed_at=NOW,
+        )
+    )
+
+    held = [each for each in held_homes([tmp_path], volumes) if each.home == second]
+
+    assert len(held) == 1 and held[0].signed_in
+    assert held[0].account == Account(runtime="claude", profile=str(second))
+    poller = AccountPoller(
+        lambda: [tmp_path],
+        SpendLedger(tmp_path / "ledger.json"),
+        config(tmp_path),
+        homes=lambda roots: held_homes(roots, volumes),
+        reader=lambda each: Reader([60.0]),
+    )
+    poller.poll(NOW)
+    known = KnownRepository(repository=tmp_path / ".git", checkout=tmp_path)
+    assert launched_on(poller, volumes)(known, session("lead")) == held[0].account
+    standing = next(
+        watch.standing(NOW)
+        for watch in poller.standings(NOW)
+        if watch.home.home == second
+    )
+    assert standing.windows[0].window.utilization_pct == 60.0

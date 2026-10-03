@@ -43,7 +43,9 @@ from lup.devtools.coordination.pausing import continued_with
 from lup.devtools.dashboard.companion import KnownRepository
 from lup.devtools.dashboard.live import Feature, RunningAgent
 from lup.devtools.harness.launch import SwitchOutcome, switch_repository_login
-from lup.launch.container import drawn_account
+from lup.launch.config_volume import VolumeLogins
+from lup.launch.container import drawn_account, state_volume_name
+from lup.execution.git import GitError
 from lup.providers.harness import AdapterName
 from lup.devtools.dashboard.telemetry import RequestSpend, TelemetryJoin
 from lup.observability.usage.models import PacingWindow, UsageReader, UsageUnavailable
@@ -51,8 +53,10 @@ from lup.providers.accounts import (
     AccountHome,
     account_homes,
     account_reader,
+    runtime_logins,
     transcript_spend,
 )
+from lup.providers.login import ProviderLogin
 from lup.providers.user_config import UserConfigFile
 from lup.sessions.budget import AgentLedger, Charge, LedgerState, SpendLedger
 from lup.sessions.limits import (
@@ -447,6 +451,79 @@ class AccountWatch:
             )
 
 
+class VolumeOwner(BaseModel, frozen=True):
+    """The account a served repository's volume of one runtime was last handed."""
+
+    checkout: Path
+    runtime: str
+    home: AccountHome
+
+
+def volume_owners(
+    checkouts: list[Path], volumes: VolumeLogins | None = None
+) -> list[VolumeOwner]:
+    """Whose login each served repository's volume holds, as lup recorded handing it.
+
+    What every contained session of that repository and runtime draws on, so
+    the account the budget has to read for them, whatever profile it is.
+    """
+    record = volumes or VolumeLogins()
+
+    def held(checkout: Path, runtime: str, login: ProviderLogin) -> VolumeOwner | None:
+        try:
+            volume = state_volume_name(checkout, login)
+        except (GitError, OSError):
+            return None
+        handed = record.held(volume)
+        if handed is None:
+            return None
+        owner = handed.owner
+        return VolumeOwner(
+            checkout=checkout,
+            runtime=runtime,
+            home=AccountHome(
+                account=Account(
+                    runtime=runtime, profile=owner.profile or str(owner.home)
+                ),
+                home=owner.home,
+                signed_in=login.credentials_path(owner.home).is_file(),
+            ),
+        )
+
+    return [
+        owner
+        for checkout in checkouts
+        for each in runtime_logins()
+        if each.login.state_volume
+        for owner in [held(checkout, each.runtime, each.login)]
+        if owner is not None
+    ]
+
+
+def held_homes(
+    checkouts: list[Path], volumes: VolumeLogins | None = None
+) -> list[AccountHome]:
+    """Every account the profiles hold, and every one a served repository's volume holds.
+
+    A volume may hold the login of a home no profile names, and its contained
+    sessions draw on that account all the same; one already among the
+    profiles is read once.
+    """
+    found = account_homes(checkouts)
+    handed = [owner.home for owner in volume_owners(checkouts, volumes)]
+    return [
+        *found,
+        *(
+            each
+            for index, each in enumerate(handed)
+            if all(
+                other.home.resolve() != each.home.resolve()
+                for other in [*found, *handed[:index]]
+            )
+        ),
+    ]
+
+
 class AccountPoller:
     """Read every account's windows on a thread of its own, every ``poll_seconds`` the person's config names."""
 
@@ -455,7 +532,7 @@ class AccountPoller:
         checkouts: Callable[[], list[Path]],
         ledger: SpendLedger,
         config: UserConfigFile,
-        homes: Callable[[list[Path]], list[AccountHome]] = account_homes,
+        homes: Callable[[list[Path]], list[AccountHome]] = held_homes,
         reader: Callable[[AccountHome], UsageReader] = account_reader,
     ) -> None:
         self.checkouts = checkouts
@@ -469,6 +546,8 @@ class AccountPoller:
         self.thread = threading.Thread(
             target=self.polling, name="lup-budget-accounts", daemon=True
         )
+        self.failed = ""
+        """Why the last pass over the accounts failed, where it did."""
 
     def interval(self, now: datetime | None = None) -> float:
         """How long between reads: ``close_seconds`` once a window is within ten points of its ceiling, else ``poll_seconds``."""
@@ -508,8 +587,10 @@ class AccountPoller:
         while not self.stopping.is_set():
             try:
                 self.poll()
-            except Exception:
+                self.failed = ""
+            except Exception as failed:
                 logger.exception("the budget could not read every account's windows")
+                self.failed = f"its last pass over the accounts failed: {failed}"
             self.stopping.wait(self.interval())
 
     def start(self) -> "AccountPoller":
@@ -600,21 +681,35 @@ def unrecorded(known: KnownRepository, agent: RunningAgent) -> Account:
     return Account(runtime=agent.runtime)
 
 
-def launched_on(poller: AccountPoller) -> AccountOf:
+def launched_on(
+    poller: AccountPoller, volumes: VolumeLogins | None = None
+) -> AccountOf:
     """Which account a session draws on, as its launch recorded it and a switch since moved it.
 
     Read by the home its login is kept in, so it names the account the
-    poller reads; a session whose launch recorded nothing draws on the home
-    no profile selects.
+    poller reads. A session whose launch recorded nothing -- one opened
+    before launches recorded their account -- draws on what its repository's
+    volume of its runtime holds, where lup handed that volume a login, and
+    else on the home no profile selects.
     """
 
     def drawn(known: KnownRepository, agent: RunningAgent) -> Account:
         owner = drawn_account(agent.id)
-        if owner is None:
-            return unrecorded(known, agent)
-        return poller.account_at(owner.home) or Account(
-            runtime=agent.runtime, profile=owner.profile or "default"
+        if owner is not None:
+            return poller.account_at(owner.home) or Account(
+                runtime=agent.runtime, profile=owner.profile or "default"
+            )
+        handed = next(
+            (
+                each.home
+                for each in volume_owners([known.checkout], volumes)
+                if each.runtime == agent.runtime
+            ),
+            None,
         )
+        if handed is None:
+            return unrecorded(known, agent)
+        return poller.account_at(handed.home) or handed.account
 
     return drawn
 

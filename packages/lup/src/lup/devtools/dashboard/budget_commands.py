@@ -19,7 +19,9 @@ from pydantic import BaseModel, TypeAdapter, ValidationError
 
 from lup.coordination.bare import store
 from lup.coordination.repository import RepositoryPeers
+from lup.devtools.dashboard.address import AdvertisedDashboard
 from lup.devtools.dashboard.companion import KnownRepository
+from lup.devtools.dashboard.pulse import DashboardPulse, PulseFile
 from lup.diagnostics import refuse
 from lup.launch.config_volume import LaunchedAccount, LaunchedAccounts
 from lup.policy.kernel.diagnostic import devtools, step
@@ -97,10 +99,21 @@ def settled(
 
 
 def budget_report(
-    root: Path, ledger: SpendLedger, config: BudgetConfig, now: datetime
+    root: Path,
+    ledger: SpendLedger,
+    config: BudgetConfig,
+    now: datetime,
+    pulse: DashboardPulse | None = None,
 ) -> list[str]:
-    """What `dashboard budget` prints: every account as last read, and this repository's agents."""
+    """What `dashboard budget` prints: every account as last read, and this repository's agents.
+
+    The accounts are the running dashboard's, from the pulse it lends a
+    session, where one is lent: a session's own state is not the
+    dashboard's. Otherwise they are the ledger's, which the dashboard writes
+    where it runs.
+    """
     state = ledger.read()
+    accounts = pulse.accounts if pulse is not None else state.accounts
     epoch = now.timestamp()
 
     def account_lines(standing: AccountStanding) -> list[str]:
@@ -148,10 +161,17 @@ def budget_report(
     here = [agent_line(line) for line in state.agents if line.agent in names]
     return [
         f"The turtle is {'on' if config.turtle.on else 'off'}.",
-        *(line for standing in state.accounts for line in account_lines(standing)),
+        *(line for standing in accounts for line in account_lines(standing)),
         *(
-            ["No account read yet: the dashboard reads them while it runs."]
-            if not state.accounts
+            [
+                "No account read yet: "
+                + (
+                    pulse.metering
+                    if pulse is not None and pulse.metering
+                    else "the dashboard reads them while it runs."
+                )
+            ]
+            if not accounts
             else []
         ),
         *(
@@ -160,6 +180,12 @@ def budget_report(
             else []
         ),
     ]
+
+
+def lent_pulse() -> DashboardPulse | None:
+    """The running dashboard's pulse, where this process's launch lent it one."""
+    advertised = AdvertisedDashboard()
+    return PulseFile(path=Path(advertised.pulse)).read() if advertised.pulse else None
 
 
 def budget_commands(
@@ -180,7 +206,9 @@ def budget_commands(
     @app.command("budget")
     def budget_cmd() -> None:
         """Print each account's windows as the budget last read them, its limits, and what this repository's agents spent."""
-        for line in budget_report(root, ledger(), person(), datetime.now(UTC)):
+        for line in budget_report(
+            root, ledger(), person(), datetime.now(UTC), lent_pulse()
+        ):
             typer.echo(line)
 
     @app.command("turtle")

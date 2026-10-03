@@ -58,6 +58,8 @@ from typing import Literal, TextIO
 
 from pydantic import BaseModel, ValidationError
 
+from lup.sessions.limits import AccountStanding
+
 # lup: ignore[constant-declaration] — the launch that exports it and the session
 # that reads it are different processes, so the name is an identity
 DASHBOARD_PULSE_ENV = "LUP_DASHBOARD_PULSE"
@@ -198,6 +200,14 @@ class DashboardPulse(BaseModel, frozen=True):
     held: int = 0
     """Running agents the operator's pause or a budget holds at their next
     tool call, across every repository it serves."""
+
+    accounts: list[AccountStanding] = []
+    """Every account the budget reads, as last read: what `dashboard budget`
+    shows in a session, whose own state is not the dashboard's."""
+
+    metering: str = ""
+    """Why the budget reads no account, where it reads none: this dashboard
+    meters nothing, or its last pass over the accounts failed."""
 
     def current(self, now: datetime, within: timedelta = timedelta(seconds=30)) -> bool:
         """Whether the service wrote it recently enough to still be running."""
