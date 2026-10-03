@@ -109,6 +109,26 @@ def migration_application() -> typer.Typer:
     return root_app
 
 
+def changelog_merge_application() -> typer.Typer:
+    """Build only the changelog merge git runs as a merge driver, mid-merge.
+
+    Git runs it once per merge that touches the changelog on both sides, with
+    the project in whatever state the merge has reached, so it loads nothing
+    of the project and pays for nothing past the changelog's own module.
+    """
+    from lup.devtools.changelog import merge_changelog_cmd
+
+    root_app = typer.Typer(
+        help="lup-devtools: the changelog's merge driver",
+        pretty_exceptions_show_locals=False,
+        no_args_is_help=True,
+    )
+    git_app = typer.Typer(no_args_is_help=True)
+    git_app.command("merge-changelog")(merge_changelog_cmd)
+    root_app.add_typer(git_app, name="git", help="The git command tree")
+    return root_app
+
+
 def dashboard_line(pulse: Path) -> None:
     """Print a session's status line from the dashboard's pulse and its runtime's input, loading nothing else.
 
@@ -213,6 +233,8 @@ def main() -> None:
             conflict_application()()
         case [_, "dev", "migrate", "pending", *_]:
             migration_application()()
+        case [_, "git", "merge-changelog", *_]:
+            changelog_merge_application()()
         case [_, "dashboard", "line", pulse] if not pulse.startswith("-"):
             dashboard_line(Path(pulse))
         case [_, "git", "hooks", "run", *_] if (route := hook_route()) is not None:

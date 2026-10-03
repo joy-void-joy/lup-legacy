@@ -53,7 +53,11 @@ from lup.devtools.dev.branches import (
     unlanded_siblings,
 )
 from lup.devtools.dev.git_guards import GitGuard, compiled_guards, read_hooks
-from lup.devtools.dev.worktree import OWNERSHIP_MERGE_DRIVER, MergeDriver
+from lup.devtools.dev.worktree import (
+    CHANGELOG_MERGE_DRIVER,
+    OWNERSHIP_MERGE_DRIVER,
+    unregistered_merge_drivers,
+)
 from lup.devtools.dev.cites import sweep_cites
 from lup.devtools.dev.collection import PytestCollection
 from lup.devtools.dev.comments import FoundComment, scan_tracked
@@ -1486,21 +1490,37 @@ def scan_reports(
         # registered, and text-merges the generated trees without a word. What
         # that costs is the compiled dispatcher: conflict markers in a script
         # the runtime executes leave a boundary refusing every call in the
-        # session, the merge abort included.
-        registered = MergeDriver().satisfied()
+        # session, the merge abort included. The changelog's driver is asked
+        # with it: without it the changelog falls back to git's union, which
+        # joins two entries added at one place and can drop a line they share.
+        missing = unregistered_merge_drivers()
+        registered = not missing
         yield CheckReport(
             name="merge driver",
             passed=registered,
             lines=[
-                f"merge driver: ok ({OWNERSHIP_MERGE_DRIVER})"
+                f"merge driver: ok ({OWNERSHIP_MERGE_DRIVER}, {CHANGELOG_MERGE_DRIVER})"
                 if registered
-                else f"merge driver: FAIL ({OWNERSHIP_MERGE_DRIVER} is unregistered)",
+                else f"merge driver: FAIL ({', '.join(missing)} unregistered)",
                 *(
                     []
                     if registered
                     else [
-                        "  the generated trees text-merge and can conflict",
-                        "  register it with `lup-devtools git merge-driver`",
+                        *(
+                            ["  the generated trees text-merge and can conflict"]
+                            if OWNERSHIP_MERGE_DRIVER in missing
+                            else []
+                        ),
+                        *(
+                            [
+                                "  the changelog merges by union, which joins two "
+                                "entries added at one place"
+                            ]
+                            if CHANGELOG_MERGE_DRIVER in missing
+                            else []
+                        ),
+                        "  register them with `lup-devtools git merge-driver`, "
+                        "from a host terminal",
                     ]
                 ),
             ],
