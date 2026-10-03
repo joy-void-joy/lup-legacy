@@ -7,7 +7,7 @@ import { grouped, type Dashboard } from "./dashboard";
 import { openItem, toggleStopped } from "./editor";
 import { checkoutLabel, plural, staleSentences, stateClass, stateLabel, stateSign } from "./review";
 import type { PageState } from "./state";
-import { activityBrief, ago, clears, GLYPH, membersOf, meterOf, repositoryOf, reviewsOf, spendLine, standing, unreadCount, wroteYou, type TreeItem } from "./supervision";
+import { activityBrief, ago, clears, GLYPH, heldWords, membersOf, meterOf, repositoryOf, reviewsOf, spendLine, standing, unreadCount, wroteYou, type TreeItem } from "./supervision";
 import { discussionLine } from "./threads";
 
 /** A tree row's second line: what the agent is doing, its first line whole, and how many more a hover reads. */
@@ -69,7 +69,7 @@ function TreeRow({ d, state, item, index }: { d: Dashboard; state: PageState; it
         </span>
         <span className="t2">{what.first}{what.more > 0 && <span className="muted"> · {plural(what.more, "more line")}, K</span>}</span>
         {meter !== undefined && (spend !== "" || meter.held !== null || meter.priority !== "normal") && <span className="t3">
-          {meter.held !== null && <span className="warn" title={meter.held.until !== null ? `until ${clears(Date.parse(meter.held.until), state.now)}` : "until what holds it changes"}>⏸ {meter.held.said}</span>}
+          {meter.held !== null && <span className="warn" title={meter.held.until !== null ? `until ${clears(Date.parse(meter.held.until), state.now)}` : "until what holds it changes"}>{heldWords(live.budget, meter.held)}</span>}
           {meter.held !== null && spend !== "" && " · "}{spend}
           {meter.priority !== "normal" && <span className={meter.priority === "high" ? "info" : "muted"}> · {meter.priority}</span>}
         </span>}

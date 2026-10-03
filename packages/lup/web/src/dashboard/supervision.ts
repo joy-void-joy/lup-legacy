@@ -5,7 +5,7 @@
 // last words, holds and mailbox, the person's own row, and the mail between
 // members. What a server older than the page does not serve stays behind the
 // seam in `served.ts`.
-import type { AccountMeter, AgentCaps, AgentMeter, BudgetView, LiveMessage, LiveRepository, LiveSession, MeteredWindow, ReviewRoot, ReviewSummary, Spend } from "../generated/views";
+import type { AccountMeter, AgentCaps, AgentMeter, BudgetView, LiveMessage, LiveRepository, LiveSession, MeteredWindow, ReviewRoot, ReviewSummary, Spend, Verdict } from "../generated/views";
 import { called, conversation, type LiveState } from "./live";
 import { unserved, type Feature } from "./served";
 import { askedBy, claimCovers, plural, Rows, type Buffer, type Holder } from "./review";
@@ -388,6 +388,9 @@ export function parseCaps(text: string): AgentCaps | string {
 
 /** The budget's line for one agent, where the dashboard governs one. */
 export const meterOf = (live: LiveState, session: LiveSession): AgentMeter | undefined => live.budget.agents.find((each) => each.session === session.key);
+
+/** What the budget's verdict on an agent says: held, where this dashboard places its holds; else only what would hold it. */
+export const heldWords = (budget: BudgetView, held: Verdict): string => budget.holds ? `⏸ ${held.said}` : `would hold: ${held.said}`;
 
 /** Where a window stands at *now*: how much of it is used, how much even pace allows, and when it clears. */
 export function windowAt(metered: MeteredWindow, now = Date.now()): { used: number; even: number; resets: number; ahead: boolean } {

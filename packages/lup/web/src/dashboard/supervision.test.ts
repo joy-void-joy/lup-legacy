@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { AccountMeter, AgentMeter, BudgetView, LiveMessage, LiveSession, ReviewSummary } from "../generated/views";
 import { applied, NO_BUDGET, NO_KEYS, UNSAID } from "./live";
-import { activityBrief, attention, callSummary, capsText, fullest, inboxOf, inRepository, metered, money, NO_CAPS, parseCaps, spendLine, standing, tokenCount, treeItems, unreadCount, windowAt } from "./supervision";
+import { activityBrief, attention, callSummary, capsText, fullest, heldWords, inboxOf, inRepository, metered, money, NO_CAPS, parseCaps, spendLine, standing, tokenCount, treeItems, unreadCount, windowAt } from "./supervision";
 
 const now = Date.parse("2026-09-29T12:00:00Z");
 const minutesAgo = (minutes: number) => new Date(now - minutes * 60_000).toISOString();
@@ -96,6 +96,12 @@ describe("the budget's words", () => {
     expect(spendLine(meter({ hour: { usd: 0, tokens: 0 }, total: { usd: 0, tokens: 0 } }))).toBe("");
     expect(money(250)).toBe("$250");
     expect(tokenCount(950)).toBe("950");
+  });
+
+  test("a verdict says the agent is held only where this dashboard places its holds", () => {
+    const verdict = { key: "r1/lead", cause: "slot" as const, said: "waiting for a slot", until: null };
+    expect(heldWords({ ...NO_BUDGET, holds: true }, verdict)).toBe("⏸ waiting for a slot");
+    expect(heldWords(NO_BUDGET, verdict)).toBe("would hold: waiting for a slot");
   });
 
   test("a window says where even pace stands, and the meter shows the accounts in use first", () => {

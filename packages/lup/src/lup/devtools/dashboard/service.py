@@ -636,6 +636,7 @@ def serve_dashboard(arguments: ServiceArguments) -> None:
         if arguments.shared
         else None
     )
+    # lup: defer[branch:feat-agent-pause]: hand the governor the pause's hold store as its `door=` and `calls=` (place/lift with owner BUDGET, `held_calls` for the queue), so a verdict holds the agent at its next tool call; until then it judges and shows, and nothing waits
     governor = (
         BudgetGovernor(
             ledger,

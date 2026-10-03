@@ -63,7 +63,7 @@ function WindowBar({ metered: each, now, compact }: { metered: MeteredWindow; no
 }
 
 /** One account's meter: its windows, the agents drawing on it, and what holds them. */
-function AccountBars({ account, now, compact }: { account: AccountMeter; now: number; compact: boolean }) {
+function AccountBars({ account, now, compact, holding }: { account: AccountMeter; now: number; compact: boolean; holding: boolean }) {
   const shown = compact ? [fullest(account)].filter((each) => each !== undefined) : account.windows;
   const limits = account.said;
   return <span className={`acct${account.exhausted !== "" ? " spent" : ""}`} title={[account.home, ...limits, account.error].filter((each) => each !== "").join(" · ")}>
@@ -73,7 +73,8 @@ function AccountBars({ account, now, compact }: { account: AccountMeter; now: nu
     {account.signed_in && account.error !== "" && <span className="err">⚠ {compact ? "unread" : account.error}</span>}
     {!compact && limits.length > 0 && <span className="muted">{limits.join(" · ")}</span>}
     {!compact && account.agents > 0 && <span className="muted">{account.agents} {account.agents === 1 ? "agent" : "agents"}</span>}
-    {account.held > 0 && <span className="warn">⏸{account.held}</span>}
+    {account.held > 0 && (holding ? <span className="warn" title="agents the budget holds">⏸{account.held}</span>
+      : <span className="muted" title="agents the budget would hold, were it holding">{account.held} over</span>)}
   </span>;
 }
 
@@ -90,10 +91,11 @@ export function Meter({ d, state, compact = false }: { d: Dashboard; state: Page
   const turtle = <button type="button" className={`turtle${budget.turtle ? " on" : ""}`} aria-pressed={budget.turtle} title="Space b t · :turtle" onClick={() => void d.turtle()}>🐢{compact ? "" : budget.turtle ? " turtle on" : " turtle"}</button>;
   return <div id={compact ? "t-meter" : "meter"} role="region" aria-label="Accounts">
     {compact && turtle}
-    {compact ? <span className="accts">{accounts.map((account) => <AccountBars key={account.key} account={account} now={state.now} compact />)}</span>
-      : accounts.map((account) => <AccountBars key={account.key} account={account} now={state.now} compact={false} />)}
+    {compact ? <span className="accts">{accounts.map((account) => <AccountBars key={account.key} account={account} now={state.now} compact holding={budget.holds} />)}</span>
+      : accounts.map((account) => <AccountBars key={account.key} account={account} now={state.now} compact={false} holding={budget.holds} />)}
     {accounts.length === 0 && <span className="muted">no account's windows read yet</span>}
     {budget.refused !== "" && <span className="err" title={budget.refused}>[budget] unread: no limits hold</span>}
+    {!budget.holds && <span className="muted" title="This dashboard has no hold store to place its holds in: what the budget judges is shown, and no agent waits for it">not holding</span>}
     {!budget.telemetry && <span className="muted" title="Claude sessions' spend arrives through their telemetry, which this dashboard does not receive">no telemetry</span>}
     {!compact && <><span className="grow" />{turtle}</>}
   </div>;

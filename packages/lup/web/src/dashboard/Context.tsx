@@ -4,14 +4,14 @@
 // Beside an agent: its standing and kind, what needs the operator, its holds,
 // mailbox, the reviews it parked, its subagents, and what can be done to it.
 import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
-import type { AgentMeter, LiveSession } from "../generated/views";
+import type { AgentMeter, BudgetView, LiveSession } from "../generated/views";
 import type { Dashboard } from "./dashboard";
 import { gotoJudged, moveException, moveMarker, reveal, jumpTo, rowsOf } from "./editor";
 import { askedBy, basename, checkoutLabel, EFFECT_SIGN, exceptionRules, exceptionStops, exceptionsOf, headOf, headText, judgedOf, lineSummary, MARKER_LETTER, markerLabel, markerStops, needsReview, plural, relative, SOURCES, staleSentences, stateClass, stateLabel, stateSign } from "./review";
 import { HANDLERS } from "./actions";
 import type { Feature } from "./served";
 import type { PageState } from "./state";
-import { activityBrief, ago, attention, capsText, childrenOf, clock, GLYPH, heldOthers, holdersOf, inboxOf, inRepository, kindWords, meterOf, money, parentOf, parseCaps, reached, reviewsOf, stamp, standing, tokenCount, unreadCount } from "./supervision";
+import { activityBrief, ago, attention, capsText, childrenOf, clock, GLYPH, heldOthers, heldWords, holdersOf, inboxOf, inRepository, kindWords, meterOf, money, parentOf, parseCaps, reached, reviewsOf, stamp, standing, tokenCount, unreadCount } from "./supervision";
 import { claimPath } from "./review";
 import { memberName, reaches, type Discussion } from "./threads";
 import { Clamp } from "./Touch";
@@ -153,11 +153,11 @@ function CapsEditor({ d, session, meter }: { d: Dashboard; session: LiveSession;
 }
 
 /** What the budget says of an agent: what holds it and until when, what it spent, and its priority and caps, set in place. */
-function BudgetSection({ d, state, session, meter, item }: { d: Dashboard; state: PageState; session: LiveSession; meter: AgentMeter; item: Item }) {
+function BudgetSection({ d, state, session, meter, budget, item }: { d: Dashboard; state: PageState; session: LiveSession; meter: AgentMeter; budget: BudgetView; item: Item }) {
   const spent = (usd: number, tokens: number) => usd > 0 ? `${money(usd)} · ${tokenCount(tokens)} tokens` : `${tokenCount(tokens)} tokens`;
   const refused = d.lacks("budgets");
   return <section className="cx"><h3>budget <span className="k">{meter.account} · :priority · :cap</span></h3>
-    {meter.held !== null && <p className="warn">⏸ {meter.held.said}</p>}
+    {meter.held !== null && <p className="warn">{heldWords(budget, meter.held)}</p>}
     {meter.exempt && <p className="muted">Your own session: the budget never holds it.</p>}
     <dl className="facts">
       <dt>last hour</dt><dd>{spent(meter.hour.usd, meter.hour.tokens)}</dd>
@@ -197,7 +197,7 @@ function MemberContext({ d, state, session }: { d: Dashboard; state: PageState; 
       <Clamp d={d} narrow={state.narrow} open={state.unclamped.has(`doing:${session.key}`)} id={`doing:${session.key}`} as="p"><span className="prose">{session.doing || "It has not said what it is on."}</span></Clamp>
     </section>
     {flags.length > 0 && <section className="cx"><h3>needs you</h3>{flags.map((flag) => <p key={flag.key} className="warn">{flag.text}</p>)}</section>}
-    {meter !== undefined && <BudgetSection d={d} state={state} session={session} meter={meter} item={item} />}
+    {meter !== undefined && <BudgetSection d={d} state={state} session={session} meter={meter} budget={live.budget} item={item} />}
     <section className="cx"><dl className="facts">
       <dt>id</dt><dd>{session.id}</dd>
       <dt>worktree</dt><dd>{session.worktree !== "" ? inRepository(session.worktree, home) : "—"}</dd>
