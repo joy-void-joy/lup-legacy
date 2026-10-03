@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "generator_version": "0.4.0",
-  "source_digest": "36ae37c9e6388c963d8e515afcc3722ddf01f5ba292751b2692ebff839659543",
+  "source_digest": "9b5a4a15bf1d8299e7ef3cd9ac52474f31562b3367650d44080415105f8722aa",
   "target_requirements": [
     "bun"
   ],
@@ -161,10 +161,10 @@
       "executable": false
     },
     {
-      "path": "packages/lup/src/lup/web/bundles/dashboard/assets/index-C40cEbVE.js",
+      "path": "packages/lup/src/lup/web/bundles/dashboard/assets/index-CabH1lUE.js",
       "category": "generated",
-      "sha256": "0e94810186896e001614a1f1cea33332d1018b9bce3c8db61d23e4b7172a65d0",
-      "semantic_id": "web.dashboard.assets/index-C40cEbVE.js",
+      "sha256": "eafd03c817fcb4becd0bb80f6fabff07d8c1b778d0ad7cb752f7349a5e50827a",
+      "semantic_id": "web.dashboard.assets/index-CabH1lUE.js",
       "executable": false
     },
     {
@@ -175,10 +175,10 @@
       "executable": false
     },
     {
-      "path": "packages/lup/src/lup/web/bundles/dashboard/assets/react-markdown-NB7MV5aU.js",
+      "path": "packages/lup/src/lup/web/bundles/dashboard/assets/react-markdown-gNd7Ft8e.js",
       "category": "generated",
-      "sha256": "8e344e273a662be5d01807d4e98771b12bfe2dcca8fc0e5949af6d22c68d4874",
-      "semantic_id": "web.dashboard.assets/react-markdown-NB7MV5aU.js",
+      "sha256": "795ab81f8facf09607a332180b92ee49cd506588fe59d2e312a100be2ccd99c3",
+      "semantic_id": "web.dashboard.assets/react-markdown-gNd7Ft8e.js",
       "executable": false
     },
     {
@@ -322,10 +322,10 @@
       "executable": false
     },
     {
-      "path": "packages/lup/src/lup/web/bundles/dashboard/assets/web-tree-sitter-CmvOcoxo.js",
+      "path": "packages/lup/src/lup/web/bundles/dashboard/assets/web-tree-sitter-CZw2aa0O.js",
       "category": "generated",
-      "sha256": "6c0a5487d3c62db53cd5ebe9cc73b01e87585893e78c8f82bc390129a038e67e",
-      "semantic_id": "web.dashboard.assets/web-tree-sitter-CmvOcoxo.js",
+      "sha256": "e49c49eb64757b963dce2159fc754609a556ec901a326e0f194c31d3c8971cda",
+      "semantic_id": "web.dashboard.assets/web-tree-sitter-CZw2aa0O.js",
       "executable": false
     },
     {
@@ -338,7 +338,7 @@
     {
       "path": "packages/lup/src/lup/web/bundles/dashboard/index.html",
       "category": "generated",
-      "sha256": "5b3d3521ce8bd75368b2ed2e6aba3e9d1fd8333ae4c904fa2ae0044129ff202e",
+      "sha256": "848723637f664c013779f1b49650fc22b122ae9b50d1301e8aea63f4ea7f2e89",
       "semantic_id": "web.dashboard.index.html",
       "executable": false
     },

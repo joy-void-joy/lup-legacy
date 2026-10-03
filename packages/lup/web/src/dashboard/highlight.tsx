@@ -214,7 +214,7 @@ function treeSitter(): Promise<typeof import("web-tree-sitter")> {
 }
 
 async function build(name: string): Promise<Grammar | null> {
-  const spec = GRAMMARS[name];
+  const spec = Object.hasOwn(GRAMMARS, name) ? GRAMMARS[name] : undefined;
   if (spec === undefined) return null;
   const { Language, Parser, Query } = await treeSitter();
   const [bytes, ...queries] = await Promise.all([source.wasm(spec.wasm), ...spec.queries.map((path) => source.query(path))]);
@@ -269,7 +269,7 @@ function subscribe(listener: () => void): () => void {
  * of grammars settled, which a view passes down so its rows redraw.
  */
 export function useGrammars(names: (string | null)[]): number {
-  const wanted = names.filter((name): name is string => name !== null && GRAMMARS[name] !== undefined).join(" ");
+  const wanted = names.filter((name): name is string => name !== null && Object.hasOwn(GRAMMARS, name)).join(" ");
   useEffect(() => {
     for (const name of wanted.split(" ")) if (name !== "" && !loading.has(name)) void loadGrammar(name);
   }, [wanted]);
