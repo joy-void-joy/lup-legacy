@@ -45,6 +45,7 @@ from .effects import (
     verdict_for,
 )
 from .words import (
+    STREAM_WRITE_REASON,
     UV_GLOBAL_VALUE_OPTIONS,
     UV_TOOL_RUN_GRAMMAR,
     INTERPRETERS,
@@ -78,7 +79,7 @@ from .words import (
 from .downloads import read_download
 from .fetch import decide_fetch, loopback_port
 from .lex import placed_path
-from .roles import path_role
+from .roles import path_role, writes_to_a_stream
 from .syntax import expands, verbatim_piece
 from .programs import program_verdict, read_program
 from .semantics import UnjudgedAmbient
@@ -418,7 +419,12 @@ def targets_write_verdict(
             scope=scope,
         )
 
-    for target in targets:
+    # A stream keeps nothing it is handed, so a flag naming one writes no file:
+    # `curl -o /dev/null -w '%{http_code}'` lands its body nowhere.
+    landed = [target for target in targets if not writes_to_a_stream(target)]
+    if not landed:
+        return row_verdict(row, "allow", STREAM_WRITE_REASON)
+    for target in landed:
         known = facts["existing"]
         protected = protected_write_target(
             [target],
@@ -428,7 +434,7 @@ def targets_write_verdict(
         )
         if protected is not None:
             return protected
-    answers = [judged(target) for target in targets]
+    answers = [judged(target) for target in landed]
     # A path nobody can locate speaks for the line ahead of any other question,
     # because it is the one no reading of a path can settle.
     answered = next(

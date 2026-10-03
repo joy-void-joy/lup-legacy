@@ -3250,7 +3250,12 @@ def withdrawn_suppression_denial(number: int, row: AntiPatternRow) -> KernelDeci
 
 
 def awaits_resolution(
-    before: str | None, after: str, rows: list[AntiPatternRow], python_source: bool
+    before: str | None,
+    after: str,
+    rows: list[AntiPatternRow],
+    python_source: bool,
+    path: str,
+    path_roles: list[PathRoleRow],
 ) -> bool:
     """Whether this edit trips a rule whose verdict turns on a declaration.
 
@@ -3260,12 +3265,18 @@ def awaits_resolution(
     once a receiver is resolved. Every other edit — most of them — is judged
     without one and costs nothing.
 
+    So is every file outside production, read off *path* by the roles
+    :func:`decide_edit` reads it by: the conventions are applied to
+    production alone, so a scratch script or a test is judged without the
+    answer whatever it says. A checker started for one costs seconds of the
+    hook's deadline that every later fact about the command then lacks.
+
     A line a directive already covers still counts. Resolving it is not waste:
     if the declaration turns out to be outside the rule's family, the audit
     calls that directive dead, and a gate that skipped the lookup would admit
     a marker `dev check` immediately reports.
     """
-    if not python_source:
+    if not python_source or path_role(path, path_roles) != "production":
         return False
     original_lines = after.splitlines()
     return any(
@@ -4009,11 +4020,12 @@ def decide_edit(
     content is nothing but its own docstring costs a reviewer nothing either,
     wherever it sits.
 
-    ``checkout_path`` is the same file as the session's own checkout spells
-    it, and empty where that checkout does not hold the file. It differs from
-    ``path`` only where a repository nested inside the checkout holds the
-    file, and it answers one question, which two gates below defer to:
-    whether the file lies under a root this checkout declares scratch.
+    ``checkout_path`` is the same file as this repository's checkout holding
+    it spells it -- the session's own, or another worktree of the repository
+    -- and empty where none does. It differs from ``path`` only where a
+    repository nested inside that checkout holds the file, and it answers one
+    question, which two gates below defer to: whether the file lies under a
+    root this repository declares scratch.
 
     Both spellings name a file that exists or is about to, never a word a
     shell has yet to expand: a native edit's path is handed over literal, and
@@ -4024,17 +4036,17 @@ def decide_edit(
     """
     path = VerbatimText(path)
     checkout_path = VerbatimText(checkout_path)
-    # Scratch this checkout declares, read off the checkout's own spelling
-    # alone. That is empty wherever the checkout does not hold the file -- a
-    # sibling worktree, a `refs/` link landing in another project, the
-    # machine's temporary root -- so none of those can claim it, and another
-    # repository's own `tmp/` is never read as this checkout's.
+    # Scratch this repository declares, read off its checkout's own spelling
+    # alone. That is empty wherever no checkout of it holds the file -- a
+    # `refs/` link landing in another project, the machine's temporary root
+    # -- so none of those can claim it, and another repository's own `tmp/`
+    # is never read as this one's.
     scratch_here = declared_scratch(checkout_path, path_roles or [])
     # It outranks the referral below. A repository nested under that scratch
     # -- a probe kit given its own `git init` under `tmp/` -- is as disposable
     # as the tree around it: its `.git` makes it a project root for a runtime
     # launched inside, not somebody else's code to defer to, so the file is
-    # judged as this checkout spells it. Only a foreign file is re-read: a
+    # judged as its checkout spells it. Only a foreign file is re-read: a
     # worktree of this repository placed under `tmp/` is still this
     # repository's code.
     if foreign and scratch_here:

@@ -18,6 +18,32 @@ one. Inline code (`uv run python -c … $T`) and an unread program
 (`uv run python $T`) stay refused, now with `uv run`'s own reason, and
 `python s.py $T` run directly stays refused.
 
+### A sibling worktree's scratch is scratch for every question, and a stream is no file
+
+Several false positives parked reviews that nobody needed:
+
+- **A heredoc into a sibling worktree's `tmp/`** was asked about as "an
+  outside path" (reviews b722c695, 65bf2101). The hook asked Git for the other
+  worktrees after the edit gates, and the type checker an anti-pattern rule
+  consults could spend the rest of the hook's deadline first. The checker
+  now starts only for a file in production, the one role those rules read,
+  and every Git fact is gathered before the edit gates. The same starvation
+  let `date > <tracked source>` through unasked behind a slow Python heredoc.
+- **`git init` in a sibling worktree's `tmp/`** was refused (#528). It is a
+  scratch write there, as it is in this checkout's `tmp/`. A probe kit made
+  there is scratch for edits and redirects, and its own hand-written plugin
+  tree is its own. A sibling's compiled plugin tree stays refused, and so
+  does a kit in another repository's `tmp/`.
+- **A sensitive assignment beside a write into a sibling's `tmp/`**
+  (`PYTHONPATH=… uv run …`) parked inside a container, though the same line
+  writing into this checkout's `tmp/` did not. A sibling worktree now lands
+  as the checkout a session works in, rather than as a tree the host lent.
+- **`| tee /dev/null`** parked as a write the launch did not mount (review
+  363314f4). `cp f /dev/null` was refused, and `sort -o /dev/null`, `git diff
+  --output=/dev/null` and `curl -o /dev/null` asked. A stream keeps nothing
+  written into it, so none of them is a write. `rm`, `mv`, `ln` and `touch`
+  on the device keep their questions.
+
 ### A write reached through a variable, a substitution or a `cd` asks as the path it names would
 
 `cd w && F=<protected path> && sed -i … $F` rewrote a protected file with no
