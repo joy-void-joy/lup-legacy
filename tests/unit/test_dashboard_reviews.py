@@ -48,7 +48,8 @@ from lup.devtools.review.notifications import (
     notify_requester,
 )
 from lup.policy.operations import Operation
-from lup.policy.relay import PersistentQuestion, QuestionRelay, RecordedQuestion
+from lup.devtools.review.thread import ReviewThread
+from lup.policy.relay import PersistentQuestion, QuestionRelay, RelayReading
 from lup.policy.review import ReviewedFile
 from lup.providers.user_config import UserConfigFile
 from lup.tools.lsp.pool import CodeHover, CodeLocations, CodeTokens, ServerPool
@@ -1279,15 +1280,15 @@ def test_a_queue_caught_mid_write_is_read_again_before_it_is_called_unavailable(
 ) -> None:
     """A writer's append is gone a moment later; the page never blanks for it."""
     reads: list[int] = []
-    questions = QuestionRelay.questions
+    read = QuestionRelay.read
 
-    def torn_once(store: QuestionRelay) -> list[RecordedQuestion]:
+    def torn_once(store: QuestionRelay) -> RelayReading:
         reads.append(len(reads))
         if len(reads) == 1:
             raise ValueError("a record was being written")
-        return questions(store)
+        return read(store)
 
-    monkeypatch.setattr(QuestionRelay, "questions", torn_once)
+    monkeypatch.setattr(QuestionRelay, "read", torn_once)
 
     queue = dashboard.ReviewQueue.read(tmp_path, relay(tmp_path), pause=0)
 
@@ -1298,10 +1299,10 @@ def test_a_queue_caught_mid_write_is_read_again_before_it_is_called_unavailable(
 def test_a_queue_that_stays_unreadable_says_why(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    def held(store: QuestionRelay) -> list[RecordedQuestion]:
+    def held(store: QuestionRelay) -> RelayReading:
         raise OSError("the relay is not readable")
 
-    monkeypatch.setattr(QuestionRelay, "questions", held)
+    monkeypatch.setattr(QuestionRelay, "read", held)
 
     queue = dashboard.ReviewQueue.read(tmp_path, relay(tmp_path), pause=0)
 
@@ -1482,3 +1483,30 @@ async def test_a_proposed_after_document_is_hovered_followed_and_coloured_by_a_r
     assert "(variable) x:" in CodeHover.model_validate(before.json()).markdown
     assert target.json()["text"].startswith("class Record:")
     assert sample.read_text(encoding="utf-8") == "x: int = 1\n"
+
+
+def test_a_review_parked_while_the_queue_is_read_reaches_all_of_it_or_none(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A review parked mid-read with a reply and a remark is read whole on the next look, never in part."""
+    parked(tmp_path, "q-1")
+    store = relay(tmp_path)
+    refreshed = QuestionRelay.refreshed
+    late: list[PersistentQuestion] = []
+
+    def then_parked(reader: QuestionRelay) -> None:
+        refreshed(reader)
+        if reader is store and not late:
+            late.append(parked(tmp_path, "q-2"))
+            ReviewThread.of(relay(tmp_path)).reply(late[0], "absent-worker", "needed")
+            ReviewThread.of(relay(tmp_path)).remark(late[0], "operator", "why now?")
+
+    monkeypatch.setattr(QuestionRelay, "refreshed", then_parked)
+
+    first = dashboard.ReviewQueue.read(tmp_path, store, pause=0)
+    then = dashboard.ReviewQueue.read(tmp_path, store, pause=0)
+
+    assert [question.id for question in first.questions] == ["q-1"]
+    assert (first.remarks, first.replies) == ({}, {})
+    assert [question.id for question in then.questions] == ["q-1", "q-2"]
+    assert (list(then.remarks), list(then.replies)) == (["q-2"], ["q-2"])

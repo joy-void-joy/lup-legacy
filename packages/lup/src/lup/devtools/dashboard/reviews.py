@@ -70,10 +70,9 @@ from lup.devtools.review.app import (
     ReviewRoot,
     ReviewSummary,
     expire_orphaned,
-    newer_code,
     relay,
     retire_settled,
-    terminal_answer,
+    way_out,
 )
 from lup.devtools.review.notifications import (
     ReviewNotification,
@@ -277,7 +276,10 @@ class ReviewQueue(BaseModel, frozen=True):
         """One checkout's queue through its relay, read again a moment later before a failure is reported.
 
         The relay stays open between reads, so a read folds only what was
-        appended since the last. A writer appending to the relay or its
+        appended since the last, and its questions, remarks and replies come
+        from that one read (:meth:`~lup.policy.relay.QuestionRelay.read`): a
+        writer appending meanwhile reaches all three on the next look, never
+        some of them on this one. A writer appending to the relay or its
         answers while the page reads them is gone a moment later, so a read
         that fails is tried *attempts* times, *pause* seconds apart, before
         the queue is reported unavailable.
@@ -291,12 +293,13 @@ class ReviewQueue(BaseModel, frozen=True):
             reraise=True,
         )
         def read_once() -> "ReviewQueue":
+            reading = store.read()
             return cls(
                 root=root,
                 signature=signature,
-                questions=store.questions(),
-                remarks=store.remarks(),
-                replies=store.replies(),
+                questions=reading.questions,
+                remarks=reading.threads.remarks,
+                replies=reading.threads.replies,
             )
 
         try:
@@ -487,9 +490,14 @@ class ReviewStore(BaseModel, frozen=True):
                     "answerable": False,
                     "unanswerable": (
                         f"Its documents cannot be read back whole: {unread}. "
-                        "Where newer code parked it, that code can answer it: "
-                        f"{terminal_answer(root, question.id, self.principal)}."
-                        + newer_code(restarting)
+                        + way_out(
+                            root,
+                            question.id,
+                            self.principal,
+                            restarting,
+                            "The code of the checkout keeping it, which parks its "
+                            "reviews there, may answer it",
+                        )
                         if question.state == "pending"
                         else ""
                     ),
