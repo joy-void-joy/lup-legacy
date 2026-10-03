@@ -234,8 +234,11 @@ async def test_a_question_a_server_does_not_answer_in_time_is_withdrawn_and_said
             document(tmp_path / "a.py", tmp_path, tmp_path), 1, 0, within=0.5
         )
         took = time.monotonic() - started
-        for _ in range(50):
-            if any(each.method == "$/cancelRequest" for each in logged(server.log)):
+        # The server reads its input as it gets to it, so both withdrawals are
+        # waited for before it is stopped.
+        for _ in range(100):
+            read = logged(server.log)
+            if len([each for each in read if each.method == "$/cancelRequest"]) == 2:
                 break
             await asyncio.sleep(0.1)
     finally:
