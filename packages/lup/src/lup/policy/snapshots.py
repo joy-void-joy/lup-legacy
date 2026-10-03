@@ -11,11 +11,12 @@ from lup.execution.git import GitError, Repository
 from lup.execution.shell import git
 from lup.policy.assets.host import policy_snapshot_digest, policy_snapshot_files
 from lup.sandbox.rail import AccessibleRoot, Lease, repository_layout, sibling_worktrees
+from lup.workspace.checkout_state import CheckoutState
 
 
-def snapshot_directory(root: Path, snapshots: str = ".lup/policy-snapshots") -> Path:
+def snapshot_directory(root: Path) -> Path:
     """Where a launch keeps the destination policies it accepted, one per digest."""
-    return root / snapshots
+    return CheckoutState(root=root).policy_snapshots()
 
 
 class DestinationPolicy(BaseModel, frozen=True, extra="forbid"):

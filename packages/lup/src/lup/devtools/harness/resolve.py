@@ -7,7 +7,6 @@ it with work discovered while it ran.
 """
 
 import asyncio
-import os
 from functools import partial
 from collections.abc import AsyncGenerator, Iterator
 from contextlib import asynccontextmanager
@@ -19,6 +18,7 @@ import typer
 from pydantic import BaseModel
 
 from lup.harness.codescan.markers import find_feedback
+from lup.workspace.checkout_state import CheckoutState
 from lup.harness.enforcement import semantic_policy_for
 from lup.harness.models import HookSet
 from lup.policy.hooks import LupHooksConfig
@@ -36,7 +36,7 @@ from lup.tools.mcp import (
 from lup.mcp import External
 from lup.policy.grants import LeaseGrants, allowance_grants_environment
 from lup.policy.identity import agent_identity_environment
-from lup.harness.environment import non_interactive_environment
+from lup.harness.environment import inherited, non_interactive_environment
 from lup.harness.ownership import GeneratedArtifacts, generated_artifacts
 from lup.execution.git import Repository
 from lup.execution.process import LocalProcessLauncher, ProcessLauncher
@@ -913,7 +913,7 @@ def refresh_run(
     which is exactly when a parked run is waiting for the fix to land.
     """
     root = project_root()
-    state_root = root / ".lup" / "resolve"
+    state_root = CheckoutState(root=root).resolve()
     repository = ResolverStateRepository(state_root, run_id)
     if not repository.exists():
         raise typer.BadParameter(f"no resolver run {run_id!r} under {state_root}")
@@ -1101,7 +1101,7 @@ def detach_resolve(detached: DetachedRun) -> None:
     # naming nothing actionable or an issue number naming nothing open, and
     # it meets it after this command has already reported a run started.
     admission_request(detached.admitted)
-    repository = ResolverStateRepository(root / ".lup/resolve", resolved)
+    repository = ResolverStateRepository(CheckoutState(root=root).resolve(), resolved)
     if repository.held():
         raise typer.BadParameter(f"resolver run {resolved!r} is already active")
     log = detached_log(root, resolved)
@@ -1129,7 +1129,7 @@ def detach_resolve(detached: DetachedRun) -> None:
 
 def detached_log(root: Path, run_id: str) -> Path:
     """Where a detached run's console output is kept, beside its own record."""
-    directory = root / ".lup" / "resolve" / run_id
+    directory = CheckoutState(root=root).resolve() / run_id
     directory.mkdir(parents=True, exist_ok=True)
     return directory / "detached.log"
 
@@ -1170,7 +1170,7 @@ def queue_existing_admission(
     if not flags.named_anything() or (start_new and run_id is None):
         return False
     root = project_root()
-    state_root = root / ".lup" / "resolve"
+    state_root = CheckoutState(root=root).resolve()
     selected = run_id or chosen_run(
         state_root,
         "resolve-" + Repository(root).answer("rev-parse", "--short=12", "HEAD"),
@@ -1209,7 +1209,9 @@ def list_admissions(
     ),
 ) -> None:
     """Inspect accepted evidence and its pending, applied, or rejected result."""
-    repository = ResolverStateRepository(project_root() / ".lup" / "resolve", run_id)
+    repository = ResolverStateRepository(
+        CheckoutState(root=project_root()).resolve(), run_id
+    )
     if not repository.exists():
         raise typer.BadParameter(f"no resolver run {run_id!r}")
     receipts = AdmissionMailbox(repository.root).receipts()
@@ -1486,7 +1488,7 @@ def run_resolve(
     plugin = harness.plugins[0]
     root = project_root()
     launcher = PointerCheckedLauncher(LocalProcessLauncher(), root)
-    state_root = root / ".lup" / "resolve"
+    state_root = CheckoutState(root=root).resolve()
     resolved_run_id = run_id or chosen_run(
         state_root,
         "resolve-"
@@ -1598,11 +1600,7 @@ def run_resolve(
                 install_codex_plugin(root, home.path, trusted=home.isolated)
             return {"CODEX_HOME": str(home.path)}
 
-        session_environment = account.exported(
-            non_interactive_environment(
-                os.environ  # lup: ignore[os-environ] — sessions inherit the console
-            )
-        )
+        session_environment = account.exported(non_interactive_environment(inherited()))
         # Both identities are written, never omitted: a runtime merges the
         # session environment over the launching process's, so a reviewer
         # that stayed silent would inherit an operator's exported identity.

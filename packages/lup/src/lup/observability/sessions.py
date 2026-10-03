@@ -52,7 +52,8 @@ from pydantic import Field, field_validator, model_validator
 
 from lup.channels.models import utc_now
 from lup.coordination.refs import ActorRef
-from lup.ledger.files import digest_of, pinned
+from lup.formats import digest
+from lup.ledger.files import pinned
 from lup.ledger.journal import LedgerStore
 from lup.ledger.kinds import kind_of
 from lup.ledger.models import LedgerEdge, LedgerNode, Standing, Surroundings
@@ -168,7 +169,7 @@ class Session(LedgerNode, frozen=True):
             update={
                 "ended": at,
                 "outcome": outcome,
-                "journal_digest": digest_of(self.journal_path()),
+                "journal_digest": digest.file(self.journal_path()) or "",
             }
         )
 
@@ -254,7 +255,7 @@ class Output(LedgerNode, frozen=True):
         del root
         if self.digest:
             return self
-        return self.model_copy(update={"digest": digest_of(self.held_at())})
+        return self.model_copy(update={"digest": digest.file(self.held_at()) or ""})
 
     def standing(self, around: Surroundings) -> Standing:
         if around.root is None:

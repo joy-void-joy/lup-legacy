@@ -12,13 +12,20 @@ So this says what :mod:`lup.formats.yaml` says, through the library that
 already ships here: a node holds the value it stands for, :mod:`tomlkit`
 writes it, and :meth:`TomlDocument.text` is parsed back and held against what
 the nodes declare before the file exists.
+
+A document somebody else wrote — a project's ``pyproject.toml`` — is the
+other direction: not generated, only changed, and changed through
+:func:`edited_manifest`, so the layout its author chose survives the change.
 """
 
 from abc import ABC, abstractmethod
+from collections.abc import Callable
+from pathlib import Path
 from typing import Annotated, Literal
 
 import tomlkit
 from pydantic import BaseModel, Discriminator, model_validator
+from tomlkit import TOMLDocument
 
 type TomlValue = str | int | float | bool
 """What TOML writes as one value. A key with nothing under it is omitted
@@ -92,3 +99,27 @@ class TomlDocument(BaseModel, frozen=True):
                 written.add(tomlkit.comment(entry.comment))
             written.add(entry.key, entry.value.plain())
         return tomlkit.dumps(written)
+
+
+def edited_manifest[Answer](
+    path: Path, change: Callable[[TOMLDocument], Answer], write: bool = True
+) -> Answer:
+    """One TOML file changed in place, keeping everything the change did not touch.
+
+    Parsed and dumped through :mod:`tomlkit`, so the comments, key order,
+    blank lines and quoting its author left survive a change to one value:
+    re-emitting a parsed table would put a diff nobody wrote in front of every
+    reviewer, with the real change somewhere inside it. ``change`` edits the
+    document it is handed and answers whatever its caller wants back.
+
+    Written only where the change moved something and ``write`` holds, so a
+    dry run and a staleness check ask the same question without touching the
+    file, and an edit that changes nothing leaves its modification time alone.
+    """
+    before = path.read_text(encoding="utf-8")
+    document = tomlkit.parse(before)
+    answer = change(document)
+    after = tomlkit.dumps(document)
+    if write and after != before:
+        path.write_text(after, encoding="utf-8")
+    return answer

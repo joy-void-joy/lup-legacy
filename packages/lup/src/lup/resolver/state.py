@@ -1,6 +1,5 @@
 """Atomic schema-versioned resolver state persistence."""
 
-import fcntl
 import logging
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -9,6 +8,7 @@ from pathlib import Path
 from pydantic import ValidationError
 
 from lup.channels.models import publish_atomic
+from lup.execution.locks import exclusive, try_exclusive
 from lup.resolver.admissions import (
     AdmissionMailbox,
     AdmissionReceipt,
@@ -315,19 +315,12 @@ class ResolverStateRepository:
     @contextmanager
     def exclusive(self) -> Iterator[None]:
         """Hold one process-wide run lease, released automatically after a crash."""
-        self.root.mkdir(parents=True, exist_ok=True)
-        lock_path = self.root / ".run.lock"
-        with lock_path.open("a+", encoding="utf-8") as lock:
-            try:
-                fcntl.flock(lock.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-            except BlockingIOError as error:
+        with try_exclusive(self.root / ".run.lock") as held:
+            if not held:
                 raise StateTransitionError(
                     f"resolver run {self.root.name!r} is already active"
-                ) from error
-            try:
-                yield
-            finally:
-                fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
+                )
+            yield
 
     def held(self) -> bool:
         """Whether another process is driving this run right now.
@@ -343,13 +336,8 @@ class ResolverStateRepository:
         lock_path = self.root / ".run.lock"
         if not lock_path.exists():
             return False
-        with lock_path.open("a+", encoding="utf-8") as lock:
-            try:
-                fcntl.flock(lock.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-            except BlockingIOError:
-                return True
-            fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
-            return False
+        with try_exclusive(lock_path) as free:
+            return not free
 
     def load(self) -> ResolveState:
         path = self.root / "state.json"
@@ -484,13 +472,8 @@ class ResolverStateRepository:
     @contextmanager
     def writing(self) -> Iterator[None]:
         """Serialize short state transactions while a run keeps its long lease."""
-        self.root.mkdir(parents=True, exist_ok=True)
-        with (self.root / ".state.lock").open("a+", encoding="utf-8") as lock:
-            fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
-            try:
-                yield
-            finally:
-                fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
+        with exclusive(self.root / ".state.lock"):
+            yield
 
     def save(self, state: ResolveState) -> ResolveState:
         with self.writing():

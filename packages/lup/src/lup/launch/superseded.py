@@ -16,26 +16,9 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 
 from pydantic import BaseModel
-from pydantic_settings import BaseSettings
 
 from lup.channels.models import write_atomic
-
-
-class UserStateHome(BaseSettings):
-    """Where the XDG base directory specification says a person's state lives.
-
-    Its one variable, read the specification's way: an absolute path moves
-    every program's state, and an empty or relative one is ignored in favour
-    of ``~/.local/state``.
-    """
-
-    xdg_state_home: str = ""
-
-    def directory(self) -> Path:
-        """lup's own directory under that base."""
-        named = Path(self.xdg_state_home)
-        base = named if named.is_absolute() else Path.home() / ".local" / "state"
-        return base / "lup"
+from lup.workspace.user_directories import UserDirectories
 
 
 class SupersededVolume(BaseModel, frozen=True):
@@ -91,7 +74,7 @@ class SupersededFile:
     """The record, where lup keeps it for the person."""
 
     def __init__(self, home: Path | None = None) -> None:
-        self.home = home if home is not None else UserStateHome().directory()
+        self.home = home if home is not None else UserDirectories().state()
 
     def path(self) -> Path:
         """The file the record is read from and written to."""

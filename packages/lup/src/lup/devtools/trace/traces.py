@@ -39,7 +39,7 @@ from lup.observability.audit import (
     chain_break,
     read_observable_events,
 )
-from lup.observability.trace import TraceEvent, read_trace_events
+from lup.observability.trace import TraceEvent, trace_events
 from lup.workspace.history import (
     iter_run_dirs,
     iter_session_dirs,
@@ -117,7 +117,7 @@ def events_for_trace(trace_file: Path) -> list[TraceEvent]:
     events rather than ones guessed back out of its text.
     """
     sidecar = trace_file.with_suffix(".events.jsonl")
-    return read_trace_events(sidecar) if sidecar.exists() else []
+    return trace_events(sidecar).read_all()
 
 
 def resolve_trace_paths(effective: list[str] | None) -> list[Path]:

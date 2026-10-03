@@ -4,22 +4,27 @@ import hashlib
 import json
 import logging
 import mimetypes
-import shutil
 import tempfile
 from datetime import UTC, datetime
 from http.cookies import SimpleCookie
 from pathlib import Path, PurePosixPath
-from urllib.parse import ParseResult, quote, urlparse
+from typing import ClassVar
+from urllib.parse import quote
 
 import httpx
-from pydantic import BaseModel, TypeAdapter, ValidationError, model_validator
+from pydantic import BaseModel, TypeAdapter, ValidationError
 
 from lup.types import JsonObject, JsonValue, StringMap
+from lup.devtools.conversation.common import (
+    Address,
+    Payload,
+    attachment_label,
+    install_delivery,
+)
 from lup.devtools.conversation.errors import ConversationDownloadError
 
 logger = logging.getLogger(__name__)
 
-# lup: ignore[constant-declaration] — the provider origin is protocol identity
 CLAUDE_ORIGIN = "https://claude.ai"
 # lup: ignore[constant-declaration] — this provider flag requests complete blocks
 RENDER_QUERY = "rendering_mode=messages&render_all_tools=true"
@@ -33,65 +38,14 @@ class ClaudeAuthenticationRequired(ClaudeDownloadError):
     """A Claude conversation needs a fresh browser login."""
 
 
-class Payload(BaseModel, frozen=True, extra="ignore"):
-    """A tolerant typed view over Claude's web payload."""
-
-    @model_validator(mode="before")
-    @classmethod
-    def absent_where_null(cls, data: JsonValue) -> JsonValue:
-        """Treat a null service field like an omitted optional field."""
-        if not isinstance(data, dict):
-            return data
-        return {name: value for name, value in data.items() if value is not None}
-
-
-class ConversationReference(BaseModel, frozen=True):
+class ConversationReference(Address, frozen=True):
     """An authenticated Claude chat URL or public share URL."""
 
-    value: str
-
-    def parsed(self) -> ParseResult:
-        """This reference as a validated HTTPS Claude URL."""
-        supplied = self.value
-        located = urlparse(supplied if "://" in supplied else f"https://{supplied}")
-        if located.scheme != "https" or (located.hostname or "").lower() not in {
-            "claude.ai",
-            "www.claude.ai",
-        }:
-            raise ClaudeDownloadError(
-                "Expected an https://claude.ai/chat/... or /share/... URL"
-            )
-        return located
-
-    def route(self) -> str:
-        """Whether this URL names a live chat or a shared snapshot."""
-        parts = PurePosixPath(self.parsed().path).parts
-        if "share" in parts:
-            return "share"
-        if "chat" in parts:
-            return "conversation"
-        raise ClaudeDownloadError(
-            "Claude URL must contain /chat/<conversation-id> or /share/<share-id>"
-        )
-
-    def identifier(self) -> str:
-        """The service identifier following this URL's route segment."""
-        parts = PurePosixPath(self.parsed().path).parts
-        segment = "share" if self.route() == "share" else "chat"
-        position = parts.index(segment)
-        if position + 1 >= len(parts):
-            raise ClaudeDownloadError(f"Claude URL has no id after /{segment}/")
-        identifier = parts[position + 1]
-        if not identifier or not all(
-            character.isalnum() or character in {"-", "_"} for character in identifier
-        ):
-            raise ClaudeDownloadError("Claude conversation id is malformed")
-        return identifier
-
-    def page_url(self) -> str:
-        """The canonical page named by this reference."""
-        route = "share" if self.route() == "share" else "chat"
-        return f"{CLAUDE_ORIGIN}/{route}/{self.identifier()}"
+    service: ClassVar[str] = "Claude"
+    origin: ClassVar[str] = CLAUDE_ORIGIN
+    hosts: ClassVar[tuple[str, ...]] = ("claude.ai", "www.claude.ai")
+    conversation_segment: ClassVar[str] = "chat"
+    refused: ClassVar[type[ConversationDownloadError]] = ClaudeDownloadError
 
 
 class Organization(Payload, frozen=True):
@@ -141,15 +95,6 @@ class Attachment(Payload, frozen=True):
                 f"Attachment {self.stored_name()!r} has no path-safe file id"
             )
         return Path("attachments") / identifier / self.stored_name()
-
-    def label(self, path: Path | None) -> str:
-        """The transcript pointer to this extraction, retained or not."""
-        if path is None:
-            return (
-                f"[Attachment: {self.stored_name()} → not retained; "
-                "this delivery selected a single artifact]"
-            )
-        return f"[Attachment: {self.stored_name()} → {path.as_posix()}]"
 
 
 def selected_attachment(attachments: list["Attachment"], artifact: str) -> "Attachment":
@@ -295,7 +240,7 @@ class Message(Payload, frozen=True):
     def uploads(self, retained: dict[str, Path]) -> list[str]:
         """Every attachment, pointing to its extraction or to its absence."""
         return [
-            attachment.label(retained.get(attachment.id))
+            attachment_label(attachment.stored_name(), retained.get(attachment.id))
             for attachment in self.attachments
         ]
 
@@ -661,25 +606,13 @@ def write_delivery(
         (staged / "manifest.json").write_text(
             manifest.model_dump_json(indent=2) + "\n", encoding="utf-8"
         )
-        if destination.is_symlink():
-            raise ClaudeDownloadError("Conversation destination is a symlink")
-        backup = Path(temporary) / "prior"
-        if destination.exists():
-            if not destination.is_dir():
-                raise ClaudeDownloadError(
-                    "Conversation destination exists and is not a directory"
-                )
-            destination.rename(backup)
-        try:
-            staged.rename(destination)
-        except OSError as error:
-            if backup.exists():
-                backup.rename(destination)
-            raise ClaudeDownloadError(
-                "Could not install the complete Claude delivery"
-            ) from error
-        if backup.exists():
-            shutil.rmtree(backup)
+        install_delivery(
+            staged,
+            destination,
+            Path(temporary) / "prior",
+            ConversationReference.service,
+            ClaudeDownloadError,
+        )
     return destination
 
 

@@ -8,7 +8,7 @@ A source spelled as a dotted module is a module to open. One spelled as an ident
 
 The repository-wide artifacts written outside every runtime tree — the rule and command references, this page, and the CI workflow — belong to no recipe and are described in [harness.md](harness.md) instead.
 
-## `claude` — 133 artifacts
+## `claude` — 134 artifacts
 
 | Generated path | Compiled from |
 | --- | --- |
@@ -60,7 +60,8 @@ The repository-wide artifacts written outside every runtime tree — the rule an
 | `.claude/plugins/lup/commands/verify-solved.md` | lup.harness.content.skills.verify_solved |
 | `.claude/plugins/lup/hooks/hooks.json` | hooks.lup-policy |
 | `.claude/plugins/lup/hooks/runtime/caller_payload.py` | lup.providers.claude.assets.caller_payload |
-| `.claude/plugins/lup/hooks/runtime/carrier_drift.py` | lup.devtools.dev.drift_fold |
+| `.claude/plugins/lup/hooks/runtime/carrier_drift.py` | lup.providers.assets.drift_fold |
+| `.claude/plugins/lup/hooks/runtime/cleanup_payload.py` | lup.providers.claude.assets.subagent_cleanup |
 | `.claude/plugins/lup/hooks/runtime/coordination/__init__.py` | lup.coordination.bare.__init__ |
 | `.claude/plugins/lup/hooks/runtime/coordination/arrival.py` | lup.coordination.bare.arrival |
 | `.claude/plugins/lup/hooks/runtime/coordination/changes.py` | lup.coordination.bare.changes |
@@ -108,7 +109,7 @@ The repository-wide artifacts written outside every runtime tree — the rule an
 | `.claude/plugins/lup/hooks/runtime/kernel/words.py` | lup.policy.kernel.words |
 | `.claude/plugins/lup/hooks/runtime/policy_data.py` | lup.policy.bundle |
 | `.claude/plugins/lup/hooks/runtime/session_naming.py` | lup.providers.claude.assets.session_naming |
-| `.claude/plugins/lup/hooks/runtime/subagent_cleanup.py` | lup.providers.claude.assets.subagent_cleanup |
+| `.claude/plugins/lup/hooks/runtime/subagent_cleanup.py` | lup.providers.subagent_cleanup |
 | `.claude/plugins/lup/hooks/scripts/carrier_drift.sh` | lup.providers.drift_prompt |
 | `.claude/plugins/lup/hooks/scripts/coordination_caller.sh` | lup.providers.coordination_caller |
 | `.claude/plugins/lup/hooks/scripts/coordination_changes.sh` | lup.providers.roster_prompt |
@@ -146,7 +147,7 @@ The repository-wide artifacts written outside every runtime tree — the rule an
 | `docs/template.md` | lup_template.harness.content.docs.template |
 | `docs/upstream-reports.md` | lup.harness.content.docs.upstream_reports |
 
-## `codex` — 113 artifacts
+## `codex` — 114 artifacts
 
 | Generated path | Compiled from |
 | --- | --- |
@@ -160,7 +161,8 @@ The repository-wide artifacts written outside every runtime tree — the rule an
 | `.codex/plugins/lup/TEMPLATE_AGENTS.md` | lup_template.harness.content.template_codex |
 | `.codex/plugins/lup/hooks/hooks.json` | hooks.lup-policy |
 | `.codex/plugins/lup/hooks/runtime/caller_payload.py` | lup.providers.codex.assets.caller_payload |
-| `.codex/plugins/lup/hooks/runtime/carrier_drift.py` | lup.devtools.dev.drift_fold |
+| `.codex/plugins/lup/hooks/runtime/carrier_drift.py` | lup.providers.assets.drift_fold |
+| `.codex/plugins/lup/hooks/runtime/cleanup_payload.py` | lup.providers.codex.assets.subagent_cleanup |
 | `.codex/plugins/lup/hooks/runtime/codex_patch.py` | lup.providers.codex.patch |
 | `.codex/plugins/lup/hooks/runtime/coordination/__init__.py` | lup.coordination.bare.__init__ |
 | `.codex/plugins/lup/hooks/runtime/coordination/arrival.py` | lup.coordination.bare.arrival |
@@ -210,7 +212,7 @@ The repository-wide artifacts written outside every runtime tree — the rule an
 | `.codex/plugins/lup/hooks/runtime/kernel/words.py` | lup.policy.kernel.words |
 | `.codex/plugins/lup/hooks/runtime/policy_data.py` | lup.policy.bundle |
 | `.codex/plugins/lup/hooks/runtime/session_naming.py` | lup.providers.codex.assets.session_naming |
-| `.codex/plugins/lup/hooks/runtime/subagent_cleanup.py` | lup.providers.codex.assets.subagent_cleanup |
+| `.codex/plugins/lup/hooks/runtime/subagent_cleanup.py` | lup.providers.subagent_cleanup |
 | `.codex/plugins/lup/hooks/scripts/carrier_drift.sh` | lup.providers.drift_prompt |
 | `.codex/plugins/lup/hooks/scripts/coordination_arrival.sh` | lup.providers.roster_prompt |
 | `.codex/plugins/lup/hooks/scripts/coordination_caller.sh` | lup.providers.coordination_caller |

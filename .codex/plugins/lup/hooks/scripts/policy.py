@@ -2923,9 +2923,11 @@ def publish_edition(path_text: str, session: str) -> None:
     repository nested in the checkout, or one anywhere else — would have it
     written into that repository's git directory, read by nobody.
 
-    The rename is the whole guarantee, and the temporary is dot-prefixed, for
-    the reasons ``lup.channels.models.write_atomic`` gives. This cannot call
-    that one: it is compiled into a bare script with no ``lup`` to import.
+    The rename is the whole guarantee, and the temporary is dot-prefixed and
+    named for this write alone, for the reasons
+    ``lup.channels.models.write_atomic`` gives: two sessions editing at once
+    would otherwise truncate each other's staging file. This cannot call that
+    one: it is compiled into a bare script with no ``lup`` to import.
     """
     root = worktree_root(path_text)
     shared = shared_git_directory(path_text)
@@ -2935,11 +2937,17 @@ def publish_edition(path_text: str, session: str) -> None:
     record = json.dumps(
         {"workspace": root, "file": str(Path(path_text).resolve())}, indent=2
     )
-    temporary_path = destination.with_name(f".{destination.name}.tmp")
+    temporary_path = destination.with_name(
+        f".{destination.name}.{os.urandom(8).hex()}.tmp"
+    )
     try:
         destination.parent.mkdir(parents=True, exist_ok=True)
-        temporary_path.write_text(record + "\n", encoding="utf-8")
-        temporary_path.replace(destination)
+        try:
+            with temporary_path.open("x", encoding="utf-8") as staged:
+                staged.write(record + "\n")
+            temporary_path.replace(destination)
+        finally:
+            temporary_path.unlink(missing_ok=True)
     except OSError as error:
         print(f"lup: could not publish the edition: {error}", file=sys.stderr)
 

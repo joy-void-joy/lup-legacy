@@ -36,10 +36,9 @@ from lup.providers.codex.app_server import (
     RpcMessage,
     RpcNotification,
     RpcRequest,
-    native_environment,
 )
 from lup.types import JsonObject, JsonValue
-from lup.harness.environment import tool_server_env
+from lup.harness.environment import inherited, tool_server_env
 from lup.mcp import Coordination
 from tests.unit.native import bound
 
@@ -167,7 +166,7 @@ async def test_browser_answer_starts_an_idle_codex_turn_through_the_relay(
                 "app-server",
                 "--listen",
                 "unix://",
-                env=native_environment(
+                env=inherited(
                     {
                         "CODEX_HOME": str(home),
                         MEMBER_ENV: "recipient",

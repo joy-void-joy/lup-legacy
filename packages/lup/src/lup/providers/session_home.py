@@ -27,6 +27,7 @@ from pathlib import Path
 
 from pydantic import BaseModel
 
+from lup.workspace.checkout_state import CheckoutState
 from lup.workspace.paths import declared_project_root
 
 
@@ -38,7 +39,7 @@ class SessionHomeLayout(BaseModel, frozen=True):
     their own. Named by the runtime that spells them, because which file a
     startup rewrites is that runtime's own fact and no portable one."""
 
-    derived_dir: Path = Path(".lup") / "sessions"
+    derived_dir: Path = CheckoutState(root=Path()).sessions()
     """Where under the checkout the derived homes are kept.
 
     In the checkout, not under the shared home. A derived home is lup's own

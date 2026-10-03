@@ -68,7 +68,6 @@ from lup.harness.requirements import LostCapability, Requirement, Run
 from lup.harness.materialization import (
     AtomicMaterializer,
     MaterializationConflictError,
-    discard_staged_write,
     refused_write,
 )
 from lup.harness.validation import validated_tree
@@ -113,12 +112,12 @@ from lup.harness.models import (
     document_byte_size,
 )
 from lup.harness.contracts import PromptRenderer
+from lup.formats import digest
 from lup.formats.markdown import CodeCell, PlainCell, ProseCode, ProseStrong
 from lup.harness.ownership import (
     OwnershipManifest,
     OwnershipManifestError,
     build_manifest,
-    content_digest,
     generated_artifacts,
     load_manifest,
     save_manifest,
@@ -1546,13 +1545,13 @@ def test_reconciliation_preserves_local_and_sensitive_collisions(
                 path=Path("local.txt"),
                 content=local_content,
                 category="local_only",
-                sha256=content_digest(local_content),
+                sha256=digest.text(local_content),
             ),
             CurrentArtifact(
                 path=Path("secret.txt"),
                 content="",
                 category="sensitive_local_only",
-                sha256=content_digest(secret_content),
+                sha256=digest.text(secret_content),
             ),
         ],
     )
@@ -1583,7 +1582,7 @@ def test_materialization_rejects_stale_base(tmp_path: Path) -> None:
                 path=Path("owned.txt"),
                 content="old\n",
                 category="generated",
-                sha256=content_digest("old\n"),
+                sha256=digest.text("old\n"),
             )
         ],
     )
@@ -1598,7 +1597,7 @@ def test_materialization_rejects_stale_base(tmp_path: Path) -> None:
 
 
 def test_a_refused_write_names_the_boundary_and_drops_its_staging(
-    tmp_path: Path,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """A runtime protects its own configuration by mounting it, not by mode.
 
@@ -1606,15 +1605,38 @@ def test_a_refused_write_names_the_boundary_and_drops_its_staging(
     busy device — an errno about hardware, which sends a reader looking at
     the disk instead of at the boundary that actually decided.
     """
-    staged = tmp_path / ".settings.json.abc123.tmp"
-    staged.write_text("staged\n", encoding="utf-8")
-    error = OSError(errno.EBUSY, "Device or resource busy", str(staged))
-    error.filename2 = str(tmp_path / "settings.json")
+    path = tmp_path / "settings.json"
+    path.write_text("old\n", encoding="utf-8")
+    current = CurrentTree(
+        root=tmp_path,
+        artifacts=[
+            CurrentArtifact(
+                path=Path("settings.json"),
+                content="old\n",
+                category="generated",
+                sha256=digest.text("old\n"),
+            )
+        ],
+    )
+    desired = ArtifactTree(
+        artifacts=[
+            Artifact(path=Path("settings.json"), content="new", semantic_id="owned")
+        ]
+    )
+    proposal = DeterministicReconciler().propose(current, desired)
 
-    discard_staged_write(error)
-    refusal = str(refused_write(error))
+    def busy(staged: Path, target: Path) -> Path:
+        raise OSError(
+            errno.EBUSY, "Device or resource busy", str(staged), None, str(target)
+        )
 
-    assert not staged.exists()
+    monkeypatch.setattr(Path, "replace", busy)
+    with pytest.raises(OSError) as refused:
+        AtomicMaterializer().apply(proposal)
+    monkeypatch.undo()
+    refusal = str(refused_write(refused.value))
+
+    assert [held.name for held in tmp_path.iterdir()] == ["settings.json"]
     assert "settings.json" in refusal and ".tmp" not in refusal
     assert "sandbox" in refusal
 
@@ -1651,7 +1673,7 @@ def test_exact_generated_content_can_acquire_first_ownership(tmp_path: Path) -> 
                 path=Path("new.txt"),
                 content=content,
                 category="unknown_conflict",
-                sha256=content_digest(content),
+                sha256=digest.text(content),
             )
         ],
     )
@@ -1674,7 +1696,7 @@ def test_interrupted_exact_write_can_reacquire_prior_ownership(tmp_path: Path) -
                 path=Path("owned.txt"),
                 content=content,
                 category="backpropagation_candidate",
-                sha256=content_digest(content),
+                sha256=digest.text(content),
             )
         ],
     )
@@ -1700,7 +1722,7 @@ def test_an_owned_path_the_generator_disagrees_with_is_regenerated(
                 path=Path("owned.txt"),
                 content="what a merge left behind\n",
                 category="backpropagation_candidate",
-                sha256=content_digest("what a merge left behind\n"),
+                sha256=digest.text("what a merge left behind\n"),
             )
         ],
     )
@@ -1737,7 +1759,7 @@ def test_native_override_does_not_silently_reown_backpropagation(
                 path=Path("owned.txt"),
                 content=content,
                 category="backpropagation_candidate",
-                sha256=content_digest(content),
+                sha256=digest.text(content),
             )
         ],
     )
@@ -2911,7 +2933,7 @@ def test_proven_obsolete_deletion_is_proposed_and_executed(tmp_path: Path) -> No
                 path=Path("obsolete.txt"),
                 content="stale output\n",
                 category="generated",
-                sha256=content_digest("stale output\n"),
+                sha256=digest.text("stale output\n"),
             )
         ],
     )
@@ -2938,7 +2960,7 @@ def test_deletion_prunes_the_directories_it_empties(tmp_path: Path) -> None:
                 path=Path("skills/gone/SKILL.md"),
                 content="stale skill\n",
                 category="generated",
-                sha256=content_digest("stale skill\n"),
+                sha256=digest.text("stale skill\n"),
             )
         ],
     )
@@ -2962,7 +2984,7 @@ def test_deletion_with_changed_ownership_proof_is_refused(tmp_path: Path) -> Non
                 path=Path("obsolete.txt"),
                 content="stale output\n",
                 category="generated",
-                sha256=content_digest("stale output\n"),
+                sha256=digest.text("stale output\n"),
             )
         ],
     )
@@ -2985,7 +3007,7 @@ def test_materialization_rejects_stale_executable_mode(tmp_path: Path) -> None:
                 path=Path("hook.py"),
                 content="pass\n",
                 category="generated",
-                sha256=content_digest("pass\n"),
+                sha256=digest.text("pass\n"),
                 executable=False,
             )
         ],
@@ -3124,7 +3146,7 @@ def test_exact_content_adoption_still_corrects_executable_drift(
                 path=Path("hook.sh"),
                 content=content,
                 category="unknown_conflict",
-                sha256=content_digest(content),
+                sha256=digest.text(content),
                 executable=False,
             )
         ],
@@ -3145,7 +3167,7 @@ def test_exact_content_adoption_still_corrects_executable_drift(
     assert proposal.conflicts == []
     assert [
         (write.previous_sha256, write.previous_executable) for write in proposal.writes
-    ] == [(content_digest(content), False)]
+    ] == [(digest.text(content), False)]
     assert proposal.writes[0].artifact.executable
 
 

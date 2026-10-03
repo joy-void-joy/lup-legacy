@@ -11,7 +11,6 @@ generates regenerated. What it reads only here, the registrations in
 `sync.json.local`, becomes the declaration's mounts and devices.
 """
 
-import os
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from pathlib import Path
@@ -58,7 +57,7 @@ from lup.launch.declaration import (
 from lup.launch.refusal import LaunchRefused
 from lup.launch.session import StandingGrants, personal_config
 from lup.observability.sessions import SessionRecorder
-from lup.providers.runtime_homes import selected_runtime
+from lup.harness.environment import Placement
 from lup.providers.claude import Claude, ClaudeTools
 from lup.providers.claude.harness import ClaudeSpellings
 from lup.providers.claude.launch import companion_plugin_directories
@@ -158,10 +157,9 @@ def relocation_hint(worktree_path: Path) -> RelocationHint:
     tool, and a workflow change having to find both to land. One of them
     being an adapter method makes that impossible.
     """
-    environ = os.environ  # lup: ignore[os-environ]
     move = f"cd /; cd {worktree_path}"
     here = "the path above"
-    match selected_runtime(dict(environ)):
+    match Placement.here().runtime:
         case "claude":
             return RelocationHint(
                 agent=ClaudeSpellings().relocate_session(here),

@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Literal
 
 from pydantic import AnyHttpUrl, BaseModel, SecretStr
 
+from lup.channels.models import utc_now
 from lup.providers.claude import ClaudeCompatibleEndpoint
 from lup.launch.declaration import InnerSandbox, NoSandbox
 from lup.providers.claude.config import ClaudeCompatibilityTransform
@@ -443,7 +444,7 @@ def decorate_factory(
                 trace_logger.emit_event(
                     TraceEvent(
                         kind="error",
-                        timestamp=datetime.now().isoformat(),
+                        timestamp=utc_now().isoformat(),
                         brief=record.failure.message,
                     )
                 )
@@ -819,7 +820,7 @@ def application_result(
         agent_version=agent_version(),
         agent_sdk=engine_for_settings(),
         sdk_session_id=result.identifiers.session.value,
-        timestamp=datetime.now().isoformat(),
+        timestamp=utc_now().isoformat(),
         output=result.output,
         reasoning=result_text(result),
         sources_consulted=result_sources(result),

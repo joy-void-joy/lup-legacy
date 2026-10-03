@@ -17,6 +17,7 @@ import typer
 
 from lup.devtools.clipboard import ClipboardImage, clipboard_image, clipboard_text
 from lup.observability.display import format_duration
+from lup.workspace.checkout_state import CheckoutState
 from lup_template.agent.config import settings
 from lup_template.devtools.agent.serve import collect_registry_tools
 
@@ -258,7 +259,7 @@ async def repl(
             parts.append(f"${session_cost:.4f}")
         return FormattedText([("class:rprompt", " · ".join(parts))])
 
-    history_dir = project_root() / ".lup"
+    history_dir = CheckoutState(root=project_root()).directory()
     history_dir.mkdir(parents=True, exist_ok=True)
 
     # Key bindings: Enter submits, Alt+Enter inserts newline
@@ -341,7 +342,9 @@ async def repl(
 
                     console.print("[dim]thinking...[/dim]")
                     if pending_images:
-                        images_dir = project_root() / ".lup" / "images"
+                        images_dir = (
+                            CheckoutState(root=project_root()).directory() / "images"
+                        )
                         saved = save_images(pending_images, images_dir)
                         path_list = ", ".join(str(p) for p in saved)
                         query_text = (stripped + "\n\n" if stripped else "") + (

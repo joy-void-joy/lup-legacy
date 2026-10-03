@@ -45,7 +45,7 @@ from lup.observability.sessions import (
     SessionRecorder,
     spelled_under,
 )
-from lup.observability.trace import TraceEvent, read_trace_events
+from lup.observability.trace import TraceEvent, trace_events
 from lup.workspace.history import (
     iter_run_dirs,
     iter_session_dirs,
@@ -176,8 +176,8 @@ def trace_outcome(journal: Path | None) -> Outcome:
     sidecar = journal.with_suffix(".events.jsonl") if journal is not None else None
     if sidecar is None or not sidecar.is_file():
         return "interrupted"
-    match read_trace_events(sidecar)[-1:]:
-        case [TraceEvent(kind="error")]:
+    match trace_events(sidecar).last():
+        case TraceEvent(kind="error"):
             return "failed"
         case _:
             return "completed"

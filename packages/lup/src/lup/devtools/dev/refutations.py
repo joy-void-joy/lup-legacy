@@ -19,13 +19,13 @@ the last answer is still about the same code.
 """
 
 import ast
-import hashlib
 import json
 from collections import deque
 from pathlib import Path
 
 from pydantic import BaseModel, ValidationError
 
+from lup.formats import digest
 from lup.harness.codescan.common import AntiPattern, PythonSource, Refutation
 from lup.harness.codescan.oracle import TypeOracle
 from lup.harness.codescan.resolution import refute
@@ -134,19 +134,6 @@ def import_closure(start: str, imports: dict[str, list[str]]) -> list[str]:
     return sorted(reached)
 
 
-def digest_of(parts: list[str]) -> str:
-    """One digest over an ordered list of strings, each length-delimited.
-
-    Delimited so no two different lists can digest alike: joined on a
-    separator, a part containing that separator forges its neighbour.
-    """
-    running = hashlib.sha256()
-    for part in parts:
-        running.update(f"{len(part)}\0".encode())
-        running.update(part.encode("utf-8"))
-    return running.hexdigest()
-
-
 def environment_fingerprint(rules: list[AntiPattern], root: Path) -> str:
     """What the checker resolves against, beyond this repository's own text.
 
@@ -164,14 +151,14 @@ def environment_fingerprint(rules: list[AntiPattern], root: Path) -> str:
         locked = (root / "uv.lock").read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError):
         locked = ""  # unlocked is a state of its own, and every entry shares it
-    return digest_of(
+    return digest.parts(
         [
             *(
                 f"{rule.id}:{rule.family.name}:{','.join(rule.family.classes)}"
                 for rule in rules
                 if rule.family is not None
             ),
-            hashlib.sha256(locked.encode("utf-8")).hexdigest(),
+            digest.text(locked),
         ]
     )
 
@@ -186,9 +173,9 @@ def entry_keys(sources: list[PythonSource], fingerprint: str) -> StringMap:
     dependency, named at the size of a digest instead of the size of a file.
     """
     imports = first_party_imports(sources)
-    texts = {source.module: digest_of([source.text]) for source in sources}
+    texts = {source.module: digest.parts([source.text]) for source in sources}
     return {
-        source.path.as_posix(): digest_of(
+        source.path.as_posix(): digest.parts(
             [
                 fingerprint,
                 *(

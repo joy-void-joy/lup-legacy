@@ -21,15 +21,14 @@ from lup.coordination.repository import RepositoryPeers
 from lup.harness.environment import Placement
 from lup.launch.companions import lent_by_a_companion
 from lup.launch.environments import revisions_home
-from lup.providers.user_config import UserConfigHome
 from lup.sandbox.known import (
     answers_directory,
     known_repositories,
     remember,
-    store_directory,
 )
 from lup.sandbox.pointers import Verdict, refusal, unvouchable, verdict, vouched_from
 from lup.sandbox.rail import Lease
+from lup.workspace.user_directories import UserDirectories
 
 
 class Trust(BaseModel, frozen=True):
@@ -66,12 +65,12 @@ def host_only_directories() -> list[HostOnly]:
     """
     return [
         HostOnly(
-            path=store_directory(),
+            path=UserDirectories().state(),
             holds="lup's launcher state, its store of trusted repositories among it",
             moved_by="XDG_STATE_HOME",
         ),
         HostOnly(
-            path=UserConfigHome().directory(),
+            path=UserDirectories().config(),
             holds="your lup config, each profile's account and credentials among it",
             moved_by="XDG_CONFIG_HOME",
         ),

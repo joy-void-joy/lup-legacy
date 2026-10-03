@@ -8,13 +8,13 @@ and simply has no legend to draw.
 """
 
 import asyncio
-import os
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import sh
 from pydantic import ValidationError
 
+from lup.harness.environment import inherited
 from lup.providers.codex.harness import CodexSpellings
 from lup.providers.codex.login import CODEX_LOGIN
 from lup.providers.profile_tree import profile_directory
@@ -161,7 +161,7 @@ class CodexUsageReader(UsageReader):
         )
         if not detail:
             return report
-        anchor = windows[0].resets_at if windows else datetime.now(timezone.utc)
+        anchor = windows[0].resets_at if windows else datetime.now(UTC)
         return report.model_copy(update={"daily": days_from(usage, anchor)})
 
 
@@ -185,9 +185,8 @@ def codex_usage_entry(
             home = directory.launch_home(profile)
         except (DefaultHomeProfile, UnknownProfile) as refusal:
             raise UsageUnavailable(str(refusal)) from refusal
-        # lup: ignore[os-environ] — the environment an unnamed profile inherits
-        inherited = directory.login.selected_home(dict(os.environ))
-        return CodexUsageReader(executable, home if home is not None else inherited)
+        unnamed = directory.login.selected_home(inherited())
+        return CodexUsageReader(executable, home if home is not None else unnamed)
 
     return UsageEntry(
         name="codex",

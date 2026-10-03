@@ -3,12 +3,12 @@
 import json
 import os
 from pathlib import Path
-from tempfile import NamedTemporaryFile
 
 import typer
 import sh
 from pydantic import BaseModel, TypeAdapter, ValidationError
 
+from lup.channels.models import ChannelConflictError, write_atomic
 from lup.execution.git import GitError, Repository
 from lup.launch.preflight import NONCE_VARIABLE, ledger_path
 from lup.policy.snapshots import DestinationPolicy, RepositoryPolicyAuthority
@@ -87,7 +87,7 @@ def refresh_destination_policy(
         raise ValueError("The launch nonce must be a single ledger name")
     path = ledger_path(root, nonce)
     adapter = TypeAdapter(dict[str, list[str]])
-    captured = path.read_text(encoding="utf-8")
+    captured = path.read_bytes()
     document = PolicyLaunchLedger.model_validate(adapter.validate_json(captured))
     policies = [
         DestinationPolicy.model_validate_json(row)
@@ -112,15 +112,16 @@ def refresh_destination_policy(
         (accepted if row.checkout == checkout else row).model_dump_json()
         for row in policies
     ] + ([accepted.model_dump_json()] if not matches else [])
-    with NamedTemporaryFile(
-        "w", encoding="utf-8", dir=path.parent, delete=False
-    ) as staged:
-        json.dump(document.model_dump(), staged, indent=2)
-        replacement = Path(staged.name)
-    if path.read_text(encoding="utf-8") != captured:
-        replacement.unlink()
-        raise ValueError("The launch ledger changed during refresh; read it and retry")
-    replacement.replace(path)
+    try:
+        write_atomic(
+            path,
+            json.dumps(document.model_dump(), indent=2).encode("utf-8"),
+            expected=captured,
+        )
+    except ChannelConflictError as changed:
+        raise ValueError(
+            "The launch ledger changed during refresh; read it and retry"
+        ) from changed
     return accepted
 
 

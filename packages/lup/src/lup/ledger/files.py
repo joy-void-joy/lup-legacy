@@ -16,24 +16,16 @@ owes; it says what bytes a path held, which every project's files have in
 common and no project would answer differently.
 """
 
-from hashlib import sha256
 from pathlib import Path
 from typing import Literal, Self
 
 from pydantic import Field, model_validator
 
+from lup.formats import digest
 from lup.ledger.models import LedgerNode, Standing, Surroundings
 
 
-def digest_of(path: Path) -> str:
-    """The content digest of one file, or nothing where there is no file."""
-    try:
-        return sha256(path.read_bytes()).hexdigest()
-    except OSError:
-        return ""
-
-
-def pinned(held_at: Path, spelled: str, digest: str) -> Standing:
+def pinned(held_at: Path, spelled: str, recorded: str) -> Standing:
     """Where a path pinned to a digest stands now: fresh, stale, or missing.
 
     The one reading every pinned kind shares — a file, a session's journal,
@@ -41,12 +33,12 @@ def pinned(held_at: Path, spelled: str, digest: str) -> Standing:
     reader, so the words for stale and missing are the same wherever a
     digest rots.
     """
-    held = digest_of(held_at)
-    if not held:
+    held = digest.file(held_at)
+    if held is None:
         return Standing(
             label="missing", reason=f"{spelled} is not in the tree", sound=False
         )
-    if held != digest:
+    if held != recorded:
         return Standing(
             label="stale",
             reason=f"{spelled} changed since it was recorded",
@@ -82,7 +74,7 @@ class File(LedgerNode, frozen=True):
         """
         if self.digest:
             return self
-        return self.model_copy(update={"digest": digest_of(root / self.path)})
+        return self.model_copy(update={"digest": digest.file(root / self.path) or ""})
 
     def standing(self, around: Surroundings) -> Standing:
         """Fresh while the tree holds the recorded bytes; stale or missing once it does not.

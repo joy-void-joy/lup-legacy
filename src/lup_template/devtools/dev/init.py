@@ -28,6 +28,7 @@ import typer
 from pydantic import BaseModel
 
 from lup.workspace.paths import project_root
+from lup.formats.toml import edited_manifest
 from lup.devtools.dev.documented import generated_files
 from lup.devtools.dev.library import VENDORED_ROOT
 from lup.devtools.dev.plugin import set_marketplace_name
@@ -274,15 +275,15 @@ def clear_scaffold_flag(path: Path, dry_run: bool) -> list[str]:
             start -= 1
         del body[start : index + 1]
 
-    document = tomlkit.parse(path.read_text())
-    match document:
-        case {"tool": {"lup": {"template": _} as lup}}:
-            drop_with_preamble(lup.value, "template")
-        case _:
-            return []
-    if not dry_run:
-        path.write_text(tomlkit.dumps(document))
-    return ["  scaffold flag: cleared — dev check now lists open decisions"]
+    def cleared(document: tomlkit.TOMLDocument) -> list[str]:
+        match document:
+            case {"tool": {"lup": {"template": _} as lup}}:
+                drop_with_preamble(lup.value, "template")
+                return ["  scaffold flag: cleared — dev check now lists open decisions"]
+            case _:
+                return []
+
+    return edited_manifest(path, cleared, write=not dry_run)
 
 
 def drop_stale_metadata(

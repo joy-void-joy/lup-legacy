@@ -39,6 +39,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from lup.channels.models import aware
 from lup.coordination.identity import mint_member_id
 from lup.coordination.refs import ActorRef
 from lup.coordination.rendering import GROUPS, task_line, user_tasks
@@ -330,8 +331,7 @@ def spelled_moment(moment: datetime) -> str:
     A naive moment is read as local time, which is what a writer that spelled
     one meant by it, and every row is shown on one clock so two rows compare.
     """
-    aware = moment if moment.tzinfo is not None else moment.astimezone()
-    return f"{aware.astimezone(UTC):%Y-%m-%d %H:%M:%S}Z"
+    return f"{aware(moment).astimezone(UTC):%Y-%m-%d %H:%M:%S}Z"
 
 
 class Band(BaseModel, frozen=True):
@@ -360,8 +360,7 @@ class Entry(BaseModel, frozen=True):
 
     def moment(self) -> datetime:
         """When the row sits, aware and in UTC, so rows from either kind of clock order together."""
-        aware = self.when if self.when.tzinfo is not None else self.when.astimezone()
-        return aware.astimezone(UTC)
+        return aware(self.when).astimezone(UTC)
 
 
 class Placed(BaseModel, frozen=True):

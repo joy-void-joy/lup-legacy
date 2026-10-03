@@ -56,7 +56,12 @@ from lup.providers.claude.harness import (
     CLAUDE_SUBAGENT_STOP_EVENT,
 )
 from lup.providers.roster_prompt import store_modules
-from lup.providers.subagent_cleanup import GUARD_SCRIPT, RUNTIME_ENTRY, cleanup_hooks
+from lup.providers.subagent_cleanup import (
+    GUARD_SCRIPT,
+    HOST_MODULE,
+    RUNTIME_ENTRY,
+    cleanup_hooks,
+)
 from lup_template.harness.catalog import portable_harness
 from lup_template.harness.composition import claude_target, codex_target
 
@@ -154,6 +159,10 @@ def laid_out(
         (
             Path("hooks") / "runtime" / RUNTIME_ENTRY,
             artifacts[plugin / "hooks" / "runtime" / RUNTIME_ENTRY].content,
+        ),
+        (
+            Path("hooks") / "runtime" / f"{HOST_MODULE}.py",
+            artifacts[plugin / "hooks" / "runtime" / f"{HOST_MODULE}.py"].content,
         ),
         # The entry reads this project's own gate spellings out of it, the way
         # the compiled dispatcher beside it reads every other declared value.

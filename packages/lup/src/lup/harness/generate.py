@@ -32,7 +32,6 @@ from lup.harness.evidence import WireContract
 from lup.harness.materialization import (
     AtomicMaterializer,
     MaterializationRefusedError,
-    discard_staged_write,
     held_read_only,
     mounted_read_only,
     refused_write,
@@ -591,7 +590,6 @@ def generate(recipe: GenerationRecipe) -> GenerationReport:
     try:
         result = AtomicMaterializer().apply(proposal)
     except OSError as error:
-        discard_staged_write(error)
         raise refused_write(error) from error
     manifest = manifest_of(recipe)
     save_manifest(recipe.manifest_path, manifest)
