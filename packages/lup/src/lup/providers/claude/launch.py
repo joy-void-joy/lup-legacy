@@ -24,7 +24,7 @@ from lup.harness.toolchain import bubblewrap_requirement, socat_requirement
 from lup.launch.boundary import apply_sandbox_environment
 from lup.launch.companions import CompanionLaunch, Joined, StatusLine, held_companions
 from lup.launch.compilation import allowance_environment, inherited_environment
-from lup.launch.config_volume import HomeSeedPlaces
+from lup.launch.config_volume import HomeSeedPlaces, LoginOwner
 from lup.launch.declaration import (
     LaunchCommand,
     LaunchStep,
@@ -746,6 +746,11 @@ def claude_opening(
         [bubblewrap_requirement(), socat_requirement()],
         sandbox=posture,
     )
+    # A Claude home is its account's own, so the home this opens in is the
+    # account it runs on, and the one it hands a contained session's volume.
+    owner = LoginOwner(
+        home=CLAUDE_LOGIN.selected_home(environment), profile=config.profile
+    )
     argv = session_argv(
         str(config.cli_path or "claude"),
         arguments,
@@ -777,6 +782,8 @@ def claude_opening(
             else []
         ),
         overlays=claude_guidance(root, config.sandbox),
+        owner=owner,
+        moving="move" if config.move_sessions else "refuse",
     )
     return LaunchCommand(argv=argv, env=environment, cwd=root)
 

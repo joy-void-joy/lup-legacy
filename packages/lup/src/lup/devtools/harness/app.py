@@ -723,6 +723,16 @@ def create_harness_app(
                     "over its own declaration",
                 ),
             ] = None,
+            move_sessions: Annotated[
+                bool,
+                typer.Option(
+                    "--move-sessions",
+                    help="Hand this profile's login to the repository's "
+                    "container volume even where running contained sessions "
+                    "use another's, moving each onto it at its next request; "
+                    "without it such a launch is refused",
+                ),
+            ] = False,
         ) -> None:
             selected = launch.selected_mode(modes, mode)
             request = launch.LaunchArguments(
@@ -745,6 +755,7 @@ def create_harness_app(
                 relaxed=ignore_antipatterns,
                 mode=selected,
                 recorder=recorder_for("claude"),
+                move_sessions=move_sessions,
             )
             allowance = request.allowance("claude")
             launch.launch_claude(
@@ -1002,6 +1013,16 @@ def create_harness_app(
                     "over its own declaration",
                 ),
             ] = None,
+            move_sessions: Annotated[
+                bool,
+                typer.Option(
+                    "--move-sessions",
+                    help="Hand this profile's login to the repository's "
+                    "container volume even where running contained sessions "
+                    "use another's; each keeps its own until it is opened "
+                    "again. Without it such a launch is refused",
+                ),
+            ] = False,
         ) -> None:
             selected = launch.selected_mode(modes, mode)
             request = launch.LaunchArguments(
@@ -1024,6 +1045,7 @@ def create_harness_app(
                 relaxed=ignore_antipatterns,
                 mode=selected,
                 recorder=recorder_for("codex"),
+                move_sessions=move_sessions,
             )
             allowance = request.allowance("codex")
             launch.launch_codex(

@@ -20,6 +20,9 @@ CLAUDE_LOGIN = ProviderLogin(
         '(.claudeAiOauth.refreshToken // "") != ""'
         " and .claudeAiOauth.refreshTokenExpiresAt > (now * 1000)"
     ),
+    # Measured on Claude Code 2.1.285: a running session moved between a real
+    # login, an invalid one and none, turn by turn, as its home's file changed.
+    rereads_login=True,
     ambient_home=Path.home() / ".claude",
     ambient_home_nameable=False,
     editor_lockfiles="ide",

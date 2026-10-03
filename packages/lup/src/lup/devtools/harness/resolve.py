@@ -106,6 +106,7 @@ from lup.devtools.dev.worktree import (
     copy_gitignored_extras,
     sync_dependencies,
 )
+from lup.launch.config_volume import HandedLogin, LoginOwner
 from lup.launch.container import (
     engine_absence,
     worker_cli,
@@ -1748,6 +1749,13 @@ def run_resolve(
             login = CLAUDE_LOGIN if adapter == "claude" else CODEX_LOGIN
             config_home = login.selected_home(environment)
             credential = login.credentials_path(config_home)
+            # The run's account, rather than the home derived from it for this
+            # workspace: the account is what the repository's volume compares.
+            owner = LoginOwner(
+                home=profile_directory(login).launch_home(account.name)
+                or login.selected_home(session_environment),
+                profile=account.name,
+            )
             return worker_cli(
                 worker_wrapper_path(state_root / resolved_run_id, concern_id, actor),
                 harness.image,
@@ -1758,7 +1766,9 @@ def run_resolve(
                 # container would widen the boundary for a channel nothing
                 # on either side of it reads.
                 None,
-                credential if credential.exists() else None,
+                HandedLogin(credential=credential, owner=owner)
+                if credential.exists()
+                else None,
                 login,
                 program=actor_program,
                 read_only=read_only,

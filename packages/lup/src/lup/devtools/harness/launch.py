@@ -371,6 +371,7 @@ class StatedLaunch(TypedDict, total=False):
     resume: Resume
     max_recursive_agent: int
     record: Recording
+    move_sessions: bool
 
 
 class LaunchArguments(BaseModel, frozen=True, arbitrary_types_allowed=True):
@@ -406,6 +407,9 @@ class LaunchArguments(BaseModel, frozen=True, arbitrary_types_allowed=True):
     relaxed: bool = False
     mode: LaunchMode | None = None
     recorder: SessionRecorder | None = None
+    move_sessions: bool = False
+    """``--move-sessions``: hand a contained session's login to its
+    repository's volume even where running sessions there use another's."""
 
     def allowance(self, runtime: str) -> int:
         """The recursive-agent allowance: the flag's, else the mode's, else no limit."""
@@ -479,6 +483,8 @@ class LaunchArguments(BaseModel, frozen=True, arbitrary_types_allowed=True):
             stated["max_recursive_agent"] = self.max_recursive_agent
         if self.transcribe_session:
             stated["record"] = Recording(transcript=True)
+        if self.move_sessions:
+            stated["move_sessions"] = True
         return stated
 
     def refuse_hosted_mode(self, posture: LaunchSandbox, runtime: str) -> None:

@@ -77,11 +77,15 @@ from lup.launch.environments import (
     sweep_environments,
 )
 from lup.launch.config_volume import (
+    HandedLogin,
+    Handoff,
     HomeFile,
     HomeHelper,
     HomeSeedPlaces,
     RuntimeVolume,
+    VolumeLogins,
     kept_for_superseded,
+    settle_handoff,
     settle_home_seed,
     split_config_volumes,
     sweep_superseded,
@@ -1792,7 +1796,7 @@ def contained_argv(
     manifest: Manifest,
     root: Path,
     editor_rendezvous: Path | None,
-    credential: Path | None,
+    credential: HandedLogin | None,
     login: ProviderLogin,
     engine: ContainerEngine | None = None,
     streams: SessionStreams = "terminal",
@@ -1810,6 +1814,14 @@ def contained_argv(
     overlays: Mapping[Path, str] | None = None,
 ) -> list[str]:
     """The argv that opens a session in this project's container.
+
+    ``credential`` is the host login offered to the repository's config
+    volume, and whose it is. Every session running on that volume shares
+    the file it lands in, so one whose account differs from the one the
+    volume was last handed, while a container holding the volume runs, is
+    settled before anything is built: refused, handed anyway, or withheld,
+    as :func:`~lup.launch.config_volume.settle_handoff` says. What was handed
+    is recorded for the next start to compare against.
 
     Refuses rather than degrades when no container client answers: a launch
     that asked for the boundary and silently ran without one is exactly the
@@ -1913,6 +1925,23 @@ def contained_argv(
                 )
             ]
         )
+    # Before anything is built or started, so a start that would move the
+    # sessions running on this repository's volume is refused with nothing of
+    # its own left to undo.
+    logins = VolumeLogins()
+    handoff = (
+        settle_handoff(
+            credential,
+            login,
+            state_volume_name(root, login),
+            client,
+            logins,
+            datetime.now(UTC),
+        )
+        if credential is not None
+        else Handoff()
+    )
+    said.add(handoff.notices)
     bounded = held_memory(memory, client)
     said.add(bounded.notices)
     # Every root this launch mounts, before host git reads any of them -- the
@@ -2090,6 +2119,10 @@ def contained_argv(
                 )
             ]
         )
+    # Recorded once the argv stands, since every argv this returns is run and
+    # its entrypoint applies the login the moment the container starts.
+    if handoff.record is not None:
+        logins.record(handoff.record)
     return image.session_arguments(
         tag=tag,
         checkout=root,
@@ -2102,7 +2135,7 @@ def contained_argv(
         credential_file=login.credentials_file,
         credential_renewable=login.renewable,
         credential_fields=login.credential_fields,
-        credential=credential,
+        credential=handoff.credential,
         editor_rendezvous=editor_rendezvous,
         engine=client,
         forge=forge,
@@ -2228,7 +2261,7 @@ def contained_cli(
     program: str,
     login: ProviderLogin,
     lease: Lease | None = None,
-    credential: Path | None = None,
+    credential: HandedLogin | None = None,
     editor_rendezvous: Path | None = None,
     sentinels: LaunchSentinels = LaunchSentinels(),
     accessible: list[AccessibleRoot] = [],
@@ -2288,7 +2321,7 @@ def worker_cli(
     manifest: Manifest,
     lease_root: Path,
     editor_rendezvous: Path | None,
-    credential: Path | None,
+    credential: HandedLogin | None,
     login: ProviderLogin,
     program: str,
     read_only: bool = False,
