@@ -203,13 +203,13 @@ def windows_from(usage: UsageResponse) -> list[PacingWindow]:
 def spend_from(usage: UsageResponse) -> SpendWindow | None:
     """Overage as dollars, which the endpoint reports in cents."""
     extra = usage.extra_usage
-    if extra is None or not extra.is_enabled:
+    if extra is None or not extra.is_enabled or extra.monthly_limit is None:
         return None
     return SpendWindow(
         label="overage",
-        used=extra.used_credits / 100,
+        used=(extra.used_credits or 0) / 100,
         limit=extra.monthly_limit / 100,
-        utilization_pct=extra.utilization,
+        utilization_pct=extra.utilization or 0,
     )
 
 

@@ -58,9 +58,9 @@ class ExtraUsage(BaseModel, frozen=True, extra="ignore"):
     """Metered spend past the plan, in cents."""
 
     is_enabled: bool = False
-    monthly_limit: float = 0
-    used_credits: float = 0
-    utilization: float = 0
+    monthly_limit: float | None = None
+    used_credits: float | None = None
+    utilization: float | None = None
 
 
 class UsageResponse(BaseModel, frozen=True, extra="ignore"):
