@@ -394,11 +394,10 @@ def carried_out(
             "covers nothing it can check; nothing ran",
             False,
         )
-    if not shown.bound():
+    if unbound := shown.unbound():
         return settled(
             "conflict",
-            "the review changed after it was parked, so its approval covers "
-            "something else; nothing ran",
+            f"{unbound}; its approval covers nothing this can check, so nothing ran",
             False,
         )
     files = edits(shown)
@@ -552,7 +551,10 @@ def settling(
 
     The queue is read again only when the relay or the host's answers to it
     change on disk, so a waiter left running for hours costs a few file
-    checks a poll. It has no limit of its own: only a ``timeout`` it was
+    checks a poll, and each review's state and the remarks on it come from
+    one read of both: a remark appended with the answer it came with is
+    read with that answer, never beside the review still waiting. It has no
+    limit of its own: only a ``timeout`` it was
     handed ends it with reviews still waiting. Every ``announce`` seconds it
     says which it still waits on, so its output shows it alive to whoever
     reads it.
@@ -566,7 +568,6 @@ def settling(
     What each report carries is marked as reported, so the dashboard mails
     nothing beside it.
     """
-    thread = ReviewThread.of(store)
     waiters = ReviewWaiters(root=root)
     watch = PreimageWatch(sources=True)
     remaining = [question.id for question in waiting]
@@ -615,11 +616,12 @@ def settling(
             time.sleep(poll)
             continue
         seen = signature
-        current = {question.id: question for question in store.questions()}
+        reading = store.read()
+        current = {question.id: question for question in reading.questions}
         latest.update(
             {review: current[review] for review in remaining if review in current}
         )
-        remarks = thread.remarks()
+        remarks = reading.threads.remarks
         commented = [
             WaitedReview(
                 review=review,

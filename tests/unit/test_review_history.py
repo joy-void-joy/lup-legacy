@@ -29,7 +29,7 @@ from lup.devtools.review.app import (
     review_retention_days,
 )
 from lup.policy.assets.host import relay_blobs, resolved_entry, review_records
-from lup.policy.relay import PersistentQuestion, QuestionRelay
+from lup.policy.relay import PersistentQuestion, QuestionRelay, RelayReading
 from lup.types import JsonObject
 from tests.unit.native import bound
 from tests.unit.test_dashboard_reviews import AUTHORIZATION, client, parked
@@ -225,10 +225,10 @@ async def test_an_answer_reads_nothing_but_the_review_it_answers(
     store = ReviewStore(roots=(tmp_path,))
     ReviewSnapshot.model_validate(store.snapshot().model_dump())
 
-    def whole(relay: QuestionRelay) -> list[object]:
+    def whole(relay: QuestionRelay) -> RelayReading:
         raise AssertionError("an answer folded the whole queue")
 
-    monkeypatch.setattr(QuestionRelay, "questions", whole)
+    monkeypatch.setattr(QuestionRelay, "read", whole)
     decided = store.answer(
         ReviewSummary.key_for(tmp_path, entry.id),
         ReviewAnswer(approved=True, fingerprint=entry.fingerprint),

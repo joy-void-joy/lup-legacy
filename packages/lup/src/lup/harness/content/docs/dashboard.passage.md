@@ -921,7 +921,13 @@ lends its session read-only and no session writes, under one lock with the
 terminal, so a browser and terminal answering concurrently cannot replace
 each other's answer. An answer is given against the fingerprint the page
 displayed, and a review whose record no longer hashes to its fingerprint is
-refused an answer, the page saying so before Approve is reached for.
+refused an answer, the page saying so before Approve is reached for. It
+names the compiled hook script that parked the review where the record
+says, offers the terminal commands of the checkout keeping it only where
+they run other code than the dashboard's own, and otherwise the
+`review cancel` that lets the session that asked ask again. A review parked
+before a later version added a field to its record still hashes as it was
+parked, and stays answerable (`docs/permissions.md`).
 Notifying the requester follows the saved answer, and a missing route or
 failed delivery does not erase it. Each browser answer retains a separate
 notification outcome in `.lup/review-notifications/`, bound to its question,
