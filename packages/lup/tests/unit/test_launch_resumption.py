@@ -84,7 +84,9 @@ def test_a_contradicted_request_never_reaches_a_runtime(
 
     root = checkout(tmp_path)
     caught = stub_host(monkeypatch, root)
-    contradicted = launch.LaunchRequest(resume=Resumption(pick=True, session="abc123"))
+    contradicted = launch.LaunchArguments(
+        resume=Resumption(pick=True, session="abc123")
+    )
 
     with pytest.raises(typer.BadParameter):
         launch.launch_claude(
@@ -112,7 +114,7 @@ def test_each_reopening_flag_is_the_declarations_resume(
     """``--continue``, ``--resume`` and ``--session`` are one field of the declaration."""
     from lup.devtools.harness import launch
 
-    assert launch.LaunchRequest(resume=resume).reopening() == reopening
+    assert launch.LaunchArguments(resume=resume).reopening() == reopening
 
 
 def test_a_relaxed_launch_says_what_it_retired_and_what_it_did_not(

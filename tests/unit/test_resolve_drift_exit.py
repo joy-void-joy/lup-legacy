@@ -13,7 +13,7 @@ import lup.providers.codex.home as codex_home
 import lup.providers.codex.install as codex_install
 from lup.harness.contracts import SkillInvocationRenderer
 from lup.harness.models import ResolveSpec, SkillInvocation
-from lup.harness.process import LocalProcessLauncher
+from lup.execution.process import LocalProcessLauncher
 from lup.resolver.core import ResolverCore, resolver_config_digest
 from lup.resolver.models import (
     AnswerBatch,

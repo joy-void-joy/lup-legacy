@@ -9,7 +9,7 @@ nothing answers on it"""
 [[steps]]
 instruction = """
 Call WakeSockets.retire(repository, member_id, handle) from \
-lup.harness.messaging where cleared(address) removed a dead socket: ask it \
+lup.harness.wake_sockets where cleared(address) removed a dead socket: ask it \
 only for a member the roster reads as not running, and it answers whether it \
 removed the file, leaving one it cannot ask about where cleared raised \
 UnixSocketRefused. Nothing replaces woken_through: no launch is refused over \

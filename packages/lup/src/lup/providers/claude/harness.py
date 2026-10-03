@@ -164,15 +164,15 @@ class ClaudeSpellings(NativeSpellings):
         worktree was just made and wrong where one was merely found. An
         operator's session holds every checkout writable
         (:func:`lup.sandbox.rail.lease_for`) and meets no such wall. Stated
-        flatly it read as an equal alternative to launching, and an agent
-        following it into a leased sibling spends its next hour discovering
-        the mount.
+        flatly it would read as an equal alternative to launching, and an
+        agent following it into a leased sibling would spend its next hour
+        discovering the mount.
 
         The condition is four words here and a paragraph in
         `docs/contributing.md`, which this instruction's paragraph already
         points at. Not a stylistic split: the scaffold ceiling this renders
-        into leaves an adopting domain its own room, and the guidance sat
-        within twenty-one bytes of that ceiling -- so the words that earn a
+        into leaves an adopting domain its own room, and the guidance runs
+        close to that ceiling -- so the words that earn a
         place here are the ones that stop a wrong move, and the ones that
         explain it belong where there is room to explain.
 
@@ -643,8 +643,8 @@ CLAUDE_CALLER_EVENT = "PreToolUse"
 
 Documented at https://code.claude.com/docs/en/hooks under "PreToolUse" and
 measured on 2.1.283 against a probe tool server: an ``updatedInput`` returned
-with no ``permissionDecision`` replaced an MCP call's arguments before the
-server received them, and every event fired inside a subagent carried its
+with no ``permissionDecision`` replaces an MCP call's arguments before the
+server receives them, and every event fired inside a subagent carries its
 ``agent_id``. The runtime's own spelling of the moment, so not a value a
 project could choose.
 """

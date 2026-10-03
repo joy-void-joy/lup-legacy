@@ -47,8 +47,8 @@ DECLARED = Settings(
         "Skill(lup:hooks)",
         # `EnterWorktree` is deliberately absent, and refused outright in the
         # tool table: entering one arms a wall that refuses fourteen ordinary
-        # shell words for the rest of the session, and the guidance now sends
-        # a session into a worktree by launching it rooted there instead.
+        # shell words for the rest of the session, and the guidance sends a
+        # session into a worktree by launching it rooted there.
         # `ExitWorktree` stays granted for the session that got in anyway —
         # what holds it back is the tool's own refusal on uncommitted files
         # and unmerged commits, which its caller overrides by setting

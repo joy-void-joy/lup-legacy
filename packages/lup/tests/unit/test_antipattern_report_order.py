@@ -1,8 +1,8 @@
 """What `dev check --antipatterns` prints, and in which order.
 
-The listing exists to be acted on. On one adopter it printed 260 refuted and
-unresolved lines ahead of the 85 findings that failed the run, and the agent
-tidying it filtered them out with `grep -v` before it could start.
+The listing exists to be acted on. Printed ahead of the findings that fail
+the run, hundreds of refuted and unresolved lines leave an agent tidying it
+filtering them out with `grep -v` before it can start.
 """
 
 from lup.devtools.dev.antipatterns import (

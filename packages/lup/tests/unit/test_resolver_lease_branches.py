@@ -11,6 +11,7 @@ from pathlib import Path
 
 import pytest
 
+from lup.devtools.dev import records
 from lup.devtools.dev.branches import (
     PRStatus,
     WorktreeChanges,
@@ -20,7 +21,7 @@ from lup.devtools.dev.branches import (
 from lup.devtools.dev.worktree import RecordedBase
 from lup.devtools.report.build import lease_items
 from lup.harness.models import ResolveSpec, SkillInvocation
-from lup.harness.process import LaunchRequest, LocalProcessLauncher
+from lup.execution.process import LaunchRequest, LocalProcessLauncher
 from lup.resolver.models import (
     AcceptanceCriterion,
     Concern,
@@ -285,7 +286,7 @@ def test_dirt_does_not_move_a_branch_that_already_landed() -> None:
 
     A merged branch whose worktree is dirty is still spent: the delete
     refuses until forced rather than becoming a different verb, so reading
-    the dirt must not reach past the one guard it was added for.
+    the dirt must not reach past the one guard it exists for.
     """
     verdict = disposition_for(
         "feat-landed",
@@ -348,16 +349,11 @@ def build_history(root: Path, launcher: LocalProcessLauncher) -> Path:
         return status.stdout.strip()
 
     def reserve(branch: str) -> None:
-        """Cut a branch and record where it stood, in the config keys a clone
-        whose records were never adopted still carries.
-        """
+        """Cut a branch and record where it stood, in its branch record."""
         run(*git_in, "branch", branch)
-        run(*git_in, "config", f"branch.{branch}.lup-base", "dev")
-        run(
-            *git_in,
-            "config",
-            f"branch.{branch}.lup-base-commit",
-            run(*git_in, "rev-parse", branch),
+        reserved = run(*git_in, "rev-parse", branch)
+        records.remember(
+            branch, records.BranchRecord(base="dev", base_commit=reserved), work
         )
 
     run("git", "init", "-b", "dev", str(work))

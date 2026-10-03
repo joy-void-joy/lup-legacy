@@ -230,10 +230,10 @@ way an application's own root does. They are listed rather than sanctioned by
 directory: the engines beside them — generation, drift, reconciliation — read
 a declaration and must stay portable.
 
-The first is the package's front door, and it is why this rule was worth
+The first is the package's front door, and it is why this rule is worth
 having. Something has to name an adapter or nothing is constructible at all,
-and for as long as nothing here did, the naming happened in every example
-instead — the corpus that teaches the library, doing at tier 4 what this rule
+and were nothing here to name one, the naming would happen in every example
+instead — the corpus that teaches the library doing at tier 4 what this rule
 fails the build over everywhere else. Sanctioning the root is what confines
 that to one file a reviewer can read. It defers the import into the call that
 needs it, so naming a constructor is what reaches an adapter and `import lup`
@@ -580,7 +580,7 @@ def unfolded_nodes(tree: ast.AST) -> Iterator[ast.AST]:
     which is quadratic in exactly the long messages this rule exists to read.
 
     Breadth-first, like the `ast.walk` it stands in for, so a file's
-    violations come back in the order they always did.
+    violations come back in the order `ast.walk` gives them.
     """
     pending = deque([tree])
     while pending:
@@ -738,9 +738,10 @@ def default_position_names(
 
     The last two count only where ``argument`` is what a caller hands in: a
     parameter of a function enclosing the expression, or an attribute of one,
-    which is how a model's field reaches its methods. Any operand used to do,
-    so ``something or TABLE`` over a local, a global or a call exempted the
-    table from both rules asking for a default, while no caller could reach it.
+    which is how a model's field reaches its methods. Were any operand to
+    count, ``something or TABLE`` over a local, a global or a call would exempt
+    the table from both rules asking for a default, while no caller could
+    reach it.
     """
     tree = python_tree(text)
     if tree is None:

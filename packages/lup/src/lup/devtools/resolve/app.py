@@ -1,14 +1,14 @@
 """The command tree for a resolver run: driving one, watching it, answering it.
 
 Its own sub-app because a sub-app is a surface of a module, and every command
-here is the resolver's. Thirteen of them sat under ``harness`` and three under
-``dev``, so a project declining the resolver kept all sixteen — it lost the
-three skills and the two pages and went on serving the whole run loop.
+here is the resolver's. Spread across ``harness`` and ``dev``, a project
+declining the resolver would keep every one of them — losing the skills and
+the pages while still serving the whole run loop.
 
-Nesting them under ``harness`` was never about the harness either. A run opens
-native sessions, which is why the launcher and the run driver were written in
-the same file; but what a reader of ``harness resolve`` was being told is that
-answering a parked question is a kind of generation, which it is not.
+Nor do they belong under ``harness``. A run opens native sessions, which is
+why the launcher and the run driver share a file; but ``harness resolve``
+would tell a reader that answering a parked question is a kind of
+generation, which it is not.
 """
 
 from collections.abc import Callable
@@ -297,8 +297,8 @@ def create_resolve_app(
             typer.Option(
                 "--max-parallel-workers",
                 help="How many concerns may hold a session at once. Uncapped, a "
-                "batch opens one per runnable concern — a measured run reached "
-                "eleven in the same second, which spends the host's allowance "
+                "batch opens one per runnable concern, all in the same "
+                "second, which spends the host's allowance "
                 "at the width of the batch, races the credential file every "
                 "session shares, and loses all of it to one interruption.",
             ),

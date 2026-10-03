@@ -5,8 +5,8 @@
 """The wake conditions a deferral states, in spellings the checker resolves.
 
 A `# lup: defer[<condition>]:` note parks work behind something other than
-this note can check. Every such condition was prose, rendered into the notes
-listing and read by whoever happened to look — which is the half of a gate
+this note can check. A condition written as prose is rendered into the notes
+listing and read by whoever happens to look — which is the half of a gate
 that does not work. A deferral is dormant precisely because it is correct to
 be dormant now, so nobody has any reason to read it until the moment it stops
 being correct, and that is the one moment nothing announced.
@@ -56,13 +56,14 @@ from typing import ClassVar
 import sh
 from pydantic import BaseModel
 
+from lup.execution.git import Repository
 from lup.harness.codescan.markers import (
     MarkerComment,
     NoteKind,
     find_feedback,
     scan_mode_for,
 )
-from lup.devtools.dev.branches import get_integration_branch, is_ancestor
+from lup.devtools.dev.branches import get_integration_branch
 from lup.devtools.dev.comments import FoundComment
 from lup.devtools.dev.records import read_record
 from lup.execution.shell import git
@@ -85,7 +86,7 @@ def current_branch() -> str:
     to run a check from and no gate that names a branch can match one. It
     falls through to the questions that do not need it.
     """
-    return git.out("branch", "--show-current").strip()
+    return Repository(Path.cwd()).branch()
 
 
 def readable_ref(branch: str) -> str:
@@ -98,20 +99,18 @@ def readable_ref(branch: str) -> str:
     every caller goes on to hand it to git.
 
     It is asked of the branch under question *and* of the branch that question
-    is settled against. Asking it of one alone was the defect: a subject
-    resolved through ``origin/`` was compared with a bare integration name
-    that resolved to nothing, so `git merge-base --is-ancestor` failed on its
-    second argument and the landing verdict came back false — reported as
+    is settled against. Asked of one alone, a subject resolved through
+    ``origin/`` is compared with a bare integration name that resolves to
+    nothing, so `git merge-base --is-ancestor` fails on its second argument
+    and the landing verdict comes back false — reported as
     "origin/main has not reached main", which is one ref declining to have
     reached itself.
     """
-    for ref in (branch, f"origin/{branch}"):
-        try:
-            git("rev-parse", "--verify", "--quiet", f"{ref}^{{commit}}")
-        except sh.ErrorReturnCode:
-            continue
-        return ref
-    return ""
+    repository = Repository(Path.cwd())
+    return next(
+        (ref for ref in (branch, f"origin/{branch}") if repository.resolves(ref)),
+        "",
+    )
 
 
 class GateVerdict(BaseModel, frozen=True):
@@ -245,7 +244,7 @@ class BranchInPlay(Gate, frozen=True):
                     "landed is a question it cannot answer"
                 ),
             )
-        if is_ancestor(readable, landed_in):
+        if Repository(Path.cwd()).is_ancestor(readable, landed_in):
             return GateVerdict(
                 fired=True, evidence=f"{readable} has reached {landed_in}"
             )

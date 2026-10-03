@@ -84,4 +84,4 @@ End the session by proposing sessions that test the improvements:
 uv run lup loop "task1" "task2" "task3"
 ```
 
-Choose sessions that are diverse in task type, exercise recently fixed or new tools, and include edge cases where the agent previously struggled.
+Choose sessions that are diverse in task type, exercise recently fixed or new tools, and include edge cases the agent struggled with in earlier sessions.

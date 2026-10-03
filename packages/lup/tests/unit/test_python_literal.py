@@ -2,10 +2,9 @@
 
 A generated data module is machine-written and drift-checked, so a formatter
 disagreeing with it fails a gate on a file nobody edited and nobody can fix by
-hand — the regeneration produces the same bytes again. That happened: a rule
-message gained a double quote, JSON escaped it, and Ruff wanted the
-single-quoted form. So the quote choice is pinned here rather than left to
-coincide.
+hand — the regeneration produces the same bytes again. A rule message holding
+a double quote, escaped by JSON, is one Ruff wants in the single-quoted form.
+So the quote choice is pinned here rather than left to coincide.
 """
 
 import ast
@@ -25,7 +24,7 @@ from lup.policy.bundle import python_literal
         # A double quote alone: single escapes nothing where double escapes
         # one, so single strictly reduces and wins.
         ('the .get("key") form', "'the .get(\"key\") form'"),
-        # Both, with the double quotes ahead: the case that broke the build.
+        # Both, with the double quotes ahead: the case a rule message carries.
         ('.get("k") is the rule\'s subject', "'.get(\"k\") is the rule\\'s subject'"),
         # Both, with the apostrophes ahead: single would escape more, so the
         # default holds rather than flipping on the mere presence of a quote.

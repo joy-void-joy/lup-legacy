@@ -1,0 +1,48 @@
+subjects = [
+    "inside_a_container",
+    "host_side",
+    "SessionMarkers",
+    "SessionMarkers.boundary",
+    "SessionMarkers.member",
+    "SessionMarkers.agent",
+    "SessionMarkers.session_dir",
+    "SessionMarkers.session_id",
+    "SessionMarkers.inside_a_session",
+    "launched_by_an_operator",
+    "Placement",
+    "Placement.name",
+    "Placement.sandboxed",
+    "Placement.contained",
+    "Placement.inside_placement",
+    "Placement.unjudged",
+    "Placement.host_executor",
+]
+reason = """
+"where does this process run" was answered by four predicates that were not \
+each other's negation, so a session the runtime sandboxed on the host was \
+neither in a container nor host-side; one `lup.harness.environment.Placement` \
+now reads every variable a launch sets, and the policy explainer's placement \
+under which a verdict is read is `PolicyPlacement`"""
+
+[[steps]]
+instruction = """
+Ask `Placement.of(environment).contained` where you called \
+`inside_a_container(environment)`, and `Placement.here().contained` where \
+you passed it `dict(os.environ)`."""
+
+[[steps]]
+instruction = """
+Ask `Placement.here().host` where you called `lup.sandbox.known.host_side()`; \
+it also answers no inside a container or any session a marker names."""
+
+[[steps]]
+instruction = """
+Ask `Placement.here().in_session` where you called \
+`SessionMarkers().inside_a_session()`, and \
+`not Placement.of(environment).in_session` where you called \
+`launched_by_an_operator(environment)` (`lup.devtools.dashboard.companion`)."""
+
+[[steps]]
+instruction = """
+Name `lup.devtools.dev.policy_explain.PolicyPlacement` where you named that \
+module's `Placement`; its fields are unchanged."""

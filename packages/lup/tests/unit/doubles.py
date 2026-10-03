@@ -39,7 +39,7 @@ from lup.providers.codex.app_server import (
     RpcNotification,
     RpcSuccess,
 )
-from lup.harness.process import ExitStatus, LaunchRequest, ProcessLauncher
+from lup.execution.process import ExitStatus, LaunchRequest, ProcessLauncher
 from lup.providers.claude import ClaudeSession
 from lup.sessions.capabilities import (
     ConversationRecord,

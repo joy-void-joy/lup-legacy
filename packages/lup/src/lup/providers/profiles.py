@@ -343,9 +343,8 @@ class ProfileDirectory:
         launched from inside another one on the account it was started under.
 
         A profile naming the default home is refused here rather than
-        launched, whether named or merely active — the one registration a
-        refusal at registering could not have stopped is the one already on
-        disk before the refusal existed.
+        launched, whether named or merely active — a refusal at registering
+        cannot stop a registration that is already on disk.
         """
         selected = name or self.active_name()
         if selected is None:

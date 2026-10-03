@@ -2,14 +2,13 @@
 
 It has to live at the project root: Pyright resolves a base's relative
 ``include`` and each ``executionEnvironments`` root against the file that
-declares them, so a configuration written elsewhere analyses a different tree.
-Measured — extending this repository's own base from a temporary directory
-analysed 1092 files and reported 60 missing imports that are not missing.
+declares them, so a configuration written elsewhere analyses a different tree:
+extending this repository's own base from a temporary directory analyses
+files outside it and reports imports missing that are not missing.
 
 Living at the root means a run that is killed rather than returned from leaves
 its file behind, because the `finally` that unlinks it never executes. They
-accumulate as untracked junk every later `git status` and drift check reports;
-this checkout held three, the oldest eleven days.
+accumulate as untracked junk every later `git status` and drift check reports.
 
 Sweeping by age rather than wholesale is the part worth pinning. Several
 sessions check this repository at once, and a sweep of every such file would

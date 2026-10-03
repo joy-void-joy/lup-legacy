@@ -650,19 +650,18 @@ class WorkerContext(BaseModel, frozen=True, arbitrary_types_allowed=True):
     hooks: LupHooksConfig = Field(default_factory=LupHooksConfig)
     """The mid-turn delivery this session must open with, handed over rather
     than fetched. Delivery works only if the hook is in the options the
-    session is built from, so a recipe that had to remember to go and get it
-    could be written once without it — producing a worker that looks addressed
-    and reads nothing anyone sends it."""
+    session is built from, so a recipe that has to remember to go and get it
+    can be written without it — producing a worker that looks addressed and
+    reads nothing anyone sends it."""
 
 
 class ReviewerContext(BaseModel, frozen=True, arbitrary_types_allowed=True):
     """What one reading session needs: the tree it judges, and its own mail.
 
-    A reviewer once took only a path, which is why it was the one actor kind
-    nobody could say anything to. Judging is where a fact arriving late is
-    most worth having — a criterion already checked elsewhere, a base that
-    moved under the tree — so it carries the same delivery every other actor
-    does.
+    More than a path, because a reviewer handed only a path is an actor
+    nobody can say anything to. Judging is where a fact arriving late is most
+    worth having — a criterion already checked elsewhere, a base that moved
+    under the tree — so it carries the same delivery every other actor does.
     """
 
     root: Path
@@ -672,10 +671,10 @@ class ReviewerContext(BaseModel, frozen=True, arbitrary_types_allowed=True):
 class WorkerReport(BaseModel, frozen=True, extra="forbid"):
     """One worker's account of its turn.
 
-    Extra fields are forbidden rather than ignored: a model still emitting
-    the retired ``questions`` field would otherwise have it silently dropped
-    and the question simply lost. Forbidding makes that a loud correction
-    the reprompt wrapper can fix.
+    Extra fields are forbidden rather than ignored: a model emitting a field
+    this report does not declare, such as a ``questions`` list, would
+    otherwise have it silently dropped and the question simply lost.
+    Forbidding makes that a loud correction the reprompt wrapper can fix.
     """
 
     concern_id: str
@@ -775,7 +774,7 @@ class DeclaredEdit(BaseModel, frozen=True):
 class MergeReport(BaseModel, frozen=True, extra="forbid"):
     """What one join did, declared in a form the orchestrator can check.
 
-    Strict for the same reason ``WorkerReport`` is: a retired field must
+    Strict for the same reason ``WorkerReport`` is: an undeclared field must
     fail loudly rather than vanish, and the whole point of this report is
     that a semantic choice cannot go unrecorded.
     """
@@ -813,8 +812,8 @@ class ConcernOutcome(BaseModel, frozen=True):
     Distinct from ``commit``, which is the commit an accepted round
     produced. A concern that exhausts its rounds has no accepted commit and
     still has a branch, because it can only exhaust them by committing work
-    across several — so reading ``commit=None`` as "no commit exists" is
-    what made a restore expect the base and refuse the tree.
+    across several — so reading ``commit=None`` as "no commit exists" would
+    make a restore expect the base and refuse the tree.
     """
     verified: bool = False
     integrated: bool = False
@@ -903,8 +902,8 @@ class JoinProgress(BaseModel, frozen=True):
     The identities rather than their number, so every figure a reader is
     shown comes off one set: the total is how many there are, and the count
     is how many of them ``joined`` names. Two records each keeping their own
-    tally of the same sequence is what let a status line say six of five
-    while the log said six of nine.
+    tally of the same sequence let a status line say six of five while the
+    log says six of nine.
     """
 
     def landed(self) -> int:
@@ -931,10 +930,10 @@ class VerificationRecord(BaseModel, frozen=True):
     A rejection recording only the gate's own name makes learning which
     row of an eleven-row check failed mean reproducing the whole check
     inside the lease worktree — which a later session often cannot do,
-    because the run is still holding it. Three concerns in one run were
-    rejected on the same string for the same pre-existing finding, and each
-    worker re-derived it from scratch; one then exhausted its revision
-    budget with its acceptance criteria never evaluated.
+    because the run is still holding it. Concerns rejected on the same
+    string for the same finding would each re-derive it from scratch, and
+    one can exhaust its revision budget with its acceptance criteria never
+    evaluated.
     """
 
 
@@ -1129,8 +1128,8 @@ class ResolverConfig(BaseModel, frozen=True):
     Separate from the revision budget because the two are not the same
     scarce thing: a declaration mismatch is mechanical and cheap to check,
     while a revision round is a reviewer's judgement of the work. Charging
-    both to one allowance let a concern oscillate between under-declaring
-    and over-declaring until it failed with its criteria never evaluated.
+    both to one allowance lets a concern oscillate between under-declaring
+    and over-declaring until it fails with its criteria never evaluated.
     """
     max_parallel_workers: int = Field(default=4, ge=1)
     """How many concerns may hold a session at once.
@@ -1170,7 +1169,7 @@ class ResolverConfig(BaseModel, frozen=True):
     rather than by a merger choosing between two stale renderings. Named by
     the application because no library can know it: one project renders with
     its own CLI, another with a build tool, and most render nothing at all.
-    Empty leaves every conflict to the merger, as before.
+    Empty leaves every conflict to the merger.
     """
     verification_commands: list["VerificationCommand"] = []
 
@@ -1190,10 +1189,10 @@ class VerificationCommand(BaseModel, frozen=True):
     """The flag this command is told the verified tree's own base through.
 
     A base belongs to the tree being checked, not to the command, and
-    writing one into the arguments made it part of the run's composition:
-    the digest that gates a resume moved whenever the base did, so a run
-    could not resume itself once its base changed — including onto the
-    commit that fixed the defect it was parked for. Naming the flag here
+    writing one into the arguments would make it part of the run's
+    composition: the digest that gates a resume would move whenever the base
+    did, so a run could not resume itself once its base changed — including
+    onto the commit that fixes the defect it is parked for. Naming the flag here
     and supplying the value per tree keeps the composition free of a commit
     and lets each lease be judged against the base it actually started from.
 
@@ -1334,7 +1333,7 @@ class ResolveState(BaseModel, frozen=True):
 class RunTally(BaseModel, frozen=True):
     """Aggregate progress a watcher reads at a glance.
 
-    Reconstructing "how far along is this run" took a full read of the
+    Reconstructing "how far along is this run" would take a full read of the
     record and the worktrees; every piece is already in state, so the
     aggregation lives beside it and every surface prints the same one.
     """

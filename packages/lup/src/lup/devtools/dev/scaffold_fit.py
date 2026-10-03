@@ -28,6 +28,7 @@ import sh
 import typer
 from pydantic import BaseModel
 
+from lup.execution.git import Repository
 import lup.devtools.dev.library as library
 import lup.devtools.dev.scaffold as scaffold
 from lup.devtools.utils import format_table, short_sha
@@ -180,16 +181,8 @@ def resolved(repository: Path, revision: str) -> str:
     is about: a short sha, a tag or a branch all become the full commit the
     compile measures and the adoption trailer records.
     """
-    found = git.out(
-        "-C",
-        str(repository),
-        "rev-parse",
-        "--verify",
-        "--quiet",
-        f"{revision}^{{commit}}",
-        _ok_code=[0, 1],
-    )
-    if not found:
+    found = Repository(repository).resolves(revision)
+    if found is None:
         raise typer.BadParameter(
             f"{revision} names no commit in this project's upstream clone "
             f"({repository}). `dev scaffold fit` prints the candidates it "
@@ -300,7 +293,7 @@ def surveyed(
     A dense walk back from the tip is the wrong shape for this question. A
     project's copy is behind upstream by however many changes nobody retyped,
     which on this repository's own history is hundreds of commits — forty of
-    them cover two days, and the adoption this was built for was a year out.
+    them cover two days, and an adoption can stand a year behind.
     So a round spreads its measurements over the whole range, and the next
     round measures the interval around whichever sample read highest, until a
     round is measuring every commit it was given.

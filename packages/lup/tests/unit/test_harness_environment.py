@@ -58,12 +58,12 @@ def test_merge_does_not_mutate_base() -> None:
 def test_every_variable_a_launcher_mints_is_one_the_suite_takes_away() -> None:
     """The two lists have to agree, so the next one added is caught here.
 
-    They disagreed once and the cost was not a failing test but a misleading
-    one: the coordination identity was exported by every launch and cleared by
-    none, so the roster's naming tests asked what a session with no name is
-    called and were answered with the name of whoever ran the suite. Green on
-    a machine with nothing exported, red inside every launched session, and
-    red for a reason that named neither list.
+    Where they disagree the cost is not a failing test but a misleading one:
+    a coordination identity exported by every launch and cleared by none
+    would answer the roster's naming tests, asking what a session with no
+    name is called, with the name of whoever runs the suite. Green on a
+    machine with nothing exported, red inside every launched session, and red
+    for a reason that names neither list.
     """
     minted = LaunchedMember(member_id="m", cli_name="n").environment()
 
@@ -73,14 +73,13 @@ def test_every_variable_a_launcher_mints_is_one_the_suite_takes_away() -> None:
 def test_the_suite_cannot_reach_the_session_that_is_running_it() -> None:
     """The variables a runtime sets about a session are taken away too.
 
-    Written against an incident rather than a theory. `wake()` learned to
-    reach a Claude session by writing to the wake socket its runtime names
-    in the environment, and a test calling `native_wake` without setting that
-    variable read the live one — so the suite delivered its own payload into
-    the session running pytest, which then reported a peer message nobody had
-    sent. Clearing what the launcher decided was never enough: these are set
-    by the runtime, and it is the runtime's that say which live session a
-    process belongs to.
+    `wake()` reaches a Claude session by writing to the wake socket its
+    runtime names in the environment, so a test calling `native_wake` without
+    setting that variable would read the live one — delivering the suite's
+    own payload into the session running pytest, which then reports a peer
+    message nobody sent. Clearing what the launcher decided is not enough:
+    these are set by the runtime, and it is the runtime's that say which live
+    session a process belongs to.
     """
     for name in RUNTIME_DECIDED_ENV:
         assert os.environ.get(name) is None, (
@@ -108,9 +107,9 @@ def test_launcher_isolation_removes_the_live_write_authority(
 def test_every_variable_the_launcher_prefix_names_is_taken_away() -> None:
     """A launcher variable nobody listed is still the launcher's.
 
-    The declared list is what a launch is known to export, and it trails
+    The declared list is what a launch is known to export, and it can trail
     what launches actually export: a credential key, a policy root, a trust
-    document each arrived in a session's environment without joining it.
+    document can each arrive in a session's environment without joining it.
     """
     taken = launcher_decided_names({"LUP_POLICY_ROOT": "/live", "HOME": "/home/u"})
 
@@ -121,8 +120,8 @@ def test_every_variable_the_launcher_prefix_names_is_taken_away() -> None:
 def test_every_variable_a_runtime_prefix_names_is_taken_away() -> None:
     """What a runtime exported for its session, whether or not a list named it.
 
-    A test that read an inherited configuration directory wrote the live
-    runtime's settings through it: the name was one no list here carried.
+    A test reading an inherited configuration directory would write the live
+    runtime's settings through it, under a name no list here carries.
     """
     inherited = {
         "CLAUDE_CONFIG_DIR": "/cfg/claude",

@@ -112,7 +112,7 @@ first, under "said to you by this run's actors". That is the channel for
 anything that is not a decision — a consequence for whoever merges, or a
 worker blocked on something a human would simply fix. It never parks anyone,
 which is the difference from a question: where the question queue is the only
-route a worker is taught, two in one run each cost a human round trip parked
+route a worker is taught, each such report costs a human round trip parked
 on housekeeping. Reaching *every* actor is `--to '*'`, which
 is the default for `say` and `redirect`; leaving the target empty reaches
 nobody rather than everybody, because a blank meaning "everyone" delivers a
@@ -274,8 +274,8 @@ index and staged-object pack, merge metadata, and state snapshot beneath
 path. Untracked files remain unless they obstruct the restored tracked tree;
 the archive includes them either way. Ordinary resume preserves a parked merge.
 
-Both recovery actions import questions and recorded answers held only in legacy
-state into the mailbox while holding the run and state locks. The archived state
+Both recovery actions import questions and recorded answers held only in the
+run's `state.json` into the mailbox, holding the run and state locks. The archived state
 preserves original values; existing mailbox declarations and settled answers win
 conflicts, which `mailbox-import.json` records. Imported records identify recovery
 and its current timestamp, without claiming an unknown original author or time.

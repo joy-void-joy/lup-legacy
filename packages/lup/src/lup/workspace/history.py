@@ -109,7 +109,7 @@ class SessionRecord(BaseModel, extra="allow"):
     """A session result read back from disk, tolerant of domain variation.
 
     The read-side counterpart of :class:`SessionResult`: every core field
-    is defaulted (old sessions may predate it), ``output`` stays raw JSON
+    is defaulted (a record on disk may lack it), ``output`` stays raw JSON
     because the domain's output model is not known at read time, and
     fields a domain adds to its result model survive via ``extra="allow"``.
     """
@@ -143,8 +143,8 @@ def save_session(
     where the output is recorded: handed a ``recorder``, it records one
     :class:`~lup.observability.sessions.Output` pointing at the file, an
     ``OutputOf`` the ``session`` node where the caller has one. Handed none it records
-    nothing and works as before. The scaffold's ``run_agent`` wires both
-    from the build that opened the session.
+    nothing and saves the result all the same. The scaffold's ``run_agent``
+    wires both from the build that opened the session.
 
     Args:
         result: Any Pydantic model representing a session result.

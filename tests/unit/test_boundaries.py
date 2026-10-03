@@ -110,7 +110,7 @@ def test_canonical_vocabulary_and_provider_mentions_remain_valid() -> None:
 
 
 def test_a_tool_group_is_named_rather_than_rebuilt() -> None:
-    """The wiring two downstream repositories hand-ported, refused at the import.
+    """A group's wiring, hand-ported into a project, is refused at the import.
 
     A project reaching for the constructor is a project holding its own copy
     of what a group is made of — which is how a companion goes unstarted and a
@@ -390,8 +390,8 @@ def test_a_fallback_after_what_a_caller_supplies_reaches_through_its_attribute()
 def test_a_fallback_after_what_no_caller_supplies_replaces_nothing() -> None:
     """`something or TABLE` is a default only where a caller hands `something` in.
 
-    Any operand at all used to count, so a local, a module global or a call
-    beside a constant exempted it from both rules that ask for a default.
+    Counting any operand at all would let a local, a module global or a call
+    beside a constant exempt it from both rules that ask for a default.
     """
     unreached = {
         "LOCAL": "def build():\n    rules = load()\n    return rules or LOCAL\n",
@@ -442,15 +442,13 @@ SHELL_VOCABULARY = Path("src/lup_template/harness/content/shell_vocabulary.py")
 MOVED_TABLES: list[str] = ["INTEGRATION_BRANCHES"]
 """Only this repository's branch model is left, and that is the point.
 
-This once named six tables, then one. The five word tables reached the
-library as parameter defaults on the groups in ``lup.policy.vocabulary``, so
-an adopter replaces a vocabulary by calling a group differently instead of
-editing lup. The last entry was ``SHELL_RULES`` itself — the composition,
-which was a table only because a project had no way to state a difference
-without restating everything around it. A ``Selection`` over
-``default_vocabulary()`` is that way, so what remains in the file is two
-declarations that genuinely have no library form: a rule no other project
-has, and ``git`` carrying this repository's two arguments.
+The word tables reach the library as parameter defaults on the groups in
+``lup.policy.vocabulary``, so an adopter replaces a vocabulary by calling a
+group differently instead of editing lup, and the composition is a
+``Selection`` over ``default_vocabulary()``, which states a difference without
+restating everything around it. What the file holds is two declarations that
+genuinely have no library form: a rule no other project has, and ``git``
+carrying this repository's two arguments.
 
 One of those arguments is a table, named because the workflow runs on the
 same branches: ``INTEGRATION_BRANCHES``, ``main`` and ``dev``. Returned to
@@ -478,11 +476,10 @@ def test_the_shell_rule_models_declare_no_vocabulary_of_their_own() -> None:
 def test_the_rule_names_every_table_if_the_vocabulary_returns_to_the_library() -> None:
     """Judge the remaining source against the real library, as if it moved back.
 
-    This once named six tables, and the answer was that the vocabulary could
-    not move. Five of them since did, as parameter defaults an adopter passes
-    over. The composition is what the rule still stops, correctly: it is the
-    one thing in the file that a second project with the same intent would
-    write differently.
+    The word tables live in the library as parameter defaults an adopter
+    passes over, so what the rule stops is the composition, correctly: it is
+    the one thing in the file that a second project with the same intent
+    would write differently.
     """
     breaches = find_library_default_breaches(
         SHELL_VOCABULARY.read_text(encoding="utf-8"),

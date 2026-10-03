@@ -5,8 +5,8 @@ standard library, because this copy runs where that module cannot be
 imported. What is pinned here is the discipline rather than the mechanism:
 a claim is made only where the mount table agrees, and everything else says
 nothing. A wrong boundary claim is worse than none, because it teaches an
-agent to reach for the host when the bug was in its own code, and that lesson
-outlives the one command it was wrong about.
+agent to reach for the host when the bug is in its own code, and that lesson
+outlives the one command it is wrong about.
 """
 
 import json

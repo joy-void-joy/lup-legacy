@@ -45,6 +45,7 @@ import typer
 from pydantic import BaseModel, ValidationError
 from semver import Version
 
+from lup.execution.git import Repository
 from lup.devtools.dev.branches import detect_base_branch
 from lup.devtools.dev.preservation import Capability, Span
 from lup.devtools.dev.release import RELEASE_SUBJECT_PREFIX
@@ -159,11 +160,7 @@ class Migration(BaseModel, frozen=True, extra="forbid"):
         """
         if not self.commit:
             return False
-        try:
-            git("-C", str(root), "merge-base", "--is-ancestor", self.commit, revision)
-        except sh.ErrorReturnCode:
-            return False
-        return True
+        return Repository(root).is_ancestor(self.commit, revision)
 
     def landed_between(self, base: str, head: str = "", root: Path = Path()) -> bool:
         """Whether this break landed after ``base`` and by ``head``.
@@ -471,7 +468,7 @@ def gate_base(integration: str, release: str = "main") -> str | None:
     this gate was written that exit took the whole report with it: the log
     held one line and an exit code, and named no check.
     """
-    current = git.out("branch", "--show-current").strip()
+    current = Repository(Path.cwd()).branch()
     siblings = [
         branch
         for branch in git.lines("branch", "--format=%(refname:short)")

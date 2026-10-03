@@ -71,12 +71,22 @@ class LocalProcessLauncher(ProcessLauncher):
 
     Output is captured through pipes, never a pseudo-terminal, so children
     that branch on ``isatty`` (pagers, colorizers) emit plain machine output.
+
+    A working directory that is not there is an answer rather than a crash:
+    the child could not be run where it was asked to, which is the 126 a
+    shell gives such a command, with the reason on stderr — so a probe asked
+    of a path that no longer exists reads as one whose program said no.
     """
 
     def launch(self, request: LaunchRequest) -> ExitStatus:
         if not request.arguments:
             raise ValueError("a launch request must name an executable")
         executable, *arguments = request.arguments
+        if not request.cwd.is_dir():
+            return ExitStatus(
+                code=126,
+                stderr=f"cannot run {executable} in {request.cwd}: no such directory\n",
+            )
         command = sh.Command(executable)
         environment = {
             **os.environ,  # lup: ignore[os-environ] — inherit the process boundary

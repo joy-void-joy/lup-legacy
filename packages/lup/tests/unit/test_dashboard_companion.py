@@ -32,10 +32,10 @@ from lup.devtools.dashboard.companion import (
     DashboardToken,
     LaunchRecord,
     dashboard_status,
-    launched_by_an_operator,
     private_urls,
     written,
 )
+from lup.harness.environment import Placement
 from lup.devtools.dashboard.pulse import (
     DASHBOARD_PULSE_ENV,
     DashboardPulse,
@@ -158,6 +158,27 @@ def test_a_repository_stays_known_after_its_launch_ends(tmp_path: Path) -> None:
     assert not registry.live(known.repository)
 
 
+def test_a_launch_recorded_before_scopes_still_holds_and_is_written_back(
+    tmp_path: Path,
+) -> None:
+    registry = DashboardRegistry(directory=tmp_path / "dashboard")
+    own = LiveProcess.of(os.getpid())
+    kept = registry.launches_directory() / "before-scopes.json"
+    kept.parent.mkdir(parents=True)
+    kept.write_text(
+        LaunchRecord(
+            repository=tmp_path,
+            checkout=tmp_path,
+            holder=LiveProcess(pid=own.pid, started=own.started),
+        ).model_dump_json(exclude={"holder": {"scope"}})
+    )
+
+    [launch] = registry.launches()
+
+    assert launch.holder == own
+    assert LaunchRecord.model_validate_json(kept.read_bytes()).holder == own
+
+
 def test_launches_share_one_dashboard_that_stops_with_the_last(
     dashboard: Dashboard, tmp_path: Path
 ) -> None:
@@ -213,7 +234,7 @@ def test_the_dashboard_leaves_the_starting_sessions_identity_behind(
         root, **{MEMBER_ENV: "a-session", NONCE_VARIABLE: "its-boundary"}
     )
 
-    assert not launched_by_an_operator(session.environment)
+    assert Placement.of(session.environment).in_session
     with held_companions([dashboard], session):
         serving = dashboard.standing(root).serving
         assert serving is not None
@@ -711,10 +732,10 @@ def test_two_launches_hold_it_and_the_first_to_end_leaves_it_serving(
     assert none.stopped is not None and none.stopped.why.startswith("the last lease")
 
 
-def test_a_dashboard_too_old_to_restart_itself_is_replaced(
+def test_a_dashboard_whose_code_has_no_restart_is_replaced(
     dashboard: Dashboard, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """One that predates restarting in place is stopped and started again, still held."""
+    """One whose code cannot restart in place is stopped and started again, still held."""
     root = repository(tmp_path / "project")
     monkeypatch.setattr("lup.devtools.dashboard.reviews.Dashboard", lambda: dashboard)
     monkeypatch.setattr(

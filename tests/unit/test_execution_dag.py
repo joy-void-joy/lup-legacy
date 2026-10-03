@@ -2,8 +2,8 @@
 
 Two products ride one graph, so what these pin is that the graph carries the
 caller's vocabulary rather than either product's: the same cycle is reported
-as a concern cycle to one and a step cycle to the other. The direction that is
-new here is downstream — what rests on a node — because that is the direction
+as a concern cycle to one and a step cycle to the other. The graph walks
+downstream too — what rests on a node — because that is the direction
 invalidation travels, and a run that could only walk upward would have to
 maintain by hand the list of what a recomputed step spoils.
 """

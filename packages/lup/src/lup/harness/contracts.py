@@ -264,7 +264,7 @@ class NativeSpellings(SkillInvocationRenderer, ABC):  # lup: ignore[abc-capabili
         first and unfollowable on the second, which is how prose naming only
         "the runtime's event-driven waiter" leaves a reader to guess — and a
         reader who guesses reaches for an ordinary command with a long
-        timeout, which is the polling loop the advice existed to prevent.
+        timeout, which is the polling loop the advice exists to prevent.
         """
 
     @abstractmethod

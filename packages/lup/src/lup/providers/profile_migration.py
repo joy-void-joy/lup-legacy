@@ -1,12 +1,12 @@
 """Move accounts into the global profiles beside the person's lup config.
 
 Two places hold accounts a checkout alone can reach. A checkout's own
-``.lup/profiles/<name>/`` is still read, first, by every launch in it; moving
-one is a choice to share it with every checkout, never a repair. The old
-personal registry at ``~/.lup/profiles.json``, naming a Claude home per
-account — ``~/.lup/homes/<name>`` unless one was registered elsewhere — is
-read by nothing, so an account left there is one no launch can select. This
-moves what either holds, once, into
+``.lup/profiles/<name>/`` is read, first, by every launch in it; moving one
+is a choice to share it with every checkout, never a repair. A personal
+registry at ``~/.lup/profiles.json``, naming a Claude home per account —
+``~/.lup/homes/<name>`` unless one was registered elsewhere — is read by no
+launch, so an account left there is one no launch can select. This moves
+what either holds, once, into
 :meth:`~lup.providers.user_config.UserConfigFile.profiles_root`.
 
 Moving rather than copying, because a login is a rotating chain: two copies
@@ -37,21 +37,21 @@ was; ``refused`` means the source named the runtime's default home, which
 naming no profile already selects."""
 
 
-class LegacyAccount(BaseModel, frozen=True):
-    """One entry of the old personal registry, as it was written."""
+class RegistryAccount(BaseModel, frozen=True):
+    """One entry of the personal registry, as the file holds it."""
 
     config_dir: str
 
 
-class LegacyRegistry(BaseModel, frozen=True):
-    """The old personal registry file, read only to be emptied."""
+class PersonalRegistry(BaseModel, frozen=True):
+    """The personal registry file, read only to be emptied."""
 
-    profiles: dict[str, LegacyAccount] = {}
+    profiles: dict[str, RegistryAccount] = {}
     active: str | None = None
 
 
 class ProfileMove(BaseModel, frozen=True):
-    """What became of one account found in a checkout or the old registry."""
+    """What became of one account found in a checkout or the personal registry."""
 
     name: str
     source: Path
@@ -83,8 +83,8 @@ class ProfileMigration(BaseModel, frozen=True):
 
     moves: list[ProfileMove] = []
     selected: str | None = None
-    """The old selection, where it became the person's; ``None`` where there
-    was none to carry or the config file already recorded one."""
+    """The carried selection, where it became the person's; ``None`` where
+    there was none to carry or the config file already recorded one."""
 
     def lines(self) -> list[str]:
         """The run as the command reports it, or a line saying it had nothing."""
@@ -94,8 +94,8 @@ class ProfileMigration(BaseModel, frozen=True):
         return [*(move.line() for move in self.moves), *carried]
 
 
-def legacy_home() -> Path:
-    """Where the old personal registry and the homes it made lived."""
+def personal_registry_home() -> Path:
+    """Where the personal registry and the homes it made sit."""
     return Path.home() / ".lup"
 
 
@@ -144,22 +144,22 @@ def migrate_checkout(root: Path, config: UserConfigFile) -> list[ProfileMove]:
     return [move for source in names for move in settled(source)]
 
 
-def migrate_registry(config: UserConfigFile, old_home: Path) -> list[ProfileMove]:
-    """Move the old registry's accounts, and empty it of every one that went.
+def migrate_registry(config: UserConfigFile, registry_home: Path) -> list[ProfileMove]:
+    """Move the personal registry's accounts, and empty it of every one that went.
 
-    A home lup made for an entry, under the old home, moves into the profile;
-    a home registered somewhere of the person's own is linked from it and
-    stays where they put it. The registry only ever held Claude homes.
+    A home lup made for an entry, under the registry's home, moves into the
+    profile; a home registered somewhere of the person's own is linked from it
+    and stays where they put it. The registry holds Claude homes alone.
     """
-    registry_path = old_home / "profiles.json"
+    registry_path = registry_home / "profiles.json"
     if not registry_path.is_file():
         return []
-    registry = LegacyRegistry.model_validate_json(
+    registry = PersonalRegistry.model_validate_json(
         registry_path.read_text(encoding="utf-8")
     )
-    made = (old_home / "homes").resolve()
+    made = (registry_home / "homes").resolve()
 
-    def settled(name: str, account: LegacyAccount) -> ProfileMove:
+    def settled(name: str, account: RegistryAccount) -> ProfileMove:
         source = Path(account.config_dir).expanduser()
         destination = config.profiles_root() / name / CLAUDE_LOGIN.home_subdir
 
@@ -204,16 +204,16 @@ def migrate_registry(config: UserConfigFile, old_home: Path) -> list[ProfileMove
 
 
 def migrate_profiles(
-    root: Path, config: UserConfigFile, old_home: Path | None = None
+    root: Path, config: UserConfigFile, registry_home: Path | None = None
 ) -> ProfileMigration:
-    """Move what the checkout and the old registry hold, and carry a selection over.
+    """Move what the checkout and the personal registry hold, and carry a selection.
 
-    The checkout's selection is preferred to the old registry's; either
-    becomes the person's only where their config file records none, since a
-    selection already made there is theirs and one of these was only a
-    checkout's, and only where that account arrived.
+    The checkout's selection is preferred to the registry's; either becomes
+    the person's only where their config file records none, since a
+    selection made there is theirs and one of these is only a checkout's,
+    and only where that account arrived.
     """
-    registry_home = old_home or legacy_home()
+    home = registry_home or personal_registry_home()
     kept = checkout_profiles(root)
     active_file = kept / ".active"
     checkout_active = (
@@ -221,15 +221,15 @@ def migrate_profiles(
         if active_file.is_file()
         else None
     )
-    registry_path = registry_home / "profiles.json"
+    registry_path = home / "profiles.json"
     registry_active = (
-        LegacyRegistry.model_validate_json(
+        PersonalRegistry.model_validate_json(
             registry_path.read_text(encoding="utf-8")
         ).active
         if registry_path.is_file()
         else None
     )
-    moves = [*migrate_checkout(root, config), *migrate_registry(config, registry_home)]
+    moves = [*migrate_checkout(root, config), *migrate_registry(config, home)]
     if active_file.is_file():
         active_file.unlink()
     if kept.is_dir() and not any(kept.iterdir()):

@@ -8,6 +8,7 @@ import sh
 import typer
 
 from lup.devtools import sync
+from lup.execution.git import Repository
 from tests.unit.repos import commit_file, git_in, initialized_repo
 
 
@@ -47,7 +48,6 @@ def test_fetch_reads_remote_tip_without_moving_registered_checkout(
                         "name": "lib",
                         "path": str(clone),
                         "branch": "dev",
-                        "last_synced_commit": before,
                     }
                 ]
             }
@@ -58,8 +58,8 @@ def test_fetch_reads_remote_tip_without_moving_registered_checkout(
     found = sync.existing_upstream(sync.find_project("lib"))
 
     assert found is not None
-    assert sync.git_in(str(found.checkout), "rev-parse", found.tip) == after
-    assert sync.git_in(str(work), "rev-parse", "HEAD") == before
+    assert Repository(Path(str(found.checkout))).answer("rev-parse", found.tip) == after
+    assert Repository(Path(str(work))).answer("rev-parse", "HEAD") == before
     assert (work / "dirty").read_text() == "keep me"
     sync.status_cmd()
     assert "refs/remotes/origin/dev" in capsys.readouterr().out
@@ -85,7 +85,7 @@ def test_unbranched_library_registration_follows_consumed_branch(
     assert found.tip == "refs/remotes/origin/dev"
 
 
-def test_shared_checkpoint_overrides_stale_sibling_local_value(
+def test_a_checkpoint_recorded_in_one_worktree_reads_from_a_sibling(
     registry: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     consumer = git_in(registry, tmp_path / "hooks")
@@ -95,7 +95,6 @@ def test_shared_checkpoint_overrides_stale_sibling_local_value(
     upstream = tmp_path / "upstream"
     remote = initialized_repo(upstream, tmp_path / "hooks")
     commit_file(remote, upstream, "file", "base", "base")
-    before = remote("rev-parse", "HEAD").strip()
     commit_file(remote, upstream, "file", "next", "next")
     after = remote("rev-parse", "HEAD").strip()
     declaration = json.dumps(
@@ -104,7 +103,6 @@ def test_shared_checkpoint_overrides_stale_sibling_local_value(
                 {
                     "name": "lib",
                     "path": str(upstream),
-                    "last_synced_commit": before,
                 }
             ]
         }

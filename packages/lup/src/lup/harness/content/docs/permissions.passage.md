@@ -100,7 +100,8 @@ core.pager=… push --force` keeps the push's question, and a clone behind it
 still has its landing placed. What names a place — a redirection, a path verb's operand, a write flag, the
 landing a row declares (`git clone <repo> <dir>`, `gh release download -D`) —
 is placed by the host against the lease and its own mount table: in this
-checkout, somewhere else the host lent, or the container's own. A path
+checkout or another worktree of its repository, somewhere else the host
+lent, or the container's own. A path
 nobody can read, and a mount table nobody can read, land on the host. A
 reach nobody stated — any verdict reached by code rather than a declared
 effect — keeps its question everywhere, which is why `sudo` (whose payload
@@ -221,6 +222,25 @@ every placement. No capture settles it, and a path nothing stands at yet does
 not make it a create: `sort -o a$X f` is not a new file called `a$X`. A
 declared scratch root reached through the variable that names it, like
 `$TMPDIR/out.txt`, is still scratch.
+
+**Indirection is judged as the path it reaches, or as a path only the run
+knows.** A variable the line settles is resolved before any rule reads a
+word: an assignment standing first in its chain holds for everything after
+it, and one reached through nothing but `&&` holds for the rest of that
+chain, so `cd w && F=<protected path> && sed -i … $F` asks exactly as the
+same `sed` naming the path does. Where the line cannot settle the value — a
+`read`, a substitution, an assignment an `||` or a branch may skip, a loop
+over a glob or over more words than it reads, `find`'s `{}`, a path named
+from a directory a `cd` may or may not have reached — the word is left as
+spelled and the command is judged with it standing there, so a write
+through it asks as `sed -i 1d $F` does for a name the line never assigned,
+at every placement. A word that could also become a flag still puts its
+command on a floor (*an opaquely bound variable could become a guarded
+flag*, *a command substitution result could become a guarded flag*), but a
+floor never stands in for what the command asks as spelled: a boundary
+settling it confines the call, not the checkout the call writes in, and a
+protected file there was rewritten unasked. `eval`, `source` and an
+interpreter's inline code stay refused, and `xargs` keeps its own question.
 
 Where the capture was actually *taken*, `RecoveredLoss` settles the question
 as a **permission**. Not a deferral: deferring would make the outcome depend
@@ -438,8 +458,10 @@ at the command keeps its one documented entry point by clearing `refuses` on
 the subcommand that has one.
 
 `$(...)` classifies recursively — the inner command joins the batch and its
-opaque result rides only argument-safe commands; command position, deep
-nesting, and backticks stay conservative. File writes (redirection, `rm`)
+opaque result rides only argument-safe commands, and anywhere else the
+command is judged with the result standing where it is spelled, so a write
+through it asks; command position, deep nesting, and backticks stay
+conservative. File writes (redirection, `rm`)
 auto-allow only into a repo `tmp/` — the one at the top or any a package
 opened beside itself, in this checkout or in another worktree of the same
 repository reached by its absolute path, where every write and every delete
@@ -447,25 +469,56 @@ meet the one rule — and the machine's temporary root, the session
 scratchpad (`$TMPDIR`, `/tmp/claude-*`) with the rest of `/tmp` around it,
 which no review pass reads and no capture holds (reassigning `TMPDIR` asks,
 and a suffix climbing clear of `/tmp` leaves the grant behind); discards and
-fd dups strip. A repository made in this checkout's declared scratch is as
-disposable as the scratch holding it, so `git init tmp/p` — after a `cd` or
-`git -C`, with a separate git dir there too — is a scratch write, its
+fd dups strip. A stream — `/dev/null`, `/dev/stdout`, `/dev/stderr`, `/dev/tty`
+and the two descriptors behind them — keeps nothing written into it, so it is
+no file a write lands on by any spelling: a redirection, a `tee` operand, a
+copy's destination (`cp f /dev/null`), or a write flag's value (`curl -o
+/dev/null`, `sort -o /dev/null`, `git diff --output=/dev/null`). A verb that
+replaces the device itself — `rm`, `mv`, `ln`, `touch` — is judged by its row.
+A repository made in this repository's declared scratch, in this checkout or
+in another of its worktrees, is as disposable as the scratch holding it, so
+`git init tmp/p` — after a `cd` or `git -C`, with a separate git dir there
+too, or spelled under a sibling worktree's `tmp/` — is a scratch write, its
 directories resolved by the host as any write target is. Every other `git
 init` stays unclassified: one naming no directory makes the repository
 wherever git stands, a `--git-dir` moves it, and `--template` copies a
 directory in.
 Loops, conditionals, case
 arms, subshells, and brace groups classify recursively over frozen bindings —
-literal assignments instantiate, opaque ones (`read`, globs) gate
-flag-guarded commands. A `for` loop over at most sixteen literal words is read
+literal assignments instantiate, and opaque ones (`read`, globs, a
+substitution) put each command referencing them that is not argument-safe
+on a floor, beside whatever it asks as spelled. A construct the walk does not
+read as a structure — a `select`, an arithmetic command, one nested past the
+depth the walk opens — keeps its floor too, and every command inside it and
+after it is judged all the same: what runs after it is still what runs. A
+`for` loop over at most sixteen literal words is read
 once per word in the binding pass every reader of the line shares, so a
 redirection, a `tee` or a `cd` in its body names the path each pass reaches:
 `for f in tmp/a tmp/b; do echo x > $f; done` writes two scratch files rather
 than a path only the run knows. A body that assigns the loop's own name is
 not read that way, since a later reference is then some other value
 (`f=README.md; rm $f`), and its references gate as an opaque list's do.
+Where a `cd` leaves the shell is followed the way the shell follows it:
+through `&&`, `||` and `!`, and into the `if` branch its condition chose. A
+`cd` that fails leaves the shell where it stood, so `cd a || rm x` removes
+the `x` beside it. Past a `;` a `cd` naming its directory is taken to have
+succeeded — `cd /abs/wt && make; date > tmp/log` writes the log in that tree
+— which leaves one case open, recorded where the assumption is made: a `cd`
+into a directory that is not there runs what follows where the shell stood.
+Where the line itself may have skipped or undone a move — a `cd` after a
+command that may have failed, a chain routing `||` to either side of its
+`cd`, a loop whose next pass starts wherever the last one left — no
+directory is named, and a relative path written there is a path only the run
+knows, which asks. A pipeline's commands and a backgrounded list run in
+processes of their own, so a `cd` among them moves nothing after them;
+`command cd` and `builtin cd` move the shell as `cd` does, and `time cd` may
+run in a child, so where it lands is not named.
 `find -exec` payloads and wrappers (`env`, `time`,
 `timeout`, `nice`, `stdbuf`, `setsid`, `nohup`, `exec`, `command`) recurse;
+a payload is judged with each `{}` standing for a path only the run names,
+beneath each starting point, so `find packages -exec rm {} +` asks as a
+deletion of files nobody listed, and `-execdir` runs its payload in a
+directory the run chooses, from which every path it names is read;
 each wrapper's options are read by the grammar its `--help` lists, clusters
 included, and one the grammar does not list leaves the command unread and
 refuses. A wrapper option that acts on its own keeps the wrapper as the
@@ -664,8 +717,8 @@ been read, or carry the content in the command.
 same code: `| tee` and `>` into one path reach one verdict in every
 placement, and `tee -a` is judged as `>>` is. Each is read at the file it
 reaches from the directory a `cd` left, so `cd tests && date > ../README.md`
-is a write to the human-owned README, and a `cd` nothing can read leaves
-the target unjudged. A `tee` handed its operands by `find -exec` or
+is a write to the human-owned README, and a `cd` nothing can read leaves a
+target only the run can name, which asks. A `tee` handed its operands by `find -exec` or
 `xargs` is not one of these: it writes files no word of the command
 names, so it keeps its own question.
 
@@ -854,9 +907,10 @@ of a connection the kernel reads — a socat `UNIX-CONNECT`/`UNIX-CLIENT`/
 `UNIX-SENDTO`/`ABSTRACT-*` address, `nc -U`, `ncat -U`, `curl
 --unix-socket`, a redirection — is refused with `coordination_send` named.
 
-A deliberate send to a peer is not walled off. The `# lup: escalate:` marker in
-any of the call's own inputs turns the refusal into the approval question the
-sender asked for, carrying their stated reason — the valve every refusal has.
+A deliberate send to a peer is not walled off. The `# lup: escalate[decision]:`
+marker in any of the call's own inputs turns the refusal into the approval
+question the sender asked for, carrying their stated reason — the valve every
+refusal has.
 
 <!-- passage: forge-credentials -->
 ## Forge credentials
@@ -1049,31 +1103,40 @@ serves it, ask.
 A file another repository holds, with no destination grant, meets a referral
 in place of the gates below: the edit **asks**, and the reason says that
 repository's conventions are its own, so the way through is never to restyle
-its code into this one's. The exception is this checkout's own scratch. A
+its code into this one's. The exception is this repository's own scratch. A
 repository nested under a root declared scratch here — a probe kit given its
 own `git init` under `tmp/` — is judged as the scratch around it, so an edit,
 a redirect and a command's output landing there are allowed like any other
 scratch file, on both runtimes and after the fact alike. The claim is read off
-the path as this checkout spells it, never as the nested repository does, so
-a kit under a sibling worktree's `tmp/`, a `refs/` link landing in another
-project, and another repository's own `tmp/` all keep the referral.
+the path as the checkout of this repository holding it spells it — this one,
+or another of its worktrees, so a kit under a sibling worktree's `tmp/` is
+scratch too — never as the nested repository does, so a `refs/` link landing
+in another project and another repository's own `tmp/` keep the referral.
 
 The refusal to write a generated plugin tree by hand stops at the same line,
 and for a reason of its own: nothing this project generates lands in its
 scratch, which a test walking both recipes pins. So a kit's own hand-written
 `.claude/plugins/` or `.codex/plugins/` there is written like any other
-scratch file — by an edit, a redirect or a path verb. This checkout's compiled
-trees stay refused, and so does every tree its scratch does not hold: a
-sibling worktree's, another repository's, one under the machine's temporary
-root, and this checkout's own reached through a link planted in scratch, which
-the host resolves and the shell refuses once it has seen the link move the
-write.
+scratch file — by an edit, a redirect or a path verb, in this checkout's
+scratch or a sibling worktree's. Every compiled tree stays refused, this
+checkout's and a sibling worktree's alike, and so does every tree no scratch
+of this repository holds: another repository's, one under the machine's
+temporary root, and this checkout's own reached through a link planted in
+scratch, which the host resolves and the shell refuses once it has seen the
+link move the write.
 
 Edit decisions cover protected paths, marker changes, size, the canonical
 anti-pattern audit, and declared import ownership. A human-owned file
 surfaces every change to it, edit or shell write, as an approval its author
 answers. An edit over the size gate alone is deferred — the hook
 emits no decision, so auto-accept applies while hard gates stay explicit.
+The language server an anti-pattern rule consults is started only for a file
+in production, the one role those rules read, and a command's Git facts —
+which files are tracked, which can be restored, which other worktrees the
+repository has — are gathered before any edit gate starts it, since a checker
+spending what is left of the deadline would leave Git no time to answer: a
+heredoc into a sibling's `tmp/` would read as an outside path, and a redirect
+over tracked source beside it as a file Git never held.
 
 A deferral is never a question lup puts, and nothing parks one, whichever
 spelling carried the change — an `Edit`, a `cp` over a file, a heredoc, a
@@ -1449,9 +1512,9 @@ command is tried inside the boundary before it asks for the host.
   write the mount table refuses fails approved exactly as it fails unmarked
   — the exact command is then the user's to run from a host terminal.
 
-  The bare `lup: escalate: <why>` keeps working as decision escalation and
-  says it is an alias, because a migration that breaks every marker at once
-  is one nobody can act on mid-run.
+  A marker naming no kind, `lup: escalate: <why>`, is refused with the
+  spellings that name one: the kind is the request, and the refusal is
+  where an agent stuck inside the boundary learns the sandbox half exists.
 
   A reason is mandatory in every spelling: the whole content of the request
   is what it says to whoever answers, and a request that says nothing asks

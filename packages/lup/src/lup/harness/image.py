@@ -49,7 +49,7 @@ from lup.harness.credential import (
 )
 from lup.harness.egress import SessionEgress
 from lup.harness.environment import NON_INTERACTIVE_SHELL_ENV
-from lup.harness.messaging import WakeSockets
+from lup.harness.wake_sockets import WakeSockets
 from lup.harness.requirements import Manifest, Package, PackageManager
 from lup.harness.terminal import TerminalHandoff
 from lup.types import EnvVars, JsonObject
@@ -580,8 +580,8 @@ class Image(BaseModel, frozen=True):
             "installs it was itself left to a shell script. ``bun`` is here "
             "rather than left to the manifest because ``agent_clis`` installs "
             "through it in every image, and a project with no JavaScript of "
-            "its own has no reason to declare it: such a build reached the "
-            "layer carrying the runtimes the session exists to run and died "
+            "its own has no reason to declare it: such a build reaches the "
+            "layer carrying the runtimes the session exists to run and dies "
             "at ``bun: command not found``. ``python`` is here for the "
             "permission dispatcher, which a native CLI starts as a bare "
             "``python3`` deliberately outside any virtual environment, so the "
@@ -607,17 +607,16 @@ class Image(BaseModel, frozen=True):
         description=(
             "What the runtime's own sandbox needs in order to run inside "
             "this one. Empty, because the launcher turns that sandbox off by "
-            "name for a contained session rather than leaving it to fail, "
-            "which is the posture this field's own earlier reasoning named "
-            "as the alternative to filling it. Filling it was tried and "
-            "measured on both halves of the claim. The false half: "
-            "bubblewrap cannot mount a fresh ``/proc`` in an unprivileged "
-            "container -- ``Can't mount proc on /newroot/proc: Operation not "
-            "permitted`` -- so the inner boundary did not stand up. The true "
-            "half: their presence silenced the CLI's 'Commands will run "
-            "WITHOUT sandboxing' notice, so two packages bought quiet about "
-            "a boundary that was not there, which is the cry of wolf they "
-            "were installed to prevent, moved rather than stopped. A project "
+            "name for a contained session rather than leaving it to fail. "
+            "Filling it buys a claim with one false half and one true one, "
+            "both measured. The false half: bubblewrap cannot mount a fresh "
+            "``/proc`` in an unprivileged container -- ``Can't mount proc on "
+            "/newroot/proc: Operation not permitted`` -- so the inner "
+            "boundary does not stand up. The true half: the packages' "
+            "presence silences the CLI's 'Commands will run WITHOUT "
+            "sandboxing' notice, so they buy quiet about a boundary that is "
+            "not there, which is the cry of wolf they would be installed to "
+            "prevent, moved rather than stopped. A project "
             "that means to keep the inner sandbox fills this and sets the "
             "runtime's own nested-sandbox option, and should read what that "
             "option costs before it does"
@@ -673,9 +672,8 @@ class Image(BaseModel, frozen=True):
             "harness launches belongs here: a contained launch runs `<cli>` "
             "inside the container, so a runtime missing from this list "
             "builds an image, starts a proxy, and then fails with `not "
-            "found` on the one program the session existed to run -- which "
-            "is what happened to Codex while the list was one hardcoded "
-            "line. An empty version is resolved to the registry's current "
+            "found` on the one program the session exists to run. An empty "
+            "version is resolved to the registry's current "
             "release at each contained launch and rendered as a concrete "
             "pin, so the image tag still content-addresses a real version "
             "and a new release rebuilds the one layer that installs them, "
@@ -726,7 +724,7 @@ class Image(BaseModel, frozen=True):
             "connecting to the host's display or compositor. "
             "Declared beside the browser bridge because it is the same kind "
             "of thing -- one narrow channel through the boundary, named "
-            "rather than buried. The alternative it replaces is mounting the "
+            "rather than buried. The alternative is mounting the "
             "host's display socket, which on X11 would hand a confined "
             "session the ability to read and type into every other window, "
             "and on Wayland or macOS would not work at all"
@@ -1023,13 +1021,13 @@ fi
 trust="${{LUP_TRUST_DOCUMENT:-}}"
 # The checkout this container was started against is the one the operator
 # chose when they wrote the mount and the workdir, so it is trusted here
-# rather than enumerated at build time. Building the list from a directory
-# listing was tried: it baked thirty-one host paths into the image, granted
-# trust to directories that were not checkouts, and rebuilt the layer every
-# time a worktree appeared or went. The repository the checkout belongs to
-# is trusted beside it: a linked worktree's project is its main repository
-# to the runtime, which asked for exactly that path and dropped the declared
-# permissions with a notice when the worktree alone was trusted. Merged on
+# rather than enumerated at build time. A list built from a directory
+# listing bakes host paths into the image, grants trust to directories that
+# are not checkouts, and rebuilds the layer every time a worktree appears or
+# goes. The repository the checkout belongs to is trusted beside it: a
+# linked worktree's project is its main repository to the runtime, which
+# asks for exactly that path and drops the declared permissions with a
+# notice when the worktree alone is trusted. Merged on
 # every start rather than written once, because the document outlives the
 # image in its volume, and a runtime that moves where it looks would
 # otherwise meet a file nothing amends. A program rather than a jq pipeline,
@@ -1331,9 +1329,9 @@ USER $UID:$GID
         ``proxy_address`` is where the proxy sits on that network, which a
         caller reads back after starting it. It cannot be anything this
         declaration holds -- it is assigned when the container joins -- and
-        the earlier attempt to avoid needing it, by addressing the proxy
-        under a DNS alias, is what put a resolver on the internal network and
-        left the proxy unable to resolve anything at all.
+        addressing the proxy under a DNS alias instead puts a resolver on the
+        internal network and leaves the proxy unable to resolve anything at
+        all.
 
         ``--init`` is what makes the bound beside it survivable, and the two
         are one subject. Without it PID 1 is the agent runtime, which does not
@@ -1347,9 +1345,9 @@ USER $UID:$GID
         What that costs is not a message about processes. It is
         ``RuntimeError: can't start new thread`` and ``fork: Resource
         temporarily unavailable`` scattered through a suite -- 94 failures and
-        151 errors in one run -- which reads exactly like the change under
-        test having broken something, and cost a whole bisection of a change
-        that was fine. Both engines take the flag and put a real reaper at PID
+        151 errors in one measured run -- which reads exactly like the change
+        under test having broken something, and sends a bisection after a
+        change that is fine. Both engines take the flag and put a real reaper at PID
         1, so the class stops existing rather than being watched for.
 
         ``privileges`` is what the wall granted: every capability dropped and
@@ -1397,15 +1395,15 @@ USER $UID:$GID
         ``environment()`` says ``LUP_CONTAINED`` is baked rather than passed
         "because it is a fact about where the process is, not a posture a
         caller chooses: a session that could switch it off from the outside
-        would be telling the policy to relax with nothing underneath." The run
-        then re-emitted the whole baked map as ``-e NAME=VALUE`` pairs, this
-        one included -- so the property held only against a caller who did not
+        would be telling the policy to relax with nothing underneath." A run
+        re-emitting the whole baked map as ``-e NAME=VALUE`` pairs, this one
+        included, would hold that property only against a caller who does not
         also control the argv, which is every caller this defends against.
 
         Restating a baked value is a no-op at best: the image tag *is* the
         declaration digest, so an image built from a different declaration is
-        a different image and gets rebuilt. What the restatement bought was a
-        line in `ps` and a claim its own docstring contradicted.
+        a different image and gets rebuilt. All the restatement buys is a
+        line in `ps` and a claim its own docstring contradicts.
         """
         return ["LUP_CONTAINED"]
 
@@ -1553,7 +1551,7 @@ USER $UID:$GID
         the same argv has to serve every way of reaching it: an exercise that
         ran through a differently-assembled argv would verify a container no
         session opens. Three states rather than two, because the third is the
-        one a bool had no room for -- see :type:`SessionStreams`.
+        one a bool has no room for -- see :type:`SessionStreams`.
 
         ``environments`` is what :meth:`environment_mounts` binds, and it is
         emitted after the leased mounts because that is the order it reads

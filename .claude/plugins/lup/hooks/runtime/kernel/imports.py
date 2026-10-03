@@ -149,6 +149,7 @@ def resolved_import_rules(
                 matcher="",
                 strength="soft",
                 resolution="",
+                roles=["production"],
             ),
             spans={
                 violation["line"]: violation["end_line"]

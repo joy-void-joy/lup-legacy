@@ -170,8 +170,8 @@ def dispatch(payload, permission_request=False):
     session_directory = Path(payload["cwd"]) if "cwd" in payload else None
     # Whether this session is a reviewed worker, which decides two unrelated
     # things: how a patch is judged, and whether a refusal has a route to
-    # name. Read once at the top rather than inside the branch that needed it
-    # first, since both branches need it now.
+    # name. Read once at the top rather than inside either branch, since
+    # both branches need it.
     agent_type = payload["agent_type"] if "agent_type" in payload else ""
     autonomous = (
         agent_type in AUTONOMOUS_AGENT_IDENTITIES
@@ -292,7 +292,7 @@ def waiting(command, payload):
     The session's own thread holds no waiter. Where no `review wait` holds
     the review, the operator's answer goes to its mailbox and is queued into
     its thread with `codex queue`, which starts a turn in an idle thread --
-    measured on 0.158.0, a browser decision reached a second turn that way
+    measured on 0.158.0, a browser decision reaches a second turn that way
     -- and the `review wait` it runs then carries the call out at once.
 
     A subagent's last message is its report, and nothing wakes it after: a
@@ -605,9 +605,10 @@ def main():
         if not permission_request and decision.effect in ("allow", "defer"):
             remember_patch(payload)
     # Every way this can fail means one thing — the call went unjudged — and
-    # one answer is right for all of them. Naming the exceptions instead is
-    # what let a plain unreadable file escape, and a traceback exit is not the
-    # fail-closed exit this boundary takes, so the call proceeded ungoverned.
+    # one answer is right for all of them. Naming the exceptions instead
+    # would let a plain unreadable file escape, and a traceback exit is not the
+    # fail-closed exit this boundary takes, so the call would proceed
+    # ungoverned.
     # Nothing is swallowed: the reason names which cause it was, carrying
     # whatever went wrong, and an interrupt still passes through as the
     # BaseException it is.

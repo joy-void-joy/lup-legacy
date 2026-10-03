@@ -4,8 +4,8 @@ A release here is one transaction over the files it touches, and the argument
 for compiling it rather than writing it down is what prose costs. Carried in a
 skill — fold the pending migrations into the changelog, close the section,
 move the version, move the migrations into the release — the steps make a list
-that runs only as well as whoever is reading it that day. Measured in this
-repository, three of the four had never run at all.
+that runs only as well as whoever is reading it that day, and a step skipped
+leaves nothing behind to say it was.
 
 What stays a judgement stays outside: which level the release is, and what the
 entries under ``## Unreleased`` should say. Both are decided by somebody
@@ -57,6 +57,7 @@ import tomlkit.items
 from packaging.version import InvalidVersion, Version
 from pydantic import BaseModel
 
+from lup.execution.git import Repository
 from lup.devtools.changelog import Candidate, Changelog
 from lup.devtools.utils import short_sha
 from lup.execution.shell import git
@@ -632,11 +633,6 @@ class ReleaseState(BaseModel, frozen=True):
         )
 
 
-def commits_in(revisions: str) -> int:
-    """How many commits a ``base..head`` range holds."""
-    return int(git.out("rev-list", "--count", revisions))
-
-
 def held_declarations(commit: str, root: Path, pending: Path) -> list[str]:
     """The pending break declarations ``commit`` held, by file name.
 
@@ -659,16 +655,11 @@ def landed(tag: str, branch: str, root: Path, pending: Path) -> Landing:
     branch nobody pulled into says nothing about it.
     """
     commit = git.out("rev-list", "-n", "1", tag)
-    since = commits_in(f"{commit}..HEAD")
+    repository = Repository(Path.cwd())
+    since = repository.count(f"{commit}..HEAD")
     carried = held_declarations(commit, root, pending)
     ref = next(
-        (
-            ref
-            for ref in (f"origin/{branch}", branch)
-            if git.out(
-                "rev-parse", "--verify", "--quiet", f"{ref}^{{commit}}", _ok_code=[0, 1]
-            )
-        ),
+        (ref for ref in (f"origin/{branch}", branch) if repository.resolves(ref)),
         "",
     )
     if not ref:
@@ -678,7 +669,7 @@ def landed(tag: str, branch: str, root: Path, pending: Path) -> Landing:
         branch=ref,
         held=git.out("rev-parse", f"{ref}^{{tree}}")
         == git.out("rev-parse", f"{commit}^{{tree}}"),
-        moved=commits_in(f"{commit}..{ref}"),
+        moved=repository.count(f"{commit}..{ref}"),
         since=since,
         carried=carried,
     )
@@ -808,15 +799,14 @@ def promote(
     the command refuses a checkout that was not clean, so undoing loses
     nothing of anybody's.
     """
-    returning = git.out("branch", "--show-current")
+    repository = Repository(Path.cwd())
+    returning = repository.branch()
     if not returning:
         raise ReleaseRefused(
             "a promotion is merged back into the branch it is run from, and this "
             "checkout stands on none — check out the integration branch"
         )
-    if git.out(
-        "rev-parse", "--verify", "--quiet", f"refs/heads/{plan.branch}", _ok_code=[0, 1]
-    ):
+    if repository.resolves(f"refs/heads/{plan.branch}"):
         raise ReleaseRefused(
             f"{plan.branch} already exists — finish the promotion it holds, or "
             "delete it before cutting another"
@@ -874,9 +864,7 @@ def merged_back(plan: ReleasePlan, spec: ReleaseSpec, root: Path) -> None:
         Changelog.parse(ours).promoted(plan.version, plan.date).render()
     )
     git.add(spec.changelog)
-    conflicted = [
-        path for path in git.lines("diff", "--name-only", "--diff-filter=U") if path
-    ]
+    conflicted = [str(path) for path in Repository(Path.cwd()).conflicted()]
     if conflicted:
         git.merge("--abort")
         raise ReleaseRefused(

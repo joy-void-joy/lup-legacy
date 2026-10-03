@@ -1,9 +1,8 @@
 """One ordered record of everything every actor in a run did.
 
-A run's actors each hold their own session, and until now nothing outside
-those sessions could see what happened inside one. The journal is that
-record: one append-only file per run, one writer, every entry naming the
-actor it belongs to.
+A run's actors each hold their own session, and nothing outside a session
+sees what happens inside it. The journal is that record: one append-only
+file per run, one writer, every entry naming the actor it belongs to.
 
 Ordering needs no coordination. A run holds its state lock for its entire
 life, so there is exactly one writer and the sequence number is simply the
@@ -163,8 +162,8 @@ class ForeignCriteriaEvent(BaseModel, frozen=True):
     Recorded rather than acted on. Every declared criterion was accounted
     for, so nothing passed unchecked and the verdict stands; the stray label
     is the reviewer's bookkeeping, and turning an acceptance back over it
-    spent a revision round re-deriving the same verdict until the budget
-    ran out. Journalled so a reviewer that keeps miscrediting is still
+    would spend revision rounds re-deriving the same verdict until the
+    budget runs out. Journalled so a reviewer that keeps miscrediting is still
     visible to whoever reads the run.
     """
 
@@ -177,9 +176,9 @@ class ForeignCriteriaEvent(BaseModel, frozen=True):
 class VerificationFailedEvent(BaseModel, frozen=True):
     """What one gate saw at the moment it decided a concern's round.
 
-    A run's record held no verification event of any kind: the check ran,
-    produced a verdict that decided a concern's fate, and left nothing
-    behind. Journalling it puts what the gate saw beside the turns it
+    Unjournalled, a check runs, produces a verdict that decides a concern's
+    fate, and leaves nothing behind in the run's record. Journalling it puts
+    what the gate saw beside the turns it
     decided about, which is the one place a later session can read it — the
     lease worktree the check ran in is usually still held by the run.
     """

@@ -190,16 +190,16 @@ def rename_in_pyproject(
     """Update pyproject.toml: package name, CLI entry point, every module path.
 
     ``spelt`` is every remaining key whose *value* names the package, keyed by
-    what it configures rather than by the table it happens to sit in. That
-    distinction is what this defaults to rather than hardcodes, and what the
-    default got wrong: the devtools entry point moved from
-    ``[project.scripts]`` to ``[project.entry-points."lup.devtools"]``, and
-    matching the whole old line went on silently succeeding at nothing. A
-    renamed project kept an entry point naming a package that no longer
-    existed — failing later where ``lup-devtools`` refuses two registered
-    applications, far from the manifest line that left the second one — and
-    shipped none of its package data, which was never matched
-    at all.
+    what it configures rather than by the table it happens to sit in, and
+    derived by default rather than hardcoded. The table is the part that does
+    not hold still: the devtools entry point sits under
+    ``[project.entry-points."lup.devtools"]`` rather than
+    ``[project.scripts]``, and a match on a whole line spelled for the wrong
+    table succeeds at nothing, silently. A renamed project would then keep an
+    entry point naming a package that does not exist — failing later, where
+    ``lup-devtools`` refuses two registered applications, far from the
+    manifest line that left the second one — and ship none of its package
+    data.
 
     A key that moves tables keeps its value, so the value is what is matched.
     """
@@ -447,7 +447,7 @@ def mention_pattern(path: Path) -> re.Pattern[str]:
     ways — as a path, with the separator that makes it one, and as the import
     root a ``-m`` invocation spells with a dot. Both carry that separator on
     purpose: the bare name is an ordinary English word, and matching it alone
-    reported every sentence that happened to use it. The dot form additionally
+    would report every sentence that uses the word. The dot form additionally
     requires a name after it, because a sentence ending in "examples." is
     prose about examples rather than a reference to the package.
     """

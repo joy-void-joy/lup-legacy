@@ -75,7 +75,7 @@ Each tree lays the same declarations out its own way, and `docs/platform-differe
   lines the user would write under each option — not described in prose.
 - **Keep each one short**: the problem, what was checked, the options, the
   recommendation — nothing about how you got there.
-- **Open every later reply with what is now decided, read back in your
+- **Open every later reply with what is decided so far, read back in your
   words.** A misreading surfaces there — "I'm unsure that should be on by
   default" — and costs one line to fix instead of a build. When a check
   reversed something you told the user, the readback says so plainly: what

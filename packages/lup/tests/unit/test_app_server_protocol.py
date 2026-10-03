@@ -540,7 +540,7 @@ def test_a_record_stays_readable_while_the_child_rewrites_it(tmp_path: Path) -> 
     writer = threading.Thread(target=rewrite_repeatedly)
     writer.start()
     # For as long as the rewrites run and no longer: a read after the last
-    # one races nothing, and a fixed count spent most of its reads there.
+    # one races nothing, and a fixed count would spend most of its reads there.
     for _read in iter(writer.is_alive, False):
         try:
             AppServerRecord.model_validate_json(record.read_text(encoding="utf-8"))

@@ -51,11 +51,11 @@ reviews. Same tooling, opposite seats.
 
 The script merges both: .local entries override sync.json entries by name.
 Review checkpoints live under the common Git directory and are shared by
-sibling worktrees. A legacy `last_synced_commit` remains a seed until a
-shared checkpoint is explicitly recorded with `mark-synced`.
+sibling worktrees; `mark-synced` records one, and a project with none has
+never been reviewed.
 A project with a URL and no local path is materialized under
 ``~/.cache/lup/sync/`` in the layout a registration naming a local path
-already points at -- a bare repository with a worktree attached to it -- so a
+points at -- a bare repository with a worktree attached to it -- so a
 session can branch, commit and push in either, and a launch mounts a clone it
 materialized whole (see :func:`mounted_root`). Nothing a review does moves a
 local branch: the upstream's commits are read from a remote-tracking ref, and
@@ -120,10 +120,11 @@ from pydantic import (
     with_config,
 )
 
+from lup.execution.git import Repository
 from lup.workspace.paths import is_template_scaffold, project_root
 from lup.devtools import sync_state, sync_usage
 from lup.devtools.dev.records import log_ref_updates
-from lup.harness.credential import remote_url, same_repository
+from lup.harness.credential import same_repository
 import lup.harness.content.docs.upstream_reports as upstream_reports
 from lup.launch.preflight import reopened
 from lup.devtools.subapps import subapp
@@ -245,7 +246,6 @@ class ProjectEntry(TypedDict, total=False):
 
     branch: str
     review_from: Literal["remote", "local"]
-    last_synced_commit: str
     ignore: bool
 
     required: bool
@@ -358,19 +358,6 @@ def cache_dir() -> Path:
     the cache of the one it was cut from.
     """
     return Path.home() / ".cache" / "lup" / "sync"
-
-
-def legacy_cache_dir() -> Path:
-    """A second place clones sit, still read so nothing quietly abandons one.
-
-    A clone under the project root is writable with the checkout, so a
-    session can commit in one and some have. Resolving the cache alone leaves
-    that work in a directory nothing looks at again, which is the failure
-    this guards against -- so this location is resolved as well, and a
-    project found there is used where it stands rather than re-cloned
-    beside it.
-    """
-    return project_root() / ".cache" / "sync"
 
 
 def refs_dir() -> Path:
@@ -595,15 +582,9 @@ def bare_path(name: str) -> Path:
 
 
 def cached_clone(name: str) -> Path | None:
-    """This project's clone in the cache, wherever this machine put it."""
-    return next(
-        (
-            candidate
-            for candidate in (bare_path(name), legacy_cache_dir() / name)
-            if candidate.is_dir()
-        ),
-        None,
-    )
+    """This project's clone in the cache, None where this machine has none."""
+    clone = bare_path(name)
+    return clone if clone.is_dir() else None
 
 
 def bare_repository(path: Path) -> bool:
@@ -656,7 +637,9 @@ def review_branch(proj: ProjectEntry, repository: Path) -> str:
     # The library's own registration never disagrees with the pin here: it
     # takes its url from it (see `completed`). What is left is any other
     # registration of the same repository, which follows the consumed branch.
-    registered_url = registered_repository(proj) or remote_url(repository, "origin")
+    registered_url = registered_repository(proj) or (
+        Repository(repository).remote_url("origin") or ""
+    )
     if not registered_url or not same_repository(registered_url, source.url):
         return declared
     if declared and declared != source.ref:
@@ -703,7 +686,7 @@ def registered_upstream(
     branch = clone_branch(proj, path)
     attached = path / "tree" / branch
     remote = proj.get("review_from", "remote") == "remote" and bool(
-        remote_url(path, "origin")
+        (Repository(path).remote_url("origin") or "")
     )
     prefix = "refs/remotes/origin" if remote else "refs/heads"
     return Upstream(
@@ -719,24 +702,23 @@ def registered_upstream(
 def checkpoint_identity(found: Upstream) -> sync_state.ReviewSource:
     """A remote URL or local repository identity, paired with the reviewed ref."""
     remote = (
-        remote_url(found.checkout, "origin")
+        (Repository(found.checkout).remote_url("origin") or "")
         if found.tip.startswith("refs/remotes/")
         else ""
     )
-    repository = remote or git_in(
-        str(found.checkout), "rev-parse", "--path-format=absolute", "--git-common-dir"
-    )
+    checkout = Repository(found.checkout)
+    repository = remote or str(checkout.common_dir())
     ref = found.tip
     if ref == "HEAD":
         ref = (
             git.out("-C", str(found.checkout), "symbolic-ref", "HEAD", _ok_code=[0, 1])
-            or f"detached:{git_in(str(found.checkout), 'rev-parse', 'HEAD')}"
+            or f"detached:{checkout.answer('rev-parse', 'HEAD')}"
         )
     return sync_state.ReviewSource(repository=repository, ref=ref)
 
 
 def checkpoint(proj: ProjectEntry, found: Upstream) -> str:
-    """The shared checkpoint wins over stale worktree-local declarations.
+    """The commit the shared checkpoint records, empty where none applies.
 
     It holds for the ref it was taken on, in the repository reviewed rather
     than the spelling that reached it: `checkpoint_identity` reads the origin
@@ -746,7 +728,7 @@ def checkpoint(proj: ProjectEntry, found: Upstream) -> str:
     """
     recorded = sync_state.read(project_root(), proj["name"])
     if recorded is None:
-        return proj.get("last_synced_commit", "")
+        return ""
     source = checkpoint_identity(found)
     if recorded.source.ref != source.ref or not same_repository(
         recorded.source.repository, source.repository
@@ -938,7 +920,7 @@ def exemption(proj: ProjectEntry) -> str:
     machine's and is owed here like any other.
     """
     declared = registered_repository(proj)
-    own = remote_url(project_root(), "origin")
+    own = Repository(project_root()).remote_url("origin") or ""
     if declared and own and same_repository(declared, own):
         return "this checkout is that repository"
     tracked = load_json(sync_file()).get("projects", [])
@@ -1309,10 +1291,8 @@ def registered_elsewhere(repository: Path, url: str) -> str:
     """
     if not url:
         return ""
-    found = git.out(
-        "-C", str(repository), "remote", "get-url", "origin", _ok_code=[0, 1]
-    )
-    return "" if not found or same_repository(found, url) else found
+    found = Repository(repository).remote_url("origin")
+    return "" if found is None or same_repository(found, url) else found
 
 
 def declaring_file(name: str, key: str) -> Path:
@@ -1432,7 +1412,9 @@ def ensure_local(
         found = registered_upstream(
             proj, refuse_redirected_location(kept, report), report
         )
-        if proj.get("review_from", "remote") == "remote" and remote_url(kept, "origin"):
+        if proj.get("review_from", "remote") == "remote" and (
+            Repository(kept).remote_url("origin") or ""
+        ):
             refresh(name, kept, report)
         ensure_ref_symlink(name, str(found.checkout))
         return found
@@ -1458,16 +1440,9 @@ def ensure_local(
     return found
 
 
-def git_in(path: str, *args: str) -> str:
-    """Run git command in a specific directory."""
-    return git.out("-C", path, *args)
-
-
 def commit_count(path: str, since: str, tip: str = "HEAD") -> int:
     """Count the commits on ``tip`` a checkpoint has not reached."""
-    return int(
-        git_in(path, "rev-list", "--count", tip if not since else f"{since}..{tip}")
-    )
+    return Repository(Path(path)).count(tip if not since else f"{since}..{tip}")
 
 
 def resolved_checkpoint(path: str, ref: str, tip: str = "HEAD") -> str:
@@ -1484,12 +1459,13 @@ def resolved_checkpoint(path: str, ref: str, tip: str = "HEAD") -> str:
     sessions work in — as the point every upstream commit up to it was
     considered.
     """
+    repository = Repository(Path(path))
     if not ref:
-        return git_in(path, "rev-parse", tip)
-    try:
-        return git_in(path, "rev-parse", "--verify", f"{ref}^{{commit}}")
-    except sh.ErrorReturnCode as error:
-        raise typer.BadParameter(f"{ref!r} does not name a commit in {path}") from error
+        return repository.answer("rev-parse", tip)
+    resolved = repository.resolves(ref)
+    if resolved is None:
+        raise typer.BadParameter(f"{ref!r} does not name a commit in {path}")
+    return resolved
 
 
 @app.command("usage")
@@ -1593,9 +1569,6 @@ def status_cmd() -> None:
     exempt = {p["name"]: exemption(p) for p in projects}
 
     def project_row(p: ProjectEntry, resolved: Upstream | None) -> list[str]:
-        synced = p.get("last_synced_commit", "")
-        synced_short = short_sha(synced) if synced else "never"
-
         if exempt[p["name"]]:
             return [p["name"], "—", "—", reach(p), exempt[p["name"]]]
         if p.get("ignore"):
@@ -1609,7 +1582,9 @@ def status_cmd() -> None:
                 if transport_url(p)
                 else f"{required}nowhere to read it from"
             )
-            return [p["name"], "—", synced_short, reach(p), note]
+            recorded = sync_state.read(project_root(), p["name"])
+            reviewed = short_sha(recorded.commit) if recorded is not None else "never"
+            return [p["name"], "—", reviewed, reach(p), note]
 
         synced = checkpoint(p, resolved)
         synced_short = short_sha(synced) if synced else "never"
@@ -1734,7 +1709,7 @@ def show_log(
         args.append("--stat")
     args.append(range_spec)
 
-    output = git_in(str(found.checkout), *args)
+    output = Repository(found.checkout).answer(*args)
     if output:
         typer.echo(output)
     else:
@@ -1749,7 +1724,7 @@ def show_diff(
     """Show full diff for a specific commit."""
     proj = find_project(project)
     found = ensure_local(proj)
-    output = git_in(str(found.checkout), "show", commit)
+    output = Repository(found.checkout).answer("show", commit)
     typer.echo(output)
 
 

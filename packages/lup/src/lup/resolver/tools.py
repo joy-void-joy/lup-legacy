@@ -17,7 +17,7 @@ from pathlib import Path
 from pydantic import BaseModel, Field
 from pydantic_settings import BaseSettings
 
-from lup.harness.process import LocalProcessLauncher, ProcessLauncher
+from lup.execution.process import LocalProcessLauncher, ProcessLauncher
 from lup.tools.mcp import LupMcpTool, ToolError, lup_tool
 from lup.policy.assets.host import recoverable_write_targets
 from lup.resolver.declaration import declaration_delta, inspect_changes
@@ -148,10 +148,10 @@ def agent_may_approve(
 
     What counts as recoverable is the permission kernel's own answer, taken
     from the host half rather than asked again here. Two definitions of the
-    word is how one of them ends up weaker: this asked only whether Git
-    tracked the path, so a tracked file carrying uncommitted edits read as
-    recoverable and approving its removal discarded work nothing could
-    restore. Directories are excluded there for the same reason, and now here.
+    word let one of them be weaker: a test asking only whether Git tracks the
+    path reads a tracked file carrying uncommitted edits as recoverable, and
+    approving its removal discards work nothing can restore. Directories are
+    excluded here for the same reason as there.
     """
     words = command.split()
     if not words:

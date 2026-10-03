@@ -9,7 +9,7 @@ declaration is compiled, in the words of the field, rather than dropped.
 
 import shlex
 from abc import ABC, abstractmethod
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Sequence
 from enum import StrEnum
 from pathlib import Path
 from typing import Protocol, Self, runtime_checkable
@@ -18,7 +18,7 @@ from pydantic import BaseModel, Field, field_validator
 
 from lup.harness.devices import Device
 from lup.harness.image import Image, MemoryLimit, SessionPrivileges, detected_client
-from lup.harness.messaging import WakeSockets
+from lup.harness.wake_sockets import WakeSockets
 from lup.harness.models import Harness, HookSet, PromptDocument, Resumption
 from lup.harness.notice import Notice
 from lup.harness.requirements import Manifest
@@ -28,6 +28,24 @@ from lup.sandbox.models import NetworkMode
 from lup.sandbox.rail import AccessibleRoot, NestedRepository
 from lup.sessions.events import SessionId, SessionSummary
 from lup.types import EnvVars
+
+
+class Named(Protocol):
+    """Anything a declaration lists under a name of its own."""
+
+    @property
+    def name(self) -> str: ...
+
+
+def distinct_names(items: Sequence[Named], what: str) -> None:
+    """Refuse two of ``what`` under one name, which would address one as the other.
+
+    A tool server's name addresses its tools and a companion's names its
+    state, so two under one name collide wherever either is looked up.
+    """
+    names = [item.name for item in items]
+    if len(names) != len(dict.fromkeys(names)):
+        raise ValueError(f"{what} must each be named apart, got {names}")
 
 
 class Mount(BaseModel, frozen=True, extra="forbid"):
@@ -113,9 +131,9 @@ class Sandbox(BaseModel, ABC, frozen=True, extra="forbid"):
 
         The same declaration reaches the runtime and the policy, so a session
         cannot be permitted more or less than whatever judges it believes.
-        Read off a runtime constant instead, the two drifted the only way
-        they can: the policy granted an escape the settings forbade, and the
-        runtime dropped it without a word.
+        Read off a runtime constant instead, the two would drift the only way
+        they can: the policy granting an escape the settings forbid, and the
+        runtime dropping it without a word.
         """
 
     def roots(self) -> list[AccessibleRoot]:

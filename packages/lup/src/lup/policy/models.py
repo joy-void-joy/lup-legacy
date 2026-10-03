@@ -427,9 +427,9 @@ class Decision(BaseModel, frozen=True):
         Every settled fact crosses, not the handful a caller remembered. This
         is the one seam between the two spellings of a verdict, so a field
         named on one side and absent here is a field the in-process path
-        silently does not have — which is how a capability-blocked refusal
-        arrived indistinguishable from a rule's judgement, and how an ask
-        arrived with no attributable rule.
+        silently does not have: a capability-blocked refusal arriving
+        indistinguishable from a rule's judgement, or an ask arriving with no
+        attributable rule.
         """
         return cls(
             effect=decision.effect,

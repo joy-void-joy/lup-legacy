@@ -9,8 +9,8 @@ import typer
 import sh
 from pydantic import BaseModel, TypeAdapter, ValidationError
 
+from lup.execution.git import GitError, Repository
 from lup.launch.preflight import NONCE_VARIABLE, ledger_path
-from lup.execution.shell import git
 from lup.policy.snapshots import DestinationPolicy, RepositoryPolicyAuthority
 from lup.sandbox.rail import repository_layout
 
@@ -30,10 +30,8 @@ class PolicyLaunchLedger(BaseModel, extra="allow"):
                 f"No recorded writable repository authority covers {checkout}"
             )
         try:
-            top = Path(
-                git.out("-C", str(checkout), "rev-parse", "--show-toplevel").strip()
-            ).resolve()
-        except sh.ErrorReturnCode as error:
+            top = Repository(checkout).top().resolve()
+        except GitError as error:
             raise ValueError(f"{checkout} is not a Git worktree") from error
         if top != checkout:
             raise ValueError(f"Use the canonical Git worktree root: {top}")

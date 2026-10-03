@@ -2,10 +2,10 @@
 
 The per-package roster below is authored prose keyed by a walked set. What
 each package solves is a judgement no walk can make, so it stays written; but
-*which* packages there are to describe is the tree's to answer, and asking it
-is what closes the gap this page had — a roster promising "every remaining
-top-level entry" while silently omitting six of them, `actors` among them
-four commits after it was added.
+*which* packages there are to describe is the tree's to answer. So the roster
+is walked from the package rather than listed by hand: a hand-kept list
+promising "every remaining top-level entry" omits each entry added after it
+was written, and nothing notices.
 """
 
 import ast
@@ -47,7 +47,7 @@ def imported_modules(text: str) -> tuple[str, ...]:
 
     Held per text: every composition renders this page, each render counts
     four placements over the same few hundred modules, and parsing and
-    walking them again each time was a fifth of what composing a tree cost.
+    walking them again each time costs a fifth of what composing a tree does.
     Keyed by the text rather than the path, so a module that changes is read
     again rather than answered from before.
     """
@@ -229,8 +229,8 @@ class Roster(BaseModel, frozen=True):
         are the modules that read it and the values sum to the statements.
 
         Counted here rather than quoted in the placement prose, because a count
-        written into a sentence was the part of that sentence that fell behind:
-        it named a package that had since moved into another entry.
+        written into a sentence is the part of that sentence that falls behind:
+        it goes on naming a package after that package moves into another entry.
         """
         root = self.source / importer
         sources = (

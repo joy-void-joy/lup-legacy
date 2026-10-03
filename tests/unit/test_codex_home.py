@@ -774,10 +774,10 @@ def test_a_managed_hook_needs_no_record_of_its_own() -> None:
 
 
 def test_a_regenerated_hook_reads_as_modified_rather_than_trusted() -> None:
-    """The state a generated plugin reaches constantly, and the one that hid.
+    """The state a generated plugin reaches constantly, and the one easiest to miss.
 
     Trust was granted, the declaration was regenerated, and the recorded
-    digest now describes bytes that are gone. Codex skips it exactly as it
+    digest describes bytes that are gone. Codex skips it exactly as it
     skips one never answered for.
     """
     report = reported([resolved_hook("pre_tool_use:0:0", trustStatus="modified")])
@@ -790,10 +790,10 @@ def test_a_regenerated_hook_reads_as_modified_rather_than_trusted() -> None:
 def test_a_home_trusting_one_event_of_three_names_the_other_two() -> None:
     """The measured case, and why a plugin being installed proves nothing.
 
-    An operator's home carried trust for `pre_tool_use` alone. A shell command
-    is gated by `permission_request`, so the session ran the command the
-    policy refuses — while carrying that policy, enabled, and reading exactly
-    like a governed session.
+    An operator's home can carry trust for `pre_tool_use` alone. A shell
+    command is gated by `permission_request`, so that session runs the command
+    the policy refuses — while carrying that policy, enabled, and reading
+    exactly like a governed session.
     """
     report = reported(
         [
@@ -989,7 +989,7 @@ def test_only_a_home_this_store_derived_may_be_written_into(tmp_path: Path) -> N
 
 
 def kept_in_the_checkout(root: Path) -> Path:
-    """A repository whose checkout keeps its Codex home where it used to: `.lup/codex-home`."""
+    """A repository whose checkout keeps its Codex home inside it, at `.lup/codex-home`."""
     git("init", "-q", "-b", "main", str(root))
     kept = root / ".lup" / "codex-home"
     kept.mkdir(parents=True)

@@ -514,8 +514,8 @@ class QuestionRecord(BaseModel, frozen=True):
     """The parts the fingerprint binds beyond the call itself, by name, in the order it hashed them.
 
     Kept so a reader on other code tells a record it cannot check from one
-    that changed; absent on a record parked before it was kept, which bound
-    the parts it carries.
+    that changed; absent on a record that keeps none, which binds the parts
+    it carries.
     """
     changed: datetime | None = None
     """When it came to the state it stands in, where a transition moved it; its parking otherwise."""

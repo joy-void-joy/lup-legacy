@@ -526,9 +526,9 @@ def test_dev_policy_reads_its_input_from_where_the_session_s_commands_start(
     A session's hook reads every command from where the session's commands
     start -- the checkout the launch named. Asked from inside another
     worktree, by a `cd` there or by `uv run --directory` choosing whose code
-    answers, the preview read the same command against that checkout, and
-    told a subagent a copy was captured and restorable which the hook then
-    parked. So the launch's checkout is the default, `--from` names another,
+    answers, a preview reading the same command against that checkout would
+    tell a subagent a copy is captured and restorable which the hook then
+    parks. So the launch's checkout is the default, `--from` names another,
     and the answer says which it read from.
     """
     session = tmp_path / "session"
@@ -563,10 +563,9 @@ def test_the_capture_a_preview_assumes_is_named_for_every_path_it_writes(
 ) -> None:
     """A copy's destination is written as surely as a redirection's target.
 
-    Only redirections were named, so a copy settled as "captured and
-    restorable" said nothing about having assumed it -- the one line that
-    would have explained why the hook, whose capture held nothing there,
-    answered otherwise.
+    Naming only redirections, a copy settled as "captured and restorable"
+    would say nothing about having assumed it -- the one line that explains
+    why the hook, whose capture holds nothing there, answers otherwise.
     """
     verdict = policy_explain.verdict_for(
         "cp tmp/a.py src/b.py && echo x > tmp/log.txt",

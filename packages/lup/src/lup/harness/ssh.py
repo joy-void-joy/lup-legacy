@@ -18,7 +18,7 @@ be encrypted, which without an agent is material the container can read and
 cannot use. So each question is put to ssh's own tools rather than inferred
 from a filename, and each answer is a fact rather than a likelihood.
 
-**Nothing here copies the host's ``~/.ssh/config``.** It was the obvious
+**Nothing here copies the host's ``~/.ssh/config``.** It is the obvious
 move and it is wrong in a way that is hard to see: that file names
 ``IdentityFile`` paths that do not exist inside, ``Include``s files that were
 not copied, ``Match exec`` blocks that run host commands, ``ControlPath``
@@ -26,7 +26,7 @@ sockets under a directory the container does not have, and on macOS a
 ``UseKeychain`` no Linux ssh understands. What arrives is a configuration
 that parses and then behaves differently from the one the operator tested. A
 configuration *compiled* from what was actually copied cannot diverge from
-it, and the one thing the host's file uniquely knew -- that ``forge:`` means
+it, and the one thing the host's file uniquely knows -- that ``forge:`` means
 ``github.com`` -- is resolved on the host and carried in as a remote rewrite
 instead.
 

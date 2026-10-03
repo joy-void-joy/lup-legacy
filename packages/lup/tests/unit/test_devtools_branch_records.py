@@ -1,16 +1,15 @@
 """Behavior tests for where lup keeps what it knows about a branch.
 
-The base a worktree was cut from and the commit it was reserved at were
-written into the repository's shared ``config``, which is also where
-``core.hooksPath``, ``alias.*``, ``credential.helper`` and ``merge.*.driver``
-name programs git runs on the host. Nothing in git ever read the lup keys, so
-they moved to ``<common>/lup/``, which is already writable and holds the
-edition record.
+The base a worktree was cut from and the commit it was reserved at live in
+``<common>/lup/``, beside the edition record, and not in the repository's
+shared ``config``, where ``core.hooksPath``, ``alias.*``,
+``credential.helper`` and ``merge.*.driver`` name programs git runs on the
+host and nothing in git reads a lup key.
 
-What has to hold across that move: a record written in one worktree answers
-from every other, a fact written later does not erase one written earlier, a
-clone still carrying the retired keys is answered from them, and a branch
-recorded in neither place is still a branch nobody recorded.
+What has to hold: a record written in one worktree answers from every other,
+a fact written later does not erase one written earlier, a key a clone's
+config carries answers nothing until it is adopted into the record, and a
+branch recorded nowhere is still a branch nobody recorded.
 """
 
 from pathlib import Path
@@ -129,34 +128,33 @@ def test_a_branch_recorded_nowhere_says_nothing(repo: Path) -> None:
     assert records.recorded_upstream("topic", repo) == ""
 
 
-def test_a_branch_recorded_only_in_the_config_still_answers(repo: Path) -> None:
-    """A clone that never adopted its records behaves exactly as it did.
+def test_a_fact_held_only_in_the_config_answers_nothing(repo: Path) -> None:
+    """Reads answer from the record alone, whatever the config carries.
 
-    Roughly thirty branches carried these keys and nothing about the move
-    reaches them. Falling back per field rather than per document is what
-    makes a branch whose upstream was recorded here keep answering with the
-    base that only the old key holds.
+    A key in the shared config is something to adopt, not a second place to
+    read: a read that fell back to it would keep the config a file lup's
+    bookkeeping needs, which is what the record exists to end.
     """
     git_in(repo)("config", "branch.topic.lup-base", "main")
     git_in(repo)("config", "branch.topic.lup-base-commit", "abc123")
 
     records.remember("topic", records.BranchRecord(upstream="origin/topic"), repo)
 
-    assert records.recorded_base("topic", repo) == "main"
-    assert records.recorded_reservation("topic", repo) == "abc123"
+    assert records.recorded_base("topic", repo) == ""
+    assert records.recorded_reservation("topic", repo) == ""
 
 
 def test_adopting_moves_a_config_record_and_drops_the_key(repo: Path) -> None:
-    """The half a read cannot do: the shared config ends up holding nothing."""
+    """The shared config ends up holding nothing, and the record everything."""
     git_in(repo)("config", "branch.topic.lup-base", "main")
     git_in(repo)("config", "branch.topic.lup-base-commit", "abc123")
 
-    moved = list(records.adopt_legacy_records(repo))
+    moved = list(records.adopt_config_records(repo))
 
     assert len(moved) == 2
-    assert records.read_record("topic", repo).base == "main"
-    assert records.read_record("topic", repo).base_commit == "abc123"
-    assert records.legacy_keys(repo) == []
+    assert records.recorded_base("topic", repo) == "main"
+    assert records.recorded_reservation("topic", repo) == "abc123"
+    assert records.config_keys(repo) == []
 
 
 def test_adopting_again_moves_nothing(repo: Path) -> None:
@@ -167,9 +165,9 @@ def test_adopting_again_moves_nothing(repo: Path) -> None:
     overwritten with the blanks a missing key would produce.
     """
     git_in(repo)("config", "branch.topic.lup-base", "main")
-    list(records.adopt_legacy_records(repo))
+    list(records.adopt_config_records(repo))
 
-    assert list(records.adopt_legacy_records(repo)) == []
+    assert list(records.adopt_config_records(repo)) == []
     assert records.recorded_base("topic", repo) == "main"
 
 
@@ -182,7 +180,7 @@ def test_a_branch_name_holding_a_dot_recovers_from_its_key(repo: Path) -> None:
     """
     git_in(repo)("config", "branch.feat.v2.lup-base", "main")
 
-    list(records.adopt_legacy_records(repo))
+    list(records.adopt_config_records(repo))
 
     assert records.recorded_base("feat.v2", repo) == "main"
 
@@ -192,9 +190,9 @@ def test_a_branch_left_in_the_config_is_named_as_awaiting_adoption(
 ) -> None:
     """The move reports itself, because nothing else about the clone would.
 
-    Both readings work, so no command fails and no branch misbehaves while
-    the keys sit there — which is exactly why the unfinished half has to be
-    asked for rather than waited for.
+    No command fails while the keys sit there — a branch whose base nobody
+    reads detects one from the topology instead — so the unfinished move has
+    to be asked for rather than waited for.
     """
     git_in(repo)("config", "branch.topic.lup-base", "main")
 
@@ -213,7 +211,7 @@ def test_one_branch_holding_both_keys_is_named_once(repo: Path) -> None:
 def test_a_clone_that_adopted_its_records_awaits_nothing(repo: Path) -> None:
     """How the report goes quiet: the measurement itself empties out."""
     git_in(repo)("config", "branch.topic.lup-base", "main")
-    list(records.adopt_legacy_records(repo))
+    list(records.adopt_config_records(repo))
 
     assert records.branches_awaiting_adoption(repo) == []
 

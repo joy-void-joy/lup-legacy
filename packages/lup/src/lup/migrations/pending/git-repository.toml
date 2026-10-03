@@ -1,0 +1,72 @@
+subjects = [
+    "git_line",
+    "git_ran",
+    "git_in",
+    "resolver_git",
+    "remote_url",
+    "git_admin_dirs",
+    "admin_dirs",
+    "is_ancestor",
+    "descends_from",
+    "remote_branch_exists",
+    "resolvable",
+    "commits_in",
+    "find_git_dir",
+    "git_directory",
+    "WorktreeEntry",
+    "WorktreeEntry.path",
+    "WorktreeEntry.head",
+    "WorktreeEntry.branch",
+    "WorktreeEntry.bare",
+    "WorktreeEntry.prunable",
+    "ForeignCheckouts.declared",
+    "WorktreeOrchestrator.require",
+]
+reason = """
+git was run seven ways and the same dozen questions were asked of it three \
+to ten times each, every copy with its own failure answer and its own path \
+form; `lup.execution.git.Repository` asks each once — the top, the git and \
+shared directories (always absolute), the branch, whether a ref resolves, \
+ancestry, counts, conflicted paths, a merge in progress, a remote's URL and \
+the worktrees, parsed once from `--porcelain -z` — through a \
+`ProcessLauncher`, so the helpers that wrapped one question each went"""
+
+[[steps]]
+instruction = """
+Build `Repository(root)` (`lup.execution.git`), or `Repository(root, \
+launcher, environment)` where a launcher seam or an overlaid environment \
+such as `GIT_INDEX_FILE` is wanted, and ask it: `run(*arguments, \
+stream=...)` for any git command's `ExitStatus`, and `answer(*arguments)` \
+for its output or a `GitError`, where you called `git_line`, `git_ran` \
+(`lup.devtools.dev.branches`), `git_in` (`lup.devtools.sync`) or \
+`resolver_git` (`lup.devtools.harness.resolve`)."""
+
+[[steps]]
+instruction = """
+Ask `Repository(root).remote_url(name)` where you called \
+`lup.harness.credential.remote_url(root, name)`; it answers `None` rather \
+than an empty string where the remote is not configured."""
+
+[[steps]]
+instruction = """
+Ask `Repository(root).admin_dirs()` where you called `git_admin_dirs` \
+(`lup.devtools.utils`) or `lup.execution.writability.admin_dirs`, \
+`git_dir()` where you called `find_git_dir` (`lup.devtools.dev.conflicts`) or \
+`git_directory` (`lup.devtools.dev.scaffold`), `is_ancestor(a, b)` where you \
+called `lup.devtools.dev.branches.is_ancestor(a, b)` or \
+`lup.devtools.dev.worktree.descends_from(b, a)`, `resolves(ref) is not None` \
+where you called `resolvable(ref)` or `remote_branch_exists(name)` (with \
+`refs/remotes/origin/<name>`), and `count(range)` where you called \
+`lup.devtools.dev.release.commits_in`."""
+
+[[steps]]
+instruction = """
+Read `Repository(root).worktrees()`, a list of `Worktree`, where you parsed \
+`git worktree list` or built `WorktreeEntry` records; \
+`ForeignCheckouts.declared` takes that list rather than porcelain text."""
+
+[[steps]]
+instruction = """
+Call `WorktreeOrchestrator.require(root, failure, *git_arguments)` where you \
+passed it a `LaunchRequest`; a non-git step goes through \
+`WorktreeOrchestrator.checked(status, command, root, failure)`."""

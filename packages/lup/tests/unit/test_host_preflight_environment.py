@@ -15,7 +15,7 @@ from lup.harness.requirements import (
     SentinelProbe,
 )
 from lup.launch.preflight import NONCE_VARIABLE, LaunchSentinels
-from lup.sandbox.known import host_side
+from lup.harness.environment import Placement
 
 
 @pytest.mark.parametrize("fails", [False, True])
@@ -43,7 +43,7 @@ def test_host_preflight_leaves_the_launcher_environment_as_it_found_it(
         )
 
     assert dict(os.environ) == original
-    assert host_side()
+    assert Placement.here().host
     forwarded = probe.check.call_args.args[0]
     assert forwarded[NONCE_VARIABLE] == sentinels.nonce
     assert forwarded[SENTINEL_VARIABLE] == sentinels.host

@@ -1,12 +1,13 @@
 """A global in front of a subcommand is consumed before anything reads the command.
 
-Every reader of a subcommand matched it where it is written — `git`, then
-`restore` — so one global in front of it answered `None` about a command they
-do model. The row matched anyway, because the matcher steps over these
-globals to find the subcommand, and the readers its verdict is relaxed or
-tightened by did not: `git -C . restore <human-authored file>` was allowed
-where the same restore without the flag asked. `-C .` changes nothing about
-what the command does, which is what made it a bypass rather than a mistake.
+A reader matching a subcommand where it is written — `git`, then `restore` —
+answers `None` about a command it does model once a global stands in front
+of it. The row matches anyway, because the matcher steps over these globals
+to find the subcommand, so every reader its verdict is relaxed or tightened
+by has to step over them too: otherwise `git -C . restore <human-authored
+file>` is allowed where the same restore without the flag asks. `-C .`
+changes nothing about what the command does, which is what makes that a
+bypass rather than a mistake.
 
 The same flag is also the one that moves where an operand resolves, so both
 halves are read here: what the command runs as, and where it runs it.

@@ -43,8 +43,9 @@ from pydantic import AnyHttpUrl, BaseModel, Field, SecretStr, model_validator
 
 from lup.harness.models import Harness, HookSet
 from lup.harness.requirements import Finding, Manifest
-from lup.launch.companions import HostCompanion, named_apart
+from lup.launch.companions import HostCompanion
 from lup.launch.declaration import (
+    distinct_names,
     LaunchCommand,
     LaunchStep,
     Member,
@@ -56,7 +57,7 @@ from lup.launch.declaration import (
     declared_policy,
 )
 from lup.policy.hooks import LupHooksConfig
-from lup.mcp import ServeLaunch, ToolServer, server_grants, uniquely_named
+from lup.mcp import ServeLaunch, ToolServer, server_grants
 from lup.providers.claude.model_choice import (
     ClaudeModelChoice,
     claude_default_effort,
@@ -141,7 +142,7 @@ class ClaudeTools(BaseModel, frozen=True, extra="forbid", arbitrary_types_allowe
     @model_validator(mode="after")
     def servers_are_named_apart(self) -> Self:
         """Refuse two servers under one name, which would address one tool twice."""
-        uniquely_named(self.mcp)
+        distinct_names(self.mcp, "tool servers")
         return self
 
     def roster(self) -> list[ClaudeBuiltinTool] | None:
@@ -447,7 +448,7 @@ class Claude(
     @model_validator(mode="after")
     def companions_are_named_apart(self) -> Self:
         """Refuse two host companions under one name, whose state would collide."""
-        named_apart(self.companions)
+        distinct_names(self.companions, "host companions")
         return self
 
     def enforced_policy(self) -> HookSet | None:

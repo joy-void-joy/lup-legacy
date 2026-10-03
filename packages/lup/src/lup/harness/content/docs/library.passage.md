@@ -380,7 +380,7 @@ Four tiers, and imports only ever point downward.
    one, the do-not-edit banner and the escaping of a derived table's cells;
    `lup.seams` and `lup.execution` are the rest. Burying one of these inside a
    subject is what manufactures a cycle — folding `channels` in with
-   `workspace` did exactly that and was undone. Gathering two of them under a
+   `workspace` would do exactly that. Gathering two of them under a
    question they share does not, and cannot: a package holding only leaves has
    no outgoing edge to close a loop with.
 2. **`capabilities` and `events`** — each subject carries both.
@@ -454,10 +454,10 @@ an agent declares them in, beside the session wrappers that go around them;
 `budget.py` and `quota.py` are the two opposite kinds of "no more work" it
 applies.
 
-Everything about *which* runtime answers moved out to `providers`, and
-everything about running work *over* a session moved out to
+Everything about *which* runtime answers lives in `providers`, and
+everything about running work *over* a session lives in
 `orchestration` — a turn engine that also held routing, profile trees and a
-background agent was three subjects sharing one name.
+background agent would be three subjects sharing one name.
 
 Unsupported behavior is *absent* from a provider's type rather than present
 and raising: `CodexTurn` has `steer`, and `ClaudeTurn` has no such method.
@@ -551,8 +551,7 @@ Which entries this table has to cover is walked from the installed `lup`
 package when the page is generated — {{ subtree }} in this repository,
 and wherever a downstream project resolved the dependency to. Generation fails
 naming any package that is neither described here nor tiered above, so a
-package added to the library cannot be quietly missing from its own roster —
-the way six of them once were.
+package added to the library cannot be quietly missing from its own roster.
 
 
 <!-- passage: what-is-left-to-place -->
@@ -560,9 +559,8 @@ the way six of them once were.
 ### What is left to place
 
 The roster above is where the tree stands, and where the three questions put
-it. Thirty-four top-level entries became these by asking, of each one, which
-of the four kinds it is: a foundation that imports nothing here, a subject,
-the one vendor boundary, or tooling.
+it. Each top-level entry is one of four kinds: a foundation that imports
+nothing here, a subject, the one vendor boundary, or tooling.
 
 `resolver` is the entry the downward question is hardest on, because
 everything that drives it is tooling: {{ resolver_readers }} modules under
@@ -593,12 +591,12 @@ questions still open; the tenth is the shape of a guarantee.
 The first five have one shape: a registry sitting in the package that
 everything it registers already imports. Every tool group is declared in
 `tools.mcp`'s vocabulary, and `tools/toolsets.py` assembles them all, so the
-edge closes by moving the assembly above what it assembles. The last four have
-the shape the do-not-edit banner had: vocabulary both sides speak — an actor
+edge closes by moving the assembly above what it assembles. The last four
+share one shape: vocabulary both sides speak — an actor
 reference, a journal record, a history reader, a clipboard probe — sitting
-inside one of them, which closes by moving it below both, as
-`lup.formats.banner` already did for the banner the policy bundle and harness
-both write. `tools` ↔ `devtools` also carries the question the rest of the
+inside one of them, which closes by moving it below both, the way
+`lup.formats.banner` sits below the policy bundle and the harness, which both
+write the banner. `tools` ↔ `devtools` also carries the question the rest of the
 table assumes an answer to: its one import back is deferred inside a function,
 and whether a deferred import counts as an edge at all is the question to
 answer before an acyclicity check is written — answering it by choosing a
@@ -614,7 +612,7 @@ written. This package exists to decide identically in two homes, the compiled
 hook and `dev check`, and one shared reading of the source is how the two are
 held to the same answer. Cutting the edge would mean two implementations of
 that reading, drifting apart on exactly the cases nobody thought to test —
-which is the failure the package was built to prevent, reintroduced for the
+which is the failure the package exists to prevent, reintroduced for the
 sake of a tidier graph.
 
 Acting on one of these answers is a command rather than an afternoon.

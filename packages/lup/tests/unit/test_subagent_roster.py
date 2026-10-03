@@ -1,11 +1,10 @@
 """A native subagent on its session's roster: a row of its own, nested under it.
 
-Written against what an orchestrating session with ten subagents met. The
-subagents inherited the session's identity through the environment, so every
-`coordination_describe` replaced the orchestrator's row, a lock held a file for
-the whole session rather than for the one subagent writing it, and a
-subagent's message to the session that dispatched it was refused as a message
-to itself.
+Subagents inherit the session's identity through the environment, so read
+from it alone every `coordination_describe` would replace the orchestrator's
+row, a lock would hold a file for the whole session rather than for the one
+subagent writing it, and a subagent's message to the session that dispatched
+it would be refused as a message to itself.
 
 What tells the calling subagent apart is the argument its runtime's hook
 stamps on every coordination call, which these cases carry the way the hook

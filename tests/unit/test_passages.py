@@ -1,9 +1,9 @@
 """Prose lives beside its declaration, and its values enter escaped.
 
-What this replaced: prose inside an r-string in Python with every path,
-count and description spliced in by f-string. The claim now is narrow and
+Prose sits in a passage file rather than an r-string in Python with every
+path, count and description spliced in by f-string. The claim is narrow and
 checkable — a passage names values, a value is a part, and a part spells
-itself — so the tests below are that claim put to the shapes that broke it.
+itself — so the tests below are that claim put to the shapes that break it.
 """
 
 from pathlib import Path

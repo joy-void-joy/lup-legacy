@@ -14,7 +14,7 @@ every worktree it later lists reachable, including the ones a contained session
 cuts after the launch.
 
 The store is the user's state, under `$XDG_STATE_HOME/lup/`, and only the host
-writes it. A launched session is refused the write by :func:`host_side`, and
+writes it. A launched session is refused the write by its placement, and
 no lease may grant a mount over it -- the launch checks that before a container
 starts -- because a store a container could write is a store a container could
 add its own repository to.
@@ -64,19 +64,6 @@ def answers_directory() -> Path:
     for themselves (:func:`lup.policy.assets.host.review_answers_home`).
     """
     return store_directory() / "reviews"
-
-
-def host_side() -> bool:
-    """Whether this process runs on the host rather than inside a launched session.
-
-    A launch hands every session it opens the nonce naming its boundary
-    measurement, and a native sandbox marks itself active; neither reaches a
-    command the operator runs from a terminal.
-    """
-    environ = os.environ  # lup: ignore[os-environ]
-    launched = "LUP_BOUNDARY_NONCE" in environ
-    sandboxed = "LUP_SANDBOX_ACTIVE" in environ and environ["LUP_SANDBOX_ACTIVE"] == "1"
-    return not launched and not sandboxed
 
 
 def known_repositories() -> list[Path]:

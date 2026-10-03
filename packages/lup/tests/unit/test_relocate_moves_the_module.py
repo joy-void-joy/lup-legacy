@@ -1,8 +1,8 @@
 """A relocation carries the module's own file, not only its importers.
 
-The command is named for moving a module and, for as long as it only repointed
-imports, it reported success over a tree where nothing resolved. The type check
-did catch that — somewhere else, one step later, naming an unresolved import
+The command is named for moving a module, and one that only repointed imports
+would report success over a tree where nothing resolves. The type check would
+catch that — somewhere else, one step later, naming an unresolved import
 rather than the command that had just produced it.
 """
 
@@ -75,9 +75,9 @@ def test_an_occupied_destination_is_named_before_anything_moves(
 ) -> None:
     """The relocation that cannot land is found while the tree is still whole.
 
-    Carrying nothing and rewriting every importer anyway aimed them all at the
-    module already standing at the new name, and the command reported that as
-    a relocation. Asked first, it is refused before either half runs.
+    Carrying nothing and rewriting every importer anyway would aim them all at
+    the module already standing at the new name, and report that as a
+    relocation. Asked first, it is refused before either half runs.
     """
     source = module_at(tmp_path, "pkg", "old_home")
     existing = module_at(tmp_path, "pkg", "new_home")

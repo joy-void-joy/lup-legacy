@@ -22,9 +22,9 @@ changes — read from the working tree when somebody asks, which is why the
 neighbourhood carries a root.
 
 **A claim refuses to hide contradiction**, reports a premise that fell as its
-own regression, and is graded in this repository's six words. The words come
-from the mathematics repository whose failures shaped the design, where
-senders wrote them on every claim unprompted — including an explicit negative:
+own regression, and is graded in this repository's six words. They are the
+words senders in a mathematics corpus write on their own claims unprompted, an
+explicit negative among them:
 *"[M] No loop was found at small size. I have not run this search; the
 statement is that no such search exists in this project's record."* Six is not
 a recommendation; an adopting project replaces `GRADES` and nothing else.

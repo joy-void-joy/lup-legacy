@@ -1,9 +1,9 @@
 """What a launch claims an unpinned agent CLI's version is, and on whose word.
 
-The failure this guards against was quiet in the way only a cache can be:
+The failure this guards against is quiet in the way only a cache can be:
 an unpinned install rendered as a bare name is fetched once, frozen into a
-layer, and served as "latest" for months -- which is how a session's CLI
-came to predate the model it was asked to run. Resolution turns the
+layer, and served as "latest" for months -- so a session's CLI can predate
+the model it is asked to run. Resolution turns the
 registry's answer into a concrete pin in the rendered text, so the
 content-addressed tag is what notices a release and nothing here trusts a
 layer's memory.

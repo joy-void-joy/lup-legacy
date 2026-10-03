@@ -22,7 +22,7 @@ contained session's default is ``/tmp/cc-socks/<pid>.sock``, and two
 containers whose runtime is pid 1 or pid 7 in their own namespaces name the
 same file. So the id travels with the path, and a nudge that reached the wrong
 session is refused by it rather than delivered to it.
-:mod:`lup.harness.messaging` is where lup puts the sockets, keyed by member id,
+:mod:`lup.harness.wake_sockets` is where lup puts the sockets, keyed by member id,
 so that case is rare rather than ordinary; this is what makes it harmless when
 it happens anyway.
 

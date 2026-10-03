@@ -223,9 +223,9 @@ async def test_correction_rebinds_a_fresh_store_and_aggregates_usage() -> None:
 async def test_a_refused_submission_fails_instead_of_spending_corrections() -> None:
     """Re-prompting a refused submission reproduces the refusal.
 
-    A worker denied its submission tool reported the same empty store every
-    cycle, so every configured correction was spent reaching the failure the
-    first turn already had — and reported it as a turn that never submitted,
+    A worker denied its submission tool reports the same empty store every
+    cycle, so every configured correction would be spent reaching the failure
+    the first turn already had — and reported as a turn that never submitted,
     which reads as a model mistake rather than a permission one.
     """
     binder = RecordingBinder()

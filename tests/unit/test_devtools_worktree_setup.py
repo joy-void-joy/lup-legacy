@@ -74,10 +74,10 @@ def the_worktree_holds_its_own_environment(monkeypatch: pytest.MonkeyPatch) -> N
     is what a sync did or did not leave behind takes it away.
 
     Both directions need it, which is what makes it a fixture rather than a
-    line in the one test that noticed. Where the value is absolute it names a
-    directory the image already holds, so an environment reads as built when
-    nothing built one; where it is relative -- which is what a contained
-    session now sets, so `uv` keys the environment per project -- it names a
+    line in one test. Where the value is absolute it names a directory the
+    image already holds, so an environment reads as built when nothing built
+    one; where it is relative -- which is what a contained session sets, so
+    `uv` keys the environment per project -- it names a
     sibling of the `.venv` these cases create, so an environment that *was*
     built reads as missing and the sync runs again.
     """
@@ -703,13 +703,13 @@ def test_re_attaching_leaves_a_branch_where_it_stands(
 def test_a_branch_rebuilt_on_another_base_still_pushes_forward(
     repo: Path, tree_dir: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The collision a published placeholder guaranteed, and its whole cost.
+    """The collision a published placeholder would guarantee, and its whole cost.
 
     Discovering that the code being changed lives on another branch, and
-    resetting the new branch onto it, is an ordinary correction. Where
-    creation had already published the first base's tip, that correction made
-    every later push a non-fast-forward — on a branch nobody had ever pushed
-    work from, so the force-push answering it was a decision about nothing.
+    resetting the new branch onto it, is an ordinary correction. Were
+    creation to publish the first base's tip, that correction would make
+    every later push a non-fast-forward — on a branch nobody ever pushed work
+    from, so the force-push answering it would be a decision about nothing.
     """
     git = repo_git(repo)
     git("checkout", "-q", "-b", "other")

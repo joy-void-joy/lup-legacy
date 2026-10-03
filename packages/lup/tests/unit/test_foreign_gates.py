@@ -57,7 +57,7 @@ def test_a_bare_token_alone_passes_the_gate_it_names() -> None:
 
 
 def test_a_quoted_token_never_becomes_its_own_argv_element() -> None:
-    """The correction an earlier pass paid for, kept measured rather than noted.
+    """A quoted token stays inside its word, measured rather than noted.
 
     `git log -S"ssh alias"` does not reproduce: the gate matches whole
     elements, and quoting keeps this one inside a longer word. Filing it as
