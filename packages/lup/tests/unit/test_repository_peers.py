@@ -681,6 +681,22 @@ async def test_the_peers_listing_ends_with_the_person_and_what_they_hold(
     assert [claim.path for claim in peers.holding(held / "inner.py")] == [str(held)]
 
 
+def test_the_person_s_hold_outlives_every_session_and_is_not_one(
+    tmp_path: Path,
+) -> None:
+    """What they lock stands with nobody working, and nobody working is what ends a watch."""
+    peers, member = joined(tmp_path, "builder")
+    held = tmp_path / "held"
+    held.mkdir()
+    peers.lock(USER_ADDRESS, held)
+
+    peers.leave(member, summary="landed it")
+
+    assert peers.live_ids() == []
+    assert [claim.path for claim in peers.held()] == [str(held)]
+    assert [claim.path for claim in peers.holding(held / "inner.py")] == [str(held)]
+
+
 async def test_a_send_to_ones_own_address_is_refused(tmp_path: Path) -> None:
     """The name resolved, to the sender, which is the one peer it cannot mean."""
     peers = RepositoryPeers(tmp_path)

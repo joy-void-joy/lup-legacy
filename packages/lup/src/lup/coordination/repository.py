@@ -843,23 +843,31 @@ class RepositoryPeers:
         self.cohort.mail.carried(self.actor(member_id), delivery)
 
     def live_ids(self) -> list[str]:
-        """Every member still working here, by id, which is what expires a claim.
+        """Every member still working here, by id; the person is not one."""
+        return store.live_ids(
+            self.root, window=self.pulse.stale_after_seconds, without=USER_KIND
+        )
 
-        The store's own reading, the person included: the person is never
-        finished, so what they lock stands until they release it, and the
-        compiled dispatcher asking who holds a path reads the same members.
+    def claiming_ids(self) -> list[str]:
+        """Every member whose claims stand, by id, which is what expires a claim.
+
+        The live members and the person, who is never finished: what they lock
+        stands until they release it, as the compiled dispatcher asking who
+        holds a path reads it.
         """
         return store.live_ids(self.root, window=self.pulse.stale_after_seconds)
 
     def held(self) -> list[HeldPath]:
-        """Every claim a live session is holding, newest first."""
-        return [folded_held_path(row) for row in store.held(self.root, self.live_ids())]
+        """Every claim a live member or the person is holding, newest first."""
+        return [
+            folded_held_path(row) for row in store.held(self.root, self.claiming_ids())
+        ]
 
     def holding(self, path: Path) -> list[HeldPath]:
         """Every live claim a write to this path would land under."""
         return [
             folded_held_path(row)
-            for row in store.covering(self.root, path, self.live_ids())
+            for row in store.covering(self.root, path, self.claiming_ids())
         ]
 
     def revise(
