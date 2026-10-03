@@ -38,18 +38,17 @@ inherited in either direction — widening a restrictive parent is as ordinary
 as narrowing a permissive one. So ``git`` says once where its subcommands run,
 and each of them says only what differs.
 
-What a rule states is what it *does*, never what it earns. A stated verdict
-sat beside the effects for the length of the migration, agreeing with them on
-every row, and one judgement recorded twice is the drift this model removes —
-so it is gone, and :func:`~lup.policy.kernel.effects.declared_verdict` derives
-the answer where it is used. A rule that means to refuse a spelling says
+What a rule states is what it *does*, never what it earns. A verdict stated
+beside the effects would be one judgement recorded twice, which is the drift
+this model removes, so :func:`~lup.policy.kernel.effects.declared_verdict`
+derives the answer where it is used. A rule that means to refuse a spelling says
 ``refuses``; one that means to raise a question declares an effect that asks.
 
 The runner table says it the same way. ``uv`` is parsed rather than matched,
-so a ``uv run`` target is declared on a surface of its own — and it was the
-last one stating a verdict outright, which left a target with subcommands
-declaring both halves separately: what the target earns, and what the command
-rows beneath it do.
+so a ``uv run`` target is declared on a surface of its own, stating effects
+like every other rule: a verdict stated there would leave a target with
+subcommands declaring both halves separately — what the target earns, and what
+the command rows beneath it do.
 
 Absence is distinguished from a stated value of the same word by what pydantic
 already records about which fields a declaration supplied, so no field is
@@ -283,9 +282,9 @@ class RunnerTargetRule(BaseModel, frozen=True):
 
     One statement serving both halves. A target with subcommands is erased
     twice, as a runner row and as the command rows its verbs are judged by,
-    and while a verdict was stated here as well the two halves were declared
-    separately — a target could bless itself and refuse its own verbs, or the
-    reverse, with nothing noticing.
+    and a verdict stated here as well would declare the two halves separately
+    — a target blessing itself and refusing its own verbs, or the reverse,
+    with nothing noticing.
     """
 
     refuses: str = ""
@@ -523,8 +522,8 @@ class ShellCommandRule(SelectableRule, frozen=True):
     reasons and only one of them names something a write row can judge:
     `sort -o out.txt` lands a file where the command would have written
     stdout, and `sort --compress-program=x` runs a program. One list
-    answering for both meant the row's single verdict decided each, so a
-    write to scratch asked and a write over tracked source did not.
+    answering for both would let the row's single verdict decide each, so a
+    write to scratch would ask and a write over tracked source would not.
 
     The value is what makes an entry belong here, not the writing. `yq -i`
     rewrites a file and stays an ``ask_flags`` entry, because the file it
@@ -587,11 +586,11 @@ class ShellCommandRule(SelectableRule, frozen=True):
     """Guarded globals whose value names a setting this command will apply.
 
     `git -c <key>=<value>` and `git config <key> <value>` set the same thing,
-    and until this existed only the second could say which settings its
-    question was about. So every `-c` asked on the strength of what `-c` can
-    reach — while the reason it gave, that a setting can change how commands
-    execute, was untrue of `-c color.ui=false`, which is the spelling this
-    repository's own guidance asks for whenever a diff is captured.
+    so both say which settings their question is about. Without this, every
+    `-c` would ask on the strength of what `-c` can reach — with a reason,
+    that a setting can change how commands execute, that is untrue of
+    `-c color.ui=false`, the spelling this repository's own guidance asks for
+    whenever a diff is captured.
 
     Read against :attr:`guarded_settings`, and only in the two spellings that
     can be read without guessing: the value in the next word, or after the

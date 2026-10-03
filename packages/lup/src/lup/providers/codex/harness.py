@@ -88,6 +88,7 @@ from lup.policy.kernel.decision import SandboxPlacement
 from lup.policy.kernel.effects import declared_verdict
 from lup.policy.kernel.rows import PathRoleRow
 from lup.policy.kernel.shell import excluded_prefix, sandbox_excluded
+from lup.policy.models import ProtectedRoot
 from lup.policy.refused_tools import routed_for
 from lup.policy.kernel.words import (
     INTERPRETERS,
@@ -117,6 +118,13 @@ class CodexSpellings(NativeSpellings):
     @property
     def runtime_name(self) -> Atom:
         return Atom("Codex")
+
+    @property
+    def protected_tree(self) -> ProtectedRoot:
+        return ProtectedRoot(
+            path=Path(self.tree("tree_root")),
+            description="Codex's settings, trust state and skills",
+        )
 
     @property
     def native_identifiers(self) -> list[Atom]:
@@ -761,10 +769,10 @@ def codex_allow_prefixes(
             case subcommand, operation:
                 add([row["command"], subcommand, operation], row["sandbox"])
     for target in runner_targets:
-        # Read on the same terms as a command row above, which it was not
-        # while a target stated its verdict outright: every declared target
-        # took a native prefix allow, so one the project refused was approved
-        # here and refused only by the hook beside it.
+        # Read on the same terms as a command row above: a target stating its
+        # verdict outright would take a native prefix allow, so one the
+        # project refused would be approved here and refused only by the hook
+        # beside it.
         earned = declared_verdict(
             list(target.effects), target.refuses, unresolved_evidence(no_write_facts())
         )
@@ -1050,9 +1058,7 @@ class CodexHookRenderer(ArtifactRenderer[HookSet]):
                             )
                             for scope in source.denied_fetch
                         ],
-                        protected_roots=[
-                            path.as_posix() for path in source.protected_edit_roots
-                        ],
+                        protected_roots=source.protected_roots(),
                         human_owned_files=[
                             path.as_posix() for path in source.human_owned_files
                         ],

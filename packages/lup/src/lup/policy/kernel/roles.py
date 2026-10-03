@@ -66,11 +66,11 @@ FOREIGN_REPOSITORY_RECOVERY = (
 """What a foreign-repository edit is told, in place of a convention refusal.
 
 The sentence has to say two things at once and be believed on both. That the
-edit may proceed once a human approves it, and — the part that was actually
-costing something — that the rules it is *not* being judged by were never
-about it, so the way through is not to satisfy them. A refusal naming a lup
-rule teaches an agent to restyle somebody else's code until the rule stops
-firing, which is exactly what happened.
+edit may proceed once a human approves it, and — the part that costs
+something when it is missing — that the rules it is *not* being judged by
+were never about it, so the way through is not to satisfy them. A refusal
+naming a lup rule teaches an agent to restyle somebody else's code until the
+rule stops firing.
 """
 
 
@@ -81,12 +81,12 @@ def spells_its_path(word: str) -> bool:
     a different file at run time than the one written down, so every answer
     derived from reading it is an answer about a path that may never exist.
 
-    Both readers of that fact need it and were deriving it apart. The
-    redirection rule refused the create-versus-overwrite relaxation to such a
-    word, while :func:`path_role` matched its declared patterns against it as
-    though every component were a directory name. They disagreed about
-    ``$W/tmp/f.py``, and the role won: ``**/tmp`` absorbed the ``$W`` and
-    called the whole path scratch, which allowed ``rm -rf $W/tmp`` unprompted
+    Both readers of that fact need it, and deriving it apart lets them
+    disagree: the redirection rule refusing the create-versus-overwrite
+    relaxation to such a word while :func:`path_role` matches its declared
+    patterns against it as though every component were a directory name. On
+    ``$W/tmp/f.py`` the role would win: ``**/tmp`` absorbing the ``$W`` and
+    calling the whole path scratch, which allows ``rm -rf $W/tmp`` unprompted
     on the strength of a component saying nothing about where ``$W``
     resolves.
 
@@ -232,8 +232,8 @@ def repository_relative(word: str, checkout: str) -> str:
     root it was never given.
 
     ``checkout`` is empty wherever the caller has no root in hand, and then a
-    path is returned untouched -- the conservative answer this had before any
-    root was passed, rather than a rewrite against a root that was guessed.
+    path is returned untouched -- the conservative answer, rather than a
+    rewrite against a guessed root.
     """
     if not checkout or expands(word):
         return word
@@ -293,6 +293,51 @@ def is_temporary_root_target(word: str) -> bool:
     return "$" not in word and posixpath.normpath(word).startswith("/tmp/")
 
 
+STREAM_WRITE_TARGETS = (
+    "/dev/null",
+    "/dev/zero",
+    "/dev/full",
+    "/dev/stdout",
+    "/dev/stderr",
+    "/dev/fd/1",
+    "/dev/fd/2",
+    "/dev/tty",
+)
+"""Write targets that reach a stream or a sink rather than the filesystem.
+
+Named one by one rather than matched by their directory, because `/dev` is
+not a safe prefix and never was: `> /dev/sda` overwrites a disk, `>
+/dev/urandom` seeds the kernel's entropy pool, and `> /dev/mem` is worse than
+either. Every entry here either discards what it is given or hands it to a
+descriptor the process already holds.
+"""
+
+
+def writes_to_a_stream(
+    word: str, streams: tuple[str, ...] = STREAM_WRITE_TARGETS
+) -> bool:
+    """Whether writing content into this target can destroy nothing.
+
+    Read before the rows that ask, because a stream has no prior contents to
+    lose and so raises no question for anybody to answer -- and without it
+    every one of these but `/dev/null` reaches the fallback and is retired by
+    the recovery row instead, which tells the reader that "the affected paths
+    are captured and restorable" about a terminal.
+
+    Content is what it is asked about: a redirection's target, a `tee`
+    operand, a write flag's value, a copy's destination. A verb acting on the
+    entry itself -- `rm`, `mv` or `ln` over `/dev/null` -- replaces the device
+    rather than writing into it, and is judged by its own row.
+
+    Only descriptors 1 and 2 are named, and `/dev/fd/<n>` is deliberately not
+    matched by shape. A higher descriptor is one the shell opened onto a file
+    -- `exec 3>notes.txt` makes `> /dev/fd/3` a write to `notes.txt` -- and
+    `/dev/stdin` is worse, since a command run with `< notes.txt` truncates it.
+    Those reach the filesystem and belong to the rows that ask about it.
+    """
+    return posixpath.normpath(word) in streams
+
+
 def displaced_targets(
     candidates: list[DisplacedTargetRow], rows: list[PathRoleRow]
 ) -> list[DisplacedTargetRow]:
@@ -311,7 +356,7 @@ def displaced_targets(
     Where the two roles agree the link changed nothing this table can see:
     ``tmp/a`` pointing at ``tmp/b`` is scratch either way, and the machine's
     temporary root resolving to its own real name — ``/private/tmp`` on a
-    system that spells it that way — is the same root it always was.
+    system that spells it that way — is the same root either way.
     """
     return [
         row
@@ -483,16 +528,25 @@ def sibling_scratch_rows(
 
 
 def declared_scratch(spelled: str, rows: list[PathRoleRow]) -> bool:
-    """Whether a path inside this checkout sits under a root it declares scratch.
+    """Whether a path sits under a root this repository declares scratch.
 
     Narrower than :func:`path_role` answering ``"scratch"`` by exactly the two
     roots the kernel knows unaided. The session scratchpad and the machine's
-    temporary root are scratch for every checkout and belong to none, so an
-    absolute spelling, one climbing out, and one only a run can expand all
-    say no. What is left is a repository-relative path under a root this
-    project declared, which is the only scratch a checkout can answer for.
+    temporary root are scratch for every checkout and belong to none, so a
+    spelling only they hold, one climbing out, and one only a run can expand
+    all say no. What is left is a path under a root this project declared:
+    repository-relative, or absolute under the scratch the host rooted at
+    another worktree of this repository (:func:`sibling_scratch_rows`), which
+    is the same project's scratch on another branch.
     """
     normalized = verbatim_piece(spelled, posixpath.normpath(spelled))
-    if normalized.startswith(("/", "../")) or normalized == "..":
+    if not spells_its_path(normalized):
         return False
-    return spells_its_path(normalized) and path_role(normalized, rows) == "scratch"
+    if normalized.startswith(("/", "../")) or normalized == "..":
+        return any(
+            row["role"] == "scratch"
+            and row["root"].startswith("/")
+            and role_pattern_covers(row["root"], normalized)
+            for row in rows
+        )
+    return path_role(normalized, rows) == "scratch"

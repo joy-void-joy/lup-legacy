@@ -15,7 +15,7 @@ images
 volumes
     A container holding it; a repository's config home
     (``lup-<runtime>-<repo>``), which only that repository can say it no
-    longer needs; a cache this project declares. This repository's old
+    longer needs; a cache this project declares. This repository's unsplit
     shared config home is split into the per-runtime ones rather than
     removed; another repository's waits for that repository's next launch. A
     sandbox workspace no container holds is finished.
@@ -47,8 +47,8 @@ from pydantic import BaseModel, Field, TypeAdapter, ValidationError
 
 from lup.launch.config_volume import (
     HomeHelper,
-    LegacyVolumes,
     RuntimeVolume,
+    UnsplitVolumes,
     attached_containers,
     existing_volumes,
     remove_volume,
@@ -200,7 +200,7 @@ def volumes(
     worktrees = [root.name, *(path.name for path in sibling_worktrees(root))]
     recorded = kept.record.load()
     unsplit = [name for name in names if name not in recorded.names()]
-    ours = LegacyVolumes.found(root, unsplit, logins, worktrees).every()
+    ours = UnsplitVolumes.found(root, unsplit, logins, worktrees).every()
     homes = [f"lup-{login.state_volume}-" for login in logins]
     caches = [cache.name for cache in image.caches]
 
@@ -224,7 +224,7 @@ def volumes(
             return Held(
                 kind="volume",
                 name=name,
-                why="this repository's old config home: copied into one per runtime",
+                why="this repository's unsplit config home: copied into one per runtime",
                 finished=True,
             )
         if any(name.startswith(home) for home in homes):
@@ -235,7 +235,7 @@ def volumes(
             return Held(
                 kind="volume",
                 name=name,
-                why="another repository's old config home; split at its next launch",
+                why="another repository's unsplit config home; split at its next launch",
             )
         if name.startswith(SANDBOX_VOLUME_PREFIX):
             return Held(
@@ -461,7 +461,7 @@ def cleaned(
 ) -> list[Notice]:
     """Remove every finished thing, answering what went.
 
-    This repository's old config home is copied into the per-runtime
+    This repository's unsplit config home is copied into the per-runtime
     volumes first, and every superseded volume — that one included — is
     removed now, whatever its date; one a container holds is kept.
     """

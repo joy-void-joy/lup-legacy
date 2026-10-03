@@ -2,10 +2,10 @@
 
 `dev init rename-package` rewrites imports and dotted module paths, never a
 path spelled in a string — so a seam declared at
-`Path("src/lup_template/...")` went on naming the old package after the
-rename, and `dev seams` then read a file that was gone. Spelled through the
-layout, the paths are derived from where the package sits and a rename has
-nothing to rewrite.
+`Path("src/lup_template/...")` would go on naming the package a rename left,
+and `dev seams` would read a file that is gone. Spelled through the layout,
+the paths are derived from where the package sits and a rename has nothing to
+rewrite.
 """
 
 import pytest
@@ -26,13 +26,15 @@ def test_every_path_into_the_package_is_spelled_through_its_layout(
     monkeypatch.setattr(catalog, "LAYOUT", ApplicationLayout(package="adopter"))
 
     modules = [seam.module for seam in catalog.dev_project().seams if seam.module]
-    protected = catalog.portable_harness().declared_hooks.protected_edit_roots
+    protected = catalog.portable_harness().declared_hooks.protected_roots()
 
     assert [module.as_posix() for module in modules] == [
         "src/adopter/harness/content/catalog.py",
         "src/adopter/harness/content/image.py",
     ]
-    assert "src/adopter/harness/catalog.py" in [path.as_posix() for path in protected]
+    assert "src/adopter/harness/catalog.py" in [
+        root.path.as_posix() for root in protected
+    ]
 
 
 def test_dev_seams_reads_every_seam_this_catalog_declares() -> None:

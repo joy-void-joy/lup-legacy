@@ -677,10 +677,11 @@ class ResolverCore:
             case ["configuration"], True:
                 state = self.adopted()
             case [_, *_], _:
-                # Naming neither what moved nor the way out left one recovery
-                # to guess at, and the run holding the most answers is the one
-                # that hits this: parking exposes a defect, and fixing the
-                # defect is what moves the configuration under the parked run.
+                # Naming neither what moved nor the way out would leave the
+                # recovery to guess at, and the run holding the most answers
+                # is the one that hits this: parking exposes a defect, and
+                # fixing the defect is what moves the configuration under the
+                # parked run.
                 raise ResolverInvariantError(
                     f"resolver run {state.run_id!r} was persisted under a "
                     "different "
@@ -880,9 +881,9 @@ class ResolverCore:
                 ConcernStatus.ELIGIBLE,
             )
             # Each exclusion keeps the reason its own ruling gave it. One
-            # string covering all of them read as a three-way ambiguity, and
+            # string covering all of them reads as a three-way ambiguity, and
             # telling "nobody approved this" from "its ancestor was not
-            # approved" meant reading the raw state back — the first is a
+            # approved" would mean reading the raw state back — the first is a
             # decision to revisit, the second only a consequence of one.
             excluded = [item for item in eligibility if not item.eligible]
             for reason in dict.fromkeys(item.reason for item in excluded):
@@ -916,10 +917,10 @@ class ResolverCore:
         ]
         # A resume is when the branch has moved: the run parked, the fix that
         # unblocks it landed, and the base is what carries that fix to every
-        # lease cut afterwards. Conditioning this on needing a new lease left
-        # a run whose concerns were all leased reading its original commit for
-        # the rest of its life, and asking the human, once per lease, about a
-        # blocker the branch had already fixed.
+        # lease cut afterwards. Refreshing only when a new lease is needed
+        # would leave a run whose concerns are all leased reading its original
+        # commit for the rest of its life, and asking the human, once per
+        # lease, about a blocker the branch has already fixed.
         state = self.rebaser.refreshed(state)
         if unleased:
             fresh = [
@@ -1206,8 +1207,8 @@ class ResolverCore:
         An abandoned tree is one no actor will open again in this run: the
         concern failed, so nothing reads it and nothing merges from it. Its
         drift is recorded rather than raised, because a resume that refuses
-        the whole run over it strands every healthy concern beside it — four
-        verified and five newly eligible, in the run that reported this.
+        the whole run over it strands every healthy concern beside it, the
+        verified ones and the ones just made eligible alike.
         """
         if not lease.root.exists():
             if self.worktrees.branch_exists(lease):
@@ -1309,11 +1310,11 @@ class ResolverCore:
     async def admit_concern(self, concern: Concern) -> None:
         """Take a concern discovered mid-run into the run that discovered it.
 
-        The worked example this exists for: an audit concern whose criteria
-        forbade it from moving code, with a second concern depending on it to
-        act — two concerns that should have been one, discovered only once
-        both were leased. Without admission the choice was to drop the
-        finding or restart the run and lose every answer already given.
+        The case this exists for: an audit concern whose criteria forbid it
+        from moving code, with a second concern depending on it to act — two
+        concerns that should be one, discovered only once both are leased.
+        Without admission the only choices are to drop the finding or to
+        restart the run and lose every answer already given.
         """
         async with self.state_lock:
             state = self.require_state()
@@ -1518,9 +1519,10 @@ class ResolverCore:
     async def admit(self, request: AdmissionRequest) -> ConcernAdmission:
         """Plan evidence found mid-run into the run that found it.
 
-        Restarting was the only way to widen a concern set, and it re-derived
-        the inventory from scratch — discarding every material answer already
-        collected at exactly the moment a run holds the most of them. Only the
+        Without admission, restarting is the only way to widen a concern set,
+        and a restart re-derives the inventory from scratch — discarding every
+        material answer already collected at exactly the moment a run holds
+        the most of them. Only the
         new evidence is planned here; the run keeps its id, its answers, and
         its completed work, so nothing already decided is decided again.
 
@@ -1600,7 +1602,7 @@ class ResolverCore:
         concerns = [*state.concerns, *planned_concerns]
         ConcernGraph(concerns)
         # An admitted concern's questions join the run's batch the way
-        # intake's do. Returning them without recording them left the
+        # intake's do. Returned without being recorded, they would leave the
         # concern admitted and unanswerable: no door could see a question
         # that was never written, and the gate it names can never pass.
         admitted = self.pending_questions(planned_concerns)
@@ -1685,9 +1687,9 @@ class ResolverCore:
     def abort(self, reason: str) -> ResolveManifest:
         """End a run from any phase, freeing its leases but keeping its evidence.
 
-        Cleanup was reachable only at acceptance, so a run abandoned while its
-        concerns held leases stranded one worktree and one branch each with no
-        way back. Aborting frees those the same way acceptance does and retains
+        With cleanup reachable only at acceptance, a run abandoned while its
+        concerns hold leases would strand one worktree and one branch each with
+        no way back. Aborting frees those the same way acceptance does and retains
         the integration lease, because the review branch may hold real work.
         Concern statuses are left as they stood: what each concern reached is
         the evidence an abort exists to preserve.
@@ -1792,13 +1794,13 @@ class ResolverCore:
     def release(self, state: ResolveState) -> ResolveState:
         """Free the concern leases and hand the review branch over.
 
-        There was a human gate here, and it decided nothing. Accept and
-        reject both retained the integration lease, both removed every
-        concern lease, and differed only in a sentence recorded against the
-        cleanup — so the run stopped, spent a question, and used the answer
-        to choose wording. Per-concern control is the live stop-and-retarget
-        channel while the run moves, and the acceptance of the result is
-        whatever the human does with the branch afterwards.
+        No human gate stands here, because one would decide nothing: accept
+        and reject would both retain the integration lease and remove every
+        concern lease, differing only in a sentence recorded against the
+        cleanup — a stopped run and a spent question, to choose wording.
+        Per-concern control is the live stop-and-retarget channel while the
+        run moves, and the acceptance of the result is whatever the human
+        does with the branch afterwards.
         """
         cleanup: list[CleanupRecord] = []  # lup: ignore[empty-collection]
         progress = state

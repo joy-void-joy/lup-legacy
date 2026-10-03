@@ -7,6 +7,7 @@ records mean. What the channel owns is the part no consumer can enforce for
 itself: which doors it accepts at all.
 """
 
+import os
 import secrets
 from datetime import UTC, datetime
 from enum import StrEnum
@@ -69,7 +70,14 @@ class Offset[T](BaseModel, frozen=True):
     commit_offset: int
 
 
-def write_atomic(path: Path, content: bytes) -> None:
+def write_atomic(
+    path: Path,
+    content: bytes,
+    *,
+    mode: int | None = None,
+    durable: bool = False,
+    expected: bytes | None = None,
+) -> None:
     """Write one file so no reader can ever observe it half-written.
 
     The rename is the whole guarantee, because a reader holds no lock. Every
@@ -79,15 +87,47 @@ def write_atomic(path: Path, content: bytes) -> None:
     decided once. The temporary is dot-prefixed so a lister that catches one
     mid-write does not offer it as an ordinary file, and named for this write
     alone: two writers sharing one name truncate each other's, and the first
-    rename then publishes a file whose front is NUL bytes. It is created as
-    ``write_bytes`` creates one, so the file keeps the mode the umask gives.
+    rename then publishes a file whose front is NUL bytes.
+
+    ``mode`` is set on the temporary before a byte is written, so the file is
+    never readable at its final path without it — a secret store, an
+    executable, a configuration naming a tool server's token. Without one it
+    is created as ``write_bytes`` creates one, with the mode the umask gives.
+
+    ``durable`` syncs the bytes before the rename and the directory after it,
+    for a file whose loss to a crash would be read as something it is not: a
+    login, a seeded configuration. An ordinary state file is rewritten by its
+    owner on the next run and stays cheap.
+
+    ``expected`` makes the replacement a compare-and-swap: where the file no
+    longer holds exactly those bytes when the rename is due — another writer
+    replaced it since the caller read it — nothing is published and
+    :class:`ChannelConflictError` says so, leaving the caller to read again.
     """
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_name(f".{path.name}.{secrets.token_hex(8)}.tmp")
     try:
         with temporary.open("xb") as handle:
+            if mode is not None:
+                os.fchmod(handle.fileno(), mode)
             handle.write(content)
+            if durable:
+                handle.flush()
+                os.fsync(handle.fileno())
+        if expected is not None and (
+            not path.is_file() or path.read_bytes() != expected
+        ):
+            raise ChannelConflictError(
+                f"{path} changed after it was read, so this replacement was not "
+                "written; read it again and redo the change"
+            )
         temporary.replace(path)
+        if durable:
+            directory = os.open(path.parent, os.O_RDONLY)
+            try:
+                os.fsync(directory)
+            finally:
+                os.close(directory)
     finally:
         temporary.unlink(missing_ok=True)
 
@@ -105,7 +145,24 @@ def publish_atomic(
 
 
 def utc_now() -> datetime:
+    """Now, as every stamp this library records it: aware, in UTC.
+
+    One clock for everything that is written down and later compared, so a
+    stamp from one process and a stamp from another — or from a session, a
+    trace and a ledger — order by the moment they name rather than by the
+    zone each writer happened to run in.
+    """
     return datetime.now(UTC)
+
+
+def aware(moment: datetime) -> datetime:
+    """A moment that compares with any other: a naive one read as this machine's local time.
+
+    What a stamp written before every writer recorded UTC, or a bound a
+    person typed without a zone, means — the time on the clock in front of
+    them — so it is pinned to that zone rather than refused or read as UTC.
+    """
+    return moment if moment.tzinfo is not None else moment.astimezone()
 
 
 LOCAL_STAMP_FORMAT = "%a %H:%M %Z"

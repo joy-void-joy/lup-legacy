@@ -93,11 +93,11 @@ def test_a_mapping_receiver_comes_back_unrefuted() -> None:
 def test_a_framework_header_map_resolves_as_the_mapping_it_is() -> None:
     """Starlette's `Headers` is a `typing.Mapping`, and the checker says so.
 
-    The #459 receiver: `request.headers.get("literal")`, where `request` is
+    The receiver: `request.headers.get("literal")`, where `request` is
     annotated `Request`. The sweep resolves it into the family and demands a
-    directive, so a hook that reported it refuted — because its own checker
-    answered nothing — deleted the very marker this answer requires. Pinned
-    here so the resolved verdict is the one both gates are built on.
+    directive, so a hook reporting it refuted — because its own checker
+    answers nothing — would delete the very marker this answer requires.
+    Pinned here so the resolved verdict is the one both gates are built on.
     """
     root = project_root()
     proposed = (

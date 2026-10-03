@@ -51,11 +51,11 @@ reviews. Same tooling, opposite seats.
 
 The script merges both: .local entries override sync.json entries by name.
 Review checkpoints live under the common Git directory and are shared by
-sibling worktrees. A legacy `last_synced_commit` remains a seed until a
-shared checkpoint is explicitly recorded with `mark-synced`.
+sibling worktrees; `mark-synced` records one, and a project with none has
+never been reviewed.
 A project with a URL and no local path is materialized under
-``~/.cache/lup/sync/`` in the layout a registration naming a local path
-already points at -- a bare repository with a worktree attached to it -- so a
+``sync/`` in lup's cache in the layout a registration naming a local path
+points at -- a bare repository with a worktree attached to it -- so a
 session can branch, commit and push in either, and a launch mounts a clone it
 materialized whole (see :func:`mounted_root`). Nothing a review does moves a
 local branch: the upstream's commits are read from a remote-tracking ref, and
@@ -122,6 +122,7 @@ from pydantic import (
 
 from lup.execution.git import Repository
 from lup.workspace.paths import is_template_scaffold, project_root
+from lup.workspace.user_directories import UserDirectories
 from lup.devtools import sync_state, sync_usage
 from lup.devtools.dev.records import log_ref_updates
 from lup.harness.credential import same_repository
@@ -248,7 +249,6 @@ class ProjectEntry(TypedDict, total=False):
 
     branch: str
     review_from: Literal["remote", "local"]
-    last_synced_commit: str
     ignore: bool
 
     required: bool
@@ -360,20 +360,7 @@ def cache_dir() -> Path:
     symlinks ``worktree create`` copies into a new checkout point back into
     the cache of the one it was cut from.
     """
-    return Path.home() / ".cache" / "lup" / "sync"
-
-
-def legacy_cache_dir() -> Path:
-    """A second place clones sit, still read so nothing quietly abandons one.
-
-    A clone under the project root is writable with the checkout, so a
-    session can commit in one and some have. Resolving the cache alone leaves
-    that work in a directory nothing looks at again, which is the failure
-    this guards against -- so this location is resolved as well, and a
-    project found there is used where it stands rather than re-cloned
-    beside it.
-    """
-    return project_root() / ".cache" / "sync"
+    return UserDirectories().cache() / "sync"
 
 
 def refs_dir() -> Path:
@@ -601,15 +588,9 @@ def bare_path(name: str) -> Path:
 
 
 def cached_clone(name: str) -> Path | None:
-    """This project's clone in the cache, wherever this machine put it."""
-    return next(
-        (
-            candidate
-            for candidate in (bare_path(name), legacy_cache_dir() / name)
-            if candidate.is_dir()
-        ),
-        None,
-    )
+    """This project's clone in the cache, None where this machine has none."""
+    clone = bare_path(name)
+    return clone if clone.is_dir() else None
 
 
 def bare_repository(path: Path) -> bool:
@@ -743,7 +724,7 @@ def checkpoint_identity(found: Upstream) -> sync_state.ReviewSource:
 
 
 def checkpoint(proj: ProjectEntry, found: Upstream) -> str:
-    """The shared checkpoint wins over stale worktree-local declarations.
+    """The commit the shared checkpoint records, empty where none applies.
 
     It holds for the ref it was taken on, in the repository reviewed rather
     than the spelling that reached it: `checkpoint_identity` reads the origin
@@ -753,7 +734,7 @@ def checkpoint(proj: ProjectEntry, found: Upstream) -> str:
     """
     recorded = sync_state.read(project_root(), proj["name"])
     if recorded is None:
-        return proj.get("last_synced_commit", "")
+        return ""
     source = checkpoint_identity(found)
     if recorded.source.ref != source.ref or not same_repository(
         recorded.source.repository, source.repository
@@ -1620,9 +1601,6 @@ def status_cmd() -> None:
     exempt = {p["name"]: exemption(p) for p in projects}
 
     def project_row(p: ProjectEntry, resolved: Upstream | None) -> list[str]:
-        synced = p.get("last_synced_commit", "")
-        synced_short = short_sha(synced) if synced else "never"
-
         if exempt[p["name"]]:
             return [p["name"], "—", "—", reach(p), exempt[p["name"]]]
         if p.get("ignore"):
@@ -1636,7 +1614,9 @@ def status_cmd() -> None:
                 if transport_url(p)
                 else f"{required}nowhere to read it from"
             )
-            return [p["name"], "—", synced_short, reach(p), note]
+            recorded = sync_state.read(project_root(), p["name"])
+            reviewed = short_sha(recorded.commit) if recorded is not None else "never"
+            return [p["name"], "—", reviewed, reach(p), note]
 
         synced = checkpoint(p, resolved)
         synced_short = short_sha(synced) if synced else "never"

@@ -8,9 +8,9 @@ is the one the SDK documents as removal — "removed from the model's context
 and cannot be used, even if they would otherwise be allowed" — and it is not
 confined to built-ins.
 
-Without it a caller wanting "everything except this one" had to enumerate the
+Without it a caller wanting "everything except this one" has to enumerate the
 complement, which is a roster that has to be restated every time the tool set
-grows and silently re-admits whatever was added. The failure being guarded
+grows and silently re-admits whatever is added. The failure being guarded
 here is the same shape as the effort field's: a value that reaches nothing
 and a session that runs wider than it asked to, with nothing raised.
 """

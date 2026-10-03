@@ -1,8 +1,8 @@
 """What a session may believe about its own boundary, read inside the dispatcher.
 
-The half that closes the gap the whole layer is named for. `contained` used to
-read `LUP_CONTAINED`, a constant an image bakes — and a constant answers yes for
-any container built from that image, for a bare `run` holding none of the lease,
+The half the whole layer is named for. `contained` is not read off a constant
+an image bakes, such as `LUP_CONTAINED` — a constant answers yes for any
+container built from that image, for a bare `run` holding none of the lease,
 and for an uncontained session whose launcher forwarded a variable the operator
 happened to export. Each of those is a session reporting a boundary nothing put
 under it.
@@ -12,10 +12,15 @@ launch named. Everything here is a case where the honest answer is "no boundary
 was measured", which every caller reads as the fail-closed one.
 """
 
+import ast
 import json
 from pathlib import Path
+from types import FunctionType
 
 import pytest
+
+from lup.devtools.hooks.corpus import DEFAULT_CORPUS
+from lup.workspace.checkout_state import CheckoutState
 
 import lup.policy.assets.host as policy_host
 from lup.policy.assets.host import (
@@ -213,8 +218,8 @@ def test_a_grant_declared_from_a_home_is_read_in_the_home_reading_it(
 
     The declared sandbox grants join the lease spelled as they were declared,
     because they answer for whichever home reads them. Read without expanding,
-    `~` named a directory called `~` under the working directory, and the
-    toolchain cache every `uv` command writes was refused as outside the
+    `~` would name a directory called `~` under the working directory, and the
+    toolchain cache every `uv` command writes would be refused as outside the
     boundary it was granted into.
     """
     home = tmp_path / "home"
@@ -280,7 +285,7 @@ def test_a_directory_is_held_only_where_it_is_itself_a_read_only_mount(
 def test_a_ledger_claiming_a_container_nothing_holds_loses_that_claim(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The forgery this closes: a script on the host writing its own ledger.
+    """A script on the host writing its own ledger cannot claim a container.
 
     The directory is writable wherever no container holds it, so a ledger
     read through no read-only mount says what whoever wrote it said. Its
@@ -309,3 +314,37 @@ def test_a_ledger_read_through_its_hold_is_believed(
     )
 
     assert contained(measured_boundary(tmp_path))
+
+
+def declared_state() -> set[str]:
+    """Every path ``CheckoutState`` declares, spelled relative to a checkout."""
+    anywhere = CheckoutState(root=Path())
+    return {
+        getattr(anywhere, name)().as_posix()
+        for name, member in vars(CheckoutState).items()
+        if isinstance(member, FunctionType) and not name.startswith("_")
+    }
+
+
+def test_every_lup_path_the_bare_host_half_spells_is_one_checkout_state_declares() -> (
+    None
+):
+    """The dispatcher's host half runs with no ``lup`` to import, so it spells its own.
+
+    Each spelling is held to the declaration here instead: a path moved in
+    ``CheckoutState`` and not in the host half is a hook reading a file the
+    library no longer writes, and the reverse a hook writing one nothing reads.
+    """
+    tree = ast.parse(Path(policy_host.__file__).read_text(encoding="utf-8"))
+    spelled = {
+        node.value
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Constant)
+        and isinstance(node.value, str)
+        and node.value.startswith(".lup/")
+    }
+
+    assert spelled
+    assert spelled <= declared_state()
+    assert set(CheckoutState.hook_state()) <= declared_state()
+    assert DEFAULT_CORPUS in declared_state()

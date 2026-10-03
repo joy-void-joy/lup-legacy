@@ -30,6 +30,7 @@ from uuid import uuid4
 from pydantic import BaseModel, Field, ValidationError
 
 from lup.devtools.dashboard.companion import KnownRepository
+from lup.devtools.dashboard.keys import KeyBindings
 from lup.devtools.dashboard.live import (
     LiveMessage,
     LiveRepository,
@@ -85,10 +86,22 @@ class SnapshotEvent(StreamEvent, frozen=True):
 
     reviews: ReviewSnapshot
     code: RunningCode = RunningCode()
+    keys: KeyBindings = KeyBindings()
+    """The person's own keys in effect, and what their table refused."""
 
     def moves(self, state: "LiveState") -> None:
         """Nothing: a snapshot is read off the state, never applied to it."""
         del state
+
+
+class KeysEvent(StreamEvent, frozen=True):
+    """The person's ``[dashboard.keys]`` changed: the keys in effect, and what it refused."""
+
+    type: Literal["keys"] = "keys"
+    keys: KeyBindings
+
+    def moves(self, state: "LiveState") -> None:
+        state.keys = self.keys
 
 
 class ServiceEvent(StreamEvent, frozen=True):
@@ -202,7 +215,8 @@ type DashboardEvent = Annotated[
     | ReviewEvent
     | ReviewGoneEvent
     | ReviewScopeEvent
-    | ServiceEvent,
+    | ServiceEvent
+    | KeysEvent,
     Field(discriminator="type"),
 ]
 """Everything one frame of the stream can carry, told apart by its ``type``."""
@@ -255,6 +269,7 @@ class Observation(BaseModel, frozen=True):
     extents: list[MailExtent] = []
     reviews: ReviewSnapshot | None = None
     code: RunningCode = RunningCode()
+    keys: KeyBindings = KeyBindings()
 
 
 class LiveState:
@@ -273,6 +288,7 @@ class LiveState:
         self.errors: list[ReviewError] = []
         self.history = 0
         self.code = RunningCode()
+        self.keys = KeyBindings()
 
     def observed(self, seen: Observation) -> list[DashboardEvent]:
         """Every difference between what the sources say and this state, applied to it."""
@@ -302,6 +318,7 @@ class LiveState:
             *[MessageEvent(message=each) for each in seen.messages],
             *(self.reviewed(seen.reviews) if seen.reviews is not None else []),
             *([ServiceEvent(code=seen.code)] if seen.code != self.code else []),
+            *([KeysEvent(keys=seen.keys)] if seen.keys != self.keys else []),
         ]
         for event in events:
             event.moves(self)
@@ -367,6 +384,7 @@ class LiveState:
                 history=self.history,
             ),
             code=self.code,
+            keys=self.keys,
         )
 
 
@@ -378,7 +396,8 @@ class LiveFeed:
     mail record — and every ``review_every`` looks at the review queues,
     expiring those no session waits on every ``sweep_every``. What differs is
     numbered and kept for replay; the last ``kept`` of them are replayable.
-    ``code`` says which code the dashboard runs, where it knows.
+    ``code`` says which code the dashboard runs, where it knows, and
+    ``keys`` the person's own keys, as their config says on each look.
     """
 
     def __init__(
@@ -391,10 +410,12 @@ class LiveFeed:
         kept: int = KEPT_FRAMES,
         heartbeat: float = HEARTBEAT_SECONDS,
         code: Callable[[], RunningCode] = RunningCode,
+        keys: Callable[[], KeyBindings] = KeyBindings,
     ) -> None:
         self.repositories = repositories
         self.reviews = reviews
         self.code = code
+        self.keys = keys
         self.interval = interval
         self.review_every = review_every
         self.sweep_every = sweep_every
@@ -446,6 +467,7 @@ class LiveFeed:
             extents=[watch.extent() for watch in self.watches.values()],
             reviews=reviews,
             code=self.code(),
+            keys=self.keys(),
         )
 
     def publish(self, observation: Observation) -> None:

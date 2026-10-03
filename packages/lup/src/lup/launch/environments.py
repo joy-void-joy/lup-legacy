@@ -1,17 +1,17 @@
 """The host directories a contained session's project environments live in, and their end.
 
-One per project root, under ``~/.cache/lup/environments``, bound over the
+One per project root, under ``environments`` in lup's cache, bound over the
 root's environment directory inside the container (see
 :func:`~lup.launch.container.held_environments`). A worktree lives
-for a feature and its environment outlived it: a venv per branch ever opened,
-each hundreds of megabytes, with nothing left to say which checkout it had
-been — the name carries the directory's last component and a digest of its
+for a feature and its environment outlives it: a venv per branch ever opened,
+each hundreds of megabytes, with nothing left to say which checkout it
+served — the name carries the directory's last component and a digest of its
 whole path, and a digest does not run backwards.
 
 So each environment is claimed when it is made: a file beside it naming the
 root it is for (``<name>.root``). An environment whose claimed root is gone
 is finished, whether the worktree went through ``git worktree remove``, a
-branch deletion, or a plain ``rm -r``. One made before claims existed is
+branch deletion, or a plain ``rm -r``. One carrying no claim is
 matched against the checkouts it could have been — each sibling of a
 repository's worktrees by the name it carries — and is finished only where
 the digest proves which path it was for and that path is gone.
@@ -23,6 +23,8 @@ from pathlib import Path
 
 from pydantic import BaseModel
 
+from lup.workspace.user_directories import UserDirectories
+
 # lup: ignore[constant-declaration] — the suffix a claim is written under, which
 # the launch writing it and every sweep reading it have to agree on
 CLAIM_SUFFIX = ".root"
@@ -31,7 +33,7 @@ CLAIM_SUFFIX = ".root"
 
 def environments_home(cache: Path | None = None) -> Path:
     """Where every project environment on this machine is kept."""
-    return cache or Path.home() / ".cache" / "lup" / "environments"
+    return cache or UserDirectories().cache() / "environments"
 
 
 def revisions_home(cache: Path | None = None) -> Path:
@@ -47,7 +49,7 @@ def revisions_home(cache: Path | None = None) -> Path:
     # contained session ran, and nothing sweeps them; `harness clean` should
     # list and remove the ones no running container holds, as it does the
     # environments
-    return cache or Path.home() / ".cache" / "lup" / "codex-revisions"
+    return cache or UserDirectories().cache() / "codex-revisions"
 
 
 def environment_directory(root: Path, cache: Path | None = None) -> Path:

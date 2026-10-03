@@ -19,7 +19,7 @@ from pathlib import Path
 import pytest
 import sh
 
-import lup.devtools.dev.drift_fold as fold
+import lup.providers.assets.drift_fold as fold
 import lup.devtools.dev.scaffold as scaffold
 from lup.harness.generate import NativeHarnessComposition
 from lup.harness.models import CarrierPins, HookSet

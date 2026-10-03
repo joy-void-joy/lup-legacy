@@ -319,9 +319,9 @@ def test_a_copy_spelled_the_way_a_multiplexer_takes_one_reaches_the_clipboard(
     """The measured gap: `TMUX` crosses and the socket it names does not.
 
     A runtime told a multiplexer owns the screen spells its copy as
-    `load-buffer` on standard input, and found no `tmux` at all -- a session
+    `load-buffer` on standard input, and finds no `tmux` at all -- a session
     contradicting itself, with the runtime's own fallbacks the only reason a
-    copy still landed. `-w` is carried because that is how the spelling
+    copy lands. `-w` is carried because that is how the spelling
     arrives, and it asks for the terminal's clipboard too, which is the one
     this bridge already is.
     """

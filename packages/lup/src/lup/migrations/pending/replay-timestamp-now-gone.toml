@@ -1,0 +1,11 @@
+subjects = ["timestamp_now"]
+reason = """
+a replay journal stamps its creation in aware UTC through \
+`lup.channels.models.utc_now`, the clock every other compared stamp in the \
+library uses, rather than in this machine's local zone"""
+
+[[steps]]
+instruction = """
+Call `utc_now().isoformat()` from `lup.channels.models` where you called \
+`lup.observability.replay.timestamp_now()`; a stamp it wrote before still \
+parses and compares, its offset intact."""

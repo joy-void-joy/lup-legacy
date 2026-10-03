@@ -132,7 +132,7 @@ async def test_shell_example_runs_a_git_read_where_the_session_runs() -> None:
 
     What git needs is a route to the remote and the repository's own locks,
     which the boundary declares and a launch measures — not the launcher's
-    host, which is what a placement would now be requesting and what a
+    host, which is what a placement would be requesting and what a
     reviewer would then answer for every ordinary read. So the verdict states
     no placement, and nothing is rewritten onto the call.
     """

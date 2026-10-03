@@ -5,13 +5,12 @@ the SDK options a program opens a session with and the command a person
 launches carry one meaning for it.
 """
 
-import os
 from pathlib import Path
 from collections.abc import Iterator
 from contextlib import contextmanager
 
 from lup.harness.enforcement import semantic_policy_for
-from lup.harness.environment import non_interactive_environment
+from lup.harness.environment import inherited, non_interactive_environment
 from lup.harness.models import HookSet
 from lup.launch.session import start_harness_transcript
 from lup.observability.native import NativeTranscripts
@@ -65,6 +64,7 @@ def semantic_hooks(
         ),
         semantics.also_refusing(policy.refused_tools),
         sandbox=posture,
+        timeout=policy.policy_timeout,
     )
 
 
@@ -75,8 +75,7 @@ def inherited_environment() -> EnvVars:
     what it runs under: the PATH that finds the CLI, the terminal it draws on.
     What the declaration sets is laid over it by each runtime's compilation.
     """
-    # lup: ignore[os-environ] — a launched CLI inherits this process's environment by definition
-    return non_interactive_environment(dict(os.environ))
+    return non_interactive_environment(inherited())
 
 
 @contextmanager

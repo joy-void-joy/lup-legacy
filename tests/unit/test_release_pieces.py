@@ -7,6 +7,7 @@ step to what it says.
 """
 
 import datetime as dt
+from pathlib import Path
 
 import pytest
 
@@ -48,9 +49,16 @@ def test_a_version_that_is_not_one_is_refused() -> None:
         next_version("stable", "patch")
 
 
-def test_moving_a_version_leaves_the_rest_of_the_manifest_alone() -> None:
+def test_moving_a_version_leaves_the_rest_of_the_manifest_alone(
+    tmp_path: Path,
+) -> None:
     """Through tomlkit, so a comment does not pay for a version bump."""
-    moved = with_version(MANIFEST, "1.5.0")
+    manifest = tmp_path / "pyproject.toml"
+    manifest.write_text(MANIFEST, encoding="utf-8")
+
+    with_version(manifest, "1.5.0")
+
+    moved = manifest.read_text(encoding="utf-8")
     assert 'version = "1.5.0"' in moved
     assert "# a comment somebody wrote" in moved
     assert 'name = "thing"' in moved

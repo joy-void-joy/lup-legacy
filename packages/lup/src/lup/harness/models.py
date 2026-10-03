@@ -46,7 +46,7 @@ from lup.policy.boundary import BoundaryCapability
 from lup.policy.kernel.diagnostic import Step, devtools, spelled, step
 from lup.policy.kernel.rows import AcceptanceGuardRow, PathRoleName, SpawnNameRow
 from lup.policy.kernel.semantics import UnjudgedAmbient
-from lup.policy.models import PolicyId, UrlScope
+from lup.policy.models import PolicyId, ProtectedRoot, UrlScope
 from lup.policy.peer_policy import PeerPolicy
 from lup.policy.refused_paths import (
     RefusedPaths,
@@ -863,8 +863,8 @@ class GuidanceBudget(BaseModel, frozen=True):
 
     One declaration rather than two numbers, because the third value is the one
     every caller actually wants and neither number carries it: what a *template*
-    may spend is the ceiling less the reserve, and that subtraction was written
-    out by hand at every site that needed it. Derived here instead, so a project
+    may spend is the ceiling less the reserve, and that subtraction written out
+    by hand at every site that needs it drifts. Derived here instead, so a project
     that moves either number moves the answer everywhere rather than moving it
     at seven sites and missing the eighth.
 
@@ -1080,10 +1080,10 @@ class Skill(SelectableRule, frozen=True):
     def commands_it_names_are_commands_it_may_run(self) -> "Skill":
         """A command this skill tells its reader to run must be one it granted.
 
-        The two are declared side by side and nothing made them agree, so a
-        skill could instruct a step its own `tools` list forbids — and did:
-        one told the agent to watch a `dev check` while granting no shell at
-        all. That failure surfaces as a denial mid-run, to an agent following
+        The two are declared side by side and nothing else makes them agree,
+        so a skill can instruct a step its own `tools` list forbids: telling
+        the agent to watch a `dev check` while granting no shell at all. That
+        failure surfaces as a denial mid-run, to an agent following
         instructions correctly, which is the worst place to learn it. An empty
         grant list restricts nothing and is left alone.
         """
@@ -1289,10 +1289,10 @@ class ContentRoster(BaseModel, frozen=True):
         ships, and not named by prose describing a skill nobody can invoke.
 
         One call rather than a narrowing followed by an extension, because the
-        two were never independent: a project replacing a skill had to retire
-        the id and re-add the declaration, and forgetting the retirement left
+        two are not independent: a project replacing a skill retires the id
+        and re-adds the declaration, and forgetting the retirement would leave
         two declarations answering to one name. The algebra resolves that by
-        id in one pass, so the second step cannot be the one that was skipped.
+        id in one pass, so neither step can be skipped.
         """
         return ContentRoster(
             skills=selection.over_skills().over(self.skills),
@@ -1379,19 +1379,19 @@ class SpawnNames(BaseModel, frozen=True):
     the argument. Claude Code 2.1.280 and 2.1.283 show the model an `Agent`
     schema with no `name`, `additionalProperties` false, and take a `name`
     all the same; a session refused with "pass a name beside the agent type"
-    put it in `description` twice before trying the key the schema did not
-    list, and sessions refused that way were the commonest spawn friction.
-    The description is the argument every spawn there carries, so the name
-    is read out of it and handed back as a rewrite of the call — measured on
-    2.1.283, where the runtime recorded the rewritten spawn under that name.
+    puts it in `description` twice before trying the key the schema does not
+    list, which makes that refusal the commonest spawn friction. The
+    description is the argument every spawn there carries, so the name is
+    read out of it and handed back as a rewrite of the call — measured on
+    2.1.283, where the runtime records the rewritten spawn under that name.
 
     The spelling is settled here rather than left to the runtime, because
-    leaving it was measured to fail quietly. Claude Code 2.1.278 validates it
+    leaving it is measured to fail quietly. Claude Code 2.1.278 validates it
     and says so — "name must start with a letter or digit and contain only
     letters, digits, underscores, or hyphens (max 64 chars)", read out of the
     shipped binary. Codex 0.155.1 rejects a hyphen with no hook record at all:
-    a spawn named `pty-arming-probe` produced no `PostToolUse`, and the model
-    retried as `pty_arming_probe` unprompted, having learned the shape by
+    a spawn named `pty-arming-probe` produces no `PostToolUse`, and the model
+    retries as `pty_arming_probe` unprompted, learning the shape by
     guessing. So the default is the intersection, which is also what a name
     written into portable guidance needs: a project running on one runtime
     alone may widen `punctuation` to what that runtime takes.
@@ -1608,7 +1608,14 @@ class HookSet(BaseModel, frozen=True):
     policy_ids: list[PolicyId]
     allowed_fetch: list[UrlScope] = []
     denied_fetch: list[UrlScope] = []
-    protected_edit_roots: list[Path] = []
+    protected_edit_roots: list[ProtectedRoot | Path] = Field(
+        default=[],
+        description=(
+            "Trees an edit needs approval into: a bare path, or a ProtectedRoot "
+            "naming in plain words what the tree is, which a reviewer reads "
+            "beside each file that met it"
+        ),
+    )
     import_boundaries: list[ImportBoundary] = []
     path_roles: list[HookPathRole] = Field(
         default=[],
@@ -1836,9 +1843,11 @@ class HookSet(BaseModel, frozen=True):
         description=(
             "Seconds each runtime gives the policy hook before it lets the call "
             "through unjudged: both runtimes treat a hook that overran as one "
-            "that said nothing. Declared once and read twice — by the hooks "
-            "file each runtime reads, and by the deadline every wait inside the "
-            "hook shares, which ends early enough to answer inside it"
+            "that said nothing. Declared once and read wherever that bound "
+            "matters — the hooks file each runtime reads and the timeout an "
+            "in-process session's callback is held to, the deadline every wait "
+            "inside the hook shares, and the moment the hook stops waiting and "
+            "refuses, each derived from this so it answers inside it"
         ),
     )
     sandbox: HookSandbox | None = None
@@ -1928,6 +1937,13 @@ class HookSet(BaseModel, frozen=True):
         """
         return self.unscoped_fetch or self.unjudged_ambient
 
+    def protected_roots(self) -> list[ProtectedRoot]:
+        """Every declared protected root, a bare path read as one with no description."""
+        return [
+            root if isinstance(root, ProtectedRoot) else ProtectedRoot(path=root)
+            for root in self.protected_edit_roots
+        ]
+
     def resolved_shell_rules(self) -> list[ShellCommandRule]:
         """The shell vocabulary this project actually judges by.
 
@@ -1978,11 +1994,11 @@ class ResolveSpec(BaseModel, frozen=True):
     exists for, and a run that silently dropped the boundary would look exactly
     like one that held it.
 
-    True because the alternative was never a decision anybody made. Actors ran
-    unconfined for as long as the lease was a launch-time snapshot, which
-    covered the checkouts a lone operator was landing and none of the worktrees
-    a run leases -- so the protection reached the sessions working alone and
-    missed the ones working at once. A project that means to run its actors on
+    True because running actors unconfined is not a decision anybody makes
+    on purpose. A lease taken as a launch-time snapshot covers the checkouts a
+    lone operator is landing and none of the worktrees a run leases, so the
+    protection would reach the sessions working alone and miss the ones
+    working at once. A project that means to run its actors on
     the host overrules this here, in one place, where it reads as the posture
     it is.
     """

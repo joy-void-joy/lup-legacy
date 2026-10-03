@@ -26,13 +26,13 @@ the cite check.
 
 ## The failure it answers
 
-The same one, met twice, in two corpora. A research repository kept a status
-per claim, and a migration that copied added files and dropped modifications
-left thirty-one claims reading as evidenced while their artifacts were missing.
-A correction register declared itself authoritative over every other document
-and was applied to none of them: the canonical prose carried stale figures
-behind a list a reader had to consult first. **A claim kept a label after the
-thing supporting it went away, and nothing reported the difference.**
+One failure, in two shapes. A repository keeping a status per claim, moved by
+a migration that copies added files and drops modifications, leaves claims
+reading as evidenced while their artifacts are missing.
+A correction register declaring itself authoritative over every other document
+and applied to none of them leaves the canonical prose carrying stale figures
+behind a list a reader has to consult first. **A claim keeps a label after the
+thing supporting it goes away, and nothing reports the difference.**
 
 The invariant that answers it is the ledger's: there is no stored status, so a
 claim cannot outrun its artifact and cannot keep a label its evidence stopped

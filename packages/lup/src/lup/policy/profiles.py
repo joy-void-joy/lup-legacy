@@ -30,6 +30,7 @@ from lup.policy.boundary import (
     CapabilityEvidence,
     ExecutionBoundary,
 )
+from lup.workspace.checkout_state import CheckoutState
 
 
 def depended_on(hooks: HookSet, contained: bool) -> list[BoundaryCapability]:
@@ -48,7 +49,7 @@ def compile_boundary(
     hooks: HookSet,
     contained: bool,
     writable: list[Path] = [],
-    managed_roots: list[Path] = [Path(".lup")],
+    managed_roots: list[Path] = [CheckoutState(root=Path()).directory()],
     name: str = "",
 ) -> ExecutionBoundary:
     """What this profile promises, read off the declaration it already has.

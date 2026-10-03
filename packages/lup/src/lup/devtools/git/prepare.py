@@ -56,7 +56,7 @@ def prepare(base: str, root: Path, regenerate: Callable[[], None]) -> PreparedBr
         # resolve the files, or fix why git refused — so a refusal saying only
         # "needs repair" sends a reader to look for conflicts that a failed
         # merge did not leave. What git printed is the half that tells them
-        # apart, and it read as an empty working tree until it was relayed.
+        # apart, and without it the failure reads as an empty working tree.
         spoken = decode_stderr(error).strip()
         status = devtools(
             "git", "conflict", "status", "--json", program=[launcher_invocation(root)]

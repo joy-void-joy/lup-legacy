@@ -28,6 +28,7 @@ from .roles import (
     path_role,
     repository_relative,
     spells_its_path,
+    writes_to_a_stream,
 )
 from .semantics import Reach
 from .rows import (
@@ -466,12 +467,17 @@ class PathVerb(TypedDict):
     machine besides, so it keeps its question wherever it lands: no scratch or
     recoverable grant reads it, and its entry only says where a local
     destination is, so a protected one is asked about as the path it is.
+    ``fills`` marks a verb that writes content into the file at each landing
+    rather than replacing the entry there: a copy and a `tee` open their
+    destination and write into it, so a stream there keeps nothing, where a
+    move, a link or an install puts a new entry in the device's place.
     """
 
     inert: str
     lands: Literal["each", "last", "moved"]
     creates: bool
     remote: bool
+    fills: bool
 
 
 # Every verb that acts on paths. Membership is about taking paths, not about
@@ -482,26 +488,66 @@ class PathVerb(TypedDict):
 # at the path afterwards is not what was there before.
 # lup: ignore[library-default] — each verb's own POSIX grammar, fixed by what the utility does rather than by who is asking
 PATH_VERBS = {
-    "rm": PathVerb(inert="rfv", lands="each", creates=False, remote=False),
-    "rmdir": PathVerb(inert="pv", lands="each", creates=False, remote=False),
-    "mv": PathVerb(inert="fnv", lands="moved", creates=True, remote=False),
-    "cp": PathVerb(inert="aprRvL", lands="last", creates=True, remote=False),
+    "rm": PathVerb(inert="rfv", lands="each", creates=False, remote=False, fills=False),
+    "rmdir": PathVerb(
+        inert="pv", lands="each", creates=False, remote=False, fills=False
+    ),
+    "mv": PathVerb(inert="fnv", lands="moved", creates=True, remote=False, fills=False),
+    "cp": PathVerb(
+        inert="aprRvL", lands="last", creates=True, remote=False, fills=True
+    ),
     # A copy with modes attached, which is how it writes launch authority as
-    # surely as `cp` does.
-    "install": PathVerb(inert="cCDpvT", lands="last", creates=True, remote=False),
-    "mkdir": PathVerb(inert="pv", lands="each", creates=False, remote=False),
-    "touch": PathVerb(inert="acm", lands="each", creates=False, remote=False),
-    "ln": PathVerb(inert="sfnvrihTPL", lands="last", creates=False, remote=False),
-    "tee": PathVerb(inert="aip", lands="each", creates=False, remote=False),
-    "truncate": PathVerb(inert="co", lands="each", creates=False, remote=False),
+    # surely as `cp` does. It unlinks what stood at the destination first.
+    "install": PathVerb(
+        inert="cCDpvT", lands="last", creates=True, remote=False, fills=False
+    ),
+    "mkdir": PathVerb(
+        inert="pv", lands="each", creates=False, remote=False, fills=False
+    ),
+    "touch": PathVerb(
+        inert="acm", lands="each", creates=False, remote=False, fills=False
+    ),
+    "ln": PathVerb(
+        inert="sfnvrihTPL", lands="last", creates=False, remote=False, fills=False
+    ),
+    "tee": PathVerb(inert="aip", lands="each", creates=False, remote=False, fills=True),
+    "truncate": PathVerb(
+        inert="co", lands="each", creates=False, remote=False, fills=False
+    ),
     "rsync": PathVerb(
         inert="vqcarRbulLkKHpEAXogDtOJSnWxyCzhPimIUNFs0468",
         lands="last",
         creates=False,
         remote=True,
+        fills=False,
     ),
-    "scp": PathVerb(inert="346ABCOpqRrTv", lands="last", creates=False, remote=True),
+    "scp": PathVerb(
+        inert="346ABCOpqRrTv", lands="last", creates=False, remote=True, fills=False
+    ),
 }
+
+
+# lup: ignore[constant-declaration] — one wording for every writer a stream answers
+STREAM_WRITE_REASON = "this write lands in a stream, which keeps nothing"
+
+
+def fills_a_stream(words: list[str], landing: str) -> bool:
+    """Whether this verb only writes content into *landing*, and it is a stream.
+
+    The path verbs' half of what :func:`~lup.policy.kernel.roles.writes_to_a_stream`
+    already answers for a redirection: `| tee /dev/null` and `cp f /dev/null`
+    write into the device, which keeps nothing, so no reader asking where a
+    write lands -- the lease, a capture, the container's mounts -- is handed
+    one. Only where every flag left the operands meaning what they read, since
+    `cp --remove-destination` would replace the device instead.
+    """
+    executable = posixpath.basename(words[0]) if words else ""
+    return (
+        executable in PATH_VERBS
+        and PATH_VERBS[executable]["fills"]
+        and path_verb_operands(words)["inert"]
+        and writes_to_a_stream(landing)
+    )
 
 
 def leaves_the_checkout(path_text: str) -> bool:
@@ -600,9 +646,10 @@ def write_scope(
     Read as a segment anywhere rather than as a leading ``.git``, because a
     linked worktree has no leading one: its ``.git`` is a *file* pointing at
     ``<somewhere>/repo.git/worktrees/<name>``, and the config and hooks it
-    shares live under that ``repo.git`` directory. So the repository these
-    sessions run out of was reachable by absolute path and graded ``outside``,
-    where a contained placement writes freely — and the measured rule that
+    shares live under that ``repo.git`` directory. So read as a leading
+    ``.git``, the repository these sessions run out of would be reachable by
+    absolute path and graded ``outside``, where a contained placement writes
+    freely — and the measured rule that
     catches an unleased write cannot hold it either, since a launch mounts the
     shared administrative directory writable on purpose. A hook written there
     runs on the operator's next Git command, outside whatever granted it.
@@ -633,10 +680,10 @@ def write_scope(
     A spelling that still carries an expansion is ``unbounded``: it names a
     different file at run time than the one written down, so it could be
     tracked source, the repository, or a path no capture of this checkout
-    holds, and it is read as the strictest of them. Reading it any other way
-    is how `sort --output=a$X` was granted as a create of a file named
-    ``a$X``, and how `> ~/f` was settled as captured by a snapshot that
-    never held a home directory. A declared scratch root reached through the
+    holds, and it is read as the strictest of them. Read any other way,
+    `sort --output=a$X` would be granted as a create of a file named ``a$X``,
+    and `> ~/f` settled as captured by a snapshot that never holds a home
+    directory. A declared scratch root reached through the
     variable naming it is still scratch, which is read first.
     """
     spelled = repository_relative(path_text, checkout)
@@ -681,8 +728,7 @@ def unread_over_tracked(
     instead and is the case this must not answer twice. ``existing`` and
     ``tracked`` are what makes the content reviewed: a create replaces
     nothing, and a file Git never held has no reviewed version being
-    replaced -- yesterday's log rewritten in place is the ordinary work it
-    always was.
+    replaced -- yesterday's log rewritten in place is ordinary work.
 
     Asked of the path rather than of the spelling that named it, because
     ``sort -o src.py f`` and ``sort f > src.py`` land the same bytes at the
@@ -750,9 +796,9 @@ def write_checkpoint(scope: str) -> CheckpointRequirement:
     inside it is a targeted loss that capture answers for, and a write to
     ``/etc/hosts`` or into ``.git`` is not held by it at all.
 
-    Getting this from the row is what let a redirection outside the tree be
+    Getting this from the row would let a redirection outside the tree be
     settled by the capture row -- "the affected paths are captured and
-    restorable", said of a path no capture had ever seen.
+    restorable", said of a path no capture has ever seen.
     """
     return "targeted" if scope in ("scratch", "production") else "unrecoverable"
 
@@ -770,10 +816,10 @@ def written_beyond_the_checkout(
     somebody else's filesystem.
 
     Read through :func:`write_scope`, which is what a redirection and a delete
-    already read, so one answer covers every spelling of a write. Measured
-    before this: `ls > /etc/newfile` asked, while `cp README.md /etc/newfile`,
+    already read, so one answer covers every spelling of a write. Read any
+    other way, `ls > /etc/newfile` would ask while `cp README.md /etc/newfile`,
     `touch /etc/newfile`, `mkdir /etc/newdir` and `tar -cf /etc/backup.tar
-    src` were allowed -- one place, five spellings, two answers.
+    src` are allowed -- one place, five spellings, two answers.
 
     ``True`` gives the line back to the row that judges it rather than
     refusing it, which is where a contained session's placement is read: the
@@ -1171,8 +1217,9 @@ def git_apply_words(words: list[str], rows: list[ShellRuleRow]) -> list[PathWord
     moved, and every reader here places a path from the word that named it.
 
     Found past git's globals, because what the patch touches is judged from
-    these: read only where `apply` was written second, `git --no-pager apply`
-    handed nobody its patch, and a protected file it rewrote went unasked.
+    these: read only where `apply` is written second, `git --no-pager apply`
+    would hand nobody its patch, and a protected file it rewrites would go
+    unasked.
     """
     at = global_span(words, rows)
     if posixpath.basename(words[0]) != "git" or words[at : at + 1] != ["apply"]:
@@ -1227,11 +1274,19 @@ def written_targets(
 
     ``None`` only for an unmodelled line, which leaves every caller with the
     answer it had before it asked.
+
+    A stream a write flag names, or one a copy or a `tee` writes into, loses
+    nothing and is not among them: `sort -o /dev/null` and `cp f /dev/null`
+    write over no file.
     """
     if not words:
         return None
     if write_flags:
-        return flag_write_targets(words, list(write_flags))
+        return [
+            target
+            for target in flag_write_targets(words, list(write_flags))
+            if not writes_to_a_stream(target)
+        ]
     archived = archive_write(words)
     if archived is not None:
         return archive_targets(archived)
@@ -1241,7 +1296,11 @@ def written_targets(
     verb = path_verb_operands(words)
     if not verb["inert"]:
         return verb["operands"]
-    return written_operands(executable, verb["operands"])
+    return [
+        target
+        for target in written_operands(executable, verb["operands"])
+        if not fills_a_stream(words, target)
+    ]
 
 
 def created_destination(
@@ -1294,13 +1353,14 @@ def refuses_generated_plugin_target(
     redirection's target — so the refusal and the reason it carries are
     written once and cannot drift between the paths that reach them.
 
-    Scratch this checkout declares is the exception, for the reason the edit
-    gate gives: nothing this project generates lands there, so a plugin tree
-    under it is somebody's own — a probe kit's hand-written plugin. The word
-    is read back to the checkout's own spelling before it is asked, and one
-    the host found landing under another role keeps the refusal, because its
-    spelling is then not where the bytes go. Without the roles nothing is
-    scratch, and every plugin-shaped path is refused.
+    Scratch this repository declares is the exception, here or in another of
+    its worktrees, for the reason the edit gate gives: nothing this project
+    generates lands there, so a plugin tree under it is somebody's own — a
+    probe kit's hand-written plugin. The word is read back to the checkout's
+    own spelling before it is asked, and one the host found landing under
+    another role keeps the refusal, because its spelling is then not where
+    the bytes go. Without the roles nothing is scratch, and every
+    plugin-shaped path is refused.
     """
     relative = repository_relative(word, checkout_root)
     if (
@@ -1453,9 +1513,10 @@ def protected_write_target(
     Every grant below answers "what would destroying this cost" — nothing,
     for a scratch file; a checkout, for one Git can restore. That is the
     wrong question for a file protected by who owns it rather than by what
-    it would cost to rebuild, and answering it anyway is how ``rm sync.json``
-    and ``cp x README.md`` passed a gate the Edit tool stops. The rules are
-    the edit gate's own, so the two cannot come to disagree about a path.
+    it would cost to rebuild, and answering it anyway would let
+    ``rm sync.json`` and ``cp x README.md`` past a gate the Edit tool stops.
+    The rules are the edit gate's own, so the two cannot come to disagree
+    about a path.
 
     ``path_exists`` is the caller's own established fact, because the rule
     kinds that fire only on a path that is not there yet — a new subtree, a
@@ -1602,9 +1663,10 @@ def git_init_in_scratch(
 
     A repository made there is as disposable as the scratch holding it, and a
     project scaffolded under `tmp/` needs one. Every directory it makes has
-    to be named and sit under a scratch root this checkout declares: a work
-    tree left to wherever git stands is this checkout's own, and a separate
-    git dir anywhere else would move the repository out from under it. The
+    to be named and sit under a scratch root this repository declares, in
+    this checkout or in another of its worktrees: a work tree left to
+    wherever git stands is that checkout's own, and a separate git dir
+    anywhere else would move the repository out from under it. The
     words are the placed ones, so a `cd` or `git -C` is already in them, and
     a link a directory crosses is the host's to resolve like any write's.
     """
@@ -1635,7 +1697,8 @@ def git_rm_operands(
 
     Found past git's globals: `git --no-pager rm README.md` and `git -c
     color.ui=false rm README.md` remove what `git rm README.md` removes, and
-    read where `rm` was written second they reached the capture instead. The
+    read only where `rm` is written second they would reach the capture
+    instead. The
     words rather than the paths, so the segment reading places each from the
     directory a `cd` or `git -C` left -- `cd src && git rm ../README.md` is
     the same removal.
@@ -1856,7 +1919,13 @@ def confined_to_recoverable_roots(
     inert = verb["inert"]
     if not inert or not operands:
         return None
-    targets = written_operands(executable, operands)
+    targets = [
+        target
+        for target in written_operands(executable, operands)
+        if not fills_a_stream(words, target)
+    ]
+    if not targets:
+        return KernelDecision("allow", STREAM_WRITE_REASON)
     if written_beyond_the_checkout(targets, path_roles):
         return None
     created = created_destination(executable, operands, existing_targets, path_roles)
@@ -1968,7 +2037,7 @@ def dangerous_assignment_reason(verb: str, names: list[str]) -> str:
 
     The variable is the fact the classifier matched on, so the reason says it:
     a reviewer reads this sentence and nothing else, and "an environment
-    assignment" told them only that some sentence could have been printed for
+    assignment" would tell them only that some sentence could be printed for
     any call. Every name is listed rather than the first, since approving is
     one decision over the whole segment.
     """
@@ -2229,10 +2298,10 @@ def xargs_payload(words: list[str]) -> list[str] | None:
     """The command xargs would run, or ``None`` where its options are unread.
 
     Read by xargs's own grammar, clusters included (`-rn 1`), because a
-    fixed table of which words to skip misplaced the command both ways:
-    `-i` and `-e` were taken to consume the next word, which is the command,
-    and `--max-procs 4` and `-rn 1` were taken to consume nothing, so `4` and
-    `1` were judged as the command. An option the grammar does not list could
+    fixed table of which words to skip misplaces the command both ways: it
+    takes `-i` and `-e` to consume the next word, which is the command, and
+    `--max-procs 4` and `-rn 1` to consume nothing, so `4` and `1` are judged
+    as the command. An option the grammar does not list could
     consume the next word, so it leaves the command unread rather than
     guessed at, the way an interpreter's does.
     """
@@ -2353,11 +2422,11 @@ WRAPPER_JUDGED_OPTIONS: dict[str, tuple[str, ...]] = {
 
 A wrapper is transparent only while its options change nothing a reading of
 the wrapped command would judge. `time -o <file>` writes its report into the
-file, and stepped over it was the command it timed: `time -o README.md ls`
-was `ls`. `env -C <dir>` moves where every operand resolves, and stepped
-over, `env -C /etc rm hosts` removed `hosts` here. A wrapper carrying one of
-these is the segment's command itself, and its own reader judges what the
-option does beside what it wraps.
+file, and stepped over it would be the command it timed: `time -o
+README.md ls` read as `ls`. `env -C <dir>` moves where every operand resolves,
+and stepped over, `env -C /etc rm hosts` would remove `hosts` here. A wrapper
+carrying one of these is the segment's command itself, and its own reader
+judges what the option does beside what it wraps.
 """
 
 # lup: ignore[library-default] — `env`'s own spelling of the option that
@@ -2441,12 +2510,12 @@ def refspec_effects(word: str) -> list[str]:
     removes a remote ref and `:<dst>` removes the same ref by giving it no
     source; `--force` replaces one non-fast-forward and `+<src>:<dst>`
     replaces the same ref by prefixing it. A guard written as a list of flag
-    spellings therefore holds only half of each effect, which is what let
+    spellings therefore holds only half of each effect, and would let
     `git push origin :refs/heads/main` past a table that asks about
     `git push --delete origin main`.
 
     Read structurally rather than matched against a second list of spellings,
-    because a list of spellings is what missed these. The grammar is small
+    because a list of spellings misses these. The grammar is small
     and total: `^` opens a negative refspec, which excludes rather than
     writes; a leading `+` forces; and an empty source — everything before the
     first colon — deletes, which `startswith(":")` is the whole of after the

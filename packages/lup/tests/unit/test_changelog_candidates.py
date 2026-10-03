@@ -157,7 +157,7 @@ def test_a_direct_release_closes_the_candidate_section_with_everything_open() ->
 
 
 def test_a_closed_section_ends_with_a_blank_line_before_the_next() -> None:
-    """The asks list used to run straight into the next release's heading."""
+    """The asks list never runs straight into the next release's heading."""
     released = Changelog.parse(OPEN).released_as("0.5.0", FINAL, ["gone — a reason"])
 
     assert "- gone — a reason\n\n## 0.4.0" in released.render()

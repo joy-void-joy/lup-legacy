@@ -1,10 +1,10 @@
 """What the gate's drift row tells a reader who only reads the summary.
 
 Two halves go stale independently — the native trees and the generated
-artifacts outside them — and the row counted only the first. The failure this
-repository meets most often is the second, which read `FAIL (0 tree(s))` and
-named nothing: a true verdict, a useless line. The detail exists, on stderr,
-three minutes up a run that prints two thousand other lines.
+artifacts outside them — and a row counting only the first meets the second,
+the failure this repository meets most often, as `FAIL (0 tree(s))` naming
+nothing: a true verdict, a useless line. The detail exists, on stderr, three
+minutes up a run that prints two thousand other lines.
 """
 
 from lup.devtools.harness.drift import DriftVerdict

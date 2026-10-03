@@ -62,6 +62,7 @@ from pydantic import BaseModel
 from lup.devtools.dev.tracked import tracked_files
 from lup.devtools.utils import format_table, output_json
 from lup.execution.shell import git
+from lup.harness.environment import inherited
 
 type DeclarationShape = Literal[
     "config-dict", "settings-config-dict", "alias", "dict-literal", "other"
@@ -989,10 +990,7 @@ def snapshot_at(revision: str) -> ModelConfigSnapshot:
     with tempfile.TemporaryDirectory() as scratch:
         root = Path(scratch)
         materialize_revision(revision, root)
-        environment = {
-            **os.environ,  # lup: ignore[os-environ] — inherit the process boundary
-            "PYTHONPATH": revision_paths(root),
-        }
+        environment = inherited({"PYTHONPATH": revision_paths(root)})
         return ModelConfigSnapshot.model_validate_json(
             str(
                 sh.Command(sys.executable)(

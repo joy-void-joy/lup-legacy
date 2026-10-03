@@ -1,15 +1,13 @@
 """Whether a Codex session can be *asked* rather than only refused.
 
-This is the last structural difference between the two runtimes' review
-experience.
+It is where the two runtimes' review experience differs in structure.
 
 A policy verdict of `ask` has nowhere to go on Codex's `PreToolUse`: the
 compiled dispatcher runs as a command hook, that boundary carries no portable
 ask effect, and `queued_review` spends the verdict as a denial that sends the
-operator to another terminal. Issue #180 is that dead end reported from a real
-session, where an explicitly authorized whole-file rewrite could not be
-installed because "nobody who could approve it is reachable from this
-session".
+operator to another terminal. A real session meets that dead end as an
+explicitly authorized whole-file rewrite that cannot be installed, because
+"nobody who could approve it is reachable from this session".
 
 The generated plugin registers a second event for the interactive channel, and
 the dispatcher is already written for it: on `PermissionRequest` an `allow`
@@ -17,21 +15,22 @@ becomes a native allow decision, and an `ask` **returns saying nothing** —
 the dispatcher deliberately declining so the runtime's own approval flow can
 proceed.
 
-Both halves are now measured, on codex-cli 0.155.1, and both answered no:
+Both halves are measured, on codex-cli 0.155.1, and both answer no:
 
 * **The event does not fire in a session an application opens.** A live
-  app-server turn under `approval_policy='on-request'` added nothing to the
+  app-server turn under `approval_policy='on-request'` adds nothing to the
   plugin's journal — 48 completed `PermissionRequest` records before, 48
-  after. The 48 it already held came from elsewhere, so the event reaches a
+  after. The 48 it holds come from elsewhere, so the event reaches a
   terminal and not this path.
 
 * **Nothing reaches the client when the dispatcher declines.** The shell call
-  was refused by `PreToolUse`, `queued_review` parked it, and the turn came
-  back carrying the queue's own recovery text. No approval request arrived for
-  the session's hooks to answer.
+  is refused by `PreToolUse`, `queued_review` parks it, and the turn comes
+  back carrying the queue's own recovery text. No approval request arrives
+  for the session's hooks to answer.
 
-So a Codex session an application opens cannot be asked, only refused. #180 has
-no native way out, the fail-closed denial is correct rather than a workaround,
+So a Codex session an application opens cannot be asked, only refused. That
+dead end has no native way out, the fail-closed denial is correct rather than a
+workaround,
 and `review` is Codex's review surface rather than its fallback — which
 is what makes that surface's diff rendering load-bearing.
 
@@ -76,11 +75,11 @@ pytestmark = pytest.mark.integration
 PROBE_MODEL = None
 """Whichever model the scoped home is configured with, rather than a pin.
 
-A pinned model went stale and took all three arms down with it. The home is
+A pinned model goes stale and takes all three arms down with it. The home is
 seeded from the operator's own `config.toml`, so it carries their
 `model_reasoning_effort` as well as their `model` — and a session that
 overrides only the first sends the two to the API as a pair that never existed
-together. On this machine that was `gpt-5.5` with `max`, which answers
+together: `gpt-5.5` beside a home's `max`, for one, answers
 `400 unsupported_value: 'max' is not supported with the 'gpt-5.5' model`.
 
 Naming nothing leaves both the home's, which is consistent by construction and
@@ -119,13 +118,13 @@ class ShellAttempt(BaseModel):
 class ApprovalWatch(BaseModel):
     """Every approval request one turn caused the server to send its client.
 
-    Recorded and then **granted**, which is the correction that made this file
-    measure anything. It recorded and denied at first, on the reasoning that a
-    probe should grant nothing — but `CodexApprovalResponder` consults these
-    same hooks for every approval the app-server sends, so denying everything
-    starved the turn and all three arms died with `ProviderTurnError` before
-    reaching an assertion. The control failing alongside the other two is what
-    gave it away: a control that cannot pass is measuring the probe.
+    Recorded and then **granted**, because granting is what lets this file
+    measure anything. A probe that grants nothing reads as safer, but
+    `CodexApprovalResponder` consults these same hooks for every approval the
+    app-server sends, so denying everything starves the turn and all three arms
+    die with `ProviderTurnError` before reaching an assertion — the control
+    failing alongside the other two, and a control that cannot pass is
+    measuring the probe.
 
     Granting is safe because what it grants is fixed and inert: the only two
     commands this file puts to a session are an `echo` and a `chmod` on a path
@@ -183,8 +182,8 @@ def quiet_session(cwd: Path) -> Codex:
 
     `never` and full access, exactly as `test_codex_hook_firing.py` opens one.
     A control exists to prove the prompt reaches the shell, so it must not also
-    be the first place a new configuration is tried — doing that is what left
-    an earlier run's three failures indistinguishable from one another.
+    be the first place a configuration is tried — where it is, three failures
+    read indistinguishable from one another.
     """
     return Codex(
         model=PROBE_MODEL,
@@ -202,8 +201,8 @@ def hook_records(cwd: Path) -> list[dict[str, str]]:
     Under `plugins/data/<plugin>/` inside the scoped home, where the
     dispatcher's own `PLUGIN_DATA` points — globbed rather than composed,
     because that directory is named for the installed plugin revision and this
-    only needs to find it. An earlier draft read the home's root and would have
-    found nothing whatever the session did. Metadata only, so nothing read here
+    only needs to find it. The home's root holds no journal, so reading it
+    finds nothing whatever the session does. Metadata only, so nothing read here
     carries a command or a patch.
     """
     home = CodexWorktreeHomeStore().home_for(cwd)
@@ -298,15 +297,15 @@ async def test_whether_permission_request_fires_in_an_app_server_session() -> No
     ),
 )
 async def test_whether_a_declined_decision_reaches_the_client_as_an_approval() -> None:
-    """Arm two, and the one that decided whether #180 has a way out.
+    """Arm two, and the one that decides whether that dead end has a way out.
 
     On `ask` the generated dispatcher returns saying nothing, which is it
     declining so the runtime's own approval flow can proceed. This asks
     whether that flow reaches whoever opened the thread.
 
-    A failure here is not a defect in Lup, and the measured failure was not.
-    What it found is that nothing is listening, which is a fact about the
-    app-server's approval surface and is recorded as one.
+    A failure here is not a defect in Lup. What it finds is that nothing is
+    listening, which is a fact about the app-server's approval surface and is
+    recorded as one.
     """
     root = find_project_root()
     watch = ApprovalWatch()

@@ -68,7 +68,7 @@ It is the only abstention that reaches ``defer``.
 ``boundary_settle`` is the classifier lacking a final judgement while the
 *boundary* still has facts about it. Contained, the operation's effects are
 confined and it runs inside; ambient, the profile's declared unjudged-ambient
-policy answers. Sharing one word with the deliberate handoff is what made a
+policy answers. Sharing one word with the deliberate handoff would let a
 parser gap silently inherit provider auto-mode, which is the opposite of what
 a gap means.
 """
@@ -221,3 +221,19 @@ REACHES: list[Reach] = [
     "host_later",
 ]
 """Every reach, narrowest first, which is what makes a join a maximum."""
+
+type PathRuleKind = Literal[
+    "exact",
+    "subtree",
+    "name_prefix",
+    "new_subtree",
+    "contains_part",
+    "new_devtools",
+]
+"""How a protected-path rule matches a path.
+
+``exact`` names one file, ``subtree`` a root and everything under it,
+``new_subtree`` only what does not stand there yet, ``contains_part`` a
+directory or file by name wherever it sits, ``name_prefix`` a file name's
+opening (`.env`), and ``new_devtools`` a devtools module not written yet.
+"""

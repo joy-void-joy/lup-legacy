@@ -40,6 +40,7 @@ from lup.harness.contracts import (
     Spelling,
 )
 from lup.harness.generation import argument_text
+from lup.policy.models import ProtectedRoot
 from lup.harness.prompts import (
     SPAWNED_SESSION_LOSES_SHELL,
     guidance_banner,
@@ -86,6 +87,13 @@ class ClaudeSpellings(NativeSpellings):
     @property
     def runtime_name(self) -> Atom:
         return Atom("Claude Code")
+
+    @property
+    def protected_tree(self) -> ProtectedRoot:
+        return ProtectedRoot(
+            path=Path(self.tree("tree_root")),
+            description="Claude Code's settings, trust state and skills",
+        )
 
     @property
     def native_identifiers(self) -> list[Atom]:
@@ -156,15 +164,15 @@ class ClaudeSpellings(NativeSpellings):
         worktree was just made and wrong where one was merely found. An
         operator's session holds every checkout writable
         (:func:`lup.sandbox.rail.lease_for`) and meets no such wall. Stated
-        flatly it read as an equal alternative to launching, and an agent
-        following it into a leased sibling spends its next hour discovering
-        the mount.
+        flatly it would read as an equal alternative to launching, and an
+        agent following it into a leased sibling would spend its next hour
+        discovering the mount.
 
         The condition is four words here and a paragraph in
         `docs/contributing.md`, which this instruction's paragraph already
         points at. Not a stylistic split: the scaffold ceiling this renders
-        into leaves an adopting domain its own room, and the guidance sat
-        within twenty-one bytes of that ceiling -- so the words that earn a
+        into leaves an adopting domain its own room, and the guidance runs
+        close to that ceiling -- so the words that earn a
         place here are the ones that stop a wrong move, and the ones that
         explain it belong where there is room to explain.
 
@@ -635,8 +643,8 @@ CLAUDE_CALLER_EVENT = "PreToolUse"
 
 Documented at https://code.claude.com/docs/en/hooks under "PreToolUse" and
 measured on 2.1.283 against a probe tool server: an ``updatedInput`` returned
-with no ``permissionDecision`` replaced an MCP call's arguments before the
-server received them, and every event fired inside a subagent carried its
+with no ``permissionDecision`` replaces an MCP call's arguments before the
+server receives them, and every event fired inside a subagent carries its
 ``agent_id``. The runtime's own spelling of the moment, so not a value a
 project could choose.
 """
@@ -898,9 +906,7 @@ class ClaudeHookRenderer(ArtifactRenderer[HookSet]):
                             )
                             for scope in source.denied_fetch
                         ],
-                        protected_roots=[
-                            path.as_posix() for path in source.protected_edit_roots
-                        ],
+                        protected_roots=source.protected_roots(),
                         human_owned_files=[
                             path.as_posix() for path in source.human_owned_files
                         ],

@@ -4,10 +4,10 @@ Backs ``lup-devtools dev check --boundaries`` and ``--placement``, focused
 views of rules the anti-pattern sweep also runs. Inward, every git-tracked
 ``.py`` file outside the sanctioned homes (the adapters package, tests) runs through
 :mod:`lup.harness.codescan.boundaries`; the tree is expected to hold zero breaches, and
-this is the regression guard that keeps backend dispatch from creeping back
-outside the seam. Outward, every library module is checked for data tables an
-adopter cannot replace — those are open placement debt, so that row names the
-tables still to be moved rather than asserting zero.
+this is the guard that keeps backend dispatch inside the seam. Outward, every
+library module is checked for data tables an adopter cannot replace — those
+are open placement debt, so that row names the tables still to be moved
+rather than asserting zero.
 """
 
 from pathlib import Path

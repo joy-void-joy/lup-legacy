@@ -30,6 +30,7 @@ from rich.console import Console
 from rich.syntax import Syntax
 
 from lup.coordination.bare import store as roster
+from lup.workspace.checkout_state import CheckoutState
 from lup.coordination.identity import session_member_id
 from lup.coordination.repository import RepositoryPeers
 from lup.devtools.dashboard.companion import refuse_inside_a_session
@@ -84,6 +85,7 @@ from lup.policy.relay import (
     AppendedRecords,
     CapturedFileReview,
     PersistentQuestion,
+    ProtectedMatch,
     QuestionRecord,
     QuestionRelay,
     RecordedQuestion,
@@ -486,7 +488,11 @@ class ReviewAttribution(BaseModel, frozen=True):
 
     effect: Literal["allow", "ask", "deny", "defer", "unknown"] = "unknown"
     reason: str = "No per-file decision was captured; this file remains visible as unclassified context."
+    rule: str = ""
+    """The gate that decided, as a rule id: ``edit:full-write``."""
+
     rules: list[str] = []
+    protected: ProtectedMatch | None = None
 
     @classmethod
     def of(
@@ -510,7 +516,7 @@ class ReviewAttribution(BaseModel, frozen=True):
             return cls(
                 reason="The captured file verdict does not match these exact images; relevance is unknown."
             )
-        return cls(effect=row.effect, reason=row.reason, rules=row.rules)
+        return cls(effect=row.effect, reason=row.reason, rule=row.rule, rules=row.rules)
 
 
 class ReviewSuppression(BaseModel, frozen=True):
@@ -687,6 +693,75 @@ class ReviewMarker(BaseModel, frozen=True):
         return sorted([*notes, *exceptions], key=lambda marker: marker.line)
 
 
+class FileReason(BaseModel, frozen=True):
+    """Why one file needs approval, in a few plain words read off its verdict.
+
+    Read off the gate that decided and the file's own structured facts, never
+    off the reason sentence, so the words cannot drift from the verdict they
+    name; the sentence stays one look away for whoever wants it whole.
+    """
+
+    kind: str = ""
+    """What every file asking for the same reason shares, as a proposal counts them."""
+
+    words: str = ""
+    """This file's own, with what makes it so: ``written whole, 66 lines``."""
+
+
+def file_reason(
+    attribution: ReviewAttribution,
+    after: str | None,
+    added: int,
+    suppressions: list[ReviewSuppression],
+) -> FileReason:
+    """The few words a file's header says of why it asks, from its gate and its own facts."""
+
+    def said(kind: str, words: str = "") -> FileReason:
+        return FileReason(kind=kind, words=words or kind)
+
+    if attribution.effect in ("allow", "defer"):
+        return said("automatic")
+    lines = len((after or "").splitlines())
+    match attribution.rule, attribution.protected:
+        case "edit:protected-path", ProtectedMatch(kind="new_devtools"):
+            return said("new devtools module")
+        case "edit:protected-path", ProtectedMatch() as matched:
+            return said("protected", f"protected: {matched.description}")
+        case "edit:protected-path", None:
+            return said("protected")
+        case "edit:full-write", _:
+            return said(
+                "written whole",
+                f"written whole, {lines} line{'' if lines == 1 else 's'}",
+            )
+        case "edit:size", _:
+            return said("a large edit", f"a large edit, {added} lines added")
+        case "edit:feedback-added", _:
+            return said("adds a # lup: note")
+        case "edit:feedback-removed", _:
+            return said("removes a # lup: note")
+        case "edit:claim-removed", _:
+            return said("removes a solved: claim")
+        case "edit:anti-pattern", _ if any(each.introduced for each in suppressions):
+            return said("adds a rule suppression")
+        case "edit:anti-pattern", _:
+            return said("a shape the rules refuse")
+        case "edit:acceptance-guard", _:
+            return said("an acceptance test")
+        case "edit:foreign-repository", _:
+            return said("outside this repository")
+        case "edit:generated-plugin", _:
+            return said("a generated tree")
+        case "edit:git-state", _:
+            return said("git's own state")
+        case "edit:displaced-path", _:
+            return said("lands elsewhere through a link")
+        case "", _:
+            return said("no verdict captured")
+        case rule, _:
+            return said(rule)
+
+
 class ReviewFile(BaseModel, frozen=True):
     """Captured file contents and the corresponding proposed change."""
 
@@ -705,6 +780,7 @@ class ReviewFile(BaseModel, frozen=True):
 
     review_effect: Literal["allow", "ask", "deny", "defer", "unknown"] = "unknown"
     review_reason: str = "No per-file decision was captured."
+    review_label: FileReason = FileReason()
     about: str = ""
     """What the requester said of this file, where a proposal of several said anything."""
 
@@ -748,6 +824,12 @@ class ReviewFile(BaseModel, frozen=True):
             ],
             review_effect=attribution.effect,
             review_reason=attribution.reason,
+            review_label=file_reason(
+                attribution,
+                change.after,
+                sum(line.kind == "add" for hunk in hunks for line in hunk.lines),
+                suppressions,
+            ),
             about=about,
         )
 
@@ -900,7 +982,9 @@ class QuestionView(BaseModel, frozen=True):
         )
 
 
-def relay(root: Path, log: Path = Path(".lup/questions.jsonl")) -> QuestionRelay:
+def relay(
+    root: Path, log: Path = CheckoutState(root=Path()).questions()
+) -> QuestionRelay:
     """The relay for one checkout, at the path that checkout keeps it in.
 
     Under ``.lup`` by default because a parked question is managed

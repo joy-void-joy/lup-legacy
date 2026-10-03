@@ -32,7 +32,6 @@ from lup.harness.evidence import WireContract
 from lup.harness.materialization import (
     AtomicMaterializer,
     MaterializationRefusedError,
-    discard_staged_write,
     held_read_only,
     mounted_read_only,
     refused_write,
@@ -414,7 +413,7 @@ def published_documents(
 
 
 def managed_paths(desired: ArtifactTree, prior: OwnershipManifest | None) -> list[Path]:
-    """Combine desired and formerly owned paths for deletion detection."""
+    """Combine desired paths with the prior manifest's, for deletion detection."""
     paths = [artifact.path for artifact in desired.artifacts]
     if prior is not None:
         paths.extend(item.path for item in prior.files)
@@ -591,7 +590,6 @@ def generate(recipe: GenerationRecipe) -> GenerationReport:
     try:
         result = AtomicMaterializer().apply(proposal)
     except OSError as error:
-        discard_staged_write(error)
         raise refused_write(error) from error
     manifest = manifest_of(recipe)
     save_manifest(recipe.manifest_path, manifest)

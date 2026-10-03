@@ -216,3 +216,29 @@ def test_scan_for_capability_gaps_reads_sidecar(tmp_lup_project: Path) -> None:
     assert len(results) == 1
     assert "PyPI" in results[0]["text"]
     assert results[0]["session_ids"] == ["sess-wish"]
+
+
+class TestToolCallView:
+    def test_renders_calls_from_the_events_sidecar(self, tmp_path: Path) -> None:
+        from lup.devtools.trace.traces import render_tool_calls
+
+        trace_path = tmp_path / "t.md"
+        trace = TraceLogger(trace_path=trace_path, title="t")
+        trace.log_block(LupToolUseBlock(id="a", name="search", input={"q": "x"}))
+        trace.log_block(LupToolResultBlock(tool_use_id="a", content="done"))
+        trace.log_block(LupTextBlock(text="some prose, not a tool call"))
+
+        out = render_tool_calls(trace_path)
+
+        assert "✓ search" in out
+        assert "prose" not in out
+
+    def test_no_tool_calls_recorded(self, tmp_path: Path) -> None:
+        from lup.devtools.trace.traces import render_tool_calls
+
+        trace_path = tmp_path / "t.md"
+        trace = TraceLogger(trace_path=trace_path, title="t")
+        trace.log_block(LupTextBlock(text="Just some narrative text."))
+        trace.save()
+
+        assert render_tool_calls(trace_path) == "(no tool calls recorded)"

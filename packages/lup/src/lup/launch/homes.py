@@ -21,7 +21,7 @@ from pathlib import Path
 
 from pydantic import BaseModel
 
-from lup.sandbox.known import store_directory
+from lup.workspace.user_directories import UserDirectories
 
 # lup: ignore[constant-declaration] — the file a home's directory names its
 # checkout in, which the store writing it and every sweep reading it share
@@ -31,7 +31,7 @@ CHECKOUT_CLAIM = "checkout"
 
 def homes_root(state: Path | None = None) -> Path:
     """Where every checkout's runtime homes are kept: lup's state, outside every checkout."""
-    return (state or store_directory()) / "homes"
+    return (state or UserDirectories().state()) / "homes"
 
 
 def checkout_directory(root: Path, checkout: Path) -> Path:

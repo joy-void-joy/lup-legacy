@@ -21,6 +21,7 @@ from typing import TypedDict
 import sh
 import typer
 
+from lup.channels.models import aware
 from lup.workspace.history import (
     iter_session_dirs,
     resolve_version,
@@ -295,7 +296,8 @@ def collect(
         sessions = [
             s
             for s in sessions
-            if not s.timestamp or datetime.fromisoformat(s.timestamp) >= since_dt
+            if not s.timestamp
+            or aware(datetime.fromisoformat(s.timestamp)) >= aware(since_dt)
         ]
 
     if not sessions:
@@ -483,7 +485,7 @@ def trends(
         return
 
     sessions_with_ts = [s for s in sessions if s.timestamp]
-    sessions_with_ts.sort(key=lambda s: s.timestamp)
+    sessions_with_ts.sort(key=lambda s: aware(datetime.fromisoformat(s.timestamp)))
 
     if len(sessions_with_ts) < window:
         if as_json:

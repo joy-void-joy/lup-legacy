@@ -36,6 +36,7 @@ from lup.policy.kernel.edit import (
     python_comment_columns,
     source_suppression,
 )
+from lup.policy.kernel.rows import PathRoleName
 from lup.policy.kernel.typescript import typescript_comment_columns
 
 type RuleStrength = Literal["soft", "strong"]
@@ -159,8 +160,8 @@ class RuleExample(BaseModel, frozen=True):
     """One snippet a rule is checked against, and the verdict it must return.
 
     A rule declares near-misses as well as violations, because one stated only
-    by what it catches is one whose reach nobody wrote down — and every false
-    positive this set has produced was a near-miss nobody had named. Most of
+    by what it catches is one whose reach nobody wrote down — and a false
+    positive is a near-miss nobody named. Most of
     these rules turn on what the subject *is* rather than on how it is spelled,
     so the cleared examples are where that is written down: `.replace` renaming
     a path, `.get` reaching a module's own function, `Field(default_factory=…)`
@@ -301,6 +302,16 @@ class AntiPattern(Rule):
     pattern: re.Pattern[str]
     context: RuleContext = "code"
     matcher: Matcher | None = None
+    roles: list[PathRoleName] = ["production"]
+    """The path roles whose files this rule judges, at the hook and in the audit.
+
+    Production for nearly every rule: a convention about how code reads is
+    about the code other code reads, and a test's subject is production's
+    behaviour rather than its own shape. A rule about how prose is written
+    reaches a test as well, because a test's docstring is read as the spec of
+    what it pins. Scratch is reached by none, being disposable by
+    construction.
+    """
     family: TypeFamily | None = None
     """The classes a site's subject must resolve into for this rule to stand.
 
@@ -631,6 +642,16 @@ class PythonContext(BaseModel):
         )
 
     @classmethod
+    def parse_markdown(cls) -> Self:
+        """A Markdown page's prose map: no comment, so no directive opens in it.
+
+        The page is prose throughout, and nothing in it is a comment a
+        directive could be written in, so every line reads as prose and none
+        holds a suppression.
+        """
+        return cls(comment_columns={}, docstring_lines=set())
+
+    @classmethod
     @cache
     def parse_typescript(cls, text: str) -> Self:
         """One TypeScript-family file's prose map, remembered like Python's.
@@ -666,7 +687,8 @@ class LineProjections(BaseModel):
     ``commented`` blanks only string literals, keeping comments visible for
     "comment"-context directive rules. Python is read through its tokenizer
     and the TypeScript family, asked for by ``typescript``, through the
-    kernel's span scan. When Python text does not tokenize — an incomplete
+    kernel's span scan; Markdown, asked for by ``markdown``, is prose less
+    the code it quotes. When Python text does not tokenize — an incomplete
     fragment — both views fall back to the raw lines and ``tokenized`` is
     False, so a scanner can keep the conservative whole-line scan.
     """
@@ -677,8 +699,10 @@ class LineProjections(BaseModel):
     prose: list[str]
 
     @classmethod
-    def parse(cls, text: str, typescript: bool = False) -> Self:
-        masked = masked_source(text, not typescript, typescript)
+    def parse(cls, text: str, typescript: bool = False, markdown: bool = False) -> Self:
+        masked = masked_source(
+            text, not typescript and not markdown, typescript, markdown
+        )
         return cls(
             tokenized=masked["comment_columns"] is not None,
             code=masked["code"],

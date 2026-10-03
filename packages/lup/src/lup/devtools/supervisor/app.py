@@ -18,6 +18,7 @@ from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 
 from lup.providers.harness import AdapterName
+from lup.workspace.checkout_state import CheckoutState
 from lup.channels.models import utc_now
 from lup.resolver.record import Journal, JournalEntry
 from lup.coordination.mailbox import (
@@ -380,7 +381,7 @@ def serve_supervisor(
     ] = True,
 ) -> None:
     """Answer any run under ``.lup/resolve``, live or parked."""
-    state_root = project_root() / ".lup" / "resolve"
+    state_root = CheckoutState(root=project_root()).resolve()
     try:
         serve_local_page(
             lambda url: create_supervisor(state_root, url, run_id, adapter),

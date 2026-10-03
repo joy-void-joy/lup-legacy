@@ -1,9 +1,9 @@
 """A document generated from the ledger, declared in Python the way guidance is.
 
-The worked example this came from rewrote one document by hand with every
-correction folded in and left the rest carrying stale figures behind a
-register a reader had to consult first. A writeup is that folding made
-automatic: a Python module declares the document as parts — the author's
+A document corrected by hand folds every correction into the one being
+edited and leaves the rest carrying stale figures behind a register a reader
+has to consult first. A writeup is that folding made automatic: a Python
+module declares the document as parts — the author's
 prose, and parts that render from the ledger when the document is generated —
 so a figure in it is the ledger's figure, read at generation with its standing
 beside it, and never a number somebody typed.
@@ -39,6 +39,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from lup.channels.models import aware
 from lup.coordination.identity import mint_member_id
 from lup.coordination.refs import ActorRef
 from lup.coordination.rendering import GROUPS, task_line, user_tasks
@@ -207,8 +208,8 @@ class Listing(WriteupPart, frozen=True):
 
     The selector for what is *ours*: a claim with no edge to the source that
     stated it first was found here, and that is a query over the edges rather
-    than a stored count — the count moved five times in the worked example
-    this came from, for changes of identity rather than of evidence.
+    than a stored count, which moves with every change of identity even
+    when the evidence has not changed.
     """
 
     having: str = ""
@@ -330,8 +331,7 @@ def spelled_moment(moment: datetime) -> str:
     A naive moment is read as local time, which is what a writer that spelled
     one meant by it, and every row is shown on one clock so two rows compare.
     """
-    aware = moment if moment.tzinfo is not None else moment.astimezone()
-    return f"{aware.astimezone(UTC):%Y-%m-%d %H:%M:%S}Z"
+    return f"{aware(moment).astimezone(UTC):%Y-%m-%d %H:%M:%S}Z"
 
 
 class Band(BaseModel, frozen=True):
@@ -360,8 +360,7 @@ class Entry(BaseModel, frozen=True):
 
     def moment(self) -> datetime:
         """When the row sits, aware and in UTC, so rows from either kind of clock order together."""
-        aware = self.when if self.when.tzinfo is not None else self.when.astimezone()
-        return aware.astimezone(UTC)
+        return aware(self.when).astimezone(UTC)
 
 
 class Placed(BaseModel, frozen=True):
@@ -381,8 +380,8 @@ class Entries(BaseModel, frozen=True):
 class Timeline(WriteupPart, frozen=True):
     """Every dated node in the order it happened, with the clock that dated it beside.
 
-    The worked example this came from kept one `created_at` for three clocks
-    and filed observation time as event time three times over. Here a row is
+    One `created_at` standing for three clocks files observation time as
+    event time, so the clocks are kept apart. Here a row is
     ordered by the moment the author named (`moment`), and a node without
     one takes its upper bound (`bound`) and says so, or the clock named as
     `fallback`, or goes under the undated heading at the end; a second clock
@@ -602,8 +601,8 @@ class NeedsPerson(WriteupPart, frozen=True):
     """What is waiting on the person, grouped by what each row costs them.
 
     The task list whose holder is a person, folded into the document rather
-    than kept as a file beside it — the file is what went missing in the
-    worked example. Grouped by `needs`, so a command to paste and a judgement
+    than kept as a file beside it, which is the part that goes missing.
+    Grouped by `needs`, so a command to paste and a judgement
     to make are not one list.
     """
 

@@ -48,7 +48,7 @@ class Repository:
         # Identity per invocation rather than written once with `git config`:
         # a misbound command then writes nothing, where a persisted setting
         # lands in the shared config every worktree of a real repository
-        # inherits. See `lup.devtools.gitguard` for the run that found this out.
+        # inherits, which is what `lup.devtools.gitguard` reports.
         status = self.launcher.launch(
             LaunchRequest(
                 arguments=[
@@ -121,7 +121,7 @@ def test_a_branch_that_has_not_moved_keeps_the_base_it_had(tmp_path: Path) -> No
 
 
 def test_a_branch_that_moved_forward_is_taken_outright(tmp_path: Path) -> None:
-    """The reported run exactly: the fix landed while the run was parked."""
+    """A fix landing while the run is parked moves the base forward to it."""
     repository = Repository(tmp_path / "source")
     started = repository.commit("a.py", "one\n")
     fixed = repository.commit("a.py", "one, fixed\n")
@@ -276,7 +276,7 @@ def run_state(source: SourceSnapshot, leases: list[WritableRootLease]) -> Resolv
 def test_a_lease_created_after_the_branch_moved_is_cut_from_the_fix(
     tmp_path: Path,
 ) -> None:
-    """The reported run: parked for a fix, resumed, and leased 28 stale trees."""
+    """A run parked for a fix, then resumed, leases no stale tree."""
     repository = Repository(tmp_path / "source")
     started = repository.commit("a.py", "one\n")
     fixed = repository.commit("a.py", "one, fixed\n")
@@ -366,9 +366,8 @@ def test_a_lease_holding_uncommitted_work_is_refused_rather_than_merged_over(
 ) -> None:
     """The prediction reads commits; the merge it clears runs in the tree.
 
-    Measured on run `resolve-9e060ad9bb53`, where three of the six leases a
-    resume had to refresh held 12, 9 and 1 uncommitted files. `merge-tree`
-    saw none of them and cleared every one.
+    A lease a resume has to refresh can hold uncommitted files, and
+    `merge-tree` sees none of them, so it would clear every such lease.
     """
     repository = Repository(tmp_path / "source")
     started = repository.commit("a.py", "one\n")

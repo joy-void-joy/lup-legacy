@@ -25,6 +25,7 @@ from lup.harness.generate import (
     ProjectContent,
 )
 from lup.devtools.harness.generated_paths import write_generated_paths
+from lup.devtools.dashboard.keys import write_keymap
 from lup.devtools.surfaces import LIBRARY_SURFACES
 from lup.web.build import write_web_bundles
 from lup.web.schema import write_view_schema
@@ -147,6 +148,8 @@ REPOSITORY_WIDE: list[RepositoryWriter] = [
     partial(
         write_view_schema, Path("packages/lup/web/schema/views.json"), LIBRARY_SURFACES
     ),
+    # The dashboard's keymap, which its page compiles in as its key table.
+    partial(write_keymap, Path("packages/lup/web/schema/keymap.json")),
     partial(
         write_web_bundles,
         Path("packages/lup/web"),

@@ -20,11 +20,13 @@ starts -- because a store a container could write is a store a container could
 add its own repository to.
 """
 
-import os
 from collections.abc import Sequence
 from pathlib import Path
 
 from pydantic import BaseModel, ValidationError
+
+from lup.channels.models import publish_atomic
+from lup.workspace.user_directories import UserDirectories
 
 
 class KnownRepositories(BaseModel):
@@ -33,37 +35,20 @@ class KnownRepositories(BaseModel):
     repositories: list[str] = []
 
 
-def store_directory() -> Path:
-    """Where the store lives: `$XDG_STATE_HOME/lup`, or `~/.local/state/lup`.
-
-    A relative `XDG_STATE_HOME` is ignored, as the base directory
-    specification says it must be, rather than resolved against wherever the
-    command happens to run.
-    """
-    environ = os.environ  # lup: ignore[os-environ]
-    state = environ["XDG_STATE_HOME"] if "XDG_STATE_HOME" in environ else ""
-    base = (
-        Path(state)
-        if state and Path(state).is_absolute()
-        else Path.home() / ".local" / "state"
-    )
-    return base / "lup"
-
-
 def store_file() -> Path:
-    """The one file the store keeps, inside :func:`store_directory`."""
-    return store_directory() / "repositories.json"
+    """The one file the store keeps, in lup's state for this person."""
+    return UserDirectories().state() / "repositories.json"
 
 
 def answers_directory() -> Path:
-    """Where the operator's answers to parked reviews are kept, inside :func:`store_directory`.
+    """Where the operator's answers to parked reviews are kept, in lup's state for this person.
 
     The one part of the launcher's state a launch lends a container, and only
     read-only, each repository's answers apart: an answer is authority a
     session may read and never write. The hooks derive the same directory
     for themselves (:func:`lup.policy.assets.host.review_answers_home`).
     """
-    return store_directory() / "reviews"
+    return UserDirectories().state() / "reviews"
 
 
 def known_repositories() -> list[Path]:
@@ -94,13 +79,7 @@ def remember(repositories: Sequence[Path]) -> list[Path]:
     added = sorted({str(path.resolve()) for path in repositories} - held)
     if not added:
         return []
-    store = store_file()
-    store.parent.mkdir(parents=True, exist_ok=True)
-    staged = store.with_name(f".{store.name}.{os.getpid()}")
-    staged.write_text(
-        KnownRepositories(repositories=sorted({*held, *added})).model_dump_json(
-            indent=2
-        )
+    publish_atomic(
+        store_file(), KnownRepositories(repositories=sorted({*held, *added}))
     )
-    staged.replace(store)
     return [Path(path) for path in added]

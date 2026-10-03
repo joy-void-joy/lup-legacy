@@ -199,7 +199,7 @@ async def test_a_file_in_another_checkout_resolves_against_its_own(
 async def test_a_relative_path_follows_where_editing_is_happening(
     tmp_path: Path,
 ) -> None:
-    """The half deriving the workspace from an absolute path could not reach.
+    """The half deriving the workspace from an absolute path cannot reach.
 
     A relative path is relative to the working directory of whoever asked,
     and this server is a separate long-lived process whose own was fixed at
@@ -207,7 +207,7 @@ async def test_a_relative_path_follows_where_editing_is_happening(
     silently whenever work has moved, because both trees hold that path.
 
     The permission hook publishes where editing is happening on every edit,
-    which is the fact the guess was standing in for.
+    which is the fact such a guess stands in for.
     """
     elsewhere = tmp_path / "other-checkout"
     (elsewhere / ".git").mkdir(parents=True)
@@ -328,8 +328,9 @@ def test_a_typed_dict_is_refuted_on_its_own_class(tmp_path: Path) -> None:
     """Its `get` is synthesized, so only the receiver query reaches the class.
 
     Asking the member alone answers nothing here, which is the same reply a
-    subject the checker cannot type at all gives — so a genuine `TypedDict`
-    was dropped with an evidence sentence naming the wrong reason.
+    subject the checker cannot type at all gives — so asked that way, a
+    genuine `TypedDict` is dropped with an evidence sentence naming the wrong
+    reason.
     """
     evidence = resolved(tmp_path, RESOLVED_SUBJECTS)['return row.get("name")']
     assert "`Row`" in evidence

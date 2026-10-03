@@ -27,12 +27,13 @@ import json
 import logging
 import re
 from collections.abc import Sequence
-from datetime import datetime
 from pathlib import Path
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, TypeAdapter
 
+from lup.channels.models import utc_now
+from lup.channels.stream import Stream
 from lup.observability.blocks import extract_block_info, truncate_str
 from lup.types import LupContentBlock, normalize_content
 
@@ -117,21 +118,14 @@ def capability_request_from_text(text: str) -> str | None:
     return None
 
 
-def read_trace_events(events_path: Path) -> list[TraceEvent]:
-    """Read a ``.events.jsonl`` sidecar into validated :class:`TraceEvent`s.
+def trace_events(events_path: Path) -> Stream[TraceEvent]:
+    """A ``.events.jsonl`` sidecar as the ordered log of :class:`TraceEvent`s it is.
 
-    Skips blank or malformed lines so a truncated tail (a crash mid-write)
-    never loses the events that were flushed before it.
+    Read the way every log in this library is read: complete lines only, so a
+    tail a crash cut mid-write is not taken for a record, and a malformed line
+    is passed over and logged rather than losing the events flushed before it.
     """
-    events: list[TraceEvent] = []
-    for line in events_path.read_text(encoding="utf-8").splitlines():
-        if not line.strip():
-            continue
-        try:
-            events.append(TraceEvent.model_validate_json(line))
-        except ValueError:
-            logger.warning("Skipping malformed trace event line in %s", events_path)
-    return events
+    return Stream(events_path, TypeAdapter(TraceEvent))
 
 
 class TraceEntry(BaseModel):
@@ -174,7 +168,7 @@ class TraceLogger(BaseModel, arbitrary_types_allowed=True):
         """Initialize the trace with header."""
         if not self.entries:
             self.append_entry(f"# Trace: {self.title}\n")
-            self.append_entry(f"*Generated: {datetime.now().isoformat()}*\n\n")
+            self.append_entry(f"*Generated: {utc_now().isoformat()}*\n\n")
 
     @property
     def events_path(self) -> Path:
@@ -186,7 +180,7 @@ class TraceLogger(BaseModel, arbitrary_types_allowed=True):
         self.entries.append(
             TraceEntry(
                 index=len(self.entries),
-                timestamp=datetime.now().isoformat(),
+                timestamp=utc_now().isoformat(),
                 content=content,
             )
         )
@@ -200,9 +194,7 @@ class TraceLogger(BaseModel, arbitrary_types_allowed=True):
         """
         self.events.append(event)
         try:
-            self.events_path.parent.mkdir(parents=True, exist_ok=True)
-            with self.events_path.open("a", encoding="utf-8") as fh:
-                fh.write(event.model_dump_json() + "\n")
+            trace_events(self.events_path).append(event)
         except OSError:
             logger.exception("Failed to append trace event to %s", self.events_path)
 
@@ -218,7 +210,7 @@ class TraceLogger(BaseModel, arbitrary_types_allowed=True):
         block emits the ``tool_call`` event with name + ok/error + brief.
         Assistant text that voices a capability request emits one too.
         """
-        now = datetime.now().isoformat()
+        now = utc_now().isoformat()
         opened, invoked = block.opens_pairing, block.tool_call_name
         if opened is not None and invoked is not None:
             self.tool_names[opened] = invoked
@@ -258,7 +250,7 @@ class TraceLogger(BaseModel, arbitrary_types_allowed=True):
             self.emit_event(
                 TraceEvent(
                     kind="capability_request",
-                    timestamp=datetime.now().isoformat(),
+                    timestamp=utc_now().isoformat(),
                     brief=request,
                 )
             )

@@ -29,7 +29,6 @@ reaches them; one keeping it anywhere else gets the bare name instead::
 """
 
 import logging
-import os
 import re
 from pathlib import Path
 from collections.abc import Iterator
@@ -46,6 +45,7 @@ from lup.devtools.launcher import (
     launcher_invocation,
 )
 from lup.execution.shell import git
+from lup.harness.environment import inherited
 from lup.types import EnvVars
 from lup.workspace.paths import find_nearest_pyproject
 from lup.devtools.utils import format_table, decode_stderr, output_json, short_sha
@@ -577,9 +577,9 @@ def committing(index: Path | None) -> EnvVars | None:
     """
     if index is None:
         return None
-    # lup: ignore[os-environ] — inherited, not read: git keeps its PATH and
-    # configuration, and the one name added is the index the commit is made from
-    return {**os.environ, "GIT_INDEX_FILE": str(index)}
+    # git keeps its PATH and configuration; the one name added is the index
+    # the commit is made from
+    return inherited({"GIT_INDEX_FILE": str(index)})
 
 
 def staged_text(root: Path, index: Path | None, path: str) -> str | None:

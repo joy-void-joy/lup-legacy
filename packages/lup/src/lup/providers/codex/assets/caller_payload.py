@@ -1,7 +1,8 @@
 """Codex's half of the caller hook: which conversation made a tool call.
 
 Shipped verbatim into the plugin's ``hooks/runtime/``, where the caller hook's
-generated entry runs it and the compiled permission dispatcher imports it. It
+generated entry reads each event, asks :func:`decided` and prints its answer,
+and the compiled permission dispatcher imports it. It
 holds only what Codex spells for itself: the ``PreToolUse`` event, the
 payload's keys, where the runtime keeps what a spawn was called, and the
 output envelope. What a caller is and how it rides in a call are the store's.
@@ -17,10 +18,10 @@ subagent's tool events carry its ``agent_id`` — its own thread's id — and
 neither.
 
 How Codex applies the rewrite, measured on 0.158.0: an ``updatedInput``
-beside ``permissionDecision: "allow"`` reached the server as the call's whole
+beside ``permissionDecision: "allow"`` reaches the server as the call's whole
 arguments, from the session and from a subagent alike, even for a tool whose
 schema sets ``additionalProperties: false``; the same rewrite with no decision
-was dropped, and the call ran as the model wrote it with nothing in the exec
+is dropped, and the call runs as the model wrote it with nothing in the exec
 stream, its stderr or the rollout saying so. So the two travel together. The
 ``allow`` settles nothing else: the coordination servers are declared with
 their tools approved already.
@@ -34,12 +35,10 @@ after whatever its own ``PreToolUse`` hook rewrote. The name is that path's
 last part. An opening naming another thread — the session's rollout, which
 ``SubagentStop`` hands as ``transcript_path`` — names nobody.
 
-Every failure is silence: a call left unstamped acts as the session, which is
-what every call did before there was anything to stamp.
+Every failure is silence: a call left unstamped acts as the session.
 """
 
 import json
-import sys
 from pathlib import Path, PurePosixPath
 from typing import Literal, TypedDict
 
@@ -168,14 +167,3 @@ def decided(payload: Payload) -> Rewrite | None:
             updatedInput=called_by(payload.get("tool_input", {}), caller_of(payload)),
         )
     )
-
-
-def main() -> None:
-    """Answer the event on stdin, or say nothing and let the call through as it was."""
-    try:
-        payload: Payload = json.load(sys.stdin)
-        answer = decided(payload)
-    except Exception:
-        return
-    if answer is not None:
-        print(json.dumps(answer))

@@ -206,5 +206,5 @@ Everything else — `ls`, `grep`, `gh`, `docker`, the guarded tools, the
 redirected verbs — arrives from `default_vocabulary()` and is not restated
 here. A table that restated them would have to be re-copied every time the
 library judged a new command, and the copy that fell behind would read as a
-decision rather than as the oversight it was.
+decision rather than as the oversight it is.
 """

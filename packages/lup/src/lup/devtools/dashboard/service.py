@@ -47,6 +47,7 @@ import sh
 from pydantic import BaseModel
 from pydantic_settings import BaseSettings
 
+from lup.channels.models import publish_atomic
 from lup.devtools.dashboard.companion import (
     DashboardHealth,
     DashboardRegistry,
@@ -55,7 +56,6 @@ from lup.devtools.dashboard.companion import (
     KnownRepository,
     dashboard_revision,
     read_model,
-    written,
 )
 from lup.devtools.dashboard.live import RepositoryNeeds, RepositoryWatch
 from lup.devtools.dashboard.panes import SetupPanes
@@ -355,7 +355,7 @@ class Herald:
             told=[*kept, *(each.key for each in fresh)], reopened=reopened
         )
         if updated != record:
-            written(self.record_path, updated.model_dump_json(indent=2))
+            publish_atomic(self.record_path, updated)
         needs = self.needs(moment)
 
         def repository_of(root: Path) -> str:
@@ -504,7 +504,7 @@ class Herald:
         with self.writing:
             if self.stopped:
                 return
-            written(self.pulse.path, pulse.model_dump_json(indent=2))
+            publish_atomic(self.pulse.path, pulse)
         self.published = pulse
 
     def retired(self) -> None:

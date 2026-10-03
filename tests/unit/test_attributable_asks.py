@@ -98,6 +98,7 @@ def test_every_edit_question_names_its_gate_and_its_purpose() -> None:
             reason="human-owned",
             recovery=[],
             allow_autonomous=False,
+            description="docs/owned.md",
         )
     ]
 

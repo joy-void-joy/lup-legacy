@@ -25,25 +25,25 @@ session is.
 
 Measured on Codex 0.155.1:
 
-- A separate, short-lived ``codex app-server`` answered ``thread/name/set``
-  for a thread a live TUI had loaded with ``{}``, and the name landed in the
-  home's ``session_index.jsonl``. It outlived the TUI's later turns and its
-  exit, and ``codex exec resume <name>`` reopened the thread by it. The live
-  TUI's status line went on showing the title it already had.
+- A separate, short-lived ``codex app-server`` answers ``thread/name/set``
+  for a thread a live TUI has loaded with ``{}``, and the name lands in the
+  home's ``session_index.jsonl``. It outlives the TUI's later turns and its
+  exit, and ``codex exec resume <name>`` reopens the thread by it. The live
+  TUI's status line goes on showing the title it already has.
 - Codex names a thread itself from its first prompt, and that is what the
   session's own status line shows. The two names race, and either order
-  settles on this one: a name set after Codex's title replaced it, and a
-  thread named before Codex's titler answered was left unnamed by it.
+  settles on this one: a name set after Codex's title replaces it, and a
+  thread named before Codex's titler answers is left unnamed by it.
 - ``codex exec --ephemeral --skip-git-repo-check --ignore-user-config -C
-  <scratch>`` with ``--output-schema`` answered a naming ask in 3.7 seconds
-  with JSON meeting the schema, and ``-o`` wrote it to a file. With its shell
-  on, it met a prompt asking it to explain something by exploring the
-  scratch directory until the deadline passed, so the ask is opened with the
+  <scratch>`` with ``--output-schema`` answers a naming ask in 3.7 seconds
+  with JSON meeting the schema, and ``-o`` writes it to a file. With its shell
+  on, it meets a prompt asking it to explain something by exploring the
+  scratch directory until the deadline passes, so the ask is opened with the
   arguments the generator compiles from the adapter's own list of facilities
   to switch off — every tool, every hook, every write — and the prompt
   arrives quoted, as the thing to name. Killing the npm wrapper at that
-  deadline left the binary running, which is why an ask runs in a session of
-  its own that is killed whole.
+  deadline leaves the binary running, which is why an ask runs in a session
+  of its own that is killed whole.
 - The hook's ``session_id`` is the thread's id, which the arrival binder
   records as the thread ``codex queue`` takes.
 

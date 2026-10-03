@@ -7,7 +7,6 @@ it with work discovered while it ran.
 """
 
 import asyncio
-import os
 from functools import partial
 from collections.abc import AsyncGenerator, Iterator
 from contextlib import asynccontextmanager
@@ -19,6 +18,7 @@ import typer
 from pydantic import BaseModel
 
 from lup.harness.codescan.markers import find_feedback
+from lup.workspace.checkout_state import CheckoutState
 from lup.harness.enforcement import semantic_policy_for
 from lup.harness.models import HookSet
 from lup.policy.hooks import LupHooksConfig
@@ -36,7 +36,7 @@ from lup.tools.mcp import (
 from lup.mcp import External
 from lup.policy.grants import LeaseGrants, allowance_grants_environment
 from lup.policy.identity import agent_identity_environment
-from lup.harness.environment import non_interactive_environment
+from lup.harness.environment import inherited, non_interactive_environment
 from lup.harness.ownership import GeneratedArtifacts, generated_artifacts
 from lup.execution.git import Repository
 from lup.execution.process import LocalProcessLauncher, ProcessLauncher
@@ -289,9 +289,9 @@ def lease_plugin_dir(root: Path, plugin_name: str) -> Path:
     immune to this; a session the SDK opens names nothing, so it resolves
     plugins through the settings at its working directory. Those settings
     register a marketplace under a name, and a name is one global namespace
-    shared by every checkout declaring it — so the plugin a lease actually
-    loaded was whichever tree registered that name last, and a worker was
-    refused an edit by a policy kernel generated from another commit.
+    shared by every checkout declaring it — so the plugin such a lease loads
+    is whichever tree registered that name last, and a worker is refused an
+    edit by a policy kernel generated from another commit.
     """
     return root / ".claude" / "plugins" / plugin_name
 
@@ -945,7 +945,7 @@ def refresh_run(
     which is exactly when a parked run is waiting for the fix to land.
     """
     root = project_root()
-    state_root = root / ".lup" / "resolve"
+    state_root = CheckoutState(root=root).resolve()
     repository = ResolverStateRepository(state_root, run_id)
     if not repository.exists():
         refuse(f"names no resolver run under {state_root}", what=run_id, code=2)
@@ -1108,9 +1108,9 @@ class DetachedRun(BaseModel, frozen=True):
 def detach_resolve(detached: DetachedRun) -> None:
     """Start a run that outlives this command, and say where to reach it.
 
-    A blocking run holds the launching agent's only turn, so nothing could
-    write to a run while it moved — which made every delivery route in the
-    design unreachable, however well the channels underneath worked. Once
+    A blocking run holds the launching agent's only turn, so nothing can
+    write to the run while it moves — which leaves every delivery route
+    unreachable, however well the channels underneath work. Once
     launching returns, the run directory is the whole contract: the page and
     an orchestrating agent are peers on it, exactly as two pages would be.
 
@@ -1133,7 +1133,7 @@ def detach_resolve(detached: DetachedRun) -> None:
     # naming nothing actionable or an issue number naming nothing open, and
     # it meets it after this command has already reported a run started.
     admission_request(detached.admitted)
-    repository = ResolverStateRepository(root / ".lup/resolve", resolved)
+    repository = ResolverStateRepository(CheckoutState(root=root).resolve(), resolved)
     if repository.held():
         refuse(
             "is already active, and a run is driven by one process at a time",
@@ -1171,7 +1171,7 @@ def detach_resolve(detached: DetachedRun) -> None:
 
 def detached_log(root: Path, run_id: str) -> Path:
     """Where a detached run's console output is kept, beside its own record."""
-    directory = root / ".lup" / "resolve" / run_id
+    directory = CheckoutState(root=root).resolve() / run_id
     directory.mkdir(parents=True, exist_ok=True)
     return directory / "detached.log"
 
@@ -1212,7 +1212,7 @@ def queue_existing_admission(
     if not flags.named_anything() or (start_new and run_id is None):
         return False
     root = project_root()
-    state_root = root / ".lup" / "resolve"
+    state_root = CheckoutState(root=root).resolve()
     selected = run_id or chosen_run(
         state_root,
         "resolve-" + Repository(root).answer("rev-parse", "--short=12", "HEAD"),
@@ -1250,7 +1250,9 @@ def list_admissions(
     ),
 ) -> None:
     """Inspect accepted evidence and its pending, applied, or rejected result."""
-    repository = ResolverStateRepository(project_root() / ".lup" / "resolve", run_id)
+    repository = ResolverStateRepository(
+        CheckoutState(root=project_root()).resolve(), run_id
+    )
     if not repository.exists():
         refuse("names no resolver run", what=run_id, code=2)
     receipts = AdmissionMailbox(repository.root).receipts()
@@ -1368,23 +1370,23 @@ def worker_policy_hooks(
     after both were built.
 
     ``semantics`` is how one runtime's calls become the vocabulary this
-    policy judges. It is a parameter rather than a constant because both
-    runtimes have that decode now, and hardcoding one was what left the
-    other's workers judged by nothing.
+    policy judges. It is a parameter rather than a constant because each
+    runtime has its own decode, and a hardcoded one would leave the other's
+    workers judged by nothing.
 
     ``relay`` is where an escalation goes when there is nobody here to answer
     it. The marker exists to route a judgement to a human who can weigh the
-    actual command, and a worker session has none attached — so for a worker
-    the three tiers collapsed to two and every escalation was a guaranteed
-    refusal, in exactly the context that most needs one. It still refuses,
-    because nothing here can approve what no human saw; what it stops doing
-    is refusing in silence.
+    actual command, and a worker session has none attached — so without a
+    relay the three tiers collapse to two for a worker and every escalation
+    is a guaranteed refusal, in exactly the context that most needs one. It
+    still refuses, because nothing here can approve what no human saw; what
+    the relay changes is that it does not refuse in silence.
 
     ``sandbox`` is the session's own confinement, read from the declaration
     the factory opens it with rather than from the runtime. Taking the
-    runtime's word granted an escape the session forbade — rendered onto the
-    wire, dropped without a word, and the call left confined to fail on
-    whatever it wrote first. Asking the session instead is what lets a
+    runtime's word would grant an escape the session forbids — rendered onto
+    the wire, dropped without a word, and the call left confined to fail on
+    whatever it writes first. Asking the session instead is what lets a
     worker's toolchain be placed outside and actually get there.
 
     Only the placement is taken from it. What the posture says about
@@ -1392,16 +1394,16 @@ def worker_policy_hooks(
     on a substitution this host cannot afford: its arm takes ``defer`` and
     ``ask`` together, so where there is no human to answer, every guarded
     verdict becomes a run rather than a refusal — ``find -delete`` and ``git
-    push --delete`` among them, and a ``# lup: escalate:`` marker, which
-    resolves to an ask, turned into the way to avoid the human it exists to
+    push --delete`` among them, and a ``# lup: escalate[decision]:`` marker, which
+    resolves to an ask, turns into the way to avoid the human it exists to
     summon. A worker keeps the fail-closed floor until it can answer a
     question through the channel it already holds.
 
-    It composes here, outside the factory that calls it, because the defect
-    this shape exists to prevent was never in a verdict: the kernel answered
-    correctly every time and the session handed it host facts it did not
-    have. A composition only a running resolver can build is one no test
-    reaches, and this one shipped its own widening once already.
+    It composes here, outside the factory that calls it, because what this
+    shape prevents is not a wrong verdict: the kernel answers correctly
+    every time, and the failure is a session handing it host facts it does
+    not have. A composition only a running resolver can build is one no
+    test reaches, so a widening in it ships unseen.
     """
     return create_policy_hooks(
         semantic_policy_for(
@@ -1414,6 +1416,7 @@ def worker_policy_hooks(
         semantics.also_refusing(declared_hooks.refused_tools),
         sandbox=sandbox,
         relay=relay,
+        timeout=declared_hooks.policy_timeout,
     )
 
 
@@ -1558,7 +1561,7 @@ def run_resolve(
     plugin = harness.plugins[0]
     root = project_root()
     launcher = PointerCheckedLauncher(LocalProcessLauncher(), root)
-    state_root = root / ".lup" / "resolve"
+    state_root = CheckoutState(root=root).resolve()
     resolved_run_id = run_id or chosen_run(
         state_root,
         "resolve-"
@@ -1670,11 +1673,7 @@ def run_resolve(
                 install_codex_plugin(root, home.path, trusted=home.isolated)
             return {"CODEX_HOME": str(home.path)}
 
-        session_environment = account.exported(
-            non_interactive_environment(
-                os.environ  # lup: ignore[os-environ] — sessions inherit the console
-            )
-        )
+        session_environment = account.exported(non_interactive_environment(inherited()))
         # Both identities are written, never omitted: a runtime merges the
         # session environment over the launching process's, so a reviewer
         # that stayed silent would inherit an operator's exported identity.
@@ -2254,7 +2253,7 @@ def run_resolve(
                     adapter,
                     resolved_run_id,
                     [] if recorded is None else recorded.concerns,
-                    [] if recorded is None else question_views(recorded, mailbox),
+                    question_views(mailbox),
                 )
                 return
             typer.echo(f"Review branch: {manifest.review_branch}")

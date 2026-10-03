@@ -567,8 +567,8 @@ def decide_env_words(
     is the honest answer for `-S` and for a flag no version here knows.
 
     `-C` moves the payload into another directory, so it is judged there, as
-    `cd <dir> && <command>` is: stepped over, `env -C /etc rm hosts` removed
-    `hosts` from the directory the session stands in. The payload is handed
+    `cd <dir> && <command>` is: stepped over, `env -C /etc rm hosts` would
+    remove `hosts` from the directory the session stands in. The payload is handed
     on with its assignments, so a dangerous one is still asked about.
     """
     payload = env_payload(words)
@@ -606,11 +606,11 @@ def decide_time_words(
 ) -> KernelDecision:
     """Judge a `time` that writes its report into a file, and what it times.
 
-    Stepped over as a wrapper, `time -o <file>` lost the write: `time -o
-    README.md ls` was `ls`, allowed, and the human-owned file was truncated
-    to a timing report. The file is a write no redirection names, so nothing
-    the host resolves stands behind it and it asks; the command it times is
-    judged as ever, and the stronger of the two stands.
+    Stepped over as a wrapper, `time -o <file>` would lose the write:
+    `time -o README.md ls` read as `ls`, allowed, and the human-owned file
+    truncated to a timing report. The file is a write no redirection names,
+    so nothing the host resolves stands behind it and it asks; the command it
+    times is judged as it would be alone, and the stronger of the two stands.
     """
     reading = read_wrapper(words, 1, "time")
     written = [
@@ -715,7 +715,7 @@ def decide_interpreter_words(
 
 
 def standing_interpreter_refusal(
-    words: list[str], context: ShellContext
+    words: list[str], context: ShellContext, runner: str = ""
 ) -> KernelDecision | None:
     """An interpreter's refusal that no word nobody can read could lift.
 
@@ -733,6 +733,13 @@ def standing_interpreter_refusal(
     it is refused on every posture, declared interpreter or not, and through
     `uv run` as directly. An interpreter a project declared otherwise keeps
     its row.
+
+    ``runner`` is the command handing the interpreter its words, which
+    :func:`~lup.policy.kernel.commands.decide_uv` reads by the program alone:
+    `uv run python <script>` is how Python is meant to run, so the refusal
+    of an interpreter run directly is not one through it, and only the code
+    it is handed can stand -- `uv run python s.py $x` hands `$x` to a script
+    file, which nothing `$x` becomes turns into inline code.
     """
     if not words or opaque_argument(words[0]):
         return None
@@ -744,27 +751,33 @@ def standing_interpreter_refusal(
             if normalized is not None and normalized[1:2] == ["run"]
             else []
         )
-        return standing_interpreter_refusal(handed, context) if handed else None
+        return (
+            standing_interpreter_refusal(handed, context, "uv run") if handed else None
+        )
     if executable not in INTERPRETERS:
         return None
+    spelled = f"{runner} {executable}" if runner else executable
     program = read_program(words)
     if program["kind"] == "unread" and opaque_argument(program["subject"]):
-        return program_verdict(executable, program)
-    verdict = decide_interpreter_words(words, context)
+        return program_verdict(spelled, program)
+    verdict = (
+        program_verdict(spelled, program)
+        if runner
+        else decide_interpreter_words(words, context)
+    )
     if verdict is None or verdict.effect != "deny":
         return None
     unread = next(
         (index for index, word in enumerate(words) if opaque_argument(word)),
         len(words),
     )
-    if executable not in SCRIPT_INTERPRETERS:
+    if not runner and executable not in SCRIPT_INTERPRETERS:
         return verdict if unread > 1 else None
-    reading = read_program(words)
     deciding = next(
-        (index for index, word in enumerate(words) if word == reading["subject"]),
+        (index for index, word in enumerate(words) if word == program["subject"]),
         unread,
     )
-    if reading["kind"] in ("inline", "remote") and deciding < unread:
+    if program["kind"] in ("inline", "remote") and deciding < unread:
         return verdict
     return None
 
@@ -793,8 +806,8 @@ def decide_segment_words(
     # No program is spelled with a leading dash, so reaching one means a
     # wrapper's option grammar ran out above this and the word that followed
     # was taken for the command. Refused rather than left unclassified: an
-    # unclassified command is allowed inside the boundary, which is how five
-    # wrapper spellings each carried an interpreter this refuses outright.
+    # unclassified command is allowed inside the boundary, so a wrapper
+    # spelling would carry through an interpreter this refuses outright.
     if executable.startswith("-"):
         return KernelDecision(
             "deny",
@@ -1063,16 +1076,14 @@ def decide_shell_segment(
     Printing usage says nothing about *where* the command has to run, and the
     two are separate axes — so the probe replaces the verdict and the walk
     still answers for the placement. Short-circuited above that walk it
-    answered for both, and dropped every declared placement a ``--help``
-    happened to sit in: measured, ``uv run lup-devtools dev check`` was placed
-    ``outside`` while ``uv run lup-devtools --help`` — the same toolchain, one
-    word apart — was placed ``ambient``, and so was every other help probe in
-    the vocabulary. The depth was incidental; the short circuit was the whole
-    of it.
+    would answer for both, and drop every declared placement a ``--help``
+    sits in: ``uv run lup-devtools dev check`` placed ``outside`` while
+    ``uv run lup-devtools --help`` — the same toolchain, one word apart — and
+    every other help probe in the vocabulary placed ``ambient``.
 
-    Which is the reachable half of that defect: a toolchain declared
-    ``outside`` because it opens agent sessions is asked for its own usage
-    from inside the sandbox that placement exists to escape.
+    That is the half of the defect a session reaches: a toolchain declared
+    ``outside`` because it opens agent sessions would be asked for its own
+    usage from inside the sandbox that placement exists to escape.
     """
     while segment and segment[0] == "!":
         segment = segment[1:]
@@ -1879,8 +1890,8 @@ def decide_shell(
     """Classify one command, honoring an escalation marker and hinting denies.
 
     Two steps, and only the first is here. This reads the leading
-    ``# lup: escalate: <why>`` line off the command, refuses a marker that
-    states no reason, and hands the classified verdict to the settlement
+    ``# lup: escalate[<kind>]: <why>`` line off the command, refuses a marker
+    that states no reason or names no kind, and hands the classified verdict to the settlement
     order in ``settlement.py`` along with every session fact that bears on
     it: whether a boundary is running, whether this host can put one call
     outside it, and whether there is anybody to ask.
@@ -1918,12 +1929,12 @@ def decide_shell(
 
     ``relayed`` says a non-interactive session is not therefore *alone*. A
     reviewed worker holds a question mailbox reaching the human supervising
-    the run, so a refusal that told it to reshape the command was naming the
-    only route it had as unavailable — and measured, it did what anybody
-    would and queued a material question instead, parking the whole run on a
+    the run, so a refusal telling it to reshape the command names the only
+    route it has as unavailable — and measured, it does what anybody would
+    and queues a material question instead, parking the whole run on a
     decision nobody needed to make. Three states rather than two, because
-    "nobody to ask" and "somebody, but not right now" are different answers
-    and were sharing one.
+    "nobody to ask" and "somebody, but not right now" are different answers,
+    and two states would make them share one.
 
     ``unscoped_fetch`` is what a `curl` or `wget` of an origin no fetch scope
     names answers, and ``None`` reads ``unjudged_ambient`` for it.
@@ -1937,7 +1948,11 @@ def decide_shell(
     reading = read_escalation(command)
     if reading.refusal:
         return KernelDecision(
-            "deny", reading.refusal, cause="deliberate", hard=True, recovery=hint
+            "deny",
+            reading.refusal,
+            cause="deliberate",
+            hard=True,
+            recovery=reading.recovery or hint,
         )
     return settle(
         SettlementFacts(

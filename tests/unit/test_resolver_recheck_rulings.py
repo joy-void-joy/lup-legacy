@@ -2,8 +2,9 @@
 
 The question asks whether a criterion that stopped holding was superseded by
 later work or is a regression, and the two answers mean opposite things
-about the review branch. Recording the answer and completing anyway made the
-question a decision about nothing, so these pin what each ruling does.
+about the review branch. Recording the answer and completing anyway would
+make the question a decision about nothing, so these pin what each ruling
+does.
 """
 
 from lup.coordination.questions import QuestionAnswer
@@ -88,7 +89,7 @@ def test_every_answer_this_gate_offers_is_one_its_reader_can_test() -> None:
 
 
 def test_a_regression_names_every_concern_and_criterion_it_stopped_for() -> None:
-    """#71's report: the human must be told what broke, not that something did."""
+    """The human is told what broke, not that something did."""
     error = ResolverRegression(
         [
             RecheckRuling(

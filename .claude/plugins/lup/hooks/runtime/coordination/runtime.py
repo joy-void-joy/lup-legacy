@@ -9,8 +9,8 @@ started — and every other process of the session is its runtime's: the hooks
 it spawns, the tool servers it feeds. A beat answers for less than that. A
 tool server beats for as long as *it* runs, and a runtime started from the
 session's own shell inherits the session's id, serves it from a tool server
-of its own, and can outlive it — which is how a session the person had
-stopped read as running for as long as another runtime lived.
+of its own, and can outlive it — so a beat alone reads a session the person
+has stopped as running for as long as another runtime lives.
 
 So a row names the process it answers for, by its id and its start time — the
 id alone is reused, the pair is not — and the namespace the id belongs to,

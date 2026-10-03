@@ -31,6 +31,7 @@ if TYPE_CHECKING:
         TreeLocation,
     )
     from lup.harness.reconciliation import CurrentTree, ReconciliationProposal
+    from lup.policy.models import ProtectedRoot
     from lup.types import ModelTier
 
 
@@ -172,6 +173,19 @@ class NativeSpellings(SkillInvocationRenderer, ABC):  # lup: ignore[abc-capabili
     # lup: ignore[abc-capability] — NativeSpellings owns one runtime's whole vocabulary, deliberately wider than the three-method shape; the class docstring carries the argument
     @property
     @abstractmethod
+    def protected_tree(self) -> ProtectedRoot:
+        """This runtime's own tree, as a protected root, with what it holds in plain words.
+
+        Declared by the adapter that owns the tree and by no project, and
+        collected from every runtime the library supports
+        (:func:`lup.providers.harness.runtime_trees`), so a session running
+        one runtime cannot rewrite the settings, trust state or skills the
+        other reads.
+        """
+
+    # lup: ignore[abc-capability] — NativeSpellings owns one runtime's whole vocabulary, deliberately wider than the three-method shape; the class docstring carries the argument
+    @property
+    @abstractmethod
     def native_identifiers(self) -> list[Atom]:
         """This runtime's own words that appear inside its instructions.
 
@@ -250,7 +264,7 @@ class NativeSpellings(SkillInvocationRenderer, ABC):  # lup: ignore[abc-capabili
         first and unfollowable on the second, which is how prose naming only
         "the runtime's event-driven waiter" leaves a reader to guess — and a
         reader who guesses reaches for an ordinary command with a long
-        timeout, which is the polling loop the advice existed to prevent.
+        timeout, which is the polling loop the advice exists to prevent.
         """
 
     @abstractmethod

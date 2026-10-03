@@ -14,6 +14,7 @@ import pytest
 import sh
 import typer
 
+from lup.devtools.dev import records
 from lup.devtools.dev.branches import (
     BaseFreshness,
     admit_an_unread_base,
@@ -70,7 +71,7 @@ def worktree_clone(origin: Path, into: Path, branch: str = "feature") -> Path:
     clone = clone_of(origin, into)
     git = repo_git(clone)
     git("switch", "-c", branch)
-    git("config", f"branch.{branch}.lup-base", "main")
+    records.remember(branch, records.BranchRecord(base="main"), clone)
     return clone
 
 
@@ -153,7 +154,7 @@ def test_a_pushed_branch_is_still_measured_against_the_base_it_was_cut_from(
 
     Asking only the first ref that resolves answers a different question in a
     pushed worktree than in an unpushed one, so a base three commits gone
-    reported as current — the false negative that hid two stale worktrees.
+    reports as current — a false negative that hides a stale worktree.
     """
     clone = worktree_clone(origin, tmp_path / "clone")
     repo_git(clone)("push", "-u", "origin", "feature")

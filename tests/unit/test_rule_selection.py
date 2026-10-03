@@ -4,8 +4,8 @@ The failure this guards against is a seam that exists in one place and is
 quietly not honoured in another: the promise that a project may retire a rule
 is only worth anything if the sweep, the compiled plugin, and the generated
 reference all stop naming it together. Each is pinned separately here, because
-each was reached by a different call path and any one of them could be added
-back without the others noticing.
+each is reached by a different call path and any one of them could name the
+rule again without the others noticing.
 """
 
 from typer.testing import CliRunner

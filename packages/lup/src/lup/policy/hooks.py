@@ -88,8 +88,8 @@ decision).
 
 ``ask`` is what makes a denial recoverable. Without it every refusal is
 terminal for an agent with no interactive human attached — a worker meeting
-a genuine need outside its allowlist has no route at all, which is how a
-merge worker once spent a whole run unable to stage its own resolutions.
+a genuine need outside its allowlist has no route at all, and a merge
+worker can spend a whole run unable to stage its own resolutions.
 
 ``None`` is the fifth answer and means the hook declines to decide, so the
 session's ambient permission flow applies untouched."""
@@ -176,6 +176,13 @@ class LupHookMatcher(BaseModel, arbitrary_types_allowed=True):
     matcher: str | None = None
     hook: LupHookFn
     tag: str | None = None
+    timeout: float | None = Field(
+        default=None,
+        description=(
+            "Seconds the runtime gives this hook before it acts without its "
+            "answer; unset leaves the runtime's own default"
+        ),
+    )
 
 
 class LupHooksConfig(BaseModel):
@@ -333,9 +340,9 @@ def create_git_inspection_hook() -> LupHooksConfig:
     #
     # A refusal here is recoverable rather than terminal. A worker that meets
     # a genuine need outside this list promotes its command with
-    # `# lup: escalate: <why>` exactly as the shell lattice allows, and the
-    # verdict becomes an ask carrying that reason — which is what a merge
-    # worker unable to stage its own resolutions had no route to.
+    # `# lup: escalate[decision]: <why>` exactly as the shell lattice allows,
+    # and the verdict becomes an ask carrying that reason — the route a merge
+    # worker needs when it cannot stage its own resolutions.
     inspection_commands = dict.fromkeys(
         [
             "status",

@@ -19,6 +19,7 @@ from pydantic import BaseModel, Field
 
 from lup.execution.git import GitError, Repository
 from lup.harness.environment import non_interactive_environment
+from lup.workspace.checkout_state import CheckoutState
 from lup.execution.process import ProcessLauncher
 import lup.devtools.dev.records as records
 import lup.devtools.dev.traces as traces
@@ -636,9 +637,9 @@ def still_at_reservation(branch: str) -> bool:
     merge.
 
     A branch with no record is not a workspace. Reserving one writes the
-    record, so its absence is either a branch made another way or one made
-    before the record existed — and neither is somebody's held session, while
-    a spent branch read as reserved is one nothing offers to clear again.
+    record, so its absence is a branch made another way — never somebody's
+    held session, while a spent branch read as reserved is one nothing offers
+    to clear again.
     """
     reserved_at = records.recorded_reservation(branch)
     try:
@@ -959,7 +960,7 @@ def unlanded_siblings(
     integration = get_integration_branch()
     worktrees = parse_worktrees()
     current = Repository(Path.cwd()).branch()
-    leased = live_lease_branches(project_root() / ".lup" / "resolve")
+    leased = live_lease_branches(CheckoutState(root=project_root()).resolve())
 
     def measure(name: str) -> UnlandedBranch | None:
         if name == current or name in protected or name in leased:
@@ -1221,9 +1222,9 @@ def detect_base_branch(branch: str | None = None) -> BaseCandidate:
     # feature branch whose `dev` has taken one commit since the cut has no
     # ancestor in `dev` at all, so filtering on ancestry drops `dev` and hands
     # the answer to whichever stale sibling happens to sit in the branch's
-    # history, however far away. Measured against a branch whose real base was
-    # 0 symbols off: the sibling that won sat 747 commits away, and the gate
-    # reported 137 capabilities gone that nothing had touched.
+    # history, however far away: a branch whose real base is no distance off
+    # can be handed a sibling hundreds of commits away, and the gate then
+    # reports capabilities gone that nothing touched.
     #
     # Distance is the merge-base distance, which needs no ancestry to be
     # meaningful and is what makes a moved-on integration branch comparable
@@ -1348,7 +1349,7 @@ class BaseFreshness(BaseModel, frozen=True):
     have says nothing about which one a reader wants. Asking only the first
     ref that resolves answers "am I behind my own push" wherever a branch has
     been pushed and "has my base moved" wherever it has not — so the same
-    gate called a base three commits gone current, and offered a base
+    gate would call a base three commits gone current, and offer a base
     forty-one commits gone a pull that cannot run there.
     """
 
@@ -1937,7 +1938,7 @@ def survey(as_json: bool, scaffold: str = "") -> None:
     pr_named = branch_names + [row["name"] for row in remote_only]
     pr_map: dict[str, PRStatus] = fetch_pr_status(pr_named) if has_remote else {}
     leased = leased_on_disk(
-        live_lease_branches(project_root() / ".lup" / "resolve"), branch_names
+        live_lease_branches(CheckoutState(root=project_root()).resolve()), branch_names
     )
 
     def answerable(name: str) -> str:
@@ -2684,9 +2685,9 @@ def worktree_left_as_mount_point(path: str) -> bool:
     `git worktree remove` clears the checkout and unregisters it before the
     final rmdir, and a directory that is a mount point in this session's
     namespace -- every checkout a launch bind-mounted is one -- refuses that
-    last step alone, after everything before it succeeded. Measured on a land
-    sweep of twenty-eight branches: each first removal failed there, the entry
-    was gone and the directory empty, and the report said nothing had
+    last step alone, after everything before it succeeded. On a land sweep
+    every first removal fails there with the entry gone and the directory
+    empty, and a report read off the failure would say nothing had
     completed. The mount is not a failure of the deletion; it is the host's
     directory to drop once the container is gone, so the deletion carries on
     to the branch and says what it left.
@@ -2699,8 +2700,8 @@ def worktree_left_as_mount_point(path: str) -> bool:
     The mount half goes through :func:`~lup.sandbox.observed.is_mount_point`
     rather than :meth:`pathlib.Path.is_mount`, which answers by device number
     and so cannot see the same-filesystem bind every launch makes. Under that
-    probe this returned false for the very sweep the paragraph above measured,
-    and the branch it guards was never taken.
+    probe this would answer false for every checkout a launch bind-mounted,
+    and the branch it guards would never be taken.
     """
     return is_mount_point(Path(path)) and path not in parse_worktrees().values()
 

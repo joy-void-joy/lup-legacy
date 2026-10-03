@@ -17,11 +17,12 @@ import asyncio
 import logging
 from collections.abc import AsyncGenerator, Awaitable, Callable
 from contextlib import AbstractAsyncContextManager, asynccontextmanager
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from lup.channels.models import utc_now
 from lup.sessions.capabilities import SessionEngine, SessionWrapper, TurnEngine
 from lup.sessions.errors import QuotaExceededError
 from lup.sessions.events import (
@@ -58,11 +59,6 @@ type QuotaSleeper = Callable[[float], Awaitable[None]]
 type NowProvider = Callable[[], datetime]
 
 
-def utc_now() -> datetime:
-    """The aware wall clock allowance resets are measured against."""
-    return datetime.now(UTC)
-
-
 class QuotaWaitingTurn[T: BaseModel | None](TurnEngine[T]):
     """Retry the identical request on the identical session after reset."""
 
@@ -87,9 +83,10 @@ class QuotaWaitingTurn[T: BaseModel | None](TurnEngine[T]):
     def wait_seconds(self, error: QuotaExceededError) -> float:
         """How long to sleep before the identical request is worth retrying.
 
-        Bounded below because a reset already in the past — a clock skewed
-        against the provider's, or a window that rolled while the failure was
-        in flight — would otherwise retry immediately and be refused again.
+        Bounded below because a reset time that has already passed — a clock
+        skewed against the provider's, or a window that rolled while the
+        failure was in flight — would otherwise retry immediately and be
+        refused again.
         """
         if error.reset_at is None:
             return self.config.unknown_reset_wait_seconds

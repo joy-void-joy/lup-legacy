@@ -1,7 +1,7 @@
-"""Accounts a checkout or the old ``~/.lup`` registry keeps move to global once.
+"""Accounts a checkout or the personal ``~/.lup`` registry keeps move to global once.
 
 A checkout's ``.lup/profiles`` keeps working where it is, so moving one is a
-choice; an account left in the old registry is one no launch can select; and
+choice; an account left in the personal registry is one no launch can select; and
 a login copied rather than moved is two chains that diverge on the first
 renewal. These pin that a run moves each account, carries one selection
 without overriding the person's, never overwrites a name the destination
@@ -40,7 +40,7 @@ def checkout(tmp_path: Path) -> Path:
 def test_a_checkouts_profiles_move_with_their_selection(
     checkout: Path, config: UserConfigFile, tmp_path: Path
 ) -> None:
-    migration = migrate_profiles(checkout, config, tmp_path / "old-home")
+    migration = migrate_profiles(checkout, config, tmp_path / "registry-home")
 
     home = profile_directory(CLAUDE_LOGIN, config).launch_home(None)
     assert home is not None
@@ -54,10 +54,10 @@ def test_a_checkouts_profiles_move_with_their_selection(
 def test_running_it_again_finds_nothing_to_do(
     checkout: Path, config: UserConfigFile, tmp_path: Path
 ) -> None:
-    migrate_profiles(checkout, config, tmp_path / "old-home")
+    migrate_profiles(checkout, config, tmp_path / "registry-home")
     settled = sorted(config.home.rglob("*"))
 
-    again = migrate_profiles(checkout, config, tmp_path / "old-home")
+    again = migrate_profiles(checkout, config, tmp_path / "registry-home")
 
     assert again.lines() == ["nothing to migrate"]
     assert sorted(config.home.rglob("*")) == settled
@@ -69,7 +69,7 @@ def test_a_checkouts_profile_works_where_it_is_and_moving_it_is_optional(
     kept = checkout / ".lup" / "profiles" / "work" / CLAUDE_LOGIN.home_subdir
 
     before = profile_directory(CLAUDE_LOGIN, config, checkout).launch_home(None)
-    migrate_profiles(checkout, config, tmp_path / "old-home")
+    migrate_profiles(checkout, config, tmp_path / "registry-home")
     after = profile_directory(CLAUDE_LOGIN, config, checkout).launch_home(None)
 
     assert before == kept
@@ -82,7 +82,7 @@ def test_a_selection_the_person_already_made_is_theirs(
     (config.profiles_root() / "personal").mkdir(parents=True)
     config.select_profile("personal")
 
-    migration = migrate_profiles(checkout, config, tmp_path / "old-home")
+    migration = migrate_profiles(checkout, config, tmp_path / "registry-home")
 
     assert migration.selected is None
     assert config.load().profile == "personal"
@@ -98,7 +98,7 @@ def test_a_name_the_destination_holds_keeps_what_it_holds(
     codex = checkout / ".lup" / "profiles" / "work" / CODEX_LOGIN.home_subdir
     codex.mkdir()
 
-    migration = migrate_profiles(checkout, config, tmp_path / "old-home")
+    migration = migrate_profiles(checkout, config, tmp_path / "registry-home")
 
     outcomes = {move.source.name: move.outcome for move in migration.moves}
     assert outcomes == {"claude-config": "kept", "codex-home": "moved"}
@@ -109,15 +109,15 @@ def test_a_name_the_destination_holds_keeps_what_it_holds(
     assert "merge it by hand" in migration.lines()[0]
 
 
-def test_the_old_registry_moves_homes_it_made_and_links_the_rest(
+def test_the_registry_moves_homes_it_made_and_links_the_rest(
     config: UserConfigFile, tmp_path: Path
 ) -> None:
-    old_home = tmp_path / "old-home"
-    made = old_home / "homes" / "work"
+    registry_home = tmp_path / "registry-home"
+    made = registry_home / "homes" / "work"
     made.mkdir(parents=True)
     elsewhere = tmp_path / "their-own-home"
     elsewhere.mkdir()
-    (old_home / "profiles.json").write_text(
+    (registry_home / "profiles.json").write_text(
         json.dumps(
             {
                 "profiles": {
@@ -131,7 +131,7 @@ def test_the_old_registry_moves_homes_it_made_and_links_the_rest(
         encoding="utf-8",
     )
 
-    migration = migrate_profiles(tmp_path / "no-checkout", config, old_home)
+    migration = migrate_profiles(tmp_path / "no-checkout", config, registry_home)
 
     outcomes = {move.name: move.outcome for move in migration.moves}
     assert outcomes == {"main": "refused", "side": "linked", "work": "moved"}
@@ -142,8 +142,8 @@ def test_the_old_registry_moves_homes_it_made_and_links_the_rest(
     selected = directory.launch_home(None)
     assert selected is not None and selected.resolve() == elsewhere.resolve()
     assert elsewhere.is_dir(), "a home of their own choosing was moved"
-    assert not (old_home / "profiles.json").exists()
-    assert not (old_home / "homes").exists()
-    assert migrate_profiles(tmp_path / "no-checkout", config, old_home).lines() == [
-        "nothing to migrate"
-    ]
+    assert not (registry_home / "profiles.json").exists()
+    assert not (registry_home / "homes").exists()
+    assert migrate_profiles(
+        tmp_path / "no-checkout", config, registry_home
+    ).lines() == ["nothing to migrate"]

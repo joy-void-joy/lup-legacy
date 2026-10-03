@@ -12,8 +12,8 @@ being the snapshot taken in front of the search itself.
 The snapshot subject is the command that triggered it, which makes the
 listing look like it is matching commit messages. It is not -- a pickaxe over
 text that appears only in a subject and in no file matches nothing at all.
-So keeping the command out of the subject would have cost the recovery
-listing its one readable field and left the burial exactly where it was. The
+So keeping the command out of the subject would cost the recovery listing
+its one readable field and leave the burial exactly where it is. The
 refs are excluded from the traversal instead, and every snapshot keeps
 everything it recorded.
 

@@ -577,9 +577,95 @@
       "title": "CriteriaCarriedEvent",
       "type": "object"
     },
+    "DashboardAction": {
+      "additionalProperties": false,
+      "description": "One action the page answers: its name, lup's keys for it, and where it acts.",
+      "properties": {
+        "also": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Also",
+          "type": "array"
+        },
+        "description": {
+          "title": "Description",
+          "type": "string"
+        },
+        "focus": {
+          "$ref": "#/$defs/KeyFocus",
+          "default": "any"
+        },
+        "group": {
+          "title": "Group",
+          "type": "string"
+        },
+        "hidden": {
+          "default": false,
+          "title": "Hidden",
+          "type": "boolean"
+        },
+        "keys": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Keys",
+          "type": "array"
+        },
+        "mode": {
+          "$ref": "#/$defs/KeyMode",
+          "default": "normal"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "note": {
+          "default": "",
+          "title": "Note",
+          "type": "string"
+        },
+        "scope": {
+          "$ref": "#/$defs/KeyScope",
+          "default": "anywhere"
+        },
+        "server": {
+          "$ref": "#/$defs/KeyServer",
+          "default": "today"
+        },
+        "stands": {
+          "$ref": "#/$defs/KeyStanding",
+          "default": "new"
+        },
+        "was": {
+          "default": "",
+          "title": "Was",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "keys",
+        "description",
+        "group",
+        "mode",
+        "scope",
+        "focus",
+        "stands",
+        "server",
+        "also",
+        "hidden",
+        "note",
+        "was"
+      ],
+      "title": "DashboardAction",
+      "type": "object"
+    },
     "DashboardEvent": {
       "discriminator": {
         "mapping": {
+          "keys": "#/$defs/KeysEvent",
           "message": "#/$defs/MessageEvent",
           "repository": "#/$defs/RepositoryEvent",
           "repository_gone": "#/$defs/RepositoryGoneEvent",
@@ -623,6 +709,9 @@
         },
         {
           "$ref": "#/$defs/ServiceEvent"
+        },
+        {
+          "$ref": "#/$defs/KeysEvent"
         }
       ]
     },
@@ -694,7 +783,7 @@
     },
     "ExportView": {
       "additionalProperties": false,
-      "description": "Everything a standalone page needs, so it opens with no server behind it.\n\nThe graph, every node's detail and the declared kinds, because a page\nopened from a file cannot ask for more later \u2014 the worked example this\ncame from was an 18 MB single file for exactly this reason, and a memo\nattachment that needed a server would not be one. Stamped with the moment\nit was taken, since what it shows is the log as it was then.",
+      "description": "Everything a standalone page needs, so it opens with no server behind it.\n\nThe graph, every node's detail and the declared kinds, because a page\nopened from a file cannot ask for more later, and a memo attachment that\nneeds a server is not one. Stamped with the moment\nit was taken, since what it shows is the log as it was then.",
       "properties": {
         "details": {
           "items": {
@@ -752,9 +841,31 @@
       "title": "ExternalEffectPlan",
       "type": "object"
     },
+    "FileReason": {
+      "additionalProperties": false,
+      "description": "Why one file needs approval, in a few plain words read off its verdict.\n\nRead off the gate that decided and the file's own structured facts, never\noff the reason sentence, so the words cannot drift from the verdict they\nname; the sentence stays one look away for whoever wants it whole.",
+      "properties": {
+        "kind": {
+          "default": "",
+          "title": "Kind",
+          "type": "string"
+        },
+        "words": {
+          "default": "",
+          "title": "Words",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "words"
+      ],
+      "title": "FileReason",
+      "type": "object"
+    },
     "ForeignCriteriaEvent": {
       "additionalProperties": false,
-      "description": "An accepted review credited ids the concern never declared.\n\nRecorded rather than acted on. Every declared criterion was accounted\nfor, so nothing passed unchecked and the verdict stands; the stray label\nis the reviewer's bookkeeping, and turning an acceptance back over it\nspent a revision round re-deriving the same verdict until the budget\nran out. Journalled so a reviewer that keeps miscrediting is still\nvisible to whoever reads the run.",
+      "description": "An accepted review credited ids the concern never declared.\n\nRecorded rather than acted on. Every declared criterion was accounted\nfor, so nothing passed unchecked and the verdict stands; the stray label\nis the reviewer's bookkeeping, and turning an acceptance back over it\nwould spend revision rounds re-deriving the same verdict until the\nbudget runs out. Journalled so a reviewer that keeps miscrediting is still\nvisible to whoever reads the run.",
       "properties": {
         "concern_id": {
           "title": "Concern Id",
@@ -1090,6 +1201,2655 @@
           "type": "null"
         }
       ]
+    },
+    "KeyBindings": {
+      "additionalProperties": false,
+      "description": "The keys in effect for a tab: where they were read, what differs from lup's, and the report.",
+      "properties": {
+        "changed": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/KeyEntry"
+          },
+          "title": "Changed",
+          "type": "array"
+        },
+        "report": {
+          "$ref": "#/$defs/KeyReport",
+          "default": {
+            "applied": [],
+            "refused": [],
+            "waits": []
+          }
+        },
+        "source": {
+          "default": "",
+          "title": "Source",
+          "type": "string"
+        },
+        "unread": {
+          "default": "",
+          "title": "Unread",
+          "type": "string"
+        }
+      },
+      "required": [
+        "source",
+        "unread",
+        "changed",
+        "report"
+      ],
+      "title": "KeyBindings",
+      "type": "object"
+    },
+    "KeyEntry": {
+      "additionalProperties": false,
+      "description": "One binding a person's table or a tab's ``:map`` made, applied or refused.\n\nA refusal says what was written, why it cannot apply, and the way\nthrough, each its own part, so a reader can act on it without parsing.",
+      "properties": {
+        "action": {
+          "title": "Action",
+          "type": "string"
+        },
+        "keys": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Keys",
+          "type": "array"
+        },
+        "origin": {
+          "$ref": "#/$defs/KeyOrigin"
+        },
+        "way": {
+          "default": "",
+          "title": "Way",
+          "type": "string"
+        },
+        "what": {
+          "default": "",
+          "title": "What",
+          "type": "string"
+        },
+        "why": {
+          "default": "",
+          "title": "Why",
+          "type": "string"
+        }
+      },
+      "required": [
+        "action",
+        "keys",
+        "origin",
+        "what",
+        "why",
+        "way"
+      ],
+      "title": "KeyEntry",
+      "type": "object"
+    },
+    "KeyFocus": {
+      "enum": [
+        "any",
+        "buffer"
+      ],
+      "type": "string"
+    },
+    "KeyLine": {
+      "additionalProperties": false,
+      "description": "One line a tab tried: ``:map {action} {keys}``, or ``:unmap {keys}`` where no action is named.",
+      "properties": {
+        "action": {
+          "default": "",
+          "title": "Action",
+          "type": "string"
+        },
+        "keys": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Keys",
+          "type": "array"
+        }
+      },
+      "required": [
+        "action",
+        "keys"
+      ],
+      "title": "KeyLine",
+      "type": "object"
+    },
+    "KeyMode": {
+      "enum": [
+        "normal",
+        "any",
+        "box"
+      ],
+      "type": "string"
+    },
+    "KeyOrigin": {
+      "enum": [
+        "config",
+        "tab"
+      ],
+      "type": "string"
+    },
+    "KeyPlace": {
+      "enum": [
+        "review",
+        "member",
+        "you",
+        "repo",
+        "inbox",
+        "thread",
+        "empty",
+        "setup"
+      ],
+      "type": "string"
+    },
+    "KeyReport": {
+      "additionalProperties": false,
+      "description": "What the person's bindings did: applied, refused, and the keys that wait.",
+      "properties": {
+        "applied": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/KeyEntry"
+          },
+          "title": "Applied",
+          "type": "array"
+        },
+        "refused": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/KeyEntry"
+          },
+          "title": "Refused",
+          "type": "array"
+        },
+        "waits": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Waits",
+          "type": "array"
+        }
+      },
+      "required": [
+        "applied",
+        "refused",
+        "waits"
+      ],
+      "title": "KeyReport",
+      "type": "object"
+    },
+    "KeyScope": {
+      "enum": [
+        "anywhere",
+        "review",
+        "buffer",
+        "inbox",
+        "notsetup",
+        "notreview"
+      ],
+      "type": "string"
+    },
+    "KeyServer": {
+      "enum": [
+        "today",
+        "new"
+      ],
+      "type": "string"
+    },
+    "KeyStanding": {
+      "enum": [
+        "decided",
+        "changed",
+        "new"
+      ],
+      "type": "string"
+    },
+    "KeyTry": {
+      "additionalProperties": false,
+      "description": "The lines one tab tried, in order, to be checked over the person's own.",
+      "properties": {
+        "lines": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/KeyLine"
+          },
+          "title": "Lines",
+          "type": "array"
+        }
+      },
+      "required": [
+        "lines"
+      ],
+      "title": "KeyTry",
+      "type": "object"
+    },
+    "KeymapCatalog": {
+      "additionalProperties": false,
+      "description": "Every action the page answers, and the vocabulary its keys are checked with.\n\nConstructed bare, it is lup's own keymap: the page's every action with\nits keys before a person's. A person's ``[dashboard.keys]`` replaces keys\nby action name; a project serving the page with actions of its own\npasses a catalog naming them.",
+      "properties": {
+        "actions": {
+          "default": [
+            {
+              "also": [],
+              "description": "approve, from anywhere: the note box, a line comment, or Normal mode (Cmd+Enter on macOS)",
+              "focus": "any",
+              "group": "answer",
+              "hidden": false,
+              "keys": [
+                "<C-Enter>"
+              ],
+              "mode": "any",
+              "name": "answer.approve",
+              "note": "",
+              "scope": "anywhere",
+              "server": "today",
+              "stands": "decided",
+              "was": ""
+            },
+            {
+              "also": [],
+              "description": "decline, from anywhere (the forward Delete key only; Alt+Backspace still deletes a word)",
+              "focus": "any",
+              "group": "answer",
+              "hidden": false,
+              "keys": [
+                "<A-Del>"
+              ],
+              "mode": "any",
+              "name": "answer.decline",
+              "note": "",
+              "scope": "anywhere",
+              "server": "today",
+              "stands": "decided",
+              "was": ""
+            },
+            {
+              "also": [],
+              "description": "send the note and line comments without deciding; beside an agent, send the message box",
+              "focus": "any",
+              "group": "answer",
+              "hidden": false,
+              "keys": [
+                "<A-Enter>"
+              ],
+              "mode": "any",
+              "name": "answer.send",
+              "note": "",
+              "scope": "anywhere",
+              "server": "today",
+              "stands": "decided",
+              "was": ""
+            },
+            {
+              "also": [
+                "review.next.typing"
+              ],
+              "description": "previous or next review, from inside a box too; your draft stays with its review (in the inbox, the messages)",
+              "focus": "any",
+              "group": "move",
+              "hidden": false,
+              "keys": [
+                "<A-Up>"
+              ],
+              "mode": "any",
+              "name": "review.previous.typing",
+              "note": "",
+              "scope": "anywhere",
+              "server": "today",
+              "stands": "decided",
+              "was": ""
+            },
+            {
+              "also": [],
+              "description": "next review, from inside a box too",
+              "focus": "any",
+              "group": "move",
+              "hidden": true,
+              "keys": [
+                "<A-Down>"
+              ],
+              "mode": "any",
+              "name": "review.next.typing",
+              "note": "",
+              "scope": "anywhere",
+              "server": "today",
+              "stands": "decided",
+              "was": ""
+            },
+            {
+              "also": [
+                "box.previous"
+              ],
+              "description": "next or previous review, landing in its box",
+              "focus": "any",
+              "group": "box",
+              "hidden": false,
+              "keys": [
+                "j"
+              ],
+              "mode": "box",
+              "name": "box.next",
+              "note": "",
+              "scope": "anywhere",
+              "server": "today",
+              "stands": "new",
+              "was": ""
+            },
+            {
+              "also": [],
+              "description": "previous review, landing in its box",
+              "focus": "any",
+              "group": "box",
+              "hidden": true,
+              "keys": [
+                "k"
+              ],
+              "mode": "box",
+              "name": "box.previous",
+              "note": "",
+              "scope": "anywhere",
+              "server": "today",
+              "stands": "new",
+              "was": ""
+            },
+            {
+              "also": [
+                "box.up"
+              ],
+              "description": "scroll the diff a line down or up, the box keeping focus",
+              "focus": "any",
+              "group": "box",
+              "hidden": false,
+              "keys": [
+                "<Down>"
+              ],
+              "mode": "box",
+              "name": "box.down",
+              "note": "",
+              "scope": "anywhere",
+              "server": "today",
+              "stands": "new",
+              "was": ""
+            },
+            {
+              "also": [],
+              "description": "scroll the diff a line up",
+              "focus": "any",
+              "group": "box",
+              "hidden": true,
+              "keys": [
+                "<Up>"
+              ],
+              "mode": "box",
+              "name": "box.up",
+              "note": "",
+              "scope": "anywhere",
+              "server": "today",
+              "stands": "new",
+              "was": ""
+            },
+            {
+              "also": [
+                "box.halfup"
+              ],
+              "description": "scroll the diff half a page down or up",
+              "focus": "any",
+              "group": "box",
+              "hidden": false,
+              "keys": [
+                "<C-d>",
+                "<PageDown>"
+              ],
+              "mode": "box",
+              "name": "box.halfdown",
+              "note": "",
+              "scope": "anywhere",
+              "server": "today",
+              "stands": "new",
+              "was": ""
+            },
+            {
+              "also": [],
+              "description": "scroll the diff half a page up",
+              "focus": "any",
+              "group": "box",
+              "hidden": true,
+              "keys": [
+                "<C-u>",
+                "<PageUp>"
+              ],
+              "mode": "box",
+              "name": "box.halfup",
+              "note": "",
+              "scope": "anywhere",
+              "server": "today",
+              "stands": "new",
+              "was": ""
+            },
+            {
+              "also": [
+                "up"
+              ],
+              "description": "down or up where focus is: the tree's next row, opening it (a review, an agent); the buffer's next line; the context's next item",
+              "focus": "any",
+              "group": "move",
+              "hidden": false,
+              "keys": [
+                "j",
+                "<Down>"
+              ],
+              "mode": "normal",
+              "name": "down",
+              "note": "",
+              "scope": "anywhere",
+              "server": "today",
+              "stands": "changed",
+              "was": "j/k: the next and previous review from anywhere in Normal mode"
+            },
+            {
+              "also": [],
+              "description": "up where focus is",
+              "focus": "any",
+              "group": "move",
+              "hidden": true,
+              "keys": [
+                "k",
+                "<Up>"
+              ],
+              "mode": "normal",
+              "name": "up",
+              "note": "",
+              "scope": "anywhere",
+              "server": "today",
+              "stands": "changed",
+              "was": ""
+            },
+            {
+              "also": [
+                "focus.previous"
+              ],
+              "description": "move focus on: the tree, the buffer, the box, the context, and round again (Shift+Tab back)",
+              "focus": "any",
+              "group": "move",
+              "hidden": false,
+              "keys": [
+                "<Tab>"
+              ],
+              "mode": "any",
+              "name": "focus.next",
+              "note": "",
+              "scope": "anywhere",
+              "server": "today",
+              "stands": "new",
+              "was": ""
+            },
+            {
+              "also": [],
+              "description": "move focus back",
+              "focus": "any",
+              "group": "move",
+              "hidden": true,
+              "keys": [
+                "<S-Tab>"
+              ],
+              "mode": "any",
+              "name": "focus.previous",
+              "note": "",
+              "scope": "anywhere",
+              "server": "today",
+              "stands": "new",
+              "was": ""
+            },
+            {
+              "also": [
+                "agent.previous"
+              ],
+              "description": "next or previous agent in the tree",
+              "focus": "any",
+              "group": "move",
+              "hidden": false,
+              "keys": [
+                ")"
+              ],
+              "mode": "normal",
+              "name": "agent.next",
+              "note": "",
+              "scope": "notsetup",
+              "server": "today",
+              "stands": "new",
+              "was": ""
+            },
+            {
+              "also": [],
+              "description": "previous agent in the tree",
+              "focus": "any",
+              "group": "move",
+              "hidden": true,
+              "keys": [
+                "("
+              ],
+              "mode": "normal",
+              "name": "agent.previous",
+              "note": "",
+              "scope": "notsetup",
+              "server": "today",
+              "stands": "new",
+              "was": ""
+            },
+            {
+              "also": [],
+              "description": "go to the agent that asked (from a review), or to its parent session (from an agent)",
+              "focus": "any",
+              "group": "move",
+              "hidden": false,
+              "keys": [
+                "gs"
+              ],
+              "mode": "normal",
+              "name": "go.asker",
+              "note": "",
+              "scope": "notsetup",
+              "server": "today",
+              "stands": "new",
+              "was": ""
+            },
+            {
+              "also": [],
+              "description": "go to a review the agent parked",
+              "focus": "any",
+              "group": "move",
+              "hidden": false,
+              "keys": [
+                "gr"
+              ],
+              "mode": "normal",
+              "name": "go.review",
+              "note": "",
+              "scope": "buffer",
+              "server": "today",
+              "stands": "new",
+              "was": ""
+            },
+            {
+              "also": [],
+              "description": "your inbox: everything addressed to you",
+              "focus": "any",
+              "group": "move",
+              "hidden": false,
+              "keys": [
+                "gi",
+                "<leader>pi"
+              ],
+              "mode": "normal",
+              "name": "inbox",
+              "note": "",
+              "scope": "anywhere",
+              "server": "today",
+              "stands": "new",
+              "was": ""
+            },
+            {
+              "also": [],
+              "description": "your own row: what you said, hold and posted",
+              "focus": "any",
+              "group": "move",
+              "hidden": false,
+              "keys": [
+                "gu",
+                "<leader>pu"
+              ],
+              "mode": "normal",
+              "name": "you",
+              "note": "",
+              "scope": "anywhere",
+              "server": "today",
+              "stands": "new",
+              "was": ""
+            },
+            {
+              "also": [],
+              "description": "search the focused window: incremental, smartcase; Enter keeps the match, Esc goes back",
+              "focus": "any",
+              "group": "search",
+              "hidden": false,
+              "keys": [
+                "/"
+              ],
+              "mode": "normal",
+              "name": "search",
+              "note": "",
+              "scope": "anywhere",
+              "server": "today",
+              "stands": "new",
+              "was": "/: find a line, fuzzy (now Space f /)"
+            },
+            {
+              "also": [
+                "search.previous"
+              ],
+              "description": "next or previous match of the last search",
+              "focus": "any",
+              "group": "search",
+              "hidden": false,
+              "keys": [
+                ";"
+              ],
+              "mode": "normal",
+              "name": "search.next",
+              "note": "",
+              "scope": "anywhere",
+              "server": "today",
+              "stands": "new",
+              "was": ""
+            },
+            {
+              "also": [],
+              "description": "previous match of the last search",
+              "focus": "any",
+              "group": "search",
+              "hidden": true,
+              "keys": [
+                ","
+              ],
+              "mode": "normal",
+              "name": "search.previous",
+              "note": "",
+              "scope": "anywhere",
+              "server": "today",
+              "stands": "new",
+              "was": ""
+            },
+            {
+              "also": [],
+              "description": "write to it (c does the same beside it)",
+              "focus": "any",
+              "group": "agent",
+              "hidden": false,
+              "keys": [
+                "<leader>am"
+              ],
+              "mode": "normal",
+              "name": "agent.write",
+              "note": "",
+              "scope": "anywhere",
+              "server": "today",
+              "stands": "new",
+              "was": ""
+            },
+            {
+              "also": [],
+              "description": "reply in the thread of its last message",
+              "focus": "any",
+              "group": "agent",
+              "hidden": false,
+              "keys": [
+                "<leader>ar"
+              ],
+              "mode": "normal",
+              "name": "agent.reply",
+              "note": "",
+              "scope": "anywhere",
+              "server": "new",
+              "stands": "new",
+              "was": ""
+            },
+            {
+              "also": [],
+              "description": "wake it to read its mailbox",
+              "focus": "any",
+              "group": "agent",
+              "hidden": false,
+              "keys": [
+                "<leader>aw"
+              ],
+              "mode": "normal",
+              "name": "agent.wake",
+              "note": "today as a message; a bare wake is new",
+              "scope": "anywhere",
+              "server": "today",
+              "stands": "new",
+              "was": ""
+            },
+            {
+              "also": [],
+              "description": "interrupt its turn with the box's words (or the standard ones)",
+              "focus": "any",
+              "group": "agent",
+              "hidden": false,
+              "keys": [
+                "<leader>an"
+              ],
+              "mode": "normal",
+              "name": "agent.nudge",
+              "note": "",
+              "scope": "anywhere",
+              "server": "new",
+              "stands": "new",
+              "was": ""
+            },
+            {
+              "also": [],
+              "description": "ask its parent session about it",
+              "focus": "any",
+              "group": "agent",
+              "hidden": false,
+              "keys": [
+                "<leader>ap"
+              ],
+              "mode": "normal",
+              "name": "agent.parent",
+              "note": "",
+              "scope": "anywhere",
+              "server": "today",
+              "stands": "new",
+              "was": ""
+            },
+            {
+              "also": [],
+              "description": "its whole transcript, live",
+              "focus": "any",
+              "group": "agent",
+              "hidden": false,
+              "keys": [
+                "T",
+                "<leader>at"
+              ],
+              "mode": "normal",
+              "name": "agent.transcript",
+              "note": "",
+              "scope": "notreview",
+              "server": "new",
+              "stands": "new",
+              "was": ""
+            },
+            {
+              "also": [],
+              "description": "rename it",
+              "focus": "any",
+              "group": "agent",
+              "hidden": false,
+              "keys": [
+                "<leader>aR"
+              ],
+              "mode": "normal",
+              "name": "agent.rename",
+              "note": "",
+              "scope": "anywhere",
+              "server": "new",
+              "stands": "new",
+              "was": ""
+            },
+            {
+              "also": [],
+              "description": "stop it (twice confirms)",
+              "focus": "any",
+              "group": "agent",
+              "hidden": false,
+              "keys": [
+                "<leader>ax"
+              ],
+              "mode": "normal",
+              "name": "agent.stop",
+              "note": "",
+              "scope": "anywhere",
+              "server": "new",
+              "stands": "new",
+              "was": ""
+            },
+            {
+              "also": [],
+              "description": "reply in the thread of the message under the cursor",
+              "focus": "any",
+              "group": "agent",
+              "hidden": false,
+              "keys": [
+                "r"
+              ],
+              "mode": "normal",
+              "name": "message.reply",
+              "note": "",
+              "scope": "buffer",
+              "server": "new",
+              "stands": "new",
+              "was": ""
+            },
+            {
+              "also": [],
+              "description": "load earlier messages (an older page of the mail record)",
+              "focus": "any",
+              "group": "agent",
+              "hidden": false,
+              "keys": [
+                "E"
+              ],
+              "mode": "normal",
+              "name": "messages.earlier",
+              "note": "was the Load earlier messages button",
+              "scope": "buffer",
+              "server": "today",
+              "stands": "changed",
+              "was": ""
+            },
+            {
+              "also": [],
+              "description": "describe yourself: what you are on (:describe)",
+              "focus": "any",
+              "group": "you",
+              "hidden": false,
+              "keys": [
+                "<leader>pd"
+              ],
+              "mode": "normal",
+              "name": "peer.describe",
+              "note": "",
+              "scope": "anywhere",
+              "server": "new",
+              "stands": "new",
+              "was": ""
+            },
+            {
+              "also": [],
+              "description": "lock the file under the cursor, or a path you type (:lock)",
+              "focus": "any",
+              "group": "you",
+              "hidden": false,
+              "keys": [
+                "<leader>pl"
+              ],
+              "mode": "normal",
+              "name": "peer.lock",
+              "note": "",
+              "scope": "anywhere",
+              "server": "new",
+              "stands": "new",
+              "was": ""
+            },
+            {
+              "also": [],
+              "description": "release a path you hold (:release)",
+              "focus": "any",
+              "group": "you",
+              "hidden": false,
+              "keys": [
+                "<leader>pL"
+              ],
+              "mode": "normal",
+              "name": "peer.release",
+              "note": "",
+              "scope": "anywhere",
+              "server": "new",
+              "stands": "new",
+              "was": ""
+            },
+            {
+              "also": [],
+              "description": "post a standing notice (:notice)",
+              "focus": "any",
+              "group": "you",
+              "hidden": false,
+              "keys": [
+                "<leader>pn"
+              ],
+              "mode": "normal",
+              "name": "peer.notice",
+              "note": "",
+              "scope": "anywhere",
+              "server": "new",
+              "stands": "new",
+              "was": ""
+            },
+            {
+              "also": [],
+              "description": "broadcast to every working member (:broadcast)",
+              "focus": "any",
+              "group": "you",
+              "hidden": false,
+              "keys": [
+                "<leader>pb"
+              ],
+              "mode": "normal",
+              "name": "peer.broadcast",
+              "note": "",
+              "scope": "anywhere",
+              "server": "today",
+              "stands": "new",
+              "was": ""
+            },
+            {
+              "also": [],
+              "description": "redirect an agent: refuse its next call with your words (:redirect)",
+              "focus": "any",
+              "group": "you",
+              "hidden": false,
+              "keys": [
+                "<leader>pr"
+              ],
+              "mode": "normal",
+              "name": "peer.redirect",
+              "note": "",
+              "scope": "anywhere",
+              "server": "new",
+              "stands": "new",
+              "was": ""
+            },
+            {
+              "also": [
+                "tree.attention",
+                "tree.reviews"
+              ],
+              "description": "tree: every agent, only those that need you, or only the reviews waiting (as the old queue)",
+              "focus": "any",
+              "group": "view",
+              "hidden": false,
+              "keys": [
+                "<leader>ta"
+              ],
+              "mode": "normal",
+              "name": "tree.all",
+              "note": "",
+              "scope": "anywhere",
+              "server": "today",
+              "stands": "new",
+              "was": ""
+            },
+            {
+              "also": [],
+              "description": "tree: only the agents that need you",
+              "focus": "any",
+              "group": "view",
+              "hidden": true,
+              "keys": [
+                "<leader>tt"
+              ],
+              "mode": "normal",
+              "name": "tree.attention",
+              "note": "",
+              "scope": "anywhere",
+              "server": "today",
+              "stands": "new",
+              "was": ""
+            },
+            {
+              "also": [],
+              "description": "tree: only the reviews waiting",
+              "focus": "any",
+              "group": "view",
+              "hidden": true,
+              "keys": [
+                "<leader>tr"
+              ],
+              "mode": "normal",
+              "name": "tree.reviews",
+              "note": "",
+              "scope": "anywhere",
+              "server": "today",
+              "stands": "new",
+              "was": ""
+            },
+            {
+              "also": [],
+              "description": "show or fold the stopped agents (folded by default; za on a repository's stopped row opens its own)",
+              "focus": "any",
+              "group": "view",
+              "hidden": false,
+              "keys": [
+                "<leader>ts"
+              ],
+              "mode": "normal",
+              "name": "tree.stopped",
+              "note": "",
+              "scope": "anywhere",
+              "server": "today",
+              "stands": "new",
+              "was": ""
+            },
+            {
+              "also": [
+                "tab.previous"
+              ],
+              "description": "next or previous tab ({n}gt goes to tab n)",
+              "focus": "any",
+              "group": "view",
+              "hidden": false,
+              "keys": [
+                "gt"
+              ],
+              "mode": "normal",
+              "name": "tab.next",
+              "note": "",
+              "scope": "anywhere",
+              "server": "today",
+              "stands": "new",
+              "was": ""
+            },
+            {
+              "also": [],
+              "description": "previous tab",
+              "focus": "any",
+              "group": "view",
+              "hidden": true,
+              "keys": [
+                "gT"
+              ],
+              "mode": "normal",
+              "name": "tab.previous",
+              "note": "",
+              "scope": "anywhere",
+              "server": "today",
+              "stands": "new",
+              "was": ""
+            },
+            {
+              "also": [],
+              "description": "show or hide the agents tree (below 1280 px it takes the context's place)",
+              "focus": "any",
+              "group": "view",
+              "hidden": false,
+              "keys": [
+                "<leader>e"
+              ],
+              "mode": "normal",
+              "name": "tree.toggle",
+              "note": "the tree replaces the queue",
+              "scope": "anywhere",
+              "server": "today",
+              "stands": "changed",
+              "was": ""
+            },
+            {
+              "also": [],
+              "description": "show or hide the context window (below 1280 px it takes the tree's place)",
+              "focus": "any",
+              "group": "view",
+              "hidden": false,
+              "keys": [
+                "<leader>o"
+              ],
+              "mode": "normal",
+              "name": "context.toggle",
+              "note": "",
+              "scope": "anywhere",
+              "server": "today",
+              "stands": "new",
+              "was": ""
+            },
+            {
+              "also": [],
+              "description": "split: before | after side by side",
+              "focus": "any",
+              "group": "view",
+              "hidden": false,
+              "keys": [
+                "<leader>wv"
+              ],
+              "mode": "normal",
+              "name": "split.vertical",
+              "note": "",
+              "scope": "review",
+              "server": "today",
+              "stands": "new",
+              "was": ""
+            },
+            {
+              "also": [],
+              "description": "split: a second window below",
+              "focus": "any",
+              "group": "view",
+              "hidden": false,
+              "keys": [
+                "<leader>ws"
+              ],
+              "mode": "normal",
+              "name": "split.below",
+              "note": "",
+              "scope": "review",
+              "server": "today",
+              "stands": "new",
+              "was": ""
+            },
+            {
+              "also": [],
+              "description": "close the split",
+              "focus": "any",
+              "group": "view",
+              "hidden": false,
+              "keys": [
+                "<leader>wq",
+                "<leader>wo"
+              ],
+              "mode": "normal",
+              "name": "split.close",
+              "note": "",
+              "scope": "review",
+              "server": "today",
+              "stands": "new",
+              "was": ""
+            },
+            {
+              "also": [],
+              "description": "next window",
+              "focus": "any",
+              "group": "view",
+              "hidden": false,
+              "keys": [
+                "<leader>ww"
+              ],
+              "mode": "normal",
+              "name": "window.next",
+              "note": "",
+              "scope": "anywhere",
+              "server": "today",
+              "stands": "new",
+              "was": ""
+            },
+            {
+              "also": [
+                "window.right",
+                "window.below",
+                "window.above"
+              ],
+              "description": "window to the left, right, below (the box) or above",
+              "focus": "any",
+              "group": "view",
+              "hidden": false,
+              "keys": [
+                "<leader>wh"
+              ],
+              "mode": "normal",
+              "name": "window.left",
+              "note": "",
+              "scope": "anywhere",
+              "server": "today",
+              "stands": "new",
+              "was": ""
+            },
+            {
+              "also": [],
+              "description": "window to the right",
+              "focus": "any",
+              "group": "view",
+              "hidden": true,
+              "keys": [
+                "<leader>wl"
+              ],
+              "mode": "normal",
+              "name": "window.right",
+              "note": "",
+              "scope": "anywhere",
+              "server": "today",
+              "stands": "new",
+              "was": ""
+            },
+            {
+              "also": [],
+              "description": "window below (the box)",
+              "focus": "any",
+              "group": "view",
+              "hidden": true,
+              "keys": [
+                "<leader>wj"
+              ],
+              "mode": "normal",
+              "name": "window.below",
+              "note": "",
+              "scope": "anywhere",
+              "server": "today",
+              "stands": "new",
+              "was": ""
+            },
+            {
+              "also": [],
+              "description": "window above",
+              "focus": "any",
+              "group": "view",
+              "hidden": true,
+              "keys": [
+                "<leader>wk"
+              ],
+              "mode": "normal",
+              "name": "window.above",
+              "note": "",
+              "scope": "anywhere",
+              "server": "today",
+              "stands": "new",
+              "was": ""
+            },
+            {
+              "also": [],
+              "description": "this window shows the diff",
+              "focus": "any",
+              "group": "view",
+              "hidden": false,
+              "keys": [
+                "<leader>vd"
+              ],
+              "mode": "normal",
+              "name": "view.diff",
+              "note": "",
+              "scope": "review",
+              "server": "today",
+              "stands": "new",
+              "was": ""
+            },
+            {
+              "also": [],
+              "description": "this window shows the file before",
+              "focus": "any",
+              "group": "view",
+              "hidden": false,
+              "keys": [
+                "<leader>vb"
+              ],
+              "mode": "normal",
+              "name": "view.before",
+              "note": "",
+              "scope": "review",
+              "server": "today",
+              "stands": "new",
+              "was": ""
+            },
+            {
+              "also": [],
+              "description": "this window shows the file after",
+              "focus": "any",
+              "group": "view",
+              "hidden": false,
+              "keys": [
+                "<leader>va"
+              ],
+              "mode": "normal",
+              "name": "view.after",
+              "note": "",
+              "scope": "review",
+              "server": "today",
+              "stands": "new",
+              "was": ""
+            },
+            {
+              "also": [],
+              "description": "this window shows the unified diff as text",
+              "focus": "any",
+              "group": "view",
+              "hidden": false,
+              "keys": [
+                "<leader>vu"
+              ],
+              "mode": "normal",
+              "name": "view.raw",
+              "note": "",
+              "scope": "review",
+              "server": "today",
+              "stands": "new",
+              "was": ""
+            },
+            {
+              "also": [],
+              "description": "close the float or the split",
+              "focus": "any",
+              "group": "view",
+              "hidden": false,
+              "keys": [
+                "q"
+              ],
+              "mode": "normal",
+              "name": "close",
+              "note": "",
+              "scope": "anywhere",
+              "server": "today",
+              "stands": "new",
+              "was": ""
+            },
+            {
+              "also": [],
+              "description": "delete the draft comment here; beside an agent or in the inbox, mark read, release a hold, or withdraw a notice",
+              "focus": "any",
+              "group": "comment",
+              "hidden": false,
+              "keys": [
+                "x"
+              ],
+              "mode": "normal",
+              "name": "delete",
+              "note": "",
+              "scope": "notsetup",
+              "server": "today",
+              "stands": "new",
+              "was": ""
+            },
+            {
+              "also": [],
+              "description": "mark every message to you read",
+              "focus": "any",
+              "group": "comment",
+              "hidden": false,
+              "keys": [
+                "X"
+              ],
+              "mode": "normal",
+              "name": "inbox.readall",
+              "note": "",
+              "scope": "inbox",
+              "server": "new",
+              "stands": "new",
+              "was": ""
+            },
+            {
+              "also": [],
+              "description": "back into the box: the note on a review, the message box beside an agent",
+              "focus": "any",
+              "group": "comment",
+              "hidden": false,
+              "keys": [
+                "c"
+              ],
+              "mode": "normal",
+              "name": "box",
+              "note": "",
+              "scope": "anywhere",
+              "server": "today",
+              "stands": "decided",
+              "was": ""
+            },
+            {
+              "also": [],
+              "description": "leave the box (Ctrl+[ too), cancel visual mode, close a float",
+              "focus": "any",
+              "group": "comment",
+              "hidden": false,
+              "keys": [
+                "<Esc>"
+              ],
+              "mode": "normal",
+              "name": "escape",
+              "note": "",
+              "scope": "anywhere",
+              "server": "today",
+              "stands": "decided",
+              "was": ""
+            },
+            {
+              "also": [],
+              "description": "comment on this line (a draft comment, GitHub-style)",
+              "focus": "any",
+              "group": "comment",
+              "hidden": false,
+              "keys": [
+                "i",
+                "a",
+                "o"
+              ],
+              "mode": "normal",
+              "name": "comment.line",
+              "note": "",
+              "scope": "review",
+              "server": "today",
+              "stands": "new",
+              "was": ""
+            },
+            {
+              "also": [],
+              "description": "comment here, open a fold, open what the cursor is on, or reply to a message",
+              "focus": "any",
+              "group": "comment",
+              "hidden": false,
+              "keys": [
+                "<Enter>"
+              ],
+              "mode": "normal",
+              "name": "open",
+              "note": "",
+              "scope": "anywhere",
+              "server": "today",
+              "stands": "new",
+              "was": ""
+            },
+            {
+              "also": [],
+              "description": "visual line mode: pick a range with j/k, then gc, c or Enter comments on it",
+              "focus": "any",
+              "group": "comment",
+              "hidden": false,
+              "keys": [
+                "V",
+                "v"
+              ],
+              "mode": "normal",
+              "name": "visual",
+              "note": "",
+              "scope": "review",
+              "server": "today",
+              "stands": "new",
+              "was": ""
+            },
+            {
+              "also": [],
+              "description": "restore the draft comment you deleted",
+              "focus": "any",
+              "group": "comment",
+              "hidden": false,
+              "keys": [
+                "u"
+              ],
+              "mode": "normal",
+              "name": "undo",
+              "note": "",
+              "scope": "review",
+              "server": "today",
+              "stands": "new",
+              "was": ""
+            },
+            {
+              "also": [
+                "right"
+              ],
+              "description": "the cursor a character left or right",
+              "focus": "buffer",
+              "group": "editor",
+              "hidden": false,
+              "keys": [
+                "h",
+                "<Left>"
+              ],
+              "mode": "normal",
+              "name": "left",
+              "note": "",
+              "scope": "anywhere",
+              "server": "today",
+              "stands": "new",
+              "was": ""
+            },
+            {
+              "also": [],
+              "description": "a character right",
+              "focus": "buffer",
+              "group": "editor",
+              "hidden": true,
+              "keys": [
+                "l",
+                "<Right>"
+              ],
+              "mode": "normal",
+              "name": "right",
+              "note": "",
+              "scope": "anywhere",
+              "server": "today",
+              "stands": "new",
+              "was": ""
+            },
+            {
+              "also": [
+                "word.back",
+                "word.end"
+              ],
+              "description": "the start of the next word, the start of the previous one, or the end of this one",
+              "focus": "buffer",
+              "group": "editor",
+              "hidden": false,
+              "keys": [
+                "w"
+              ],
+              "mode": "normal",
+              "name": "word.next",
+              "note": "",
+              "scope": "anywhere",
+              "server": "today",
+              "stands": "new",
+              "was": ""
+            },
+            {
+              "also": [],
+              "description": "the start of the previous word",
+              "focus": "buffer",
+              "group": "editor",
+              "hidden": true,
+              "keys": [
+                "b"
+              ],
+              "mode": "normal",
+              "name": "word.back",
+              "note": "",
+              "scope": "anywhere",
+              "server": "today",
+              "stands": "new",
+              "was": ""
+            },
+            {
+              "also": [],
+              "description": "the end of the word",
+              "focus": "buffer",
+              "group": "editor",
+              "hidden": true,
+              "keys": [
+                "e"
+              ],
+              "mode": "normal",
+              "name": "word.end",
+              "note": "",
+              "scope": "anywhere",
+              "server": "today",
+              "stands": "new",
+              "was": ""
+            },
+            {
+              "also": [
+                "line.first",
+                "line.end"
+              ],
+              "description": "the start of the line, its first non-blank, or its end",
+              "focus": "buffer",
+              "group": "editor",
+              "hidden": false,
+              "keys": [
+                "0"
+              ],
+              "mode": "normal",
+              "name": "line.start",
+              "note": "",
+              "scope": "anywhere",
+              "server": "today",
+              "stands": "new",
+              "was": ""
+            },
+            {
+              "also": [],
+              "description": "the first non-blank of the line",
+              "focus": "buffer",
+              "group": "editor",
+              "hidden": true,
+              "keys": [
+                "^"
+              ],
+              "mode": "normal",
+              "name": "line.first",
+              "note": "",
+              "scope": "anywhere",
+              "server": "today",
+              "stands": "new",
+              "was": ""
+            },
+            {
+              "also": [],
+              "description": "the end of the line",
+              "focus": "buffer",
+              "group": "editor",
+              "hidden": true,
+              "keys": [
+                "$"
+              ],
+              "mode": "normal",
+              "name": "line.end",
+              "note": "",
+              "scope": "anywhere",
+              "server": "today",
+              "stands": "new",
+              "was": ""
+            },
+            {
+              "also": [
+                "page.halfup"
+              ],
+              "description": "half a page down or up",
+              "focus": "any",
+              "group": "editor",
+              "hidden": false,
+              "keys": [
+                "<C-d>",
+                "<PageDown>"
+              ],
+              "mode": "normal",
+              "name": "page.halfdown",
+              "note": "",
+              "scope": "anywhere",
+              "server": "today",
+              "stands": "new",
+              "was": ""
+            },
+            {
+              "also": [],
+              "description": "half a page up",
+              "focus": "any",
+              "group": "editor",
+              "hidden": true,
+              "keys": [
+                "<C-u>",
+                "<PageUp>"
+              ],
+              "mode": "normal",
+              "name": "page.halfup",
+              "note": "",
+              "scope": "anywhere",
+              "server": "today",
+              "stands": "new",
+              "was": ""
+            },
+            {
+              "also": [
+                "bottom"
+              ],
+              "description": "top or bottom of the window; {n}G or {n}gg goes to line n of the file",
+              "focus": "any",
+              "group": "editor",
+              "hidden": false,
+              "keys": [
+                "gg"
+              ],
+              "mode": "normal",
+              "name": "top",
+              "note": "",
+              "scope": "anywhere",
+              "server": "today",
+              "stands": "new",
+              "was": ""
+            },
+            {
+              "also": [],
+              "description": "bottom of the window",
+              "focus": "any",
+              "group": "editor",
+              "hidden": true,
+              "keys": [
+                "G"
+              ],
+              "mode": "normal",
+              "name": "bottom",
+              "note": "",
+              "scope": "anywhere",
+              "server": "today",
+              "stands": "new",
+              "was": ""
+            },
+            {
+              "also": [
+                "change.previous"
+              ],
+              "description": "next or previous change or step in a review; the next section anywhere else",
+              "focus": "any",
+              "group": "editor",
+              "hidden": false,
+              "keys": [
+                "}"
+              ],
+              "mode": "normal",
+              "name": "change.next",
+              "note": "",
+              "scope": "anywhere",
+              "server": "today",
+              "stands": "new",
+              "was": ""
+            },
+            {
+              "also": [],
+              "description": "previous change, step or section",
+              "focus": "any",
+              "group": "editor",
+              "hidden": true,
+              "keys": [
+                "{"
+              ],
+              "mode": "normal",
+              "name": "change.previous",
+              "note": "",
+              "scope": "anywhere",
+              "server": "today",
+              "stands": "new",
+              "was": ""
+            },
+            {
+              "also": [
+                "file.previous"
+              ],
+              "description": "next or previous file",
+              "focus": "any",
+              "group": "editor",
+              "hidden": false,
+              "keys": [
+                "]"
+              ],
+              "mode": "normal",
+              "name": "file.next",
+              "note": "",
+              "scope": "review",
+              "server": "today",
+              "stands": "decided",
+              "was": ""
+            },
+            {
+              "also": [],
+              "description": "previous file",
+              "focus": "any",
+              "group": "editor",
+              "hidden": true,
+              "keys": [
+                "["
+              ],
+              "mode": "normal",
+              "name": "file.previous",
+              "note": "",
+              "scope": "review",
+              "server": "today",
+              "stands": "decided",
+              "was": ""
+            },
+            {
+              "also": [
+                "exception.previous"
+              ],
+              "description": "next or previous rule exception",
+              "focus": "any",
+              "group": "editor",
+              "hidden": false,
+              "keys": [
+                "n"
+              ],
+              "mode": "normal",
+              "name": "exception.next",
+              "note": "",
+              "scope": "review",
+              "server": "today",
+              "stands": "decided",
+              "was": ""
+            },
+            {
+              "also": [],
+              "description": "previous rule exception",
+              "focus": "any",
+              "group": "editor",
+              "hidden": true,
+              "keys": [
+                "p"
+              ],
+              "mode": "normal",
+              "name": "exception.previous",
+              "note": "",
+              "scope": "review",
+              "server": "today",
+              "stands": "decided",
+              "was": ""
+            },
+            {
+              "also": [
+                "marker.previous"
+              ],
+              "description": "next or previous `# lup:` marker, opening the whole file where it stands outside a hunk",
+              "focus": "any",
+              "group": "editor",
+              "hidden": false,
+              "keys": [
+                "m"
+              ],
+              "mode": "normal",
+              "name": "marker.next",
+              "note": "",
+              "scope": "review",
+              "server": "today",
+              "stands": "decided",
+              "was": ""
+            },
+            {
+              "also": [],
+              "description": "previous `# lup:` marker",
+              "focus": "any",
+              "group": "editor",
+              "hidden": true,
+              "keys": [
+                "M"
+              ],
+              "mode": "normal",
+              "name": "marker.previous",
+              "note": "",
+              "scope": "review",
+              "server": "today",
+              "stands": "decided",
+              "was": ""
+            },
+            {
+              "also": [],
+              "description": "whole file in context, changes marked in place",
+              "focus": "any",
+              "group": "editor",
+              "hidden": false,
+              "keys": [
+                "f"
+              ],
+              "mode": "normal",
+              "name": "file.whole",
+              "note": "",
+              "scope": "review",
+              "server": "today",
+              "stands": "decided",
+              "was": ""
+            },
+            {
+              "also": [],
+              "description": "full operation: automatic files and existing exceptions too",
+              "focus": "any",
+              "group": "editor",
+              "hidden": false,
+              "keys": [
+                "F"
+              ],
+              "mode": "normal",
+              "name": "review.full",
+              "note": "was the Full operation button",
+              "scope": "review",
+              "server": "today",
+              "stands": "changed",
+              "was": ""
+            },
+            {
+              "also": [],
+              "description": "jump to what the policy asks about; again for the next part",
+              "focus": "any",
+              "group": "editor",
+              "hidden": false,
+              "keys": [
+                "gd"
+              ],
+              "mode": "normal",
+              "name": "judged",
+              "note": "",
+              "scope": "review",
+              "server": "today",
+              "stands": "new",
+              "was": ""
+            },
+            {
+              "also": [
+                "fold.open",
+                "fold.close"
+              ],
+              "description": "fold or unfold here (a file, a gap, the allowed steps, an agent or a stopped row in the tree)",
+              "focus": "any",
+              "group": "editor",
+              "hidden": false,
+              "keys": [
+                "za"
+              ],
+              "mode": "normal",
+              "name": "fold.toggle",
+              "note": "",
+              "scope": "anywhere",
+              "server": "today",
+              "stands": "new",
+              "was": ""
+            },
+            {
+              "also": [],
+              "description": "unfold here",
+              "focus": "any",
+              "group": "editor",
+              "hidden": true,
+              "keys": [
+                "zo"
+              ],
+              "mode": "normal",
+              "name": "fold.open",
+              "note": "",
+              "scope": "review",
+              "server": "today",
+              "stands": "new",
+              "was": ""
+            },
+            {
+              "also": [],
+              "description": "fold here",
+              "focus": "any",
+              "group": "editor",
+              "hidden": true,
+              "keys": [
+                "zc"
+              ],
+              "mode": "normal",
+              "name": "fold.close",
+              "note": "",
+              "scope": "review",
+              "server": "today",
+              "stands": "new",
+              "was": ""
+            },
+            {
+              "also": [
+                "fold.none"
+              ],
+              "description": "unfold everything, or fold every file",
+              "focus": "any",
+              "group": "editor",
+              "hidden": false,
+              "keys": [
+                "zR"
+              ],
+              "mode": "normal",
+              "name": "fold.all",
+              "note": "",
+              "scope": "review",
+              "server": "today",
+              "stands": "new",
+              "was": ""
+            },
+            {
+              "also": [],
+              "description": "fold every file",
+              "focus": "any",
+              "group": "editor",
+              "hidden": true,
+              "keys": [
+                "zM"
+              ],
+              "mode": "normal",
+              "name": "fold.none",
+              "note": "",
+              "scope": "review",
+              "server": "today",
+              "stands": "new",
+              "was": ""
+            },
+            {
+              "also": [],
+              "description": "hover: what is attached to this line, file, step, message, agent or tree row",
+              "focus": "any",
+              "group": "editor",
+              "hidden": false,
+              "keys": [
+                "K"
+              ],
+              "mode": "normal",
+              "name": "hover",
+              "note": "",
+              "scope": "anywhere",
+              "server": "today",
+              "stands": "new",
+              "was": ""
+            },
+            {
+              "also": [],
+              "description": "full context: a review's tool input and record, or an agent's whole row",
+              "focus": "any",
+              "group": "editor",
+              "hidden": false,
+              "keys": [
+                "I"
+              ],
+              "mode": "normal",
+              "name": "context.full",
+              "note": "was Details, stacked above the editor",
+              "scope": "anywhere",
+              "server": "today",
+              "stands": "changed",
+              "was": ""
+            },
+            {
+              "also": [],
+              "description": "find a review, pending or answered",
+              "focus": "any",
+              "group": "find",
+              "hidden": false,
+              "keys": [
+                "<leader><leader>",
+                "<leader>fr"
+              ],
+              "mode": "normal",
+              "name": "find.review",
+              "note": "",
+              "scope": "anywhere",
+              "server": "today",
+              "stands": "new",
+              "was": ""
+            },
+            {
+              "also": [],
+              "description": "find an agent, in every repository",
+              "focus": "any",
+              "group": "find",
+              "hidden": false,
+              "keys": [
+                "<leader>fa",
+                "<leader>aa"
+              ],
+              "mode": "normal",
+              "name": "find.agent",
+              "note": "",
+              "scope": "anywhere",
+              "server": "today",
+              "stands": "new",
+              "was": ""
+            },
+            {
+              "also": [],
+              "description": "find a message to you",
+              "focus": "any",
+              "group": "find",
+              "hidden": false,
+              "keys": [
+                "<leader>fi"
+              ],
+              "mode": "normal",
+              "name": "find.inbox",
+              "note": "",
+              "scope": "anywhere",
+              "server": "today",
+              "stands": "new",
+              "was": ""
+            },
+            {
+              "also": [],
+              "description": "find a discussion",
+              "focus": "any",
+              "group": "find",
+              "hidden": false,
+              "keys": [
+                "<leader>ft"
+              ],
+              "mode": "normal",
+              "name": "find.thread",
+              "note": "",
+              "scope": "anywhere",
+              "server": "today",
+              "stands": "new",
+              "was": ""
+            },
+            {
+              "also": [],
+              "description": "find in History",
+              "focus": "any",
+              "group": "find",
+              "hidden": false,
+              "keys": [
+                "<leader>fh"
+              ],
+              "mode": "normal",
+              "name": "find.history",
+              "note": "",
+              "scope": "anywhere",
+              "server": "today",
+              "stands": "new",
+              "was": ""
+            },
+            {
+              "also": [],
+              "description": "find a file in this review",
+              "focus": "any",
+              "group": "find",
+              "hidden": false,
+              "keys": [
+                "<leader>ff"
+              ],
+              "mode": "normal",
+              "name": "find.file",
+              "note": "",
+              "scope": "review",
+              "server": "today",
+              "stands": "new",
+              "was": ""
+            },
+            {
+              "also": [],
+              "description": "find a line in this buffer, fuzzy",
+              "focus": "any",
+              "group": "find",
+              "hidden": false,
+              "keys": [
+                "<leader>f/"
+              ],
+              "mode": "normal",
+              "name": "find.line",
+              "note": "",
+              "scope": "anywhere",
+              "server": "today",
+              "stands": "new",
+              "was": ""
+            },
+            {
+              "also": [],
+              "description": "find any message",
+              "focus": "any",
+              "group": "find",
+              "hidden": false,
+              "keys": [
+                "<leader>fm"
+              ],
+              "mode": "normal",
+              "name": "find.message",
+              "note": "",
+              "scope": "anywhere",
+              "server": "today",
+              "stands": "new",
+              "was": ""
+            },
+            {
+              "also": [],
+              "description": "find a command, the peer verbs included",
+              "focus": "any",
+              "group": "find",
+              "hidden": false,
+              "keys": [
+                "<leader>fc"
+              ],
+              "mode": "normal",
+              "name": "find.command",
+              "note": "",
+              "scope": "anywhere",
+              "server": "today",
+              "stands": "new",
+              "was": ""
+            },
+            {
+              "also": [],
+              "description": "find a key",
+              "focus": "any",
+              "group": "find",
+              "hidden": false,
+              "keys": [
+                "<leader>fk"
+              ],
+              "mode": "normal",
+              "name": "find.key",
+              "note": "",
+              "scope": "anywhere",
+              "server": "today",
+              "stands": "new",
+              "was": ""
+            },
+            {
+              "also": [],
+              "description": "find a marker or exception",
+              "focus": "any",
+              "group": "find",
+              "hidden": false,
+              "keys": [
+                "<leader>fx"
+              ],
+              "mode": "normal",
+              "name": "find.marker",
+              "note": "",
+              "scope": "review",
+              "server": "today",
+              "stands": "new",
+              "was": ""
+            },
+            {
+              "also": [],
+              "description": "wrap long lines on or off",
+              "focus": "any",
+              "group": "ui",
+              "hidden": false,
+              "keys": [
+                "<leader>uw"
+              ],
+              "mode": "normal",
+              "name": "ui.wrap",
+              "note": "",
+              "scope": "anywhere",
+              "server": "today",
+              "stands": "new",
+              "was": ""
+            },
+            {
+              "also": [],
+              "description": "line numbers on or off",
+              "focus": "any",
+              "group": "ui",
+              "hidden": false,
+              "keys": [
+                "<leader>un"
+              ],
+              "mode": "normal",
+              "name": "ui.numbers",
+              "note": "",
+              "scope": "anywhere",
+              "server": "today",
+              "stands": "new",
+              "was": ""
+            },
+            {
+              "also": [],
+              "description": "advance after a decision on or off",
+              "focus": "any",
+              "group": "ui",
+              "hidden": false,
+              "keys": [
+                "<leader>ua"
+              ],
+              "mode": "normal",
+              "name": "ui.advance",
+              "note": "was the checkbox",
+              "scope": "anywhere",
+              "server": "today",
+              "stands": "changed",
+              "was": ""
+            },
+            {
+              "also": [],
+              "description": "dismiss the notices",
+              "focus": "any",
+              "group": "ui",
+              "hidden": false,
+              "keys": [
+                "<leader>ud"
+              ],
+              "mode": "normal",
+              "name": "ui.dismiss",
+              "note": "",
+              "scope": "anywhere",
+              "server": "today",
+              "stands": "new",
+              "was": ""
+            },
+            {
+              "also": [],
+              "description": "copy a link to this review",
+              "focus": "any",
+              "group": "ui",
+              "hidden": false,
+              "keys": [
+                "<leader>y"
+              ],
+              "mode": "normal",
+              "name": "link",
+              "note": "was the Copy link button",
+              "scope": "review",
+              "server": "today",
+              "stands": "changed",
+              "was": ""
+            },
+            {
+              "also": [],
+              "description": "reconnect",
+              "focus": "any",
+              "group": "ui",
+              "hidden": false,
+              "keys": [
+                "<leader>R"
+              ],
+              "mode": "normal",
+              "name": "reconnect",
+              "note": "was the Reconnect button",
+              "scope": "anywhere",
+              "server": "today",
+              "stands": "changed",
+              "was": ""
+            },
+            {
+              "also": [],
+              "description": ":messages, what this page said",
+              "focus": "any",
+              "group": "ui",
+              "hidden": false,
+              "keys": [
+                "<leader>m"
+              ],
+              "mode": "normal",
+              "name": "messages",
+              "note": "",
+              "scope": "anywhere",
+              "server": "today",
+              "stands": "new",
+              "was": ""
+            },
+            {
+              "also": [],
+              "description": "every key (this help)",
+              "focus": "any",
+              "group": "help",
+              "hidden": false,
+              "keys": [
+                "?",
+                "<leader>?"
+              ],
+              "mode": "normal",
+              "name": "help",
+              "note": "",
+              "scope": "anywhere",
+              "server": "today",
+              "stands": "decided",
+              "was": ""
+            },
+            {
+              "also": [],
+              "description": "the command line, with Tab completion",
+              "focus": "any",
+              "group": "help",
+              "hidden": false,
+              "keys": [
+                ":"
+              ],
+              "mode": "normal",
+              "name": "cmdline",
+              "note": "",
+              "scope": "anywhere",
+              "server": "today",
+              "stands": "new",
+              "was": ""
+            }
+          ],
+          "items": {
+            "$ref": "#/$defs/DashboardAction"
+          },
+          "title": "Actions",
+          "type": "array"
+        },
+        "groups": {
+          "default": [
+            {
+              "id": "answer",
+              "title": "answer (any mode: the box or Normal)"
+            },
+            {
+              "id": "move",
+              "title": "move"
+            },
+            {
+              "id": "box",
+              "title": "the note box you land in, while it is empty"
+            },
+            {
+              "id": "search",
+              "title": "search"
+            },
+            {
+              "id": "agent",
+              "title": "act on an agent (Space a)"
+            },
+            {
+              "id": "you",
+              "title": "you as a peer (Space p): one level down"
+            },
+            {
+              "id": "view",
+              "title": "windows, views and tabs"
+            },
+            {
+              "id": "comment",
+              "title": "comment and write"
+            },
+            {
+              "id": "editor",
+              "title": "the editor"
+            },
+            {
+              "id": "find",
+              "title": "find"
+            },
+            {
+              "id": "ui",
+              "title": "toggles and tools"
+            },
+            {
+              "id": "help",
+              "title": "help"
+            }
+          ],
+          "items": {
+            "$ref": "#/$defs/KeymapGroup"
+          },
+          "title": "Groups",
+          "type": "array"
+        },
+        "named": {
+          "default": [
+            "Enter",
+            "Esc",
+            "Del",
+            "BS",
+            "Up",
+            "Down",
+            "Left",
+            "Right",
+            "Tab",
+            "PageUp",
+            "PageDown",
+            "Home",
+            "End",
+            "F1",
+            "F2",
+            "F3",
+            "F4",
+            "F5",
+            "F6",
+            "F7",
+            "F8",
+            "F9",
+            "F10",
+            "F11",
+            "F12"
+          ],
+          "items": {
+            "type": "string"
+          },
+          "title": "Named",
+          "type": "array"
+        },
+        "reserved": {
+          "default": [
+            {
+              "does": "closes the tab",
+              "keys": "<C-w>"
+            },
+            {
+              "does": "opens a tab",
+              "keys": "<C-t>"
+            },
+            {
+              "does": "opens a window",
+              "keys": "<C-n>"
+            },
+            {
+              "does": "quits Firefox",
+              "keys": "<C-q>"
+            },
+            {
+              "does": "switches tabs",
+              "keys": "<C-Tab>"
+            },
+            {
+              "does": "switches tabs",
+              "keys": "<C-S-Tab>"
+            }
+          ],
+          "items": {
+            "$ref": "#/$defs/ReservedKey"
+          },
+          "title": "Reserved",
+          "type": "array"
+        },
+        "scopes": {
+          "additionalProperties": {
+            "items": {
+              "$ref": "#/$defs/KeyPlace"
+            },
+            "type": "array"
+          },
+          "default": {
+            "anywhere": [
+              "review",
+              "member",
+              "you",
+              "repo",
+              "inbox",
+              "thread",
+              "empty",
+              "setup"
+            ],
+            "buffer": [
+              "member",
+              "you",
+              "repo",
+              "inbox",
+              "thread"
+            ],
+            "inbox": [
+              "inbox"
+            ],
+            "notreview": [
+              "member",
+              "you",
+              "repo",
+              "inbox",
+              "thread",
+              "empty",
+              "setup"
+            ],
+            "notsetup": [
+              "review",
+              "member",
+              "you",
+              "repo",
+              "inbox",
+              "thread",
+              "empty"
+            ],
+            "review": [
+              "review"
+            ]
+          },
+          "propertyNames": {
+            "$ref": "#/$defs/KeyScope"
+          },
+          "title": "Scopes",
+          "type": "object"
+        },
+        "spoken_keys": {
+          "default": [
+            {
+              "key": "Up",
+              "says": "\u2191"
+            },
+            {
+              "key": "Down",
+              "says": "\u2193"
+            },
+            {
+              "key": "Left",
+              "says": "\u2190"
+            },
+            {
+              "key": "Right",
+              "says": "\u2192"
+            },
+            {
+              "key": "Del",
+              "says": "Delete"
+            },
+            {
+              "key": "BS",
+              "says": "Backspace"
+            },
+            {
+              "key": "PageDown",
+              "says": "PgDn"
+            },
+            {
+              "key": "PageUp",
+              "says": "PgUp"
+            }
+          ],
+          "items": {
+            "$ref": "#/$defs/SpokenKey"
+          },
+          "title": "Spoken Keys",
+          "type": "array"
+        },
+        "spoken_modifiers": {
+          "default": [
+            {
+              "key": "C",
+              "says": "Ctrl"
+            },
+            {
+              "key": "A",
+              "says": "Alt"
+            },
+            {
+              "key": "S",
+              "says": "Shift"
+            }
+          ],
+          "items": {
+            "$ref": "#/$defs/SpokenKey"
+          },
+          "title": "Spoken Modifiers",
+          "type": "array"
+        },
+        "typeless": {
+          "default": [
+            "Tab",
+            "F1",
+            "F2",
+            "F3",
+            "F4",
+            "F5",
+            "F6",
+            "F7",
+            "F8",
+            "F9",
+            "F10",
+            "F11",
+            "F12"
+          ],
+          "items": {
+            "type": "string"
+          },
+          "title": "Typeless",
+          "type": "array"
+        }
+      },
+      "required": [
+        "groups",
+        "scopes",
+        "named",
+        "typeless",
+        "reserved",
+        "spoken_keys",
+        "spoken_modifiers",
+        "actions"
+      ],
+      "title": "KeymapCatalog",
+      "type": "object"
+    },
+    "KeymapGroup": {
+      "additionalProperties": false,
+      "description": "One section of the help, which-key and the key finder.",
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "title": {
+          "title": "Title",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "title"
+      ],
+      "title": "KeymapGroup",
+      "type": "object"
+    },
+    "KeysEvent": {
+      "additionalProperties": false,
+      "description": "The person's ``[dashboard.keys]`` changed: the keys in effect, and what it refused.",
+      "properties": {
+        "keys": {
+          "$ref": "#/$defs/KeyBindings"
+        },
+        "type": {
+          "const": "keys",
+          "default": "keys",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "type",
+        "keys"
+      ],
+      "title": "KeysEvent",
+      "type": "object"
     },
     "KindInfo": {
       "additionalProperties": false,
@@ -2269,6 +5029,17 @@
       "title": "ParkSubmission",
       "type": "object"
     },
+    "PathRuleKind": {
+      "enum": [
+        "exact",
+        "subtree",
+        "name_prefix",
+        "new_subtree",
+        "contains_part",
+        "new_devtools"
+      ],
+      "type": "string"
+    },
     "PendingQuestionView": {
       "additionalProperties": false,
       "description": "One question this run has asked, with whatever answer state it holds.\n\n``offer`` is a value some door proposed that no promoter has taken yet.\nShowing it is what makes an offer correctable in the page: a human sees\nthe pending value and can replace it before it counts.",
@@ -2333,6 +5104,30 @@
         "phase"
       ],
       "title": "PhaseChangedEvent",
+      "type": "object"
+    },
+    "ProtectedMatch": {
+      "additionalProperties": false,
+      "description": "The protected-path rule a file met, as a reviewer is shown it.\n\n``kind`` is how the rule matched -- ``subtree`` for a declared root or\nlup's own state, ``name_prefix`` for an environment file, ``new_devtools``\nfor a devtools module not written yet, ``exact`` for a human-owned file,\n``contains_part`` for a manifest or lockfile wherever it sits. ``root`` is\nthe rule's value as declared, and ``description`` what that is in plain\nwords, the root itself where nothing was declared.",
+      "properties": {
+        "description": {
+          "title": "Description",
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/$defs/PathRuleKind"
+        },
+        "root": {
+          "title": "Root",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "root",
+        "description"
+      ],
+      "title": "ProtectedMatch",
       "type": "object"
     },
     "QuestionAnswer": {
@@ -2604,6 +5399,17 @@
           "title": "Path",
           "type": "string"
         },
+        "protected": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ProtectedMatch"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
         "reason": {
           "title": "Reason",
           "type": "string"
@@ -2628,6 +5434,7 @@
         "rules",
         "before_sha256",
         "after_sha256",
+        "protected",
         "after"
       ],
       "title": "RecordedFileReview",
@@ -3052,6 +5859,26 @@
       "title": "RepositoryGoneEvent",
       "type": "object"
     },
+    "ReservedKey": {
+      "additionalProperties": false,
+      "description": "A key the browser keeps for itself, so the page never sees it.",
+      "properties": {
+        "does": {
+          "title": "Does",
+          "type": "string"
+        },
+        "keys": {
+          "title": "Keys",
+          "type": "string"
+        }
+      },
+      "required": [
+        "keys",
+        "does"
+      ],
+      "title": "ReservedKey",
+      "type": "object"
+    },
     "ResolvePhase": {
       "description": "Persisted resolver phase names in their only valid forward order.",
       "enum": [
@@ -3311,6 +6138,13 @@
           "title": "Review Effect",
           "type": "string"
         },
+        "review_label": {
+          "$ref": "#/$defs/FileReason",
+          "default": {
+            "kind": "",
+            "words": ""
+          }
+        },
         "review_reason": {
           "default": "No per-file decision was captured.",
           "title": "Review Reason",
@@ -3346,6 +6180,7 @@
         "markers",
         "review_effect",
         "review_reason",
+        "review_label",
         "about"
       ],
       "title": "ReviewFile",
@@ -4597,6 +7432,19 @@
           "title": "Extents",
           "type": "array"
         },
+        "keys": {
+          "$ref": "#/$defs/KeyBindings",
+          "default": {
+            "changed": [],
+            "report": {
+              "applied": [],
+              "refused": [],
+              "waits": []
+            },
+            "source": "",
+            "unread": ""
+          }
+        },
         "messages": {
           "items": {
             "$ref": "#/$defs/LiveMessage"
@@ -4635,9 +7483,30 @@
         "messages",
         "extents",
         "reviews",
-        "code"
+        "code",
+        "keys"
       ],
       "title": "SnapshotEvent",
+      "type": "object"
+    },
+    "SpokenKey": {
+      "additionalProperties": false,
+      "description": "How the help reads one key name or modifier: ``Up`` as ``\u2191``, ``C`` as ``Ctrl``.",
+      "properties": {
+        "key": {
+          "title": "Key",
+          "type": "string"
+        },
+        "says": {
+          "title": "Says",
+          "type": "string"
+        }
+      },
+      "required": [
+        "key",
+        "says"
+      ],
+      "title": "SpokenKey",
       "type": "object"
     },
     "StepAnswers": {
@@ -5414,7 +8283,7 @@
     },
     "VerificationFailedEvent": {
       "additionalProperties": false,
-      "description": "What one gate saw at the moment it decided a concern's round.\n\nA run's record held no verification event of any kind: the check ran,\nproduced a verdict that decided a concern's fate, and left nothing\nbehind. Journalling it puts what the gate saw beside the turns it\ndecided about, which is the one place a later session can read it \u2014 the\nlease worktree the check ran in is usually still held by the run.",
+      "description": "What one gate saw at the moment it decided a concern's round.\n\nUnjournalled, a check runs, produces a verdict that decides a concern's\nfate, and leaves nothing behind in the run's record. Journalling it puts\nwhat the gate saw beside the turns it\ndecided about, which is the one place a later session can read it \u2014 the\nlease worktree the check ran in is usually still held by the run.",
       "properties": {
         "concern_id": {
           "title": "Concern Id",

@@ -1,0 +1,32 @@
+subjects = [
+    "LegacyFact",
+    "LegacyFact.key",
+    "LegacyFact.BASE",
+    "LegacyFact.RESERVATION",
+    "LegacyFact.branch_of",
+    "LegacyFact.addition",
+    "legacy_value",
+    "legacy_keys",
+    "adopt_legacy_records",
+]
+reason = """
+a branch's base and reservation are read from its record under the shared \
+git directory's `lup/` alone, so a `branch.<name>.lup-base` or \
+`lup-base-commit` key still sitting in the shared git config is not read; \
+the move that empties the config is named for what it moves"""
+
+[[steps]]
+instruction = """
+Move every `branch.*.lup-*` key a clone's shared config carries into its \
+branch record, once per clone, from a terminal on the host (it writes the \
+shared git directory). `dev check` names the branches still waiting with its \
+advisory `branch records` row, and the row goes once none is left."""
+command = ["uv", "run", "lup-devtools", "git", "worktree", "adopt-records"]
+
+[[steps]]
+instruction = """
+Call adopt_config_records, config_keys and ConfigFact from \
+lup.devtools.dev.records where adopt_legacy_records, legacy_keys and \
+LegacyFact were called. legacy_value and LegacyFact.key go with the read \
+they served: read a fact with recorded_base or recorded_reservation, which \
+answer from the record."""

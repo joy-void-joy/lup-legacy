@@ -1,0 +1,28 @@
+subjects = [
+    "store_directory",
+    "UserStateHome",
+    "UserStateHome.xdg_state_home",
+    "UserStateHome.directory",
+    "UserConfigHome",
+    "UserConfigHome.xdg_config_home",
+    "UserConfigHome.directory",
+]
+reason = """
+where lup keeps a person's state, configuration and caches is declared once, \
+by `lup.workspace.user_directories.UserDirectories` over `XDG_STATE_HOME`, \
+`XDG_CONFIG_HOME` and `XDG_CACHE_HOME`; the state rule was spelled twice and \
+caches ignored `XDG_CACHE_HOME` entirely, so a cache now moves with it"""
+
+[[steps]]
+instruction = """
+Call `UserDirectories().state()` where you called \
+`lup.sandbox.known.store_directory()` or \
+`lup.launch.superseded.UserStateHome().directory()`, and \
+`UserDirectories().config()` where you called \
+`lup.providers.user_config.UserConfigHome().directory()`."""
+
+[[steps]]
+instruction = """
+Where `XDG_CACHE_HOME` is set, lup's caches (environments, plugin revisions, \
+releases, sync clones, guidance, gate state) move under it from \
+`~/.cache/lup`; move the old directory there or let lup rebuild it."""

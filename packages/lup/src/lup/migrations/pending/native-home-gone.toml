@@ -1,0 +1,12 @@
+subjects = ["native_home"]
+reason = """
+every runtime's configuration home is resolved from an environment by one \
+method, `ProviderLogin.selected_home`, which reads an empty variable as \
+naming nothing, joins the default onto the environment's `HOME`, and \
+canonicalises the result where the login declares `canonical_home` — as \
+`CODEX_LOGIN` does — so Codex no longer has a resolver of its own"""
+
+[[steps]]
+instruction = """
+Call `CODEX_LOGIN.selected_home(environment)` where you called \
+`native_home(environment)`."""

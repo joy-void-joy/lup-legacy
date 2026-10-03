@@ -5,9 +5,9 @@ does not re-read the whole concern. The acceptance criteria are the exception:
 the guard compares `criteria_met` to their exact ids, so a reviewer that
 cannot read them cannot produce an acceptance the guard will honour — and a
 round that fails for that reason fails identically however often it is
-retried. One did, on a resumed run whose reviewer session did not survive:
-it reconstructed the ids from the concern's answered questions and had the
-acceptance it had argued for refused.
+retried. On a resumed run whose reviewer session did not survive, a reviewer
+reconstructs the ids from the concern's answered questions and has the
+acceptance it argued for refused.
 """
 
 import ast

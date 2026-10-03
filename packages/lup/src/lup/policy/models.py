@@ -55,6 +55,19 @@ type UrlPathPrefix = Annotated[str, StringConstraints(pattern=r"^/")]
 """An absolute URL path prefix scoping a fetch rule beneath an origin."""
 
 
+class ProtectedRoot(BaseModel, frozen=True):
+    """One tree an edit needs approval into, and what it is in plain words.
+
+    ``description`` is what a reviewer reads beside a file that met the root
+    -- "the policy's own code" rather than a path they have to place -- and
+    the path stands in where it is empty. A hook set may declare a bare path
+    instead, which is a root with no description.
+    """
+
+    path: Path
+    description: str = ""
+
+
 class UrlScope(BaseModel, frozen=True):
     """One normalized scheme/host/port and path-prefix rule.
 
@@ -425,9 +438,9 @@ class Decision(BaseModel, frozen=True):
         Every settled fact crosses, not the handful a caller remembered. This
         is the one seam between the two spellings of a verdict, so a field
         named on one side and absent here is a field the in-process path
-        silently does not have — which is how a capability-blocked refusal
-        arrived indistinguishable from a rule's judgement, and how an ask
-        arrived with no attributable rule.
+        silently does not have: a capability-blocked refusal arriving
+        indistinguishable from a rule's judgement, or an ask arriving with no
+        attributable rule.
         """
         return cls(
             effect=decision.effect,

@@ -1,10 +1,8 @@
 """Real hook order and explicit review of complete document replacements."""
 
-import io
 import json
 import os
 import shlex
-import sys
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
@@ -162,8 +160,7 @@ def test_host_executor_deferral_reaches_explicit_permission_review(
             "tool_name": "Bash",
             "tool_input": {"command": "declared-host-operation"},
         }
-        monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps(payload)))
-        dispatcher.main()
+        dispatcher.judged(json.dumps(payload).encode())
         return capsys.readouterr().out
 
     store = QuestionRelay(root / ".lup/questions.jsonl")

@@ -10,8 +10,8 @@ out of, the root it installs trusted packages beneath, and the envelope a
 verdict is returned in.
 
 The split is drawn there because the arguments a kernel call carries are
-exactly what drifted before. Each runtime passed its own set, nothing compared
-them, and a fact one of them stopped passing was a rule that silently stopped
+exactly what drifts: with each runtime passing its own set and nothing
+comparing them, a fact one of them stops passing is a rule that silently stops
 applying — with no failure anywhere, because a permission that never happens
 looks like a permission that was granted. One call site cannot disagree with
 itself.
@@ -207,7 +207,7 @@ def bash_decision(
     operands alike, because the questions they ask are the same ones —
     whether writing here brings something into being or replaces it, and what
     replacing it would cost. Resolving them for only one of the two writing
-    forms is what left ``rm f`` granted while ``echo x > f`` asked about the
+    forms would leave ``rm f`` granted while ``echo x > f`` asks about the
     same clean, tracked file.
 
     ``cwd`` is where the calling session is, which the command's relative
@@ -246,6 +246,44 @@ def bash_decision(
     # exist yet, and a refused command is snapshotted too -- one ref for a
     # state the tree was already in, which dedup collapses.
     reference = undo_snapshot(cwd, command)
+    # Every fact Git answers is asked here, before the edit gates below: a
+    # gate may start a type checker that spends what is left of the hook's
+    # deadline, and a Git question asked with nothing left reads as no answer
+    # -- no other checkout, nothing tracked -- so a heredoc into a sibling
+    # worktree's `tmp/` would read as an outside path, and a redirect over
+    # tracked source beside it as a file Git never held.
+    #
+    # Another checkout of this repository keeps this one's scratch, reached by
+    # the absolute path a session spells it with -- so Git is asked for the
+    # checkouts only where the command names such a path at all.
+    siblings = (
+        sibling_worktrees(cwd)
+        if any(
+            target.startswith("/")
+            for target in [*shell_write_targets(command), *acted_on, *flagged]
+        )
+        else []
+    )
+    tracked = tracked_write_targets(
+        [*shell_write_targets(command), *acted_on, *flagged], cwd
+    )
+    recoverable = recoverable_write_targets(
+        [*shell_write_targets(command), *acted_on], cwd
+    )
+    # A snapshot proves a capture only of what it took, and it takes nothing
+    # Git ignores: one ignored target outside declared scratch, which needs no
+    # capture, leaves the loss uncaptured.
+    recovered = bool(reference) and not ignored_write_targets(
+        unscratched(
+            [
+                *shell_write_targets(command),
+                *shell_written_targets(command, SHELL_RULES),
+            ],
+            PATH_ROLES,
+            str(cwd or Path.cwd()),
+        ),
+        cwd,
+    )
     # What the line leaves in every file it writes, step by step, and the
     # edit gates' verdict on each file its own bytes or a rewrite reach. Both
     # halves of the rewrite reading come off it -- the documents a rewrite
@@ -257,17 +295,6 @@ def bash_decision(
         lambda target, document: rewritten_row(
             target, document, judged[document["path"]], cwd or Path.cwd()
         ),
-    )
-    # Another checkout of this repository keeps this one's scratch, reached by
-    # the absolute path a session spells it with -- so Git is asked for the
-    # checkouts only where the command names such a path at all.
-    siblings = (
-        sibling_worktrees(cwd)
-        if any(
-            target.startswith("/")
-            for target in [*shell_write_targets(command), *acted_on, *flagged]
-        )
-        else []
     )
     verdict = decide_shell(
         command,
@@ -282,12 +309,8 @@ def bash_decision(
         existing_targets=existing_write_targets(
             [*shell_write_targets(command), *acted_on, *flagged], cwd
         ),
-        tracked_targets=tracked_write_targets(
-            [*shell_write_targets(command), *acted_on, *flagged], cwd
-        ),
-        recoverable_targets=recoverable_write_targets(
-            [*shell_write_targets(command), *acted_on], cwd
-        ),
+        tracked_targets=tracked,
+        recoverable_targets=recoverable,
         directory_targets=directory_write_targets(acted_on, cwd),
         empty_directories=empty_directory_targets(acted_on, cwd),
         recoverable_target_limit=RECOVERABLE_TARGET_LIMIT,
@@ -409,7 +432,10 @@ def bash_decision(
         landings=(
             landing_rows(
                 measured_landings(
-                    shell_posture_targets(command, SHELL_RULES), boundary, cwd
+                    shell_posture_targets(command, SHELL_RULES),
+                    boundary,
+                    cwd,
+                    siblings,
                 )
             )
             if inside and delivers(boundary, "inside_placement")
@@ -422,21 +448,7 @@ def bash_decision(
             if any(host in command for host in ("localhost", "127.", "::1"))
             else []
         ),
-        # A snapshot proves a capture only of what it took, and it takes
-        # nothing Git ignores: one ignored target outside declared scratch,
-        # which needs no capture, leaves the loss uncaptured.
-        recovered=bool(reference)
-        and not ignored_write_targets(
-            unscratched(
-                [
-                    *shell_write_targets(command),
-                    *shell_written_targets(command, SHELL_RULES),
-                ],
-                PATH_ROLES,
-                str(cwd or Path.cwd()),
-            ),
-            cwd,
-        ),
+        recovered=recovered,
     )
     # The gates an edit is judged by, over the writes this command carries the
     # content of. Joined here rather than inside the classifier because they
@@ -1168,7 +1180,9 @@ def local_edit_decision(
         if resolve_external
         and not outside_this_repository
         and after is not None
-        and awaits_resolution(before, after, rows, python_source)
+        and awaits_resolution(
+            before, after, rows, python_source, worktree_path(path_text), PATH_ROLES
+        )
         else None
     )
     return decide_edit(
@@ -1225,17 +1239,17 @@ def authored_review(
     """What the edit gates say about a write whose content the command carries.
 
     :func:`written_review` is the same reading a moment too late. It exists
-    because a shell write was answered by its path alone -- the command
+    because a shell write is answered by its path alone -- the command
     produces its output by running, so before the fact there is nothing to
     read -- and that premise holds for `dev render > docs/api.md` and fails
     for `cat > f <<'EOF'`, where the bytes are in the command. Where they are,
     they go to the same `edit_decision` an `Edit` is put to, at the moment
     that can still change the answer.
 
-    What that closes: a redirection declares its route reviewed, which is what
+    Why it matters: a redirection declares its route reviewed, which is what
     lets the write row allow an overwrite of tracked source. For a route
-    nothing could read that is the honest trade. For this one it was a hole --
-    measured, `cat > packages/lup/src/lup/seams.py <<'EOF'` replaced a tracked
+    nothing can read that is the honest trade. For this one it would be a
+    hole -- `cat > packages/lup/src/lup/seams.py <<'EOF'` replacing a tracked
     library module with one line, allowed and unprompted, past the
     anti-pattern audit, the review-note gate and the size budget alike.
 
@@ -1267,8 +1281,8 @@ def written_review(
     produces its content by running, so before the fact there is nothing to
     read and the write is answered by its path alone.
 
-    Which is a smaller set than it was, and smaller here rather than only in
-    the telling. A command that carries its own bytes is put to the same
+    That set leaves out what a command carries, and leaves it out here rather
+    than only in the telling. A command that carries its own bytes is put to the same
     gates *before* it runs by :func:`authored_review`, so what reaches here
     is the output that genuinely did not exist yet -- and a path that reader
     already named is skipped, or an approved write would report its finding
@@ -1441,9 +1455,9 @@ def repair_report(path: str, file: dict, cwd: Path | None) -> PostToolReport:
 
     The sweep judges by the checkout's rules and the gate ahead of the write
     by the policy this session loaded, and the two differ whenever the
-    sources moved since the launch -- after a rename, the gate demanded a
-    `# lup: ignore[seam-boundary]` the sweep then deleted as dead, and every
-    later edit to the file was refused for the missing directive. So the
+    sources move after the launch -- after a rename, the gate can demand a
+    `# lup: ignore[seam-boundary]` the sweep then deletes as dead, and every
+    later edit to the file is refused for the missing directive. So the
     repair is put to that policy as an edit: where it would refuse taking a
     directive out, the file goes back to what was written, and the agent is
     told the two disagree rather than meeting the refusal on its next edit.
@@ -1491,7 +1505,7 @@ def referred_once(
     The referral's second sentence -- that the repository's conventions are
     its own and the rule checker is not applying any of them -- is true of
     every file in that repository and news only the first time. Printed on
-    every edit it was read about 150 times by one agent, which is the noise
+    every edit, one agent reads it about 150 times in a session, which is the noise
     this project's own "say it once" refuses. So the verdict stands on every
     edit and its recovery goes with the first (:func:`referral_noted`).
     """

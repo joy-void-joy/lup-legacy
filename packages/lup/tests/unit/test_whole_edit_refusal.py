@@ -1,9 +1,9 @@
 """One refusal names every violation an edit adds.
 
-The gate answered with the first violation it met. A whole-file write of a
-550-line module was refused four times running — `tuple-shape`, then
+A gate answering with the first violation it meets would refuse a whole-file
+write of a large module once per violation — `tuple-shape`, then
 `subprocess`, `empty-collection`, `os-environ` — each refusal costing a
-resend of the whole file, and its test file twice more.
+resend of the whole file.
 """
 
 from lup.policy.bundle import bundled_antipattern_rows

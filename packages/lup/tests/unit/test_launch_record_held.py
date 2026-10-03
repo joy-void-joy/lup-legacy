@@ -5,7 +5,7 @@ The ledger (`.lup/preflight`), the destination policies a launch accepted
 the session's gates believe; a session that could write them could copy in a
 ledger naming a boundary of its own. A read-only mount refuses writes to what
 it covers and not a rename of the directory holding it -- measured, `mv .lup
-.lup2` succeeded with `.lup/preflight` held inside -- so every directory
+.lup2` succeeds with `.lup/preflight` held inside -- so every directory
 between a hold and the writable mount enclosing it is pinned as a mount point
 of its own.
 """

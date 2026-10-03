@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Literal
 
 from pydantic import AnyHttpUrl, BaseModel, SecretStr
 
+from lup.channels.models import utc_now
 from lup.providers.claude import ClaudeCompatibleEndpoint
 from lup.launch.declaration import InnerSandbox, NoSandbox
 from lup.providers.claude.config import ClaudeCompatibilityTransform
@@ -377,16 +378,12 @@ def normalize_codex_approval(
 
     The asking policies are answerable because the adapter replies to the
     app-server's approval requests from a session's declared hooks, so they
-    are settings rather than refusals. Legacy configuration aliases normalize
-    here so the app-server wire receives only its current spellings.
+    are settings rather than refusals. The value is the app-server's own
+    spelling, and any other is refused with the four it accepts.
     """
     if value is None:
         return None
     match value:
-        case "unlessTrusted":
-            return "untrusted"
-        case "onRequest":
-            return "on-request"
         case "untrusted" | "on-request" | "granular" | "never":
             return value
     raise ValueError(
@@ -447,7 +444,7 @@ def decorate_factory(
                 trace_logger.emit_event(
                     TraceEvent(
                         kind="error",
-                        timestamp=datetime.now().isoformat(),
+                        timestamp=utc_now().isoformat(),
                         brief=record.failure.message,
                     )
                 )
@@ -823,7 +820,7 @@ def application_result(
         agent_version=agent_version(),
         agent_sdk=engine_for_settings(),
         sdk_session_id=result.identifiers.session.value,
-        timestamp=datetime.now().isoformat(),
+        timestamp=utc_now().isoformat(),
         output=result.output,
         reasoning=result_text(result),
         sources_consulted=result_sources(result),

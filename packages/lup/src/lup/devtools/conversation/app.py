@@ -6,8 +6,8 @@ from collections.abc import Awaitable, Callable, Sequence
 from pathlib import Path
 
 import typer
-from pydantic import BaseModel
 
+from lup.workspace.checkout_state import CheckoutState
 from lup.devtools.conversation.browser import (
     browser_context,
     cookie_header,
@@ -24,17 +24,6 @@ from lup.providers.profiles import ProfileDirectory
 from lup.workspace.paths import project_root
 
 logger = logging.getLogger(__name__)
-
-
-class BrowserDirectories(BaseModel, frozen=True):
-    """The selected browser state followed by compatible persisted states."""
-
-    primary: Path
-    fallbacks: tuple[Path, ...] = ()
-
-    def candidates(self) -> tuple[Path, ...]:
-        """Every state a headless download may try, in preference order."""
-        return (self.primary, *self.fallbacks)
 
 
 def browser_directory(
@@ -58,21 +47,7 @@ def browser_directory(
             refuse(str(error), what="--profile", code=2)
         if selected is not None:
             return selected
-    return root / ".lup" / "conversations" / f"{provider}-web"
-
-
-def browser_directories(
-    root: Path,
-    provider: str,
-    profiles: ProfileDirectory | None,
-    profile: str | None,
-) -> BrowserDirectories:
-    """Resolve selected state plus persisted unprofiled compatibility state."""
-    primary = browser_directory(root, provider, profiles, profile)
-    unprofiled = root / ".lup" / "conversations" / f"{provider}-web"
-    legacy = root / ".lup" / "conversations" / f"{provider}-browser"
-    fallbacks = (legacy,) if primary == unprofiled and legacy.exists() else ()
-    return BrowserDirectories(primary=primary, fallbacks=fallbacks)
+    return CheckoutState(root=root).conversations() / f"{provider}-web"
 
 
 type StateRun = Callable[
@@ -85,7 +60,6 @@ def settled(
 ) -> RetentionAttempt:
     """One pending request carried to what its attempt produced."""
     return RetentionAttempt(
-        position=pending.position,
         request=pending.request,
         destination=destination,
         error=error,
@@ -93,37 +67,29 @@ def settled(
 
 
 async def retained_through(
-    directories: BrowserDirectories,
+    directory: Path,
     requests: Sequence[RetentionRequest],
     run: StateRun,
     expired: str,
 ) -> list[RetentionAttempt]:
-    """Retain every request, trying each browser state a login may live in.
+    """Retain every request through one browser state, in the order asked.
 
-    Only an unauthenticated request moves on to the next stored state, so one
-    expired login costs the batch nothing that a working state can serve, and
-    a refusal a fresh login would not fix is reported where it happened.
+    An unauthenticated request is reported with the login it needs, because a
+    fresh login is what fixes it; any other refusal is reported as it came.
     """
     require_playwright()
-    pending = tuple(
-        RetentionAttempt(position=position, request=request)
-        for position, request in enumerate(requests)
-    )
-    attempts: tuple[RetentionAttempt, ...] = ()
-    for directory in directories.candidates():
-        if not pending:
-            break
-        attempted = await run(directory, pending)
-        attempts += tuple(item for item in attempted if not item.unauthenticated)
-        pending = tuple(item for item in attempted if item.unauthenticated)
-    attempts += tuple(settled(item, error=expired) for item in pending)
-    return sorted(attempts, key=lambda item: item.position)
+    pending = tuple(RetentionAttempt(request=request) for request in requests)
+    attempted = await run(directory, pending)
+    return [
+        settled(item, error=expired) if item.unauthenticated else item
+        for item in attempted
+    ]
 
 
 async def retain_chatgpt(
     requests: Sequence[RetentionRequest],
     root: Path,
-    directories: BrowserDirectories,
+    state_directory: Path,
     output: Path,
 ) -> list[RetentionAttempt]:
     """Retain every requested ChatGPT conversation through one browser each."""
@@ -151,7 +117,6 @@ async def retain_chatgpt(
                 except ChatGPTAuthenticationRequired as error:
                     attempted += (
                         RetentionAttempt(
-                            position=item.position,
                             request=item.request,
                             error=str(error),
                             unauthenticated=True,
@@ -172,7 +137,7 @@ async def retain_chatgpt(
         return attempted
 
     return await retained_through(
-        directories,
+        state_directory,
         requests,
         run,
         "The ChatGPT browser login is missing or expired. Run "
@@ -183,7 +148,7 @@ async def retain_chatgpt(
 async def retain_claude(
     requests: Sequence[RetentionRequest],
     root: Path,
-    directories: BrowserDirectories,
+    state_directory: Path,
     output: Path,
 ) -> list[RetentionAttempt]:
     """Retain every requested Claude conversation through one cookie each."""
@@ -213,7 +178,6 @@ async def retain_claude(
             except ClaudeAuthenticationRequired as error:
                 attempted += (
                     RetentionAttempt(
-                        position=item.position,
                         request=item.request,
                         error=str(error),
                         unauthenticated=True,
@@ -227,7 +191,7 @@ async def retain_claude(
         return attempted
 
     return await retained_through(
-        directories,
+        state_directory,
         requests,
         run,
         "The Claude browser login is missing or expired. Run "
@@ -244,8 +208,8 @@ def setup_browser_login(
 ) -> None:
     """Open the explicit setup flow for one provider's selected browser state."""
     root = project_root()
-    directories = browser_directories(root, provider, profiles, profile)
-    asyncio.run(login(directories.primary, page_url, label))
+    state_directory = browser_directory(root, provider, profiles, profile)
+    asyncio.run(login(state_directory, page_url, label))
     typer.echo(f"Saved the {label} browser login")
 
 
@@ -342,11 +306,11 @@ def create_conversation_app(
     ) -> None:
         """Retain ChatGPT conversations and their downloadable attachments."""
         root = project_root()
-        directories = browser_directories(root, "chatgpt", directory, profile)
+        state_directory = browser_directory(root, "chatgpt", directory, profile)
         target = output if output.is_absolute() else root / output
         requests = [RetentionRequest.parse(value) for value in urls]
         report(
-            asyncio.run(retain_chatgpt(requests, root, directories, target)),
+            asyncio.run(retain_chatgpt(requests, root, state_directory, target)),
             "chatgpt",
             root,
         )
@@ -372,11 +336,11 @@ def create_conversation_app(
     ) -> None:
         """Retain Claude conversations and their API-provided attachments."""
         root = project_root()
-        directories = browser_directories(root, "claude", directory, profile)
+        state_directory = browser_directory(root, "claude", directory, profile)
         target = output if output.is_absolute() else root / output
         requests = [RetentionRequest.parse(value) for value in urls]
         report(
-            asyncio.run(retain_claude(requests, root, directories, target)),
+            asyncio.run(retain_claude(requests, root, state_directory, target)),
             "claude",
             root,
         )

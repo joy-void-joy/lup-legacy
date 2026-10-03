@@ -49,7 +49,8 @@ from uuid import uuid4
 
 from pydantic import BaseModel, TypeAdapter, ValidationError
 
-from lup.channels.models import utc_now
+from lup.channels.models import aware, utc_now
+from lup.channels.stream import Stream
 from lup.coordination.refs import ActorRef
 from lup.ledger.blobs import BlobStores
 from lup.ledger.kinds import kind_of
@@ -86,7 +87,7 @@ def moment(line: JsonObject) -> datetime:
         at = datetime.fromisoformat(str(line["at"]))
     except ValueError:
         return datetime.min.replace(tzinfo=UTC)
-    return at if at.tzinfo is not None else at.astimezone()
+    return aware(at)
 
 
 class Stored(BaseModel, frozen=True):
@@ -232,6 +233,16 @@ class LedgerStore:
         root.mkdir(parents=True, exist_ok=True)
         return root / JOURNAL_FILE
 
+    def log(self, placement: Placement) -> Stream[JsonObject]:
+        """One half's journal as the ordered log it is, read and appended raw.
+
+        Raw for the reason :meth:`stored` gives: what a record should be read
+        as is the caller's question, and one log holds every vocabulary.
+        """
+        return Stream(
+            self.roots[placement] / JOURNAL_FILE, TypeAdapter[JsonObject](JsonObject)
+        )
+
     def stored(self) -> list[Stored]:
         """Every record in both journals, oldest first, with where each was read.
 
@@ -252,20 +263,13 @@ class LedgerStore:
         """
         if self.fold is not None:
             return list(self.fold.records)
-        adapter = TypeAdapter[JsonObject](JsonObject)
 
         def parsed(placement: Placement) -> Iterator[Stored]:
             try:
-                raw = (self.roots[placement] / JOURNAL_FILE).read_text(encoding="utf-8")
+                records = self.log(placement).read_all()
             except OSError:
                 return
-            for line in raw.splitlines():
-                if not line.strip():
-                    continue
-                try:
-                    record = adapter.validate_json(line)
-                except ValidationError:
-                    continue
+            for record in records:
                 kind = str(record["kind"]) if "kind" in record else ""
                 yield Stored(
                     line=record,
@@ -292,8 +296,7 @@ class LedgerStore:
         concurrent writer produces a longer file rather than a torn line.
         """
         placement = self.layout.placement_of(record.deciding_kinds(self.kind_at))
-        with self.journal(placement).open("a", encoding="utf-8") as log:
-            log.write(record.model_dump_json() + "\n")
+        self.log(placement).append(record.model_dump(mode="json"))
         if self.fold is not None:
             self.fold.grown(record.model_dump(mode="json"), placement)
 
@@ -434,8 +437,9 @@ class LedgerStore:
         moment is read as local time, which is what a reader pasting a clock
         reading means by it.
         """
-        marker = since if since.tzinfo is not None else since.astimezone()
-        moved = dict.fromkeys(touch.id for touch in self.touches() if touch.at > marker)
+        moved = dict.fromkeys(
+            touch.id for touch in self.touches() if touch.at > aware(since)
+        )
         if ids is None:
             return list(moved)
         return [node_id for node_id in ids if node_id in moved]

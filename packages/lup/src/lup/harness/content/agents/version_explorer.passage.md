@@ -167,7 +167,7 @@ Overview of the full version history.
 ## Guidelines
 
 - **Prompts first.** When comparing versions, always start with `prompts.py`. It's the most impactful file and the one the caller almost always cares about most.
-- **Be precise about what changed.** "The prompt was rewritten" is useless. "The meta-prediction section was replaced: the old version said X (15 lines), the new version says Y (8 lines)" is actionable.
+- **Be precise about what changed.** "The prompt was rewritten" is useless. "The meta-prediction section was replaced: v1.3 said X (15 lines), v1.4 says Y (8 lines)" is actionable.
 - **Quote both sides.** When reporting a change, show the before and after — don't just describe the diff abstractly.
 - **Map commits to versions.** Raw commit hashes are meaningless to the feedback loop. Always translate to version numbers.
 - **Don't analyze performance.** That's the version-reviewer's job. You report what the code says, not how well it worked.

@@ -53,9 +53,11 @@ import typer
 from pydantic import BaseModel, ValidationError
 
 from lup.coordination.identity import session_member_id
+from lup.workspace.checkout_state import CheckoutState
 from lup.coordination.repository import RepositoryPeers
 from lup.coordination.wake import WakePath, wake
 from lup.devtools.review.preimages import PreimageWatch, moved
+from lup.execution.locks import try_exclusive
 from lup.devtools.review.propose import previewed
 from lup.devtools.review.thread import ReviewThread
 from lup.policy.assets.host import review_home
@@ -178,7 +180,7 @@ class ReviewWaiters(BaseModel, frozen=True):
     root: Path
 
     def path(self, review: str) -> Path:
-        return self.root / ".lup" / "review-waiters" / review
+        return CheckoutState(root=self.root).review_waiters() / review
 
     def report(self, review: str, at: datetime) -> None:
         """Record that the operator's words given *at* reached the session through this waiter."""
@@ -220,13 +222,8 @@ class ReviewWaiters(BaseModel, frozen=True):
         path = self.path(review)
         if not path.is_file():
             return False
-        with path.open("a", encoding="utf-8") as handle:
-            try:
-                fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-            except BlockingIOError:
-                return True
-            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
-        return False
+        with try_exclusive(path) as free:
+            return not free
 
 
 class Asker(BaseModel, frozen=True):
@@ -344,7 +341,7 @@ def claimed(root: Path, question: QuestionRecord) -> bool:
     The claim the hook takes for a retry, under the same name, so exactly
     one of them ever carries the approved call out.
     """
-    claim = root / ".lup/review-claims" / question.id
+    claim = CheckoutState(root=root).review_claims() / question.id
     claim.parent.mkdir(parents=True, exist_ok=True)
     try:
         with claim.open("x", encoding="utf-8") as handle:
@@ -456,7 +453,7 @@ def settled_now(
 
     Whatever it came to, the operator's note and line comments ride beneath
     it: an approval with instructions is as much the operator's word as a
-    decline, and was lost when only a decline printed it.
+    decline, and printing the note for a decline alone would lose it.
     """
     answer = question.answer
     words = (
@@ -655,7 +652,7 @@ def woken(asker: Asker, said: list[str], waited: list[RecordedQuestion]) -> None
     A Claude session is woken by its runtime when this background command
     ends; a Codex session's shell tool keeps the command running after the
     turn and starts no turn when it ends -- measured on 0.158.0, where
-    `codex queue` did start one in the idle thread -- so a waiter that
+    `codex queue` does start one in the idle thread -- so a waiter that
     waited queues what it reported, the line saying how to wait again
     included. One run once every answer was in reports in the call that ran
     it, and queuing that too would start a turn for nothing. A subagent's
@@ -721,7 +718,7 @@ def wait_on(
     ``timeout`` it was handed passed, or its runtime stopped it -- saying
     last which, and the command that waits on them again.
     """
-    store = QuestionRelay(root / ".lup/questions.jsonl")
+    store = QuestionRelay(CheckoutState(root=root).questions())
     asker = Asker.here(root)
     try:
         waiting = chosen(store, asker, reviews)

@@ -121,8 +121,8 @@ def test_claude_s_auto_mode_claim_is_what_its_dispatcher_does(
 ) -> None:
     """The row says where a person's question goes; the generated hook is asked.
 
-    Measured on Claude Code 2.1.283: an interactive auto-mode session held a
-    hook's ask as a prompt, and nothing ran unanswered. So with no dashboard
+    Measured on Claude Code 2.1.283: an interactive auto-mode session holds a
+    hook's ask as a prompt, and nothing runs unanswered. So with no dashboard
     the hook asks; with one it parks, and only a recorded answer releases the
     call. This runs the dispatcher under an auto-mode payload both ways.
     """

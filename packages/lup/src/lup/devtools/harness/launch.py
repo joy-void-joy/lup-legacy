@@ -11,7 +11,6 @@ generates regenerated. What it reads only here, the registrations in
 `sync.json.local`, becomes the declaration's mounts and devices.
 """
 
-import os
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from pathlib import Path
@@ -60,7 +59,7 @@ from lup.launch.refusal import LaunchRefused
 from lup.launch.session import StandingGrants, personal_config
 from lup.observability.sessions import SessionRecorder
 from lup.policy.kernel.diagnostic import devtools, step
-from lup.providers.runtime_homes import selected_runtime
+from lup.harness.environment import Placement
 from lup.providers.claude import Claude, ClaudeTools
 from lup.providers.claude.harness import ClaudeSpellings
 from lup.providers.claude.launch import companion_plugin_directories
@@ -164,10 +163,9 @@ def relocation_hint(worktree_path: Path) -> RelocationHint:
     tool, and a workflow change having to find both to land. One of them
     being an adapter method makes that impossible.
     """
-    environ = os.environ  # lup: ignore[os-environ]
     move = f"cd /; cd {worktree_path}"
     here = "the path above"
-    match selected_runtime(dict(environ)):
+    match Placement.here().runtime:
         case "claude":
             return RelocationHint(
                 agent=ClaudeSpellings().relocate_session(here),
@@ -872,11 +870,11 @@ class BaseSettled(BaseModel, frozen=True):
 
     A tree whose base has moved is self-consistent and says nothing about it,
     so a session opened on one plans and edits against code that is no longer
-    there — which cost a planning pass over thirteen concerns on a tree ten
-    commits behind its remote, where two merged pull requests had already done
-    part of the work being planned. Being behind is not itself grounds for
-    refusing a session, so this syncs and reports. Ahead of the regeneration,
-    so the trees the session opens against are the synced source's.
+    there — a planning pass over a tree behind its remote plans work that
+    merged pull requests have already done. Being behind is not itself
+    grounds for refusing a session, so this syncs and reports. Ahead of the
+    regeneration, so the trees the session opens against are the synced
+    source's.
     """
 
     root: Path

@@ -1,21 +1,19 @@
 """The person's tasks, written out because they read where they cannot query.
 
-`TODO_USER.md` is not a new concept and was never a document: it is the tasks
-whose holder is the person, rendered, because they read on a machine that
-cannot ask the log. Everything about it that mattered in the repository it
-came from — that each entry says what *class* of thing it is waiting for, so a
-reader knows whether a row is a decision to make or a command to paste — is a
-field here rather than a convention somebody kept up.
+`TODO_USER.md` is not a document of its own: it is the tasks whose holder is
+the person, rendered, because they read on a machine that cannot ask the log.
+What a reader of it needs — that each entry says what *class* of thing it is
+waiting for, so a reader knows whether a row is a decision to make or a
+command to paste — is a field here rather than a convention somebody keeps up.
 
 **Ordered by what it needs, not by urgency.** Nobody writes "most urgent
 first" at the top of a derived document and nobody keeps it true. Grouping by
 ``needs`` gives a reader the ordering they actually wanted: every command
 together and every judgement together, so one sitting clears one kind.
 
-**A rendering is a view and is never edited.** The document that went stale in
-the worked example went stale because it was written once while the register
-behind it moved on. This is regenerated, so the only way to change a row is to
-change the task.
+**A rendering is a view and is never edited.** A document written once goes
+stale as the register behind it moves on. This is regenerated, so the only way
+to change a row is to change the task.
 """
 
 from pydantic import BaseModel

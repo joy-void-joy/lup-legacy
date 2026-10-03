@@ -32,12 +32,12 @@ import tomlkit
 from pydantic import (
     AfterValidator,
     BaseModel,
+    BeforeValidator,
     Field,
     HttpUrl,
     ValidationError,
     field_validator,
 )
-from pydantic_settings import BaseSettings
 from tomlkit.exceptions import TOMLKitError
 from tomlkit.items import Table
 
@@ -46,6 +46,7 @@ from lup.harness.models import NativeName
 from lup.launch.declaration import OuterContainer
 from lup.providers.claude.theme import ClaudeTheme
 from lup.types import JsonObject, JsonValue, ModelTier, SessionEffort
+from lup.workspace.user_directories import UserDirectories
 
 
 class UserTheme(BaseModel, frozen=True, extra="forbid"):
@@ -102,6 +103,15 @@ type BrowserOrigin = Annotated[HttpUrl, AfterValidator(origin_only)]
 """Where a browser reaches a page, as ``https://their.proxy.name`` or ``http://host:8080``."""
 
 
+def one_or_many(value: JsonValue) -> JsonValue:
+    """A key written alone, as the list of one it stands for."""
+    return [value] if isinstance(value, str) else value
+
+
+type KeySequences = Annotated[list[str], BeforeValidator(one_or_many)]
+"""The keys one dashboard action runs on: a key, or a list of keys, ``[]`` for none."""
+
+
 class UserDashboard(BaseModel, frozen=True, extra="forbid"):
     """How the dashboard reaches for the person when a review parks, and where they reach it."""
 
@@ -117,6 +127,14 @@ class UserDashboard(BaseModel, frozen=True, extra="forbid"):
     ``Host`` is one of theirs and takes a write whose ``Origin`` is one, and
     `dashboard status`, `dashboard open` and an operator's launch print the
     page's launch address at each."""
+
+    keys: dict[str, KeySequences] = {}
+    """``[dashboard.keys]``: the page's actions rebound by name, each to a key
+    or a list of keys in Vim's notation (``"agent.next" = ["<A-Right>", ")"]``),
+    ``[]`` unbinding it. A value replaces lup's keys for that action. Each
+    entry is checked against the dashboard's action catalog, and one that
+    cannot apply is refused alone and reported — on the page, and by
+    `dashboard keys` — rather than refusing this file."""
 
     def served_at(self) -> list[str]:
         """Each declared origin as a browser writes it in ``Origin``: its default port left out."""
@@ -184,28 +202,11 @@ class UserConfig(BaseModel, frozen=True, extra="forbid"):
         return value
 
 
-class UserConfigHome(BaseSettings):
-    """Where the XDG base directory specification says a person's config lives.
-
-    Its one variable, read the specification's way: an absolute path moves
-    every program's configuration, and an empty or relative one is ignored in
-    favour of ``~/.config``.
-    """
-
-    xdg_config_home: str = ""
-
-    def directory(self) -> Path:
-        """lup's own directory under that base."""
-        named = Path(self.xdg_config_home)
-        base = named if named.is_absolute() else Path.home() / ".config"
-        return base / "lup"
-
-
 class UserConfigFile:
     """The directory holding one person's decisions and the accounts they name."""
 
     def __init__(self, home: Path | None = None) -> None:
-        self.home = home if home is not None else UserConfigHome().directory()
+        self.home = home if home is not None else UserDirectories().config()
 
     def path(self) -> Path:
         """The file :class:`UserConfig` is read from and written to."""

@@ -39,7 +39,7 @@ Lup's rather than the reading project's, even though the path is repository-
 relative and a project has a `tests/unit/` of its own. What these pin is the
 dispatcher lup compiles, which a downstream inherits whole — so the evidence
 for it sits where the compilation does, and a project that never wrote such a
-fixture was citing a file it did not have.
+fixture would otherwise cite a file it does not have.
 """
 
 LIBRARY_PUBLICATION_FIXTURES = (

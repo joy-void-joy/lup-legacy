@@ -213,10 +213,10 @@ def settings(path: Path) -> Naming | None:
 def request_for(prompt: str) -> str:
     """The prompt as the naming model reads it: quoted, as the thing to name.
 
-    Handed over bare, a prompt is a request the model answers — a runtime
-    whose naming model has tools was measured exploring a scratch directory
-    to explain what it had been asked to name, until its deadline ran out.
-    Between markers the declared instruction can point at, it is data.
+    Handed over bare, a prompt is a request the model answers — measured, a
+    naming model with tools spends its whole deadline exploring a scratch
+    directory to explain what it was asked to name. Between markers the
+    declared instruction can point at, it is data.
     """
     return f"<request>\n{prompt}\n</request>"
 
@@ -227,7 +227,7 @@ def ran(arguments: list[str], given: str, deadline: float, cwd: str = "") -> str
     Started in a session of its own and killed whole at the deadline. A CLI
     installed as a wrapper around its real binary leaves the binary running
     when only the wrapper is killed: measured with Codex's npm wrapper, whose
-    binary went on past the deadline and wrote its answer into a directory
+    binary runs on past the deadline and writes its answer into a directory
     already removed.
     """
     try:

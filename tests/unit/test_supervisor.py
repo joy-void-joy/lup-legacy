@@ -503,10 +503,10 @@ def test_an_answered_question_stops_reading_as_waiting_on_the_human(
 ) -> None:
     """`--pending` means waiting on you, not waiting on the promoter.
 
-    Answering and then listing reported every question back as pending,
-    because an offer is not a promoted answer — so the one command a human
-    runs to check their work said nothing had been recorded, and counting
-    files on disk was the only way to tell.
+    Read as unpromoted, answering and then listing reports every question
+    back as pending, because an offer is not a promoted answer — so the one
+    command a human runs to check their work would say nothing is recorded,
+    leaving counting files on disk the only way to tell.
     """
     mailbox = build_run(tmp_path)
     ask(mailbox, "q1", ["yes", "no"])
@@ -564,11 +564,11 @@ def test_a_console_answer_may_reject_every_choice_a_design_question_offered(
 def test_a_redirect_reports_who_it_is_queued_for_rather_than_that_it_sent(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """`redirected <actor>` was printed on the strength of writing a file.
+    """`redirected <actor>` is not printed on the strength of writing a file.
 
-    Nothing between writing the stream and the actor reading it said which
-    had happened, so a redirect that reached nobody read exactly like one
-    that stopped a worker mid-design.
+    Nothing between writing the stream and the actor reading it says which
+    happened, so on that strength a redirect that reached nobody would read
+    exactly like one that stopped a worker mid-design.
     """
     build_run(tmp_path)
     # The population record, which is what a door resolves an address
@@ -625,24 +625,6 @@ async def test_an_unexpected_host_header_is_refused(tmp_path: Path) -> None:
     assert response.status_code == 421
 
 
-def test_a_finished_run_falls_back_to_the_state_file_fold(tmp_path: Path) -> None:
-    """A run recorded before the mailbox existed still renders its questions."""
-    state = persisted_state(
-        phase=ResolvePhase.COMPLETE,
-        questions=QuestionBatch(run_id="run-1", questions=[question("q1", ["yes"])]),
-        answers=AnswerBatch(
-            run_id="run-1", answers=[QuestionAnswer(question_id="q1", value="yes")]
-        ),
-    )
-    projected = supervisor_state(
-        state, QuestionMailbox(tmp_path / "empty"), AdapterName.CLAUDE
-    )
-
-    assert [view.question.id for view in projected.pending] == ["q1"]
-    assert projected.pending[0].answered == "yes"
-    assert projected.status is RunStatus.COMPLETE
-
-
 def test_liveness_is_derived_from_activity_not_from_a_lock() -> None:
     moving = persisted_state(phase=ResolvePhase.WORKERS)
     finished = persisted_state(phase=ResolvePhase.COMPLETE)
@@ -652,14 +634,12 @@ def test_liveness_is_derived_from_activity_not_from_a_lock() -> None:
     assert not run_is_live(finished, activity=100.0, now=100.0)
 
 
-def test_an_unanswered_question_parks_a_run_that_stopped_moving() -> None:
-    state = persisted_state(
-        phase=ResolvePhase.WORKERS,
-        questions=QuestionBatch(run_id="run-1", questions=[question("q1", None)]),
-    )
-    quiet = supervisor_state(
-        state, QuestionMailbox(Path("/nonexistent")), AdapterName.CLAUDE, now=1e12
-    )
+def test_an_unanswered_question_parks_a_run_that_stopped_moving(
+    tmp_path: Path,
+) -> None:
+    mailbox = build_run(tmp_path)
+    ask(mailbox, "q1", None)
+    quiet = supervisor_state(persisted_state(), mailbox, AdapterName.CLAUDE, now=1e12)
 
     assert not quiet.live
     assert quiet.status is RunStatus.PARKED

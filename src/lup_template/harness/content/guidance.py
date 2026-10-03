@@ -202,9 +202,9 @@ def document(sections: list[models.GuidanceSection]) -> models.PromptDocument:
     places it by naming a chapter instead of by being spliced into a list
     somebody else maintains.
 
-    What the hand-written list cost was not effort but ownership: sections
-    from two packages sat in one sequence no module could claim a stretch of,
-    so declining a subject left its prose behind and adding one meant editing
-    a file in the other half.
+    What a hand-written list would cost is not effort but ownership: sections
+    from two packages would sit in one sequence no module could claim a
+    stretch of, so declining a subject would leave its prose behind and adding
+    one would mean editing a file in the other half.
     """
     return models.PromptDocument(source=__name__, parts=models.sectioned(sections))

@@ -1,19 +1,17 @@
 """What `git -C` costs: nothing, because the verb behind it is what is judged.
 
 A directory redirect moves the command to another tree and changes nothing
-about what the command does there. `cd there && git <verb>` has always been
-two segments judged on their own, and a question on the `-C` spelling of the
-same act deterred nothing -- its own recovery text named the `cd` spelling as
-the way through. It cost a turn on every sibling worktree, every project the
-sync registry mounts, and every relative or variable-carried path, thirty-five
-times in one checkout's question log.
+about what the command does there. `cd there && git <verb>` is two segments
+judged on their own, so a question on the `-C` spelling of the same act would
+deter nothing -- the `cd` spelling is always the way through -- while costing a
+turn on every sibling worktree, every project the sync registry mounts, and
+every relative or variable-carried path.
 
-The argument the guard rested on was that a commit's reversibility belongs to
-the reflog of the tree it runs in. It does, and that reflog is exactly as
-present in the other tree: the redirect makes it that tree's reflog, not
-nobody's. So the verb's own row answers -- a commit allows, a merge asks, a
-push with a deleted ref asks -- wherever the flag points and however the path
-is spelled.
+A commit's reversibility belongs to the reflog of the tree it runs in, and
+that reflog is exactly as present in the other tree: the redirect makes it
+that tree's reflog, not nobody's. So the verb's own row answers -- a commit
+allows, a merge asks, a push with a deleted ref asks -- wherever the flag
+points and however the path is spelled.
 """
 
 from lup.policy.kernel.decision import KernelDecision
@@ -46,12 +44,10 @@ def test_a_redirect_in_front_of_a_read_costs_nothing() -> None:
 
 
 def test_a_redirect_in_front_of_a_reversible_mutation_costs_nothing_either() -> None:
-    """The case the guard was written for, and the one `cd` never asked about.
+    """A mutation in another tree, which `cd` never asks about either.
 
-    Every spelling of the path, because the retired guard let an absolute
-    path through only where the host had measured it as a sibling and asked
-    about a relative one, a variable, and any other repository -- which is
-    where reaching another checkout is the work.
+    Every spelling of the path -- absolute, relative, a variable, any other
+    repository -- because reaching another checkout is the work.
     """
     for command in (
         "git -C packages/lup commit -m x",

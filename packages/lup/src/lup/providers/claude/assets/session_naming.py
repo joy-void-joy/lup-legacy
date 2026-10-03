@@ -24,13 +24,13 @@ which documents ``sessionTitle`` for this event:
   ``/rename`` fires no prompt hook of its own — though the docs list the
   field for ``SessionStart`` alone. A conversation reopened with
   ``--resume`` or ``--continue`` and no ``--name`` reports the title it last
-  had, exactly as it was set — ``Renamed By Hand`` stayed ``Renamed By
+  had, exactly as it was set — ``Renamed By Hand`` stays ``Renamed By
   Hand`` — at ``SessionStart`` and at its prompts; one never named reports
   no ``session_title`` at all (2.1.285, in print mode).
 - ``claude --safe-mode -p`` answers with plugins, hooks and MCP servers off,
   so the ask cannot re-enter this hook, and with ``--output-format json`` and
   ``--json-schema`` the name arrives as ``structured_output``. On the
-  strongest tier's ``opus`` at ``low`` effort it took 3.5 to 3.7 seconds
+  strongest tier's ``opus`` at ``low`` effort it takes 3.5 to 3.7 seconds
   (2.1.285).
 
 A title the payload reports that this hook did not put there — a resumed

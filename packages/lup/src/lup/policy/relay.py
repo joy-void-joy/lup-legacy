@@ -80,9 +80,14 @@ from lup.policy.assets.host import (
     stored_form,
     stream_records,
 )
+from lup.execution.locks import exclusive
 from lup.policy.identity import REVIEW_ANSWERS_ENV
 from lup.policy.kernel.decision import DecisionEffect
-from lup.policy.kernel.semantics import ReviewPurpose, ReviewerRequirement
+from lup.policy.kernel.semantics import (
+    PathRuleKind,
+    ReviewPurpose,
+    ReviewerRequirement,
+)
 from lup.policy.operations import Operation
 from lup.types import JsonObject, JsonValue
 
@@ -338,8 +343,28 @@ class StoredDocument(BaseModel, frozen=True):
     sha256: str
 
 
+class ProtectedMatch(BaseModel, frozen=True):
+    """The protected-path rule a file met, as a reviewer is shown it.
+
+    ``kind`` is how the rule matched -- ``subtree`` for a declared root or
+    lup's own state, ``name_prefix`` for an environment file, ``new_devtools``
+    for a devtools module not written yet, ``exact`` for a human-owned file,
+    ``contains_part`` for a manifest or lockfile wherever it sits. ``root`` is
+    the rule's value as declared, and ``description`` what that is in plain
+    words, the root itself where nothing was declared.
+    """
+
+    kind: PathRuleKind
+    root: str
+    description: str
+
+
 class FileVerdict(BaseModel, frozen=True):
-    """The original routed verdict on one file, bound by digest to the images it judged."""
+    """The original routed verdict on one file, bound by digest to the images it judged.
+
+    ``protected`` is the protected-path rule the file met; ``None`` where it
+    met none, and on a verdict recorded before the rule was kept.
+    """
 
     path: Path
     effect: DecisionEffect
@@ -348,6 +373,7 @@ class FileVerdict(BaseModel, frozen=True):
     rules: list[str]
     before_sha256: str | None
     after_sha256: str | None
+    protected: ProtectedMatch | None = None
 
 
 class CapturedFileReview(FileVerdict, frozen=True):
@@ -489,8 +515,8 @@ class QuestionRecord(BaseModel, frozen=True):
     """The parts the fingerprint binds beyond the call itself, by name, in the order it hashed them.
 
     Kept so a reader on other code tells a record it cannot check from one
-    that changed; absent on a record parked before it was kept, which bound
-    the parts it carries.
+    that changed; absent on a record that keeps none, which binds the parts
+    it carries.
     """
     changed: datetime | None = None
     """When it came to the state it stands in, where a transition moved it; its parking otherwise."""
@@ -1031,16 +1057,12 @@ class QuestionRelay:
         """
         if not relay_current(self.path):
             migrate_relay(self.path)
-        lock = relay_lock(self.path)
-        lock.parent.mkdir(parents=True, exist_ok=True)
-        with lock.open("a", encoding="utf-8") as handle:
-            fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+        with exclusive(relay_lock(self.path)):
             self.holder = threading.get_ident()
             try:
                 yield
             finally:
                 self.holder = 0
-                fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
 
     def questions(self) -> list[RecordedQuestion]:
         """Every question, folded forward to its latest state, with the host's answer.

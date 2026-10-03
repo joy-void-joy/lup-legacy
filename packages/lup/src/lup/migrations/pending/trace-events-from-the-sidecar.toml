@@ -1,0 +1,22 @@
+subjects = [
+    "events_from_legacy_markdown",
+    "iter_markdown_blocks",
+    "strip_code_fence",
+    "Block",
+    "Block.label",
+    "Block.body",
+]
+reason = """
+a trace's tool, error and capability events are read from the \
+`.events.jsonl` sidecar TraceLogger writes beside it and nowhere else, so a \
+`.md` trace with no sidecar has no events for `trace errors`, \
+`trace capabilities` or the tool-call view, rather than events parsed back \
+out of its markdown"""
+
+[[steps]]
+instruction = """
+Read a trace's events with events_for_trace(trace_file) from \
+lup.devtools.trace.traces, which answers from its sidecar, or \
+read_trace_events(sidecar) from lup.observability.trace. A trace written \
+without a sidecar is still listed, shown and searched as text; to keep its \
+events in the analyses, delete it and run the session again, or leave it out."""

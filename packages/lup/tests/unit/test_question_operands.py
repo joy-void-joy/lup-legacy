@@ -3,18 +3,19 @@
 Whoever approves reads the question's first line and answers yes or no: the
 words of the call that decided it, then why. What they weigh is the operand:
 which packages a `--with` installs, which path a write lands on, which file a
-rule protects. A question that named the category and left the operand out --
-"external code", "a protected path" -- put the one word that decided it
-somewhere the approver could not read it.
+rule protects. A question that names the category and leaves the operand out --
+"external code", "a protected path" -- puts the one word that decides it
+somewhere the approver cannot read it.
 
-These pin the shape at the three seams that were measured saying the least,
-so a rewrite that reaches for the category again fails here rather than in
-somebody's approval prompt.
+These pin the shape at the three seams most prone to say the least, so a
+rewrite that reaches for the category fails here rather than in somebody's
+approval prompt.
 """
 
 from lup.policy.kernel.decision import KernelDecision
 from lup.policy.kernel.edit import protected_path_reason
-from lup.policy.kernel.rows import PathRuleKind, PathRuleRow, ShellRuleRow
+from lup.policy.kernel.rows import PathRuleRow, ShellRuleRow
+from lup.policy.kernel.semantics import PathRuleKind
 from lup.policy.kernel.shell import decide_shell
 from lup.policy.shell_rules import erase_shell_rules
 from lup.policy.vocabulary import default_vocabulary
@@ -31,7 +32,12 @@ def verdict(command: str) -> KernelDecision:
 
 def rule(kind: PathRuleKind, value: str, reason: str) -> PathRuleRow:
     return PathRuleRow(
-        kind=kind, value=value, reason=reason, recovery=[], allow_autonomous=False
+        kind=kind,
+        value=value,
+        reason=reason,
+        recovery=[],
+        allow_autonomous=False,
+        description=value,
     )
 
 

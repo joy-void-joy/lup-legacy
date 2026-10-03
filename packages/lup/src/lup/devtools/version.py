@@ -21,10 +21,11 @@ from pathlib import Path
 from typing import Annotated, Literal, TypedDict
 
 import sh
-import tomlkit
 import typer
+from tomlkit import TOMLDocument
 
 from lup.execution.git import GitError, Repository
+from lup.formats.toml import edited_manifest
 from lup.workspace.history import parse_semver
 from lup.workspace.paths import agent_version
 
@@ -238,7 +239,7 @@ def release_note(version: str, summary: str, details: list[str]) -> ReleaseNote:
 
     Separate from writing it so a dry run shows the entry itself rather than
     a description of one — the summary and its bullets are what a reader is
-    deciding about, and the rendering is where they have been damaged before.
+    deciding about, and the rendering is where they can be damaged.
     """
     return ReleaseNote(
         version=version, date=dt.date.today(), summary=summary, details=details
@@ -265,19 +266,15 @@ def write_release_note(
 def write_agent_version(pyproject: Path, version: str) -> None:
     """Record a new agent version, changing nothing else in the manifest.
 
-    Parsed and dumped through tomlkit rather than rewritten, so the comments,
-    key order, blank lines and quoting style around the one value stay exactly
-    as their author left them. A bump that reformatted the manifest would put
-    a diff nobody wrote in front of every reviewer of every release, with the
-    real change — three characters — somewhere inside it.
-
-    Raises where the manifest declares no ``[tool.lup]`` ``agent_version``,
-    which is a project that has not adopted the version this bumps rather
-    than a manifest this could repair.
+    Raises where the manifest declares no ``[tool.lup]`` table, which is a
+    project that has not adopted the version this bumps rather than a
+    manifest this could repair.
     """
-    document = tomlkit.parse(pyproject.read_text(encoding="utf-8"))
-    document["tool"]["lup"]["agent_version"] = version
-    pyproject.write_text(tomlkit.dumps(document), encoding="utf-8")
+
+    def moved(document: TOMLDocument) -> None:
+        document["tool"]["lup"]["agent_version"] = version
+
+    edited_manifest(pyproject, moved)
 
 
 @app.command("bump")

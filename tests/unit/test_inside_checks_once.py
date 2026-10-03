@@ -1,8 +1,8 @@
 """Two runtimes over one image ask the image each shared question once.
 
-Measured on `harness requirements --inside` with the default target: every
-container check ran once per runtime and the boundary notice printed twice,
-so a reader watched the same list go by again with nothing saying it was the
+Asked once per runtime, `harness requirements --inside` with the default
+target runs every container check twice and prints the boundary notice twice,
+so a reader watches the same list go by again with nothing saying it is the
 same question. Only what a runtime declares differently -- its own session
 probe -- is worth a second container start.
 """

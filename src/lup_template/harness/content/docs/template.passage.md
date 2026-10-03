@@ -131,9 +131,9 @@ overrides, `"ignore": true` opt-outs, and additional projects. Entries there
 override tracked entries by name or add local-only ones. `sync setup` and
 `sync remote` write that registration. `sync mark-synced`
 stores a checkpoint under the repository's common Git directory, so every
-sibling worktree reads the same review progress. Existing `last_synced_commit`
-values are used until a shared checkpoint is recorded; the shared record wins
-over stale local values and is bound to its reviewed ref and source: the
+sibling worktree reads the same review progress. A project with no checkpoint
+has never been reviewed. The checkpoint is bound to its reviewed ref and
+source: the
 origin URL for fetched reviews, or the local Git repository for unpublished
 work. Two independent local clones keep separate unpublished checkpoints.
 

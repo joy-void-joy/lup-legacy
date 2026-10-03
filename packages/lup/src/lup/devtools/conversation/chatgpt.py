@@ -4,14 +4,13 @@ import hashlib
 import json
 import logging
 import mimetypes
-import shutil
 import tempfile
 from datetime import UTC, datetime
 from functools import cache
 from itertools import count
 from pathlib import Path, PurePosixPath
-from typing import Literal
-from urllib.parse import ParseResult, quote, unquote, urljoin, urlparse
+from typing import ClassVar, Literal
+from urllib.parse import quote, unquote, urljoin, urlparse
 
 from markdown_it import MarkdownIt
 from playwright.async_api import (
@@ -25,10 +24,15 @@ from pydantic import (
     Field,
     SecretStr,
     TypeAdapter,
-    model_validator,
 )
 
 from lup.types import JsonValue
+from lup.devtools.conversation.common import (
+    Address,
+    Payload,
+    attachment_label,
+    install_delivery,
+)
 from lup.devtools.conversation.errors import ConversationDownloadError
 
 logger = logging.getLogger(__name__)
@@ -40,18 +44,6 @@ class ChatGPTDownloadError(ConversationDownloadError):
 
 class ChatGPTAuthenticationRequired(ChatGPTDownloadError):
     """An ordinary conversation needs a fresh ChatGPT browser login."""
-
-
-class Payload(BaseModel, frozen=True, extra="ignore"):
-    """A tolerant typed view over ChatGPT's unsupported web payload."""
-
-    @model_validator(mode="before")
-    @classmethod
-    def absent_where_null(cls, data: JsonValue) -> JsonValue:
-        """Treat a null service field like an omitted optional field."""
-        if not isinstance(data, dict):
-            return data
-        return {name: value for name, value in data.items() if value is not None}
 
 
 class ChatGPTSession(Payload, frozen=True):
@@ -70,54 +62,18 @@ class ChatGPTSession(Payload, frozen=True):
         return {"Authorization": f"Bearer {self.access_token.get_secret_value()}"}
 
 
-class ConversationReference(BaseModel, frozen=True):
+class ConversationReference(Address, frozen=True):
     """An authenticated conversation URL or a public shared snapshot URL."""
 
-    value: str
-
-    def parsed(self) -> ParseResult:
-        """This reference as a validated HTTPS ChatGPT URL."""
-        supplied = self.value
-        located = urlparse(supplied if "://" in supplied else f"https://{supplied}")
-        host = (located.hostname or "").lower()
-        if located.scheme != "https" or host not in {
-            "chatgpt.com",
-            "www.chatgpt.com",
-            "chat.openai.com",
-        }:
-            raise ChatGPTDownloadError(
-                "Expected an https://chatgpt.com/c/... or /share/... URL"
-            )
-        return located
-
-    def route(self) -> str:
-        """Whether this URL names a live conversation or a shared snapshot."""
-        parts = PurePosixPath(self.parsed().path).parts
-        if "share" in parts:
-            return "share"
-        if "c" in parts:
-            return "conversation"
-        raise ChatGPTDownloadError(
-            "ChatGPT URL must contain /c/<conversation-id> or /share/<share-id>"
-        )
-
-    def identifier(self) -> str:
-        """The service identifier following this URL's route segment."""
-        parts = PurePosixPath(self.parsed().path).parts
-        segment = "share" if self.route() == "share" else "c"
-        position = parts.index(segment)
-        if position + 1 >= len(parts):
-            raise ChatGPTDownloadError(f"ChatGPT URL has no id after /{segment}/")
-        identifier = parts[position + 1]
-        if not identifier or not all(
-            character.isalnum() or character in {"-", "_"} for character in identifier
-        ):
-            raise ChatGPTDownloadError("ChatGPT conversation id is malformed")
-        return identifier
-
-    def page_url(self) -> str:
-        """The canonical page a browser opens for this reference."""
-        return f"https://chatgpt.com/{'share' if self.route() == 'share' else 'c'}/{self.identifier()}"
+    service: ClassVar[str] = "ChatGPT"
+    origin: ClassVar[str] = "https://chatgpt.com"
+    hosts: ClassVar[tuple[str, ...]] = (
+        "chatgpt.com",
+        "www.chatgpt.com",
+        "chat.openai.com",
+    )
+    conversation_segment: ClassVar[str] = "c"
+    refused: ClassVar[type[ConversationDownloadError]] = ChatGPTDownloadError
 
     def api_urls(self) -> list[str]:
         """The web endpoints known to serve this page's complete payload."""
@@ -493,16 +449,6 @@ def selected_attachment(
             )
 
 
-def attachment_marker(attachment: ChatGPTAttachment, path: Path | None) -> str:
-    """The transcript pointer to one attachment, retained or deliberately not."""
-    if path is None:
-        return (
-            f"[Attachment: {attachment.stored_name()} → not retained; "
-            "this delivery selected a single artifact]"
-        )
-    return f"[Attachment: {attachment.stored_name()} → {path.as_posix()}]"
-
-
 def render_part(part: JsonValue) -> str:
     """One content part without silently dropping an unfamiliar shape."""
     if isinstance(part, str):
@@ -528,7 +474,7 @@ def render_message(
     if message.content.text:
         content.append(message.content.text)
     content.extend(
-        attachment_marker(item, paths.get(item.identity()))
+        attachment_label(item.stored_name(), paths.get(item.identity()))
         for item in message.attachments()
     )
     body = "\n\n".join(text for text in content if text)
@@ -847,25 +793,13 @@ def write_delivery(
         (staged / "manifest.json").write_text(
             manifest.model_dump_json(indent=2) + "\n", encoding="utf-8"
         )
-        if destination.is_symlink():
-            raise ChatGPTDownloadError("Conversation destination is a symlink")
-        backup = Path(temporary) / "prior"
-        if destination.exists():
-            if not destination.is_dir():
-                raise ChatGPTDownloadError(
-                    "Conversation destination exists and is not a directory"
-                )
-            destination.rename(backup)
-        try:
-            staged.rename(destination)
-        except OSError as error:
-            if backup.exists():
-                backup.rename(destination)
-            raise ChatGPTDownloadError(
-                "Could not install the complete ChatGPT delivery"
-            ) from error
-        if backup.exists():
-            shutil.rmtree(backup)
+        install_delivery(
+            staged,
+            destination,
+            Path(temporary) / "prior",
+            ConversationReference.service,
+            ChatGPTDownloadError,
+        )
     return destination
 
 

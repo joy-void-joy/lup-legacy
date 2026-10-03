@@ -496,10 +496,11 @@ def detached(
 
 
 def test_a_detached_seed_does_not_claim_the_run_it_is_about_to_create() -> None:
-    """The launcher reported a run started while the child refused itself.
+    """The launcher never reports a run started while the child refuses itself.
 
-    Pinned as a composition rather than at either end: both halves were green
-    on their own, and the failure lived only in what one handed the other.
+    Pinned as a composition rather than at either end: both halves can be
+    green on their own, with the failure living only in what one hands the
+    other.
     """
     arguments = detached(admitted=admission_flags(["seed a run from these words"]))
 
@@ -509,7 +510,7 @@ def test_a_detached_seed_does_not_claim_the_run_it_is_about_to_create() -> None:
 
 
 def test_a_detached_admission_into_a_run_a_human_named_still_refuses() -> None:
-    """The typo guard survives the fix that stopped the launcher forging one."""
+    """The typo guard holds for a detached launch, which forges no run id."""
     arguments = detached("resolve-typo", admission_flags(["widen the run"]))
 
     assert forwarded_run_id(arguments) == "resolve-typo"
@@ -518,7 +519,7 @@ def test_a_detached_admission_into_a_run_a_human_named_still_refuses() -> None:
 
 
 def test_a_detached_launch_carries_the_evidence_scope_it_was_given() -> None:
-    """Dropping it detached a larger run than was asked for, reported as this one."""
+    """Dropping it detaches a larger run than was asked for, reported as this one."""
     assert "--no-issues" in detached(issues=False)
     assert "--no-issues" not in detached(issues=True)
 
@@ -568,10 +569,9 @@ def registered_group(parent: typer.Typer, name: str) -> typer.Typer:
 def test_every_resolver_option_is_carried_or_declined_by_a_detached_launch() -> None:
     """A flag added later has to be decided rather than silently dropped.
 
-    Each silent misfire of this command was one option missing from the
-    relaunch — the admitted words, then a forged `--run-id`, then the evidence
-    scope. So the guard belongs on the whole option list rather than on
-    whichever one was dropped most recently.
+    A silent misfire of this command is one option missing from the relaunch
+    — the admitted words, a forged `--run-id`, the evidence scope. So the
+    guard belongs on the whole option list rather than on any one option.
     """
     callback = registered_group(app, "resolve").registered_callback
 

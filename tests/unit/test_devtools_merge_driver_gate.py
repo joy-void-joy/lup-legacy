@@ -8,14 +8,15 @@ shared config at all — and a clone that has already made it never writes
 there again.
 
 Which is what the report in front of it has to know. Asked unconditionally,
-it stopped a worktree over a write nobody was going to make, wherever the
-shared config was held read-only; asked about the outstanding registration,
+it would stop a worktree over a write nobody is going to make, wherever the
+shared config is held read-only; asked about the outstanding registration,
 it stays out of the way of a registered clone. And an unregistered clone that
 cannot write is told, and given its worktree anyway: the driver decides how a
-merge of the generated trees resolves, which the new checkout meets no sooner
-than every existing one of that clone does, while refusing cost the work
-itself — a documentation branch that fell back to plain `git worktree add`,
-and a resolver run that could not lease its first concern in the sandbox.
+merge of the generated trees resolves, which the checkout being made meets no
+sooner than every existing one of that clone does, while refusing costs the
+work itself — a documentation branch falling back to plain
+`git worktree add`, a resolver run unable to lease its first concern in the
+sandbox.
 """
 
 from pathlib import Path
@@ -172,7 +173,7 @@ def test_a_worktree_is_still_removed_where_only_the_config_is_held(
 
     The entry it rewrites lives under the shared directory's `worktrees/`,
     which `config` is beside rather than part of. Refused on the config lock,
-    a removal that would have worked was reported as a sandbox to escape.
+    a removal that would work reads as a sandbox to escape.
     """
     register(repo)
     sh.Command("git")(

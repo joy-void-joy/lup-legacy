@@ -263,8 +263,8 @@ class Surroundings(BaseModel, frozen=True):
     Without it a neighbour can be asked only about itself over an empty
     neighbourhood — one hop — which is enough for evidence and not for a claim
     resting on a claim resting on a refuted claim. The transitive reading is
-    what let one landing invalidate ten keystone claims at once in the
-    repository this came from, and it has to reach the whole chain.
+    what lets one landing invalidate every claim resting on it at once, and
+    it has to reach the whole chain.
     """
 
     def at(self, node_id: str) -> LedgerNode | None:

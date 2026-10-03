@@ -14,6 +14,7 @@ from uuid import NAMESPACE_URL, uuid5
 from pydantic import BaseModel, ValidationError
 
 from lup.channels.models import Door, publish_atomic, utc_now
+from lup.workspace.checkout_state import CheckoutState
 from lup.coordination.bare import store as roster
 from lup.coordination.bare.store import subagent_id
 from lup.coordination.repository import RepositoryPeers
@@ -65,7 +66,7 @@ class ReviewNotifications(BaseModel, frozen=True):
 
     def path(self, entry: QuestionRecord) -> Path:
         identity = uuid5(NAMESPACE_URL, entry.id)
-        return self.root / ".lup" / "review-notifications" / f"{identity}.json"
+        return CheckoutState(root=self.root).review_notifications() / f"{identity}.json"
 
     def read(self, entry: QuestionRecord) -> ReviewNotification | None:
         path = self.path(entry)

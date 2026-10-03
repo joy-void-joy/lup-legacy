@@ -24,7 +24,6 @@ behind `bun.lock`, :func:`restore_dependencies` runs the frozen install first
 gate's `bun test` row does the same before it runs.
 """
 
-import hashlib
 import os
 from importlib.metadata import version
 from pathlib import Path
@@ -37,12 +36,12 @@ from lup.devtools.dev.library import DISTRIBUTION
 from lup.execution.shell import LazyCommand
 from lup.formats.banner import REGENERATE_COMMAND, VERBATIM_COPY
 from lup.harness.materialization import AtomicMaterializer
+from lup.formats import digest
 from lup.harness.models import Artifact, ArtifactTree
 from lup.harness.ownership import (
     OWNERSHIP_FILENAME,
     OwnedArtifact,
     OwnershipManifest,
-    content_digest,
     load_manifest,
     save_manifest,
 )
@@ -98,13 +97,7 @@ def source_files(
 
 def source_digest(workspace: Path) -> str:
     """One digest over the workspace's sources, so proof says what was built."""
-    digest = hashlib.sha256()
-    for path in source_files(workspace):
-        digest.update(path.relative_to(workspace).as_posix().encode("utf-8"))
-        digest.update(b"\0")
-        digest.update(path.read_bytes())
-        digest.update(b"\0")
-    return digest.hexdigest()
+    return digest.tree(source_files(workspace), workspace)
 
 
 def toolchain_output(failed: sh.ErrorReturnCode) -> str:
@@ -227,7 +220,7 @@ def bundle_manifest(workspace: Path, desired: ArtifactTree) -> OwnershipManifest
             OwnedArtifact(
                 path=artifact.path,
                 category="generated",
-                sha256=content_digest(artifact.content),
+                sha256=digest.text(artifact.content),
                 semantic_id=artifact.semantic_id,
             )
             for artifact in desired.artifacts

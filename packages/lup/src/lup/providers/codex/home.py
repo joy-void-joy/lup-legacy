@@ -166,7 +166,7 @@ def sanitized_codex_config(content: str) -> str:
 def derived_codex_config(account: str, scoped: str) -> str:
     """The configuration a worktree home opens with: the account's, and its own installs.
 
-    The account's settings as they stand now, sanitized as a seed always was,
+    The account's settings as they stand now, sanitized as every seed is,
     with what only this home can say laid back over them — the plugins it
     installed and registered, and the trust it recorded for checkouts and
     hooks, which join the account's own trust rather than replacing it.

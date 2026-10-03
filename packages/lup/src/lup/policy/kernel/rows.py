@@ -5,16 +5,7 @@ from typing import Literal, TypedDict, NotRequired
 from .decision import CheckpointRequirement, SandboxPlacement, KernelDecision
 from .diagnostic import Step
 from .effects import EffectRow
-from .semantics import ReviewerRequirement
-
-type PathRuleKind = Literal[
-    "exact",
-    "subtree",
-    "name_prefix",
-    "new_subtree",
-    "contains_part",
-    "new_devtools",
-]
+from .semantics import PathRuleKind, ReviewerRequirement
 
 type RuleLevel = Literal["root", "command", "subcommand", "operation"]
 """Which nesting level of a shell table a resolved value was declared at.
@@ -50,6 +41,10 @@ class PathRuleRow(TypedDict):
 
     ``allow_autonomous`` releases the rule for an identity that already
     reviews its own edits; every other rule holds regardless of caller.
+    ``description`` says in plain words what the rule protects, for a
+    reviewer who sees which rule a file met; it is the value itself where
+    nothing was declared, and absent from a row another repository's older
+    policy renders, which the value then stands in for.
     """
 
     kind: PathRuleKind
@@ -57,6 +52,7 @@ class PathRuleRow(TypedDict):
     reason: str
     recovery: list[Step]
     allow_autonomous: bool
+    description: NotRequired[str]
 
 
 class DisplacedTargetRow(TypedDict):
@@ -324,6 +320,15 @@ class AntiPatternRow(TypedDict):
     with no version of the file passing both. So the gate says what it knows:
     resolved, it decides; unresolved, it asks.
     """
+    roles: list[PathRoleName]
+    """The path roles whose files this rule judges.
+
+    Production for most: a convention about how code reads is about the code
+    other code reads. A rule about how prose is written also reaches a test,
+    whose docstring is read as the spec of what the test pins. Declared on
+    the row rather than decided by the gate, because which roles a rule is
+    about is a fact about the rule.
+    """
 
 
 class RefusedToolRow(TypedDict):
@@ -372,9 +377,9 @@ class RunnerTargetRow(TypedDict):
 
     Those two are the pair :class:`ShellRuleRow` carries, read by the same
     :func:`~lup.policy.kernel.effects.declared_verdict`. A target stating a
-    verdict outright was the last table saying what it earns rather than what
-    it does, and a target with subcommands then said both — once here and once
-    in the effects the command rows beneath it are judged by.
+    verdict outright would say what it earns rather than what it does, and a
+    target with subcommands would then say both — once here and once in the
+    effects the command rows beneath it are judged by.
     """
 
     name: str
@@ -484,9 +489,9 @@ class ShellRuleRow(TypedDict):
     ``setting_flags`` and ``guarded_settings`` state the same absence test
     about the *globals* a subcommand-gated command reads before its verb.
     ``git -c <key>=<value>`` and ``git config <key> <value>`` set the same
-    setting, and only the second could say which settings its question was
-    about — so every `-c` asked, and the question's stated reason, that git
-    config can change how commands execute, was false of `-c color.ui=false`
+    setting, and without these only the second could say which settings its
+    question is about — so every `-c` would ask, with a stated reason, that
+    git config can change how commands execute, false of `-c color.ui=false`
     and every other display setting the guidance here asks for by name. The
     keys are the pair of ``guarded_keys`` and the flags say which globals
     carry one; they are a separate column rather than that one because a
@@ -517,12 +522,12 @@ class ShellRuleRow(TypedDict):
 
     ``flag_effects`` is what a guarded flag *adds* to what the row does, as
     against which spellings guard it. Escalating on a flag and describing the
-    escalation are two different statements, and only the first was ever
-    written down: ``git reset`` mutates the repository reversibly, and ``git
-    reset --hard`` also discards working-tree content the object store never
-    held — one row, two operations, and the row described the harmless one. So
-    an escalated verdict was a question whose subject nothing in the table
-    named, and what it was about had to be guessed from ``checkpoint``.
+    escalation are two different statements, and a row stating only the first
+    describes the harmless operation: ``git reset`` mutates the repository
+    reversibly, and ``git reset --hard`` also discards working-tree content the
+    object store never held — one row, two operations. An escalated verdict
+    would then be a question whose subject nothing in the table names, its
+    subject guessed from ``checkpoint``.
 
     One list for every flag the row guards, because a row guards one kind of
     thing: ``--hard``, ``--merge`` and ``--keep`` all discard working-tree

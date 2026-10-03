@@ -1,0 +1,22 @@
+subjects = [
+    "LEGACY_NOTICE",
+    "EscalationRequest.legacy",
+    "EscalationRequest.notice",
+]
+reason = """
+an escalation marker names the axis it asks to move, so a bare \
+`# lup: escalate: <why>` is refused with the two spellings that name one \
+rather than read as `escalate[decision]`"""
+
+[[steps]]
+instruction = """
+Write `# lup: escalate[decision]: <why>` wherever a prompt, skill, script or \
+test wrote `# lup: escalate: <why>`, and `# lup: escalate[sandbox]: <why>` \
+where the call has to run on the launcher's host."""
+command = ["uv", "run", "lup-devtools", "dev", "py", "text", "lup: escalate:", "."]
+
+[[steps]]
+instruction = """
+Drop reads of EscalationRequest.legacy and EscalationRequest.notice(): a \
+request read off a marker always names its kinds, and read_escalation \
+answers a kindless marker with MISSING_KIND as its refusal."""

@@ -189,7 +189,7 @@ def test_decision_escalation_turns_an_abstention_into_a_question() -> None:
 def test_decision_escalation_leaves_a_handoff_to_the_runtime_standing() -> None:
     """A change the runtime's own mode answers is the runtime's, marker or not.
 
-    Made a question, it parked for the operator a change nobody had asked lup
+    Made a question, it would park for the operator a change nobody asked lup
     to hold -- the one thing a handoff exists not to do.
     """
     settled = settle(
@@ -224,21 +224,19 @@ def test_decision_escalation_over_a_permission_says_it_was_unnecessary() -> None
     assert settled.visibility == "notice"
 
 
-def test_the_legacy_bare_marker_works_and_says_it_is_an_alias() -> None:
-    """Every marker written before the vocabulary grew keeps working.
-
-    The alternative is a session whose escalations all stop working at once,
-    which is a migration nobody can act on mid-run.
-    """
+def test_a_decision_escalation_asks_and_names_no_spelling_to_fix() -> None:
+    """A marker that named its kind is answered with the question it asked for."""
     settled = settle(
         facts(
             KernelDecision("deny", "no"),
-            escalation=EscalationRequest(("decision",), "why", legacy=True),
+            escalation=EscalationRequest(("decision",), "why"),
         )
     )
 
     assert settled.effect == "ask"
-    assert "escalate[decision]" in settled.addressed()
+    assert not any(
+        "escalate[decision]" in through["says"] for through in settled.recovery
+    )
 
 
 def test_sandbox_escalation_asks_before_an_allowed_operation_leaves() -> None:
@@ -450,8 +448,8 @@ def test_recovery_discharges_local_loss_and_nothing_travelling_beside_it() -> No
 
     A recoverable deletion beside a full-file rewrite is one operation with
     two reasons to ask, and a capture answers one of them. Read over the join
-    alone the second reason is invisible, which is how a capture came to
-    discharge a code review it had nothing to do with.
+    alone the second reason is invisible, and a capture would discharge a
+    code review it has nothing to do with.
     """
     review = KernelDecision(
         "ask", "a production file is replaced whole", purpose="quality_review"
@@ -569,9 +567,9 @@ def test_a_judged_refusal_is_not_rescued_by_a_boundary() -> None:
 def test_every_refusal_carries_a_cause_a_reader_can_count_by() -> None:
     """Prose is not a taxonomy; a cause is.
 
-    Measured on the corpus before causes existed: 860 asks with no recorded
-    reason at all, and a deny taxonomy that could only be reconstructed by
-    matching sentences.
+    Without causes a corpus of verdicts holds asks with no recorded reason at
+    all, and a deny taxonomy that can only be reconstructed by matching
+    sentences.
     """
     judged = settle(facts(KernelDecision("deny", "refused")))
     unreadable = settle(
@@ -631,7 +629,7 @@ def test_a_session_that_can_reach_nobody_makes_no_question_out_of_a_gap() -> Non
     Ordering the two around each other would need both directions at once, so
     the row that manufactures the question reads the same fact instead: a
     headless session with no relay is refused for want of anybody having
-    looked, exactly as it was before the question existed.
+    looked, exactly as it is where no question is made.
     """
     unlisted = KernelDecision(
         "defer", "nobody looked", unlisted=True, abstention="boundary_settle"
@@ -645,9 +643,9 @@ def test_a_question_nobody_can_answer_is_refused_and_not_carried() -> None:
 
     Handing it to the boundary instead says the opposite — that a question
     nobody could answer did not need asking — and a boundary that confines an
-    operation does not review it. Measured before this refusal existed: a
-    remote ref deletion came back an unprompted allow in a headless contained
-    session, and the escalation marker granted exactly what the table refused.
+    operation does not review it. Carried to the boundary, a remote ref
+    deletion comes back an unprompted allow in a headless contained session,
+    and the escalation marker grants exactly what the table refused.
     """
     judged = KernelDecision("ask", "removing a remote ref requires approval")
 

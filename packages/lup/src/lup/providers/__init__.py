@@ -33,8 +33,8 @@ reverse.
 policy vocabulary and render a decision back. Claude sees an edit preimage
 and Codex an opaque patch, which is why one has separate edit and write
 operations and the other one file-change operation; Codex's renderer also
-carries ``supports_ask`` because approval at its hook boundary had to be
-evidenced before it could be claimed.
+carries ``supports_ask`` because approval at its hook boundary is claimed
+only where it is evidenced.
 
 ``config.py``, ``login.py``, ``runtime.py``, ``assets/policy_dispatcher.py``
 — matched, class for class.

@@ -1,8 +1,7 @@
 """Permission hooks: RW/RO enforcement and the notes RO grant.
 
-Includes the regression for the logs leak: setup_notes' RO grant must
-cover sessions/ and outputs/ of every version while leaving logs/
-invisible to the agent.
+Includes the logs exclusion: setup_notes' RO grant must cover sessions/
+and outputs/ of every version while leaving logs/ invisible to the agent.
 """
 
 from pathlib import Path
@@ -144,7 +143,7 @@ async def test_resolver_workers_cannot_hand_an_inspection_a_program_or_a_file(
 
 
 # ---------------------------------------------------------------------------
-# Notes RO grant (regression: logs/ must stay invisible)
+# Notes RO grant (logs/ stays invisible)
 # ---------------------------------------------------------------------------
 
 

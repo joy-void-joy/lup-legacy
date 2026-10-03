@@ -460,15 +460,15 @@ def retaining(
     async def retain(
         requests: Sequence[selection.RetentionRequest],
         root: Path,
-        directories: conversation.BrowserDirectories,
+        state_directory: Path,
         output: Path,
     ) -> list[selection.RetentionAttempt]:
         attempts: list[selection.RetentionAttempt] = []
-        for position, request in enumerate(requests):
+        for request in requests:
             if refused and request.artifact == refused:
                 attempts.append(
                     selection.RetentionAttempt(
-                        position=position, request=request, error="no such artifact"
+                        request=request, error="no such artifact"
                     )
                 )
                 continue
@@ -476,9 +476,7 @@ def retaining(
             destination = output / "chatgpt" / reference.identifier()
             destination.mkdir(parents=True, exist_ok=True)
             attempts.append(
-                selection.RetentionAttempt(
-                    position=position, request=request, destination=destination
-                )
+                selection.RetentionAttempt(request=request, destination=destination)
             )
         return attempts
 

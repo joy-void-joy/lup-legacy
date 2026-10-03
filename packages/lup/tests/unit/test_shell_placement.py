@@ -1,11 +1,11 @@
 """Every reader of a command resolves its paths from where that command runs.
 
-A path word was joined to the directory the session launched in, whatever the
-command had done to the shell before reaching it. So `cd elsewhere && sed -i …
-rel/path` was asked about because the host looked for a file that is not
-there, while `cd packages && rm -rf lup` was answered as a deletion of `lup`
-at the repository top -- one reading too conservative and one too permissive,
-both from the same missing fact.
+A path word joined to the directory the session launched in, whatever the
+command did to the shell before reaching it, reads two ways wrong at once:
+`cd elsewhere && sed -i … rel/path` would be asked about because the host
+looks for a file that is not there, and `cd packages && rm -rf lup` would be
+answered as a deletion of `lup` at the repository top -- one reading too
+conservative and one too permissive, both from the same missing fact.
 """
 
 from lup.policy.kernel.lex import (

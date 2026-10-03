@@ -30,8 +30,8 @@ def rows() -> list[ShellRuleRow]:
 def test_a_redirection_names_its_loss_and_where_it_lands() -> None:
     """The question states its own subject, and the subject is out of reach.
 
-    Measured before this: the question carried a `targeted` checkpoint, so a
-    snapshot of the checkout settled a write to wherever `$B` pointed.
+    A question carrying a `targeted` checkpoint would let a snapshot of the
+    checkout settle a write to wherever `$B` points.
     """
     decision = decide_shell(REDIRECTION, rows())
 
@@ -68,6 +68,7 @@ def test_a_redirection_into_a_protected_path_keeps_its_question() -> None:
             reason="human-owned",
             recovery=[],
             allow_autonomous=False,
+            description="docs/owned.md",
         )
     ]
     into_owned = decide_shell("cat > docs/owned.md", rows(), path_rules=owned)

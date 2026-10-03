@@ -29,7 +29,6 @@ review of the declaration reads it.
 """
 
 import asyncio
-import fcntl
 import hashlib
 import logging
 import os
@@ -58,7 +57,9 @@ from typing import Annotated, Self
 import sh
 from pydantic import BaseModel, Field, StringConstraints, ValidationError
 
+from lup.channels.models import publish_atomic
 from lup.channels.wait import wait_until
+from lup.execution.locks import exclusive
 from lup.execution.shell import ShDone
 from lup.coordination.bare.runtime import (
     ENDED_STATES,
@@ -75,8 +76,8 @@ from lup.launch.declaration import Loopback, Mount
 from lup.launch.refusal import LaunchRefused
 from lup.launch.secrets import HostSecrets
 from lup.observability.audit import TraceJournal
-from lup.sandbox.known import store_directory
 from lup.types import EnvVars, JsonObject
+from lup.workspace.user_directories import UserDirectories
 
 logger = logging.getLogger(__name__)
 
@@ -886,9 +887,7 @@ class CompanionSlot(BaseModel, frozen=True):
 
     def keep(self, record: Reaped) -> None:
         """Write how a process ended where every holder reads it; outside the slot's lock, so staged first."""
-        staged = self.directory / f"reaped.json.{uuid.uuid4().hex}"
-        staged.write_text(record.model_dump_json(), encoding="utf-8")
-        staged.replace(self.directory / "reaped.json")
+        publish_atomic(self.directory / "reaped.json", record)
 
     def ended(
         self, running: Running, within: float = 2.0, every: float = 0.05
@@ -959,13 +958,8 @@ class CompanionSlot(BaseModel, frozen=True):
     @contextmanager
     def locked(self) -> Iterator[None]:
         """Hold this companion for one launch's read, decide and write."""
-        self.directory.mkdir(parents=True, exist_ok=True)
-        with (self.directory / "lock").open("a", encoding="utf-8") as handle:
-            fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
-            try:
-                yield
-            finally:
-                fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+        with exclusive(self.directory / "lock"):
+            yield
 
     def read(self) -> CompanionState:
         """What is kept of this companion; nothing, where nothing is or it does not parse.
@@ -987,15 +981,12 @@ class CompanionSlot(BaseModel, frozen=True):
 
     def write(self, state: CompanionState) -> None:
         """Replace the state in one rename, so no reader meets half of it."""
-        path = self.directory / "state.json"
-        staged = path.with_name("state.json.tmp")
-        staged.write_text(state.model_dump_json(indent=2), encoding="utf-8")
-        staged.replace(path)
+        publish_atomic(self.directory / "state.json", state)
 
 
 def companions_home() -> Path:
     """Where every shared companion keeps its state: lup's own state, per person."""
-    return store_directory() / "companions"
+    return UserDirectories().state() / "companions"
 
 
 def lent_directory(state: Path) -> Path:
@@ -1086,13 +1077,8 @@ def given_ports(
 @contextmanager
 def choosing_ports(home: Path) -> Iterator[None]:
     """Hold port choosing for every companion, so two are never given one port."""
-    home.mkdir(parents=True, exist_ok=True)
-    with (home / "ports.lock").open("a", encoding="utf-8") as handle:
-        fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
-        try:
-            yield
-        finally:
-            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+    with exclusive(home / "ports.lock"):
+        yield
 
 
 def kept_elsewhere(home: Path, slot: CompanionSlot | None = None) -> list[int]:

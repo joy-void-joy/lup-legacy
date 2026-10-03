@@ -43,6 +43,180 @@ A project's own shell rules, refused tools and paths declare `recovery` as a
 list of `step(...)` from `lup.policy.kernel.diagnostic`; `dev migrate pending`
 names the change. The edit-evaluator protocol is version 2.
 
+### Files, locks and per-person state are each spelled once in the library
+
+The same file chores were hand-rolled at dozens of sites, each a little
+differently. Each now has one helper, and the hand-rolled copies are gone:
+
+- **Atomic writes.** `write_atomic` sets a file's mode before its first byte
+  (`mode=`), syncs the file and its directory (`durable=`), and replaces only
+  what the caller read (`expected=`, raising `ChannelConflictError`).
+  Companion state, replay journals, rejected-attempt history, the dashboard
+  registry, guidance, ledger blobs, materialized artifacts, the host secret
+  store, Codex configs and `harness policy-refresh` write through it, and so
+  no staging name is shared between two writers any more. The bare store's
+  writers share one helper of their own.
+- **Locks.** `lup.execution.locks` gives `exclusive(path)` and
+  `try_exclusive(path)`. Companions, the Codex home, the mailbox relay,
+  resolver state, review waiters and the review queue take theirs through it.
+- **Logs.** The trace's `.events.jsonl` sidecar (`trace_events(path)`), the
+  hook corpus and the ledger's journals are read and appended as
+  `lup.channels.stream.Stream`s, so a torn last line and a malformed line
+  are treated alike everywhere.
+- **Configuration homes.** `ProviderLogin.selected_home` is the one resolver:
+  an exported-but-empty `CLAUDE_CONFIG_DIR` or `CODEX_HOME` names no home,
+  the default sits in the environment's own `HOME`, and Codex's home is
+  resolved as Codex resolves it.
+- **Per-person directories.** `lup.workspace.user_directories.UserDirectories`
+  reads `XDG_STATE_HOME`, `XDG_CONFIG_HOME` and `XDG_CACHE_HOME`; lup's
+  caches (environments, plugin revisions, releases, sync clones, guidance,
+  gate state) now follow `XDG_CACHE_HOME` instead of always living in
+  `~/.cache/lup`.
+- **Checkout state.** `lup.workspace.checkout_state.CheckoutState` names every
+  path under a checkout's `.lup/`, and the policy's protected `.lup/` list is
+  read from it rather than repeated.
+- **Digests, clock, manifests, environment.** `lup.formats.digest` hashes
+  text, files, trees and part lists the way each copy did, so stored digests
+  stay valid. Every compared stamp is aware UTC (`utc_now`, with `aware()`
+  reading an older naive stamp as local time). `edited_manifest` changes a
+  `pyproject.toml` without disturbing its layout. `inherited(overlay)` is the
+  one reader of the whole process environment.
+- **Hooks.** The caller-hook and subagent-cleanup host halves expose only
+  `decided()`, and a generated entry reads the event, asks and prints. The
+  carrier-drift fold ships from `providers/assets/`.
+
+Removed and renamed names, each with what to call instead, are in
+`migrations/pending/`.
+
+### A Git question the deadline left unanswered refuses the call
+
+With its deadline starved, the policy hook read a Git question that got no
+answer as its "no": a path Git never said was tracked was taken as
+untracked, a patch Git never read as touching nothing, a path Git never
+placed as this project's own. Measured on both dispatchers: `date >
+<tracked file>`, and the same after a heredoc into scratch, were allowed with
+the deadline starved, where in time they ask.
+
+- A Git question the hook's deadline cut short now ends the judgement: the
+  call is refused as one the policy could not judge in time
+  (`host.refuse_unanswered`). Git's own answer, a non-zero exit included,
+  reads as it did, and outside a hook — a review waiter, the dashboard —
+  nothing changes.
+- A language server that never answers still reads as no checker having
+  looked, but once it has spent the hook's time the Git questions after it
+  end the judgement, so such an edit is refused rather than asked.
+
+What changes for a session: on a loaded machine a call may be refused as
+unjudged where it used to be allowed on an answer nobody gave; retry it once.
+
+### A policy judgement that does not finish in time refuses the call
+
+Claude Code and Codex both run a call once its `PreToolUse` hook overruns
+its timeout: measured on Claude Code 2.1.285, a hook holding a `touch`
+past a 5 s timeout saw it run about 5 s in. The policy hook's deadline and
+alarm bounded every wait the interpreter could interrupt, but not one it
+could not — a read the kernel holds, native code that never returns to the
+interpreter, the verdict being written after the alarm was disarmed — nor
+the time before the dispatcher's first line. A copy of the generated Claude
+hook stuck that way, registered on Claude Code 2.1.285 at the plugin's
+30 s timeout, let its `touch` run 35 s into the run.
+
+- The dispatcher judges in a child process and waits on it only until two
+  seconds short of the declared timeout; then it stops the child and
+  refuses: "the policy could not judge this call in time, so it is refused
+  unjudged", with a step to retry the call once and one to report it with
+  `dev report-friction` if it is refused again. The same copy rebuilt from
+  this change refused on Claude Code 2.1.285 and the `touch` never ran;
+  driven as each runtime drives it, both dispatchers refuse at about 28 s,
+  at `PreToolUse` and at Codex's `PermissionRequest`, where a timed-out
+  hook would leave Codex's own approval flow to decide.
+- Every bound counts from when the runtime started the hook: the guard
+  stamps that moment as `LUP_HOOK_STARTED`, so starting the interpreter and
+  importing the kernel are no longer time the deadline does not see.
+- `HookSet.policy_timeout` stays the one declaration: the hooks file's
+  `timeout`, the deadline steps share, the alarm past it and the moment the
+  hook refuses all derive from it (`lup.policy.bundle.hook_answer_limit`
+  beside `hook_deadline`), and the compiler writes every dispatcher's entry
+  point, so no runtime half can judge a call outside that bound.
+- A session opened in process meets the same contract. Its policy hook
+  passes `policy_timeout` to the SDK as the callback's `timeout` and refuses
+  a judgement still running at the deadline; a `PreToolUse` callback that
+  raises is answered with the refusal, since Claude Code runs the tool past
+  a callback that raised (measured on 2.1.259 and 2.1.285). An in-process
+  Codex session declines an approval whose hook raised or ran past its
+  deadline, with the refusal delivered to the turn — the app-server waits on
+  an approval without limit and would decline an error reply as "approval
+  request failed" with nothing reaching the agent.
+
+What changes for a session: a call the policy cannot judge in time is
+refused, where the runtime used to run it. Retry it once; a refusal that
+repeats is the policy's defect to report.
+
+### A file's verdict says which protected rule it met
+
+A question about a protected file said `edit:protected-path` whether the file
+was the policy's own code, a lockfile, an environment file or a human-owned
+README. Each file verdict (`lup.policy.relay.FileVerdict`, and the kernel's
+`FileReviewRow`) carries `protected`: the matched rule's `kind`, the `root`
+it names, and a `description` of that root in plain words. A hook set
+describes a root by declaring `ProtectedRoot(path=…, description=…)` in
+`protected_edit_roots`, where a bare `Path` still works and is described by
+itself; this project describes its own, such as "the policy's own code" for
+`packages/lup/src/lup/policy` and "the hook assets" for each runtime's
+dispatcher assets. `HookSet.protected_roots()` reads the list as roots either
+way, and `hooks roles` prints each description. A review recorded before
+carries no `protected`, and still reads.
+
+A runtime's own tree is declared by its adapter rather than by a project:
+`NativeSpellings.protected_tree` answers `.claude` for Claude Code and
+`.codex` for Codex, each described, and `lup.providers.harness.runtime_trees()`
+collects every supported runtime's. The catalog spreads that in place of the
+two paths it named, so both trees stay protected whichever runtime a session
+runs. An adopter's own `NativeSpellings` implements `protected_tree`, and a
+hook set that listed `.claude` and `.codex` by hand can spread
+`runtime_trees()` instead.
+### A script `uv run` is handed beside an unread word is no longer refused as a bare interpreter
+
+`cd tmp && T=/a; uv run python s.py $T` was refused as a bare interpreter,
+on every placement, while the same line with `T` never assigned was allowed.
+The same refusal met `read T; uv run python s.py $T`,
+`uv run python s.py $(date)` and `uv run perl s.pl $T`. Any command that
+references an unreadable value is checked for a refusal the value could
+never lift. That check judged the program `uv run` runs as if it were run
+directly, and Python run directly is refused over any file, because
+`uv run python` is how it is meant to run. The check now reads the program as
+`uv run` reads it. A script with an unread argument after it gets the floor
+`uv run bash s.sh $T` always got: allowed inside a boundary, refused outside
+one. Inline code (`uv run python -c … $T`) and an unread program
+(`uv run python $T`) stay refused, now with `uv run`'s own reason, and
+`python s.py $T` run directly stays refused.
+
+### A sibling worktree's scratch is scratch for every question, and a stream is no file
+
+Several false positives parked reviews that nobody needed:
+
+- **A heredoc into a sibling worktree's `tmp/`** was asked about as "an
+  outside path" (reviews b722c695, 65bf2101). The hook asked Git for the other
+  worktrees after the edit gates, and the type checker an anti-pattern rule
+  consults could spend the rest of the hook's deadline first. The checker
+  now starts only for a file in production, the one role those rules read,
+  and every Git fact is gathered before the edit gates. The same starvation
+  let `date > <tracked source>` through unasked behind a slow Python heredoc.
+- **`git init` in a sibling worktree's `tmp/`** was refused (#528). It is a
+  scratch write there, as it is in this checkout's `tmp/`. A probe kit made
+  there is scratch for edits and redirects, and its own hand-written plugin
+  tree is its own. A sibling's compiled plugin tree stays refused, and so
+  does a kit in another repository's `tmp/`.
+- **A sensitive assignment beside a write into a sibling's `tmp/`**
+  (`PYTHONPATH=… uv run …`) parked inside a container, though the same line
+  writing into this checkout's `tmp/` did not. A sibling worktree now lands
+  as the checkout a session works in, rather than as a tree the host lent.
+- **`| tee /dev/null`** parked as a write the launch did not mount (review
+  363314f4). `cp f /dev/null` was refused, and `sort -o /dev/null`, `git diff
+  --output=/dev/null` and `curl -o /dev/null` asked. A stream keeps nothing
+  written into it, so none of them is a write. `rm`, `mv`, `ln` and `touch`
+  on the device keep their questions.
+
 ### A write reached through a variable, a substitution or a `cd` asks as the path it names would
 
 `cd w && F=<protected path> && sed -i … $F` rewrote a protected file with no
@@ -155,6 +329,42 @@ or a link the same line makes, still lands on the file it links to unasked
   that way read in `trace verify` as "a second chain starts at record N".
 - `lup.observability.audit.chain_break` replaces `verify_event_chain`,
   answering where a chain first fails and why rather than whether.
+
+### The dashboard is one keyboard-driven editor, supervising every agent
+
+The page is rebuilt as an editor (`docs/dashboard.md`). A tree of every
+repository's agents — each session with its subagents, and under each agent
+the reviews it parked — sits beside one buffer and a context window; a
+tabline names five views (Supervise, History, Inbox, Threads, Setup), a
+statusline says the mode, where focus is and where the cursor stands, and a
+command line, a finder, which-key and a help drawn from one action catalog sit
+over it.
+
+- Reviewing keeps its triage loop: a review opens in its note box, `j`/`k`
+  move on while the box is empty, `Ctrl+Enter`, `Alt+Delete` and `Alt+Enter`
+  answer from anywhere, and an answer moves on at once, put back whole if the
+  server refuses it.
+- A review's bar says what the call is and what the policy asks about; a shell
+  command shows the steps that asked first, and folds the steps whose effect
+  shows only after they run with the ones allowed on their own.
+- Each file's header says in a few words why it needs approval, read off its
+  verdict's gate rather than its reason sentence (`ReviewFile.review_label`),
+  and the context counts a proposal's files by those reasons.
+- Focus decides where keys act: in the tree `j`/`k` walk its rows, in the
+  buffer the cursor moves like an editor's — a line and a column, `w`, `b`,
+  `e`, `0`, `^`, `$`, counts, `{n}G` — and `Tab` moves focus round, with one
+  outline on the place that has it.
+- Supervising: an agent's buffer shows what it is doing now and every message
+  to or from it, its box writes to it, and Threads reads the agents' mail as
+  discussions. What waits on new server routes is listed with the route it
+  needs, and refused naming it.
+- Personal keys: `[dashboard.keys]` in your lup config rebinds actions by name,
+  each entry checked on its own and refused with what, why and the way through;
+  the keys reach every open tab on the stream when the file changes, and
+  `lup-devtools dashboard keys` prints the report.
+- Below 861 px the page is a touch layout: drawers, an action bar and a tab bar
+  under the thumb, a strip that steps through a review, and long prose folded
+  to four lines.
 
 ### Containers starting at once on one config home no longer tear or drop what the others wrote
 

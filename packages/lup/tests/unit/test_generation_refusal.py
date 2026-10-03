@@ -30,8 +30,8 @@ MISSING_PASSAGE = "src/demo/harness/content/skills/update.passage.md"
 class Declared(BaseModel):
     """A declaration refusing one value, the way the harness refuses one.
 
-    Stands in for `Harness`, whose own validator is what reported the case
-    this is about: the shape that matters is a model validator raising, which
+    Stands in for `Harness`, whose own validator raises the case this is
+    about: the shape that matters is a model validator raising, which
     pydantic delivers as one error with an empty location.
     """
 

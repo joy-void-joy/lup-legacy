@@ -23,7 +23,9 @@ person makes, so this prints and a person writes.
 
 from pathlib import Path
 
-from pydantic import BaseModel
+from pydantic import BaseModel, TypeAdapter
+
+from lup.channels.stream import Stream
 
 DEFAULT_CORPUS = ".lup/hooks/learned.jsonl"
 """Where the dispatcher appends, relative to the checkout it is judging in.
@@ -66,20 +68,13 @@ class Corpus(BaseModel, frozen=True):
 def read_corpus(root: Path, corpus: str = DEFAULT_CORPUS) -> Corpus:
     """Load what this checkout has recorded, skipping what it cannot read.
 
-    A line that does not parse is skipped rather than fatal. Two processes
-    append here and one may be part-way through a write, and a corpus that
-    refused to load over a torn line would be a review surface that stops
-    working exactly when the session it is reviewing is busiest.
+    Read as the ordered log it is, so a line that does not parse is skipped
+    rather than fatal. Two processes append here and one may be part-way
+    through a write, and a corpus that refused to load over a torn line would
+    be a review surface that stops working exactly when the session it is
+    reviewing is busiest.
     """
-    path = root / corpus
     try:
-        text = path.read_text(encoding="utf-8") if path.exists() else ""
+        return Corpus(deferrals=Stream(root / corpus, TypeAdapter(Deferral)).read_all())
     except OSError:
         return Corpus()
-    held: list[Deferral] = []
-    for line in text.splitlines():
-        try:
-            held.append(Deferral.model_validate_json(line))
-        except ValueError:
-            continue
-    return Corpus(deferrals=held)

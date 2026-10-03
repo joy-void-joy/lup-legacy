@@ -1,11 +1,11 @@
 """Which path a redirection actually writes, and which of them destroy nothing.
 
-Two readings that had drifted from what the shell does. A target behind a
-parameter was judged as the literal text `$B`, which spells no path and earns
-no role, so it fell to the fallback and was retired by the recovery row --
-spending a capture's discharge on a write to scratch. And every stream but
-`/dev/null` fell there too, which told the reader that "the affected paths are
-captured and restorable" about a terminal.
+Two readings held to what the shell does. A target behind a parameter judged
+as the literal text `$B` spells no path and earns no role, so it would fall to
+the fallback and be retired by the recovery row -- spending a capture's
+discharge on a write to scratch. And a stream other than `/dev/null` falling
+there too would tell the reader that "the affected paths are captured and
+restorable" about a terminal.
 """
 
 from pathlib import Path
@@ -71,7 +71,7 @@ def test_a_device_that_destroys_is_not_a_stream() -> None:
 
 
 def test_a_standalone_assignment_names_the_path_that_is_written() -> None:
-    """The shell wrote to `tmp/x`, and now so does the reading of it."""
+    """The shell writes to `tmp/x`, and so does the reading of it."""
     assert shell_write_targets("B=tmp/x; cat > $B") == ["tmp/x"]
     assert shell_write_targets("B=tmp/x; cat > ${B}") == ["tmp/x"]
     assert verdict("B=tmp/x; cat > $B").effect == "allow"
@@ -111,10 +111,10 @@ def test_a_stream_sink_is_no_target_for_the_lease_to_read() -> None:
 
     The redirection reading retires a stream on its own, which is why the
     streams above never reach a row that asks. The lease reading takes its
-    targets from :func:`shell_write_targets` instead and asks a question the
-    redirection reading had already answered -- `/dev/null` exists, no capture
-    holds it, and no writable root contains it -- so a contained session met an
-    approval question in front of every `2>/dev/null` it wrote.
+    targets from :func:`shell_write_targets` instead and would ask a question
+    the redirection reading already answered -- `/dev/null` exists, no capture
+    holds it, and no writable root contains it -- putting an approval question
+    in front of every `2>/dev/null` a contained session writes.
     """
     assert shell_write_targets("grep x f 2>/dev/null") == []
     assert shell_write_targets("a > out.txt 2>/dev/null") == ["out.txt"]
@@ -131,12 +131,12 @@ def test_a_stream_sink_is_no_target_for_the_lease_to_read() -> None:
 def test_a_program_a_command_carries_is_not_one_of_its_paths() -> None:
     """The same shape as the sink above, reached by a word rather than a target.
 
-    Every non-flag word of a `sed` was named as something it acted on, which
-    was defended as harmless because a script is not a file. Two of the three
-    questions asked of these stat the path and drop whatever is not on disk;
-    the lease resolves the string, and a sed address script *begins with a
-    slash* -- so it resolved to an absolute path no writable root contains and
-    was reported as a write outside the lease. The command was a read.
+    Naming every non-flag word of a `sed` as something it acts on looks
+    harmless because a script is not a file. Two of the three questions asked
+    of these stat the path and drop whatever is not on disk; the lease
+    resolves the string, and a sed address script *begins with a slash* -- so
+    it would resolve to an absolute path no writable root contains and be
+    reported as a write outside the lease, for a command that is a read.
     """
     scripted = "sed -n '/^def one/,/^def two/p' vocabulary.py"
     assert shell_path_verb_targets(scripted, VOCABULARY) == []
@@ -153,13 +153,13 @@ def test_a_program_a_command_carries_is_not_one_of_its_paths() -> None:
 def test_a_sed_that_only_prints_names_no_file_for_the_lease_to_read() -> None:
     """`sed -n 1,80p file` is `cat` with an address, and its operand is read.
 
-    The operand is a path, unlike the script beside it, and naming it was
-    defended as under-naming's safe direction: two of the three questions stat
-    it, and a file that is there answers them harmlessly. The third resolves
-    it against what the launch mounted writable, and a file under a read-only
+    The operand is a path, unlike the script beside it, and naming it looks
+    like under-naming's safe direction: two of the three questions stat it,
+    and a file that is there answers them harmlessly. The third resolves it
+    against what the launch mounted writable, and a file under a read-only
     mount is exactly the path no writable root contains -- so a print over one
-    was reported as a write outside the lease, while `head` over the same file
-    was allowed beside it.
+    would be reported as a write outside the lease, while `head` over the same
+    file is allowed beside it.
     """
     printed = "sed -n 1,80p /mounted/findings/verify.py"
     assert shell_path_verb_targets(printed, VOCABULARY) == []
@@ -273,7 +273,7 @@ class TestAFlagThatWritesIsJudgedWhereEveryWriteIs:
         it in advance and a refusal would fall on exactly the writes for which
         that is unavoidable. What a reviewed version being replaced by unread
         bytes earns is therefore the question, answered before the fact, with
-        the file itself read after it as before.
+        the file itself still read after it.
         """
         assert written("sort -o src.py f", tracked=["src.py"]).effect == "ask"
 
@@ -312,7 +312,7 @@ class TestAFlagThatWritesIsJudgedWhereEveryWriteIs:
         assert answers == {"ask"}
 
     def test_a_flag_naming_no_resolvable_path_keeps_the_row_s_question(self) -> None:
-        """A write nobody can locate is what the guard was written for."""
+        """A write nobody can locate is what the guard exists for."""
         assert written("sort -no f").effect == "ask"
 
     def test_a_flag_that_runs_a_program_still_asks_beside_one_that_writes(
@@ -368,3 +368,46 @@ class TestAWriteNobodyCanRead:
 
         assert answer.effect == "allow"
         assert "only running the command produces" not in answer.reason
+
+
+def test_a_tee_or_a_copy_into_a_stream_names_nothing_for_the_lease() -> None:
+    """`| tee /dev/null` writes into a device every process holds open.
+
+    Its operand was named among the paths the verb acts on, so the lease
+    resolved it, found no writable root holding `/dev/null`, and a read-only
+    `git grep | tee /dev/null | wc -l` was parked as a write the launch did not
+    mount. A copy into one is the same write spelled by `cp`. A device the
+    write would replace keeps its name, and so does a copy whose flag could
+    replace the device rather than write into it.
+    """
+    teed = "git grep -l x | tee /dev/null | wc -l"
+    assert shell_path_verb_targets(teed, VOCABULARY) == []
+    assert shell_path_verb_targets("ls | tee -a /dev/stderr out.txt", VOCABULARY) == [
+        "out.txt"
+    ]
+    assert shell_path_verb_targets("cp f.txt /dev/null", VOCABULARY) == ["f.txt"]
+    assert shell_path_verb_targets("tee /dev/sda", VOCABULARY) == ["/dev/sda"]
+    assert shell_path_verb_targets("tee /dev/fd/3", VOCABULARY) == ["/dev/fd/3"]
+    assert shell_path_verb_targets(
+        "cp --remove-destination f.txt /dev/null", VOCABULARY
+    ) == ["f.txt", "/dev/null"]
+    assert shell_path_verb_targets("rm /dev/null", VOCABULARY) == ["/dev/null"]
+
+
+def test_a_write_flag_naming_a_stream_writes_no_file() -> None:
+    """`curl -o /dev/null -w '%{http_code}'` lands its body nowhere.
+
+    The flag's value was judged as a file created outside the checkout, so
+    `sort -o /dev/null` and `git diff --output=/dev/null` asked as `sort -o
+    out.txt` beyond the tree does, and a copy into one asked as a copy over a
+    file. A descriptor the shell opened onto a file is still a file, and a
+    verb replacing the device itself keeps its question.
+    """
+    for command in (
+        "sort -o /dev/null f.txt",
+        "git diff --output=/dev/null",
+        "cp f.txt /dev/null",
+    ):
+        assert verdict(command).effect == "allow", command
+    for command in ("sort -o /dev/fd/3 f.txt", "rm /dev/null", "mv f.txt /dev/null"):
+        assert verdict(command).effect == "ask", command

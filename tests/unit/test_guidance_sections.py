@@ -1,10 +1,10 @@
 """What identity buys the always-loaded document, and what it must not cost.
 
-The document was a hand-ordered splice of constants across two packages: it
-rendered correctly and nothing could name a piece of it. What these pin is
-that naming the pieces changed the declaration and not the output — the same
-bytes reach a session — and that a name is now worth something, because the
-same algebra that retires a skill retires a section.
+The document is a run of named sections across two packages, where a
+hand-ordered splice of constants would render the same and leave nothing able
+to name a piece of it. What these pin is that naming the pieces leaves the
+output as it is — the same bytes reach a session — and that a name is worth
+something, because the same algebra that retires a skill retires a section.
 """
 
 import pytest

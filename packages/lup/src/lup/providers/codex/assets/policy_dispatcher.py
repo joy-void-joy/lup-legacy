@@ -67,12 +67,13 @@ from host import (
     record_hook_evidence,
     sandbox_active,
     unjudged_reason,
+    ran_out,
     words_before,
 )
 from kernel.rows import PostToolReport
 from kernel.review import Said
 from kernel.decision import KernelDecision
-from kernel.decision import UNJUDGED_RECOVERY
+from kernel.decision import unjudged_recovery
 from kernel.diagnostic import Step, devtools, spelled, stated, step
 from kernel.review import literal_input
 from kernel.shell import auto_escape_matches
@@ -80,6 +81,9 @@ from caller_payload import caller_of, spoken, transcript_of
 from policy_data import AUTO_ESCAPE_PREFIXES
 from policy_data import AGENT_IDENTITY_ENV, AUTONOMOUS_AGENT_IDENTITIES
 from policy_data import HOOK_DEADLINE_SECONDS
+
+# Read by the entry point the compiler writes, which hands it to the warden.
+from policy_data import HOOK_ANSWER_SECONDS
 
 
 def hook_environment():
@@ -172,8 +176,8 @@ def dispatch(payload, permission_request=False):
     session_directory = Path(payload["cwd"]) if "cwd" in payload else None
     # Whether this session is a reviewed worker, which decides two unrelated
     # things: how a patch is judged, and whether a refusal has a route to
-    # name. Read once at the top rather than inside the branch that needed it
-    # first, since both branches need it now.
+    # name. Read once at the top rather than inside either branch, since
+    # both branches need it.
     agent_type = payload["agent_type"] if "agent_type" in payload else ""
     autonomous = (
         agent_type in AUTONOMOUS_AGENT_IDENTITIES
@@ -294,7 +298,7 @@ def waiting(command, payload):
     The session's own thread holds no waiter. Where no `review wait` holds
     the review, the operator's answer goes to its mailbox and is queued into
     its thread with `codex queue`, which starts a turn in an idle thread --
-    measured on 0.158.0, a browser decision reached a second turn that way
+    measured on 0.158.0, a browser decision reaches a second turn that way
     -- and the `review wait` it runs then carries the call out at once.
 
     A subagent's last message is its report, and nothing wakes it after: a
@@ -551,18 +555,63 @@ def post_tool_answer(report):
         )
 
 
-def main():
-    # What each runtime gives this hook before it lets the call through,
-    # less what starting Python and writing the verdict take: every step a
-    # verdict waits on shares it, and anything still waiting past it is
-    # refused rather than left for the runtime to wave through.
+def unjudged_detail(event, error, read):
+    """What this hook says of a call nobody judged, on stderr or in a denial.
+
+    ``error`` is what failed, or None where the judgement was still running
+    when the hook had to answer. A post-tool check has nothing left to
+    refuse -- the patch has applied, and retrying it would apply it again --
+    so it says only that it did not finish.
+    """
+    if event == "PostToolUse":
+        failure = error if error is not None else "it did not finish in time"
+        return f"Lup post-tool check failed: {failure}"
+    return KernelDecision(
+        "deny", unjudged_reason(error, read), recovery=unjudged_recovery(ran_out(error))
+    ).addressed()
+
+
+def unanswered(given, error):
+    """Refuse a call the judgement did not answer in time, as its event reads it.
+
+    A permission request is refused by the decision it carries back, as
+    every verdict this hook gives one is; every other event by the reason on
+    stderr and the exit status this boundary refuses with. ``error`` is
+    what failed, or None where the judgement was still running when the
+    hook had to answer.
+    """
+    try:
+        payload = json.loads(given)
+    except ValueError:
+        payload = {}
+    named = isinstance(payload, dict) and "hook_event_name" in payload
+    event = payload["hook_event_name"] if named else ""
+    detail = unjudged_detail(event, error, True)
+    if event == "PermissionRequest":
+        json.dump(
+            {
+                "hookSpecificOutput": {
+                    "hookEventName": "PermissionRequest",
+                    "decision": {"behavior": "deny", "message": detail},
+                }
+            },
+            sys.stdout,
+        )
+        return
+    sys.stderr.write(detail)
+    raise SystemExit(2)
+
+
+def judged(given):
+    """Judge one hook input and answer it, the whole of what this hook decides."""
     previous = opened_deadline(HOOK_DEADLINE_SECONDS)
     payload = {}
     permission_request = False
     review_notice = ""
+    event = ""
     read = False
     try:
-        payload = json.load(sys.stdin)
+        payload = json.loads(given)
         if not isinstance(payload, dict):
             raise ValueError("hook input must be an object")
         read = True
@@ -615,9 +664,10 @@ def main():
         if not permission_request and decision.effect in ("allow", "defer"):
             remember_patch(payload)
     # Every way this can fail means one thing — the call went unjudged — and
-    # one answer is right for all of them. Naming the exceptions instead is
-    # what let a plain unreadable file escape, and a traceback exit is not the
-    # fail-closed exit this boundary takes, so the call proceeded ungoverned.
+    # one answer is right for all of them. Naming the exceptions instead
+    # would let a plain unreadable file escape, and a traceback exit is not the
+    # fail-closed exit this boundary takes, so the call would proceed
+    # ungoverned.
     # Nothing is swallowed: the reason names which cause it was, carrying
     # whatever went wrong, and an interrupt still passes through as the
     # BaseException it is.
@@ -630,10 +680,12 @@ def main():
             f"{type(error).__name__}: {error}",
         )
         decision = KernelDecision(
-            "deny", unjudged_reason(error, read), recovery=UNJUDGED_RECOVERY
+            "deny",
+            unjudged_reason(error, read),
+            recovery=unjudged_recovery(ran_out(error)),
         )
         if not permission_request:
-            sys.stderr.write(decision.addressed())
+            sys.stderr.write(unjudged_detail(event, error, read))
             raise SystemExit(2) from error
     finally:
         closed_deadline(previous)

@@ -102,7 +102,8 @@ core.pager=… push --force` keeps the push's question, and a clone behind it
 still has its landing placed. What names a place — a redirection, a path verb's operand, a write flag, the
 landing a row declares (`git clone <repo> <dir>`, `gh release download -D`) —
 is placed by the host against the lease and its own mount table: in this
-checkout, somewhere else the host lent, or the container's own. A path
+checkout or another worktree of its repository, somewhere else the host
+lent, or the container's own. A path
 nobody can read, and a mount table nobody can read, land on the host. A
 reach nobody stated — any verdict reached by code rather than a declared
 effect — keeps its question everywhere, which is why `sudo` (whose payload
@@ -259,6 +260,9 @@ floor never stands in for what the command asks as spelled: a boundary
 settling it confines the call, not the checkout the call writes in, and a
 protected file there was rewritten unasked. `eval`, `source` and an
 interpreter's inline code stay refused, and `xargs` keeps its own question.
+What `uv run` hands an interpreter is read as `uv run` reads it, so
+`uv run python s.py $T` gets the same floor as `uv run bash s.sh $T`, while
+`uv run python -c … $T` and `uv run python $T` stay refused.
 
 Where the capture was actually *taken*, `RecoveredLoss` settles the question
 as a **permission**. Not a deferral: deferring would make the outcome depend
@@ -487,9 +491,16 @@ meet the one rule — and the machine's temporary root, the session
 scratchpad (`$TMPDIR`, `/tmp/claude-*`) with the rest of `/tmp` around it,
 which no review pass reads and no capture holds (reassigning `TMPDIR` asks,
 and a suffix climbing clear of `/tmp` leaves the grant behind); discards and
-fd dups strip. A repository made in this checkout's declared scratch is as
-disposable as the scratch holding it, so `git init tmp/p` — after a `cd` or
-`git -C`, with a separate git dir there too — is a scratch write, its
+fd dups strip. A stream — `/dev/null`, `/dev/stdout`, `/dev/stderr`, `/dev/tty`
+and the two descriptors behind them — keeps nothing written into it, so it is
+no file a write lands on by any spelling: a redirection, a `tee` operand, a
+copy's destination (`cp f /dev/null`), or a write flag's value (`curl -o
+/dev/null`, `sort -o /dev/null`, `git diff --output=/dev/null`). A verb that
+replaces the device itself — `rm`, `mv`, `ln`, `touch` — is judged by its row.
+A repository made in this repository's declared scratch, in this checkout or
+in another of its worktrees, is as disposable as the scratch holding it, so
+`git init tmp/p` — after a `cd` or `git -C`, with a separate git dir there
+too, or spelled under a sibling worktree's `tmp/` — is a scratch write, its
 directories resolved by the host as any write target is. Every other `git
 init` stays unclassified: one naming no directory makes the repository
 wherever git stands, a `--git-dir` moves it, and `--template` copies a
@@ -916,9 +927,10 @@ of a connection the kernel reads — a socat `UNIX-CONNECT`/`UNIX-CLIENT`/
 `UNIX-SENDTO`/`ABSTRACT-*` address, `nc -U`, `ncat -U`, `curl
 --unix-socket`, a redirection — is refused with `coordination_send` named.
 
-A deliberate send to a peer is not walled off. The `# lup: escalate:` marker in
-any of the call's own inputs turns the refusal into the approval question the
-sender asked for, carrying their stated reason — the valve every refusal has.
+A deliberate send to a peer is not walled off. The `# lup: escalate[decision]:`
+marker in any of the call's own inputs turns the refusal into the approval
+question the sender asked for, carrying their stated reason — the valve every
+refusal has.
 ## Forge credentials
 
 A contained session reaches its forge on something the operator lent it,
@@ -1109,31 +1121,40 @@ serves it, ask.
 A file another repository holds, with no destination grant, meets a referral
 in place of the gates below: the edit **asks**, and the reason says that
 repository's conventions are its own, so the way through is never to restyle
-its code into this one's. The exception is this checkout's own scratch. A
+its code into this one's. The exception is this repository's own scratch. A
 repository nested under a root declared scratch here — a probe kit given its
 own `git init` under `tmp/` — is judged as the scratch around it, so an edit,
 a redirect and a command's output landing there are allowed like any other
 scratch file, on both runtimes and after the fact alike. The claim is read off
-the path as this checkout spells it, never as the nested repository does, so
-a kit under a sibling worktree's `tmp/`, a `refs/` link landing in another
-project, and another repository's own `tmp/` all keep the referral.
+the path as the checkout of this repository holding it spells it — this one,
+or another of its worktrees, so a kit under a sibling worktree's `tmp/` is
+scratch too — never as the nested repository does, so a `refs/` link landing
+in another project and another repository's own `tmp/` keep the referral.
 
 The refusal to write a generated plugin tree by hand stops at the same line,
 and for a reason of its own: nothing this project generates lands in its
 scratch, which a test walking both recipes pins. So a kit's own hand-written
 `.claude/plugins/` or `.codex/plugins/` there is written like any other
-scratch file — by an edit, a redirect or a path verb. This checkout's compiled
-trees stay refused, and so does every tree its scratch does not hold: a
-sibling worktree's, another repository's, one under the machine's temporary
-root, and this checkout's own reached through a link planted in scratch, which
-the host resolves and the shell refuses once it has seen the link move the
-write.
+scratch file — by an edit, a redirect or a path verb, in this checkout's
+scratch or a sibling worktree's. Every compiled tree stays refused, this
+checkout's and a sibling worktree's alike, and so does every tree no scratch
+of this repository holds: another repository's, one under the machine's
+temporary root, and this checkout's own reached through a link planted in
+scratch, which the host resolves and the shell refuses once it has seen the
+link move the write.
 
 Edit decisions cover protected paths, marker changes, size, the canonical
 anti-pattern audit, and declared import ownership. A human-owned file
 surfaces every change to it, edit or shell write, as an approval its author
 answers. An edit over the size gate alone is deferred — the hook
 emits no decision, so auto-accept applies while hard gates stay explicit.
+The language server an anti-pattern rule consults is started only for a file
+in production, the one role those rules read, and a command's Git facts —
+which files are tracked, which can be restored, which other worktrees the
+repository has — are gathered before any edit gate starts it, since a checker
+spending what is left of the deadline would leave Git no time to answer: a
+heredoc into a sibling's `tmp/` would read as an outside path, and a redirect
+over tracked source beside it as a file Git never held.
 
 A deferral is never a question lup puts, and nothing parks one, whichever
 spelling carried the change — an `Edit`, a `cp` over a file, a heredoc, a
@@ -1423,7 +1444,20 @@ preimage its digest names. The dashboard and `review show` read the record;
 nothing is re-derived or run where a review is read, so the diff is what was
 judged. A file the policy allows on its own -- scratch, a test, a data file
 -- carries `allow`, which leaves it out of the default view and in the full
-one. A step whose result exists only once it runs -- a program's output
+one. A file that met a protected-path rule says which rule: its `kind`
+(`subtree` for a declared root or lup's own state under `.lup/`,
+`name_prefix` for an environment file, `new_devtools` for a devtools module
+not written yet, `exact` for a human-owned file, `contains_part` for a
+manifest or lockfile wherever it sits), the `root` it names, and a
+`description` of that root in plain words. A hook set gives a root its
+description by declaring a `ProtectedRoot(path=…, description=…)` in
+`protected_edit_roots` beside the bare paths it already lists; a bare path
+is described by itself, and a review recorded before the field existed
+carries none. A runtime's own tree is the adapter's to declare
+(`NativeSpellings.protected_tree`: `.claude` and `.codex`, each with what it
+holds), and `lup.providers.harness.runtime_trees()` collects every supported
+runtime's, which the hook set spreads into `protected_edit_roots`, so each
+runtime's tree is protected whichever one a session runs. A step whose result exists only once it runs -- a program's output
 redirected into a file, `sort -o`, a formatter, a script, a loop, a word
 the shell expands into other words -- is listed as that, with the files it
 leaves so, and never run to find out; a file that does not read as text is
@@ -1498,9 +1532,9 @@ command is tried inside the boundary before it asks for the host.
   write the mount table refuses fails approved exactly as it fails unmarked
   — the exact command is then the user's to run from a host terminal.
 
-  The bare `lup: escalate: <why>` keeps working as decision escalation and
-  says it is an alias, because a migration that breaks every marker at once
-  is one nobody can act on mid-run.
+  A marker naming no kind, `lup: escalate: <why>`, is refused with the
+  spellings that name one: the kind is the request, and the refusal is
+  where an agent stuck inside the boundary learns the sandbox half exists.
 
   A reason is mandatory in every spelling: the whole content of the request
   is what it says to whoever answers, and a request that says nothing asks
@@ -1741,23 +1775,45 @@ so the native runtime does not echo them with every diagnostic.
 A runtime lets a call through once its policy hook runs past its timeout —
 Claude Code continues through its own permission flow, Codex records the
 hook as failed and runs the tool — so a hook still waiting then has answered
-nothing. `HookSet.policy_timeout` is declared once: the hooks file each
-runtime reads carries it, and the dispatcher opens one deadline five seconds
-short of it as it starts. The language server an anti-pattern rule consults,
-a destination's accepted evaluator, and every Git and `sed` call take what is
-left rather than a timeout of their own, and one cut short reads as the
-failure it already answers — no checker looked, so the gate asks; Git could
-not say, so no capture is claimed. What nothing can hand a timeout to — a
-review-queue lock another writer holds, a read that never returns, the
-classifier itself — is stopped by an alarm two seconds past the deadline,
-and the dispatcher refuses the call as one it could not judge. Every such
-refusal says which cause it was, since each has a different fix: the
-deadline reached, input that is not a hook payload at all, or a failure
-judging one that is (`host.unjudged_reason`, on both runtimes). A process the
-hook starts inherits the deadline and cannot extend it. `dev policy` opens
-the same deadline for each reading it takes, from the same declaration
+nothing. Answering in time is part of the hook's contract, and a judgement
+that does not finish in time refuses. `HookSet.policy_timeout` is declared
+once: the hooks file each runtime reads carries it, and every bound inside
+the hook is derived from it and counted from when the runtime started the
+hook — the guard stamps that moment as `LUP_HOOK_STARTED`, since starting
+the interpreter and importing the kernel are time the runtime counts. The
+dispatcher opens one deadline five seconds short of the timeout. The
+language server an anti-pattern rule consults, a destination's accepted
+evaluator, and every Git and `sed` call take what is left rather than a
+timeout of their own. A checker or `sed` cut short reads as the failure it
+already answers — no checker looked, so the gate asks. A question only Git
+answers is never read as its "no" when it went unanswered: "not tracked",
+"touches nothing" and "no repository" each let through a write the answer
+would have asked about, so a Git question the deadline cut short ends the
+judgement there, and the call is refused unjudged
+(`host.refuse_unanswered`). What nothing can hand a timeout to — a review-queue
+lock another writer holds, a read that never returns, the classifier itself
+— is stopped by an alarm two seconds past the deadline, and the dispatcher
+refuses the call as one it could not judge. What no alarm reaches — a read
+the kernel will not interrupt, native code that never returns to the
+interpreter, the verdict still being written after its alarm was disarmed —
+is answered from outside the judgement: it runs in a child process, and the
+hook waits on that child only until two seconds short of the timeout, then
+stops it and refuses in its stead (`host.answered_in_time`,
+`lup.policy.bundle.hook_answer_limit`). Every such refusal says which cause
+it was, since each has a different fix: the policy could not judge the
+call in time — retry it once, and report it if it is refused again — input
+that is not a hook payload at all, or a failure judging one that is
+(`host.unjudged_reason` and `host.unjudged_recovery`, on both runtimes).
+A process the hook starts inherits the deadline and cannot extend it.
+`dev policy` opens the same deadline for each reading it takes, from the same declaration
 (`lup.policy.bundle.hook_deadline`), so a reading that would wait past it is
-refused as the hook it previews would be rather than holding the command.
+refused as the hook it previews would be rather than holding the command. A
+session opened in process is held to the same declaration: its policy hook
+gives the runtime `policy_timeout` as its timeout, refuses a judgement still
+running at the deadline in the same words, and refuses a call whose hook
+raised rather than handing the error to a runtime that would run the call
+anyway; [platform-differentiation.md](platform-differentiation.md) says
+what each runtime does on its own.
 
 Plugin hooks receive a writable data directory: `PLUGIN_DATA` under Codex and
 `CLAUDE_PLUGIN_DATA` under Claude Code. Each dispatcher appends
@@ -1778,7 +1834,9 @@ read from the parse rather than from the authority that would carry it.
 This journal distinguishes failures whose UI is otherwise identical. A
 `failed` record is a dispatcher failure; `completed` with `deny` is an
 intentional policy refusal; `started` without a terminal record is an
-interrupted dispatcher. If the native runtime reports a hook event but no
+interrupted dispatcher — a judgement the hook stopped at its answer limit,
+whose refusal says it could not judge the call in time, or one something
+else killed. If the native runtime reports a hook event but no
 correlated `started` record exists, the plugin command never began, so the
 investigation belongs at its trust, hook-definition, or process-launch
 boundary rather than in policy logic. An unwritable journal reports its own

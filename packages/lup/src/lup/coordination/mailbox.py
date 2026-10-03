@@ -165,7 +165,7 @@ class QuestionMailbox[Q: Question]:
         Identical is a no-op, so the first asking keeps its timestamp. A
         restatement takes, because the facts a gate quotes go stale while
         the run is parked on it. A moved answer domain is refused, which is
-        the case this guard was built for: an actor redefining one id.
+        the case this guard exists for: an actor redefining one id.
         """
         slot = self.slots.slot(pending.question.id)
         existing = slot.declared()

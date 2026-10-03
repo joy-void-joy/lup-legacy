@@ -6,6 +6,7 @@ nothing is refused before anything reads it.
 """
 
 from lup.policy.kernel.escalation import (
+    MISSING_KIND,
     MISSING_REASON,
     ESCALATION_KINDS,
     read_escalation,
@@ -13,7 +14,7 @@ from lup.policy.kernel.escalation import (
 
 
 def test_a_marker_names_which_axis_it_asks_to_move() -> None:
-    """Two different requests were sharing one spelling.
+    """Two different requests, each spelled by the axis it moves.
 
     "Put this to a person, because the rule that refused it does not know
     what I know" and "run this on the host, because inside cannot answer it"
@@ -36,22 +37,20 @@ def test_a_marker_may_name_both_axes_at_once() -> None:
     assert reading.request.kinds == ("decision", "sandbox")
 
 
-def test_the_bare_spelling_stays_a_working_alias_and_says_so() -> None:
-    """Every marker written before the vocabulary grew keeps working.
+def test_a_marker_naming_no_kind_is_refused_with_the_spellings() -> None:
+    """The kind is the request, so a marker without one asks for nothing.
 
-    The alternative is a session whose escalations all stop working at once,
-    which is a migration nobody can act on mid-run. Saying it is an alias is
-    what keeps the sandbox half — the one an agent stuck inside the boundary
-    actually needs — from staying undiscovered.
+    Read as a decision, it would leave an agent stuck inside the boundary
+    never learning the sandbox half exists; the refusal names both.
     """
     reading = read_escalation("# lup: escalate: I need it\nls")
 
-    assert reading.request is not None
-    assert reading.request.kinds == ("decision",)
-    assert reading.request.legacy is True
-    assert any(
-        "escalate[sandbox]" in through["says"] for through in reading.request.notice()
-    )
+    assert reading.request is None
+    assert reading.refusal == MISSING_KIND
+    ways = [through["says"] for through in reading.recovery]
+    assert any("escalate[decision]" in says for says in ways)
+    assert any("escalate[sandbox]" in says for says in ways)
+    assert reading.remainder == "ls"
 
 
 def test_a_marker_with_no_reason_is_refused_before_anything_reads_it() -> None:
@@ -67,7 +66,7 @@ def test_a_marker_with_no_reason_is_refused_before_anything_reads_it() -> None:
 
 
 def test_a_kind_this_vocabulary_does_not_carry_is_named_rather_than_ignored() -> None:
-    """A typo read as the bare alias would grant the wrong axis in silence.
+    """A typo read as some other kind would grant the wrong axis in silence.
 
     The agent would ask for the host, receive decision escalation, watch the
     operation run inside anyway, and spend a turn finding out why.
@@ -96,16 +95,17 @@ def test_an_unmarked_call_asks_for_nothing_and_is_left_whole() -> None:
 
 
 def test_the_canonical_spelling_round_trips_what_was_asked_for() -> None:
-    """The audit has to say a legacy marker was read as decision escalation.
+    """The audit says which axes a marker asked for, in one spelling.
 
     Reconstructing that from the effect it produced is exactly the inference
-    a record exists to make unnecessary.
+    a record exists to make unnecessary, and two markers naming the same pair
+    in another order are the same request.
     """
-    reading = read_escalation("# lup: escalate: why\nls")
+    reading = read_escalation("# lup: escalate[sandbox, decision]: why\nls")
 
     assert reading.request is not None
-    assert reading.request.normalized == "# lup: escalate[decision]: why"
-    assert reading.request.raw.startswith("# lup: escalate: why")
+    assert reading.request.normalized == "# lup: escalate[decision,sandbox]: why"
+    assert reading.request.raw.startswith("# lup: escalate[sandbox, decision]: why")
 
 
 def test_every_kind_the_vocabulary_carries_parses_under_its_own_name() -> None:

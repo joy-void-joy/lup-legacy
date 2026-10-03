@@ -2,23 +2,21 @@
 
 A branch carries two facts nothing in git produces and nothing in git
 consumes: what it was cut from, and where it stood before anybody worked on
-it. Both were written into the repository's shared ``config`` as
-``branch.<name>.lup-*`` keys — the one file in the shared git directory whose
-contents name programs git runs on the host, through ``core.hooksPath``,
-``alias.*``, ``credential.helper`` and ``merge.*.driver``. Keeping a private
-record there is what makes that file have to be writable by whoever holds a
-worktree, and the record gains nothing from sitting beside keys git reads.
+it. The repository's shared ``config`` is no home for them: it is the one
+file in the shared git directory whose contents name programs git runs on the
+host, through ``core.hooksPath``, ``alias.*``, ``credential.helper`` and
+``merge.*.driver``. A private record kept there makes that file have to be
+writable by whoever holds a worktree, and the record gains nothing from
+sitting beside keys git reads.
 
-So it sits in ``<common>/lup/`` instead, one JSON document per branch, beside
-the edition record already there. Shared by every worktree of the repository
-for the same reason the config was: a base recorded where one checkout was
-cut has to answer from any of its siblings.
+So it sits in ``<common>/lup/``, one JSON document per branch, beside the
+edition record. Shared by every worktree of the repository, because a base
+recorded where one checkout was cut has to answer from any of its siblings.
 
-The keys that came before are still read, per field, wherever the document
-does not carry one. A branch recorded only in ``config`` therefore answers
-exactly as it did, from any worktree, with no write anywhere and no command
-run first. :func:`adopt_legacy_records` is what finally empties ``config``,
-and it is a once-per-clone move rather than something a read performs.
+A clone's ``config`` can still carry these facts as ``branch.<name>.lup-*``
+keys. Nothing reads them there: :func:`adopt_config_records` moves them into
+the record once per clone, and :func:`branches_awaiting_adoption` is how the
+gate names a clone that has not run it.
 """
 
 import functools
@@ -78,7 +76,7 @@ class BranchRecord(BaseModel, frozen=True):
         )
 
 
-class LegacyFact(StrEnum):
+class ConfigFact(StrEnum):
     """One fact a clone's ``config`` may carry, by the suffix it is written under.
 
     A closed set rather than two loose names, because the spelling is needed
@@ -95,10 +93,6 @@ class LegacyFact(StrEnum):
     BASE = "lup-base"
     RESERVATION = "lup-base-commit"
 
-    def key(self, branch: str) -> str:
-        """The shared-config key this fact was written under, for one branch."""
-        return f"branch.{branch}.{self}"
-
     def branch_of(self, key: str) -> str:
         """The branch a key belongs to, empty where it carries another fact.
 
@@ -112,19 +106,19 @@ class LegacyFact(StrEnum):
     def addition(self, value: str) -> BranchRecord:
         """The record this fact contributes, holding the value its key held."""
         match self:
-            case LegacyFact.BASE:
+            case ConfigFact.BASE:
                 return BranchRecord(base=value)
-            case LegacyFact.RESERVATION:
+            case ConfigFact.RESERVATION:
                 return BranchRecord(base_commit=value)
 
 
-def carrier_of(key: str) -> LegacyFact | None:
-    """Which fact a legacy key carries, None where it carries neither.
+def carrier_of(key: str) -> ConfigFact | None:
+    """Which fact a ``branch.*.lup-*`` key carries, None where it carries neither.
 
     The reservation is tested first because the base's suffix is a prefix of
     it, so a key ending in the longer one ends in both.
     """
-    return next((fact for fact in reversed(LegacyFact) if fact.branch_of(key)), None)
+    return next((fact for fact in reversed(ConfigFact) if fact.branch_of(key)), None)
 
 
 def at(cwd: Path | None) -> list[str]:
@@ -240,51 +234,36 @@ def record_landing(branch: str, integration: str, cwd: Path | None = None) -> No
     publish_atomic(record_path(branch, cwd), landing)
 
 
-def legacy_value(branch: str, fact: LegacyFact, cwd: Path | None = None) -> str:
-    """What ``config`` still holds for one fact, empty where it holds nothing.
-
-    A read, never a write: this is what lets a clone whose records were never
-    adopted behave exactly as it did, including one whose shared directory is
-    mounted read-only.
-    """
-    try:
-        return git.out(*at(cwd), "config", "--get", fact.key(branch), _ok_code=[0])
-    except sh.ErrorReturnCode:
-        return ""
-
-
 def recorded_base(branch: str, cwd: Path | None = None) -> str:
-    """The base recorded for this branch, from either place, or empty."""
-    return read_record(branch, cwd).base or legacy_value(branch, LegacyFact.BASE, cwd)
+    """The base recorded for this branch, or empty."""
+    return read_record(branch, cwd).base
 
 
 def recorded_reservation(branch: str, cwd: Path | None = None) -> str:
-    """The commit this branch was reserved at, from either place, or empty."""
-    held = read_record(branch, cwd).base_commit
-    return held or legacy_value(branch, LegacyFact.RESERVATION, cwd)
+    """The commit this branch was reserved at, or empty."""
+    return read_record(branch, cwd).base_commit
 
 
 def recorded_upstream(branch: str, cwd: Path | None = None) -> str:
     """The remote-tracking ref this branch was last published to, or empty.
 
-    No fallback, because no legacy key carries it: a branch with nothing
-    recorded says nothing here, and its caller falls back to git's own
-    tracking configuration.
+    A branch with nothing recorded says nothing here, and its caller falls
+    back to git's own tracking configuration.
     """
     return read_record(branch, cwd).upstream
 
 
-def legacy_keys(cwd: Path | None = None) -> list[str]:
-    """Every ``branch.*.lup-*`` key the shared config still carries.
+def config_keys(cwd: Path | None = None) -> list[str]:
+    """Every ``branch.*.lup-*`` key the shared config carries.
 
     Names only, so nothing has to be parsed back out of a key-and-value line:
     each value is asked for separately, by the key git has just named.
 
     The shared file alone, because that is the one this exists to empty. A
-    key somebody put in their own global configuration is theirs, still
-    answers every read, and is nobody else's to unset.
+    key somebody put in their own global configuration is theirs, and is
+    nobody else's to unset.
     """
-    spellings = "|".join(LegacyFact)
+    spellings = "|".join(ConfigFact)
     asked = ["config", "--local", "--name-only", "--get-regexp"]
     try:
         found = git.lines(*at(cwd), *asked, rf"^branch\..*\.({spellings})$")
@@ -294,11 +273,11 @@ def legacy_keys(cwd: Path | None = None) -> list[str]:
 
 
 def branches_awaiting_adoption(cwd: Path | None = None) -> list[str]:
-    """Every branch whose facts the shared config still carries, named once.
+    """Every branch whose facts the shared config carries, named once.
 
-    The measurement behind saying the move is unfinished. A clone answers
-    every read either way, so without asking this nothing would ever notice
-    that half the bookkeeping still sits in the file it is meant to leave.
+    The measurement behind saying the move is unfinished. Nothing reads a
+    fact while it sits in ``config``, so a branch named here answers as one
+    nobody recorded until :func:`adopt_config_records` moves it.
 
     Named rather than counted, because a caller wanting the number takes the
     length and one wanting the names cannot recover them from a number. One
@@ -307,7 +286,7 @@ def branches_awaiting_adoption(cwd: Path | None = None) -> list[str]:
     """
 
     def named() -> Iterator[str]:
-        for key in legacy_keys(cwd):
+        for key in config_keys(cwd):
             fact = carrier_of(key)
             if fact is not None:
                 yield fact.branch_of(key)
@@ -315,13 +294,13 @@ def branches_awaiting_adoption(cwd: Path | None = None) -> list[str]:
     return list(dict.fromkeys(named()))
 
 
-def adopt_legacy_records(cwd: Path | None = None) -> Iterator[str]:
+def adopt_config_records(cwd: Path | None = None) -> Iterator[str]:
     """Move every ``branch.*.lup-*`` key into ``<common>/lup/``, naming each.
 
-    The half of the move a read cannot perform. Reads fall back to these keys
-    indefinitely, so nothing depends on this having run — what it buys is a
-    shared ``config`` holding nothing lup wrote, which is the only way that
-    file stops needing to be writable by a worker.
+    Reads answer from the record alone, so a fact still in ``config`` counts
+    for nothing until this moves it. What the move also buys is a shared
+    ``config`` holding nothing lup wrote, which is the only way that file
+    stops needing to be writable by a worker.
 
     The document lands first and the key is dropped after it, so an
     interruption leaves a fact recorded twice rather than not at all, and a
@@ -329,7 +308,7 @@ def adopt_legacy_records(cwd: Path | None = None) -> Iterator[str]:
     yields nothing, which is what makes running it again both safe and cheap
     to describe.
     """
-    for key in legacy_keys(cwd):
+    for key in config_keys(cwd):
         fact = carrier_of(key)
         if fact is None:
             continue

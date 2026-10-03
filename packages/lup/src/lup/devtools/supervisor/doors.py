@@ -16,6 +16,7 @@ from time import sleep
 import typer
 
 from lup.channels.models import local_stamp, utc_now
+from lup.workspace.checkout_state import CheckoutState
 from lup.resolver.models import (
     ConcernRetirement,
     ConcernStatus,
@@ -39,7 +40,7 @@ from lup.diagnostics import refuse
 
 
 def resolve_state_root() -> Path:
-    return project_root() / ".lup" / "resolve"
+    return CheckoutState(root=project_root()).resolve()
 
 
 def open_mailbox(run_id: str) -> QuestionMailbox:

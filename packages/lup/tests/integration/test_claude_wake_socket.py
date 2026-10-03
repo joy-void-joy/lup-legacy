@@ -1,7 +1,7 @@
 """A Claude session binds the wake socket lup places, and takes lup's frame from it.
 
 The wake rests on four behaviours of the runtime's messaging socket, none of
-them documented and each measured by hand before this: a session binds the
+them documented: a session binds the
 path ``--messaging-socket-path`` names rather than the directory its peers
 scan; a frame needs no authentication frame before it; a frame naming the
 session is delivered as a user message mid-turn; and a frame naming any

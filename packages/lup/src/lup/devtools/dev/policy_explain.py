@@ -33,9 +33,12 @@ from lup.policy.assets.host import (
     delivers,
     measured_boundary,
     opened_deadline,
+    ran_out,
     text_at,
+    unjudged_reason,
 )
 from lup.policy.bundle import hook_deadline
+from lup.policy.kernel.decision import unjudged_recovery
 from lup.policy.kernel.diagnostic import Diagnostic, diagnostic, rendered
 from lup.policy.kernel.lex import shell_write_targets, shell_written_targets
 from lup.policy.kernel.semantics import UnjudgedAmbient
@@ -267,8 +270,12 @@ def read_under(
         return PolicyReading(
             placement=placement.name,
             effect="deny",
-            reason=str(overran),
-            said=diagnostic("refused", str(overran)),
+            reason=unjudged_reason(overran, True),
+            said=diagnostic(
+                "refused",
+                unjudged_reason(overran, True),
+                steps=unjudged_recovery(ran_out(overran)),
+            ),
         )
     finally:
         closed_deadline(previous)

@@ -13,6 +13,7 @@ from pathlib import Path
 import typer
 from pydantic import ValidationError
 
+from lup.channels.models import aware
 from lup.types import JsonValue
 from lup.workspace.history import iter_session_dirs, list_all_session_ids
 from lup.workspace.paths import feedback_path
@@ -39,7 +40,7 @@ def load_sessions(
             data.source_file = str(session_files[0])
 
             if since and data.timestamp:
-                if datetime.fromisoformat(data.timestamp) < since:
+                if aware(datetime.fromisoformat(data.timestamp)) < aware(since):
                     continue
 
             sessions.append(data)

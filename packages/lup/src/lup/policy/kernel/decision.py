@@ -19,6 +19,7 @@ from .diagnostic import (
 from .semantics import (
     AbstentionPurpose,
     Capability,
+    PathRuleKind,
     REACHES,
     Reach,
     RefusalCause,
@@ -217,20 +218,6 @@ A genuinely headless run has no such channel and still gets
 :data:`RESHAPE_HINT`, because naming a route that is not there is the same
 failure pointed the other way.
 """
-# lup: ignore[library-default] — refusal wording, declared with its verdict
-UNJUDGED_RECOVERY = (
-    step(
-        "see what the policy says about the same call",
-        devtools("dev", "policy", "<the call>"),
-    ),
-    step("and report the failure", devtools("dev", "report-friction")),
-)
-"""What an agent can do about a call the hook failed to judge.
-
-The hook refuses it unjudged, which says nothing about whether the call was
-fine: reproducing it shows whether the failure is the call's or the hook's,
-and a report is how the hook's gets fixed.
-"""
 # lup: ignore[constant-declaration] — refusal wording, declared with its verdict
 SCRIPT_RECOVERY = (
     step(
@@ -275,6 +262,21 @@ def sandbox_escaped(sandbox: SandboxPlacement) -> bool:
     return sandbox == "outside"
 
 
+class ProtectedRow(TypedDict):
+    """The protected-path rule a file met: how it matched, what it names, and why.
+
+    ``root`` is the rule's value as declared -- a root, a file, `.env`, or
+    `src` for a new devtools module -- and ``description`` says in plain words
+    what that is, the root itself where nothing was declared. A reviewer told
+    only that a file is protected cannot tell the policy's own code from a
+    lockfile; this is what tells them.
+    """
+
+    kind: PathRuleKind
+    root: str
+    description: str
+
+
 class FileReviewRow(TypedDict):
     """A caller-bound record of the actual file verdict, never authority itself.
 
@@ -282,7 +284,8 @@ class FileReviewRow(TypedDict):
     removes the file: what a reviewer is shown, so what they read is what was
     judged rather than a second reading of the call made where they read it.
     The document it replaces is bound by ``before_sha256`` alone, since the
-    caller keeps it as the call's preimage already.
+    caller keeps it as the call's preimage already. ``protected`` is the
+    protected-path rule the file met, ``None`` where it met none.
     """
 
     path: str
@@ -293,6 +296,7 @@ class FileReviewRow(TypedDict):
     before_sha256: str | None
     after_sha256: str | None
     after: str | None
+    protected: ProtectedRow | None
 
 
 type UnpreviewedCause = Literal["run", "unread"]
@@ -366,6 +370,7 @@ class Revision(TypedDict, total=False):
     file_reviews: tuple[FileReviewRow, ...]
     unpreviewed: tuple[UnpreviewedRow, ...]
     segments: tuple[SegmentRow, ...]
+    protected: ProtectedRow | None
 
 
 class KernelDecision:
@@ -375,8 +380,8 @@ class KernelDecision:
     knows about that answer, and each is a separate axis because each has a
     different answerer: a checkpoint does not consent to a release, an
     approval does not build a host channel, and a rule id is not a review
-    purpose. Composing them into one enum is what made a verdict unreadable
-    at exactly the moment somebody needed to know why it happened.
+    purpose. Composing them into one enum would make a verdict unreadable
+    at exactly the moment somebody needs to know why it happened.
     """
 
     effect: DecisionEffect
@@ -563,6 +568,14 @@ class KernelDecision:
     reasons into one sentence. A command's own verdict names itself here.
     """
 
+    protected: ProtectedRow | None
+    """The protected-path rule this verdict met, ``None`` where it met none.
+
+    Carried from the edit gate that matched it to the row a reviewer reads
+    for the file, so the question can say which tree a person owns rather
+    than only that some rule tripped.
+    """
+
     def __init__(
         self,
         effect: DecisionEffect,
@@ -590,6 +603,7 @@ class KernelDecision:
         subject: str = "",
         see: str = "",
         queued: str = "",
+        protected: ProtectedRow | None = None,
     ) -> None:
         if effect not in ("allow", "ask", "deny", "defer"):
             raise ValueError(f"invalid kernel decision effect {effect!r}")
@@ -621,6 +635,7 @@ class KernelDecision:
         self.subject = subject
         self.see = see
         self.queued = queued
+        self.protected = protected
         # Only a verdict this policy actually reached is placed: a refusal is
         # not softened by where the operation would have run, and a deferral
         # hands the whole question over, placement included.
@@ -666,6 +681,7 @@ class KernelDecision:
             changes["subject"] if "subject" in changes else self.subject,
             changes["see"] if "see" in changes else self.see,
             changes["queued"] if "queued" in changes else self.queued,
+            changes["protected"] if "protected" in changes else self.protected,
         )
 
     def placed(self, escapable: bool, contained: bool = False) -> "KernelDecision":
@@ -819,6 +835,26 @@ def offered(steps: Sequence[Step]) -> tuple[Step, ...]:
     if all(through in (RESHAPE, ESCALATE, RELAY) for through in steps):
         return tuple(steps)
     return tuple(through for through in steps if through != RESHAPE)
+
+
+def unjudged_recovery(ran_out: bool) -> tuple[Step, ...]:
+    """What the agent does about a call the hook refused unjudged.
+
+    Only time passes on its own, so only a judgement that ran out of it
+    (``ran_out``) is worth the same call again. Either way the refusal is
+    the policy's defect rather than the call's once it repeats, and the
+    report is where that goes.
+    """
+    report = devtools("dev", "report-friction", "--component", "lup/policy")
+    if ran_out:
+        return (
+            step(
+                "retry the same call once: a slow moment, load on the machine"
+                " or a lock another session held, passes"
+            ),
+            step("refused again, report it, naming the call and this refusal", report),
+        )
+    return (step("if it repeats, report it, naming the call and this refusal", report),)
 
 
 def unjudged(reason: str) -> KernelDecision:
@@ -1030,8 +1066,8 @@ def recovery_dischargeable(decision: KernelDecision) -> bool:
 
     Read over the contributions rather than the join, because the join
     reports the strongest effect and says nothing about how many reasons
-    reached it — which is how a recoverable deletion beside a full-file
-    rewrite would have discharged the rewrite. A question kept for a word
+    reached it — so read over the join, a recoverable deletion beside a
+    full-file rewrite would discharge the rewrite. A question kept for a word
     nobody could read is never retired, whatever loss it names.
     """
     asking = [part for part in contributions(decision) if part.effect == "ask"]
@@ -1056,7 +1092,8 @@ def file_review_row(
 
     Stated whole because the row is what a reviewer reads for that file, and
     every surviving reason at the verdict's own effect is part of what they
-    are approving.
+    are approving. The protected-path rule is read off whichever part met
+    one, since a verdict joined from several gates keeps each gate's own.
     """
     return FileReviewRow(
         path=path,
@@ -1067,6 +1104,14 @@ def file_review_row(
         before_sha256=before_sha256,
         after_sha256=after_sha256,
         after=after,
+        protected=next(
+            (
+                part.protected
+                for part in (decision, *contributions(decision))
+                if part.protected is not None
+            ),
+            None,
+        ),
     )
 
 

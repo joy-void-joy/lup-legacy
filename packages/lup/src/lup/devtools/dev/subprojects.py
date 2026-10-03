@@ -39,6 +39,7 @@ from packaging.version import InvalidVersion, Version
 from pydantic import BaseModel, Field, field_validator
 
 from lup.devtools.dev.check import TestRoot
+from lup.formats.toml import edited_manifest
 from lup.harness.models import HookPathRole
 from lup.types import StringMap
 from lup.workspace.paths import project_root
@@ -390,12 +391,13 @@ def write_sub_projects(
     writing it.
     """
     manifest = (root or project_root()) / "pyproject.toml"
-    document = tomlkit.parse(manifest.read_text(encoding="utf-8"))
-    changes = apply_sub_projects(document, declared)
+    changes = edited_manifest(
+        manifest,
+        lambda document: apply_sub_projects(document, declared),
+        write=not check,
+    )
     if changes and check:
         raise RuntimeError(
             f"{manifest} is behind the declared sub-projects: {'; '.join(changes)}"
         )
-    if changes:
-        manifest.write_text(tomlkit.dumps(document), encoding="utf-8")
     return manifest

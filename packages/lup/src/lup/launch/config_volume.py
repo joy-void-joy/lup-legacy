@@ -3,7 +3,7 @@
 Per repository, because every worktree of one repository shares the login,
 the trust and the transcripts a ``--continue`` reopens, and keyed on the
 shared git directory, the only name all of them agree on. Per runtime,
-because a home both CLIs wrote into was a home each could read the other's
+because a home both CLIs wrote into is a home each can read the other's
 transcripts and credentials out of, holding both vendors' files mixed
 together (``lup-claude-<repo>``, ``lup-codex-<repo>``). And not per person:
 a volume every repository shared would be one repository's session reading
@@ -14,11 +14,12 @@ and carries a session's personal changes back to the host when it closes
 (:mod:`lup.providers.claude.home_seed`), so what a volume holds is state:
 the login, the trust, the history, the transcripts.
 
-Before the split one volume served both runtimes (``lup-cfg-<repo>``), and
-before that one per worktree (``lup-cfg-<worktree>``); Codex had one more per
-digest of its settings (``lup-cfg-<repo>-codex-<digest>``). The first launch
-that finds any of them moves what they hold into the split volumes once, by
-what each runtime declares it keeps, and removes them.
+An engine can also hold homes in the unsplit layouts: one volume both
+runtimes write into (``lup-cfg-<repo>``), one per worktree
+(``lup-cfg-<worktree>``), and Codex's one per digest of its settings
+(``lup-cfg-<repo>-codex-<digest>``). The first launch that finds any of them
+moves what they hold into the split volumes once, by what each runtime
+declares it keeps, and records them for removal.
 """
 
 import io
@@ -53,7 +54,7 @@ SPLIT_SOURCE = "/lup-split-from"
 
 
 def shared_volume_name(root: Path) -> str:
-    """What both runtimes' configuration home was called before the split."""
+    """The unsplit configuration home both runtimes write into, by repository."""
     return f"lup-cfg-{repository_layout(root).name()}"
 
 
@@ -130,17 +131,17 @@ class HomeSplit(BaseModel, frozen=True):
         )
 
 
-class LegacyVolumes(BaseModel, frozen=True):
-    """The configuration-home volumes an older launch made for one repository."""
+class UnsplitVolumes(BaseModel, frozen=True):
+    """One repository's configuration homes in a layout not split per runtime."""
 
     shared: str | None = None
-    """The one both runtimes wrote into, where it still exists."""
+    """The one both runtimes write into, where the engine holds it."""
 
     scoped: dict[str, list[str]] = {}
-    """Each runtime's volume word, and the volumes it had per settings digest."""
+    """Each runtime's volume word, and the volumes it holds per settings digest."""
 
     branches: list[str] = []
-    """The per-worktree volumes that preceded the shared one."""
+    """The per-worktree volumes, one for each worktree that has one."""
 
     @classmethod
     def found(
@@ -149,8 +150,8 @@ class LegacyVolumes(BaseModel, frozen=True):
         existing: list[str],
         logins: list[ProviderLogin],
         worktrees: list[str],
-    ) -> "LegacyVolumes":
-        """Which of this repository's old volumes the engine still holds."""
+    ) -> "UnsplitVolumes":
+        """Which of this repository's unsplit volumes the engine holds."""
         shared = shared_volume_name(root)
         branches = [f"lup-cfg-{name}" for name in worktrees]
         return cls(
@@ -169,7 +170,7 @@ class LegacyVolumes(BaseModel, frozen=True):
         )
 
     def every(self) -> list[str]:
-        """Every old volume, the shared one first."""
+        """Every unsplit volume, the shared one first."""
         return [
             *([self.shared] if self.shared is not None else []),
             *(name for names in self.scoped.values() for name in names),
@@ -321,7 +322,7 @@ def settle_home_seed(
 
 
 class RuntimeVolume(BaseModel, frozen=True):
-    """One runtime's configuration-home declaration, and the volume it now lives in."""
+    """One runtime's configuration-home declaration, and the volume it lives in."""
 
     login: ProviderLogin
     volume: str
@@ -351,22 +352,23 @@ def split_config_volumes(
     now: datetime,
     existing: list[str] | None = None,
 ) -> list[Notice]:
-    """Copy this repository's old configuration homes into one volume per runtime.
+    """Copy this repository's unsplit configuration homes into one volume per runtime.
 
     Once: a volume already recorded as superseded is not copied again. Safely
-    again where a split was interrupted: every copy keeps what the target
+    again where a split is interrupted: every copy keeps what the target
     already holds, so it finishes on the next launch without overwriting what
     a session wrote in between, and nothing is recorded until every copy
-    landed. A volume some container still holds — a session opened before the
-    split — postpones the whole split to a launch after it closes, since its
-    files are still being written.
+    lands. A volume some container still holds — a session that opened on
+    the unsplit home — postpones the whole split to a launch after it closes,
+    since its files are still being written.
 
     The shared volume's entries go to each runtime that declares them, an
     entry nobody declares to every runtime, said aloud; debris goes nowhere.
-    A per-digest volume was one runtime's alone and goes to that runtime.
-    Per-worktree volumes were superseded before the split and are not read.
+    A per-digest volume is one runtime's alone and goes to that runtime.
+    Per-worktree volumes hold nothing the shared one does not, and are not
+    read.
 
-    The old volumes are kept, not removed: each is recorded as superseded
+    The unsplit volumes are kept, not removed: each is recorded as superseded
     (:mod:`lup.launch.superseded`) and a launch removes it once
     ``kept_for`` has passed, so a history nobody has checked the copy of is
     still there to check.
@@ -378,8 +380,8 @@ def split_config_volumes(
     worktrees = [root.name, *(path.name for path in sibling_worktrees(root))]
     recorded = record.load()
     unsplit = [name for name in volumes if name not in recorded.names()]
-    legacy = LegacyVolumes.found(root, unsplit, logins, worktrees)
-    old = legacy.every()
+    found = UnsplitVolumes.found(root, unsplit, logins, worktrees)
+    old = found.every()
     if not old:
         return []
     held = {name: attached_containers(name, engine) for name in old}
@@ -398,11 +400,11 @@ def split_config_volumes(
         ]
     split = HomeSplit(owned={})
     try:
-        if legacy.shared is not None:
-            split = HomeSplit.of(helper.entries(legacy.shared), logins)
+        if found.shared is not None:
+            split = HomeSplit.of(helper.entries(found.shared), logins)
             for word, entries in split.owned.items():
-                helper.fill(legacy.shared, targets[word], entries)
-        for word, scoped in legacy.scoped.items():
+                helper.fill(found.shared, targets[word], entries)
+        for word, scoped in found.scoped.items():
             for volume in scoped:
                 entries = helper.entries(volume)
                 debris = HomeSplit.of(entries, logins).debris

@@ -93,9 +93,9 @@ def test_a_command_prefix_assignment_still_binds_nothing() -> None:
 def test_a_reference_the_shell_never_expands_is_never_expanded() -> None:
     """Single quotes and a quoted heredoc keep `$S` as the characters it is.
 
-    Words reached the binding pass with their quoting already removed, so the
-    `$S` inside a sed script was expanded into it and the script judged was
-    one the command never runs.
+    Words reaching the binding pass with their quoting already removed would
+    expand the `$S` inside a sed script, and the script judged would be one
+    the command never runs.
     """
     command = "S=src.py; sed -i 's/$S/x/' $S"
     assert shell_sed_rewrites(command, VOCABULARY) == [

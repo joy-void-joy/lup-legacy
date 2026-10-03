@@ -1,15 +1,15 @@
 """A shell write that carries its content is judged by what it would write.
 
-The premise a redirection was answered on: a command produces its output by
-running, so before the fact there is nothing for the content gates to read,
-and the write is judged by its path alone. `written_review` exists because
-that premise is true — it puts the same gates to the file afterwards, which is
-the best that can be done for `dev render > docs/api.md`.
+A command that produces its output by running holds nothing for the content
+gates to read before the fact, so its write is judged by its path alone.
+`written_review` exists because that is true — it puts the same gates to the
+file afterwards, which is the best that can be done for
+`dev render > docs/api.md`.
 
 It is not true of `cat > f <<'EOF'` or `echo x > f`. The bytes are sitting in
 the command, and the anti-pattern audit, the review-note gate and the size
 budget can read exactly what an `Edit` would have shown them, at the moment
-that still changes the answer. Measured before this: a heredoc replaced a
+that still changes the answer. Judged by its path alone, a heredoc replaces a
 tracked library module with one line, allowed and unprompted.
 """
 
@@ -35,19 +35,19 @@ def judged(command: str, root: Path) -> Decision:
 
 
 def unreviewed(command: str, root: Path) -> Decision:
-    """The same command with no edit policy behind it, as it was judged before."""
+    """The same command with no edit policy behind it, judged by its path alone."""
     return ShellPolicy(default_vocabulary(), path_roles=SCRATCH).decide(
         ShellCommand(command=command, cwd=root)
     )
 
 
 def test_a_heredoc_replacing_a_source_file_reaches_the_gates(tmp_path: Path) -> None:
-    """The hole this closes, stated against the shape that opened it.
+    """A heredoc over tracked source meets the gates before it lands.
 
     A redirection declares its route reviewed, which is what lets the write
     row allow an overwrite of tracked source: the gates do read it, just
-    afterwards. Here they can read it now, and what they are shown is a whole
-    module replaced by one line.
+    afterwards. Judged here, they read it first, and what they are shown is a
+    whole module replaced by one line.
     """
     module = tmp_path / "engine.py"
     module.write_text("def run() -> int:\n    return 1\n", encoding="utf-8")
@@ -58,11 +58,12 @@ def test_a_heredoc_replacing_a_source_file_reaches_the_gates(tmp_path: Path) -> 
 
 
 def test_a_write_that_drops_a_review_note_is_refused(tmp_path: Path) -> None:
-    """The gate the route was going around, and the reason it is not advisory.
+    """The gate the route would go around, and the reason it is not advisory.
 
     Deleting review feedback is denied wherever an edit reaches, and a
-    redirection reached nowhere: the note was in the file, the replacement
-    does not carry it, and nothing before this compared the two.
+    redirection judged by its path reaches none of it: the note is in the
+    file, the replacement does not carry it, and only reading the content
+    compares the two.
     """
     module = tmp_path / "engine.py"
     module.write_text("# lup: this needs a second look\nx = 1\n", encoding="utf-8")
@@ -148,9 +149,9 @@ def test_a_tee_is_read_through_its_operands_and_its_pipe() -> None:
 
     `tee` names its targets as operands rather than through a redirection,
     and what it copies to them arrives on standard input — from a heredoc of
-    its own, or down a pipe from a segment that carried its bytes. Measured
-    before this: `echo 'x = 1' | tee packages/lup/src/lup/seams.py` replaced
-    a tracked library module, settled by a capture rather than asked about.
+    its own, or down a pipe from a segment that carried its bytes. Unread,
+    `echo 'x = 1' | tee packages/lup/src/lup/seams.py` replaces a tracked
+    library module, settled by a capture rather than asked about.
     """
     assert authored_writes("tee f.py <<'EOF'\nx = 1\nEOF") == [
         {"path": "f.py", "content": "x = 1\n", "append": False}
@@ -181,7 +182,7 @@ def test_a_stream_sink_beside_the_write_does_not_hide_it() -> None:
 
 
 def test_a_comment_reading_like_an_annotation_is_not_refused(tmp_path: Path) -> None:
-    """Issue #458, as it was written: a JSDoc line whose prose reads `: any of`.
+    """A JSDoc line whose prose reads `: any of` is prose, not an annotation.
 
     The bytes reach the anti-pattern gate as an `Edit` would, and the gate
     reads them as TypeScript — a comment is not a type position, while the
@@ -209,12 +210,12 @@ def test_a_target_nothing_bound_is_not_read_as_a_create(tmp_path: Path) -> None:
     """`cat > $P` names no file, and naming none is not naming an empty one.
 
     The reader resolves what the binding pass can — `P=tmp/f.py; cat > $P`
-    lands on `tmp/f.py` and is read there. What it could not resolve it has
-    to hand back, and it did not: `$P` was carried through as a path, the
-    review looked for a file of that name, found none, and judged an
-    overwrite of whatever `P` holds as a create — the size budget, the note
-    gate and the audit all reading "no prior content" about a tracked module.
-    The prompt then named `$P`, which a reviewer cannot resolve either.
+    lands on `tmp/f.py` and is read there. What it cannot resolve it hands
+    back: carried through as a path, `$P` sends the review looking for a file
+    of that name, finding none, and judging an overwrite of whatever `P` holds
+    as a create — the size budget, the note gate and the audit all reading
+    "no prior content" about a tracked module, in a prompt naming `$P`, which
+    a reviewer cannot resolve either.
     """
     assert authored_writes("P=tmp/f.py; cat > $P <<'EOF'\nx = 1\nEOF") == [
         {"path": "tmp/f.py", "content": "x = 1\n", "append": False}

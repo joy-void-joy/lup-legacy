@@ -156,12 +156,12 @@ def create_profile_app(directory: ProfileDirectory) -> typer.Typer:
             ),
         ] = None,
     ) -> None:
-        """Move this checkout's profiles, and the old ~/.lup registry's, to global.
+        """Move this checkout's profiles, and the ~/.lup registry's, to global.
 
         Optional: a checkout's own profiles keep working where they are, and
-        moving one shares its login with every checkout instead. The old
-        ``~/.lup/profiles.json`` registry is read by nothing, so its accounts
-        reach a launch only once moved.
+        moving one shares its login with every checkout instead. The personal
+        ``~/.lup/profiles.json`` registry is read only by this command, so its
+        accounts reach a launch only once moved.
         """
         migration = migrate_profiles(checkout or project_root(), UserConfigFile())
         for line in migration.lines():

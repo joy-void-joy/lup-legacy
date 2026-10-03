@@ -41,7 +41,7 @@ from lup.policy.kernel.edit import (
     path_rule_matches as kernel_path_rule_matches,
 )
 from lup.policy.kernel.fetch import decide_fetch, loopback_port
-from lup.policy.kernel.semantics import UnjudgedAmbient
+from lup.policy.kernel.semantics import PathRuleKind, UnjudgedAmbient
 from lup.policy.assets.host import (
     document_at,
     document_digest,
@@ -90,7 +90,6 @@ from lup.policy.kernel.rows import (
     AntiPatternRow,
     DisplacedTargetRow,
     PathRoleRow,
-    PathRuleKind,
     PathRuleRow,
     PeerPolicyRow,
     RewriteReading,
@@ -131,6 +130,7 @@ from lup.policy.models import (
     ShellCommand,
     UrlScope,
 )
+from lup.workspace.checkout_state import CheckoutState
 
 
 def pydantic_decision(decision: KernelDecision) -> Decision:
@@ -286,9 +286,9 @@ class ShellPolicy(DecisionPolicy[ShellCommand]):
         second table to keep in step, and the one that fell behind would read
         as a decision.
 
-        ``None`` leaves a redirection judged by its path alone, which is what
-        every shell write was judged by before -- correct for output produced
-        by running, and a hole for output the command is holding.
+        ``None`` leaves a redirection judged by its path alone -- correct for
+        output produced by running, and a hole for output the command is
+        holding.
         """
         self.path_rules = [path_rule_row(rule) for rule in path_rules or []]
         self.path_roles = path_roles or []
@@ -623,6 +623,7 @@ class ShellPolicy(DecisionPolicy[ShellCommand]):
                             shell_posture_targets(event.command, self.rules),
                             boundary,
                             root,
+                            siblings,
                         )
                     )
                     if self.contained and self.inside_placement
@@ -696,6 +697,11 @@ class PathRule(BaseModel, frozen=True):
     recovery: list[Step] = []
     """What the agent does instead of writing here, where there is such a route."""
     allow_autonomous: bool = False
+    description: str = ""
+    """What the rule protects, in the words a reviewer reads beside the file.
+
+    Empty says nothing more than the value does, and the value stands in.
+    """
 
     def matches(self, path: Path) -> bool:
         """Compare a path with this rule through the canonical kernel matcher."""
@@ -712,6 +718,7 @@ def path_rule_row(rule: PathRule) -> PathRuleRow:
         reason=rule.reason,
         recovery=rule.recovery,
         allow_autonomous=rule.allow_autonomous,
+        description=rule.description or rule.value,
     )
 
 
@@ -722,10 +729,11 @@ def human_owned_path_rule(path: str) -> PathRule:
         value=path,
         reason="is human-authored",
         recovery=[step("propose the exact change, and let the user apply it")],
+        description="a file its human author owns",
     )
 
 
-def protected_root_rule(root: str) -> PathRule:
+def protected_root_rule(root: str, description: str = "") -> PathRule:
     """One declared protected root, as the path rule it compiles to.
 
     The one compilation both enforcement paths read: a session this program
@@ -744,6 +752,9 @@ def protected_root_rule(root: str) -> PathRule:
     its measured preflight, the policy itself -- and an identity trusted to
     review its own edits is still the confined thing choosing what confines
     it, so the question reaches a person whoever is asking.
+
+    ``description`` is what the root is, in plain words, for the reviewer
+    shown which rule a file met.
     """
     match PurePosixPath(root).parts:
         case ("tmp",):
@@ -751,56 +762,53 @@ def protected_root_rule(root: str) -> PathRule:
                 kind="contains_part",
                 value=root,
                 reason="scratch path requires approval",
+                description=description,
             )
         case ("**", *named) if named:
             return PathRule(
                 kind="contains_part",
                 value=PurePosixPath(*named).as_posix(),
                 reason="protected path requires approval",
+                description=description,
             )
     return PathRule(
         kind="subtree",
         value=root,
         reason="protected path requires approval",
+        description=description,
     )
 
 
 def invariant_path_rules(
-    hook_state: tuple[str, ...] = (
-        ".lup/preflight",
-        ".lup/policy-snapshots",
-        ".lup/questions.jsonl",
-        ".lup/reviews",
-        ".lup/review-claims",
-        ".lup/review-stage-claims",
-    ),
+    hook_state: tuple[str, ...] = tuple(CheckoutState.hook_state()),
 ) -> list[PathRule]:
     """The protected-path rules the library holds whatever a project declares.
 
     ``hook_state`` is what the library itself writes from outside the
-    session: a launch's measured ledger, the policy snapshots a capture
-    restores from, the review queue a hook parks a question in -- its log,
-    the documents the log names by digest, and the archive of settled
-    reviews -- and the claims that spend an approved answer once. A session writing one is the
-    confined thing recording what confines it -- its own measurement, its
-    own answer, a spent approval put back -- so each asks, and no adopter
-    has to know to declare it. An `.env` file and a new devtools module are
-    approvals on the same terms.
+    session, read off :meth:`CheckoutState.hook_state` rather than listed
+    again here, so a path that declaration moves is protected where it
+    moved to. Each asks, and no adopter has to know to declare it. An
+    `.env` file and a new devtools module are approvals on the same terms.
 
     Both enforcement paths read this one list: a session composed in process
     and the rows a generated dispatcher carries.
     """
     return [
-        *[protected_root_rule(state) for state in hook_state],
+        *[
+            protected_root_rule(state, "lup's own launch and review state")
+            for state in hook_state
+        ],
         PathRule(
             kind="name_prefix",
             value=".env",
             reason="protected path requires approval",
+            description="an environment file, where secrets are kept",
         ),
         PathRule(
             kind="new_devtools",
             value="src",
             reason="new devtools module requires approval",
+            description="a new devtools module",
         ),
     ]
 
@@ -853,6 +861,7 @@ def antipattern_row(rule: AntiPattern) -> AntiPatternRow:
         # verdicts turn on a resolution it may not have, and the rule that
         # names what it resolves against is the only thing that can say.
         resolution="required" if rule.family is not None else "",
+        roles=list(rule.roles),
     )
 
 

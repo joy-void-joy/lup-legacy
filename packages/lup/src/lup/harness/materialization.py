@@ -6,13 +6,14 @@ flow through the ``Materializer`` seam; its ``MaterializationResult`` is
 defined here because materializers are the only producers.
 """
 
-import hashlib
 import os
 from collections.abc import Callable, Iterable
 from pathlib import Path
 
 from pydantic import BaseModel
 
+from lup.channels.models import write_atomic
+from lup.formats import digest
 from lup.harness.contracts import Materializer
 from lup.harness.models import Artifact
 from lup.harness.reconciliation import ReconciliationProposal
@@ -63,19 +64,6 @@ def held_read_only(
     return [path for path in paths if mounted_read_only(path)]
 
 
-def discard_staged_write(error: OSError) -> None:
-    """Remove the staged copy a refused rename left behind.
-
-    A rename that fails leaves its source where it was, and the source here
-    is named for a proposal that will never be made again — so no later run
-    collects it, and it surfaces in the next diff as an artifact nobody
-    wrote and nobody can explain.
-    """
-    staged = Path(error.filename) if error.filename else None
-    if staged is not None and staged.suffix == ".tmp":
-        staged.unlink(missing_ok=True)
-
-
 def refused_write(error: OSError) -> MaterializationRefusedError:
     """Name the boundary behind a refused artifact write.
 
@@ -92,13 +80,6 @@ def refused_write(error: OSError) -> MaterializationRefusedError:
         "denies the paths its own runtime protects, and no grant lifts those. "
         "Regenerate from a session outside the sandbox."
     )
-
-
-def file_digest(path: Path) -> str | None:
-    """Hash a file if it currently exists."""
-    if not path.exists():
-        return None
-    return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
 def safe_target(root: Path, relative: Path) -> Path:
@@ -160,7 +141,7 @@ class AtomicMaterializer(Materializer):
             )
         for write in proposal.writes:
             path = safe_target(proposal.root, write.artifact.path)
-            actual = file_digest(path)
+            actual = digest.file(path)
             if actual != write.previous_sha256:
                 raise MaterializationConflictError(
                     f"stale base for {write.artifact.path}: expected "
@@ -174,7 +155,7 @@ class AtomicMaterializer(Materializer):
                     )
         for deletion in proposal.deletes:
             path = safe_target(proposal.root, deletion.path)
-            actual = file_digest(path)
+            actual = digest.file(path)
             if actual != deletion.prior_ownership_sha256:
                 raise MaterializationConflictError(
                     f"ownership proof changed for {deletion.path}"
@@ -184,15 +165,11 @@ class AtomicMaterializer(Materializer):
         for write in proposal.writes:
             artifact = write.artifact
             path = safe_target(proposal.root, artifact.path)
-            # Not `write_atomic`: the mode has to be set on the temporary
-            # before the rename, or the artifact is briefly readable at its
-            # final path without it, and the name carries the proposal id so
-            # two materializations of the same tree cannot collide on it.
-            path.parent.mkdir(parents=True, exist_ok=True)
-            temporary = path.with_name(f".{path.name}.{proposal.id}.tmp")
-            temporary.write_text(artifact.content, encoding="utf-8", newline="\n")
-            temporary.chmod(0o755 if artifact.executable else 0o644)
-            temporary.replace(path)
+            write_atomic(
+                path,
+                artifact.content.encode("utf-8"),
+                mode=0o755 if artifact.executable else 0o644,
+            )
             changed.append(artifact.path)
 
         removed: list[Path] = []  # lup: ignore[empty-collection]

@@ -43,6 +43,7 @@ from lup.policy.snapshots import (
     snapshot_directory,
 )
 from lup.types import EnvVars
+from lup.workspace.checkout_state import CheckoutState
 
 # lup: ignore[constant-declaration] — an identity this repository defines, and
 # the one half of the handshake no probe reads: the launcher writes a ledger
@@ -76,12 +77,12 @@ class LaunchSentinels(BaseModel, frozen=True):
         return {SENTINEL_VARIABLE: self.host, NONCE_VARIABLE: self.nonce}
 
 
-def ledger_directory(root: Path, ledger: str = ".lup/preflight") -> Path:
+def ledger_directory(root: Path) -> Path:
     """Where every launch in this checkout writes its measurement, one file each."""
-    return root / ledger
+    return CheckoutState(root=root).preflight()
 
 
-def ledger_path(root: Path, nonce: str, ledger: str = ".lup/preflight") -> Path:
+def ledger_path(root: Path, nonce: str) -> Path:
     """Where this launch's measurement is written, named for the launch.
 
     Named rather than shared, and that is not tidiness. One file per checkout
@@ -90,12 +91,12 @@ def ledger_path(root: Path, nonce: str, ledger: str = ".lup/preflight") -> Path:
     same class of wrong answer as an inherited variable, arrived at from the
     other direction.
     """
-    return ledger_directory(root, ledger) / f"{nonce}.json"
+    return ledger_directory(root) / f"{nonce}.json"
 
 
-def mount_table(root: Path, table: str = ".lup/boundary.json") -> Path:
+def mount_table(root: Path) -> Path:
     """Where a contained launch writes the mount table its gate explains refusals from."""
-    return root / table
+    return CheckoutState(root=root).boundary()
 
 
 def launch_record(root: Path) -> list[Path]:
@@ -204,24 +205,23 @@ def reopened(
     return [*argv, resume]
 
 
-def retire_mount_table(root: Path, ledger: str = ".lup/boundary.json") -> None:
+def retire_mount_table(root: Path) -> None:
     """Take away a mount table that describes a boundary this launch is not behind.
 
-    ``record_boundary`` writes the table on every *contained* launch and
-    nothing ever removed it, so an uncontained launch in the same checkout
-    read whatever the last contained one left. What that buys is the reader's
-    worst case: a refusal attributed to a read-only mount that is not there,
-    which teaches an agent to reach for the host when the bug was its own.
-    Its own docstring already names staleness as the hazard and per-launch
-    rewriting as the answer -- this is the half of that answer the posture
-    with no table to write was missing.
+    ``record_boundary`` writes the table on every *contained* launch, so
+    without this an uncontained launch in the same checkout reads whatever
+    the last contained one left. That is the reader's worst case: a refusal
+    attributed to a read-only mount that is not there, which teaches an
+    agent to reach for the host when the bug is its own. Its docstring names
+    staleness as the hazard and per-launch rewriting as the answer, and this
+    is that answer for the posture with no table to write.
 
     Emptied where it stands rather than removed, since a contained session
     in this checkout holds the file read-only by its inode, and a file
     bind is detached when the host replaces or unlinks the file under it.
     An empty table reads as none.
     """
-    table = mount_table(root, ledger)
+    table = mount_table(root)
     if table.is_file():
         table.write_text("", encoding="utf-8")
 

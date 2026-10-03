@@ -203,9 +203,8 @@ def test_a_parent_recorded_without_a_merge_does_not_set_the_rate(
 ) -> None:
     """Sweeping what an earlier run landed times no work this one did.
 
-    A resume records those in seconds — four inside twelve on the run this
-    was measured on — and a rate averaged over them promises an ETA the
-    joins remaining will not come close to.
+    A resume records those in seconds, and a rate averaged over them
+    promises an ETA the joins remaining will not come close to.
     """
     desk = JoinDesk(tmp_path, "integration")
     for index in range(4):
@@ -224,13 +223,13 @@ def test_a_parent_recorded_without_a_merge_does_not_set_the_rate(
 def test_a_landing_outside_the_plan_cannot_take_the_bar_past_its_end(
     tmp_path: Path,
 ) -> None:
-    """Reported from resolve-4997351bbef0 as ``joins 6/5``, bar drawn past it.
+    """Never ``joins 6/5``, with the bar drawn past its end.
 
     A parent already in the tree is swept and recorded without having been
     planned on its own, so landings outnumber the plan. Counted against a
     total kept as its own figure, the sixth landing of five planned parents
-    put the count past the end of the bar — and a bar past its end reads as
-    something having gone wrong in a run that is entirely healthy.
+    would put the count past the end of the bar — and a bar past its end
+    reads as something having gone wrong in a run that is entirely healthy.
     """
     plan = PLANNED[:5]
     desk = JoinDesk(tmp_path, "integration")
@@ -403,10 +402,10 @@ def test_a_concern_that_failed_still_counts_as_settled() -> None:
 def test_a_concern_assembly_moved_to_integrating_stays_settled() -> None:
     """A settled count may not fall, and the lifecycle moves work backwards.
 
-    Reported from resolve-4997351bbef0: the run said ``10/11 settled`` through
-    the worker phase, assembly moved nine verified concerns to ``integrating``,
-    and the next line said ``2/11``. Nothing had gone wrong — a reader watching
-    the surface the guidance says to judge a run by saw progress collapse.
+    A run saying ``10/11 settled`` through the worker phase, whose assembly
+    moves nine verified concerns to ``integrating``, would say ``2/11`` on the
+    next line. Nothing has gone wrong — yet a reader watching the surface the
+    guidance says to judge a run by sees progress collapse.
 
     The stamp is what carries the fact across the move: written the first time
     a concern reaches a settled status and never cleared, so a status that has
@@ -533,10 +532,10 @@ def test_the_console_leads_with_the_bar_and_keeps_the_breakdown(
     )
 
 
-def test_the_console_outside_a_settling_phase_prints_what_it_always_did(
+def test_the_console_outside_a_settling_phase_prints_the_breakdown_alone(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    """No bar to lead with, so the breakdown stands alone as before."""
+    """No bar to lead with, so the breakdown stands alone."""
     integrating = worker_tally([ConcernStatus.INTEGRATING], []).model_copy(
         update={"phase": ResolvePhase.INTEGRATION}
     )
@@ -712,11 +711,11 @@ def test_a_held_run_reads_as_running(tmp_path: Path) -> None:
 def test_a_run_that_does_not_exist_says_so_rather_than_answering(
     tmp_path: Path,
 ) -> None:
-    """Silence and "no such run" were indistinguishable, and one is wrong.
+    """Silence and "no such run" are told apart, because one is wrong.
 
-    A session in a worktree with no `.lup` read an empty listing as "zero
-    pending, so my answer promoted", and reported that. It happened to be
-    true; nothing in the output supported it.
+    A session in a worktree with no `.lup` would read an empty listing as
+    "zero pending, so my answer promoted", and report that with nothing in
+    the output to support it.
     """
     status = run_status(ResolverStateRepository(tmp_path, "absent"), "absent")
 
@@ -847,9 +846,9 @@ def test_a_watch_survives_the_terminal_phase_a_resume_was_started_from() -> None
 
     A resume is most often started from a terminal phase, because failing is
     what stopped the run. Read inside the startup window that says finished,
-    so a watch armed on a just-relaunched run announced the failure it was
-    resuming from and ended without polling once — observed against a run
-    that was already integrating by the time it printed.
+    so a watch armed on a just-relaunched run would announce the failure it
+    is resuming from and end without polling once, while the run is already
+    integrating.
     """
     failed = status_at(ResolvePhase.FAILED, held=False)
 

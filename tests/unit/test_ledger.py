@@ -264,8 +264,7 @@ def test_a_node_is_changed_by_being_appended_again(tmp_path: Path) -> None:
     """The only way anything changes, and it overwrites nothing.
 
     Nodes are immutable and the log only grows, so finishing a task is
-    recording it again. Without this a `done` field could never be set, which
-    is how the hole was found.
+    recording it again. Without this a `done` field could never be set.
     """
     store = opened(tmp_path)
     task = store.record(Chore, "re-audit", holder="alpha")
@@ -317,8 +316,7 @@ def test_every_field_an_arrival_carries_reaches_the_member_it_becomes(
 
     Structural rather than per-field, because the failure this catches is
     somebody adding a field to the member file and not to the fold — which
-    happened while `wake` was being added, and which the type checker cannot
-    see because both sides default.
+    the type checker cannot see because both sides default.
 
     Through the file rather than through a call, because the fold is the one
     every reader of the store shares: what is asserted is that what the typed

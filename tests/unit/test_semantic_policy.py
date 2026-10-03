@@ -89,6 +89,7 @@ from lup.policy.shell_rules import (
 from lup.policy.kernel.lex import shell_write_targets
 from lup.policy.models import (
     Decision,
+    ProtectedRoot,
     EditBatch,
     EditChange,
     FetchUrl,
@@ -940,7 +941,7 @@ SHELL_POLICY_CASES = [
     # does: a mount added or moved, the repository a registration names, a
     # device granted, one launch lent a folder. Contained or not, because the
     # boundary this session runs in is not the one being widened. What only
-    # reads, keeps books, narrows, or dry-runs is the ordinary work it was.
+    # reads, keeps books, narrows, or dry-runs stays ordinary work.
     DecisionCase(
         input="uv run lup-devtools sync setup lup /srv/lup --mount rw", effect="ask"
     ),
@@ -1035,8 +1036,8 @@ SHELL_POLICY_CASES = [
     DecisionCase(input="git -$X status", effect="ask"),
     DecisionCase(input="sort --out$X f", effect="ask"),
     # What the legible part rules out is not read into it: `st$X` can only be
-    # `status`, and a sub-app guarding nothing leaves an unread verb as it
-    # was. The plain spellings beside them are what they always were.
+    # `status`, and a sub-app guarding nothing leaves an unread verb's verdict
+    # alone. The plain spellings beside them answer as they are written.
     DecisionCase(input="uv run lup-devtools sync st$X", effect="allow"),
     DecisionCase(input="uv run lup-devtools git $X", effect="allow"),
     DecisionCase(input="uv run lup-devtools git $X", effect="allow", sandboxed=True),
@@ -1050,9 +1051,9 @@ SHELL_POLICY_CASES = [
     DecisionCase(input="grep x f > /dev/null", effect="allow"),
     DecisionCase(input="cat f 2>/dev/null", effect="allow"),
     DecisionCase(input="ls >&2", effect="allow"),
-    # Whether the file was already there decides nothing, because what
-    # separated the two was content nobody had read and content is read after
-    # the command runs. A target that cannot be resolved to a literal path
+    # Whether the file is already there decides nothing: what would separate
+    # the two is content nobody has read, and content is read after the
+    # command runs. A target that cannot be resolved to a literal path
     # still keeps the strict verdict: there is no path to answer about.
     DecisionCase(input="echo x > out.txt", effect="allow", existing=["out.txt"]),
     DecisionCase(input="echo x > out.txt", effect="allow"),
@@ -1283,9 +1284,9 @@ SHELL_POLICY_CASES = [
     DecisionCase(input="rm tmp/x src/y", effect="ask"),
     DecisionCase(input="rm tmp/../src/x.py", effect="ask"),
     # The opaque word the comment above promises keeps the verb's ask. A role
-    # pattern reads directory names, so `**/tmp` had been absorbing the `$W`
-    # and calling the whole path disposable — which bought a recursive delete
-    # of wherever `$W` resolves to, on the strength of the segment after it.
+    # pattern reads directory names, so `**/tmp` would absorb the `$W` and
+    # call the whole path disposable — buying a recursive delete of wherever
+    # `$W` resolves to, on the strength of the segment after it.
     DecisionCase(input="rm -rf $W/tmp", effect="ask"),
     DecisionCase(input="rm -rf $W/tmp/keep", effect="ask"),
     DecisionCase(input="echo x > $W/tmp/f.py", effect="ask"),
@@ -1393,8 +1394,9 @@ SHELL_POLICY_CASES = [
     DecisionCase(input="echo x > tmp/refs/heads/main", effect="allow"),
     # A sibling worktree's scratch is scratch for every write and every
     # delete, as this checkout's is: one rule, whichever spelling reaches it.
-    # Its production stays another tree's, and a plugin tree under its scratch
-    # is still one this checkout's scratch does not hold.
+    # A repository made there is a scratch write, and a kit's own plugin tree
+    # there is the kit's. Its production stays another tree's, and its
+    # compiled plugin tree a build product.
     DecisionCase(input="echo x > /srv/tree/sibling/tmp/probe.txt", effect="allow"),
     DecisionCase(input="cp README.md /srv/tree/sibling/tmp/probe.txt", effect="allow"),
     DecisionCase(input="rm /srv/tree/sibling/tmp/probe.txt", effect="allow"),
@@ -1405,8 +1407,19 @@ SHELL_POLICY_CASES = [
     DecisionCase(input="rm /srv/tree/sibling/src/app.py", effect="ask"),
     DecisionCase(input="cp README.md /srv/tree/sibling/src/app.py", effect="ask"),
     DecisionCase(
-        input="mkdir -p /srv/tree/sibling/tmp/kit/.claude/plugins/lup", effect="deny"
+        input="mkdir -p /srv/tree/sibling/tmp/kit/.claude/plugins/lup", effect="allow"
     ),
+    DecisionCase(input="mkdir -p /srv/tree/sibling/.claude/plugins/lup", effect="deny"),
+    DecisionCase(input="git init -q /srv/tree/sibling/tmp/stage", effect="allow"),
+    DecisionCase(input="git -C /srv/tree/sibling init tmp/stage", effect="allow"),
+    DecisionCase(input="git init -q /srv/tree/sibling/src/stage", effect="deny"),
+    DecisionCase(input="git init -q /srv/tree/other/tmp/stage", effect="deny"),
+    # A stream keeps nothing written into it, by whichever spelling writes it.
+    DecisionCase(input="git grep -l x | tee /dev/null | wc -l", effect="allow"),
+    DecisionCase(input="sort -o /dev/null README.md", effect="allow"),
+    DecisionCase(input="git diff --output=/dev/null", effect="allow"),
+    DecisionCase(input="cp README.md /dev/null", effect="allow"),
+    DecisionCase(input="rm /dev/null", effect="ask"),
     # A generated plugin tree is a build product the running runtime already
     # loaded, so writing one by hand changes nothing it will honor and the
     # next generation reverts it. Every writing form refuses it and names the
@@ -2169,11 +2182,17 @@ SHELL_POLICY_CASES = [
     DecisionCase(input="codex -m gpt-5 queue --thread t --message hi", effect="deny"),
     DecisionCase(input="ps aux", effect="allow"),
     DecisionCase(input="zcat f.gz", effect="allow"),
-    DecisionCase(input="# lup: escalate: build the crate\ncargo build", effect="ask"),
-    DecisionCase(input="# lup: escalate:\ncargo build", effect="deny"),
-    DecisionCase(input="# lup: escalate: routine\ngit status", effect="allow"),
     DecisionCase(
-        input="# lup: escalate: clear caches\necho x | xargs rm -rf", effect="ask"
+        input="# lup: escalate[decision]: build the crate\ncargo build", effect="ask"
+    ),
+    DecisionCase(input="# lup: escalate: build the crate\ncargo build", effect="deny"),
+    DecisionCase(input="# lup: escalate[decision]:\ncargo build", effect="deny"),
+    DecisionCase(
+        input="# lup: escalate[decision]: routine\ngit status", effect="allow"
+    ),
+    DecisionCase(
+        input="# lup: escalate[decision]: clear caches\necho x | xargs rm -rf",
+        effect="ask",
     ),
     # Structured constructs classify their embedded commands recursively:
     # conditionals, case arms, subshells, brace groups, negation, [[ ]],
@@ -2241,10 +2260,10 @@ SHELL_POLICY_CASES = [
     DecisionCase(input="nice -n 10 uv run pytest", effect="allow"),
     DecisionCase(input="timeout 5 rm -rf x", effect="ask"),
     # A transparent wrapper is read through its own options to the command it
-    # wraps, rather than by skipping one word: skipping landed on the wrapper's
-    # flag, and a word beginning with `-` matches no rule, so the segment was
-    # "not classified" and allowed inside the boundary. Each of these carried
-    # inline code the table refuses outright, and a script file reached
+    # wraps, rather than by skipping one word: skipping lands on the wrapper's
+    # flag, and a word beginning with `-` matches no rule, so the segment would
+    # be "not classified" and allowed inside the boundary. Each of these
+    # carries inline code the table refuses outright, and a script file reached
     # through the same wrapper is the file it names.
     DecisionCase(input="env -i node -e evil", effect="deny"),
     DecisionCase(input="stdbuf -oL node -e evil", effect="deny"),
@@ -2507,7 +2526,7 @@ SHELL_POLICY_CASES = [
         escapable=True,
     ),
     # A judged question holds inside the boundary: containment settles what
-    # nobody classified, and this was classified.
+    # nobody classified, and this is classified.
     DecisionCase(input="sed -i 's/a/b/' f", effect="ask", sandboxed=True),
     DecisionCase(input="ssh-add -D", effect="deny", sandboxed=True),
     DecisionCase(input="frobnicate; ssh host", effect="ask", sandboxed=True),
@@ -2547,9 +2566,9 @@ SHELL_POLICY_CASES = [
     DecisionCase(input="mysql -h db.example.com", effect="ask"),
     # A session that can reach no reviewer does not run what a rule said a
     # person should see. Containment confines an operation; it does not
-    # review it, so a judged question is refused under every posture —
-    # reported as #86, where a remote deletion came back an unprompted allow
-    # and an escalation marker granted exactly what the table refused.
+    # review it, so a judged question is refused under every posture — a
+    # remote deletion never comes back an unprompted allow, and no escalation
+    # marker grants what the table refused.
     DecisionCase(
         input="git push --delete origin feat", effect="deny", interactive=False
     ),
@@ -2596,7 +2615,7 @@ SHELL_POLICY_CASES = [
     DecisionCase(input="git log $(cat names.txt)", effect="allow", sandboxed=True),
     DecisionCase(input="echo `id`", effect="deny", sandboxed=True),
     DecisionCase(
-        input="# lup: escalate: unknown tool\nfrobnicate",
+        input="# lup: escalate[decision]: unknown tool\nfrobnicate",
         effect="ask",
         sandboxed=True,
     ),
@@ -2755,8 +2774,8 @@ EDIT_POLICY_CASES = [
         effect="deny",
         autonomous=True,
     ),
-    # A scratch root gates nothing: with execution closed there is no longer a
-    # path from authoring a file there to running it.
+    # A scratch root gates nothing: with execution closed there is no path
+    # from authoring a file there to running it.
     EditDecisionCase(
         path="tmp/scratch.py",
         before="value = 1",
@@ -2982,7 +3001,7 @@ EDIT_POLICY_CASES = [
         effect="ask",
     ),
     EditDecisionCase(
-        # The gitignored half, protected for what it can now say rather than
+        # The gitignored half, protected for what it can say rather than
         # for being config: an entry there carries the `mount` deciding what
         # the next launch opens, so writing one is widening the boundary.
         path="sync.json.local",
@@ -3101,7 +3120,10 @@ def assembled_edit_decision(
         before,
         after,
         path_exists=Path(path).exists(),
-        path_rules=runtime_path_rules(protected_roots, human_owned_files),
+        path_rules=runtime_path_rules(
+            [ProtectedRoot(path=Path(root)) for root in protected_roots],
+            human_owned_files,
+        ),
         antipattern_rows=rows,
         path_roles=FIXTURE_PATH_ROLES,
         autonomous=autonomous,
@@ -3150,9 +3172,7 @@ def test_assembled_kernel_runs_without_site_packages(tmp_path: Path) -> None:
             ],
             # The roots this repository declares, as the shell cases' own
             # table is, so one fixture list is judged against one table.
-            protected_roots=[
-                root.as_posix() for root in declared_hook_set().protected_edit_roots
-            ],
+            protected_roots=declared_hook_set().protected_roots(),
             human_owned_files=["README.md"],
             autonomous_agent_identities=["resolver-worker"],
             path_roles=FIXTURE_PATH_ROLES,
@@ -3337,7 +3357,11 @@ REFUSAL_CASES = [
     ("Skill", {"skill": "quux-design"}, "deny"),
     ("Skill", {"skill": "commit"}, "defer"),
     ("Novel", {"skill": "quux-design"}, "ask"),
-    ("Quuxify", {"body": "# lup: escalate: the user asked for a page\nbody"}, "ask"),
+    (
+        "Quuxify",
+        {"body": "# lup: escalate[decision]: the user asked for a page\nbody"},
+        "ask",
+    ),
     ("Quuxify", {"body": "# lup: escalate:\nbody"}, "deny"),
 ]
 """What a declared refusal answers, across every shape it has to tell apart.
@@ -3496,7 +3520,7 @@ def test_which_placements_leave_is_one_answer_two_renderers_cannot_differ() -> N
 
     Both hook factories, the in-process rewrite, and each compiled dispatcher
     fill the same field. A condition spelled at four sites is one that can be
-    spelled differently at four sites, which is how a placement came to be
+    spelled differently at four sites, which is how a placement ends up
     honoured on one path and stripped on the other.
     """
     assert sandbox_escaped("outside") is True
@@ -3772,9 +3796,9 @@ def test_a_schemeless_curl_url_is_judged_the_way_curl_resolves_it() -> None:
     """curl guesses HTTP for a bare host, and so does the screen judging it.
 
     `curl localhost:8000/health` is how a liveness probe is typed, and
-    reading it as a malformed URL put an approval question on the one form
-    an agent reaches for while the fully spelled twin was already declared
-    safe. Guessing where curl guesses keeps the verdict conservative: the
+    reading it as a malformed URL would put an approval question on the one
+    form an agent reaches for while the fully spelled twin is declared safe.
+    Guessing where curl guesses keeps the verdict conservative: the
     guess is HTTP, so an origin declared for TLS alone is not covered by it.
     """
     policy = ShellPolicy(
@@ -3837,9 +3861,9 @@ def test_an_unscoped_origin_is_the_runtime_s_to_answer_by_every_route(
 def test_loading_a_secrets_file_is_asked_about_as_one(tmp_path: Path) -> None:
     """`uv run --env-file` loads secrets into the target's environment.
 
-    The question kept, and its reason says what the flag does: it fetches no
-    code, so a reason about fetching external code was describing another
-    flag to whoever had to answer it.
+    The question is kept, and its reason says what the flag does: it fetches
+    no code, so a reason about fetching external code would describe another
+    flag to whoever has to answer it.
     """
     bundled = load_bundled_kernel(tmp_path, "shell")
     policy = ShellPolicy(SHELL_RULES, runner_targets=FIXTURE_RUNNER_TARGETS)
@@ -3957,13 +3981,13 @@ def test_a_git_global_does_not_move_a_protected_file_past_its_question(
 ) -> None:
     """Every spelling of one removal or restore reaches the owner's question.
 
-    Read where the subcommand was written second, `git --no-pager rm
-    README.md` and `git -c color.ui=false rm README.md` named no operand, and
-    a capture settled a delete of a human-owned file that the plain spelling
-    asks about. The same held for a restore, and for a removal spelled from
-    the directory a `cd` or `git -C` left. A file nobody owns is settled by
-    the capture by every spelling alike, canonically and in the shipped
-    kernel.
+    Read where the subcommand is written second, `git --no-pager rm
+    README.md` and `git -c color.ui=false rm README.md` would name no
+    operand, and a capture would settle a delete of a human-owned file that
+    the plain spelling asks about -- as it would for a restore, and for a
+    removal spelled from the directory a `cd` or `git -C` left. A file nobody
+    owns is settled by the capture by every spelling alike, canonically and
+    in the shipped kernel.
     """
     (tmp_path / "src").mkdir()
     committed_tree(tmp_path, "README.md", "notes.md", "src/x.py")
@@ -4048,7 +4072,7 @@ def test_restoring_a_file_that_holds_no_pending_work_changes_nothing(
     <path>` poses and the same host answer settles it: a tracked path with no
     uncommitted change has nothing the index does not already hold, so the
     restore writes back the bytes on disk. Pending work restores the ask,
-    which is the only case the row was ever about.
+    which is the only case the row is about.
     """
     committed_tree(tmp_path, "notes.md", "other.md")
     policy = ShellPolicy(SHELL_RULES, runner_targets=FIXTURE_RUNNER_TARGETS)
@@ -4174,8 +4198,8 @@ def test_a_declared_module_root_admits_every_module_beneath_it(
 ) -> None:
     """`-m` names a file, so what decides it is whose file that is.
 
-    The refusal `-m` shared with `-c` was about the flag rather than about
-    what the flag named: `-c` leaves nothing behind to read, and a module
+    Refusing `-m` alongside `-c` would be about the flag rather than about
+    what the flag names: `-c` leaves nothing behind to read, and a module
     leaves the file it lives in. So the table that already answers
     `uv run <target>` answers this too, on the root segment — one declaration
     for a tree of entry points rather than one per entry point, and a root
@@ -4207,13 +4231,13 @@ def test_a_declared_module_root_admits_every_module_beneath_it(
 def test_the_long_and_short_spellings_of_the_script_flag_agree(
     tmp_path: Path,
 ) -> None:
-    """`-s` allowed and `--script` denied, which are one flag.
+    """`-s` and `--script` are one flag, and answer as one.
 
     Both name a path, which is what the criterion is about, so the modifier
-    is stepped over and the file behind it is judged — as `-s` and
-    `--gui-script` already were. Running standalone rather than in the
-    project environment is less capability than the plain path form, so
-    nothing is opened here that `uv run <path>` did not already open.
+    is stepped over and the file behind it is judged — as it is for `-s`
+    and `--gui-script`. Running standalone rather than in the project
+    environment is less capability than the plain path form, so nothing is
+    opened here that `uv run <path>` does not already open.
     """
     policy = ShellPolicy(
         SHELL_RULES, runner_targets=FIXTURE_RUNNER_TARGETS, sandbox_active=True
@@ -4238,10 +4262,10 @@ def test_moving_a_recoverable_file_costs_what_deleting_it_costs(
 ) -> None:
     """A move is a delete and a create, and neither half is worth a question.
 
-    The verb wrote both operands, so a destination that did not exist yet
-    failed the recoverable test and took the whole command to an ask — which
-    left `mv` asking about a file `rm` would have removed without one, for
-    the sake of a path that holds nothing.
+    The verb writes both operands, so judged whole, a destination that does
+    not exist yet would fail the recoverable test and take the whole command
+    to an ask — leaving `mv` asking about a file `rm` removes without one,
+    for the sake of a path that holds nothing.
     """
     committed_tree(tmp_path, "notes.md", "other.md")
     policy = ShellPolicy(SHELL_RULES, runner_targets=FIXTURE_RUNNER_TARGETS)
@@ -4279,12 +4303,12 @@ def test_redirecting_over_a_file_costs_what_deleting_it_costs(
 ) -> None:
     """The three writing forms answer one question about the same path.
 
-    A redirection's target was resolved for existence but never for
-    recoverability, so `rm notes.md` and `cp x notes.md` were granted while
-    `echo x > notes.md` asked about the identical clean, tracked file. The
-    heredoc form carried a further deny, justified by an edit gate a
-    redirection into a *new* file already bypasses — so it drew the line
-    where the cost was lowest rather than where the risk was.
+    A redirection's target resolved for existence but never for
+    recoverability would ask about `echo x > notes.md` while `rm notes.md`
+    and `cp x notes.md` are granted over the identical clean, tracked file.
+    A further deny on the heredoc form, justified by an edit gate a
+    redirection into a *new* file already bypasses, would draw the line where
+    the cost is lowest rather than where the risk is.
     """
     committed_tree(tmp_path, "notes.md")
     policy = ShellPolicy(
@@ -4302,7 +4326,7 @@ def test_redirecting_over_a_file_costs_what_deleting_it_costs(
     assert effect("echo x >> notes.md") == "allow"
     assert effect("cat > notes.md <<'EOF'\nbody\nEOF") == "allow"
     # And a file nothing can vouch for lands the same way, because vouching
-    # was never what the question was about: what a command writes is read
+    # is not what the question is about: what a command writes is read
     # after it runs, and until then only the path is knowable.
     (tmp_path / "dirty.md").write_text("uncommitted\n", encoding="utf-8")
     assert effect("echo x > dirty.md") == "allow"
@@ -4638,14 +4662,14 @@ def test_write_targets_name_only_the_paths_a_command_opens_for_writing() -> None
 def test_whether_a_file_was_already_there_no_longer_decides_a_redirection(
     tmp_path: Path,
 ) -> None:
-    """The axis that separated these is spent, and the path is what is left.
+    """Existence does not separate these; the path is what decides.
 
-    Creating allowed and overwriting asked, because overwriting replaced
-    content nothing had read. Content is now read after the command runs,
-    against the file it wrote -- which is the only moment it *can* be read,
-    since a redirection's content is produced by running -- so the question
-    the existence test was standing in for is answered elsewhere, and both
-    forms land on what was always knowable in advance: where the write goes.
+    Telling creating from overwriting would stand in for whether the write
+    replaces content nothing has read. Content is read after the command
+    runs, against the file it wrote -- which is the only moment it *can* be
+    read, since a redirection's content is produced by running -- so that
+    question is answered elsewhere, and both forms land on what is knowable
+    in advance: where the write goes.
     """
     policy = ShellPolicy(SHELL_RULES)
     existing = tmp_path / "kept.txt"
@@ -4716,9 +4740,9 @@ def test_a_help_probe_keeps_the_placement_its_target_declares() -> None:
 
     Asking a target for its own usage is the same program under the same
     declaration, so it keeps that declaration's placement. Answered above
-    the walk the probe returned a bare allow and the placement went with
-    it: one target was placed by its own row while the same target's help
-    probe, one word apart, fell to ``ambient`` — as did every other help
+    the walk, the probe would return a bare allow and the placement would go
+    with it: one target placed by its own row while the same target's help
+    probe, one word apart, falls to ``ambient`` — as would every other help
     probe in the vocabulary, whatever its depth. So the probe replaces the
     effect and the walk still answers for the placement.
     """
@@ -4777,9 +4801,9 @@ def test_a_reviewed_worker_is_told_the_route_it_actually_has() -> None:
 
     A worker holds a question mailbox reaching the human supervising its
     run, so a guarded verb parks a durable question there rather than being
-    refused — measured in #202, a refusal that named no route sent it to
-    queue a *material question* instead, parking the whole run on a decision
-    nobody needed to make. A genuinely headless run has no such channel, so
+    refused — a refusal naming no route sends it to queue a *material
+    question* instead, parking the whole run on a decision nobody needs to
+    make. A genuinely headless run has no such channel, so
     the same verb is refused and told to reshape, because naming a route
     that is not there is the same failure pointed the other way.
     """
@@ -5027,8 +5051,8 @@ def test_a_refusal_names_what_the_line_trips_instead() -> None:
 def test_a_directive_written_above_its_violation_is_not_dead() -> None:
     """The overflow placement guards the line below, which an edit need not add.
 
-    The reported failure this answers is a marker that went spurious while the
-    violation it was written for stayed live. Judging a directive by its own
+    The failure this answers is a marker read as spurious while the violation
+    it guards stays live. Judging a directive by its own
     line alone would refuse exactly the placement a reason too long to sit
     inline has to take.
     """
@@ -5497,9 +5521,9 @@ def test_this_checkouts_scratch_outranks_the_foreign_referral(
     """Scratch here is scratch, whichever repository's `.git` sits nearer.
 
     A probe kit takes a repository of its own so a runtime launched inside it
-    takes the kit as its project root, and that same `.git` made every file
-    in it "a different repository": each edit put a question to the operator
-    about a file nothing reviews. The claim is read off this checkout's
+    takes the kit as its project root, and that same `.git` would make every
+    file in it "a different repository", each edit putting a question to the
+    operator about a file nothing reviews. The claim is read off this checkout's
     spelling alone, so no other repository earns a relaxation by laying its
     own tree out the way this one declares scratch.
 
@@ -5586,8 +5610,8 @@ def test_the_generated_plugin_refusal_stops_at_this_checkouts_scratch(
     """Nothing this project generates lands in its scratch, so the refusal stops there.
 
     A probe kit carries a hand-written plugin under `.claude/plugins/` or
-    `.codex/plugins/`, and the refusal read the spelling alone: every file of
-    it was "a generated plugin tree" nothing had generated. The exception is
+    `.codex/plugins/`, and a refusal reading the spelling alone would call
+    every file of it "a generated plugin tree" nothing generated. The exception is
     read off the checkout's own spelling, like the referral's, so it reaches
     no tree the checkout does not hold.
     """
@@ -5654,10 +5678,10 @@ def test_a_scratch_spelling_a_link_moves_keeps_the_plugin_refusal(
 def test_retiring_a_suppression_the_ast_refutes_is_allowed() -> None:
     """The gate that demanded this marker gone must not be the one refusing it.
 
-    A route decorator trips the `dict-get` regex and nothing else, so while
-    the rule was only a regex the audit called the marker spurious and the
-    kernel denied every edit that removed it — a change one gate required and
-    the other forbade, with no operation in between.
+    A route decorator trips the `dict-get` regex and nothing else, so with
+    the rule read as a regex alone the audit would call the marker spurious
+    while the kernel denies every edit that removes it — a change one gate
+    requires and the other forbids, with no operation in between.
     """
     policy = EditPolicy(protected=[])
     batch = EditBatch(
@@ -5732,7 +5756,7 @@ def test_a_composed_session_enforces_the_rules_the_generated_tree_does() -> None
     hooks = next(plugin.hooks for plugin in portable_harness().plugins if plugin.hooks)
     composed = [path_rule_row(rule) for rule in declared_path_rules(hooks)]
     generated = runtime_path_rules(
-        [root.as_posix() for root in hooks.protected_edit_roots],
+        hooks.protected_roots(),
         [path.as_posix() for path in hooks.human_owned_files],
     )
 
@@ -5822,8 +5846,7 @@ def test_manifests_lockfiles_and_ci_ask_every_identity(
         "b\n",
         path_exists=True,
         path_rules=runtime_path_rules(
-            [root.as_posix() for root in declared_hook_set().protected_edit_roots],
-            ["README.md"],
+            declared_hook_set().protected_roots(), ["README.md"]
         ),
         antipattern_rows=[],
         path_roles=FIXTURE_PATH_ROLES,
@@ -6203,7 +6226,7 @@ def test_rewriting_the_annotated_line_does_not_spend_its_note() -> None:
 
 
 def test_a_deletion_hidden_inside_a_conversion_is_still_refused() -> None:
-    """Counting notes let one be dropped whenever another was converted.
+    """Counting notes would let one be dropped whenever another is converted.
 
     Deltas that cancel read as though nothing left: resolve note A, delete
     note B, add note C, and the tally is unchanged while B is gone for good.
@@ -6368,8 +6391,8 @@ def test_absence_is_only_concluded_from_words_it_could_actually_read() -> None:
     `dd if=$X` word-splits at expansion, so `$X` holding a space becomes a
     second word that can be `of=`. A test asking whether a marker is missing
     cannot tell that from a marker it could not read, so an illegible word
-    keeps the ask -- a stricter bar than the positive tests need, and
-    measured allowing until it was raised.
+    keeps the ask -- a stricter bar than the positive tests need, and one
+    the lower bar measurably fails.
     """
     policy = ShellPolicy(SHELL_RULES)
 
@@ -6417,11 +6440,11 @@ def test_carrying_nothing_is_not_read_only_for_a_command_that_acts_on_nothing() 
 
 
 def test_asking_git_its_own_version_is_not_an_unclassified_subcommand() -> None:
-    """`git version` was allowed and `git --version` denied, for the same question.
+    """`git version` and `git --version` ask one question and get one answer.
 
-    The flag spelling carries no subcommand at all, so it reached the default
-    deny and answered "this git subcommand is not classified" about a command
-    line holding none.
+    The flag spelling carries no subcommand at all, so read as a subcommand
+    it would reach the default deny and answer "this git subcommand is not
+    classified" about a command line holding none.
     """
     policy = ShellPolicy(SHELL_RULES)
 
@@ -6440,12 +6463,12 @@ def test_asking_git_its_own_version_is_not_an_unclassified_subcommand() -> None:
 
 
 def test_editing_a_compiled_plugin_tree_is_refused_by_the_file_gate_too() -> None:
-    """The refusal the shell path already gave, given to Edit and Write.
+    """The refusal the shell path gives, given to Edit and Write too.
 
     A plugin tree is a build product: the change is reverted by the next
     generation and never reaches the runtime that already loaded it. The
-    shell path said so; an Edit to the same file was judged by the ordinary
-    lattice, which has no verdict that is right here — an allow writes
+    shell path says so; judged by the ordinary lattice, an Edit to the same
+    file would get no verdict that is right here — an allow writes
     something about to be overwritten, and an ask puts a question to a human
     whose only correct answer is "edit the source instead".
 
@@ -6470,10 +6493,10 @@ def test_a_note_whose_words_stay_in_the_file_was_moved_rather_than_deleted() -> 
     """Relocating a note is the repair, not the loss.
 
     A note routinely lands against the wrong declaration — most often in a
-    merge, where both sides added at one spot — and the gate read any edit
-    dropping the marker line as a deletion. Judged on the words instead: a
-    marker whose text still appears in the file has been moved, which makes
-    the order the spelling of a move.
+    merge, where both sides added at one spot — and a gate reading any edit
+    dropping the marker line as a deletion would refuse the repair. Judged on
+    the words instead: a marker whose text still appears in the file has been
+    moved, which makes the order the spelling of a move.
     """
     note = "# lup: the base is read from the wrong checkout"
     both = f"{note}\ndef first(): ...\n\n\n{note}\ndef second(): ...\n"
@@ -6493,7 +6516,7 @@ def test_a_note_whose_words_stay_in_the_file_was_moved_rather_than_deleted() -> 
 
 
 def test_a_note_whose_words_leave_the_file_is_still_a_deletion() -> None:
-    """The gate that was there all along, unchanged where it was right."""
+    """The deletion gate where it is right: words gone from the file are lost."""
     note = "# lup: the base is read from the wrong checkout"
     decision = decide_edit(
         "a.py",
@@ -6528,7 +6551,7 @@ def test_moving_one_note_does_not_cover_deleting_another() -> None:
 
 
 def test_installing_asks_and_the_verbs_that_fetch_nothing_do_not() -> None:
-    """Where the line sits, and that clearing a cache was never on it.
+    """Where the line sits, and that clearing a cache is not on it.
 
     Fetching a package runs its build code, which is the escape a
     supply-chain compromise arrives through — so the verbs that resolve anew
@@ -6558,7 +6581,7 @@ def test_a_frozen_restore_is_allowed_for_every_package_manager_alike() -> None:
     The bun row reaches it through `frozen_flags`, uv through its own
     parser, and both say the same sentence: what `uv run` restores before
     running is what a frozen install restores, so asking about one and not
-    the other was the same act answered two ways. Bare, the install stays a
+    the other would be the same act answered two ways. Bare, the install stays a
     question whose reason names the frozen spelling that is not one.
     """
     pinned = (
@@ -6623,8 +6646,8 @@ def test_a_type_check_through_a_package_runner_is_the_read_it_is() -> None:
         assert effect(f"{runner} create-react-app app") == "ask", runner
         assert effect(f"{runner} tsc --outDir build") == "ask", runner
 
-    # Composed the way it was met: segments join, so one asking segment made
-    # a whole verify line ask.
+    # Composed the way a session meets it: segments join, so one asking
+    # segment makes a whole verify line ask.
     assert effect("git status --short && cd frontend && npx tsc --noEmit") == "allow"
 
 
@@ -6654,9 +6677,9 @@ def test_an_in_place_rewrite_is_judged_as_the_edit_it_performs(
     assert decided("sed -i.bak 's/body/text/' notes.md other.md") == "allow"
     assert decided("sed -ni 's/body/text/p' notes.md") == "allow"
 
-    # Uncommitted no longer decides anything: the question is what the file
-    # would hold, and an untracked markdown file holding a substitution is as
-    # ordinary an edit as a tracked one. Under recoverability this denied.
+    # Uncommitted decides nothing: the question is what the file would hold,
+    # and an untracked markdown file holding a substitution is as ordinary an
+    # edit as a tracked one.
     (tmp_path / "dirty.md").write_text("uncommitted\n", encoding="utf-8")
     assert decided("sed -i 's/a/b/' dirty.md") == "allow"
 
@@ -6676,9 +6699,9 @@ def test_a_rewrite_named_through_a_variable_is_judged_as_the_file_it_names(
 ) -> None:
     """`S=f; sed -i … $S` produces the same document `sed -i … f` does.
 
-    The classifier expanded `$S` and the host that runs the script over a
-    copy did not, so the document came back keyed by `$S`, matched no target,
-    and the rewrite asked as though the file could not be read.
+    Were the classifier to expand `$S` while the host running the script over
+    a copy does not, the document would come back keyed by `$S`, match no
+    target, and the rewrite would ask as though the file could not be read.
     """
     committed_tree(tmp_path, "notes.md")
     policy = ShellPolicy(SHELL_RULES, runner_targets=FIXTURE_RUNNER_TARGETS)
@@ -6698,12 +6721,12 @@ def test_a_rewrite_named_through_a_variable_is_judged_as_the_file_it_names(
 def test_an_in_place_rewrite_meets_the_content_gates_an_edit_meets(
     tmp_path: Path,
 ) -> None:
-    """The hole this closes: a substitution nothing read, into tracked source.
+    """A substitution nothing read, into tracked source, meets every content gate.
 
-    Measured before the change -- `sed -i` over a clean tracked file was
-    allowed outright, with every content gate skipped, so a suppression an
-    `Edit` is refused went in through the verb that overwrites. The two routes
-    now read one table, which is the property the whole policy is built on.
+    Allowed outright, `sed -i` over a clean tracked file would skip every
+    content gate, so a suppression an `Edit` is refused would go in through
+    the verb that overwrites. The two routes read one table, which is the
+    property the whole policy is built on.
     """
     committed_tree(tmp_path, "module.py")
     (tmp_path / "module.py").write_text("value = compute()\n", encoding="utf-8")
@@ -6827,7 +6850,7 @@ def test_every_shell_row_field_reaches_the_generated_data_file() -> None:
     key is a permission that never happens — the one failure shape this
     repository cannot afford to discover in production. So the mapping the
     renderer walks is checked against the shape's own annotations rather than
-    trusted to have been updated alongside it.
+    trusted to keep in step with it.
     """
     row = erase_shell_rules(
         [
@@ -6843,10 +6866,9 @@ def test_every_shell_row_field_reaches_the_generated_data_file() -> None:
 def test_every_runner_target_field_reaches_the_generated_data_file() -> None:
     """The same gap, on the one table a command row cannot reach.
 
-    This shape is smaller and was rendered by a renderer that spelled its
-    fields by hand, which is exactly the arrangement that drops a column: the
-    row gained `effects` and `refuses` while the renderer still named the
-    verdict that had gone.
+    This shape is smaller, and a renderer spelling its fields by hand is
+    exactly the arrangement that drops a column: a row gains `effects` and
+    `refuses` while the renderer goes on naming a field the row no longer has.
     """
     row = erase_runner_targets(
         [RunnerTargetRule(name="example", effects=[declare("runs_declared_target")])]
@@ -6860,9 +6882,9 @@ def test_a_refused_runner_target_takes_no_native_prefix_allow() -> None:
 
     Codex's native prefix table is read by the runtime itself, and a target
     approved there is approved whatever the dispatcher beside it would have
-    said. While a target stated its verdict outright, every declared target
-    took a prefix regardless of that verdict — so a project's refusal was
-    contradicted by the same declaration that carried it.
+    said. A prefix granted to every declared target regardless of its verdict
+    would let a project's refusal be contradicted by the same declaration
+    that carries it.
     """
     prefixes = codex_allow_prefixes(
         [],

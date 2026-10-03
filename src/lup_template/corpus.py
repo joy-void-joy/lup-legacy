@@ -22,9 +22,9 @@ changes — read from the working tree when somebody asks, which is why the
 neighbourhood carries a root.
 
 **A claim refuses to hide contradiction**, reports a premise that fell as its
-own regression, and is graded in this repository's six words. The words come
-from the mathematics repository whose failures shaped the design, where
-senders wrote them on every claim unprompted — including an explicit negative:
+own regression, and is graded in this repository's six words. They are the
+words senders in a mathematics corpus write on their own claims unprompted, an
+explicit negative among them:
 *"[M] No loop was found at small size. I have not run this search; the
 statement is that no such search exists in this project's record."* Six is not
 a recommendation; an adopting project replaces `GRADES` and nothing else.
@@ -39,7 +39,7 @@ from typing import Literal, Self
 
 from pydantic import BaseModel, Field, field_validator
 
-from lup.ledger.files import digest_of
+from lup.formats import digest
 from lup.ledger.models import LedgerEdge, LedgerNode, Standing, Surroundings
 
 
@@ -90,7 +90,7 @@ class Validation(BaseModel, frozen=True):
         return [
             scoped.path
             for scoped in self.scope
-            if digest_of(root / scoped.path) != scoped.digest
+            if (digest.file(root / scoped.path) or "") != scoped.digest
         ]
 
 
@@ -137,7 +137,7 @@ class Evidence(LedgerNode, frozen=True):
         pinned = [
             scoped
             if scoped.digest
-            else Scoped(path=scoped.path, digest=digest_of(root / scoped.path))
+            else Scoped(path=scoped.path, digest=digest.file(root / scoped.path) or "")
             for scoped in self.validation.scope
         ]
         return self.model_copy(

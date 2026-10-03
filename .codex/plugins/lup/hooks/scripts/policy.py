@@ -24,7 +24,7 @@ from codex_patch import patched_files, patched_paths
 from kernel.rows import PostToolReport
 from kernel.review import Said
 from kernel.decision import KernelDecision
-from kernel.decision import UNJUDGED_RECOVERY
+from kernel.decision import unjudged_recovery
 from kernel.diagnostic import Step, devtools, spelled, stated, step
 from kernel.review import literal_input
 from kernel.shell import auto_escape_matches
@@ -32,9 +32,13 @@ from caller_payload import caller_of, spoken, transcript_of
 from policy_data import AUTO_ESCAPE_PREFIXES
 from policy_data import AGENT_IDENTITY_ENV, AUTONOMOUS_AGENT_IDENTITIES
 from policy_data import HOOK_DEADLINE_SECONDS
+
+# Read by the entry point the compiler writes, which hands it to the warden.
+from policy_data import HOOK_ANSWER_SECONDS
 import ast
 import csv
 import fcntl
+import select
 import signal
 import tempfile
 import time
@@ -183,9 +187,9 @@ def granted_root(scope: str) -> Path:
     A lease's own roots are recorded resolved, and a declared sandbox grant is
     recorded as it was written -- `~/.cache/uv` -- because it answers for
     whichever home reads it. Resolving that spelling without expanding it
-    named `<cwd>/~/.cache/uv`, so the one grant every toolchain needs was
-    refused as outside the boundary it was declared into, while `touch` on the
-    same path, which no reader resolved, went through.
+    would name `<cwd>/~/.cache/uv`, refusing the one grant every toolchain
+    needs as outside the boundary it is declared into, while `touch` on the
+    same path, which no reader resolves, goes through.
     """
     return Path(scope).expanduser().resolve()
 
@@ -242,6 +246,7 @@ def measured_landings(
     targets: list[str],
     measured: dict[str, list[str]],
     root: Path | None = None,
+    siblings: list[str] | None = None,
     mountinfo: Path = Path("/proc/self/mountinfo"),
 ) -> list[list[str]]:
     """Where each target lands, as this launch's lease and this mount table say.
@@ -249,13 +254,15 @@ def measured_landings(
     Asked by a caller that already knows the session runs in a container:
     the question these answer is asked only there. A mount table nobody
     can read places every target on the host, which keeps every question.
+    ``siblings`` are the repository's other checkouts, as
+    :func:`sibling_worktrees` names them.
     """
     try:
         lent = lent_mount_points(mountinfo.read_text())
     except OSError:
         return [[target, "host"] for target in targets]
     shared = host_shared_roots(measured, lent, str(Path.home()))
-    return landed_targets(targets, shared, root)
+    return landed_targets(targets, shared, root, siblings)
 
 
 def destination_policy_binding(path_text: str, root: Path | None) -> str:
@@ -347,6 +354,29 @@ def destination_policy_binding(path_text: str, root: Path | None) -> str:
     return ""
 
 
+def hook_started() -> float:
+    """When this hook began, on the monotonic clock: where the guard stamped it, else now.
+
+    A runtime counts its timeout from the moment it starts the hook, and by
+    the time the dispatcher's first line runs the interpreter has started,
+    compiled the script and imported the kernel -- time the runtime counts
+    and a deadline opened from inside would not. So the guard stamps the
+    wall clock as it starts, in whole seconds since that is what every
+    `date` prints, and every deadline here counts from the stamp: never
+    later than the hook began, and at most a second earlier. Without a
+    stamp, as when something other than the guard starts the dispatcher,
+    the hook began now.
+    """
+    environ = os.environ  # lup: ignore[os-environ]
+    stamp = environ["LUP_HOOK_STARTED"] if "LUP_HOOK_STARTED" in environ else ""
+    now = time.monotonic()
+    try:
+        elapsed = time.time() - float(stamp) if stamp else 0.0
+    except ValueError:
+        elapsed = 0.0
+    return now - max(elapsed, 0.0)
+
+
 def opened_deadline(seconds: float, grace: float = 2.0) -> str:
     """Give this hook, and every process it starts, one deadline: returns the one before.
 
@@ -354,17 +384,18 @@ def opened_deadline(seconds: float, grace: float = 2.0) -> str:
     timeout, so a hook that is still waiting when that comes has answered
     nothing, and nothing is the one answer a gate may not give. Everything a
     verdict may wait on -- a language server, a destination's evaluator, Git,
-    `sed` -- shares the deadline set here, where the hook starts, and asks
-    :func:`hook_seconds_left` rather than spending a timeout of its own; one
-    cut short reads as the failure it already answers, so the verdict is
-    reached in time.
+    `sed` -- shares the deadline set here, counted from when the hook
+    started, and asks :func:`hook_seconds_left` rather than spending a
+    timeout of its own; one cut short reads as the failure it already
+    answers, so the verdict is reached in time.
 
     What no step bounds -- a file lock another writer holds, a read that
     never returns, the classifier itself -- is bounded by an alarm ``grace``
     seconds past the deadline. It raises where the hook is, and the
     dispatcher answers that as it answers every call it could not judge: it
     refuses. The grace is what separates the two: a step cut short at the
-    deadline still has time to become the verdict it reads as.
+    deadline still has time to become the verdict it reads as. What an
+    alarm cannot reach either, :func:`answered_in_time` answers for.
 
     Kept in the environment, on the monotonic clock every process on the
     machine shares, so a process this hook starts inherits the deadline and
@@ -372,7 +403,7 @@ def opened_deadline(seconds: float, grace: float = 2.0) -> str:
     """
     environ = os.environ  # lup: ignore[os-environ]
     previous = environ["LUP_HOOK_DEADLINE"] if "LUP_HOOK_DEADLINE" in environ else ""
-    deadline = time.monotonic() + seconds
+    deadline = hook_started() + seconds
     try:
         inherited = float(previous) if previous else deadline
     except ValueError:
@@ -393,6 +424,182 @@ def opened_deadline(seconds: float, grace: float = 2.0) -> str:
     signal.signal(signal.SIGALRM, overran)
     signal.setitimer(signal.ITIMER_REAL, max(held - time.monotonic(), 0.0) + grace)
     return previous
+
+
+def answered_in_time(
+    seconds: float,
+    judged: Callable[[bytes], None],
+    unanswered: Callable[[bytes, BaseException | None], None],
+) -> None:
+    """Answer within ``seconds`` of the hook starting, whatever the judgement does.
+
+    A runtime lets the call through once its policy hook overruns its
+    timeout, and reads nothing the hook said until its process has ended --
+    so the answer has to be written, and this process gone, before then.
+    The deadline :func:`opened_deadline` sets, and the alarm past it, bound
+    every wait that can be interrupted. This bounds the rest: the judgement
+    runs in a child process, and this one only waits on it. Past ``seconds``
+    it stops the child and writes ``unanswered`` itself, so a judgement
+    stuck where no alarm reaches -- a read the kernel will not interrupt,
+    native code that never returns to the interpreter, the verdict being
+    written after its alarm was disarmed -- still meets a refusal in time.
+
+    ``judged`` reads the hook's input and answers as the dispatcher always
+    has: on standard output and error and in its exit status, carried out
+    whole once it ends, and none of it if it does not end in time -- half a
+    verdict is not one. The child holds neither of the runtime's streams,
+    so nothing it leaves running keeps the runtime waiting. A child a signal
+    ended reached no verdict, and is refused as one that could not judge;
+    one that exited keeps the status the guard around this script reads.
+
+    ``unanswered`` takes the input and what failed -- None where the time
+    ran out -- and writes this runtime's refusal on the channel the input's
+    event reads, in the words :func:`unjudged_reason` and
+    :func:`unjudged_recovery` give it. The input is whatever arrived, which
+    is nothing where it did not all arrive in time.
+    """
+    limit = hook_started() + seconds
+
+    def arriving() -> Iterator[bytes]:
+        """The hook's input as it arrives; a TimeoutError where it stops arriving in time."""
+        while (left := limit - time.monotonic()) > 0 and select.select(
+            [0], [], [], left
+        )[0]:
+            chunk = os.read(0, 65536)
+            if not chunk:
+                return
+            yield chunk
+        raise TimeoutError("the hook's input did not arrive in time")
+
+    def status_of(given: bytes) -> int:
+        """Judge here, in the child, and say how it ended as an exit status would."""
+        try:
+            judged(given)
+        except SystemExit as stop:
+            if isinstance(stop.code, str):
+                print(stop.code, file=sys.stderr)
+            return stop.code if isinstance(stop.code, int) else int(bool(stop.code))
+        # The interpreter's own report of what escaped, which a child that
+        # leaves through os._exit has to give itself: the traceback on stderr
+        # and the status the guard reads as a crash.
+        except Exception as escaped:
+            sys.excepthook(type(escaped), escaped, escaped.__traceback__)
+            return 1
+        return 0
+
+    def streamed(stream: int) -> Iterator[bytes]:
+        """What one of the child's streams holds now, without waiting for more."""
+        os.set_blocking(stream, False)
+        try:
+            yield from iter(lambda: os.read(stream, 65536), b"")
+        except BlockingIOError:
+            return
+
+    try:
+        given = b"".join(arriving())
+    except TimeoutError:
+        unanswered(b"", None)
+        return
+    sys.stdout.flush()
+    sys.stderr.flush()
+    said_out, said_in = os.pipe()
+    told_out, told_in = os.pipe()
+    ended, ending = os.pipe()
+    try:
+        child = os.fork()
+    except OSError as error:
+        unanswered(given, error)
+        return
+    if child == 0:
+        for unused in (said_out, told_out, ended):
+            os.close(unused)
+        # Its input stays the runtime's wire, all read already, since which
+        # runtime a hook answers for is read off whose wire that is.
+        for source, target in ((said_in, 1), (told_in, 2)):
+            if source != target:
+                os.dup2(source, target)
+                os.close(source)
+        # Whatever escapes the judgement, the child leaves here: it is a
+        # copy of this process, and returning would run this one's code.
+        status = 1
+        try:
+            status = status_of(given)
+            sys.stdout.flush()
+            sys.stderr.flush()
+        finally:
+            os._exit(status)
+    for unused in (said_in, told_in, ending):
+        os.close(unused)
+    kept: dict[int, list[bytes]] = {said_out: [], told_out: []}
+
+    def ended_with() -> int | None:
+        """The child's exit status, its streams read meanwhile; None past the limit.
+
+        The streams are read as they fill, since a child writing more than a
+        pipe holds waits for a reader. Its end is the one pipe nothing it
+        starts inherits closing, rather than the end of its output, which a
+        process it left running could hold open long after it answered.
+        """
+        watched = [said_out, told_out, ended]
+        while ended in watched:
+            left = limit - time.monotonic()
+            ready = select.select(watched, [], [], left)[0] if left > 0 else []
+            if not ready:
+                return None
+            for stream in ready:
+                chunk = os.read(stream, 65536)
+                if not chunk:
+                    watched.remove(stream)
+                    continue
+                # Only the two streams carry anything: the child never writes
+                # to the pipe whose closing says it ended.
+                kept[stream].append(chunk)
+        while (left := limit - time.monotonic()) > 0:
+            reaped, status = os.waitpid(child, os.WNOHANG)
+            if reaped:
+                return os.waitstatus_to_exitcode(status)
+            time.sleep(min(left, 0.01))
+        return None
+
+    status = ended_with()
+    if status is None or status < 0:
+        try:
+            os.kill(child, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        killed = None if status is None else RuntimeError(f"ended by signal {-status}")
+        unanswered(given, killed)
+        return
+    for stream, chunks in kept.items():
+        chunks.extend(streamed(stream))
+    sys.stdout.buffer.write(b"".join(kept[said_out]))
+    sys.stderr.buffer.write(b"".join(kept[told_out]))
+    sys.stdout.flush()
+    sys.stderr.flush()
+    if status:
+        raise SystemExit(status)
+
+
+def refuse_unanswered(question: str) -> None:
+    """End a hook's judgement at a question it could not get answered in time.
+
+    "No answer" is not "no". A question cut short by the deadline -- is this
+    path tracked, which repository holds it, what does this patch touch --
+    read as its negative answer lets a write through as untracked, as this
+    project's, as touching nothing, where the answer it never got would have
+    asked. Reading every such question strictly one by one is a second
+    policy beside the first; ending the judgement is the one strict reading
+    that needs no second. So under a hook's deadline this moves the deadline
+    to now, which every later step reads as no time left and the refusal
+    names, and raises where the question was asked. Outside a hook -- a
+    review waiter, the dashboard -- nothing is being judged, and it returns
+    for the caller's own answer to a question nobody could answer.
+    """
+    environ = os.environ  # lup: ignore[os-environ]
+    if "LUP_HOOK_DEADLINE" not in environ:
+        return
+    environ["LUP_HOOK_DEADLINE"] = repr(time.monotonic())
+    raise RuntimeError(f"{question} did not answer before the hook's deadline")
 
 
 def closed_deadline(previous: str) -> None:
@@ -417,26 +624,33 @@ def deadline_passed() -> bool:
     return hook_seconds_left(float("inf")) <= 0.0
 
 
-def unjudged_reason(error: Exception, read: bool) -> str:
+def unjudged_reason(error: BaseException | None, read: bool) -> str:
     """Why a call went unjudged, named by what failed rather than by one guess.
 
     Every failure is refused alike -- the call went unjudged, and that is
     the whole of what the verdict can say -- but the reason is what somebody
-    reads to fix it, and each cause has a different fix: a hook that ran
-    out of time, a payload that is not one (``read`` false), and a failure
+    reads to fix it, and each cause has a different fix: a judgement that
+    ran out of time (``error`` None, or anything failing once the deadline
+    has passed), a payload that is not one (``read`` false), and a failure
     judging a payload that was.
     """
-    if deadline_passed():
-        return (
-            "this hook reached its deadline before a verdict, so the call is"
-            " refused unjudged"
-        )
+    if ran_out(error):
+        return "the policy could not judge this call in time, so it is refused unjudged"
     if not read:
         return f"the hook input is malformed, so the call is refused unjudged: {error}"
     return (
         "the policy failed on this call, so it is refused unjudged"
         f" (`{type(error).__name__}: {error}`)"
     )
+
+
+def ran_out(error: BaseException | None) -> bool:
+    """Whether a call went unjudged for want of time rather than for a failure.
+
+    ``error`` None is a judgement still running when the hook had to answer;
+    anything failing once the deadline has passed failed for the same reason.
+    """
+    return error is None or deadline_passed()
 
 
 def hook_seconds_left(ceiling: float) -> float:
@@ -665,12 +879,11 @@ def contained(measured: dict[str, list[str]]) -> bool:
     be told to leave some alone, where a container confines the process and
     was never asked.
 
-    Read from what the launch *measured* rather than from a variable. The
-    variable was ``LUP_CONTAINED``, a constant an image bakes, and a constant
-    answers yes for any container built from that image, for a bare ``run``
-    holding none of the lease, and -- since a launcher forwards its own
-    environment -- for an uncontained session started from a shell that
-    happened to export it. That last one is not hypothetical: it is a session
+    Read from what the launch *measured* rather than from a variable. A
+    variable is a constant an image bakes, and a constant answers yes for any
+    container built from that image, for a bare ``run`` holding none of the
+    lease, and -- since a launcher forwards its own environment -- for an
+    uncontained session started from a shell that exports it: a session
     reporting a boundary with no container under it, placing every operation
     by a wall that is not there.
     """
@@ -1440,9 +1653,9 @@ def migrated_relay(records: list[dict], blobs: Path) -> list[dict]:
 
     Each question's copies collapse into the last, which is the state it came
     to, with when it came to it beside it and its documents kept once in the
-    store; replies stay as they were, and a record already in the new shape
-    follows them. A copy claiming an answer is passed over, as it always was,
-    and so is anything that is not a question or a reply.
+    store; replies stay as they are, and a record already in the digest shape
+    follows them. A copy claiming an answer is passed over, and so is anything
+    that is not a question or a reply.
     """
 
     def copied(record: dict) -> str:
@@ -1476,7 +1689,7 @@ def migrated_relay(records: list[dict], blobs: Path) -> list[dict]:
 
 
 def migrate_relay(log: Path) -> None:
-    """Rewrite a relay kept the older way into the shape it is read in now, once.
+    """Rewrite a relay kept as full copies into the shape it is read in, once.
 
     Under the relay's transaction lock and its log's own, so no transition
     and no append lands midway: whoever takes them first rewrites it, and the
@@ -1693,8 +1906,8 @@ def bound_parts(
     A record keeps its scheme -- the parts it bound, in order -- so a reader
     on other code tells a record it cannot check from one that changed:
     ``None`` where the scheme names a part this code does not know. A record
-    parked before the scheme was kept bound the parts it carries; one it
-    holds as null, which a relay writes for a part it never had, it did not.
+    keeping no scheme binds the parts it carries; one it holds as null, which
+    a relay writes for a part it never had, it does not.
     """
     scheme = (
         entry["scheme"]
@@ -2243,7 +2456,7 @@ def record_deferral(
     classified, and the list is read to find the second.
 
     **Written at the moment the verdict exists**, rather than after the
-    command has run. The later event was proposed and refuted: a runtime
+    command has run. The later event cannot serve: a runtime
     offers both "yes" and "yes, don't ask again" and the later event cannot
     tell them apart, and a human may answer by *editing* the command, so it
     fires for something other than what was judged. None of that touches a
@@ -2644,8 +2857,9 @@ def shared_git_directory(path_text: str) -> str:
             check=False,
         )
     except subprocess.TimeoutExpired:
-        # Git not answering in the time this hook has left reads as Git
-        # failing, which every caller already answers.
+        # "No repository" read here makes a path in another repository this
+        # project's own, so under a hook an unanswered question ends it.
+        refuse_unanswered("Git")
         return ""
     return str(Path(result.stdout.strip()).resolve()) if result.returncode == 0 else ""
 
@@ -2862,22 +3076,27 @@ def foreign_repository(path_text: str, root: Path | None) -> bool:
 
 
 def this_checkout_path(path_text: str, root: Path | None) -> str:
-    """This path as the session's own checkout spells it, or "" outside it.
+    """This path as this repository's checkout holding it spells it, or "".
 
     :func:`worktree_path` anchors a path at the checkout nearest the file,
     which is the right anchor for every rule but one. A repository nested
-    inside this checkout -- a probe kit given its own ``git init`` under
+    inside a checkout -- a probe kit given its own ``git init`` under
     ``tmp/``, so a runtime launched there takes it as the project root -- has
-    a ``.git`` nearer the file than this checkout's, so the file arrives
-    spelled against the kit and claims none of the roles this checkout
+    a ``.git`` nearer the file than the checkout's, so the file arrives
+    spelled against the kit and claims none of the roles this repository
     declares for the tree around it. This is the other anchor, and the kernel
     reads it for that one question.
 
+    The session's own checkout is asked first, then the other worktrees of
+    the same repository (:func:`sibling_worktrees`), the deepest holding the
+    file: a session is sent to work in a sibling by absolute path, and a kit
+    under that sibling's ``tmp/`` is the same project's scratch.
+
     Resolved before it is compared, so a link is judged where it lands: a
-    ``refs/`` entry pointing at another project is outside this checkout
-    however it is spelled. A relative path is anchored on the session's own
-    directory, where the tool carrying it resolves it, and a session in no
-    checkout holds nothing, which the empty answer says.
+    ``refs/`` entry pointing at another project is outside every checkout of
+    this one however it is spelled. A relative path is anchored on the
+    session's own directory, where the tool carrying it resolves it, and a
+    session in no checkout holds nothing, which the empty answer says.
     """
     if root is None:
         return ""
@@ -2885,9 +3104,17 @@ def this_checkout_path(path_text: str, root: Path | None) -> str:
     if not checkout:
         return ""
     resolved = (root / path_text).resolve()
-    if not resolved.is_relative_to(checkout):
+    if resolved.is_relative_to(checkout):
+        return resolved.relative_to(checkout).as_posix()
+    holding = [
+        tree
+        for tree in (Path(sibling).resolve() for sibling in sibling_worktrees(root))
+        if resolved.is_relative_to(tree)
+    ]
+    if not holding:
         return ""
-    return resolved.relative_to(checkout).as_posix()
+    nearest = max(holding, key=lambda tree: len(tree.parts))
+    return resolved.relative_to(nearest).as_posix()
 
 
 def publish_edition(path_text: str, session: str) -> None:
@@ -2912,9 +3139,11 @@ def publish_edition(path_text: str, session: str) -> None:
     repository nested in the checkout, or one anywhere else — would have it
     written into that repository's git directory, read by nobody.
 
-    The rename is the whole guarantee, and the temporary is dot-prefixed, for
-    the reasons ``lup.channels.models.write_atomic`` gives. This cannot call
-    that one: it is compiled into a bare script with no ``lup`` to import.
+    The rename is the whole guarantee, and the temporary is dot-prefixed and
+    named for this write alone, for the reasons
+    ``lup.channels.models.write_atomic`` gives: two sessions editing at once
+    would otherwise truncate each other's staging file. This cannot call that
+    one: it is compiled into a bare script with no ``lup`` to import.
     """
     root = worktree_root(path_text)
     shared = shared_git_directory(path_text)
@@ -2924,11 +3153,17 @@ def publish_edition(path_text: str, session: str) -> None:
     record = json.dumps(
         {"workspace": root, "file": str(Path(path_text).resolve())}, indent=2
     )
-    temporary_path = destination.with_name(f".{destination.name}.tmp")
+    temporary_path = destination.with_name(
+        f".{destination.name}.{os.urandom(8).hex()}.tmp"
+    )
     try:
         destination.parent.mkdir(parents=True, exist_ok=True)
-        temporary_path.write_text(record + "\n", encoding="utf-8")
-        temporary_path.replace(destination)
+        try:
+            with temporary_path.open("x", encoding="utf-8") as staged:
+                staged.write(record + "\n")
+            temporary_path.replace(destination)
+        finally:
+            temporary_path.unlink(missing_ok=True)
     except OSError as error:
         print(f"lup: could not publish the edition: {error}", file=sys.stderr)
 
@@ -2980,27 +3215,27 @@ def declared_program(root: str, declared: str) -> str:
     put outside the project. A path that resolved to nothing stays nothing,
     because a project that named a location meant that location.
 
-    Accepting only the first is what made this gate unavailable rather than
-    configurable. A declared program it could not resolve produced no
-    diagnostics and said nothing about why, so a project outside one layout
-    did not get a weaker check — it got silence indistinguishable from a
-    clean file, on every edit.
+    Accepting only the first would make this gate unavailable rather than
+    configurable. A declared program it cannot resolve produces no
+    diagnostics and says nothing about why, so a project outside one layout
+    would not get a weaker check — it would get silence indistinguishable
+    from a clean file, on every edit.
 
     A bare name is asked of the checkout's own environment before ``PATH``,
     because that is where a project's toolchain is installed and asking is
     what keeps the declaration from naming a layout. Spelling the path in
     would answer only for the layout it spelled: ``.venv`` is `uv`'s default
-    and nothing else's, so a project that redirected it, or that installs
-    through conda or pyenv, resolved to nothing and was gated in silence.
+    and nothing else's, so a project that redirects it, or that installs
+    through conda or pyenv, would resolve to nothing and be gated in silence.
     The scripts directory comes from the running interpreter — ``bin`` on
     POSIX, ``Scripts`` on Windows — because that is a property of how Python
     is installed rather than of any project, and reading it is what keeps
-    this from being a second layout assumption behind the one it replaces.
+    this from carrying a layout assumption of its own.
     It is read as a candidate rather than as the answer: a hook runs under
     whichever ``python3`` the runtime found, and one installed in ``sbin``
-    names a directory no environment has, which resolved every declared
-    program to a bare name and left the gate silent on a machine where it
-    was installed all along. The conventional pair follows it, so the
+    names a directory no environment has, which alone would resolve every
+    declared program to a bare name and leave the gate silent on a machine
+    where each one is installed. The conventional pair follows it, so the
     interpreter still decides where it can and never decides alone.
     """
     located = Path(root) / declared
@@ -3111,8 +3346,8 @@ def file_diagnostics(
     A name used before it exists is reported as context rather than as a
     refusal: *pending_rules*, and an unknown symbol on an import line. A
     change spanning two edits — the use, then the definition or its import —
-    reports it in between, and as a "blocking error" it arrived dozens of
-    times per change while four builders worked in parallel. What is still
+    reports it in between, and as a "blocking error" it would arrive dozens of
+    times per change wherever several builders work in parallel. What is still
     unresolved when the change settles, `dev check --changed` reports.
     """
     nothing: dict[str, list[str]] = {"blocking": [], "context": []}
@@ -3426,11 +3661,14 @@ def git_answers(
 ) -> list[str] | None:
     """One Git invocation's lines, or None when Git cannot answer.
 
-    Git missing, the path outside a repository, a malformed pathspec, a
-    non-zero exit, and no answer inside ``timeout_seconds`` or the hook's
-    deadline, whichever is nearer, all collapse to None, so a caller reading
-    this as evidence that something is safe to destroy treats an unanswerable
-    question as a no.
+    Git missing, the path outside a repository, a malformed pathspec and a
+    non-zero exit all collapse to None, so a caller reading this as evidence
+    that something is safe to destroy treats an unanswerable question as a
+    no. No answer inside ``timeout_seconds`` or the hook's deadline,
+    whichever is nearer, is different: under a hook it ends the judgement
+    (:func:`refuse_unanswered`), since a caller reading None as "not
+    tracked" or "touches nothing" would let through what the answer would
+    have asked about.
 
     ``overrides`` are merged over the inherited environment rather than
     replacing it, because a replacement drops ``PATH`` and ``HOME`` and the
@@ -3449,11 +3687,14 @@ def git_answers(
             check=False,
             input=input_text,
             env={**environ, **overrides} if overrides else None,
-            # Bounded by what the hook has left: an answer that does not come
-            # in time is the unanswerable question this already reads as no.
+            # Bounded by what the hook has left, and never read as a no when
+            # the answer does not come in time.
             timeout=hook_seconds_left(timeout_seconds),
         )
-    except (OSError, subprocess.TimeoutExpired):
+    except OSError:
+        return None
+    except subprocess.TimeoutExpired:
+        refuse_unanswered("Git")
         return None
     return finished.stdout.splitlines() if finished.returncode == 0 else None
 
@@ -3588,8 +3829,8 @@ def undo_snapshot(
     from it exactly when it is reached for.
 
     Ignored files are not captured, and that is a stated limit rather than an
-    oversight: on the checkout this was built in, ignored-but-precious content
-    came to 592 MB against a 21 MB object store, so capturing it would write
+    oversight: measured on a checkout of this repository, ignored-but-precious
+    content comes to 592 MB against a 21 MB object store, so capturing it would write
     twenty-eight times the repository's whole history before every mutating
     command. ``git clean -fdx`` therefore keeps asking, because it is the one
     command whose purpose is destroying what this cannot restore, and a
@@ -4091,7 +4332,10 @@ def host_shared_roots(
 
 
 def landed_targets(
-    targets: list[str], shared: list[str], root: Path | None = None
+    targets: list[str],
+    shared: list[str],
+    root: Path | None = None,
+    siblings: list[str] | None = None,
 ) -> list[list[str]]:
     """Place each target: this checkout, somewhere else the host shares, or the container.
 
@@ -4100,15 +4344,19 @@ def landed_targets(
     where it lands. A target no one can read -- an expansion, a substitution,
     a directory a `cd` left unknown -- lands ``host``: nothing here can vouch
     for where it goes, and that is the answer that keeps a question.
+
+    Another worktree of this repository in ``siblings`` is the checkout too:
+    the same project on another branch, which a session is sent to work in by
+    absolute path, rather than a tree somebody else lent the container.
     """
     where = Path.cwd() if root is None else root
-    checkout = where.resolve()
+    checkouts = [where.resolve(), *(Path(tree).resolve() for tree in siblings or [])]
 
     def landing(target: str) -> str:
         if "$" in target or "`" in target:
             return "host"
         resolved = (where / target).resolve()
-        if resolved.is_relative_to(checkout):
+        if any(resolved.is_relative_to(checkout) for checkout in checkouts):
             return "checkout"
         if any(resolved.is_relative_to(scope) for scope in shared):
             return "host"
@@ -4493,7 +4741,7 @@ def bash_decision(
     operands alike, because the questions they ask are the same ones —
     whether writing here brings something into being or replaces it, and what
     replacing it would cost. Resolving them for only one of the two writing
-    forms is what left ``rm f`` granted while ``echo x > f`` asked about the
+    forms would leave ``rm f`` granted while ``echo x > f`` asks about the
     same clean, tracked file.
 
     ``cwd`` is where the calling session is, which the command's relative
@@ -4532,6 +4780,44 @@ def bash_decision(
     # exist yet, and a refused command is snapshotted too -- one ref for a
     # state the tree was already in, which dedup collapses.
     reference = undo_snapshot(cwd, command)
+    # Every fact Git answers is asked here, before the edit gates below: a
+    # gate may start a type checker that spends what is left of the hook's
+    # deadline, and a Git question asked with nothing left reads as no answer
+    # -- no other checkout, nothing tracked -- so a heredoc into a sibling
+    # worktree's `tmp/` would read as an outside path, and a redirect over
+    # tracked source beside it as a file Git never held.
+    #
+    # Another checkout of this repository keeps this one's scratch, reached by
+    # the absolute path a session spells it with -- so Git is asked for the
+    # checkouts only where the command names such a path at all.
+    siblings = (
+        sibling_worktrees(cwd)
+        if any(
+            target.startswith("/")
+            for target in [*shell_write_targets(command), *acted_on, *flagged]
+        )
+        else []
+    )
+    tracked = tracked_write_targets(
+        [*shell_write_targets(command), *acted_on, *flagged], cwd
+    )
+    recoverable = recoverable_write_targets(
+        [*shell_write_targets(command), *acted_on], cwd
+    )
+    # A snapshot proves a capture only of what it took, and it takes nothing
+    # Git ignores: one ignored target outside declared scratch, which needs no
+    # capture, leaves the loss uncaptured.
+    recovered = bool(reference) and not ignored_write_targets(
+        unscratched(
+            [
+                *shell_write_targets(command),
+                *shell_written_targets(command, SHELL_RULES),
+            ],
+            PATH_ROLES,
+            str(cwd or Path.cwd()),
+        ),
+        cwd,
+    )
     # What the line leaves in every file it writes, step by step, and the
     # edit gates' verdict on each file its own bytes or a rewrite reach. Both
     # halves of the rewrite reading come off it -- the documents a rewrite
@@ -4543,17 +4829,6 @@ def bash_decision(
         lambda target, document: rewritten_row(
             target, document, judged[document["path"]], cwd or Path.cwd()
         ),
-    )
-    # Another checkout of this repository keeps this one's scratch, reached by
-    # the absolute path a session spells it with -- so Git is asked for the
-    # checkouts only where the command names such a path at all.
-    siblings = (
-        sibling_worktrees(cwd)
-        if any(
-            target.startswith("/")
-            for target in [*shell_write_targets(command), *acted_on, *flagged]
-        )
-        else []
     )
     verdict = decide_shell(
         command,
@@ -4568,12 +4843,8 @@ def bash_decision(
         existing_targets=existing_write_targets(
             [*shell_write_targets(command), *acted_on, *flagged], cwd
         ),
-        tracked_targets=tracked_write_targets(
-            [*shell_write_targets(command), *acted_on, *flagged], cwd
-        ),
-        recoverable_targets=recoverable_write_targets(
-            [*shell_write_targets(command), *acted_on], cwd
-        ),
+        tracked_targets=tracked,
+        recoverable_targets=recoverable,
         directory_targets=directory_write_targets(acted_on, cwd),
         empty_directories=empty_directory_targets(acted_on, cwd),
         recoverable_target_limit=RECOVERABLE_TARGET_LIMIT,
@@ -4695,7 +4966,10 @@ def bash_decision(
         landings=(
             landing_rows(
                 measured_landings(
-                    shell_posture_targets(command, SHELL_RULES), boundary, cwd
+                    shell_posture_targets(command, SHELL_RULES),
+                    boundary,
+                    cwd,
+                    siblings,
                 )
             )
             if inside and delivers(boundary, "inside_placement")
@@ -4708,21 +4982,7 @@ def bash_decision(
             if any(host in command for host in ("localhost", "127.", "::1"))
             else []
         ),
-        # A snapshot proves a capture only of what it took, and it takes
-        # nothing Git ignores: one ignored target outside declared scratch,
-        # which needs no capture, leaves the loss uncaptured.
-        recovered=bool(reference)
-        and not ignored_write_targets(
-            unscratched(
-                [
-                    *shell_write_targets(command),
-                    *shell_written_targets(command, SHELL_RULES),
-                ],
-                PATH_ROLES,
-                str(cwd or Path.cwd()),
-            ),
-            cwd,
-        ),
+        recovered=recovered,
     )
     # The gates an edit is judged by, over the writes this command carries the
     # content of. Joined here rather than inside the classifier because they
@@ -5454,7 +5714,9 @@ def local_edit_decision(
         if resolve_external
         and not outside_this_repository
         and after is not None
-        and awaits_resolution(before, after, rows, python_source)
+        and awaits_resolution(
+            before, after, rows, python_source, worktree_path(path_text), PATH_ROLES
+        )
         else None
     )
     return decide_edit(
@@ -5511,17 +5773,17 @@ def authored_review(
     """What the edit gates say about a write whose content the command carries.
 
     :func:`written_review` is the same reading a moment too late. It exists
-    because a shell write was answered by its path alone -- the command
+    because a shell write is answered by its path alone -- the command
     produces its output by running, so before the fact there is nothing to
     read -- and that premise holds for `dev render > docs/api.md` and fails
     for `cat > f <<'EOF'`, where the bytes are in the command. Where they are,
     they go to the same `edit_decision` an `Edit` is put to, at the moment
     that can still change the answer.
 
-    What that closes: a redirection declares its route reviewed, which is what
+    Why it matters: a redirection declares its route reviewed, which is what
     lets the write row allow an overwrite of tracked source. For a route
-    nothing could read that is the honest trade. For this one it was a hole --
-    measured, `cat > packages/lup/src/lup/seams.py <<'EOF'` replaced a tracked
+    nothing can read that is the honest trade. For this one it would be a
+    hole -- `cat > packages/lup/src/lup/seams.py <<'EOF'` replacing a tracked
     library module with one line, allowed and unprompted, past the
     anti-pattern audit, the review-note gate and the size budget alike.
 
@@ -5553,8 +5815,8 @@ def written_review(
     produces its content by running, so before the fact there is nothing to
     read and the write is answered by its path alone.
 
-    Which is a smaller set than it was, and smaller here rather than only in
-    the telling. A command that carries its own bytes is put to the same
+    That set leaves out what a command carries, and leaves it out here rather
+    than only in the telling. A command that carries its own bytes is put to the same
     gates *before* it runs by :func:`authored_review`, so what reaches here
     is the output that genuinely did not exist yet -- and a path that reader
     already named is skipped, or an approved write would report its finding
@@ -5727,9 +5989,9 @@ def repair_report(path: str, file: dict, cwd: Path | None) -> PostToolReport:
 
     The sweep judges by the checkout's rules and the gate ahead of the write
     by the policy this session loaded, and the two differ whenever the
-    sources moved since the launch -- after a rename, the gate demanded a
-    `# lup: ignore[seam-boundary]` the sweep then deleted as dead, and every
-    later edit to the file was refused for the missing directive. So the
+    sources move after the launch -- after a rename, the gate can demand a
+    `# lup: ignore[seam-boundary]` the sweep then deletes as dead, and every
+    later edit to the file is refused for the missing directive. So the
     repair is put to that policy as an edit: where it would refuse taking a
     directive out, the file goes back to what was written, and the agent is
     told the two disagree rather than meeting the refusal on its next edit.
@@ -5777,7 +6039,7 @@ def referred_once(
     The referral's second sentence -- that the repository's conventions are
     its own and the rule checker is not applying any of them -- is true of
     every file in that repository and news only the first time. Printed on
-    every edit it was read about 150 times by one agent, which is the noise
+    every edit, one agent reads it about 150 times in a session, which is the noise
     this project's own "say it once" refuses. So the verdict stands on every
     edit and its recovery goes with the first (:func:`referral_noted`).
     """
@@ -5985,8 +6247,8 @@ def dispatch(payload, permission_request=False):
     session_directory = Path(payload["cwd"]) if "cwd" in payload else None
     # Whether this session is a reviewed worker, which decides two unrelated
     # things: how a patch is judged, and whether a refusal has a route to
-    # name. Read once at the top rather than inside the branch that needed it
-    # first, since both branches need it now.
+    # name. Read once at the top rather than inside either branch, since
+    # both branches need it.
     agent_type = payload["agent_type"] if "agent_type" in payload else ""
     autonomous = (
         agent_type in AUTONOMOUS_AGENT_IDENTITIES
@@ -6107,7 +6369,7 @@ def waiting(command, payload):
     The session's own thread holds no waiter. Where no `review wait` holds
     the review, the operator's answer goes to its mailbox and is queued into
     its thread with `codex queue`, which starts a turn in an idle thread --
-    measured on 0.158.0, a browser decision reached a second turn that way
+    measured on 0.158.0, a browser decision reaches a second turn that way
     -- and the `review wait` it runs then carries the call out at once.
 
     A subagent's last message is its report, and nothing wakes it after: a
@@ -6364,18 +6626,63 @@ def post_tool_answer(report):
         )
 
 
-def main():
-    # What each runtime gives this hook before it lets the call through,
-    # less what starting Python and writing the verdict take: every step a
-    # verdict waits on shares it, and anything still waiting past it is
-    # refused rather than left for the runtime to wave through.
+def unjudged_detail(event, error, read):
+    """What this hook says of a call nobody judged, on stderr or in a denial.
+
+    ``error`` is what failed, or None where the judgement was still running
+    when the hook had to answer. A post-tool check has nothing left to
+    refuse -- the patch has applied, and retrying it would apply it again --
+    so it says only that it did not finish.
+    """
+    if event == "PostToolUse":
+        failure = error if error is not None else "it did not finish in time"
+        return f"Lup post-tool check failed: {failure}"
+    return KernelDecision(
+        "deny", unjudged_reason(error, read), recovery=unjudged_recovery(ran_out(error))
+    ).addressed()
+
+
+def unanswered(given, error):
+    """Refuse a call the judgement did not answer in time, as its event reads it.
+
+    A permission request is refused by the decision it carries back, as
+    every verdict this hook gives one is; every other event by the reason on
+    stderr and the exit status this boundary refuses with. ``error`` is
+    what failed, or None where the judgement was still running when the
+    hook had to answer.
+    """
+    try:
+        payload = json.loads(given)
+    except ValueError:
+        payload = {}
+    named = isinstance(payload, dict) and "hook_event_name" in payload
+    event = payload["hook_event_name"] if named else ""
+    detail = unjudged_detail(event, error, True)
+    if event == "PermissionRequest":
+        json.dump(
+            {
+                "hookSpecificOutput": {
+                    "hookEventName": "PermissionRequest",
+                    "decision": {"behavior": "deny", "message": detail},
+                }
+            },
+            sys.stdout,
+        )
+        return
+    sys.stderr.write(detail)
+    raise SystemExit(2)
+
+
+def judged(given):
+    """Judge one hook input and answer it, the whole of what this hook decides."""
     previous = opened_deadline(HOOK_DEADLINE_SECONDS)
     payload = {}
     permission_request = False
     review_notice = ""
+    event = ""
     read = False
     try:
-        payload = json.load(sys.stdin)
+        payload = json.loads(given)
         if not isinstance(payload, dict):
             raise ValueError("hook input must be an object")
         read = True
@@ -6428,9 +6735,10 @@ def main():
         if not permission_request and decision.effect in ("allow", "defer"):
             remember_patch(payload)
     # Every way this can fail means one thing — the call went unjudged — and
-    # one answer is right for all of them. Naming the exceptions instead is
-    # what let a plain unreadable file escape, and a traceback exit is not the
-    # fail-closed exit this boundary takes, so the call proceeded ungoverned.
+    # one answer is right for all of them. Naming the exceptions instead
+    # would let a plain unreadable file escape, and a traceback exit is not the
+    # fail-closed exit this boundary takes, so the call would proceed
+    # ungoverned.
     # Nothing is swallowed: the reason names which cause it was, carrying
     # whatever went wrong, and an interrupt still passes through as the
     # BaseException it is.
@@ -6443,10 +6751,12 @@ def main():
             f"{type(error).__name__}: {error}",
         )
         decision = KernelDecision(
-            "deny", unjudged_reason(error, read), recovery=UNJUDGED_RECOVERY
+            "deny",
+            unjudged_reason(error, read),
+            recovery=unjudged_recovery(ran_out(error)),
         )
         if not permission_request:
-            sys.stderr.write(decision.addressed())
+            sys.stderr.write(unjudged_detail(event, error, read))
             raise SystemExit(2) from error
     finally:
         closed_deadline(previous)
@@ -6508,4 +6818,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    answered_in_time(HOOK_ANSWER_SECONDS, judged, unanswered)

@@ -136,7 +136,7 @@ class TestWritesPath:
     def test_a_reviewed_write_is_never_refused_by_this_row(self) -> None:
         """The refusal is about bypassing the gates, so a route to them is not it.
 
-        The regression this holds is total: were the review axis dropped, an
+        What this holds against is total: were the review axis dropped, an
         `Edit` to any tracked source file would be denied, which is every edit
         anybody makes here.
         """

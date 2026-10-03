@@ -29,7 +29,6 @@ second copy of the answer.
 """
 
 import json
-import os
 from collections.abc import Callable, Iterator
 from itertools import pairwise
 from pathlib import Path
@@ -43,6 +42,7 @@ from lup.execution.git import Repository
 from lup.devtools import sync
 from lup.devtools.utils import decode_stderr, gh, short_sha, slug_from_remote
 from lup.execution.shell import git
+from lup.harness.environment import inherited
 from lup.harness.credential import (
     parse_remote,
     resolved_host,
@@ -336,9 +336,9 @@ def distances(
         "--name-only",
         *(["-r"] if deep else []),
         _in="".join(f"{header}\n" for header in headers),
-        # lup: ignore[os-environ] — inherited, not read: git keeps its PATH and
-        # configuration, and the one name added lends upstream's objects
-        _env={**os.environ, "GIT_ALTERNATE_OBJECT_DIRECTORIES": lent},
+        # git keeps its PATH and configuration; the one name added lends
+        # upstream's objects
+        _env=inherited({"GIT_ALTERNATE_OBJECT_DIRECTORIES": lent}),
     )
     starts = [index for index, line in enumerate(output) if line in headers]
     return [

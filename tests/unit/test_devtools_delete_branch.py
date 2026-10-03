@@ -1,7 +1,7 @@
 """Behavior tests for `lup-devtools dev delete`.
 
 Deletion is preflighted: every precondition is evaluated before anything is
-touched, so a dry run reports what the real path went on to check, and a run
+touched, so a dry run reports what the real path would go on to check, and a run
 that cannot finish changes nothing. These pin both halves — that a blocked
 step is named as blocked rather than annotated with the flag that was passed,
 that a refusal leaves the checkout standing without having attempted its
@@ -710,9 +710,9 @@ def test_a_branch_merged_on_the_forge_deletes_though_main_is_stale(
     """Origin's integration branch holds it, so nothing is discarded.
 
     Judged against the local integration branch alone, a merge that happened
-    on the forge reads as unmerged until somebody pulls, and the refusal
-    offered `--force` — the instrument for discarding work, handed out where
-    none was at stake.
+    on the forge reads as unmerged until somebody pulls, and a refusal there
+    offers `--force` — the instrument for discarding work, handed out where
+    none is at stake.
     """
     monkeypatch.chdir(merged_on_the_forge)
 

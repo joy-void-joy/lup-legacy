@@ -23,13 +23,13 @@ repository, and to nothing else it happens to open a session in.
 """
 
 import json
-import os
 from pathlib import Path
 
 from pydantic import BaseModel, field_validator
 
-from lup.providers.claude.login import CLAUDE_CONFIG_DIR, CLAUDE_LOGIN
+from lup.providers.claude.login import CLAUDE_LOGIN
 from lup.channels.models import write_atomic
+from lup.harness.environment import inherited
 from lup.providers.session_home import SessionHomeLayout, SessionHomes
 from lup.types import EnvVars, JsonObject, JsonValue
 
@@ -177,14 +177,19 @@ def selected_config_home(environment: EnvVars) -> ClaudeConfigHome:
 
     Claude Code's own resolution, in its own order: a legacy document inside
     the home wherever one exists, and otherwise the current one — inside a
-    named home, or beside the home directory when none is named.
+    named home, or beside the user's home directory when none is named. The
+    home is :meth:`ProviderLogin.selected_home`'s, read off the same
+    environment, ``HOME`` included.
 
-    One input is deliberately not the environment's: the home directory,
-    for the unnamed home and the document beside it, is this process's —
-    the operator's — rather than a ``HOME`` the environment carries for a
-    session's tools, for the reason ``CLAUDE_LOGIN`` gives.
+    An exported-but-empty ``CLAUDE_CONFIG_DIR`` names no home, as it names
+    none for Codex. Claude Code itself reads an empty value as its own
+    working directory for the home while its document falls back beside
+    ``HOME``; that directory is not something every reader of this answer can
+    know — a mount, an editor beside the CLI, the launcher seeding a home —
+    and reading it as this process's directory seeded a home from wherever
+    the launcher happened to run.
     """
-    # lup: defer: an exported empty CLAUDE_CONFIG_DIR is read here as the
+    # lup: solved: an exported empty CLAUDE_CONFIG_DIR is read here as the
     # directory `.`, this process's working directory, with the document
     # inside it. Claude Code 2.1.282 splits that value: its home keeps it
     # (`CLAUDE_CONFIG_DIR ?? join(homedir(), ".claude")`, so its own working
@@ -193,10 +198,16 @@ def selected_config_home(environment: EnvVars) -> ClaudeConfigHome:
     # from `./.claude.json` and links `.`'s entries by relative name, each
     # link pointing at itself. Decide whether an empty value names no home,
     # as Codex's does, or mirror both halves against the session's directory.
-    named = environment.get(CLAUDE_CONFIG_DIR)
-    directory = CLAUDE_LOGIN.ambient_home if named is None else Path(named).expanduser()
+    directory = CLAUDE_LOGIN.selected_home(environment)
     legacy = directory / CLAUDE_LEGACY_DOCUMENT
-    beside = Path.home() if named is None else directory
+    user = environment["HOME"] if "HOME" in environment else ""
+    beside = (
+        directory
+        if CLAUDE_LOGIN.named_home(environment) is not None
+        else Path(user)
+        if user
+        else Path.home()
+    )
     current = beside / home_document(environment)
     return ClaudeConfigHome(
         directory=directory, document=legacy if legacy.exists() else current
@@ -213,9 +224,7 @@ def session_config_home(environment: EnvVars) -> Path:
     calling process happens to name — which is all the SDK's own readers
     consult.
     """
-    # lup: ignore[os-environ] — what a spawned session inherits
-    inherited = dict(os.environ)
-    return selected_config_home({**inherited, **environment}).directory
+    return selected_config_home(inherited(environment)).directory
 
 
 def load_document(path: Path) -> JsonObject:
@@ -278,8 +287,8 @@ def restorable_backups(directory: Path) -> list[Path]:
     """Every backup of one home's document that could actually restore it.
 
     Claude Code answers a document it cannot parse with a hint naming the
-    backup it just wrote, and the backup it wrote for a truncated document
-    was zero bytes — so following the hint replaces a since-healed
+    backup it just wrote, and the backup it writes for a truncated document
+    can be zero bytes — so following the hint replaces a since-healed
     configuration with an empty one. What makes a backup worth restoring is
     not that it exists but that it parses and still carries the project
     entries trust and permissions live in, which is what is answered here.
@@ -398,8 +407,13 @@ def workspace_config_environment(
     document the selected home is read from, legacy or current. It holds no
     legacy one, whatever put one there, because Claude Code would read that
     in place of the home's own — and the home is lup's to keep that way.
+
+    Read with this process's ``HOME``, the operator's, over any ``HOME`` the
+    environment carries for a session's tools: with no home named, the
+    account a derived home is seeded from and linked back to is the one this
+    program was launched as, for the reason ``CLAUDE_LOGIN`` gives.
     """
-    selected = selected_config_home(environment)
+    selected = selected_config_home({**environment, "HOME": str(Path.home())})
     home = SessionHomes(selected.directory, layout).derive(workspace)
     (home / CLAUDE_LEGACY_DOCUMENT).unlink(missing_ok=True)
     document = home / home_document(environment)

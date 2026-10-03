@@ -33,6 +33,7 @@ from lup.policy.identity import (
 )
 import lup.policy.kernel as kernel
 from lup.policy.kernel.imports import import_references
+from lup.policy.kernel.edit import MARKDOWN_SUFFIXES
 from lup.policy.kernel.typescript import TYPESCRIPT_SUFFIXES
 from lup.policy.kernel.diagnostic import Step
 from lup.policy.kernel.effects import EffectRow, effect_row_values
@@ -57,6 +58,7 @@ from lup.policy.kernel.rows import (
 )
 from lup.policy.edit_rules import EditRule, erase_edit_rules
 from lup.policy.imports import ImportBoundary
+from lup.policy.models import ProtectedRoot
 from lup.policy.peer_policy import PeerPolicy, erase_peer_policy
 from lup.policy.refused_paths import RefusedPaths
 from lup.policy.refused_tools import RefusedTool, erase_refused_tools
@@ -192,7 +194,7 @@ def compilation_sources(
     )
 
 
-def hook_deadline(hook_timeout: int, verdict_reserve: float = 5.0) -> float:
+def hook_deadline(hook_timeout: float, verdict_reserve: float = 5.0) -> float:
     """How long a verdict may take, given what the runtime gives the hook.
 
     That timeout less ``verdict_reserve``, the time starting the interpreter
@@ -204,6 +206,19 @@ def hook_deadline(hook_timeout: int, verdict_reserve: float = 5.0) -> float:
     return hook_timeout - verdict_reserve
 
 
+def hook_answer_limit(hook_timeout: float, exit_reserve: float = 2.0) -> float:
+    """When the hook answers with whatever it has, given what the runtime gives it.
+
+    That timeout less ``exit_reserve``, the time stopping the judgement,
+    writing a refusal and ending the process take: a runtime reads nothing
+    the hook said until its process has ended, so a refusal written at the
+    timeout is never read and the call runs. Later than :func:`hook_deadline`
+    and the alarm past it, which still answer from inside the judgement
+    first wherever they can reach it.
+    """
+    return hook_timeout - exit_reserve
+
+
 def bundled_antipattern_rows(
     rules: RuleSet | None = None,
 ) -> dict[str, list[AntiPatternRow]]:
@@ -211,10 +226,12 @@ def bundled_antipattern_rows(
     declared = rules or RuleSet()
     python_rows = [antipattern_row(rule) for rule in declared.python]
     typescript_rows = [antipattern_row(rule) for rule in declared.typescript]
+    markdown_rows = [antipattern_row(rule) for rule in declared.markdown]
     return {
         ".py": python_rows,
         ".pyi": python_rows,
         **{suffix: typescript_rows for suffix in TYPESCRIPT_SUFFIXES},
+        **{suffix: markdown_rows for suffix in MARKDOWN_SUFFIXES},
     }
 
 
@@ -241,11 +258,14 @@ def runtime_url_scope(
 
 
 def runtime_path_rules(
-    protected_roots: list[str], human_owned_files: list[str]
+    protected_roots: list[ProtectedRoot], human_owned_files: list[str]
 ) -> list[PathRuleRow]:
     """Compile application roots plus invariant edit guardrails."""
     return [
-        *[path_rule_row(protected_root_rule(root)) for root in protected_roots],
+        *[
+            path_rule_row(protected_root_rule(root.path.as_posix(), root.description))
+            for root in protected_roots
+        ],
         *[path_rule_row(human_owned_path_rule(path)) for path in human_owned_files],
         *[path_rule_row(rule) for rule in invariant_path_rules()],
     ]
@@ -290,6 +310,7 @@ def path_rule_rows_literal(rows: list[PathRuleRow]) -> str:
                 f'"reason": {json.dumps(row["reason"])}',
                 f'"recovery": {steps_literal(row["recovery"], "        ")}',
                 f'"allow_autonomous": {row["allow_autonomous"]}',
+                f'"description": {python_literal(row["description"] if "description" in row else row["value"])}',
             ]
             for row in rows
         ]
@@ -299,12 +320,12 @@ def path_rule_rows_literal(rows: list[PathRuleRow]) -> str:
 def python_literal(value: JsonValue) -> str:
     """One primitive as Python source, quoted the way Ruff would quote it.
 
-    ``json.dumps`` alone was the obvious reach and is the wrong language: it
+    ``json.dumps`` alone is the obvious reach and the wrong language: it
     renders JSON, and what this writes is a Python module. The two agree on
-    every string with no quote in it, which is why it worked — until a rule
-    message contained a double quote, JSON escaped it, and Ruff wanted the
-    single-quoted form instead, failing the format check on a generated file
-    nobody had edited and nobody could have fixed.
+    every string with no quote in it and part at a rule message containing a
+    double quote: JSON escapes it, Ruff wants the single-quoted form instead,
+    and the format check fails on a generated file nobody edited and nobody
+    can fix.
 
     So the quote is chosen the way Ruff chooses it: the configured double,
     unless single strictly reduces the escaping. What sits between the quotes
@@ -370,13 +391,17 @@ def antipattern_rows_literal(rows: dict[str, list[AntiPatternRow]]) -> str:
         added to ``AntiPatternRow`` reaches the hermetic runtime by
         construction, instead of being dropped until someone notices. Reading
         a ``TypedDict`` that way widens every value to ``object``, so what one
-        actually holds is narrowed here — and a field that is not a primitive
-        fails generation rather than reaching the runtime as its ``repr``.
+        actually holds is narrowed here — and a field that is neither a
+        primitive nor a list of them fails generation rather than reaching
+        the runtime as its ``repr``.
         """
         for key, value in row.items():
             match value:
                 case str() | int() | float() | None:
                     yield f"            {python_literal(key)}: {python_literal(value)},"
+                case list() as items:
+                    listed = ", ".join(python_literal(str(item)) for item in items)
+                    yield f"            {python_literal(key)}: [{listed}],"
                 case _:
                     raise TypeError(
                         f"anti-pattern row field {key!r} holds a "
@@ -566,14 +591,13 @@ def literal_element(item: str | EffectRow | Step) -> list[str]:
     and a generated file that reformats is a drift failure on a file nobody
     edited.
 
-    Every element is rendered, and rendered as the type it is. The shape this
-    replaces filtered to strings, which read as a formatting choice and was a
-    data loss -- a list of mappings rendered as an empty pair of brackets, so a
-    column the rules declared never reached the compiled table at all. Coercing
-    each field with ``str`` was the same loss one level further down: it held
-    while every axis of a mapping happened to be a string, and rendered the
-    first boolean one as ``"False"``, which is a true value in the table the
-    dispatcher reads.
+    Every element is rendered, and rendered as the type it is. Filtering to
+    strings would read as a formatting choice and be a data loss -- a list of
+    mappings rendered as an empty pair of brackets, so a column the rules
+    declared never reaches the compiled table at all. Coercing each field with
+    ``str`` is the same loss one level further down: it holds while every axis
+    of a mapping is a string, and renders the first boolean one as
+    ``"False"``, which is a true value in the table the dispatcher reads.
     """
     match item:
         case str():
@@ -720,7 +744,7 @@ def render_policy_data(
     *,
     allowed_fetch_scopes: list[UrlScopeRow],
     denied_fetch_scopes: list[UrlScopeRow],
-    protected_roots: list[str],
+    protected_roots: list[ProtectedRoot],
     human_owned_files: list[str],
     autonomous_agent_identities: list[str],
     path_roles: list[PathRoleRow],
@@ -756,8 +780,9 @@ def render_policy_data(
     which no compiled constant could know.
 
     ``hook_timeout`` is what the runtime gives the policy hook, the same value
-    its hooks file declares, and the hook's deadline is derived from it rather
-    than restated beside it, by :func:`hook_deadline`.
+    its hooks file declares, and the hook's deadline and the moment it answers
+    whatever it has are derived from it rather than restated beside it, by
+    :func:`hook_deadline` and :func:`hook_answer_limit`.
     """
     body = "\n\n".join(
         [
@@ -821,6 +846,7 @@ def render_policy_data(
             + string_rows_literal(resolution_command),
             "REPAIR_COMMAND: list[str] = " + string_rows_literal(repair_command),
             "HOOK_DEADLINE_SECONDS = " + json.dumps(hook_deadline(hook_timeout)),
+            "HOOK_ANSWER_SECONDS = " + json.dumps(hook_answer_limit(hook_timeout)),
         ]
     )
     return (

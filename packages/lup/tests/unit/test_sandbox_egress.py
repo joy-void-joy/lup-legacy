@@ -70,13 +70,13 @@ def test_nothing_is_cached_between_runs() -> None:
 
 
 def test_the_default_names_hold_no_pair_squid_would_refuse() -> None:
-    """The line that stopped the proxy, as a standing assertion.
+    """A line that would stop the proxy, refused as a standing assertion.
 
-    Measured: `LOCAL_NAMES` held both `localhost` and `.localhost`, squid
-    answered `FATAL: Bungled ... line 6` and exited, the proxy container
-    removed itself, and three passes read the result as a proxy name that
-    would not resolve. A fatal configuration error is not something a boundary
-    can carry, because the boundary is simply not there afterwards.
+    Measured: with both `localhost` and `.localhost` in `LOCAL_NAMES`, squid
+    answers `FATAL: Bungled ... line 6` and exits, the proxy container removes
+    itself, and what is left reads as a proxy name that will not resolve. A
+    fatal configuration error is not something a boundary can carry, because
+    the boundary is simply not there afterwards.
     """
     rendered = EgressPolicy().render()
     (names,) = [

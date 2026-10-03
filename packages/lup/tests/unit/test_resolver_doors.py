@@ -1,9 +1,9 @@
 """What every console door says about a run that is not there.
 
-Silence and "no such run" were indistinguishable, and one of them is wrong.
-A session invoked from a sibling worktree — which has no `.lup` at all —
-read an empty listing as a real answer about the run it meant, and reported
-it. That happened to be true once; nothing in the output supported it.
+Silence and "no such run" must be distinguishable, because one of them is
+wrong. A session invoked from a sibling worktree — which has no `.lup` at all
+— would read an empty listing as a real answer about the run it meant, and
+report it, with nothing in the output to support it.
 """
 
 from collections.abc import Callable
@@ -45,10 +45,10 @@ def elsewhere(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 def test_a_door_refuses_a_run_that_does_not_exist(
     door: Callable[[], None], elsewhere: Path
 ) -> None:
-    """`actors` answered "nothing recorded yet" and exited zero for any id.
+    """No door answers "nothing recorded yet" and exits zero for an unknown id.
 
-    It read the journal before anything checked the run was there, so a
-    missing directory yielded no actors and that read as a real answer.
+    Reading the journal before anything checks the run is there turns a
+    missing directory into no actors, which reads as a real answer.
     """
     with pytest.raises(Refusal) as refused:
         door()
