@@ -6,9 +6,11 @@ from pathlib import Path
 
 import pytest
 
-from lup.harness.assets.credential_seed import seed_login
+from lup.harness.assets.credential_seed import seed_login, stamp_of
+from lup.launch.config_volume import HandedLogin, LoginOwner
 from lup.providers.claude.login import CLAUDE_LOGIN
 from lup.providers.codex.login import CODEX_LOGIN
+from lup.providers.login import ProviderLogin
 from lup.types import JsonObject
 
 
@@ -114,6 +116,21 @@ def test_same_seed_recovers_an_empty_saved_login(tmp_path: Path) -> None:
     stored.write_bytes(b"")
     assert seed_login(source, stored)
     assert stored.read_bytes() == source.read_bytes()
+
+
+@pytest.mark.parametrize("login", [CLAUDE_LOGIN, CODEX_LOGIN])
+def test_the_host_reads_the_fingerprint_the_seed_stamps(
+    tmp_path: Path, login: ProviderLogin
+) -> None:
+    """What a launch records of a handed login is what the volume's stamp says."""
+    source, stored = tmp_path / "host.json", tmp_path / login.credentials_file
+    write(source, {"claudeAiOauth": {"token": "host"}, "tokens": {"id": "host"}})
+    handed = HandedLogin(credential=source, owner=LoginOwner(home=tmp_path))
+
+    assert seed_login(source, stored, keys=login.credential_fields)
+    assert stamp_of(stored).read_text() == handed.fingerprint(login)
+    write(source, {})
+    assert handed.fingerprint(login) == ""
 
 
 def test_concurrent_launches_seed_one_atomic_login(tmp_path: Path) -> None:

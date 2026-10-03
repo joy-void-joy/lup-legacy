@@ -14,9 +14,9 @@ from unittest.mock import Mock
 
 import pytest
 import sh
-import typer
 
 import lup.devtools.harness.launch as launch
+from lup.diagnostics import Refusal
 import lup.providers.claude.launch as claude_launch
 import lup.providers.codex.launch as codex_launch
 import lup.providers.profile_tree as profile_tree
@@ -177,8 +177,9 @@ def test_a_config_lup_cannot_read_refuses_the_launch_naming_it(
     """Before any of the workflow around the session runs, as a flag is refused."""
     writes(config, 'tier = "enormous"\n')
 
-    with pytest.raises(typer.BadParameter, match=str(config.path())):
+    with pytest.raises(Refusal) as refused:
         claude(project, config)
+    assert str(config.path()) in refused.value.said["why"]
     assert launched.events == []
 
 

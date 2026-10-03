@@ -26,6 +26,7 @@ from pathlib import Path
 
 from pydantic import BaseModel
 
+from lup.policy.kernel.diagnostic import devtools, spelled
 from lup.workspace.paths import project_root
 
 
@@ -443,5 +444,6 @@ class Answers(BaseModel, frozen=True):
         return [
             *self.ownership(catalog, seams),
             *self.rules(catalog, every, seams),
-            "Run `lup-devtools harness generate all` so the compiled trees agree.",
+            f"Run `{spelled(devtools('harness', 'generate', 'all'))}` so the "
+            "compiled trees agree.",
         ]

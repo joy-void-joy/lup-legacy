@@ -20,12 +20,22 @@ CLAUDE_LOGIN = ProviderLogin(
         '(.claudeAiOauth.refreshToken // "") != ""'
         " and .claudeAiOauth.refreshTokenExpiresAt > (now * 1000)"
     ),
+    # Every refresh replaces the access token and moves its expiry, kept in
+    # milliseconds; read off the stored logins of Claude Code 2.1.285.
+    renewed_at=["claudeAiOauth", "expiresAt"],
+    # Measured on Claude Code 2.1.285: a running session moved between a real
+    # login, an invalid one and none, turn by turn, as its home's file changed.
+    rereads_login=True,
     ambient_home=Path.home() / ".claude",
     ambient_home_nameable=False,
     editor_lockfiles="ide",
     home_subdir="claude-config",
     state_volume="claude",
     trust_document=".claude.json",
+    # Written at sign-in, read from the documents of Claude Code 2.1.285: the
+    # login itself (.credentials.json) names no account.
+    account_id=["oauthAccount", "accountUuid"],
+    account_name=["oauthAccount", "emailAddress"],
     # Read off a home Claude Code 2.1.282 wrote, and off the shared volume a
     # contained session had filled beside Codex. `cache`, `history.jsonl`,
     # `plugins`, `sessions` and `skills` are names both runtimes write.

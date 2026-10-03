@@ -222,6 +222,14 @@ class Rule(BaseModel, arbitrary_types_allowed=True):
     id: str
     examples: list[RuleExample]
     message: str
+    remedy: str = ""
+    """What to write instead, in one clause: what a denial at the edit quotes.
+
+    The message explains the rule, and the reference page and the audit
+    print it whole; a denial quotes this and names the page, so an agent
+    reads the fix on every refused line rather than the essay. Empty where
+    the message is already that short, and the denial quotes the message.
+    """
     refinement: str = ""
     """How resolution sharpens this rule, in the words the reference shows.
 

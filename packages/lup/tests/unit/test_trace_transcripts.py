@@ -93,4 +93,4 @@ def test_a_run_nobody_launched_is_refused() -> None:
     result = RUNNER.invoke(create_trace_app(), ["events", "no-such-run"])
 
     assert result.exit_code == 1
-    assert "no launch run named no-such-run" in result.output
+    assert "error: `no-such-run` — names no launch run under" in result.output

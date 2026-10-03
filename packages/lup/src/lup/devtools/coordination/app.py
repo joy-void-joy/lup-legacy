@@ -12,6 +12,7 @@ running flat out does not delay a console reading it, and a console cannot
 wedge a session.
 """
 
+import uuid
 from pathlib import Path
 from typing import Annotated
 
@@ -19,6 +20,13 @@ import typer
 
 from lup.channels.models import Door
 from lup.coordination.bare.mail import new_post_id
+from lup.coordination.holds import (
+    Hold,
+    HoldScope,
+    held_calls,
+    operator_pause,
+    standing,
+)
 from lup.coordination.identity import NameTakenError, mint_member_id, session_member_id
 from lup.coordination.mail import Posting
 from lup.coordination.peers import USER_ADDRESS
@@ -29,9 +37,12 @@ from lup.coordination.repository import (
     nested,
 )
 from lup.coordination.roster import Delivery
+from lup.devtools.coordination.pausing import pause, resume
 from lup.coordination.touches import HeldPath
 from lup.coordination.watch import Watcher
 from lup.coordination.watcher import watcher_pipeline
+from lup.diagnostics import refuse
+from lup.policy.kernel.diagnostic import devtools, step
 from lup.runs.pipeline import RunRequest
 from lup.workspace.paths import project_root
 
@@ -146,7 +157,15 @@ def create_coordination_app() -> typer.Typer:
         try:
             peers().join(chosen, tree, cli_name=name, delivery=Delivery.WAITING)
         except NameTakenError as taken:
-            raise typer.BadParameter(str(taken)) from taken
+            refuse(
+                str(taken),
+                steps=[
+                    step(
+                        "see which names are taken", devtools("coordination", "roster")
+                    )
+                ],
+                code=2,
+            )
         typer.echo(chosen)
 
     @app.command("describe")
@@ -170,7 +189,15 @@ def create_coordination_app() -> typer.Typer:
         try:
             peers().rename(member_id, name)
         except NameTakenError as taken:
-            raise typer.BadParameter(str(taken)) from taken
+            refuse(
+                str(taken),
+                steps=[
+                    step(
+                        "see which names are taken", devtools("coordination", "roster")
+                    )
+                ],
+                code=2,
+            )
 
     @app.command("leave")
     def leave_cmd(
@@ -250,9 +277,13 @@ def create_coordination_app() -> typer.Typer:
         """
         known = peers()
         if sender and sender != USER_ADDRESS and known.row(sender) is None:
-            raise typer.BadParameter(
-                f"nobody here signs as {sender!r}: `--as` takes `user` or a "
-                "member's id, which `dev coordination roster` lists"
+            refuse(
+                "signs as nobody here: it takes `user` or a member's id",
+                what=f"--as {sender}",
+                steps=[
+                    step("see the members' ids", devtools("coordination", "roster"))
+                ],
+                code=2,
             )
         post = new_post_id()
         try:
@@ -266,13 +297,17 @@ def create_coordination_app() -> typer.Typer:
                 posting=Posting(post=post),
             )
         except PeerDepartedError as departed:
-            raise typer.BadParameter(
-                f"{departed}; `dev coordination roster` lists who is here"
-            ) from departed
+            refuse(
+                str(departed),
+                steps=[step("see who is here", devtools("coordination", "roster"))],
+                code=2,
+            )
         if found is None:
-            raise typer.BadParameter(
-                f"no session answers to {to!r}; "
-                "`dev coordination roster` lists who is here"
+            refuse(
+                "no session answers to it",
+                what=to,
+                steps=[step("see who is here", devtools("coordination", "roster"))],
+                code=2,
             )
         carries = known.cohort.delivery(found)
         typer.echo(f"queued for {found.label()} as post {post}, carried by {carries}")
@@ -326,9 +361,11 @@ def create_coordination_app() -> typer.Typer:
         were told, which is right — it held while they were told it.
         """
         if not peers().cohort.mail.retract(notice_id):
-            raise typer.BadParameter(
-                f"{notice_id!r} names nothing standing over this repository; "
-                "`dev coordination notices` lists what does"
+            refuse(
+                "names nothing standing over this repository",
+                what=notice_id,
+                steps=[step("see what does", devtools("coordination", "notices"))],
+                code=2,
             )
         typer.echo(f"retracted {notice_id}")
 
@@ -358,6 +395,197 @@ def create_coordination_app() -> typer.Typer:
         for message in delivery.messages:
             typer.echo(f"{message.heading()} {message.text}")
 
+    def operator_only(verb: str) -> None:
+        """Refuse a shell an agent's runtime started: pausing and resuming are the operator's.
+
+        A launch exports the session's member id into everything its runtime
+        starts, every shell an agent runs included, so its presence is an
+        agent's shell; the operator's own terminal carries none.
+        """
+        if session_member_id():
+            refuse(
+                f"an agent's shell cannot {verb} any agent, itself included",
+                what=f"coordination {verb}",
+                steps=[
+                    step(
+                        "the operator does, on the dashboard or from a terminal"
+                        " outside every agent session"
+                    )
+                ],
+                code=2,
+            )
+
+    def scoped(
+        known: RepositoryPeers, member: str, tree: bool, repository: bool
+    ) -> Hold:
+        """The pause a pause or resume names: an agent's, its tree's, or the repository's."""
+        if repository and (member or tree):
+            refuse("a repository's pause names no agent and no tree", code=2)
+        if repository:
+            return operator_pause(HoldScope.REPOSITORY)
+        if not member:
+            refuse(
+                "name the agent, or the whole repository or everything",
+                steps=[
+                    step(
+                        "name it by its name or id, which the roster lists",
+                        devtools("coordination", "roster"),
+                    ),
+                    step("or pass --repository or --everything"),
+                ],
+                code=2,
+            )
+        found = known.address(member)
+        if found is None:
+            refuse(
+                "no agent here answers to that name",
+                what=member,
+                steps=[step("see who is here", devtools("coordination", "roster"))],
+                code=2,
+            )
+        return operator_pause(HoldScope.TREE if tree else HoldScope.AGENT, found.id)
+
+    def everywhere() -> list[RepositoryPeers]:
+        """This repository and every other one the operator's dashboard serves."""
+        from lup.devtools.dashboard.companion import Dashboard, DashboardRegistry
+
+        root = project_root()
+        state = Dashboard().standing(root).place.state
+        checkouts = [
+            known.checkout
+            for known in DashboardRegistry(directory=state).repositories()
+        ]
+        found = {
+            peers.root: peers for peers in map(RepositoryPeers, [root, *checkouts])
+        }
+        return list(found.values())
+
+    @app.command("pause")
+    def pause_cmd(
+        member: Annotated[
+            str, typer.Argument(help="The agent to pause: a name, an id, or an address")
+        ] = "",
+        tree: Annotated[
+            bool,
+            typer.Option("--tree", help="It and everything it spawned, at any remove"),
+        ] = False,
+        repository: Annotated[
+            bool, typer.Option("--repository", help="Every agent of this repository")
+        ] = False,
+        everything: Annotated[
+            bool,
+            typer.Option(
+                "--everything",
+                help="Every agent of every repository the dashboard serves",
+            ),
+        ] = False,
+        freeze: Annotated[
+            bool,
+            typer.Option(
+                "--freeze",
+                help="Also stop its running commands and interrupt its turn now",
+            ),
+        ] = False,
+    ) -> None:
+        """Hold an agent at its next tool call until it is resumed.
+
+        The agent is told nothing: its next call simply waits, and goes on the
+        moment it is resumed, a call already running finishing first. A
+        session's subagents are paused with it. `--freeze` also stops the
+        commands its tools are running and interrupts a turn that is
+        generating, and says what it could not freeze and why. Messages to a
+        paused agent wait without waking it. Only the operator pauses, from
+        here or the dashboard: an agent's own shell is refused.
+        """
+        operator_only("pause")
+        if everything:
+            group = uuid.uuid4().hex[:12]
+            for found in everywhere():
+                outcome = pause(found, HoldScope.REPOSITORY, freeze=freeze, group=group)
+                typer.echo(f"{found.root.parents[1].name}: {outcome.detail}")
+            return
+        known = peers()
+        named = scoped(known, member, tree, repository)
+        try:
+            outcome = pause(known, named.scope, named.member, freeze=freeze)
+        except (LookupError, PeerDepartedError) as missing:
+            refuse(
+                str(missing),
+                steps=[step("see who is here", devtools("coordination", "roster"))],
+                code=2,
+            )
+        typer.echo(outcome.detail)
+
+    @app.command("resume")
+    def resume_cmd(
+        member: Annotated[
+            str,
+            typer.Argument(help="The agent to resume: a name, an id, or an address"),
+        ] = "",
+        tree: Annotated[
+            bool,
+            typer.Option("--tree", help="Lift the pause of it and what it spawned"),
+        ] = False,
+        repository: Annotated[
+            bool, typer.Option("--repository", help="Lift this repository's pause")
+        ] = False,
+        everything: Annotated[
+            bool,
+            typer.Option(
+                "--everything",
+                help="Lift every repository's pause the dashboard serves",
+            ),
+        ] = False,
+    ) -> None:
+        """Let a paused agent's next tool call go, and wake it where it stopped.
+
+        Lifts the pause named -- an agent's own, its tree's, the repository's
+        -- and no other: an agent paused through its session is resumed
+        there, which the refusal names. What a freeze stopped is continued, and
+        a session that ended its turn because of the pause is woken with a
+        bare "continue". A hold the budget placed is not lifted by a resume.
+        """
+        operator_only("resume")
+        if everything:
+            for found in everywhere():
+                try:
+                    outcome = resume(found, HoldScope.REPOSITORY)
+                except LookupError as missing:
+                    typer.echo(f"{found.root.parents[1].name}: {missing}")
+                    continue
+                typer.echo(f"{found.root.parents[1].name}: {outcome.detail}")
+            return
+        known = peers()
+        named = scoped(known, member, tree, repository)
+        try:
+            outcome = resume(known, named.scope, named.member)
+        except LookupError as missing:
+            refuse(
+                str(missing),
+                steps=[step("see what is held", devtools("coordination", "held"))],
+                code=2,
+            )
+        typer.echo(outcome.detail)
+
+    @app.command("held")
+    def held_cmd() -> None:
+        """List every hold standing in this repository, and every call a hook is holding now."""
+        known = peers()
+        holds = standing(known.root)
+        if not holds:
+            typer.echo("Nothing is held in this repository.")
+        for hold in holds:
+            whom = known.called(hold.member) or hold.member or "the whole repository"
+            frozen = ", frozen" if hold.freeze else ""
+            typer.echo(
+                f"{hold.owner.value} {hold.scope.value} hold on {whom}{frozen}: "
+                f"{hold.said} (since {hold.placed:%Y-%m-%d %H:%M:%S} UTC)"
+            )
+        for call in held_calls(known.root):
+            since = f" since {call.since:%H:%M:%S} UTC" if call.since else ""
+            whom = known.called(call.member) or call.member
+            typer.echo(f"  holding {whom}'s {call.tool or 'call'}{since}")
+
     @app.command("holdings")
     def holdings_cmd() -> None:
         """List what each live session in this repository is holding.
@@ -384,8 +612,10 @@ def create_coordination_app() -> typer.Typer:
         """Take everything beneath a prefix, before having touched any of it."""
         target = prefix.resolve()
         if not target.exists():
-            raise typer.BadParameter(
-                f"{target} does not exist; a lock covers what is there to write"
+            refuse(
+                "does not exist, and a lock covers only what is there to write",
+                what=str(target),
+                code=2,
             )
         peers().lock(member_id, target)
 
@@ -399,9 +629,13 @@ def create_coordination_app() -> typer.Typer:
         """Give a prefix back, refusing where this session does not hold it."""
         target = prefix.resolve()
         if not peers().release(member_id, target):
-            raise typer.BadParameter(
-                f"session {member_id} does not hold {target}; "
-                "`dev coordination holdings` lists who holds what"
+            refuse(
+                f"session {member_id} does not hold it",
+                what=str(target),
+                steps=[
+                    step("see who holds what", devtools("coordination", "holdings"))
+                ],
+                code=2,
             )
 
     @app.command("watch")

@@ -181,7 +181,7 @@ def test_another_repositorys_referral_is_said_in_full_once_per_session(
 
     assert first.recovery
     assert again.effect == "ask"
-    assert again.recovery == ""
+    assert again.recovery == ()
     assert elsewhere.recovery
 
 
@@ -204,7 +204,7 @@ def test_a_file_a_command_wrote_without_naming_it_is_reviewed(tmp_path: Path) ->
     )
 
     assert any(
-        line.startswith("module.py: line 1:") and "(rule subprocess)" in line
+        line.startswith("module.py: refused: `line 1`") and "(rule subprocess)" in line
         for line in report["blocking"]
     )
 

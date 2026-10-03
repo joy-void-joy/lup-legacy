@@ -83,7 +83,7 @@ def test_destination_verdict_is_captured_after_routing(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     owner = KernelDecision("ask", "destination owns this test", rule="edit:human-owned")
-    reply = json.dumps({"protocol": 1, "decision": decision_wire(owner)})
+    reply = json.dumps({"protocol": 2, "decision": decision_wire(owner)})
     monkeypatch.setattr(rules, "routed_edit_response", lambda *args: reply)
     target = tmp_path / "tests/check.txt"
     decision = EditPolicy(

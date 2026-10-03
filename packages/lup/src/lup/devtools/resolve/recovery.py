@@ -5,6 +5,7 @@ from typing import Annotated
 import typer
 
 from lup.devtools.supervisor.doors import resolve_state_root
+from lup.diagnostics import refuse
 from lup.resolver.recovery import IntegrationRecoveryDesk, IntegrationRecoveryMode
 from lup.resolver.state import ResolverStateRepository
 
@@ -23,6 +24,6 @@ def recover_integration(
     try:
         report = IntegrationRecoveryDesk(repository).recover(mode)
     except (OSError, RuntimeError, ValueError) as error:
-        raise typer.BadParameter(str(error)) from error
+        refuse(str(error), what=run_id, code=2)
     typer.echo(report.model_dump_json(indent=2))
     typer.echo("Recovery recorded. Resume the run to continue its verification.")

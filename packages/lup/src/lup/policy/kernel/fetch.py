@@ -4,6 +4,7 @@ import ipaddress
 import urllib.parse
 
 from .decision import KernelDecision
+from .diagnostic import devtools, step
 from .rows import UrlScopeRow
 from .semantics import UnjudgedAmbient
 
@@ -37,7 +38,12 @@ def url_matches_scope(
 
 
 # lup: ignore[constant-declaration] — refusal wording, declared with its verdict
-SCOPES_HINT = "`dev policy --kind fetch <url>` lists the declared scopes."
+SCOPES_HINT = (
+    step(
+        "see which scopes are declared, and why",
+        devtools("dev", "policy", "--kind", "fetch", "<url>"),
+    ),
+)
 """Where the agent reads the scope table, which the question itself never carries.
 
 The reason once listed every declared scope beside the URL -- twenty-five of
@@ -222,11 +228,12 @@ def decide_fetch(
     if metadata_address(hostname):
         return KernelDecision(
             "deny",
-            f"{hostname} is a cloud metadata service, which answers with the"
-            " credentials of the machine it serves",
+            "is a cloud metadata service, which answers with the credentials of"
+            " the machine it serves",
             cause="deliberate",
             hard=True,
-            recovery="Ask the operator for what you needed from it.",
+            recovery=(step("ask the operator for what you needed from it"),),
+            subject=hostname,
         )
     denied = next(
         (

@@ -14,7 +14,7 @@ command" is one that changes when somebody adds a tool.
 """
 
 import threading
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Sequence
 from datetime import UTC, datetime, timedelta
 from difflib import SequenceMatcher
 from hashlib import sha256
@@ -47,7 +47,6 @@ from lup.devtools.review.propose import (
 from lup.devtools.review.thread import ReviewThread, ThreadEntry, spoken_on
 from lup.devtools.review.wait import (
     Asker,
-    kept_elsewhere,
     resume_command,
     review_command,
     wait_on,
@@ -59,6 +58,7 @@ from lup.devtools.review.notifications import (
 )
 from lup.devtools.sync import registered_difftool
 from lup.devtools.utils import output_json
+from lup.diagnostics import refuse
 from lup.harness.models import HookSet
 from lup.harness.codescan.markers import (
     MarkerScan,
@@ -77,8 +77,10 @@ from lup.policy.kernel.edit import (
 from lup.policy.assets.host import (
     append_review_record,
     checkout_home,
+    review_home,
     worktree_root,
 )
+from lup.policy.kernel.diagnostic import Step, devtools, step
 from lup.policy.relay import (
     AppendedRecords,
     CapturedFileReview,
@@ -1293,7 +1295,8 @@ def retire_settled(
     """Move each review settled longer ago than the retention window into the archive.
 
     Worked out from the fold already read, so a checkout with nothing past
-    the window costs nothing more. Each one's summary and thread are worked
+    the window costs nothing more, and from one read of it, so each archived
+    thread holds what that read held. Each one's summary and thread are worked
     out while its documents are still in the store, kept in the archive
     under the relay's lock, and only then dropped from the log, its
     documents with it (:meth:`~lup.policy.relay.QuestionRelay.retire`). At
@@ -1303,17 +1306,19 @@ def retire_settled(
     held = store if store is not None else relay(root)
     moment = now or datetime.now(UTC)
     window = timedelta(days=review_retention_days(root))
+    reading = held.read()
     due = [
         entry
-        for entry in held.questions()
+        for entry in reading.questions
         if at_rest(entry) and moment - entry.since() >= window
     ][:batch]
     if not due:
         return []
     kept_in = archive if archive is not None else ReviewArchive(held)
-    remarks, replies = held.remarks(), held.replies()
+    threads = reading.threads
     archived = [
-        ArchivedReview.of(root, held, entry, remarks, replies, moment) for entry in due
+        ArchivedReview.of(root, held, entry, threads.remarks, threads.replies, moment)
+        for entry in due
     ]
     held.retire([entry.id for entry in due], lambda: kept_in.keep(archived))
     return [entry.id for entry in due]
@@ -1393,9 +1398,11 @@ def render_diffs(entry: PersistentQuestion, console: Console) -> bool:
             console.print("    this would leave the file exactly as it stands")
             continue
         console.print(Syntax(change.unified(), "diff", theme="ansi_dark"))
-    for step in entry.unpreviewed or []:
-        console.print(f"  {unpreviewed_caption(step)}  {step.command}", style="bold")
-        for path in step.paths:
+    for unpreviewed in entry.unpreviewed or []:
+        console.print(
+            f"  {unpreviewed_caption(unpreviewed)}  {unpreviewed.command}", style="bold"
+        )
+        for path in unpreviewed.paths:
             console.print(f"    {path}")
     return rendered
 
@@ -1419,13 +1426,18 @@ def opened(entry: PersistentQuestion, difftool: list[str]) -> None:
     which file is being reviewed rather than which temporary it landed in.
     """
     if not difftool:
-        typer.echo(
-            "this machine registers no difftool. Add one to sync.json.local as"
-            ' `"difftool": ["code", "--diff"]`, whose argv takes the two paths'
-            " last — it is a fact about this machine, so it is not committed",
-            err=True,
+        refuse(
+            "this machine registers no difftool",
+            steps=[
+                step(
+                    "add one to sync.json.local, such as"
+                    ' "difftool": ["code", "--diff"], a command that takes the two'
+                    " paths last; it is a fact about this machine, so it is not"
+                    " committed"
+                )
+            ],
+            code=2,
         )
-        raise typer.Exit(2)
     staged = Path(mkdtemp(prefix="lup-review-"))
     for change in changes(entry):
         pair = [staged / side / change.path.name for side in ("before", "after")]
@@ -1458,13 +1470,16 @@ def show(
         shown_archived(kept[question], as_json)
         return
     if found is None:
-        typer.echo(f"no review {question!r} is recorded", err=True)
-        raise typer.Exit(2)
+        refuse(
+            "no review by this id is recorded",
+            what=question,
+            steps=[step("see the reviews parked here", devtools("review", "list"))],
+            code=2,
+        )
     try:
         entry = store.resolve(found)
     except ValueError as unread:
-        typer.echo(f"review {question!r} cannot be read back whole: {unread}", err=True)
-        raise typer.Exit(2) from unread
+        refuse(f"cannot be read back whole: {unread}", what=question, code=2)
     if as_json:
         output_json(entry.model_dump(mode="json"))
         return
@@ -1543,6 +1558,30 @@ def shown_archived(kept: ArchivedReview, as_json: bool) -> None:
     told(entry, kept.thread)
 
 
+def kept_elsewhere_steps(root: Path, words: Sequence[str]) -> list[Step]:
+    """The `review` command run where this session keeps its reviews, where that is not *root*.
+
+    A session keeps its reviews in the checkout its launch opened, read with
+    that checkout's code, so the same command run from another checkout reads
+    and writes that one's queue instead. The way through is the command
+    spelled over the session's own checkout, runnable from anywhere.
+    """
+    home = review_home(root)
+    if home.resolve() == root.resolve():
+        return []
+    return [
+        step(
+            f"this session's reviews are kept in {home} and read with its code;"
+            " run it there",
+            devtools(
+                "review",
+                *words,
+                program=("uv", "run", "--directory", str(home), "lup-devtools"),
+            ),
+        )
+    ]
+
+
 def reply(root: Path, question: str, text: str) -> None:
     """Answer the operator on this session's own review, which the page shows in its thread.
 
@@ -1553,21 +1592,20 @@ def reply(root: Path, question: str, text: str) -> None:
     store = relay(root)
     entry = store.find(question)
     if entry is None:
-        elsewhere = kept_elsewhere(root, ["reply", question, text])
-        typer.echo(
-            f"no review {question!r} is recorded here"
-            + (f"; {elsewhere}" if elsewhere else ""),
-            err=True,
+        refuse(
+            "no review by this id is recorded here",
+            what=question,
+            steps=kept_elsewhere_steps(root, ["reply", question, text]),
+            code=2,
         )
-        raise typer.Exit(2)
     asker = Asker.here(root)
     if not asker.asked(entry):
-        typer.echo(
-            f"review {question} was asked by another session; only the session "
-            "that asked may reply on it",
-            err=True,
+        refuse(
+            "was asked by another session, and only the session that asked may"
+            " reply on it",
+            what=question,
+            code=2,
         )
-        raise typer.Exit(2)
     ReviewThread.of(store).reply(entry, asker.member or entry.operation.session, text)
     typer.echo(
         f"{entry.id}: reply recorded; the operator reads it on the review, "
@@ -1596,8 +1634,7 @@ def answer(
         refuse_inside_a_session(f"review {'approve' if approved else 'decline'}")
         settled = relay(root).answer(question, principal, approved, note)
     except (PermissionError, ValueError) as refusal:
-        typer.echo(str(refusal), err=True)
-        raise typer.Exit(2) from refusal
+        refuse(str(refusal), what=question, code=2)
     verb = {"approved": "approved", "rejected": "declined"}
     typer.echo(
         f"{settled.id}: {verb[settled.state] if settled.state in verb else settled.state}"
@@ -1629,9 +1666,12 @@ def cancel(root: Path, question: str, reason: str) -> None:
     try:
         settled = relay(root).cancel(question, reason)
     except ValueError as refusal:
-        elsewhere = kept_elsewhere(root, ["cancel", question, "--reason", reason])
-        typer.echo(f"{refusal}; {elsewhere}" if elsewhere else str(refusal), err=True)
-        raise typer.Exit(2) from refusal
+        refuse(
+            str(refusal),
+            what=question,
+            steps=kept_elsewhere_steps(root, ["cancel", question, "--reason", reason]),
+            code=2,
+        )
     typer.echo(f"{settled.id}: cancelled")
 
 
@@ -1689,10 +1729,15 @@ def propose(
         else Path(worktree_root(str(written)) or root)
     )
     named = ["--checkout", str(target)] if checkout is not None else []
-    elsewhere = kept_elsewhere(root, ["propose", str(written), "--why", why, *named])
+    elsewhere = kept_elsewhere_steps(
+        root, ["propose", str(written), "--why", why, *named]
+    )
     if elsewhere:
-        typer.echo(f"nothing was parked: {elsewhere}", err=True)
-        raise typer.Exit(2)
+        refuse(
+            "nothing was parked: this session keeps its reviews in another checkout",
+            steps=elsewhere,
+            code=2,
+        )
     store = relay(root)
     agent = asking_agent(root, session_member_id())
     try:
@@ -1700,8 +1745,7 @@ def propose(
             root, target, hooks, gathered(target, written, why), store, agent or ""
         )
     except ProposalRefused as refusal:
-        typer.echo(str(refusal), err=True)
-        raise typer.Exit(2) from refusal
+        refuse(str(refusal), code=2)
     proposal = proposal_of(question)
     count = len(proposal.files) if proposal is not None else 0
     typer.echo(
@@ -1850,12 +1894,11 @@ def create_review_app(
         standing in for the thing you mean.
         """
         if hooks is None:
-            typer.echo(
-                "this composition declares no hook set, so nothing can judge a "
-                "proposal's files",
-                err=True,
+            refuse(
+                "this composition declares no hook set, so nothing can judge a"
+                " proposal's files",
+                code=2,
             )
-            raise typer.Exit(2)
         propose(root, hooks(), directory, why, checkout)
 
     @app.command("reply")

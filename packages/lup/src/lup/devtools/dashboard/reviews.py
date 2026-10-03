@@ -29,12 +29,13 @@ import hmac
 import logging
 import sys
 import webbrowser
-from collections.abc import Callable, Iterator
+from collections.abc import AsyncIterator, Callable, Iterator
+from contextlib import asynccontextmanager
 from datetime import datetime
 from functools import cache
 from pathlib import Path
 from tempfile import mkdtemp
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 import httpx
 import sh
@@ -58,6 +59,7 @@ from lup.devtools.dashboard.companion import (
     restarted,
     refuse_inside_a_session,
 )
+from lup.devtools.dashboard.budget_commands import budget_commands
 from lup.devtools.dashboard.panes import SetupPane, SetupPanes
 from lup.devtools.dashboard.pulse import PulseFile, answered
 from lup.devtools.review.app import (
@@ -80,6 +82,7 @@ from lup.devtools.review.notifications import (
 )
 from lup.devtools.review.preimages import PreimageWatch
 from lup.devtools.review.thread import ReviewThread, spoken_on
+from lup.diagnostics import refuse
 from lup.launch.companions import lent_directory
 from lup.policy.relay import (
     LineComment,
@@ -93,6 +96,14 @@ from lup.policy.relay import (
 )
 from lup.providers.user_config import UserConfigFile
 from lup.sandbox.rail import repository_layout, sibling_worktrees
+from lup.tools.lsp.pool import (
+    CodeHover,
+    CodeLocations,
+    CodeText,
+    CodeTokens,
+    Document,
+    ServerPool,
+)
 from lup.types import StringMap
 
 if TYPE_CHECKING:
@@ -165,6 +176,30 @@ class ReviewHeaders(BaseModel, frozen=True):
     content_type: str = Field(default="", alias="content-type")
     last_event_id: str = Field(default="", alias="last-event-id")
     """The cursor of the last frame a reconnecting tab saw on the stream."""
+
+
+class CodeSource(BaseModel, frozen=True, extra="forbid"):
+    """Which document a question about code is about.
+
+    A review's version of one of its files — ``before`` as it was recorded,
+    ``after`` as the approval would write it — where ``review`` names one;
+    otherwise the file as it stands in ``checkout``, one the dashboard
+    serves, read only where it lies inside that checkout or a language
+    server pointed at it.
+    """
+
+    path: str
+    review: str = ""
+    side: Literal["before", "after"] = "after"
+    checkout: str = ""
+
+
+class CodeQuestion(BaseModel, frozen=True, extra="forbid"):
+    """A question about the symbol at one place in a document: a one-based line and a UTF-16 column."""
+
+    source: CodeSource
+    line: int = Field(ge=1)
+    column: int = Field(ge=0)
 
 
 class LocatedReview(BaseModel, frozen=True):
@@ -243,7 +278,10 @@ class ReviewQueue(BaseModel, frozen=True):
         """One checkout's queue through its relay, read again a moment later before a failure is reported.
 
         The relay stays open between reads, so a read folds only what was
-        appended since the last. A writer appending to the relay or its
+        appended since the last, and its questions, remarks and replies come
+        from that one read (:meth:`~lup.policy.relay.QuestionRelay.read`): a
+        writer appending meanwhile reaches all three on the next look, never
+        some of them on this one. A writer appending to the relay or its
         answers while the page reads them is gone a moment later, so a read
         that fails is tried *attempts* times, *pause* seconds apart, before
         the queue is reported unavailable.
@@ -257,12 +295,13 @@ class ReviewQueue(BaseModel, frozen=True):
             reraise=True,
         )
         def read_once() -> "ReviewQueue":
+            reading = store.read()
             return cls(
                 root=root,
                 signature=signature,
-                questions=store.questions(),
-                remarks=store.remarks(),
-                replies=store.replies(),
+                questions=reading.questions,
+                remarks=reading.threads.remarks,
+                replies=reading.threads.replies,
             )
 
         try:
@@ -717,6 +756,43 @@ class ReviewStore(BaseModel, frozen=True):
         entry = self.retired(located.root, located.question)
         return self.shown(located.root, self.resolved(located.root, entry))
 
+    def code_document(self, source: CodeSource) -> Document:
+        """A review's version of one of its files, as a language server is to read it.
+
+        The checkout it is read in is the one the review changes, and the
+        repository the one that checkout belongs to, so its imports resolve
+        where it would be written.
+        """
+        from fastapi import HTTPException
+
+        located = self.locate(source.review)
+        detail = self.detail(source.review)
+        found = next((file for file in detail.files if file.path == source.path), None)
+        if found is None:
+            raise HTTPException(
+                status_code=404, detail="That review changes no such file"
+            )
+        text = found.after if source.side == "after" else found.before
+        if text is None:
+            raise HTTPException(
+                status_code=404,
+                detail=f"The file has no {source.side} version in that review",
+            )
+        checkout = (
+            Path(detail.summary.target) if detail.summary.target else located.root
+        )
+        return Document(
+            path=Path(source.path),
+            checkout=checkout,
+            repository=self.repository_of(checkout),
+            text=text,
+        )
+
+    def repository_of(self, checkout: Path) -> Path:
+        """The repository a checkout belongs to, by its shared git directory; the checkout itself where none is known."""
+        known = self.scan_roots().repositories
+        return known[checkout] if checkout in known else checkout
+
     def bound(self, key: str, fingerprint: str) -> LocatedReview:
         """The waiting review under *key*, where it still carries the fingerprint the page displayed."""
         from fastapi import HTTPException
@@ -841,6 +917,7 @@ def dashboard_app(
     panes: SetupPanes | None = None,
     feed: "LiveFeed | None" = None,
     config: UserConfigFile | None = None,
+    code: ServerPool | None = None,
 ) -> "FastAPI":
     """Build the dashboard: an authenticated browser surface over reviews and sessions.
 
@@ -852,7 +929,9 @@ def dashboard_app(
     and its store is the one every route reads, so the relays it keeps open
     serve the stream, a review opened, and an answer alike. Beside ``url``,
     it answers at each origin the person's lup ``config`` declares, as that
-    file says at each request.
+    file says at each request. ``code`` is the language servers questions
+    about code are put to, started as they are first asked for and stopped
+    when the app stops.
     """
     from fastapi import HTTPException, Query, Request
     from fastapi.responses import JSONResponse, Response, StreamingResponse
@@ -903,6 +982,19 @@ def dashboard_app(
         )
     )
     store = feed.reviews
+    servers = code if code is not None else ServerPool()
+    around = app.router.lifespan_context
+
+    @asynccontextmanager
+    async def lifespan(application: "FastAPI") -> AsyncIterator[None]:
+        """The app's own, then every language server it started stopped with it."""
+        async with around(application):
+            try:
+                yield
+            finally:
+                await servers.stop()
+
+    app.router.lifespan_context = lifespan
 
     def refused(request: Request) -> JSONResponse | None:
         """Why a request is turned away before it is served; nothing where it is not."""
@@ -1025,6 +1117,58 @@ def dashboard_app(
             keys.config.record(tab)
         return keys.tried([])
 
+    def code_document(source: CodeSource) -> Document:
+        """The document a question about code is about, read where the dashboard may read it."""
+        if source.review:
+            return store.code_document(source)
+        checkout = Path(source.checkout)
+        if checkout not in store.checkout_roots():
+            raise HTTPException(
+                status_code=404, detail="The dashboard serves no checkout there"
+            )
+        repository = store.repository_of(checkout)
+        path = Path(source.path)
+        read = servers.text(
+            repository,
+            path,
+            lambda asked: asked.resolve().is_relative_to(checkout.resolve()),
+        )
+        if not read.served:
+            raise HTTPException(status_code=403, detail=read.why)
+        return Document(
+            path=path, checkout=checkout, repository=repository, text=read.text
+        )
+
+    @app.post("/api/code/hover")
+    async def code_hover(question: CodeQuestion) -> CodeHover:
+        """What the symbol at a place is, as the language server reading its file says."""
+        document = await asyncio.to_thread(code_document, question.source)
+        return await servers.hover(document, question.line, question.column)
+
+    @app.post("/api/code/definition")
+    async def code_definition(question: CodeQuestion) -> CodeLocations:
+        """Where the symbol at a place is defined."""
+        document = await asyncio.to_thread(code_document, question.source)
+        return await servers.definition(document, question.line, question.column)
+
+    @app.post("/api/code/references")
+    async def code_references(question: CodeQuestion) -> CodeLocations:
+        """Every place the symbol at a place is used."""
+        document = await asyncio.to_thread(code_document, question.source)
+        return await servers.references(document, question.line, question.column)
+
+    @app.post("/api/code/tokens")
+    async def code_tokens(source: CodeSource) -> CodeTokens:
+        """What every name in a document is, for the page to colour it by."""
+        document = await asyncio.to_thread(code_document, source)
+        return await servers.tokens(document)
+
+    @app.post("/api/code/text")
+    async def code_text(source: CodeSource) -> CodeText:
+        """A document whole, for the page to show where a definition or a reference lies."""
+        document = await asyncio.to_thread(code_document, source)
+        return CodeText(served=True, path=source.path, text=document.text)
+
     @app.get("/api/setup")
     def setup_panes() -> list[SetupPane]:
         return panes.listed() if panes is not None else []
@@ -1092,15 +1236,7 @@ def review_roots(root: Path, additional: list[Path]) -> tuple[Path, ...]:
 
 def named_repositories(roots: tuple[Path, ...]) -> list[KnownRepository]:
     """The repositories an operator named on a command line, each with its checkout."""
-
-    def known(root: Path) -> KnownRepository:
-        try:
-            repository = repository_layout(root).common.resolve()
-        except (OSError, ValueError, GitError):
-            repository = root
-        return KnownRepository(repository=repository, checkout=root)
-
-    return [known(root) for root in roots]
+    return [KnownRepository.of(root) for root in roots]
 
 
 def create_operator_dashboard_app(root: Path) -> typer.Typer:
@@ -1113,8 +1249,7 @@ def create_operator_dashboard_app(root: Path) -> typer.Typer:
             refuse_inside_a_session(f"dashboard {verb}")
             action()
         except (PermissionError, LookupError) as refusal:
-            typer.echo(str(refusal), err=True)
-            raise typer.Exit(2) from refusal
+            refuse(str(refusal), code=2)
 
     def announced(addresses: list[str], declared: DeclaredOrigins) -> None:
         """Print each launch address, then what to hear of the declared origins."""
@@ -1290,4 +1425,5 @@ def create_operator_dashboard_app(root: Path) -> typer.Typer:
 
         refused("stop", stopped)
 
+    budget_commands(app, root, refused)
     return app

@@ -15,7 +15,7 @@ from pathlib import Path
 
 import pytest
 import sh
-import typer
+from lup.diagnostics import Refusal
 
 import lup.devtools.dev.check as check
 
@@ -210,7 +210,7 @@ def test_naming_nothing_asks_every_suite_for_all_of_itself(tmp_path: Path) -> No
 
 def test_a_path_under_no_declared_suite_is_refused(tmp_path: Path) -> None:
     # Silently dropping it would report a green run over tests nobody ran.
-    with pytest.raises(typer.BadParameter):
+    with pytest.raises(Refusal):
         check.group_by_root(declared_roots(tmp_path / "workspace"), [str(tmp_path)])
 
 
@@ -465,8 +465,9 @@ def test_a_named_path_nothing_answers_is_refused_by_name(tmp_path: Path) -> None
     kept.write_text("def test_kept() -> None:\n    pass\n", encoding="utf-8")
     gone = tmp_path / "tests/unit/test_gone.py"
 
-    with pytest.raises(typer.BadParameter, match="test_gone.py"):
+    with pytest.raises(Refusal) as refused:
         check.run_selected(declared_roots(tmp_path), [str(kept), str(gone)], [])
+    assert refused.value.said["what"] == str(gone)
 
 
 def test_a_node_id_is_found_by_the_file_it_names(tmp_path: Path) -> None:

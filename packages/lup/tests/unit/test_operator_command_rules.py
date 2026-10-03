@@ -3,6 +3,7 @@
 import pytest
 
 from lup.policy.kernel.commands import decide_command_rows
+from lup.policy.kernel.diagnostic import step
 from lup.policy.kernel.effects import declare
 from lup.policy.models import ShellCommand
 from lup.policy.rules import ShellPolicy
@@ -36,7 +37,7 @@ def test_nested_operator_access_uses_declarations(action: str, expected: str) ->
                                 parents=["pending"],
                                 operator_only=True,
                                 reason="Operator credentials are required",
-                                recovery="Use the operator console",
+                                recovery=[step("use the operator console")],
                             ),
                         ],
                     )
@@ -49,7 +50,7 @@ def test_nested_operator_access_uses_declarations(action: str, expected: str) ->
     if action == "answer":
         assert decision.hard
         assert decision.rule == "shell:example-admin.review.pending.answer"
-        assert decision.recovery == "Use the operator console"
+        assert decision.recovery == (step("use the operator console"),)
 
 
 def devtools_policy() -> ShellPolicy:
@@ -77,6 +78,9 @@ def devtools_policy() -> ShellPolicy:
         "dashboard stop",
         "dashboard reopen --off",
         "dashboard restart",
+        "dashboard turtle on",
+        "dashboard priority lead high",
+        "dashboard cap lead --total-usd 5",
         "harness policy-refresh --nonce abc --repository /example",
     ],
 )
@@ -103,7 +107,7 @@ def test_operator_authority_cannot_be_reached_through_a_launcher_or_wrapper(
 
     assert decision.effect == "deny", decision.reason
     assert "a requesting agent cannot" in decision.reason
-    assert "outside the agent session" in decision.recovery
+    assert "outside the agent session" in decision.as_kernel().addressed()
 
 
 @pytest.mark.parametrize("runtime", ["claude", "codex"])
@@ -114,6 +118,18 @@ def test_a_session_may_open_a_child_session(runtime: str, flags: str) -> None:
     )
 
     assert decision.effect == "allow", decision.reason
+
+
+@pytest.mark.parametrize("runtime", ["", " --runtime codex"])
+def test_switching_the_repositorys_account_asks_the_operator(runtime: str) -> None:
+    decision = devtools_policy().decide(
+        ShellCommand(
+            command=f"uv run lup-devtools harness profile switch work{runtime}"
+        )
+    )
+
+    assert decision.effect == "ask", decision.reason
+    assert "another account's login" in decision.reason
 
 
 @pytest.mark.parametrize("runtime", ["claude", "codex"])
@@ -135,6 +151,8 @@ def test_a_child_session_without_a_boundary_is_asked(runtime: str) -> None:
         "review cancel abc --reason withdrawn",
         "dashboard status",
         "dashboard line /state/lent/dashboard.json",
+        "dashboard budget",
+        "harness profile list",
     ],
 )
 def test_generation_and_review_inspection_do_not_open_operator_authority(

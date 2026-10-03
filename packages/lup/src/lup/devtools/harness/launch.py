@@ -11,14 +11,19 @@ generates regenerated. What it reads only here, the registrations in
 `sync.json.local`, becomes the declaration's mounts and devices.
 """
 
+import shlex
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Protocol, Self, TypedDict, runtime_checkable
 
 import typer
 from pydantic import BaseModel, Field, TypeAdapter, ValidationError, model_validator
 
+from lup.coordination.bare.runtime import process_scope
+from lup.coordination.repository import RepositoryPeers
+from lup.coordination.roster import RosterMember
 from lup.devtools.dashboard.companion import Dashboard
 from lup.devtools.review.answers import ReviewAnswers
 from lup.devtools.dev.branches import settle_base_freshness
@@ -30,6 +35,7 @@ from lup.devtools.harness.drift import (
     generate_with_report,
 )
 from lup.devtools.sync import accessible_roots, granted_devices
+from lup.diagnostics import refuse, warn
 from lup.harness.devices import Device
 from lup.harness.generate import NativeHarnessComposition
 from lup.harness.image import Image, MemoryLimit
@@ -37,6 +43,15 @@ from lup.harness.models import Harness, NativeName, Plugin, Resumption
 from lup.harness.notice import Notice
 from lup.execution.process import LocalProcessLauncher
 from lup.launch.companions import HostCompanion
+from lup.launch.config_volume import (
+    HandedLogin,
+    LaunchedAccount,
+    LaunchedAccounts,
+    LoginOwner,
+    VolumeLogin,
+    VolumeLogins,
+)
+from lup.launch.container import seed_volume_login, state_volume_name
 from lup.launch.declaration import (
     InnerSandbox,
     LaunchSandbox,
@@ -57,6 +72,7 @@ from lup.launch.declaration import (
 from lup.launch.refusal import LaunchRefused
 from lup.launch.session import StandingGrants, personal_config
 from lup.observability.sessions import SessionRecorder
+from lup.policy.kernel.diagnostic import devtools, step
 from lup.harness.environment import Placement
 from lup.providers.claude import Claude, ClaudeTools
 from lup.providers.claude.harness import ClaudeSpellings
@@ -67,7 +83,11 @@ from lup.providers.codex.harness import CodexSpellings
 from lup.providers.codex.home import CodexWorktreeHomeStore, move_codex_homes
 from lup.providers.codex.model_choice import CodexModelChoice, codex_effort_named
 from lup.providers.codex.session import prepare_codex_plugin
-from lup.providers.profiles import DefaultHomeProfile, ProfileDirectory
+from lup.providers.harness import AdapterName
+from lup.providers.login import ProviderLogin
+from lup.providers.profile_tree import profile_directory
+from lup.providers.profiles import DefaultHomeProfile, ProfileDirectory, named_home
+from lup.providers.runtime_homes import runtime_logins
 from lup.providers.user_config import UserConfigFile
 from lup.sandbox.models import NetworkMode
 from lup.sessions.events import SessionId
@@ -88,7 +108,7 @@ def usage_refusals() -> Iterator[None]:
     try:
         yield
     except LaunchRefused as refusal:
-        raise typer.BadParameter(str(refusal)) from refusal
+        refuse(str(refusal), code=2)
 
 
 def standing_grants() -> StandingGrants:
@@ -114,11 +134,13 @@ def declared_devices(names: list[str]) -> list[Device]:
     def declared(name: str) -> Device:
         try:
             return Device(name=name)
-        except ValidationError as error:
-            raise typer.BadParameter(
-                f"--device {name!r}: a device is named the way CDI names it, "
-                "vendor/class=device, such as nvidia.com/gpu=all"
-            ) from error
+        except ValidationError:
+            refuse(
+                "is not a device named the way CDI names one, vendor/class=device,"
+                " such as nvidia.com/gpu=all",
+                what=f"--device {name}",
+                code=2,
+            )
 
     return [declared(name) for name in names]
 
@@ -129,11 +151,13 @@ def memory_limit(spelled: str | None) -> MemoryLimit | None:
         return None
     try:
         return MemoryLimit.model_validate(spelled)
-    except ValidationError as error:
-        raise typer.BadParameter(
-            f"--memory {spelled!r}: a limit is an amount such as 12GiB or "
-            "512MiB, or a share such as 75%"
-        ) from error
+    except ValidationError:
+        refuse(
+            "is not a memory limit: an amount such as 12GiB or 512MiB, or a share"
+            " such as 75%",
+            what=f"--memory {spelled}",
+            code=2,
+        )
 
 
 @runtime_checkable
@@ -300,13 +324,11 @@ def selected_mode(modes: list[LaunchMode], name: str | None) -> LaunchMode | Non
         return None
     declared = {mode.name: mode for mode in modes}
     if name not in declared:
-        raise typer.BadParameter(
-            f"--mode {name!r} is not a mode this project declares"
-            + (
-                f"; it declares {', '.join(declared)}"
-                if declared
-                else "; it declares none"
-            )
+        refuse(
+            "is not a mode this project declares; it declares "
+            + (", ".join(declared) or "none"),
+            what=f"--mode {name}",
+            code=2,
         )
     return declared[name]
 
@@ -338,12 +360,22 @@ def announce_relaxed_rules(relaxed: bool, plugin: Plugin) -> None:
         text=f"anti-patterns retired for this session: {retired} rules",
         urgency="warning",
     ).say()
-    typer.echo(
-        "`dev check --antipatterns` still holds this repository to them; run "
-        "`lup-devtools harness generate all` before committing, or the "
-        "compiled tree carries a policy nothing declares. To retire them for "
-        "good instead, `dev seams --retire-all` writes it where a review sees "
-        "it."
+    warn(
+        "the sweep still holds this repository to every one of them, and the"
+        " tree just compiled carries a policy nothing declares",
+        steps=[
+            step(
+                "see what the sweep holds it to",
+                devtools("dev", "check", "--antipatterns"),
+            ),
+            step(
+                "regenerate before committing", devtools("harness", "generate", "all")
+            ),
+            step(
+                "or retire them for good, where a review sees it",
+                devtools("dev", "seams", "--retire-all"),
+            ),
+        ],
     )
 
 
@@ -371,6 +403,7 @@ class StatedLaunch(TypedDict, total=False):
     resume: Resume
     max_recursive_agent: int
     record: Recording
+    move_sessions: bool
 
 
 class LaunchArguments(BaseModel, frozen=True, arbitrary_types_allowed=True):
@@ -406,6 +439,9 @@ class LaunchArguments(BaseModel, frozen=True, arbitrary_types_allowed=True):
     relaxed: bool = False
     mode: LaunchMode | None = None
     recorder: SessionRecorder | None = None
+    move_sessions: bool = False
+    """``--move-sessions``: hand a contained session's login to its
+    repository's volume even where running sessions there use another's."""
 
     def allowance(self, runtime: str) -> int:
         """The recursive-agent allowance: the flag's, else the mode's, else no limit."""
@@ -418,7 +454,7 @@ class LaunchArguments(BaseModel, frozen=True, arbitrary_types_allowed=True):
         """The session to reopen, refusing two named at once before anything runs."""
         contradiction = self.resume.contradicted()
         if contradiction is not None:
-            raise typer.BadParameter(contradiction)
+            refuse(contradiction, code=2)
         if self.resume.session is not None:
             return Reopen(session=SessionId(value=self.resume.session))
         if self.resume.pick:
@@ -479,6 +515,8 @@ class LaunchArguments(BaseModel, frozen=True, arbitrary_types_allowed=True):
             stated["max_recursive_agent"] = self.max_recursive_agent
         if self.transcribe_session:
             stated["record"] = Recording(transcript=True)
+        if self.move_sessions:
+            stated["move_sessions"] = True
         return stated
 
     def refuse_hosted_mode(self, posture: LaunchSandbox, runtime: str) -> None:
@@ -487,10 +525,24 @@ class LaunchArguments(BaseModel, frozen=True, arbitrary_types_allowed=True):
             return
         asked = self.mode.contained_only(runtime)
         if asked:
-            raise typer.BadParameter(
-                f"mode {self.mode.name!r} asks for {', '.join(asked)}, which only "
-                "a container stands in for, and this session opens on the host; "
-                "launch it with --sandbox outer, where Docker or Podman answers"
+            refuse(
+                f"asks for {', '.join(asked)}, which only a container stands in"
+                " for, and this session opens on the host",
+                what=f"--mode {self.mode.name}",
+                steps=[
+                    step(
+                        "launch it in a container, where Docker or Podman answers",
+                        devtools(
+                            "harness",
+                            runtime,
+                            "--mode",
+                            self.mode.name,
+                            "--sandbox",
+                            "outer",
+                        ),
+                    )
+                ],
+                code=2,
             )
 
     def posture(self, settle: bool) -> LaunchSandbox:
@@ -637,7 +689,7 @@ def effort_named[T](spelled: str | None, named: Callable[[str], T]) -> T | None:
     try:
         return named(spelled)
     except ValueError as refusal:
-        raise typer.BadParameter(str(refusal)) from refusal
+        refuse(str(refusal), code=2)
 
 
 def declared[T](build: Callable[[], T]) -> T:
@@ -650,9 +702,7 @@ def declared[T](build: Callable[[], T]) -> T:
     try:
         return build()
     except ValidationError as refusal:
-        raise typer.BadParameter(
-            "; ".join(str(error["msg"]) for error in refusal.errors())
-        ) from refusal
+        refuse("; ".join(str(error["msg"]) for error in refusal.errors()), code=2)
 
 
 def machine_overlay(composition: NativeHarnessComposition) -> list[Path]:
@@ -702,7 +752,16 @@ def claude_declaration(
         home = profiles.launch_home(request.profile)
         selected = request.profile or profiles.active_name()
     except (KeyError, ValueError, DefaultHomeProfile) as error:
-        raise typer.BadParameter(str(error)) from error
+        refuse(
+            str(error),
+            steps=[
+                step(
+                    "see the profiles a launch can select",
+                    devtools("harness", "profile", "list"),
+                )
+            ],
+            code=2,
+        )
     # lup: solved: a contained session runs in its repository's config volume,
     # so no theme reaches it and none it sets returns to the account; which
     # home a container's theme belongs to is the volume's question.
@@ -955,4 +1014,304 @@ def launch_codex(
             steps=workflow_steps("codex", generation, checkpoint),
             force=force_install,
         )
+    )
+
+
+def runtime_login(runtime: AdapterName) -> ProviderLogin:
+    """The configuration-home declaration of the runtime that word names."""
+    return next(login for login in runtime_logins() if login.state_volume == runtime)
+
+
+def runs_contained(
+    member: RosterMember, scope: str, launched: LaunchedAccount | None = None
+) -> bool:
+    """Whether a session runs in its repository's container, on its volume.
+
+    What its launch recorded where it recorded one; otherwise its row's
+    runtime process, read in another pid namespace than ``scope`` — the
+    host's, as :func:`~lup.coordination.bare.runtime.process_scope` reads it
+    there — which is what a contained session's is.
+    """
+    if launched is not None:
+        return launched.contained
+    recorded = member.process.scope
+    return bool(recorded) and bool(scope) and recorded != scope
+
+
+class Relaunch(BaseModel, frozen=True):
+    """The command that opens one session again under another profile, and what it keeps."""
+
+    words: list[str]
+    """The command, as the words a shell runs, from any directory."""
+
+    resumes: bool
+    """Whether it reopens the session's conversation rather than opening a fresh one."""
+
+    why: str
+    """Why it reopens the conversation, or cannot, in a clause."""
+
+    def spelled(self) -> str:
+        """The command as a person pastes it."""
+        return shlex.join(self.words)
+
+
+def relaunch_command(member: RosterMember, profile: str, contained: bool) -> Relaunch:
+    """The command that opens a session again on ``profile``, reopening its conversation where it can.
+
+    Spelled as `harness claude|codex` from the session's worktree, contained
+    or on the host as it ran, so the conversation is looked for where it is
+    kept. A contained session keeps it in its repository's volume and a
+    Codex host session in its checkout's home, whichever account either
+    runs on, so each reopens by the id its row records. A Claude host
+    session keeps it in its profile's own home, which another profile's does
+    not hold, so it opens fresh. A row naming no runtime has no command.
+    """
+    runtime = member.wake.runtime
+    if not runtime:
+        raise ValueError(
+            f"{member.address} declared no runtime, so no command opens it again"
+        )
+    session = member.wake.session or (member.wake.handle if runtime == "codex" else "")
+    match (bool(session), contained, runtime):
+        case (False, _, _):
+            why = "opens a fresh session: its row records no session id to reopen"
+        case (True, True, _):
+            why = (
+                "reopens its conversation from the repository's volume, which "
+                "keeps it whichever login runs it"
+            )
+        case (True, False, "codex"):
+            why = (
+                "reopens its conversation from the checkout's Codex home, which "
+                "keeps it whichever account's login it is handed"
+            )
+        case _:
+            why = (
+                "opens a fresh session: a host Claude session keeps its "
+                f"conversation in its profile's own home, which {profile}'s "
+                "does not hold"
+            )
+    resumes = bool(session) and (contained or runtime == "codex")
+    return Relaunch(
+        words=[
+            "uv",
+            "run",
+            *(["--directory", member.worktree] if member.worktree else []),
+            "lup-devtools",
+            "harness",
+            runtime,
+            "--profile",
+            profile,
+            *(["--session", session] if resumes else []),
+            *([] if contained else ["--sandbox", "inner"]),
+        ],
+        resumes=resumes,
+        why=why,
+    )
+
+
+class SessionMove(BaseModel, frozen=True):
+    """What switching a repository's login to a profile comes to for one running session."""
+
+    member: str
+    """Its roster id."""
+
+    name: str
+    """What the roster calls it."""
+
+    contained: bool
+    """Whether it runs in the repository's container, on the volume a switch hands."""
+
+    moved: bool
+    """Whether it is on the profile with nothing more to do: moved at its next
+    request, or on it already."""
+
+    why: str
+    """Why it moved, or what keeps it where it is, in a clause."""
+
+    relaunch: Relaunch | None = None
+    """The command that puts it on the profile, where opening it again is the way."""
+
+
+def session_moves(
+    members: list[RosterMember],
+    login: ProviderLogin,
+    owner: LoginOwner,
+    seeded: bool,
+    scope: str,
+    launched: LaunchedAccounts,
+) -> list[SessionMove]:
+    """What a switch of ``login``'s volume to ``owner`` comes to for each running session.
+
+    Each running session of that runtime, by the wake path its row declares;
+    a subagent rides with its session. A contained one moves at its next
+    request where its runtime rereads its login and the volume ``seeded``
+    took it; one whose runtime keeps the login it started with is opened
+    again. A host session runs in its own account's home, which the volume
+    never reaches, so it is opened again on the profile unless its launch
+    recorded it on that account already.
+    """
+    profile = owner.named()
+
+    def moved(member: RosterMember) -> SessionMove:
+        recorded = launched.launched(member.actor.id)
+        contained = runs_contained(member, scope, recorded)
+        already = recorded is not None and recorded.owner.same_account(owner)
+        relaunch: Relaunch | None = None
+        match (contained, seeded, login.rereads_login, already):
+            case (True, False, _, _):
+                done = False
+                why = "the volume did not take the login, so it stays where it is"
+            case (True, True, True, _):
+                done = True
+                why = f"takes {profile}'s login from the volume at its next request"
+            case (True, True, False, _):
+                done = False
+                why = (
+                    f"{login.state_volume} keeps the login it started with until "
+                    "it is opened again"
+                )
+                relaunch = relaunch_command(member, profile, contained=True)
+            case (False, _, _, True):
+                done = True
+                why = f"runs on {profile}'s account already"
+            case _:
+                done = False
+                why = (
+                    "runs on the host in its own account's home, which the volume "
+                    "never reaches"
+                )
+                relaunch = relaunch_command(member, profile, contained=False)
+        return SessionMove(
+            member=member.actor.id,
+            name=member.cli_name or member.address,
+            contained=contained,
+            moved=done,
+            why=why,
+            relaunch=relaunch,
+        )
+
+    return [
+        moved(member)
+        for member in members
+        if member.running
+        and not member.parent
+        and member.wake.runtime == login.state_volume
+    ]
+
+
+class SwitchOutcome(BaseModel, frozen=True):
+    """What moving one repository's sessions of one runtime to a profile came to."""
+
+    checkout: Path
+    runtime: AdapterName
+    profile: str
+    volume: str
+
+    before: VolumeLogin | None = None
+    """What the volume was last handed before, ``None`` where lup never recorded it."""
+
+    held: VolumeLogin | None = None
+    """What it holds now, ``None`` where the profile's login did not take."""
+
+    why: str = ""
+    """Why the login did not take, empty where it did."""
+
+    sessions: list[SessionMove] = []
+
+    def lines(self) -> list[str]:
+        """What the switch came to, one line a fact, as the command prints it."""
+        before = (
+            f" (it held {self.before.owner.named()}'s)"
+            if self.before is not None
+            else ""
+        )
+        headline = (
+            f"{self.volume} now holds {self.profile}'s {self.runtime} login{before}."
+            if self.held is not None
+            else f"{self.volume} still holds its login: {self.why}."
+        )
+        return [
+            headline,
+            *(
+                f"  {session.name}: {session.why}"
+                + (
+                    f" — {session.relaunch.why}: {session.relaunch.spelled()}"
+                    if session.relaunch is not None
+                    else ""
+                )
+                for session in self.sessions
+            ),
+        ]
+
+
+def switch_repository_login(
+    checkout: Path,
+    runtime: AdapterName,
+    profile: str,
+    profiles: ProfileDirectory | None = None,
+    image: Image = Image(),
+) -> SwitchOutcome:
+    """Move every contained session of one runtime in a repository onto a profile's login.
+
+    The whole of `harness profile switch`, and what the dashboard calls. The
+    profile's login is handed to the repository's volume for that runtime,
+    through the image's own seed program, so the sessions running there take
+    it as their runtime allows: at their next request where it rereads its
+    login, when opened again where it keeps the one it started with. A host
+    session runs in its own account's home and is answered with the command
+    opening it again on the profile. A name no profile answers to is refused
+    as a launch refuses it; anything else that stops the handoff is said in
+    the outcome.
+
+    ``profiles`` is where the name is looked up, this checkout's and the
+    person's own where none is given; ``image`` the one whose config home the
+    volume is mounted at.
+    """
+    login = runtime_login(runtime)
+    directory = profiles or profile_directory(login, checkout=checkout)
+    owner = LoginOwner(
+        home=named_home(login, profile, directory.resolve(profile)), profile=profile
+    )
+    logins = VolumeLogins()
+    volume = state_volume_name(checkout, login)
+    before = logins.held(volume)
+    credential = login.credentials_path(owner.home)
+    seeding = (
+        seed_volume_login(
+            checkout,
+            login,
+            HandedLogin(credential=credential, owner=owner, moving="move"),
+            image.config_home,
+            logins,
+            datetime.now(UTC),
+        )
+        if credential.is_file()
+        else None
+    )
+    why = (
+        seeding.why
+        if seeding is not None
+        else (
+            f"{profile} holds no {runtime} login yet; sign it in by starting the "
+            f"runtime with {login.config_home_env}={owner.home}"
+        )
+    )
+    held = seeding.held if seeding is not None else None
+    return SwitchOutcome(
+        checkout=checkout,
+        runtime=runtime,
+        profile=profile,
+        volume=volume,
+        before=before,
+        held=held,
+        why="" if held is not None else why,
+        sessions=session_moves(
+            RepositoryPeers(checkout).present(),
+            login,
+            owner,
+            held is not None,
+            process_scope(),
+            LaunchedAccounts(),
+        ),
     )

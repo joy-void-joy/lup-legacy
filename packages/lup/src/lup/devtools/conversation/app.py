@@ -18,6 +18,8 @@ from lup.devtools.conversation.checkpoint import checkpoint_delivery
 from lup.devtools.conversation.errors import ConversationDownloadError
 from lup.devtools.conversation.selection import RetentionAttempt, RetentionRequest
 from lup.devtools.harness.composition import claude_profile_directory
+from lup.diagnostics import refuse
+from lup.policy.kernel.diagnostic import devtools, spelled, step
 from lup.providers.profiles import ProfileDirectory
 from lup.workspace.paths import project_root
 
@@ -32,14 +34,17 @@ def browser_directory(
 ) -> Path:
     """Resolve explicit, active, then unprofiled browser state."""
     if profiles is None and profile is not None:
-        raise typer.BadParameter(
-            "this project declares no named profiles", param_hint="--profile"
+        refuse(
+            "names a profile, and this project declares no named profiles",
+            what=f"--profile {profile}",
+            steps=[step("leave --profile out")],
+            code=2,
         )
     if profiles is not None:
         try:
             selected = profiles.state_dir(profile, f"{provider}-web")
         except KeyError as error:
-            raise typer.BadParameter(str(error), param_hint="--profile") from error
+            refuse(str(error), what="--profile", code=2)
         if selected is not None:
             return selected
     return CheckoutState(root=root).conversations() / f"{provider}-web"
@@ -136,7 +141,7 @@ async def retain_chatgpt(
         requests,
         run,
         "The ChatGPT browser login is missing or expired. Run "
-        "`uv run lup-devtools conversation setup chatgpt`, then retry.",
+        f"`{spelled(devtools('conversation', 'setup', 'chatgpt'))}`, then retry.",
     )
 
 
@@ -190,7 +195,7 @@ async def retain_claude(
         requests,
         run,
         "The Claude browser login is missing or expired. Run "
-        "`uv run lup-devtools conversation setup claude`, then retry.",
+        f"`{spelled(devtools('conversation', 'setup', 'claude'))}`, then retry.",
     )
 
 

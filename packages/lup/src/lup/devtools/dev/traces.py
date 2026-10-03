@@ -35,8 +35,9 @@ from pathlib import Path
 import typer
 from pydantic import BaseModel
 
-from lup.execution.git import GitError, Repository
 from lup.devtools.utils import output_json
+from lup.diagnostics import refuse
+from lup.execution.git import GitError, Repository
 from lup.workspace.paths import notes_path, project_root
 from lup.workspace.shared_directory import ARCHIVE_DIRECTORY_NAME
 
@@ -87,8 +88,9 @@ def archive_root(name: str = ARCHIVE_DIRECTORY_NAME) -> Path:
         common = Repository(Path.cwd()).common_dir()
     except GitError as error:
         logger.exception("Could not locate the repository's common directory")
-        typer.echo(error.status.stderr.strip())
-        raise typer.Exit(1) from error
+        refuse(
+            f"could not locate the repository's common directory: {error.status.stderr.strip()}"
+        )
     return common / name
 
 
@@ -179,12 +181,11 @@ def keep_before_deleting(branch: str) -> None:
         result = archive(branch, dry_run=False)
     except OSError as error:
         logger.exception("Archiving traces failed")
-        typer.echo(
-            f"Refusing to delete {branch} -- its traces could not be archived, "
-            f"and removing the worktree would destroy them: {error}",
-            err=True,
+        refuse(
+            "is not deleted: its traces could not be archived, and removing the "
+            f"worktree would destroy them: {error}",
+            what=branch,
         )
-        raise typer.Exit(1) from error
     if result.copied:
         typer.echo(result.summary())
 

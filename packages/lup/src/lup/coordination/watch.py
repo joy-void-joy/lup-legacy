@@ -31,6 +31,8 @@ from pathlib import Path
 from pydantic import BaseModel
 
 from lup.channels.models import utc_now
+from lup.coordination.bare import holds
+from lup.coordination.bare.store import text
 from lup.coordination.mail import ActorDelivery, ActorMessage
 from lup.coordination.repository import PeerView, RepositoryPeers
 from lup.coordination.roster import RosterMember
@@ -172,7 +174,21 @@ def roused(
     Accepted is the most a runtime says: a frame its wake socket took, or a
     queue that took the message. Neither proves the turn it starts has read
     it, which is the same promise the hook's own hand-over makes.
+
+    A member something holds -- the operator's pause, a budget -- is not
+    woken at all: everything waits in its mailbox, and its hook hands it
+    over at the first call it makes once let go. Waking it would only start
+    a turn whose first call is held again.
     """
+    holding = holds.covering(peers.root, member.actor.id, member.parent)
+    if holding:
+        return Woken(
+            reached=False,
+            reason=(
+                f"it is held -- {text(holding[0].get('said'))} -- so nothing "
+                "wakes it, and it reads this once it is let go"
+            ),
+        )
     fresh = [message for message in fresh if not message.carried]
     if not fresh:
         return Woken(

@@ -130,6 +130,7 @@ import lup.harness.content.docs.upstream_reports as upstream_reports
 from lup.launch.preflight import reopened
 from lup.devtools.subapps import subapp
 from lup.devtools.utils import decode_stderr, format_table, short_sha
+from lup.diagnostics import Refusal, refuse
 from lup.execution.shell import git
 from lup.harness.devices import Device, registered_devices
 from lup.harness.requirements import Finding, Manifest
@@ -139,6 +140,7 @@ from lup.harness.toolchain import (
     granted_device_requirement,
 )
 from lup.policy.assets.host import launched, measured_boundary
+from lup.policy.kernel.diagnostic import Step, devtools, diagnostic, rendered, step
 from lup.launch.pointer_trust import judged_roots
 from lup.sandbox.rail import AccessibleRoot
 
@@ -181,11 +183,11 @@ def upstream_cmd(
         return
     report = roster.named(slug)
     if report is None:
-        typer.echo(
-            f"No upstream report named {slug!r}; declared: {roster.handles()}",
-            err=True,
+        refuse(
+            f"no upstream report is declared under this name; declared: {roster.handles()}",
+            what=slug,
+            steps=[step("list the declared reports", devtools("sync", "upstream"))],
         )
-        raise typer.Exit(1)
     typer.echo(report.body)
 
 
@@ -371,7 +373,7 @@ def load_json(path: Path) -> SyncConfig:
     try:
         return SYNC_CONFIG_ADAPTER.validate_python(json.loads(path.read_text()))
     except json.JSONDecodeError as error:
-        raise typer.BadParameter(f"{path} is not valid JSON: {error}") from error
+        refuse(f"is not valid JSON: {error}", what=str(path), code=2)
 
 
 def save_local(data: SyncConfig) -> None:
@@ -550,9 +552,12 @@ def find_project(name: str) -> ProjectEntry:
     projects = load_projects()
     proj = next((p for p in projects if p["name"] == name), None)
     if not proj:
-        typer.echo(f"Project '{name}' not found.")
-        typer.echo(f"Available: {', '.join(p['name'] for p in projects)}")
-        raise typer.Exit(1)
+        refuse(
+            "no project is tracked under this name; tracked: "
+            + ", ".join(p["name"] for p in projects),
+            what=name,
+            steps=[step("see what is tracked", devtools("sync", "status"))],
+        )
     return proj
 
 
@@ -1317,7 +1322,7 @@ def declaring_file(name: str, key: str) -> Path:
     return sync_file() if tracked is not None and key in tracked else local_file()
 
 
-def renaming(name: str, url: str) -> str:
+def renaming(name: str, url: str) -> Step:
     """The edit that makes a registration mean ``url``, where its answer is kept.
 
     The pin, for the library's own registration wherever the project resolves
@@ -1326,11 +1331,19 @@ def renaming(name: str, url: str) -> str:
     """
     pinned = pinned_source(name)
     if pinned is not None:
-        return (
-            "repoint the pin it follows: uv run lup-devtools dev library git "
-            f"--url {url} --{pinned.ref_kind} {pinned.ref}"
+        return step(
+            "repoint the pin it follows",
+            devtools(
+                "dev",
+                "library",
+                "git",
+                "--url",
+                url,
+                f"--{pinned.ref_kind}",
+                pinned.ref,
+            ),
         )
-    return (
+    return step(
         f"set \"url\" on the '{name}' entry in {declaring_file(name, 'url').name} to it"
     )
 
@@ -1360,25 +1373,36 @@ def require_registered_origin(
     at_registered_path = bool(registered_path) and (
         Path(registered_path).resolve() == repository.resolve()
     )
+    renamed = renaming(name, pointing)
     theirs = (
-        f'point that entry\'s "path" at a checkout of it: '
-        f"uv run lup-devtools sync setup {name} /path/to/repo"
+        step(
+            f'if {declared} is meant, point the entry\'s "path" at a checkout of it',
+            devtools("sync", "setup", name, "<path>"),
+        )
         if at_registered_path
-        else f"remove {repository} so the next fetch clones it again"
+        else step(
+            f"if {declared} is meant, remove {repository} so the next fetch clones it again"
+        )
     )
-    report(
-        f"The checkout at {repository} is a clone of {pointing}, while "
-        f"'{name}' is registered as {declared} in "
-        f"{declaring_file(name, 'url').name}. Two repositories under one "
-        "name, so a review, a mount or a commit would land in the wrong "
-        "history; nothing was read from it. Write whichever is true:\n"
-        f"  - {pointing} is the repository meant: {renaming(name, pointing)}.\n"
-        f"  - {declared} is: {theirs}. Where this machine reaches it at "
-        f"another URL, say so with: uv run lup-devtools sync remote {name} "
-        "<url>\n"
-        "  - both are tracked here: register them under two names."
+    said = diagnostic(
+        "error",
+        f"is a clone of {pointing}, while '{name}' is registered as {declared} in "
+        f"{declaring_file(name, 'url').name}: two repositories under one name, so "
+        "a review, a mount or a commit would land in the wrong history, and "
+        "nothing was read from it",
+        what=str(repository),
+        steps=[
+            step(f"if {pointing} is meant, {renamed['says']}", renamed["run"]),
+            theirs,
+            step(
+                f"if this machine reaches {declared} at another URL, record it",
+                devtools("sync", "remote", name, "<url>"),
+            ),
+            step("if both are tracked here, register them under two names"),
+        ],
     )
-    raise typer.Exit(1)
+    report(rendered(said))
+    raise Refusal(said)
 
 
 def ensure_local(
@@ -1465,7 +1489,7 @@ def resolved_checkpoint(path: str, ref: str, tip: str = "HEAD") -> str:
         return repository.answer("rev-parse", tip)
     resolved = repository.resolves(ref)
     if resolved is None:
-        raise typer.BadParameter(f"{ref!r} does not name a commit in {path}")
+        refuse(f"names no commit in {path}", what=ref, code=2)
     return resolved
 
 
@@ -1550,8 +1574,15 @@ def status_cmd() -> None:
         )
 
     if not projects:
-        typer.echo("No projects tracked. Check sync.json(.local) or run 'setup'.")
-        raise typer.Exit(1)
+        refuse(
+            "no projects are tracked in sync.json or sync.json.local",
+            steps=[
+                step(
+                    "register one",
+                    devtools("sync", "setup", "<name>", "<path>"),
+                )
+            ],
+        )
 
     def reach(p: ProjectEntry) -> str:
         """Whether a session can open this project, in the words it declared.
@@ -1802,11 +1833,12 @@ def setup_project(
     one that hands a session the keys is the one worth typing out.
     """
     if mount and mount not in MOUNT_MODES:
-        raise typer.BadParameter(f"--mount takes {' or '.join(MOUNT_MODES)}")
+        refuse(
+            f"--mount takes {' or '.join(MOUNT_MODES)}", what=f"--mount {mount}", code=2
+        )
     resolved = Path(path).resolve()
     if not resolved.exists():
-        typer.echo(f"Path does not exist: {resolved}")
-        raise typer.Exit(1)
+        refuse("does not exist", what=str(resolved))
 
     repository = (resolved / ".git").exists() or bare_repository(resolved)
     # A directory that is not a checkout can still be worth reaching -- a
@@ -1815,12 +1847,16 @@ def setup_project(
     # of this registry is for, so it is admitted only where the mount is the
     # point and refused where somebody meant to track commits it has none of.
     if not repository and not mount:
-        typer.echo(
-            f"Not a git repository: {resolved}\n"
-            "Pass --mount to register it for access alone; tracking a project "
-            "means reading its commits, and there are none to read here."
+        refuse(
+            "is not a git repository, and tracking a project means reading its commits",
+            what=str(resolved),
+            steps=[
+                step(
+                    "register it for access alone",
+                    devtools("sync", "setup", name, path, "--mount", "<mode>"),
+                )
+            ],
         )
-        raise typer.Exit(1)
 
     local_data = load_json(local_file())
     local_projects = local_data.get("projects", [])
@@ -1906,18 +1942,27 @@ def set_remote(
     proj = find_project(name)
     declared = proj.get("url", "")
     if declared and not same_repository(url, declared):
-        typer.echo(
-            f"{url} does not name the repository '{name}' is registered as, "
-            f"{declared} in {declaring_file(name, 'url').name}. A transport "
-            "this machine reaches it over is expected here; a different "
-            "repository under the same name would be reviewed, mounted and "
-            "committed into as this one.\n"
-            f"  - to reach {declared} from here, pass the URL that does.\n"
-            f"  - to track {url} as well, register it under its own name.\n"
-            f"  - to change which repository '{name}' means, "
-            f"{renaming(name, url)}."
+        renamed = renaming(name, url)
+        refuse(
+            f"does not name the repository '{name}' is registered as, {declared} "
+            f"in {declaring_file(name, 'url').name}: a different repository under "
+            "the same name would be reviewed, mounted and committed into as this one",
+            what=url,
+            steps=[
+                step(
+                    f"to reach {declared} from here, pass the URL that does",
+                    devtools("sync", "remote", name, "<url>"),
+                ),
+                step(
+                    "to track it as well, register it under its own name",
+                    devtools("sync", "remote", "<name>", url),
+                ),
+                step(
+                    f"to change which repository '{name}' means, {renamed['says']}",
+                    renamed["run"],
+                ),
+            ],
         )
-        raise typer.Exit(1)
 
     local_data = load_json(local_file())
     local_projects = local_data.get("projects", [])
@@ -1990,17 +2035,18 @@ def grant_device(
     """
     try:
         granted = Device(name=device)
-    except ValidationError as error:
-        raise typer.BadParameter(
-            f"{device!r}: a device is named the way CDI names it, "
-            "vendor/class=device, such as nvidia.com/gpu=all"
-        ) from error
+    except ValidationError:
+        refuse(
+            "is not a device name: a device is named the way CDI names it, "
+            "vendor/class=device, such as nvidia.com/gpu=all",
+            what=device,
+            code=2,
+        )
     finding = verified_grant(granted)
     for notice in finding.notices():
         notice.say()
     if not finding.working:
-        typer.echo(f"{granted.name} was not granted; see the check above.")
-        raise typer.Exit(1)
+        refuse("was not granted, for what the check above found", what=granted.name)
 
     local_data = load_json(local_file())
     names = local_data.get("devices", [])
@@ -2028,10 +2074,11 @@ def revoke_device(
     local_data = load_json(local_file())
     names = local_data.get("devices", [])
     if device not in names:
-        typer.echo(
-            f"{device} is not granted on this machine; `sync status` lists what is."
+        refuse(
+            "is not granted on this machine",
+            what=device,
+            steps=[step("list what is granted", devtools("sync", "status"))],
         )
-        raise typer.Exit(1)
     local_data["devices"] = [name for name in names if name != device]
     save_local(local_data)
     typer.echo(f"Revoked {device}; the next launch opens without it")

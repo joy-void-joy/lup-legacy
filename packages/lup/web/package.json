@@ -15,10 +15,11 @@
     "@tanstack/react-table": "^9.2.4",
     "@tanstack/react-virtual": "^3.14.11",
     "cytoscape": "^3.34.3",
-    "highlight.js": "^11.11.1",
-    "lowlight": "^3.3.0",
     "react": "^19.2.8",
-    "react-dom": "^19.2.8"
+    "react-dom": "^19.2.8",
+    "react-markdown": "^10.1.0",
+    "tree-sitter-wasm": "^2.0.2",
+    "web-tree-sitter": "^0.27.0"
   },
   "devDependencies": {
     "@happy-dom/global-registrator": "^20.14.3",

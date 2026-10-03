@@ -113,7 +113,7 @@ def execution_write_refusal(path_text: str, root: Path | None) -> str:
     if not matches or not min(
         allowed for depth, allowed in matches if depth == max(row[0] for row in matches)
     ):
-        return f"{path} is outside this launch's writable boundary"
+        return "it is outside this launch's writable boundary"
     return ""
 
 
@@ -322,10 +322,23 @@ def opened_deadline(seconds: float, grace: float = 2.0) -> str:
     return previous
 
 
+def judgement_opened() -> None:
+    """Start the judgement's own window now, as a hold lets a call go.
+
+    A judgement is bounded from the moment it may begin. A held call was
+    never being judged, so the hold's minutes are no part of the judgement's
+    seconds: every deadline after this counts from this stamp, as it counts
+    from the guard's where nothing held the call.
+    """
+    environ = os.environ  # lup: ignore[os-environ]
+    environ["LUP_HOOK_STARTED"] = repr(time.time())
+
+
 def answered_in_time(
     seconds: float,
     judged: Callable[[bytes], None],
     unanswered: Callable[[bytes, BaseException | None], None],
+    held: Callable[[bytes], bool | None],
 ) -> None:
     """Answer within ``seconds`` of the hook starting, whatever the judgement does.
 
@@ -353,6 +366,15 @@ def answered_in_time(
     event reads, in the words :func:`unjudged_reason` and
     :func:`unjudged_recovery` give it. The input is whatever arrived, which
     is nothing where it did not all arrive in time.
+
+    ``held`` comes first, before anything is judged: it keeps the call
+    waiting for as long as a hold covers its caller, and says how that
+    ended. True is a call it refused itself, still held at the hold's own
+    limit, and nothing more is written; False is a call a hold kept waiting
+    and then let go, whose judgement gets its whole ``seconds`` from that
+    moment -- which is how a call the operator held for an hour is never
+    refused as one nobody judged in time; None is a call nothing held, or
+    an event no hold reaches, whose bound stays where the guard started it.
     """
     limit = hook_started() + seconds
 
@@ -396,6 +418,14 @@ def answered_in_time(
     except TimeoutError:
         unanswered(b"", None)
         return
+    match held(given):
+        case True:
+            return
+        case False:
+            judgement_opened()
+            limit = hook_started() + seconds
+        case None:
+            pass
     sys.stdout.flush()
     sys.stderr.flush()
     said_out, said_in = os.pipe()
@@ -530,30 +560,23 @@ def unjudged_reason(error: BaseException | None, read: bool) -> str:
     has passed), a payload that is not one (``read`` false), and a failure
     judging a payload that was.
     """
-    if error is None or deadline_passed():
+    if ran_out(error):
         return "the policy could not judge this call in time, so it is refused unjudged"
     if not read:
         return f"the hook input is malformed, so the call is refused unjudged: {error}"
-    return f"Lup could not judge this call ({type(error).__name__}: {error})"
-
-
-def unjudged_recovery(error: BaseException | None) -> str:
-    """What the agent does about a call that went unjudged, given what failed.
-
-    Only time passes on its own, so only a judgement that ran out of it is
-    worth the same call again. Either way the refusal is the policy's defect
-    rather than the call's once it repeats, and this says where that goes.
-    """
-    report = (
-        "report it with `uv run lup-devtools dev report-friction --component"
-        " lup/policy`, naming the call and this refusal."
+    return (
+        "the policy failed on this call, so it is refused unjudged"
+        f" (`{type(error).__name__}: {error}`)"
     )
-    if error is None or deadline_passed():
-        return (
-            "Retry the same call once: a slow moment -- load on the machine, a lock"
-            " another session held -- passes.\nRefused again, " + report
-        )
-    return "If it repeats, " + report
+
+
+def ran_out(error: BaseException | None) -> bool:
+    """Whether a call went unjudged for want of time rather than for a failure.
+
+    ``error`` None is a judgement still running when the hook had to answer;
+    anything failing once the deadline has passed failed for the same reason.
+    """
+    return error is None or deadline_passed()
 
 
 def hook_seconds_left(ceiling: float) -> float:
@@ -653,7 +676,7 @@ def routed_edit_response(
         return None
     row = json.loads(binding)
     request = {
-        "protocol": 1,
+        "protocol": 2,
         "path": path,
         "before": before,
         "after": after,

@@ -3,15 +3,15 @@
 // prose, what the policy asks about, its files, exceptions, markers and thread.
 // Beside an agent: its standing and kind, what needs the operator, its holds,
 // mailbox, the reviews it parked, its subagents, and what can be done to it.
-import { useLayoutEffect, useRef, type ReactNode } from "react";
-import type { LiveSession } from "../generated/views";
+import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import type { AgentMeter, BudgetView, LiveSession } from "../generated/views";
 import type { Dashboard } from "./dashboard";
-import { gotoJudged, moveException, moveMarker, reveal, jumpTo, rowsOf } from "./editor";
+import { gotoJudged, moveException, moveMarker, openLocation, reveal, jumpTo, rowsOf } from "./editor";
 import { askedBy, basename, checkoutLabel, EFFECT_SIGN, exceptionRules, exceptionStops, exceptionsOf, headOf, headText, judgedOf, lineSummary, MARKER_LETTER, markerLabel, markerStops, needsReview, plural, relative, SOURCES, staleSentences, stateClass, stateLabel, stateSign } from "./review";
 import { HANDLERS } from "./actions";
 import type { Feature } from "./served";
 import type { PageState } from "./state";
-import { activityBrief, ago, attention, childrenOf, clock, GLYPH, heldOthers, holdersOf, inboxOf, inRepository, kindWords, parentOf, reached, reviewsOf, stamp, standing, unreadCount } from "./supervision";
+import { activityBrief, ago, attention, capsText, childrenOf, clock, GLYPH, heldCall, heldCount, heldOthers, heldWord, holdersOf, holdOwner, holdReach, holdTimes, inboxOf, inRepository, kindWords, memberById, meterOf, money, parentOf, parseCaps, reached, reviewsOf, stamp, standing, tokenCount, unreadCount, wouldHold } from "./supervision";
 import { claimPath } from "./review";
 import { memberName, reaches, type Discussion } from "./threads";
 import { Clamp } from "./Touch";
@@ -46,6 +46,7 @@ function ReviewContext({ d, state }: { d: Dashboard; state: PageState }) {
   const parent = d.parentName(row, state);
   const asker = d.asker(row, state);
   const judged = detail === null ? [] : judgedOf(detail, row);
+  const refs = state.refs?.owner === row.key ? state.refs : null;
   const full = d.ui(row.key, state).full;
   const notices = [
     ...(row.stale.length > 0 ? [<div key="stale" className="notice err">Retired as stale: {staleSentences(row).join("; ")}.</div>] : []),
@@ -55,7 +56,14 @@ function ReviewContext({ d, state }: { d: Dashboard; state: PageState }) {
   ];
   const sending = state.sending.get(row.key);
   const thread = detail === null ? [] : sending === undefined ? detail.thread : [...detail.thread, sending];
+  // First, so `gr` lands focus on its first use: the context's items are numbered as they are made.
+  const references = refs === null ? null : <section className="cx refs"><h3>{refs.why.endsWith("definitions") ? "definitions" : "uses"} of <span className="s-name">{refs.at.name}</span> <span className="k">Enter opens · {d.keymap.spoken("jump.back")} back</span></h3>
+    {refs.locations === null && <p className="muted">asking the language server…</p>}
+    {refs.locations !== null && refs.locations.length === 0 && <p className="muted">{refs.why}</p>}
+    {(refs.locations ?? []).map((location) => item(() => void openLocation(d, refs.at, location), <><span className="info">→</span> {relative(location.path, target)}:{location.line}<br /><span className="muted">{location.preview.trim()}</span></>))}
+  </section>;
   return <>
+    {references}
     <section className="cx cxhead">
       <div className="kind"><span className={`st-${stateClass(row)}`}>{stateSign(row)} {stateLabel(row)}</span> · {headText(headOf(entry))}</div>
       <div className="title" title={`${target}\n${row.title}`}><span className="muted">{checkoutLabel(target, root)}:</span> {row.title}</div>
@@ -65,7 +73,7 @@ function ReviewContext({ d, state }: { d: Dashboard; state: PageState }) {
       {detail?.question.account.map((said, index) => <div key={index} className="said-by"><p className="src">{SOURCES[said.source] ?? said.source}</p>
         <Clamp d={d} narrow={state.narrow} open={state.unclamped.has(`said:${row.key}:${index}`)} id={`said:${row.key}:${index}`} as="p"><span className="prose">{said.text}</span></Clamp></div>)}
     </section>
-    {judged.length > 0 && <section className="cx"><h3>the policy asks about <span className="k">gd</span></h3><p className="warn">{row.rule || "unattributed"}</p>
+    {judged.length > 0 && <section className="cx"><h3>the policy asks about <span className="k">{d.keymap.spoken("judged")}</span></h3><p className="warn">{row.rule || "unattributed"}</p>
       {judged.map((each, index) => {
         const where = each.kind === "segment" ? `step ${each.si + 1}: ${each.segment.command}` : each.kind === "file" ? `${relative(each.file.path, target)}${each.lines.length > 0 ? ` · ${lineSummary(each.lines)}` : ""}` : "the command line as a whole";
         return item(() => gotoJudged(d, index), <><span className="warn">?</span> {where}<br /><span className="muted">{each.reason || row.reason}</span></>);
@@ -123,6 +131,9 @@ const ACTIONS: { action: string; keys: string; label: string; needs?: Feature }[
   { action: "agent.transcript", keys: "T", label: "read its whole transcript, live", needs: "transcript" },
   { action: "peer.redirect", keys: "Space p r", label: "refuse its next tool call with your words", needs: "redirect" },
   { action: "agent.rename", keys: "Space a R", label: "rename it", needs: "rename" },
+  { action: "agent.pause", keys: "Space a z", label: "pause it at its next tool call, its subagents with it", needs: "pause" },
+  { action: "agent.freeze", keys: "Space a Z", label: "freeze it: pause, stop its running commands and interrupt its turn", needs: "pause" },
+  { action: "agent.resume", keys: "Space a u", label: "resume it: let its next call go, continue what a freeze stopped", needs: "pause" },
   { action: "agent.stop", keys: "Space a x", label: "stop its runtime (twice confirms)", needs: "stop" },
 ];
 
@@ -137,6 +148,41 @@ function runsIn(live: NonNullable<PageState["live"]>, session: LiveSession): str
   ].join(" · ");
 }
 
+/** Caps as the operator writes them, read and sent on Enter or Set; refused in words where they do not read. */
+function CapsEditor({ d, session, meter }: { d: Dashboard; session: LiveSession; meter: AgentMeter }) {
+  const [typed, setTyped] = useState(capsText(meter.caps));
+  const send = () => {
+    const caps = parseCaps(typed);
+    if (typeof caps === "string") { d.say(`E: ${caps}`, "err"); return; }
+    void d.settleBudget(session, { priority: null, caps });
+  };
+  return <span className="caps">
+    <input aria-label="Caps: a rate per hour and a total, in dollars or tokens" placeholder="$2/h $10 · 500k/h 2M · empty clears" value={typed}
+      onChange={(event) => setTyped(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); send(); } }} />
+    <button type="button" className="btn" onClick={send}>Set</button>
+  </span>;
+}
+
+/** What the budget says of an agent: what holds it and until when, what it spent, and its priority and caps, set in place. */
+function BudgetSection({ d, state, session, meter, budget, item }: { d: Dashboard; state: PageState; session: LiveSession; meter: AgentMeter; budget: BudgetView; item: Item }) {
+  const spent = (usd: number, tokens: number) => usd > 0 ? `${money(usd)} · ${tokenCount(tokens)} tokens` : `${tokenCount(tokens)} tokens`;
+  const refused = d.lacks("budgets");
+  return <section className="cx"><h3>budget <span className="k">{meter.account} · :priority · :cap</span></h3>
+    {wouldHold(budget, meter.held) !== "" && <p className="muted">{wouldHold(budget, meter.held)}</p>}
+    {meter.exempt && <p className="muted">Your own session: the budget never holds it.</p>}
+    <dl className="facts">
+      <dt>last hour</dt><dd>{spent(meter.hour.usd, meter.hour.tokens)}</dd>
+      <dt>in all</dt><dd>{spent(meter.total.usd, meter.total.tokens)}</dd>
+    </dl>
+    {!meter.exempt && <>
+      <p>priority {(["high", "normal", "low"] as const).map((priority) => item(() => refused !== "" ? d.say(refused, "err") : void d.settleBudget(session, { priority, caps: null }),
+        <span className={priority === meter.priority ? "chosen" : "muted"}> {priority}</span>))}</p>
+      <p>caps <span className="muted">{capsText(meter.caps) || "none"}</span></p>
+      <CapsEditor key={capsText(meter.caps)} d={d} session={session} meter={meter} />
+    </>}
+  </section>;
+}
+
 function MemberContext({ d, state, session }: { d: Dashboard; state: PageState; session: LiveSession }) {
   const live = state.live;
   if (live === null) return null;
@@ -148,19 +194,34 @@ function MemberContext({ d, state, session }: { d: Dashboard; state: PageState; 
   const parked = reviewsOf(live, d.roots(state), d.rows(state), session, false);
   const children = childrenOf(live, session);
   const home = live.repositories.get(session.repository);
+  const meter = session.running ? meterOf(live, session) : undefined;
   const act = (action: string) => () => {
     if (state.sel.key !== session.key) d.openOther("member", session.key);
     HANDLERS[action]?.(d, 1, false);
   };
   return <>
     <section className="cx cxhead">
-      <div className="kind"><span className={`g-${now}`}>{GLYPH[now]} {now}</span> · {session.name || session.id}</div>
+      <div className="kind"><span className={`g-${now}`}>{GLYPH[now]} {now}</span>{session.running && heldWord(session) !== "" && <span className="warn"> ⏸ {heldWord(session)}</span>} · {session.name || session.id}</div>
       <div className="muted">{kindWords(session)} · live roster</div>
       {parent !== undefined && <div>subagent of {item(() => d.openOther("member", parent.key), <b>{parent.name || parent.id}</b>)}</div>}
       <div className="muted">{runsIn(live, session)}</div>
       <Clamp d={d} narrow={state.narrow} open={state.unclamped.has(`doing:${session.key}`)} id={`doing:${session.key}`} as="p"><span className="prose">{session.doing || "It has not said what it is on."}</span></Clamp>
     </section>
     {flags.length > 0 && <section className="cx"><h3>needs you</h3>{flags.map((flag) => <p key={flag.key} className="warn">{flag.text}</p>)}</section>}
+    {meter !== undefined && <BudgetSection d={d} state={state} session={session} meter={meter} budget={live.budget} item={item} />}
+    {session.running && session.holds.length > 0 && <section className="cx"><h3>held at its next call · {session.holds.length} <span className="k">Space a u resumes</span></h3>
+      {session.holds.map((hold) => {
+        const on = hold.on === "" || hold.on === session.id ? undefined : memberById(live, session.repository, hold.on);
+        const times = holdTimes(hold, state.now);
+        return <div key={`${hold.owner}:${hold.reason}:${hold.scope}:${hold.on}`}>
+          <p className="warn">⏸ {hold.said}{hold.freeze ? " · frozen" : ""}</p>
+          <p>{holdOwner(hold)} of {on !== undefined ? item(() => d.openOther("member", on.key), <b>{holdReach(live, session, hold)}</b>) : hold.scope === "repository" ? item(() => d.openOther("repo", session.repository), <b>{holdReach(live, session, hold)}</b>) : holdReach(live, session, hold)}</p>
+          {times !== "" && <p className="muted">{times}</p>}
+          {hold.freeze && <p className="muted">Its commands were stopped and its turn interrupted; a resume continues them and wakes it with “continue”.</p>}
+        </div>;
+      })}
+      <p className="muted">{heldCall(session, state.now)}</p>
+    </section>}
     <section className="cx"><dl className="facts">
       <dt>id</dt><dd>{session.id}</dd>
       <dt>worktree</dt><dd>{session.worktree !== "" ? inRepository(session.worktree, home) : "—"}</dd>
@@ -239,7 +300,12 @@ function RepoContext({ d, state }: { d: Dashboard; state: PageState }) {
     <section className="cx"><dl className="facts"><dt>key</dt><dd>{repository.key}</dd><dt>checkout</dt><dd>{repository.checkout}</dd>
       <dt>mail on the stream</dt><dd>{before === 0 ? "every message" : `from byte ${before.toLocaleString("en")}; E loads earlier`}</dd></dl></section>
     <section className="cx"><h3>members · {here.length}</h3>
-      {here.map((each) => item(() => d.openOther("member", each.key), <><span className={`g-${standing(each, state.now)}`}>{GLYPH[standing(each, state.now)]}</span> {each.name || each.id} <span className="muted">{activityBrief(each, state.now)}</span></>))}</section>
+      {here.map((each) => item(() => d.openOther("member", each.key), <><span className={`g-${standing(each, state.now)}`}>{GLYPH[standing(each, state.now)]}</span> {each.name || each.id}{each.running && heldWord(each) !== "" && <span className="warn"> ⏸ {heldWord(each)}</span>} <span className="muted">{activityBrief(each, state.now)}</span></>))}</section>
+    <section className="cx"><h3>pause · ⏸{heldCount(live, repository.key)} held here <span className="k">:pause repo · :freeze repo · :resume repo</span>{d.lacks("pause") !== "" && <i className="srv new">not served here</i>}</h3>
+      {item(() => void d.pause({ kind: "repository", repository: repository.key }, false), <>⏸ pause repository: every agent here waits at its next tool call</>)}
+      {item(() => void d.resume({ kind: "repository", repository: repository.key }), <>▶ resume repository: lift its pause, continuing what a freeze of it stopped</>)}
+      <p className="muted">A resume here lifts only the repository's own pause; an agent paused on its own row is resumed there.</p>
+    </section>
   </>;
 }
 

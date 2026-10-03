@@ -47,8 +47,9 @@ def test_a_marker_naming_no_kind_is_refused_with_the_spellings() -> None:
 
     assert reading.request is None
     assert reading.refusal == MISSING_KIND
-    assert "escalate[decision]" in reading.refusal
-    assert "escalate[sandbox]" in reading.refusal
+    ways = [through["says"] for through in reading.recovery]
+    assert any("escalate[decision]" in says for says in ways)
+    assert any("escalate[sandbox]" in says for says in ways)
     assert reading.remainder == "ls"
 
 

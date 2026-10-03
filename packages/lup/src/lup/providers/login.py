@@ -92,6 +92,29 @@ class ProviderLogin(BaseModel, frozen=True):
     independently of whether the previous login can still renew.
     """
 
+    renewed_at: list[str] = []
+    """The keys down to a number every renewal of a stored login moves forward.
+
+    How two copies of one login are told apart when each was renewed on its
+    own: the larger number is the newer login, and the one every other copy
+    takes (:mod:`lup.providers.login_sync`). Empty where lup carries no
+    renewal between copies -- a runtime that publishes a renewed login back
+    to its account itself, or one whose login says nothing of when it was
+    renewed.
+    """
+
+    rereads_login: bool = False
+    """Whether a running session takes a login written into its home at its next request.
+
+    True where the runtime reads its stored login afresh for every request,
+    so handing a contained repository's volume another account's login moves
+    every session running on that volume to it. False where a session keeps
+    the login it started with until it is opened again, so the same handoff
+    reaches each running session only when it relaunches. The answer is the
+    runtime's own, measured rather than inferred, and it decides what a
+    launch or a switch says it would do to the sessions already running.
+    """
+
     ambient_home: Path
     """Where this runtime's CLI keeps configuration when nothing selects one.
 
@@ -164,6 +187,22 @@ class ProviderLogin(BaseModel, frozen=True):
     trust into it at every start. Empty where the runtime keeps trust
     somewhere a launch writes itself, so its home gains no stray file.
     """
+
+    account_id: list[str] = []
+    """The keys in :attr:`trust_document` down to the id of the account signed in.
+
+    Who a login is, as opposed to which home it is kept in: two copies of
+    one login share it, and a home someone signed in to another account
+    from changes it. Empty where the runtime records no such id."""
+
+    account_name: list[str] = []
+    """The keys in :attr:`trust_document` down to how a person names that account."""
+
+    def account_document(self, home: Path) -> Path:
+        """The document saying whose login *home* keeps: beside the runtime's own default, inside any other."""
+        if not self.ambient_home_nameable and home.expanduser() == self.ambient_home:
+            return home.expanduser().parent / self.trust_document
+        return home / self.trust_document
 
     home_subdir: str
     """Subdirectory this runtime's configuration home takes inside a profile.

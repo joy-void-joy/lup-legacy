@@ -2,8 +2,9 @@
 // draws from. Each part is replaced, never edited in place, so a view that
 // reads one part redraws only when that part moves.
 import { useSyncExternalStore } from "react";
-import type { KeyBindings, KeyLine, ReviewDetail, ReviewSummary, SetupPane, ThreadEntry, TranscriptEntry } from "../generated/views";
+import type { CodeHover, CodeLocation, CodeSource, KeyBindings, KeyLine, ReviewDetail, ReviewSummary, SetupPane, ThreadEntry, TranscriptEntry } from "../generated/views";
 import type { ReviewAccess, ReviewLink } from "./api";
+import type { Paint } from "./highlight";
 import type { LiveState } from "./live";
 import type { Draft, PaneView, ReviewUi } from "./review";
 import type { LogLine, Selection, TreeFilter } from "./supervision";
@@ -26,6 +27,25 @@ export type Win = "queue" | "editor" | "composer" | "context" | "setup" | "setup
  */
 export type Pane = { view: PaneView; cur: number; want: number };
 
+/**
+ * A document a window shows in place of the review it was opened from, as
+ * Neovim's `gd` shows a definition: read-only, the review it belongs to, the
+ * document it is and its text, the name jumped to, and where.
+ */
+export type Peek = { owner: string; source: CodeSource; text: string; name: string; line: number; column: number };
+
+/** Where a window stood before a jump, so `Ctrl+o` comes back to it. */
+export type Jump = { peek: Peek | null; cur: number; want: number };
+
+/** A place in a document a question about code is asked at: the document, a one-based line and a UTF-16 column, and the name there. */
+export type CodeAt = { source: CodeSource; line: number; column: number; name: string };
+
+/** What the hover asked a language server, and its answer once it came; null while it is on its way. */
+export type CodeAsk = { at: CodeAt; hover: CodeHover | null; pointer: boolean };
+
+/** Every use `gr` found of one name, listed in the context: null while the server is asked. */
+export type References = { owner: string; at: CodeAt; locations: CodeLocation[] | null; why: string };
+
 export type Tone = "" | "ok" | "err" | "warn" | "info";
 
 /** A notice: an outcome, a refusal, or word from the dashboard; sticky ones stand until dismissed. */
@@ -39,7 +59,7 @@ export type Float =
   | { kind: "contrast" }
   | { kind: "keys" }
   | { kind: "checkouts" }
-  | { kind: "hover"; top: number; left: number }
+  | { kind: "hover"; top: number; left: number; code?: CodeAsk }
   | { kind: "finder"; picker: string; query: string; cur: number }
   | { kind: "transcript" };
 
@@ -136,6 +156,13 @@ export type PageState = {
   /** The agent whose stop is asked for once and waits for the second ask, by key. */
   stopArmed: string;
   transcript: TranscriptView | null;
+  /** The document each window shows in place of its review after `gd`, and where each stood before. */
+  peeks: [Peek | null, Peek | null];
+  jumps: [Jump[], Jump[]];
+  /** What `gr` found, listed in the context. */
+  refs: References | null;
+  /** A language server's paint over each document it classified, by the document's key. */
+  semantic: ReadonlyMap<string, Paint[]>;
   log: LogLine[];
   keyLines: KeyLine[];
   tried: KeyBindings | null;
@@ -158,7 +185,7 @@ export function initialState(access: ReviewAccess, linked: ReviewLink | null, wi
     settings: { wrap: true, numbers: true, advance: true, size: 13 },
     armed: false, typing: false, pending: "", whichKey: false, float: null, cmdline: null,
     search: { pattern: "", typing: null, from: null, lit: false },
-    notes: [], said: [], message: { text: "", tone: "" }, replyDrafts: {}, replyOutcome: {}, threadReply: "", replyTo: {}, stopArmed: "", transcript: null, log: [], keyLines: [], tried: null,
+    notes: [], said: [], message: { text: "", tone: "" }, replyDrafts: {}, replyOutcome: {}, threadReply: "", replyTo: {}, stopArmed: "", transcript: null, peeks: [null, null], jumps: [[], []], refs: null, semantic: new Map(), log: [], keyLines: [], tried: null,
     touch: { drawer: "", sheet: "" }, unclamped: new Set(), navKind: "", now: Date.now(),
   };
 }

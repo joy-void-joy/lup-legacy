@@ -34,6 +34,7 @@ sys.path.insert(0, str(Path(__file__).parents[1] / "runtime"))
 from codex_patch import patched_files, patched_paths
 from decisions import (
     edit_claim_decision,
+    held_refusal,
     unconfined_by_declaration,
     bash_decision,
     edit_decision,
@@ -60,6 +61,7 @@ from host import (
     boundary_account,
     closed_deadline,
     declared_identity,
+    hook_started,
     note_ran,
     observe_hook_call,
     opened_deadline,
@@ -68,12 +70,14 @@ from host import (
     record_hook_evidence,
     sandbox_active,
     unjudged_reason,
-    unjudged_recovery,
+    ran_out,
     words_before,
 )
 from kernel.rows import PostToolReport
 from kernel.review import Said
 from kernel.decision import KernelDecision
+from kernel.decision import unjudged_recovery
+from kernel.diagnostic import Step, devtools, spelled, stated, step
 from kernel.review import literal_input
 from kernel.shell import auto_escape_matches
 from caller_payload import caller_of, spoken, transcript_of
@@ -309,16 +313,24 @@ def waiting(command, payload):
     """
     if "agent_id" in payload:
         return (
-            f"Carry on with other work, and hold `{command}` in your shell tool, "
-            "reading its output before you report: once a subagent reports, "
-            "nothing wakes it, and a command it left running wakes nobody. If it "
-            "ends with the review still waiting, start it again quietly, "
-            "reporting that to nobody."
+            step(
+                "carry on with other work, and hold this in your shell tool,"
+                " reading its output before you report: once a subagent reports,"
+                " nothing wakes it, and a command it left running wakes nobody",
+                command,
+            ),
+            step(
+                "if it ends with the review still waiting, start it again"
+                " quietly, reporting that to nobody"
+            ),
         )
     return (
-        "Carry on with other work, or end your turn: the operator's answer is "
-        f"queued into this thread, which starts a turn, and `{command}` then "
-        "carries the call out at once. Don't start a waiter."
+        step(
+            "carry on with other work, or end your turn: the operator's answer is"
+            " queued into this thread, which starts a turn, so don't start a"
+            " waiter"
+        ),
+        step("once it wakes you, carry the call out at once", command),
     )
 
 
@@ -566,7 +578,7 @@ def unjudged_detail(event, error, read):
         failure = error if error is not None else "it did not finish in time"
         return f"Lup post-tool check failed: {failure}"
     return KernelDecision(
-        "deny", unjudged_reason(error, read), recovery=unjudged_recovery(error)
+        "deny", unjudged_reason(error, read), recovery=unjudged_recovery(ran_out(error))
     ).addressed()
 
 
@@ -598,6 +610,54 @@ def unanswered(given, error):
         )
         return
     sys.stderr.write(detail)
+    raise SystemExit(2)
+
+
+def held(given):
+    """Keep a call waiting while a hold covers its caller, before anything judges it.
+
+    Only a call about to run is held: not the event watching one that ran,
+    and not the permission request Codex raises for a call already let go
+    past this one. True where the call was refused here -- still held at the
+    hold's limit -- by the reason on stderr and the exit status this
+    boundary refuses with; False where a hold kept it waiting and then let it
+    go to be judged; None where nothing held it or no hold reaches its
+    event. Input nothing can read is let go to the judgement, which refuses
+    it in its own words.
+
+    A hold this cannot read is let go to the judgement too, which meets the
+    same failure and refuses in its own words, or judges the call at once.
+    The call is not let through unheld for it: the hold hook registered
+    beside this one for every tool holds it as well, and refuses wherever it
+    cannot tell. What this adds is only that a held call is judged when let
+    go, not when it was made.
+    """
+    try:
+        payload = json.loads(given)
+    except ValueError:
+        return None
+    return held_input(payload) if isinstance(payload, dict) else None
+
+
+def held_input(payload):
+    """The hold of one decoded hook input, as :func:`held` answers it."""
+    if "hook_event_name" not in payload or payload["hook_event_name"] != "PreToolUse":
+        return None
+    try:
+        refused = held_refusal(
+            payload["tool_name"] if "tool_name" in payload else "",
+            payload["tool_use_id"] if "tool_use_id" in payload else "",
+            Path(payload["cwd"]) if "cwd" in payload else None,
+            lambda: caller_of(payload),
+            hook_started(),
+        )
+    except Exception:
+        return None
+    if refused is None:
+        return None
+    if not refused:
+        return False
+    sys.stderr.write(refused)
     raise SystemExit(2)
 
 
@@ -679,7 +739,9 @@ def judged(given):
             f"{type(error).__name__}: {error}",
         )
         decision = KernelDecision(
-            "deny", unjudged_reason(error, read), recovery=unjudged_recovery(error)
+            "deny",
+            unjudged_reason(error, read),
+            recovery=unjudged_recovery(ran_out(error)),
         )
         if not permission_request:
             sys.stderr.write(unjudged_detail(event, error, read))

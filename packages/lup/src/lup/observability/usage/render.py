@@ -146,11 +146,7 @@ class WindowPace(BaseModel):
 
 def window_pace(window: PacingWindow) -> WindowPace:
     """Even-pace percent and the utilization-to-pace ratio for a window."""
-    window_start = window.resets_at - timedelta(hours=window.window_hours)
-    now = datetime.now(window.resets_at.tzinfo)
-    elapsed = (now - window_start).total_seconds()
-    total = window.window_hours * 3600
-    linear_pct = min((elapsed / total) * 100, 100) if total > 0 else 0
+    linear_pct = window.even_pct(datetime.now(window.resets_at.tzinfo))
     ratio = (window.utilization_pct / linear_pct) if linear_pct > 0 else 0
     return WindowPace(linear_pct=linear_pct, ratio=ratio)
 

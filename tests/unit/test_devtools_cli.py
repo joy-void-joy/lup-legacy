@@ -31,6 +31,7 @@ from lup.workspace.paths import project_root
 from lup_template.harness.catalog import declared_hook_set
 from lup_template.devtools.main import app
 from lup.devtools.sync import load_json
+from lup.diagnostics import Refusal
 
 # Typer renders usage errors through Rich, which styles option tokens whenever
 # it believes it is writing to a terminal. That splits a flag name from the
@@ -167,7 +168,7 @@ READONLY_COMMANDS: list[list[str]] = [
     ["trace", "list"],
     ["feedback", "status"],
     ["setup", "status"],
-    ["setup", "profile", "list"],
+    ["harness", "profile", "list"],
     ["sync", "status"],
 ]
 
@@ -332,8 +333,9 @@ def test_annotated_registry_raises_a_typed_recovery_error(
 
     path.write_text('{"projects": []}\n# a trailing annotation\n', encoding="utf-8")
 
-    with pytest.raises(typer.BadParameter, match="not valid JSON"):
+    with pytest.raises(Refusal) as refused:
         load_json(path)
+    assert refused.value.said["why"].startswith("is not valid JSON")
 
 
 def test_ending_a_run_needs_no_adapter_but_driving_one_still_does() -> None:
@@ -346,11 +348,11 @@ def test_ending_a_run_needs_no_adapter_but_driving_one_still_does() -> None:
     ended = runner.invoke(
         app, ["resolve", "--abort", "reason", "--run-id", "absent-run"]
     )
-    assert "--adapter is required" not in ended.output
-    assert "no resolver run 'absent-run' to abort" in ended.output
+    assert "`--adapter` — is required" not in ended.output
+    assert "`absent-run` — names no resolver run to abort" in ended.output
 
     driven = runner.invoke(app, ["resolve", "--run-id", "absent-run"])
-    assert "--adapter is required" in driven.output
+    assert "`--adapter` — is required to drive a resolver run" in driven.output
 
 
 def effect_of(arguments: list[str], environment: dict[str, str | None]) -> str:

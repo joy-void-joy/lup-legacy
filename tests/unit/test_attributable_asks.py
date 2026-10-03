@@ -96,7 +96,7 @@ def test_every_edit_question_names_its_gate_and_its_purpose() -> None:
             kind="exact",
             value="docs/owned.md",
             reason="human-owned",
-            recovery="",
+            recovery=[],
             allow_autonomous=False,
             description="docs/owned.md",
         )

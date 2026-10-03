@@ -16,8 +16,10 @@ from lup.devtools.dev.antipatterns import (
 )
 from lup.devtools.dev.pyright_oracle import default_oracle
 from lup.devtools.project import DevProject
+from lup.diagnostics import refuse
 from lup.devtools.utils import output_json
 from lup.harness.codescan.antipatterns import RuleSet, audit_text
+from lup.policy.kernel.diagnostic import step
 from lup.harness.codescan.common import (
     PythonContext,
     PythonSource,
@@ -30,6 +32,7 @@ from lup.harness.codescan.resolution import refute, resolved_sites
 from lup.harness.enforcement import declared_path_rules, declared_role_rows
 from lup.harness.models import HookSet
 from lup.policy.edit_rules import erase_edit_rules
+from lup.policy.kernel.diagnostic import Step
 from lup.policy.kernel.edit import (
     MARKDOWN_SUFFIXES,
     covering_suppression_line,
@@ -86,7 +89,8 @@ class EditReading(BaseModel, frozen=True):
     path: Path
     effect: Literal["allow", "ask", "deny", "defer"]
     reason: str
-    recovery: str
+    subject: str
+    recovery: tuple[Step, ...]
 
 
 class PreparedEdit(BaseModel, frozen=True):
@@ -430,6 +434,7 @@ def candidate_readings(
             path=path,
             effect=verdict.effect,
             reason=verdict.reason,
+            subject=verdict.subject,
             recovery=verdict.recovery,
         )
 
@@ -544,15 +549,28 @@ def run(
             or path_role(output.relative_to(root).as_posix(), project.path_roles)
             != "scratch"
         ):
-            raise ValueError("--output must be inside a declared scratch path")
+            refuse(
+                "is not inside a declared scratch path",
+                what=f"--output {output}",
+                code=2,
+            )
         if output.exists():
-            raise ValueError("--output already exists; choose a fresh artifact path")
+            refuse(
+                "already exists",
+                what=f"--output {output}",
+                steps=[step("choose a fresh artifact path")],
+                code=2,
+            )
         batch = EditBatch.model_validate_json(document.read_text(encoding="utf-8"))
         if any(
             output.is_relative_to((root / change.path).resolve())
             for change in batch.changes
         ):
-            raise ValueError("--output cannot be a proposed edit target or beneath one")
+            refuse(
+                "is a proposed edit target or beneath one",
+                what=f"--output {output}",
+                code=2,
+            )
         requests = (
             TypeAdapter(list[SuppressionRequest]).validate_json(
                 suppressions.read_text(encoding="utf-8")
@@ -568,7 +586,7 @@ def run(
             with output.open("x", encoding="utf-8", newline="") as stream:
                 stream.write(prepared.patch)
     except (OSError, ValueError, SyntaxError) as error:
-        raise typer.BadParameter(str(error)) from error
+        refuse(str(error), code=2)
     if as_json:
         output_json(prepared)
     else:

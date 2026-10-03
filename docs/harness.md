@@ -180,7 +180,7 @@ Canonical sources live in `lup.harness.content`
 (adapter renderers and the policy bundle).
 
 Three things that map states and the reason for each. The
-31 modules under `hooks/runtime/kernel/` are a verbatim
+32 modules under `hooks/runtime/kernel/` are a verbatim
 copy of `lup/policy/kernel/`, kept byte-identical so it can be diffed against
 the canonical package. The ownership manifests are written by
 `lup.harness.ownership` from the generation result rather than compiled from a
@@ -828,6 +828,12 @@ reopen = true               # a review parking with no tab open reopens the page
 origins = ["https://their.proxy.name"]   # also answered, where a reverse proxy
                             # serves the page: whole origins, no path
 
+[budget]                    # what the dashboard lets agents spend, and how fast
+window_ceiling = 95         # every agent holds at 95% of a window: the default
+pace = "even"               # no window spent faster than it passes
+reserve = 10                # the last 10% of every window kept for you
+max_active = 3              # agents working at once, per account
+
 [container]                 # what every contained session is granted: over the
 network = "bridge"          # project's, under a mode and the command line
 memory = "75%"              # an amount such as "12GiB", or a share of the engine's
@@ -901,6 +907,30 @@ file says otherwise) have passed — never while a container holds it.
 `harness clean` lists each with its size and that date, and
 `harness clean --yes` removes them sooner.
 
+Every contained session of a repository shares one login, the one its volume
+was last handed: a launch offers the selected profile's, and the container's
+entrypoint applies it. Claude Code rereads that file at every request, so
+another profile's login moves every Claude session running there at its next
+one; Codex keeps the login it started with and takes another only when it is
+opened again. lup records which profile it last handed each volume, and when,
+in `$XDG_STATE_HOME/lup/volume-logins/` — a volume cannot be read without
+starting a container. A contained launch whose profile differs from that
+record while containers holding the volume run is refused, saying how many
+and what happens to them; `--move-sessions` moves them with the launch.
+`harness profile switch NAME [--runtime claude|codex]` moves them without
+opening anything: it hands the volume the profile's login through the image's
+own seed program, says which sessions take it at their next request, and
+prints the command that reopens each one that needs opening again — a Codex
+session, and a host session, which runs in its own profile's home where no
+volume reaches. That command reopens the conversation where the new account
+still finds it: in the volume for a contained session, in the checkout's home
+for a Codex one on the host, and fresh for a Claude host session, whose
+conversation lives in its old profile's home. Each launch also records the
+profile and posture a session opened on, keyed by its roster id, in
+`launched-accounts/` beside that record. `harness requirements --inside`
+offers its login too, and where sessions run on another one it keeps theirs
+instead.
+
 Several containers start on one volume at once — a launch's probes, a run's
 workers, a second terminal — and each amends the documents its runtime reads
 there before the runtime starts. So every lup writer of them holds the home's
@@ -944,8 +974,8 @@ inside another stays on the account it was started under. A project may still
 supply an origin of its own through the harness, resolver and setup trees;
 naming none takes these.
 
-`harness profile` and `setup profile` curate them, acting on the checkout's
-own profiles unless `--global` names the shared ones, as `git config` does:
+`harness profile` curates them, acting on the checkout's own profiles unless
+`--global` names the shared ones, as `git config` does:
 
 | Command | Without `--global` | With `--global` |
 | --- | --- | --- |
@@ -987,6 +1017,19 @@ moved; a name already present keeps what it holds and the source is left and
 reported; the selection either place holds is carried where `config.toml`
 records none.
 
+`harness profile switch NAME` moves the running sessions of this repository
+onto a profile rather than selecting one for later: it hands the profile's
+login to the container volume the repository's contained sessions of one
+runtime share (`--runtime codex` for Codex's). Claude Code reads its login file
+at every request, so a contained Claude session runs on the new account from
+its next one; a Codex session, and any host session, is answered with the
+command that opens it again on the profile. A contained launch naming another
+profile than the volume holds refuses rather than move the sessions running on
+it, saying how many, unless `--move-sessions` says that is meant. Run from a
+session, the switch is put to the operator first, as any change to the login
+sessions run as is; the dashboard's `:switch` is the operator's own. Nothing
+makes it by itself: when an account runs out, the dashboard suggests one.
+
 No profile may name Claude Code's default home, `~/.claude`, however it is
 spelled or reached — a symlinked directory profile included. A profile exports
 its home as `CLAUDE_CONFIG_DIR`, and with `~/.claude` named there Claude Code
@@ -1025,7 +1068,31 @@ wherever one exists — the document's first name, which Claude Code still
 honours and never creates, and which wins however empty it is. A derived home
 lives in the checkout, under `.lup/sessions/`, whichever profile it was derived
 from: it keeps a document of its own under the current name, seeded from
-whichever document the profile is read from, and never a `.config.json`.
+whichever document the profile is read from, and never a `.config.json`. It
+keeps a copy of the profile's login too, in `.credentials.json`, rather than a
+link to it: Claude Code renames a refreshed login over that file, which
+replaces a link. Each derivation applies the profile's login again once it has
+changed, keeping whatever else the copy holds; under an unchanged profile, the
+copy a session renewed stays as that session left it.
+
+A renewal can rotate the refresh token, so a copy one session renewed leaves
+every other copy holding a token the provider may no longer answer. The
+dashboard every launch holds carries it: every 30 seconds it reads each
+account's copies — the profile's own login, every home derived from it in a
+served checkout, and every served repository's volume lup last handed it, the
+volumes through a helper container every fourth pass — and writes the newest
+into the rest, the profile's included. Only copies of the profile's own
+account take part, told by the account id Claude Code writes beside the login
+at sign-in (`oauthAccount.accountUuid` in `.claude.json`): a copy someone
+signed in to another account from inside a session is that other account's
+now and is left alone, and a profile whose account cannot be told carries
+nothing. Newest is the copy whose access token
+expires last, since a refresh moves that forward; a copy that can no longer
+renew never wins. A file is replaced only where it still holds the bytes it was
+read with, so a session renewing it meanwhile keeps its renewal for the next
+pass; a volume is handed the login by the image's seed program, which has no
+such check. A Codex launch converges its worktree home with the account
+instead, the newer refresh winning, as it opens and as its session closes.
 Every one of these spellings matters for an interactive fix: accepting a trust
 dialog in a shell that does not export the same variables writes to a different
 document and appears to do nothing.

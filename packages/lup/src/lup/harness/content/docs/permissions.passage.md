@@ -1571,21 +1571,46 @@ Each rule id is shown in the deny message that cites it, and indexed in
 
 ## What a question says
 
-A verdict carries two texts for two readers, and the contract is that
-neither borrows from the other. The `reason` is read by whoever approves,
-who answers yes or no and can act on nothing else, so it is one sentence of
-at most two hundred characters that leads with the operands the decision
-turns on — the packages a `--with` installs, the path a write lands on, the
-host a fetch reaches — and states the one fact that stopped it. A compound
-command that trips several rules lists each survivor after the first, one
-per line, because the answer is one decision over the whole operation. The
-`recovery` is read by the agent, on a refusal or a question nobody can be
-shown, and says what to change; it is where every instruction goes, and an
-instruction found in a reason is a defect
-`packages/lup/tests/unit/test_reason_voice.py` refuses. Neither carries
-reference. A scope table, a rule index, the marker grammar: each is the same
-on every occurrence and read on none, so a question names where it is
-pulled from — `dev policy`, this page — rather than repeating it.
+Every message read at an event — a hook's refusal, a question put to an
+approver, a command's error, a gate's finding — takes one shape, declared in
+`lup.policy.kernel.diagnostic`:
+
+```
+refused: `pip` — changes packages outside this project's lockfile
+→ add the package through uv, which keeps the lockfile: `uv add <package>`
+→ or remove one: `uv remove <package>`
+```
+
+The first line is the verdict — `refused`, `asks`, `queued`, `allowed` or
+`deferred` from the policy, `error` or `warning` from a command — then the
+words of the call that decided it, in backticks, then why, in one clause.
+The words are the verdict's `subject`: the packages a `--with` installs, the
+paths a write or a delete touches as the policy placed them (`rm
+$PWD/tmp/x` where a `cd` left the directory unknown), the host a fetch
+reaches, never the whole command echoed back. That line is the whole of what an approver reads, who answers
+yes or no and can act on nothing else, so the `reason` it ends with carries
+no instruction: one found there is a defect
+`packages/lup/tests/unit/test_reason_voice.py` refuses. A compound command
+that trips several rules lists each survivor after the first on an `also:`
+line, because the answer is one decision over the whole operation.
+
+Each arrow line is one way through, read by the agent: under a refusal, or
+beside a question as context. A rule's own ways come first, then the route
+past the verdict, escalating or asking the relay; "change the command to one
+the policy allows" is offered only where the rule names no way of its own,
+since beside one it tells the agent nothing. A way through is data — what to do in plain
+words, and the command that does it as the words a shell runs — so a command
+is spelled one way wherever it is shown, `uv run lup-devtools …` for this
+project's own CLI. The `documented commands` row of `dev check` resolves
+every devtools command a way through names against the CLI that serves it,
+and `tests/unit/test_diagnostics_standard.py` refuses a command named in a
+way through's prose, and a command's error exit built from a bare string:
+a command ends on an error through `lup.diagnostics.refuse`.
+
+Neither carries reference. A scope table, a rule index, the marker grammar:
+each is the same on every occurrence and read on none, so a diagnostic names
+the page it is pulled from on a closing `see` line rather than repeating it.
+`dev policy` prints a verdict exactly as the hook sends it.
 
 ## Execution does not grant authority
 
@@ -1807,6 +1832,31 @@ running at the deadline in the same words, and refuses a call whose hook
 raised rather than handing the error to a runtime that would run the call
 anyway; [platform-differentiation.md](platform-differentiation.md) says
 what each runtime does on its own.
+
+A call can also be held before it is judged at all: while the operator's
+pause or a budget covers the agent making it — a hold, a file in the
+repository's coordination store — its
+hooks say nothing, and to the agent the call only takes long. Holding is its
+own state, ahead of the judgement and outside its time: the dispatcher's
+first step (`held`, which the compiler hands `host.answered_in_time`) waits
+while a hold covers the caller, reading the store each second, and a call it
+let go is judged from that moment with the whole of `policy_timeout`
+(`host.judgement_opened`), so a call the operator held for an hour is never
+refused as one nobody judged in time. A call nothing holds costs one
+directory listing and keeps the guard's start. Because a runtime runs a call
+once its hook overruns, a holding hook declares `HookSet.hold_seconds` plus
+`policy_timeout` (`lup.policy.bundle.held_hook_timeout`; a day and thirty
+seconds by default) and gives up at `hold_seconds`, refusing the call in the
+hold's own words and the diagnostic shape every refusal speaks — "refused:
+paused by the operator; this call didn't run", its way through "retry it"
+— and the retry is held afresh. The policy hook holds the calls it judges; a
+second hook, `coordination_hold.sh`, holds every other tool's, since a
+paused agent reading files is held at its next read too. Its guard starts no
+interpreter where no hold file exists, and where one does it refuses the
+call on any failure rather than letting a call that might be held run. The
+`PostToolUse` and `PermissionRequest` entries keep `policy_timeout` alone:
+nothing is held there. A session opened in process is held the same way,
+ahead of its policy's hooks (`create_hold_hooks`).
 
 Plugin hooks receive a writable data directory: `PLUGIN_DATA` under Codex and
 `CLAUDE_PLUGIN_DATA` under Claude Code. Each dispatcher appends

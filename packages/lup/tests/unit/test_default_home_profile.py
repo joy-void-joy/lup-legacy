@@ -26,6 +26,7 @@ from pydantic import ValidationError
 from typer.testing import CliRunner
 
 import lup.devtools.harness.launch as launch
+from lup.diagnostics import Refusal
 from lup.launch.declaration import LaunchSandbox
 import lup.providers.claude.usage.reader as claude_usage
 from lup.devtools.harness.composition import NativeTargets
@@ -309,7 +310,7 @@ def test_the_profile_command_tree_refuses_selecting_a_stored_default_home(
     assert "profile remove main" in result.output
 
 
-def test_the_setup_wizard_refuses_adding_the_default_home(
+def test_the_setup_wizard_leaves_profiles_to_the_harness_tree(
     directory: ProfileDirectory, config: UserConfigFile
 ) -> None:
     result = runner.invoke(
@@ -318,7 +319,7 @@ def test_the_setup_wizard_refuses_adding_the_default_home(
     )
 
     assert result.exit_code != 0
-    assert WAY_OUT in result.output
+    assert "No such command 'profile'" in result.output
     assert not config.profiles_root().exists()
 
 
@@ -329,13 +330,14 @@ def test_a_launch_refuses_a_stored_default_home_as_a_bad_parameter(
     root = checkout(tmp_path)
     caught = stub_host(monkeypatch, root)
 
-    with pytest.raises(typer.BadParameter, match="profile remove main"):
+    with pytest.raises(Refusal) as refused:
         launch.launch_claude(
             composition(root, "claude"),
             launch.LaunchArguments(sandbox=LaunchSandbox.INNER),
             registered,
             False,
         )
+    assert "profile remove main" in refused.value.said["why"]
     assert caught.events == []
 
 

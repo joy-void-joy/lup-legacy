@@ -106,6 +106,60 @@ class AccountUsage(BaseModel, frozen=True):
     tokens: AccountTokenUsage
 
 
+class RolloutWindow(BaseModel, frozen=True, extra="ignore"):
+    """One metered window as a rollout's token count records it, in snake case.
+
+    Read off codex-rs/protocol/src/protocol.rs at rust-v0.159.2
+    (``RateLimitWindow``): the same three facts the app-server reports, under
+    the core protocol's own names.
+    """
+
+    used_percent: float = 0
+    window_minutes: int | None = None
+    resets_at: int | None = None
+
+    def read(self) -> RateLimitWindow:
+        """The window as the app-server spells it, which the display reads."""
+        return RateLimitWindow.model_validate(
+            {
+                "usedPercent": self.used_percent,
+                "resetsAt": self.resets_at,
+                "windowDurationMins": self.window_minutes,
+            }
+        )
+
+
+class RolloutLimits(BaseModel, frozen=True, extra="ignore"):
+    primary: RolloutWindow | None = None
+    secondary: RolloutWindow | None = None
+
+
+class RolloutTokens(BaseModel, frozen=True, extra="ignore"):
+    total_tokens: int = 0
+
+
+class RolloutUsage(BaseModel, frozen=True, extra="ignore"):
+    last_token_usage: RolloutTokens = RolloutTokens()
+
+
+class TokenCountPayload(BaseModel, frozen=True, extra="ignore"):
+    """A rollout event's payload, as far as a token count needs it.
+
+    Codex persists every ``token_count`` event to the rollout whatever the
+    thread's history mode (codex-rs/rollout/src/policy.rs at rust-v0.159.2):
+    what the last request moved, and the account's windows as it moved it.
+    """
+
+    type: str = ""
+    info: RolloutUsage | None = None
+    rate_limits: RolloutLimits | None = None
+
+
+class RolloutEvent(BaseModel, frozen=True, extra="ignore"):
+    type: str = ""
+    payload: TokenCountPayload | None = None
+
+
 class CodexAccountClient:
     """One short-lived app-server connection, opened to ask about an account.
 

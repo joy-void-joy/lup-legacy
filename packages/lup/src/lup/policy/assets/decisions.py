@@ -22,7 +22,6 @@ against the workspace.
 """
 
 import json
-import shlex
 from collections.abc import Callable
 from hashlib import sha256
 from pathlib import Path
@@ -85,6 +84,8 @@ from host import (
     swept_files,
 )
 from kernel.decision import KernelDecision
+from kernel.diagnostic import Step, devtools, spelled, stated, step
+from kernel.diagnostic import diagnostic, rendered as rendered_said
 from kernel.rows import PostToolReport
 
 # A line of its own: a dispatcher's bundle drops an import line whose text is
@@ -102,6 +103,7 @@ from kernel.documents import (
 )
 from kernel.policy_protocol import read_response, routing_failure
 from coordination import store
+from coordination.holds import Waiting, covering, held_call, holds_placed, refusal
 from coordination.runtime import stdin_runtime
 from kernel.edit import (
     awaits_resolution,
@@ -164,6 +166,7 @@ from policy_data import (
     RESOLUTION_COMMAND,
     DENIED_FETCH_SCOPES,
     EDIT_RULES,
+    HOLD_SECONDS,
     IMPORT_BOUNDARIES,
     KNOWN_ALLOWANCES,
     MAXIMUM_ADDED_LINES,
@@ -484,7 +487,7 @@ def bash_decision(
         record_question(
             cwd,
             command,
-            verdict.reason,
+            stated(verdict.subject, verdict.reason),
             verdict.rule,
             verdict.purpose or "",
             verdict.reviewer,
@@ -572,7 +575,7 @@ def reviewed_decision(
     tool: str,
     arguments: dict,
     preconditions: dict[Path, str | None],
-    waiting: Callable[[str], str],
+    waiting: Callable[[list[str]], tuple[Step, ...]],
     execution_id: str = "",
     stage: str = "",
     predecessor: str = "",
@@ -622,7 +625,7 @@ def reviewed_decision(
             {str(path): before for path, before in bound.items()},
             sort_keys=True,
         ),
-        decision.reason,
+        stated(decision.subject, decision.reason),
         decision.rule,
         decision.purpose or "",
         decision.reviewer,
@@ -656,18 +659,23 @@ def reviewed_decision(
             "decision": decision.revised(
                 effect="deny",
                 recovery=(
-                    f"The operator declined review {identifier}{note}. Don't "
-                    "retry this call as it stands: change course, or ask the "
-                    "user."
+                    step(
+                        f"the operator declined review {identifier}{note}: don't"
+                        " retry this call as it stands"
+                    ),
+                    step("change course, or ask the user"),
                 ),
             ),
             "notice": f"Lup review {identifier} was declined; the agent is told.",
         }
     if not identifier:
-        unavailable = f"Review queue unavailable: {result['reason']}. Run this operation from an operator terminal."
+        unavailable = f"the review queue is unavailable: {result['reason']}"
         return {
-            "decision": decision.revised(effect="deny", recovery=unavailable),
-            "notice": unavailable,
+            "decision": decision.revised(
+                effect="deny",
+                recovery=(step(f"{unavailable}; run this from an operator terminal"),),
+            ),
+            "notice": f"Lup: {unavailable}. Run this operation from an operator terminal.",
         }
     project = declared_identity(POLICY_ROOT_ENV)
     prefix = [
@@ -686,37 +694,63 @@ def reviewed_decision(
         "lup-devtools",
         "review",
     ]
-    approve = shlex.join([*prefix, "approve", identifier, "--as", "operator"])
-    decline = shlex.join([*prefix, "decline", identifier, "--as", "operator"])
     dashboard = declared_identity(DASHBOARD_URL_ENV)
-    where = (
-        f"on the dashboard, {dashboard}"
+    answers = (
+        (step(f"the operator answers it on the dashboard, {dashboard}"),)
         if dashboard
-        else f"from a terminal outside the session: `{approve}` or `{decline}`"
+        else (
+            step(
+                "the operator answers it from a terminal outside the session",
+                [*prefix, "approve", identifier, "--as", "operator"],
+            ),
+            step(
+                "or declines it", [*prefix, "decline", identifier, "--as", "operator"]
+            ),
+        )
     )
     waiting_here = waiting_edits(cwd, session, agent)
     together = (
-        f" {waiting_here} of your edits now wait on the operator one review at "
-        "a time. Where changes belong together, write each file as it should "
-        "end up under one directory in the tmp/ of the checkout they change, "
-        "mirroring that checkout, and run "
-        f"`{shlex.join([*prefix, 'propose'])} <that directory, absolute> --why "
-        "'<what they change and why>'`: the operator reads them as one review "
-        "and answers all of them at once. Write --why and each file's note in "
-        "plain words, as you would tell a colleague at their desk; `review "
-        "propose --help` shows how."
+        (
+            step(
+                f"{waiting_here} of your edits now wait on the operator one review"
+                " at a time. Where changes belong together, write each file as it"
+                " should end up under one directory in the tmp/ of the checkout"
+                " they change, mirroring that checkout, and propose them as one"
+                " review, which the operator answers all at once",
+                [
+                    *prefix,
+                    "propose",
+                    "<that directory, absolute>",
+                    "--why",
+                    "<what they change and why>",
+                ],
+            ),
+            step(
+                "write --why and each file's note in plain words, as you would"
+                " tell a colleague at their desk",
+                [*prefix, "propose", "--help"],
+            ),
+        )
         if waiting_here >= 2
-        else ""
+        else ()
+    )
+    where = (
+        f"on the dashboard, {dashboard}"
+        if dashboard
+        else "from a terminal outside the session"
     )
     return {
         "decision": decision.revised(
             effect="deny",
+            queued=identifier,
             recovery=(
-                f"Queued for the operator as review {identifier} — not refused. "
-                "Don't change the command. "
-                + waiting(shlex.join([*prefix, "wait", identifier]))
-                + f" The operator answers it {where}."
-                + together
+                step(
+                    f"it waits on the operator as review {identifier}, not"
+                    " refused: don't change the command"
+                ),
+                *waiting([*prefix, "wait", identifier]),
+                *answers,
+                *together,
             ),
         ),
         "notice": f"Lup review {identifier} is waiting for you {where}.",
@@ -847,6 +881,52 @@ def answering_member(directory: Path | None) -> str:
     if directory is None:
         return launched
     return store.own_member(directory, launched, stdin_runtime())
+
+
+def held_refusal(
+    tool_name: str,
+    call: str,
+    cwd: Path | None,
+    caller_of: Callable[[], store.Caller],
+    began: float,
+) -> str | None:
+    """Hold one call while a hold covers its caller; how the hold ended.
+
+    None where nothing covers the caller, which is nearly always: the call
+    was never held. Otherwise this waits, reading the store each second, so
+    a resume lets the call go within one, and answers "" once it does. A
+    call still held :data:`HOLD_SECONDS` after *began* -- the hook's start,
+    on the monotonic clock -- is answered the one sentence its refusal says,
+    short of the runtime's own timeout, which would let it run. A caller this
+    repository's roster cannot name -- no store, nothing launched it -- is
+    never held. Which conversation made the call is asked of *caller_of*
+    only where some hold is placed, so a call nothing holds reads no more
+    than the store's hold directory.
+    """
+    directory = peer_directory(cwd)
+    if directory is None or not holds_placed(directory):
+        return None
+    session = answering_member(directory)
+    if not session:
+        return None
+    caller = caller_of()
+    member = store.acting_id(session, caller)
+    parent = session if store.text(caller.get("agent_id")) else ""
+    if not covering(directory, member, parent):
+        return None
+    holds = held_call(
+        directory,
+        member,
+        Waiting(tool=tool_name, call=call),
+        began,
+        HOLD_SECONDS,
+        parent=parent,
+    )
+    if not holds:
+        return ""
+    return rendered_said(
+        diagnostic("refused", refusal(holds), steps=[step(says=store.RETRY)])
+    )
 
 
 def peer_send_decision(values: list[str], cwd: Path | None) -> KernelDecision:
@@ -1113,7 +1193,7 @@ def edit_decision(
                 after=after,
             )
     except (OSError, ValueError, KeyError, TypeError) as error:
-        return routing_failure(str(error))
+        return routing_failure(str(error), path)
     return captured_edit_decision(
         local_edit_decision(
             path, before, after, path_exists, autonomous, operation, cwd
@@ -1485,11 +1565,11 @@ def repair_report(path: str, file: dict, cwd: Path | None) -> PostToolReport:
     return PostToolReport(
         blocking=[],
         context=[
-            f"{shown}: left as written. The sweep called its directives dead by "
-            "this checkout's rules, and the policy this session loaded still "
-            "needs one of them; the two agree again once `uv run lup-devtools "
-            "harness generate all` runs and the session restarts. What the "
-            "loaded policy said about the repair:",
+            f"{shown}: left as written. The sweep called its directives dead by"
+            " this checkout's rules, and the policy this session loaded still"
+            " needs one of them; the two agree again once"
+            f" `{spelled(devtools('harness', 'generate', 'all'))}` runs and the"
+            " session restarts. What the loaded policy said about the repair:",
             verdict.reason,
         ],
     )
@@ -1511,7 +1591,7 @@ def referred_once(
         return verdict
     repository = worktree_root(str((cwd / path_text).resolve())) or path_text
     if noted_once(cwd, session, repository):
-        return verdict.revised(recovery="")
+        return verdict.revised(recovery=())
     return verdict
 
 
@@ -1627,7 +1707,18 @@ def family_hold_report(
     return PostToolReport(
         blocking=[],
         context=[
-            f"{worktree_path(str(Path(path).resolve()))}: {note}"
+            rendered_said(
+                diagnostic(
+                    "warning",
+                    note,
+                    what=worktree_path(str(Path(path).resolve())),
+                    steps=(
+                        step(
+                            "tell it what you wrote, before it writes over your change"
+                        ),
+                    ),
+                )
+            )
             for path in paths
             for note in store.family_holds(directory, path, mine)
         ],
