@@ -13,6 +13,7 @@ from lup.execution.git import GitError, Repository, Worktree
 import lup.devtools.dev.records as records
 from lup.coordination.identity import session_member_id
 from lup.coordination.repository import RepositoryPeers
+from lup.providers.harness import every_runtime
 from lup.devtools.dev.git_guards import (
     DECLARED_GUARDS,
     GitGuard,
@@ -58,8 +59,7 @@ type WorktreeLauncher = Callable[[Path], RelocationHint]
 GITIGNORED_EXTRAS = [
     ".env.local",
     "sync.json.local",
-    ".claude/settings.local.json",
-    ".codex/config.local.toml",
+    *(runtime.tree("personal_settings") for runtime in every_runtime()),
     "logs",
     "refs",
 ]

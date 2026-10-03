@@ -30081,6 +30081,11 @@ SECRET_VARIABLES: list[str] = [
     "*AUTHORIZATION*",
 ]
 
+GENERATED_PLUGIN_ROOTS: list[str] = [
+    ".claude/plugins",
+    ".codex/plugins",
+]
+
 PEER_POLICY: PeerPolicyRow | None = {
     "store": ["lup", "coordination"],
     "windows_dir": "windows",

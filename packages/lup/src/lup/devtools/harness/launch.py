@@ -713,7 +713,7 @@ def claude_declaration(
             tools=ClaudeTools(
                 builtin="stock", mcp=composition.servers, serve=composition.serve
             ),
-            plugin=root / ".claude" / "plugins" / plugin.name,
+            plugin=root / ClaudeSpellings().plugin(plugin.name, "root", None),
             plugin_dirs=[
                 *machine_overlay(composition),
                 *companion_plugin_directories(root, plugin.name),

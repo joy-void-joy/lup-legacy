@@ -8,7 +8,8 @@ from typing import TYPE_CHECKING
 from pydantic import BaseModel
 
 from lup.coordination.repository import launched_member
-from lup.harness.generate import ProjectContent, codex_generation_recipe, generate
+from lup.harness.generate import ProjectContent, generate
+from lup.providers.codex.composition import codex_generation_recipe
 from lup.harness.models import (
     ArtifactTree,
     CapabilityEvidence,

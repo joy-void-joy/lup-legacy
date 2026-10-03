@@ -1137,7 +1137,14 @@ checkout's and a sibling worktree's alike, and so does every tree no scratch
 of this repository holds: another repository's, one under the machine's
 temporary root, and this checkout's own reached through a link planted in
 scratch, which the host resolves and the shell refuses once it has seen the
-link move the write.
+link move the write. Where the generated plugin trees sit is each adapter's to
+say (`NativeSpellings.plugins_directory`). The hook set carries every supported
+runtime's in `generated_plugin_roots`, which the catalog fills from
+`lup.providers.harness.runtime_plugin_directories()`. The policy data renders
+them for both dispatchers and the in-process policy hands the kernel the same
+list, so the kernel names no runtime's tree. A hook set that declares none
+refuses nothing here, and the protected-tree rows still ask about every file
+under each runtime's tree.
 
 Edit decisions cover protected paths, marker changes, size, the canonical
 anti-pattern audit, and declared import ownership. A human-owned file

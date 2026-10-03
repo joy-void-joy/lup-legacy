@@ -20,7 +20,8 @@ from pathlib import Path
 import pytest
 
 from lup.coordination.identity import mint_member_id
-from lup.coordination.wake import WakePath, wake
+from lup.coordination.wake import WakePath
+from lup.providers.wake import wake
 from lup.harness.image import Image
 from lup.harness.wake_sockets import WakeSockets
 

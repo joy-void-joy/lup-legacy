@@ -55,7 +55,8 @@ from pydantic import BaseModel, ValidationError
 from lup.coordination.identity import session_member_id
 from lup.workspace.checkout_state import CheckoutState
 from lup.coordination.repository import RepositoryPeers
-from lup.coordination.wake import WakePath, wake
+from lup.coordination.wake import WakePath
+from lup.providers.wake import wake
 from lup.devtools.review.preimages import PreimageWatch, moved
 from lup.execution.locks import try_exclusive
 from lup.devtools.review.propose import previewed
